@@ -757,6 +757,25 @@ async function renderEditor(platform, { params, query }) {
         }
 
         let selected = rows[0];
+        const dtLabelOf = (name) => (dtOptions.find(o => o.value === name) || { label: name }).label;
+
+        // Bulk Edit (Swing DataTypesDialog "Bulk Edit" radio): check connectors,
+        // pick one inbound/outbound data type in the shared panels, and apply to
+        // all checked connectors at once. `bulkRow` is the shared draft the panels
+        // edit; `bulkSel` is the set of target rows.
+        let bulkMode = false;
+        const bulkSel = new Set(rows);
+        const applySides = { inbound: true, outbound: true };
+        const bulkRow = {
+            label: 'Selected connectors',
+            draft: {
+                inboundDataType: rows[0].draft.inboundDataType,
+                outboundDataType: rows[0].draft.outboundDataType,
+                inboundProperties: clone(rows[0].draft.inboundProperties),
+                outboundProperties: clone(rows[0].draft.outboundProperties)
+            }
+        };
+
         const tableHost = h('div');
         const panelsHost = h('div', {
             style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '14px', marginTop: '14px', alignItems: 'start' }
@@ -794,25 +813,36 @@ async function renderEditor(platform, { params, query }) {
             clear(tableHost);
             const tbody = h('tbody');
             for (const row of rows) {
-                const tr = h('tr', { class: row === selected ? 'selected' : null, style: { cursor: 'pointer' } },
-                    h('td', row.label),
-                    h('td', typeCell(row, 'inbound')),
-                    h('td', typeCell(row, 'outbound')));
-                tr.addEventListener('click', () => {
-                    if (selected !== row) { selected = row; renderAll(); }
-                });
-                tbody.appendChild(tr);
+                if (bulkMode) {
+                    // Checkbox to include this connector; type columns are read-only here.
+                    const cb = checkbox('', bulkSel.has(row), {
+                        onChange: (e) => { e.target.checked ? bulkSel.add(row) : bulkSel.delete(row); }
+                    });
+                    tbody.appendChild(h('tr',
+                        h('td', { style: { width: '36px' } }, cb.el),
+                        h('td', row.label),
+                        h('td.faint', dtLabelOf(row.draft.inboundDataType)),
+                        h('td.faint', dtLabelOf(row.draft.outboundDataType))));
+                } else {
+                    const tr = h('tr', { class: row === selected ? 'selected' : null, style: { cursor: 'pointer' } },
+                        h('td', row.label),
+                        h('td', typeCell(row, 'inbound')),
+                        h('td', typeCell(row, 'outbound')));
+                    tr.addEventListener('click', () => {
+                        if (selected !== row) { selected = row; renderAll(); }
+                    });
+                    tbody.appendChild(tr);
+                }
             }
-            tableHost.appendChild(h('table.dt',
-                h('thead', h('tr',
-                    h('th', { style: { width: '40%' } }, 'Connector'),
-                    h('th', 'Inbound'),
-                    h('th', 'Outbound'))),
-                tbody));
+            const headCells = [
+                h('th', { style: { width: '40%' } }, 'Connector'),
+                h('th', 'Inbound'), h('th', 'Outbound')
+            ];
+            if (bulkMode) headCells.unshift(h('th', ''));
+            tableHost.appendChild(h('table.dt', h('thead', h('tr', headCells)), tbody));
         }
 
-        function buildPanel(side, title) {
-            const row = selected;
+        function buildPanel(side, title, row = selected) {
             const typeName = row.draft[`${side}DataType`];
             const def = dataTypeDef(typeName);
             if (def && (!row.draft[`${side}Properties`] || typeof row.draft[`${side}Properties`] !== 'object')) {
@@ -846,9 +876,51 @@ async function renderEditor(platform, { params, query }) {
 
         function renderPanels() {
             clear(panelsHost);
-            panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties'));
-            panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties'));
+            if (bulkMode) {
+                // Side toggles + an explicit apply button operating on the bulk draft.
+                const sideToggle = (side, lbl) => checkbox(lbl, applySides[side], {
+                    onChange: (e) => { applySides[side] = e.target.checked; }
+                }).el;
+                const applyBtn = h('button.btn.btn-primary', {
+                    onClick: () => {
+                        const targets = rows.filter(r => bulkSel.has(r));
+                        if (!targets.length) { toast('Select at least one connector', 'warn'); return; }
+                        if (!applySides.inbound && !applySides.outbound) { toast('Choose Inbound and/or Outbound to apply', 'warn'); return; }
+                        for (const r of targets) {
+                            if (applySides.inbound) {
+                                r.draft.inboundDataType = bulkRow.draft.inboundDataType;
+                                r.draft.inboundProperties = clone(bulkRow.draft.inboundProperties);
+                            }
+                            if (applySides.outbound) {
+                                r.draft.outboundDataType = bulkRow.draft.outboundDataType;
+                                r.draft.outboundProperties = clone(bulkRow.draft.outboundProperties);
+                            }
+                        }
+                        toast(`Applied to ${targets.length} connector${targets.length === 1 ? '' : 's'}`);
+                        renderAll();
+                    }
+                }, 'Apply to Selected Connectors');
+                panelsHost.appendChild(h('div', { style: { gridColumn: '1 / -1', display: 'flex', gap: '16px', alignItems: 'center' } },
+                    h('span.faint', { style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em' } }, 'Apply:'),
+                    sideToggle('inbound', 'Inbound'), sideToggle('outbound', 'Outbound'), applyBtn));
+                panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties', bulkRow));
+                panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties', bulkRow));
+            } else {
+                panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties'));
+                panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties'));
+            }
         }
+
+        const editModeName = 'dt-edit-mode';
+        function modeRadio(label, isBulk) {
+            const input = h('input', { type: 'radio', name: editModeName, checked: bulkMode === isBulk,
+                onChange: () => { if (input.checked) { bulkMode = isBulk; renderAll(); } } });
+            return h('label.check', input, label);
+        }
+        const modeBar = h('div', { style: { display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '10px' } },
+            h('span.faint', { style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em' } }, 'Editing:'),
+            modeRadio('Single Edit', false),
+            modeRadio('Bulk Edit', true));
 
         function renderAll() { renderTable(); renderPanels(); }
         renderAll();
@@ -857,6 +929,7 @@ async function renderEditor(platform, { params, query }) {
             title: 'Set Data Types',
             size: 'xwide',
             body: h('div',
+                modeBar,
                 h('div.panel', { style: { marginTop: '0' } }, h('div.panel-body.flush', tableHost)),
                 panelsHost,
                 h('div.hint', { style: { marginTop: '10px' } },
