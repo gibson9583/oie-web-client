@@ -1,0 +1,8 @@
+{
+    "id": "connector-database",
+    "name": "Database Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Database Reader (source) and Database Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

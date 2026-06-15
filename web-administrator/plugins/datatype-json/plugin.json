@@ -1,0 +1,8 @@
+{
+    "id": "datatype-json",
+    "name": "JSON Data Type",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "JSON data type properties — web equivalent of the JSON DataTypeClientPlugin.",
+    "client": { "entry": "web/plugin.js" }
+}

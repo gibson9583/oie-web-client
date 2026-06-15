@@ -1,0 +1,8 @@
+{
+    "id": "attachment-dicomviewer",
+    "name": "DICOM Attachment Viewer",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Shows key DICOM header tags and lets you save the object — AttachmentViewer equivalent. (Full image rendering needs a DICOM toolkit.)",
+    "client": { "entry": "web/plugin.js" }
+}

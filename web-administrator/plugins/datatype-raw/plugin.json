@@ -1,0 +1,8 @@
+{
+    "id": "datatype-raw",
+    "name": "Raw Data Type",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Raw data type properties — web equivalent of the Raw DataTypeClientPlugin.",
+    "client": { "entry": "web/plugin.js" }
+}

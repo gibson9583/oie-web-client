@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "OIE Web Administrator browser client (ES modules, no build step). This file only declares the module system so Node-based unit tests (e.g. *.test.js) can import client modules; the browser and server ignore it."
+}

@@ -1,0 +1,8 @@
+{
+    "id": "directoryresource",
+    "name": "Directory Resource",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Directory resource type for Settings → Resources (directory of JAR libraries loaded into channel classpaths) — web equivalent of the directoryresource ResourceClientPlugin.",
+    "client": { "entry": "web/plugin.js" }
+}

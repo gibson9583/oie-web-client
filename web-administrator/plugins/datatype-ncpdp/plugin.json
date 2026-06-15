@@ -1,0 +1,8 @@
+{
+    "id": "datatype-ncpdp",
+    "name": "NCPDP Data Type",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "NCPDP data type properties — web equivalent of the NCPDP DataTypeClientPlugin.",
+    "client": { "entry": "web/plugin.js" }
+}

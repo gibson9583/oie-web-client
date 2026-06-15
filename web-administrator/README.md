@@ -1,0 +1,138 @@
+# OIE Web Administrator
+
+A standalone, web-based administrator for **Open Integration Engine** — a browser
+replacement for the Swing Administrator client. It runs as its own NodeJS app,
+talks to any engine over the REST API, and is **pluggable**: third-party
+developers extend it by dropping a folder into `plugins/` (the web equivalent of
+the engine's `plugin.xml` extension model).
+
+Both administrators can be used side by side against the same engine — this app
+is read/write through the same `/api` surface the Swing client uses, so nothing
+about the engine install changes.
+
+```
+┌─────────────┐   http :3030    ┌──────────────────┐   https :8443/api   ┌────────────┐
+│   Browser    │ ──────────────▶ │ Web Administrator │ ──────────────────▶ │   Engine    │
+│  (this SPA)  │                 │  (Node/Express)   │   reverse proxy     │ (OIE/Mirth) │
+└─────────────┘                 └──────────────────┘                     └────────────┘
+                                   │  plugins/  (server + browser extensions)
+```
+
+## Quick start
+
+```bash
+cd web-administrator
+npm install
+OIE_URL=https://localhost:8443 npm start
+# open http://localhost:3030 and sign in with your engine credentials (admin/admin by default)
+```
+
+## Configuration
+
+`config.json` in this directory (optional), overridden by environment variables:
+
+| Setting | Env var | Default | Description |
+|---|---|---|---|
+| `port` | `WEBADMIN_PORT` | `3030` | Port the web UI listens on |
+| `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
+| `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
+| `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
+| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./plugins` | Web admin plugin directory |
+| `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge (below) |
+
+Example `config.json`:
+
+```json
+{
+    "port": 3030,
+    "engine": { "url": "https://oie.example.org:8443", "verifyTls": true }
+}
+```
+
+> Authentication is the engine's own: the login form posts to
+> `/api/users/_login` and the engine's `JSESSIONID` cookie carries the session.
+> The Node server stores no credentials; it is a streaming reverse proxy.
+> For production, terminate TLS in front of this app (the session cookie should
+> not cross the network in clear text).
+
+## Look & feel
+
+The UI follows the classic Administrator layout: stacked task panes on the
+left (Engine navigation, contextual "<View> Tasks", Other), channel-group tree
+tables with a bottom filter bar, dashboard tabs (Server Log, Connection Log,
+Global Maps), and a connection status bar along the bottom. **Light mode**
+(default) matches the classic blue-and-white Administrator; **dark mode** is a
+steel-blue equivalent — toggle via the sun/moon button in the title bar.
+
+## What's implemented (Swing Administrator parity)
+
+- **Dashboard** — live channel/connector statuses and statistics, start/stop/
+  pause/resume/halt, undeploy, remove all messages, clear statistics,
+  expandable connector rows, plugin dashboard tabs (Server Log included).
+- **Channels** — list with tags/groups, create, import/export (XML and JSON),
+  clone, delete, enable/disable, deploy.
+- **Channel editor** — Summary (storage mode, pruning, attachments, custom
+  metadata columns), Source/Destinations with property panels for every bundled
+  connector (Channel/TCP/HTTP/File/Database/JavaScript Reader-Writer, SMTP,
+  Web Service), destination ordering and queue settings, channel Scripts.
+- **Filter / Transformer / Response editors** — JavaScript, Mapper, Message
+  Builder, XSLT, Destination Set Filter steps; JavaScript and Rule Builder
+  filter rules; inbound/outbound data types and templates.
+- **Message browser** — search (date, status, text, connector), pagination,
+  full content tabs (raw → response), errors, mappings, attachments,
+  send/reprocess/remove/export.
+- **Events**, **Alerts** (triggers, channels, actions), **Users** (incl.
+  password rules), **Settings** (server/SMTP, configuration map, tags,
+  database tasks, resources, data pruner), **Code Templates** (libraries +
+  editor), **Global Scripts**, **Extensions** (engine connectors/plugins and
+  web admin plugins).
+
+Unknown connector types and transformer steps (e.g. from commercial engine
+extensions) fall back to a JSON property editor, so nothing is a dead end.
+
+## Engine API notes (hard-won)
+
+- Requests send `Accept: application/json` and `X-Requested-With` (the engine's
+  CSRF guard). The engine's XStream serializer wraps every payload in a single
+  root key and renders one-element lists as bare objects — `core/api.js`
+  normalizes both, with an XML fallback parser.
+- Writes must **round-trip**: GET the object, mutate fields, PUT the same
+  object back. `@class`/`@version` keys and unknown fields (from server-side
+  plugins) must survive. All built-in views follow this rule.
+
+## Message tree serialization (exact, optional)
+
+The transformer/filter **Message Trees** turn a template into a draggable tree
+of accessors (`msg['PID']['PID.5']['PID.5.1']`). To match the engine exactly —
+including **strict** HL7 (HAPI) and every data type — set `OIE_HOME` to the
+engine install directory. The Node server then runs a warm Java sidecar
+(`server/bridge/Serializer.java`) on the engine's **own** jars (no bundled
+HAPI) and serializes templates through the engine's real datatype serializers,
+so the tree is byte-identical to the runtime `msg`/`tmp`.
+
+```bash
+OIE_HOME=/path/to/oie OIE_URL=https://localhost:8443 npm start
+```
+
+Requires a JVM on the web-admin host. Without `OIE_HOME` (or a JVM), the app
+falls back to built-in JS parsing — exact for XML/JSON and the non-strict HL7
+default, approximate for opt-in strict mode. Drag a tree node into a script
+editor to insert its accessor at the drop point.
+
+## Plugins
+
+See [docs/PLUGINS.md](docs/PLUGINS.md) — it includes worked examples for every
+extension point. Bundled plugins:
+
+- `plugins/server-log` — live engine log tab on the dashboard.
+- `plugins/connection-status` — Connection column + Connection Log tab.
+- `plugins/global-maps` — Global Maps dashboard tab.
+
+For a complete third-party example that ships engine + Swing + web UI in one
+extension zip, see the SQS connector repository.
+
+## Development
+
+No build step. The frontend is plain ES modules (`client/`); edit and refresh.
+`npm run dev` restarts the Node server on changes. The visual design system
+lives in `client/css/app.css` (dark/light themes via CSS variables).

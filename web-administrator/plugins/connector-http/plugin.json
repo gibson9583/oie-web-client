@@ -1,0 +1,8 @@
+{
+    "id": "connector-http",
+    "name": "HTTP Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "HTTP Listener (source) and HTTP Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

@@ -1,0 +1,8 @@
+{
+    "id": "connector-tcp",
+    "name": "TCP Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "TCP Listener (source) and TCP Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

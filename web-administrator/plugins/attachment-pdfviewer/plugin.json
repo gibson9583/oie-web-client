@@ -1,0 +1,8 @@
+{
+    "id": "attachment-pdfviewer",
+    "name": "PDF Attachment Viewer",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Renders PDF attachments inline — AttachmentViewer equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

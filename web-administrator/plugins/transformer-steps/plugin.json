@@ -1,0 +1,8 @@
+{
+    "id": "transformer-steps",
+    "name": "Built-in Transformer Steps & Filter Rules",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Bundled transformer step and filter rule editors (Mapper, Message Builder, JavaScript, External Script, XSLT, Destination Set Filter, Iterator; Rule Builder, JavaScript, External Script) — web equivalent of the TransformerStepPlugin / FilterRulePlugin extensions.",
+    "client": { "entry": "web/plugin.js" }
+}

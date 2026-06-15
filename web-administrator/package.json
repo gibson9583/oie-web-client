@@ -1,0 +1,20 @@
+{
+  "name": "oie-web-administrator",
+  "version": "1.0.0",
+  "description": "Web-based administrator for Open Integration Engine (Mirth Connect fork). Standalone NodeJS app that mirrors the Swing Administrator and is pluggable by extension developers.",
+  "license": "MPL-2.0",
+  "main": "server/index.js",
+  "bin": {
+    "oie-webadmin": "server/index.js"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

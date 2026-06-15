@@ -1,0 +1,8 @@
+{
+    "id": "connector-vm",
+    "name": "Channel Reader/Writer Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Channel Reader (source) and Channel Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

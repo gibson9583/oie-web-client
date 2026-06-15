@@ -1,0 +1,8 @@
+{
+    "id": "connector-dicom",
+    "name": "DICOM Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "DICOM Listener (source) and DICOM Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

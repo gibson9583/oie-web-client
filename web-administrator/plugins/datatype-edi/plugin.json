@@ -1,0 +1,8 @@
+{
+    "id": "datatype-edi",
+    "name": "EDI/X12 Data Type",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "EDI/X12 data type properties — web equivalent of the EDI DataTypeClientPlugin.",
+    "client": { "entry": "web/plugin.js" }
+}

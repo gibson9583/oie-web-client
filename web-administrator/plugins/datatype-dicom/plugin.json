@@ -1,0 +1,8 @@
+{
+    "id": "datatype-dicom",
+    "name": "DICOM Data Type",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "DICOM data type — web equivalent of the DICOM DataTypeClientPlugin (no configurable property groups).",
+    "client": { "entry": "web/plugin.js" }
+}

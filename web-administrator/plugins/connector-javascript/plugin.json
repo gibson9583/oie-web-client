@@ -1,0 +1,8 @@
+{
+    "id": "connector-javascript",
+    "name": "JavaScript Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "JavaScript Reader (source) and JavaScript Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

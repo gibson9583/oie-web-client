@@ -1,0 +1,8 @@
+{
+    "id": "connection-status",
+    "name": "Connection Status",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Connection column on the dashboard and the Connection Log tab (web equivalent of the Dashboard Connector Status plugin).",
+    "client": { "entry": "web/plugin.js" }
+}

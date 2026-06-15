@@ -1,0 +1,8 @@
+{
+    "id": "connector-smtp",
+    "name": "SMTP Sender Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "SMTP Sender (destination) connector panel — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

@@ -1,0 +1,8 @@
+{
+    "id": "connector-document",
+    "name": "Document Writer Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Document Writer (destination) connector panel — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

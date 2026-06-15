@@ -1,0 +1,8 @@
+{
+    "id": "connector-jms",
+    "name": "JMS Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "JMS Listener (source) and JMS Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

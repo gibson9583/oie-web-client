@@ -1,0 +1,8 @@
+{
+    "id": "connector-file",
+    "name": "File Connector",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "File Reader (source) and File Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

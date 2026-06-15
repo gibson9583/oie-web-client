@@ -1,0 +1,8 @@
+{
+    "id": "attachment-textviewer",
+    "name": "Text Attachment Viewer",
+    "version": "1.0.0",
+    "author": "Open Integration Engine",
+    "description": "Renders text attachments (plain/XML/JSON/HL7/CSV/HTML) inline — AttachmentViewer equivalent.",
+    "client": { "entry": "web/plugin.js" }
+}

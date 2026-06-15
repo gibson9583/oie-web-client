@@ -1,0 +1,10 @@
+{
+    "port": 3030,
+    "host": "0.0.0.0",
+    "engine": {
+        "url": "https://localhost:8443",
+        "verifyTls": false
+    },
+    "engineHome": "/path/to/oie",
+    "pluginDirs": ["/path/to/oie/extensions"]
+}
