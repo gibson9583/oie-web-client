@@ -148,4 +148,16 @@ function install(app, config) {
     return initial.map(p => toClientManifest(p.manifest));
 }
 
-module.exports = { install };
+// Fresh list of client plugin entry URLs, for <link rel="modulepreload"> hints
+// in index.html (so the browser fetches plugin code in parallel with the shell
+// instead of waiting on the plugins.json round-trip). Re-scanned per call.
+function clientEntries(config) {
+    const dirs = config.pluginDirs || [config.pluginDir];
+    return discover(dirs)
+        .map((p) => (p.manifest.client && p.manifest.client.entry)
+            ? `/plugins/${p.manifest.id}/${p.manifest.client.entry}`
+            : null)
+        .filter(Boolean);
+}
+
+module.exports = { install, clientEntries };

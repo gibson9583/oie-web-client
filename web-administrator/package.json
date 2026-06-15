@@ -9,12 +9,16 @@
   },
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "WEBADMIN_DEV=1 node --watch server/index.js",
+    "build": "vite build"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
   }
 }

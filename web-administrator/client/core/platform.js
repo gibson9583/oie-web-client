@@ -125,21 +125,35 @@ export async function loadPlugins() {
         console.warn('[plugins] manifest fetch failed:', e);
     }
 
+    // Import every plugin entry module IN PARALLEL — a serial `await import()`
+    // per plugin cost a round-trip each (34 plugins ≈ 34 RTs; at 100ms that's
+    // ~3.4s). Server-side modulepreload hints start these fetches even earlier.
+    const imported = await Promise.all(manifests.map(async (manifest) => {
+        if (!manifest.entry) return { manifest, module: null };
+        try { return { manifest, module: await import(manifest.entry) }; }
+        catch (e) { return { manifest, error: e }; }
+    }));
+
+    // Register in manifest order so ordering (nav items, tabs) stays stable.
     const loaded = [];
-    for (const manifest of manifests) {
+    for (const { manifest, module, error } of imported) {
         if (!manifest.entry) { loaded.push({ ...manifest, status: 'no-client' }); continue; }
-        try {
-            const module = await import(manifest.entry);
-            if (typeof module.register === 'function') {
+        if (error) {
+            console.error(`[plugins] ${manifest.id} failed:`, error);
+            loaded.push({ ...manifest, status: 'error', error: error.message });
+            continue;
+        }
+        if (typeof module.register === 'function') {
+            try {
                 await module.register(platform);
                 loaded.push({ ...manifest, status: 'loaded' });
                 console.log(`[plugins] ${manifest.id} v${manifest.version} registered`);
-            } else {
-                loaded.push({ ...manifest, status: 'error', error: 'entry module has no register(platform) export' });
+            } catch (e) {
+                console.error(`[plugins] ${manifest.id} register failed:`, e);
+                loaded.push({ ...manifest, status: 'error', error: e.message });
             }
-        } catch (e) {
-            console.error(`[plugins] ${manifest.id} failed:`, e);
-            loaded.push({ ...manifest, status: 'error', error: e.message });
+        } else {
+            loaded.push({ ...manifest, status: 'error', error: 'entry module has no register(platform) export' });
         }
     }
     store.setState('webPlugins', loaded);
