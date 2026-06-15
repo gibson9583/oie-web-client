@@ -427,6 +427,9 @@ export const server = {
     setResources: (resources) => put('/server/resources', resources, { wrapKey: 'list' }),
     reloadResource: (resourceId) => post(`/server/resources/${encodeURIComponent(resourceId)}/_reload`),
     databaseDrivers: () => get('/server/databaseDrivers').then(v => asList(v, 'driverInfo')),
+    // List<DriverInfo> serializes as { list: { driverInfo: [...] } } (DriverInfo
+    // is @XStreamAlias("driverInfo")). Requires the DATABASE_DRIVERS_EDIT perm.
+    setDatabaseDrivers: (drivers) => put('/server/databaseDrivers', { driverInfo: drivers }, { wrapKey: 'list' }),
     passwordRequirements: () => get('/server/passwordRequirements'),
     encryption: () => get('/server/encryption'),
     licenseInfo: () => get('/server/licenseInfo'),

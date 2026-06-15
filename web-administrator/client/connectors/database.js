@@ -2,33 +2,129 @@
  * Database Reader (DatabaseReceiverProperties) / Database Writer (DatabaseDispatcherProperties).
  */
 
-import { h } from '../core/ui.js';
+import { h, modal, textInput, icon, toast, clear } from '../core/ui.js';
 import { buildForm, pollSection, YES_NO, defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, CHARSETS } from './forms.js';
+import api from '../core/api.js';
 
 const DRIVER_DEFAULT = 'Please Select One';
 
 function driverSelectField(properties, platform, form) {
     const driverField = {
         key: 'driver', label: 'Driver', type: 'select',
-        options: [{ value: properties.driver ?? DRIVER_DEFAULT, label: properties.driver ?? DRIVER_DEFAULT }]
+        options: [{ value: properties.driver ?? DRIVER_DEFAULT, label: properties.driver ?? DRIVER_DEFAULT }],
+        // Wrench button beside the dropdown — opens the Database Drivers manager
+        // (mirrors the Swing manageDriversButton on the JDBC connectors).
+        append: () => h('button.icon-btn', {
+            type: 'button', title: 'View and manage the list of database JDBC drivers',
+            style: { marginLeft: '6px' },
+            onClick: () => openDriversModal(() => refreshOptions())
+        }, icon('settings'))
     };
-    platform.api.server.databaseDrivers().then(drivers => {
-        const options = [{ value: DRIVER_DEFAULT, label: DRIVER_DEFAULT }];
-        for (const d of drivers) {
-            if (d && d.className) options.push({ value: d.className, label: d.name || d.className });
-        }
-        const current = properties.driver;
-        if (current && !options.some(o => o.value === current)) {
-            options.push({ value: current, label: current });
-        }
-        driverField.options = options;
-        form.current && form.current.repaint();
-    }).catch(() => {
-        driverField.type = 'text';
-        driverField.placeholder = 'org.postgresql.Driver';
-        form.current && form.current.repaint();
-    });
+    function refreshOptions() {
+        platform.api.server.databaseDrivers().then(drivers => {
+            const options = [{ value: DRIVER_DEFAULT, label: DRIVER_DEFAULT }];
+            for (const d of drivers) {
+                if (d && d.className) options.push({ value: d.className, label: d.name || d.className });
+            }
+            const current = properties.driver;
+            if (current && !options.some(o => o.value === current)) {
+                options.push({ value: current, label: current });
+            }
+            driverField.options = options;
+            form.current && form.current.repaint();
+        }).catch(() => {
+            driverField.type = 'text';
+            driverField.placeholder = 'org.postgresql.Driver';
+            form.current && form.current.repaint();
+        });
+    }
+    refreshOptions();
     return driverField;
+}
+
+/* Database Drivers manager — a modal table of DriverInfo records (Name, Driver
+   Class, JDBC URL Template, Select with Limit Query, Legacy Driver Classes) with
+   Add/Remove, persisted via PUT /server/databaseDrivers. Mirrors the Swing
+   DatabaseDriversDialog. `onSaved` lets the connector refresh its dropdown. */
+async function openDriversModal(onSaved) {
+    let model;
+    try {
+        const drivers = await api.server.databaseDrivers();
+        model = drivers.map(d => ({
+            name: d.name || '', className: d.className || '', template: d.template || '',
+            selectLimit: d.selectLimit || '',
+            alt: api.asList(d.alternativeClassNames, 'string').map(String).filter(Boolean).join(', ')
+        }));
+    } catch (e) {
+        toast(`Could not load drivers: ${e.message}`, 'error');
+        return;
+    }
+
+    const tbody = h('tbody');
+    function rowEl(d) {
+        const cell = (key, ph, w) => {
+            const inp = textInput(d[key], { placeholder: ph, style: { width: w, minWidth: w } });
+            inp.addEventListener('input', () => { d[key] = inp.value; });
+            return h('td', { style: { padding: '2px 4px' } }, inp);
+        };
+        return h('tr',
+            cell('name', 'Name', '120px'),
+            cell('className', 'com.example.Driver', '200px'),
+            cell('template', 'jdbc:db://host:port/name', '220px'),
+            cell('selectLimit', 'SELECT * FROM ? LIMIT 1', '180px'),
+            cell('alt', 'legacy.Driver, ...', '160px'),
+            h('td', { style: { padding: '2px 4px' } },
+                h('button.icon-btn', { type: 'button', title: 'Remove', onClick: () => { model.splice(model.indexOf(d), 1); renderRows(); } }, icon('x'))));
+    }
+    function renderRows() {
+        clear(tbody);
+        if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'faint', style: { padding: '12px' } }, 'No drivers — click Add.')));
+        else model.forEach(d => tbody.appendChild(rowEl(d)));
+    }
+    renderRows();
+
+    const table = h('table.dt', h('thead', h('tr',
+        h('th', 'Name'), h('th', 'Driver Class'), h('th', 'JDBC URL Template'),
+        h('th', 'Select with Limit Query'), h('th', 'Legacy Driver Classes'), h('th', ''))), tbody);
+
+    const addBtn = h('button.btn', { type: 'button', onClick: () => { model.push({ name: '', className: '', template: '', selectLimit: '', alt: '' }); renderRows(); } }, icon('plus'), 'Add');
+
+    modal({
+        title: 'Database Drivers',
+        size: 'xwide',
+        body: h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+            h('div', addBtn),
+            h('div', { style: { maxHeight: '55vh', overflow: 'auto' } }, table)),
+        buttons: [
+            { label: 'Close' },
+            {
+                label: 'Save', primary: true,
+                onClick: async () => {
+                    const payload = model
+                        .filter(d => d.name.trim() || d.className.trim())
+                        .map(d => {
+                            const alt = d.alt.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+                            return {
+                                name: d.name.trim(),
+                                className: d.className.trim(),
+                                template: d.template,
+                                selectLimit: d.selectLimit,
+                                // List<String>: { string: [...] } when present, empty element otherwise.
+                                alternativeClassNames: alt.length ? { string: alt } : ''
+                            };
+                        });
+                    try {
+                        await api.server.setDatabaseDrivers(payload);
+                        toast('Database drivers saved');
+                        onSaved && onSaved();
+                    } catch (e) {
+                        toast(`Save failed: ${e.message}`, 'error');
+                        return false;
+                    }
+                }
+            }
+        ]
+    });
 }
 
 const databaseReader = {
