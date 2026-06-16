@@ -262,9 +262,9 @@ platform.registerResourceType('Directory', {
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
 | `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. (Data types are no longer here — they come from the registry via `dataTypeDef`/`dataTypeList` in `/datatypes/index.js`.) |
 | `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` | Read the registered data types / transmission modes / resource types (each populated by a plugin). |
-| `platform.createCodeEditor({ value, onChange })` | Code editor component (`platform.setCodeEditorFactory` lets a plugin swap in CodeMirror etc. app-wide) |
+| `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned: User API IntelliSense, in-scope code-template completions, engine-backed validation + Format Document), else a plain textarea. `platform.setCodeEditorFactory` swaps the implementation app-wide. |
 | `platform.router` | `navigate(path)`, `currentPath()` |
-| `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`) and pub/sub bus |
+| `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`, `'webadminConfig'`) and pub/sub bus |
 
 ### Resizable / reorderable columns
 
