@@ -139,8 +139,7 @@ export function register(platform) {
         const toolbar = h('div.taskbar', {
             style: {
                 display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 8px',
-                minHeight: '0', fontSize: '12px',
-                position: 'sticky', bottom: '0', zIndex: '2',
+                flex: 'none', fontSize: '12px', zIndex: '2',
                 background: 'var(--bg1)', borderTop: '1px solid var(--bg3)'
             }
         },
@@ -212,9 +211,13 @@ export function register(platform) {
         renderRows();
         poll();
 
-        // The dashboard tab body is the scroll container; header sticks to the
-        // top and the toolbar to the bottom, so both stay visible.
-        host.appendChild(h('div', { style: { minHeight: '0' } }, table, toolbar));
+        // Fill the tab body as a column: the log table scrolls in the middle and
+        // the toolbar stays docked at the bottom edge (matching the Swing layout),
+        // so resizing the panel no longer floats the toolbar up under the rows.
+        Object.assign(host.style, { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0' });
+        const scroll = h('div', { style: { flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden' } }, table);
+        host.appendChild(scroll);
+        host.appendChild(toolbar);
     }
 
     platform.registerDashboardTab({
