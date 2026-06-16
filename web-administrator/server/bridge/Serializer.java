@@ -107,6 +107,15 @@ public class Serializer {
             return new String[] { "validate", err == null ? "" : err.toString(), "{}" };
         }
 
+        // Pretty-print JS through the engine's own Rhino-AST formatter
+        // (JavaScriptSharedUtil.prettyPrint) — the same one Swing's Format Code
+        // uses, so E4X XML literals survive. Formatted code returned as "text".
+        if ("__prettyprint__".equals(dataType)) {
+            Object out = Class.forName("com.mirth.connect.util.JavaScriptSharedUtil")
+                    .getMethod("prettyPrint", String.class).invoke(null, message);
+            return new String[] { "prettyprint", out == null ? message : out.toString(), "{}" };
+        }
+
         String[] fqcn = TYPES.get(dataType);
         if (fqcn == null) throw new IllegalArgumentException("Unsupported data type: " + dataType);
 

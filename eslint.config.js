@@ -25,6 +25,7 @@ export default [
             '**/dist/**',
             'web-administrator/client/assets/**', // vendored (Monaco, fonts)
             'web-administrator/client/vendor/**',  // vendored third-party libs (zip.js)
+            'web-administrator/client/core/userapi.generated.js', // generated User API .d.ts string
         ],
     },
 

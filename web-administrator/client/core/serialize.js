@@ -77,3 +77,27 @@ export async function validateScript(script) {
         return { ok: null, message: e.message };
     }
 }
+
+/**
+ * Pretty-print a JavaScript snippet through the engine's own formatter
+ * (JavaScriptSharedUtil.prettyPrint) — the same one Swing's Format Code uses,
+ * so E4X XML literals are preserved (Monaco's TS formatter would mangle them).
+ * Returns the formatted code, or null when the bridge is unavailable / failed
+ * (the caller then leaves the text unchanged).
+ */
+export async function formatScript(script) {
+    if (!(await bridgeAvailable())) return null;
+    try {
+        const res = await fetch('/webadmin/serialize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ dataType: '__prettyprint__', message: String(script ?? '') })
+        });
+        if (!res.ok) { if (res.status === 503) available = false; return null; }
+        const j = await res.json();
+        return j.ok && typeof j.data === 'string' ? j.data : null;
+    } catch {
+        return null;
+    }
+}

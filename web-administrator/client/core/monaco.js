@@ -13,6 +13,8 @@
  */
 
 import { getState, subscribe } from './store.js';
+import { USER_API_DTS } from './userapi.generated.js';
+import { formatScript } from './serialize.js';
 
 const BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
 const LOAD_TIMEOUT_MS = 10000;
@@ -48,12 +50,16 @@ export function ensureMonaco() {
     return loadPromise;
 }
 
-/* Scope variables and helper classes available to Rhino scripts in the engine. */
+/* Reserved scope variables Rhino injects into every channel script. Offered as
+   an always-available completion list (the util classes — ChannelUtil, DateUtil,
+   … — come from the generated User API .d.ts instead, with full member info). */
 const RHINO_GLOBALS = [
     ['msg', 'The inbound message (E4X XML / JSON object depending on data type)'],
     ['tmp', 'The outbound template message'],
+    ['template', 'The raw template string'],
     ['message', 'Raw message string (preprocessor) / ImmutableMessage (postprocessor)'],
     ['connectorMessage', 'The current ImmutableConnectorMessage'],
+    ['response', 'The Response (response transformer / postprocessor)'],
     ['sourceMap', 'Source map (read-only variable map)'],
     ['connectorMap', 'Connector-scoped variable map'],
     ['channelMap', 'Channel-scoped variable map'],
@@ -64,14 +70,10 @@ const RHINO_GLOBALS = [
     ['logger', 'Log4j logger (logger.info/warn/error)'],
     ['router', 'VMRouter — router.routeMessage(channelName, message)'],
     ['alerts', 'AlertSender — alerts.sendAlert(message)'],
-    ['ChannelUtil', 'Channel control/lookup utilities'],
-    ['DateUtil', 'Date parsing/formatting utilities'],
-    ['SerializerFactory', 'Data type serializers (HL7 ↔ XML, ...)'],
-    ['AttachmentUtil', 'Message attachment utilities'],
-    ['XmlUtil', 'XML escaping/pretty-print utilities'],
-    ['JsonUtil', 'JSON escaping/pretty-print utilities'],
-    ['DICOMUtil', 'DICOM helper utilities'],
-    ['FileUtil', 'File read/write utilities'],
+    ['replacer', 'TemplateValueReplacer'],
+    ['destinationSet', 'DestinationSet — control which destinations process the message'],
+    ['channelId', 'Current channel id'],
+    ['channelName', 'Current channel name'],
     ['importPackage', 'Rhino: import a Java package, e.g. importPackage(java.util)'],
     ['validate', 'Transformer helper: validate(mapping, defaultValue, replacements)'],
     ['$', "Shorthand lookup across all maps: $('variable')"],
@@ -82,15 +84,40 @@ const RHINO_GLOBALS = [
 ];
 
 function setup(monaco) {
-    // Rhino is ES5-era with engine-injected globals — keep syntax checking,
-    // drop semantic validation.
+    // Mirth scripts run in Rhino (E4X XML literals, Java interop) — Monaco's TS
+    // parser would false-flag valid Rhino syntax, so disable its diagnostics and
+    // let the engine's Rhino compile (core/serialize.js validateScript) be the
+    // authoritative linter. The generated User API declarations still drive
+    // completion / signature help / hover docs (the language service provides
+    // those regardless of the diagnostic flags).
     try {
-        monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-            noSemanticValidation: true,
-            noSyntaxValidation: false
+        const jsDefaults = monaco.languages.typescript.javascriptDefaults;
+        jsDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true });
+        jsDefaults.addExtraLib(USER_API_DTS, 'ts:mirth-userapi.d.ts');
+        // The TS formatter reflows E4X XML literals as if they were JSX
+        // (e.g. <p/> → <p />), corrupting valid Rhino code — and the engine
+        // doesn't auto-format scripts anyway. Turn the formatter off (Format
+        // Document becomes a no-op) while keeping completion/hover/signature.
+        jsDefaults.setModeConfiguration({
+            completionItems: true, hovers: true, documentSymbols: true, definitions: true,
+            references: true, documentHighlights: true, rename: true, diagnostics: true,
+            signatureHelp: true, codeActions: true, inlayHints: true,
+            documentFormattingEdits: false, documentRangeFormattingEdits: false, onTypeFormattingEdits: false,
         });
     } catch { /* typescript service unavailable — highlighting still works */ }
 
+    // Format Document → the engine's own Rhino/E4X-safe pretty-printer
+    // (JavaScriptSharedUtil.prettyPrint via the serializer bridge), the same one
+    // Swing's Format Code uses. No-op when the bridge (OIE_HOME) isn't configured.
+    monaco.languages.registerDocumentFormattingEditProvider('javascript', {
+        async provideDocumentFormattingEdits(model) {
+            const formatted = await formatScript(model.getValue());
+            if (formatted == null || formatted === model.getValue()) return [];
+            return [{ range: model.getFullModelRange(), text: formatted }];
+        }
+    });
+
+    // Reserved scope variables — always offered (the curated list authors expect).
     monaco.languages.registerCompletionItemProvider('javascript', {
         provideCompletionItems(model, position) {
             const word = model.getWordUntilPosition(position);
