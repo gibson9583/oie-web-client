@@ -159,7 +159,10 @@ async function renderEditor(platform, { params, query }) {
     // Came back from the filter/transformer editor (or is a brand new channel):
     // assume there may be unsaved edits.
     let dirty = !!(stored && stored.id === params.channelId);
-    function markDirty() { dirty = true; }
+    let saveBtn = null;
+    // The Save button shows only when there are unsaved changes (Swing isSaveEnabled).
+    function refreshSaveVisibility() { if (saveBtn) saveBtn.classList.toggle('hidden', !dirty); }
+    function markDirty() { dirty = true; refreshSaveVisibility(); }
 
     /* Leaving the editor with unsaved changes asks Save / Don't Save / Cancel
        (classic behavior). Navigation within this channel's editing flow
@@ -290,6 +293,7 @@ async function renderEditor(platform, { params, query }) {
                 await api.channels.update(channel.id, channel);
             }
             dirty = false;
+            refreshSaveVisibility();
             toast(`Saved ${channel.name}`);
             return true;
         } catch (e) {
@@ -299,7 +303,16 @@ async function renderEditor(platform, { params, query }) {
     }
 
     async function deploy() {
-        if (!await save()) return;
+        // Match the Swing channel-view deploy (Frame.doDeployFromChannelView):
+        // unsaved changes prompt to save-and-deploy; otherwise a plain confirm.
+        if (dirty) {
+            if (!await confirmDialog('Deploy Channel',
+                'This channel will be saved before it is deployed. Are you sure you want to save and deploy this channel?',
+                { okLabel: 'Save and Deploy' })) return;
+            if (!await save()) return;
+        } else if (!await confirmDialog('Deploy Channel', 'Are you sure you want to deploy this channel?', { okLabel: 'Deploy' })) {
+            return;
+        }
         try {
             await api.engine.deploy(channel.id);
             toast(`Deployed ${channel.name}`);
@@ -394,8 +407,9 @@ async function renderEditor(platform, { params, query }) {
     // group's children later updates the pane in place.
     const ctxTasks = h('div.ctx-tasks.hidden');
 
+    saveBtn = taskButton('Save Changes', 'check', save, { primary: true });
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Channel Tasks' } },
-        taskButton('Save Changes', 'check', save, { primary: true }),
+        saveBtn,
         taskButton('Deploy Channel', 'deploy', deploy),
         taskButton('Debug Channel', 'deploy', openDebugDeployModal,
             { title: 'Save, then deploy in debug mode with selected debug options' }),
@@ -405,6 +419,7 @@ async function renderEditor(platform, { params, query }) {
         // The navigation guard prompts to save when leaving with changes.
         taskButton('Back to Channels', 'channels', () => platform.router.navigate('/channels')),
         ctxTasks);
+    refreshSaveVisibility();   // hidden until there are unsaved changes
 
     /* ---- contextual connector tasks (rebuilt on tab / selection change) --------- */
 
