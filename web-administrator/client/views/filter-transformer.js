@@ -15,6 +15,7 @@ import { h, clear, field, textInput, select, taskButton, tabs, modal, toast, loa
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
+import { setActiveScope } from '../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../core/serialize.js';
 import { dataTypeDef, dataTypeList } from '../datatypes/index.js';
 import { dataTypePropertiesEditor } from '../datatypes/props-editor.js';
@@ -72,6 +73,12 @@ async function renderEditor(platform, { params }, kindName) {
     // Connector type drives which data type property groups apply (see props-editor).
     const connectorType = kindName === 'response' ? 'RESPONSE'
         : (String(params.metaDataId) === '0' ? 'SOURCE' : 'DESTINATION');
+
+    // Scope code-template completions to this connector's editor context. This
+    // view is a single context, so set it once (covers every step/rule editor,
+    // including the plugin-rendered JavaScript ones) rather than per editor.
+    setActiveScope(params.channelId, [connectorType === 'RESPONSE' ? 'DESTINATION_RESPONSE_TRANSFORMER'
+        : connectorType === 'SOURCE' ? 'SOURCE_FILTER_TRANSFORMER' : 'DESTINATION_FILTER_TRANSFORMER']);
 
     // Step/rule types offered here. Source-only types (e.g. Destination Set Filter)
     // are excluded on destination and response transformers, matching the Swing

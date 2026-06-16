@@ -17,6 +17,9 @@
  *                        at the engine's extensions directory to auto-load web
  *                        plugins shipped inside engine extensions
  *                        (extensions/<name>/webadmin/plugin.json).
+ *   WEBADMIN_CODE_TEMPLATE_COMPLETIONS
+ *                        "false" to disable code-template autocompletion in the
+ *                        script editors (avoids fetching large catalogs).
  */
 
 'use strict';
@@ -42,7 +45,12 @@ const defaults = {
     // serializers for byte-exact output (strict + non-strict, all data types).
     // Without it, the web admin falls back to its built-in JS parsing.
     // Deployment-specific — set in config.json (or the OIE_HOME env var).
-    engineHome: null
+    engineHome: null,
+    // Offer the channel's own Code Template functions as autocompletions in the
+    // script editors (scoped to the channel + editor context). This fetches the
+    // full code-template library set; on servers with very large catalogs an
+    // admin may want to turn it off. Default on.
+    codeTemplateCompletions: true
 };
 
 function load() {
@@ -67,6 +75,7 @@ function load() {
     if (process.env.OIE_VERIFY_TLS) config.engine.verifyTls = process.env.OIE_VERIFY_TLS === 'true';
     if (process.env.WEBADMIN_PLUGIN_DIR) config.pluginDir = path.resolve(process.env.WEBADMIN_PLUGIN_DIR);
     if (process.env.OIE_HOME) config.engineHome = process.env.OIE_HOME;
+    if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (config.engineHome) config.engineHome = path.resolve(config.engineHome);
 
     // Effective search list: the primary dir plus any extras from config.json

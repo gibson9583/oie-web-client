@@ -20,6 +20,7 @@ import { h, clear, icon, toast, taskButton, confirmDialog, field, textInput, che
 import api from '@oie/web-api';
 import { uuid } from '@oie/web-api';
 import { validateScript } from '../core/serialize.js';
+import { invalidate as invalidateCompletions } from '../core/script-completions.js';
 import { createColumnManager, decorateColumns } from '@oie/web-ui';
 
 const CT_COLUMNS = ['name', 'id', 'description', 'revision', 'lastModified'];
@@ -589,6 +590,7 @@ function renderCodeTemplates(platform) {
                     : null
             }));
             await api.codeTemplates.updateLibraries(payload);
+            invalidateCompletions();   // script editors refetch the new scope on next focus
             toast('Code templates saved');
             await load();
         } catch (e) {

@@ -15,6 +15,7 @@
 import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
+import { getActiveCompletions, setActiveScope } from './script-completions.js';
 
 const BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
 const LOAD_TIMEOUT_MS = 10000;
@@ -125,15 +126,28 @@ function setup(monaco) {
                 startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
                 startColumn: word.startColumn, endColumn: word.endColumn
             };
-            return {
-                suggestions: RHINO_GLOBALS.map(([name, doc]) => ({
-                    label: name,
-                    kind: monaco.languages.CompletionItemKind.Variable,
-                    documentation: doc,
-                    insertText: name,
+            const suggestions = RHINO_GLOBALS.map(([name, doc]) => ({
+                label: name,
+                kind: monaco.languages.CompletionItemKind.Variable,
+                documentation: doc,
+                insertText: name,
+                range
+            }));
+            // Channel + context scoped code-template functions (the user's own).
+            for (const t of getActiveCompletions()) {
+                const args = t.params.map((p, i) => `\${${i + 1}:${p}}`).join(', ');
+                suggestions.push({
+                    label: t.params.length ? `${t.name}(${t.params.join(', ')})` : `${t.name}()`,
+                    filterText: t.name,
+                    kind: monaco.languages.CompletionItemKind.Function,
+                    detail: t.library ? `Code template · ${t.library}` : 'Code template',
+                    documentation: t.doc || undefined,
+                    insertText: `${t.name}(${args})`,
+                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
                     range
-                }))
-            };
+                });
+            }
+            return { suggestions };
         }
     });
 
@@ -209,6 +223,15 @@ export function mountMonaco(monaco, editor, opts = {}) {
     instance.onDidChangeModelContent(() => {
         opts.onChange && opts.onChange(instance.getValue());
     });
+
+    // Code-template completions are channel + context scoped: when this editor
+    // gains focus, make its scope active so the completion provider offers the
+    // right templates. opts.scriptScope = { channelId, contexts: [contextType] }.
+    if (opts.scriptScope && opts.scriptScope.channelId) {
+        instance.onDidFocusEditorText(() => {
+            setActiveScope(opts.scriptScope.channelId, opts.scriptScope.contexts || []);
+        });
+    }
 
     editor.monaco = instance;
     editor.getValue = () => instance.getValue();

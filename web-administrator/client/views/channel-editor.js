@@ -13,6 +13,7 @@ import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import { validateScript } from '../core/serialize.js';
+import { setActiveScope } from '../core/script-completions.js';
 import { register as registerFilterTransformer } from './filter-transformer.js';
 import { dataTypeDef, dataTypeList } from '../datatypes/index.js';
 import { dataTypePropertiesEditor } from '../datatypes/props-editor.js';
@@ -2430,13 +2431,18 @@ async function renderEditor(platform, { params, query }) {
 
     function renderScripts() {
         const scripts = [
-            { key: 'deployScript', label: 'Deploy', hint: 'Runs once when the channel is deployed' },
-            { key: 'undeployScript', label: 'Undeploy', hint: 'Runs once when the channel is undeployed' },
-            { key: 'preprocessingScript', label: 'Preprocessor', hint: 'Runs before every message is processed' },
-            { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed' }
+            { key: 'deployScript', label: 'Deploy', hint: 'Runs once when the channel is deployed', context: 'GLOBAL_DEPLOY' },
+            { key: 'undeployScript', label: 'Undeploy', hint: 'Runs once when the channel is undeployed', context: 'GLOBAL_UNDEPLOY' },
+            { key: 'preprocessingScript', label: 'Preprocessor', hint: 'Runs before every message is processed', context: 'GLOBAL_PREPROCESSOR' },
+            { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed', context: 'GLOBAL_POSTPROCESSOR' }
         ];
         let current = scripts[0];
         let switching = false;     // suppress markDirty while loading a script
+
+        // One editor switches between the four channel scripts, so scope the
+        // code-template completions to whichever script is showing.
+        const applyScriptScope = () => setActiveScope(channel.id, [current.context]);
+        applyScriptScope();
 
         const hint = h('span.faint', current.hint);
         const editor = createCodeEditor({
@@ -2461,6 +2467,7 @@ async function renderEditor(platform, { params, query }) {
                 switching = true;
                 editor.setValue(channel[current.key] ?? '');
                 switching = false;
+                applyScriptScope();
             }
         });
 

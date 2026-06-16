@@ -32,7 +32,11 @@ app.use('/api', createApiProxy(config));
 
 // --- Web admin metadata ------------------------------------------------------
 app.get('/webadmin/config.json', (req, res) => {
-    res.json({ engineUrl: config.engine.url, version: require('../package.json').version });
+    res.json({
+        engineUrl: config.engine.url,
+        version: require('../package.json').version,
+        codeTemplateCompletions: config.codeTemplateCompletions !== false
+    });
 });
 
 // --- Serializer bridge (optional, exact datatype serialization) --------------
