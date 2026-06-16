@@ -1546,13 +1546,18 @@ function renderBrowser(platform, channelId, options = {}) {
         const contentSel = select(EXPORT_CONTENT_OPTIONS, 'xml', { onChange: updateEnabled });
         const encryptCheck = checkbox('Encrypt', false);
         const attachCheck = checkbox('Include Attachments', false);
-        const compressionSel = select([{ value: 'none', label: 'none' }, { value: 'zip', label: 'zip' }], 'none', { onChange: updateEnabled });
-        const pwCheck = checkbox('Password protect', false, { onChange: updateEnabled });
+        const compressionSel = select([{ value: 'none', label: 'None' }, { value: 'zip', label: 'Zip' }], 'none', { onChange: updateEnabled });
+
+        const radio = (name, checked) => h('input', { type: 'radio', name, checked: checked || null, onChange: updateEnabled });
+        const radioLabel = (input, text) => h('label', { style: { display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' } }, input, text);
+        const pwYes = radio('exp-pw'); const pwNo = radio('exp-pw', true);
         const algoSel = select(ENCRYPTION_ALGORITHMS, 'AES128');
-        const pwInput = h('input', { type: 'password', placeholder: 'Password', style: { flex: '1' } });
-        const exportToSel = select([{ value: 'computer', label: 'My Computer' }, { value: 'server', label: 'Server' }], 'computer', { onChange: updateEnabled });
-        const rootInput = h('input', { type: 'text', placeholder: '/path/accessible/by/server', style: { width: '100%' } });
-        const patternInput = h('input', { type: 'text', value: DEFAULT_FILE_PATTERN, style: { width: '100%', fontFamily: 'var(--mono)' } });
+        const pwInput = h('input', { type: 'password', placeholder: 'Password', style: { width: '100%' } });
+        const toServer = radio('exp-to'); const toComputer = radio('exp-to', true);
+
+        const rootInput = h('input', { type: 'text', placeholder: '/path/accessible/by/server', style: { flex: '1' } });
+        const patternInput = h('textarea', { rows: '3', style: { width: '100%', fontFamily: 'var(--mono)', resize: 'vertical' } });
+        patternInput.value = DEFAULT_FILE_PATTERN;
 
         const insertToken = (token) => {
             const s = patternInput.selectionStart ?? patternInput.value.length;
@@ -1574,35 +1579,40 @@ function renderBrowser(platform, channelId, options = {}) {
 
         function updateEnabled() {
             const opt = EXPORT_CONTENT_OPTIONS.find(o => o.value === contentSel.value) || EXPORT_CONTENT_OPTIONS[0];
+            const server = toServer.checked;
+            // My Computer always downloads a single ZIP (the browser's Save dialog
+            // chooses the location); Compression only applies to Server export.
+            if (!server) compressionSel.value = 'zip';
+            compressionSel.disabled = !server;
             const zip = compressionSel.value === 'zip';
-            const server = exportToSel.value === 'server';
             attachCheck.input.disabled = !opt.xml;
             if (!opt.xml) attachCheck.input.checked = false;
-            pwCheck.input.disabled = !zip;
-            if (!zip) pwCheck.input.checked = false;
-            algoSel.disabled = pwInput.disabled = !(zip && pwCheck.input.checked);
+            pwYes.disabled = pwNo.disabled = !zip;
+            if (!zip) { pwYes.checked = false; pwNo.checked = true; }
+            algoSel.disabled = pwInput.disabled = !(zip && pwYes.checked);
             rootInput.disabled = !server;
         }
 
-        const row = (label, control) => h('div.field', { style: { marginBottom: '8px' } },
-            h('label', { style: { display: 'block', marginBottom: '2px' } }, label), control);
+        // Swing MessageExportPanel layout: a right-aligned label column with its
+        // controls, and the file-pattern variable list in a side panel.
+        const lbl = (t) => h('div', { style: { textAlign: 'right', whiteSpace: 'nowrap', alignSelf: 'center' } }, t);
+        const cell = (...c) => h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } }, ...c);
+        const grid = h('div', { style: { display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '10px', rowGap: '8px', alignItems: 'center' } },
+            lbl('Content:'), cell(contentSel, encryptCheck.el, attachCheck.el),
+            lbl('Compression:'), cell(compressionSel),
+            lbl('Password Protect:'), cell(radioLabel(pwYes, 'Yes'), radioLabel(pwNo, 'No'), algoSel),
+            lbl('Password:'), cell(pwInput),
+            lbl('Export To:'), cell(radioLabel(toServer, 'Server'), radioLabel(toComputer, 'My Computer')),
+            lbl('Root Path:'), cell(rootInput, h('span.faint', { style: { whiteSpace: 'nowrap' } }, '/[timestamp].zip')),
+            lbl('File Pattern:'), cell(patternInput));
 
         const dlg = modal({
             title: 'Export Results',
             size: 'wide',
-            body: h('div', { style: { display: 'flex', gap: '18px', minWidth: '620px' } },
-                h('div', { style: { flex: '1', display: 'flex', flexDirection: 'column' } },
-                    row('Content:', contentSel),
-                    h('div', { style: { display: 'flex', gap: '16px', margin: '2px 0 8px' } }, encryptCheck.el, attachCheck.el),
-                    row('Compression:', compressionSel),
-                    h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' } },
-                        pwCheck.el, algoSel, pwInput),
-                    row('Export To:', exportToSel),
-                    row('Root Path (server):', rootInput),
-                    status, barWrap),
-                h('div', { style: { flex: '1', display: 'flex', flexDirection: 'column' } },
-                    row('File Pattern:', patternInput),
-                    h('label', { style: { display: 'block', marginBottom: '2px' } }, 'Variables (click or drag):'),
+            body: h('div', { style: { display: 'flex', gap: '18px', minWidth: '680px' } },
+                h('div', { style: { flex: '1', display: 'flex', flexDirection: 'column', gap: '8px' } }, grid, status, barWrap),
+                h('div', { style: { width: '200px', display: 'flex', flexDirection: 'column' } },
+                    h('label', { style: { display: 'block', marginBottom: '2px' } }, 'Variables:'),
                     varList)),
             buttons: [
                 { label: 'Cancel', onClick: () => { aborted = true; } },
@@ -1612,24 +1622,12 @@ function renderBrowser(platform, channelId, options = {}) {
         updateEnabled();
 
         function setDisabled(v) {
-            for (const c of [contentSel, encryptCheck.input, attachCheck.input, compressionSel, pwCheck.input, algoSel, pwInput, exportToSel, rootInput, patternInput]) c.disabled = v;
+            for (const c of [contentSel, encryptCheck.input, attachCheck.input, compressionSel, pwYes, pwNo, algoSel, pwInput, toServer, toComputer, rootInput, patternInput]) c.disabled = v;
             if (!v) updateEnabled();
         }
         function progress(done) {
             fill.style.width = total ? Math.round((done / total) * 100) + '%' : '0%';
             status.textContent = `Exporting… ${fmtNumber(done)} / ${fmtNumber(total)}`;
-        }
-
-        // Write one file (creating sub-folders for '/' in the name) into a
-        // File System Access directory handle.
-        async function writeToDir(rootDir, path, content) {
-            const parts = String(path).split('/').filter(Boolean);
-            const fname = parts.pop();
-            let dir = rootDir;
-            for (const p of parts) dir = await dir.getDirectoryHandle(p, { create: true });
-            const fh = await dir.getFileHandle(fname, { create: true });
-            const w = await fh.createWritable();
-            await w.write(content); await w.close();
         }
 
         // Stream every export file to `sink(name, content)`; returns counts.
@@ -1727,11 +1725,11 @@ function renderBrowser(platform, channelId, options = {}) {
             const pattern = patternInput.value.trim() || DEFAULT_FILE_PATTERN;
             const encryptContent = encryptCheck.input.checked;
             const includeAttachments = attachCheck.input.checked && opt.xml;
-            const pwProtect = pwCheck.input.checked && compression === 'zip';
+            const pwProtect = pwYes.checked && compression === 'zip';
             const algo = ENCRYPTION_ALGORITHMS.find(a => a.value === algoSel.value) || ENCRYPTION_ALGORITHMS[0];
             const password = pwInput.value;
 
-            if (exportToSel.value === 'server') {
+            if (toServer.checked) {
                 if (!rootInput.value.trim()) { toast('Enter a Root Path for server export', 'warn'); return; }
                 if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
                 return runServerExport({ opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder: rootInput.value.trim() });
@@ -1745,7 +1743,9 @@ function renderBrowser(platform, channelId, options = {}) {
             if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
 
             running = true; aborted = false; setDisabled(true); barWrap.style.display = '';
-            const archiveName = `${String(channelName).replace(/[^\w.-]+/g, '_')}.zip`;
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const archiveName = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}.zip`;
             const buildZip = async () => {
                 const zip = createZip();
                 const result = await eachFile((n, c) => { zip.add(n, c); }, opt, pattern, includeAttachments);
@@ -1757,26 +1757,17 @@ function renderBrowser(platform, channelId, options = {}) {
             };
 
             try {
-                if (compression === 'zip' || !window.showDirectoryPicker) {
-                    if (compression !== 'zip') toast('Your browser cannot pick a folder; exporting as a ZIP instead.', 'warn');
-                    await saveFile(archiveName, 'application/zip', buildZip);
-                    // buildZip.result is unset if the user cancelled the Save dialog.
-                    if (buildZip.result) {
-                        const r = buildZip.result;
-                        toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
-                        dlg.close();
-                    } else {
-                        running = false; setDisabled(false); barWrap.style.display = 'none';
-                    }
-                } else {
-                    let dir;
-                    try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); }
-                    catch (e) { if (e && e.name === 'AbortError') { running = false; setDisabled(false); barWrap.style.display = 'none'; return; } throw e; }
-                    const r = await eachFile((n, c) => writeToDir(dir, n, c), opt, pattern, includeAttachments);
-                    if (aborted) toast('Export cancelled', 'warn');
-                    else if (!r.files) toast('No content of that type found in the results', 'warn');
-                    else toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
+                // My Computer always downloads a single ZIP; the browser's Save
+                // dialog (where supported) lets the user choose the location,
+                // otherwise it goes to the default download folder.
+                await saveFile(archiveName, 'application/zip', buildZip);
+                // buildZip.result is unset if the user cancelled the Save dialog.
+                if (buildZip.result) {
+                    const r = buildZip.result;
+                    toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
                     dlg.close();
+                } else {
+                    running = false; setDisabled(false); barWrap.style.display = 'none';
                 }
             } catch (e) {
                 if (e && e.message === 'cancelled') { toast('Export cancelled', 'warn'); dlg.close(); }
