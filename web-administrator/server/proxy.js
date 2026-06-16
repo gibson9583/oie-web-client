@@ -38,6 +38,16 @@ function createApiProxy(config) {
         headers['host'] = target.host;
         // The engine's CSRF protection requires this header on /api requests.
         if (!headers['x-requested-with']) headers['x-requested-with'] = 'OpenIntegrationEngine-WebAdmin';
+        // Forward the real client IP for the engine's audit log. The engine reads
+        // X-Forwarded-For and only falls back to the socket address — which here
+        // is this proxy's loopback connection, so without this header every event
+        // is logged as ::1. Append to any chain an upstream proxy already set so
+        // the original client stays leftmost. (::ffff: is the IPv4-mapped prefix.)
+        const clientIp = (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+        if (clientIp) {
+            const prior = req.headers['x-forwarded-for'];
+            headers['x-forwarded-for'] = prior ? `${prior}, ${clientIp}` : clientIp;
+        }
 
         const upstream = transport.request({
             agent,
