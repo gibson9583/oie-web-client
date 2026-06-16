@@ -231,6 +231,9 @@ function renderEvents(platform) {
 
     function username(userId) {
         if (userId === null || userId === undefined || userId === '') return '';
+        // The engine records userId 0 for events it raises itself (no logged-in
+        // user), e.g. startup/scheduled actions — surface it as "System".
+        if (String(userId) === '0') return 'System';
         return usernames[String(userId)] ?? String(userId);
     }
 
