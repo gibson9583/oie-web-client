@@ -40,6 +40,7 @@ OIE_URL=https://localhost:8443 npm start
 | `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./plugins` | Primary web admin plugin directory |
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional plugin directories (e.g. the engine's `extensions/`); `:`-separated in the env var |
 | `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge (below) |
+| `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 
 Example `config.json`:
 
@@ -65,7 +66,7 @@ Global Maps), and a connection status bar along the bottom. **Light mode**
 (default) matches the classic blue-and-white Administrator; **dark mode** is a
 steel-blue equivalent — toggle via the sun/moon button in the title bar.
 
-## What's implemented (Swing Administrator parity)
+## What's implemented 
 
 - **Dashboard** — live channel/connector statuses and statistics, start/stop/
   pause/resume/halt, undeploy, remove all messages, clear statistics,
@@ -74,11 +75,18 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
   clone, delete, enable/disable, deploy.
 - **Channel editor** — Summary (storage mode, pruning, attachments, custom
   metadata columns), Source/Destinations with property panels for every bundled
-  connector (Channel/TCP/HTTP/File/Database/JavaScript Reader-Writer, SMTP,
-  Web Service), destination ordering and queue settings, channel Scripts.
+  connector (Channel, TCP, HTTP, File, Database, JavaScript, JMS, Web Service,
+  DICOM readers/writers plus SMTP and Document Writer), destination ordering and
+  queue settings, channel Scripts.
 - **Filter / Transformer / Response editors** — JavaScript, Mapper, Message
-  Builder, XSLT, Destination Set Filter steps; JavaScript and Rule Builder
-  filter rules; inbound/outbound data types and templates.
+  Builder, XSLT, Destination Set Filter, External Script, and Iterator steps;
+  JavaScript, Rule Builder, External Script, and Iterator filter rules;
+  inbound/outbound data types and templates.
+- **Script editors** — Monaco-based JavaScript tuned for Rhino: User API
+  (`userutil`) IntelliSense, in-scope code-template function completions,
+  reserved-variable highlighting, and engine-backed validation + Format Document
+  (through the serializer bridge below). Falls back to a plain editor when the
+  Monaco CDN is unreachable.
 - **Message browser** — search (date, status, text, connector), pagination,
   full content tabs (raw → response), errors, mappings, attachments,
   send/reprocess/remove/export.
@@ -91,7 +99,7 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
 Unknown connector types and transformer steps (e.g. from commercial engine
 extensions) fall back to a JSON property editor, so nothing is a dead end.
 
-## Engine API notes (hard-won)
+## Engine API notes 
 
 - Requests send `Accept: application/json` and `X-Requested-With` (the engine's
   CSRF guard). The engine's XStream serializer wraps every payload in a single
@@ -101,7 +109,7 @@ extensions) fall back to a JSON property editor, so nothing is a dead end.
   object back. `@class`/`@version` keys and unknown fields (from server-side
   plugins) must survive. All built-in views follow this rule.
 
-## Message tree serialization (exact, optional)
+## Message tree serialization 
 
 The transformer/filter **Message Trees** turn a template into a draggable tree
 of accessors (`msg['PID']['PID.5']['PID.5.1']`). To match the engine exactly —
@@ -123,16 +131,22 @@ editor to insert its accessor at the drop point.
 ## Plugins
 
 See [docs/PLUGINS.md](docs/PLUGINS.md) — it includes worked examples for every
-extension point. Bundled plugins:
+extension point. Nearly everything ships as a plugin: each connector
+(`plugins/connector-*`), data type (`plugins/datatype-*`), the transformer
+steps/rules (`plugins/transformer-steps`), and the attachment viewers
+(`plugins/attachment-*`) all load through the same mechanism. Notable standalone
+plugins:
 
 - `plugins/server-log` — live engine log tab on the dashboard.
 - `plugins/connection-status` — Connection column + Connection Log tab.
 - `plugins/global-maps` — Global Maps dashboard tab.
+- `plugins/datapruner`, `plugins/directoryresource`, `plugins/httpauth`,
+  `plugins/mllpmode` — settings/resource panels and connector-option extensions.
 
 Plugins register through the platform extension points and build against the
-`@oie/*` framework packages ([`../packages`](../packages)) — see
-[docs/PLUGINS.md](docs/PLUGINS.md). For a complete third-party example that ships
-engine + Swing + web UI in one extension zip, see the SQS connector repository.
+`@oie/*` framework packages ([`../packages`](../packages)). For a complete
+third-party example that ships engine + Swing + web UI in one extension zip, see
+the SQS connector repository.
 
 ## Development
 
@@ -146,3 +160,7 @@ Plugins build against the `@oie/*` packages; `npm run lint` at the repo root
 enforces that they use only the public API (and flags unused code). The visual
 design system lives in `client/css/app.css` (dark/light themes via CSS
 variables).
+
+Tests: `npm test` here runs the `client/core/*.test.js` unit tests; the
+Playwright end-to-end suite and the `@oie/*` type checks run from the repo root
+(`npm run e2e`, `npm run typecheck`) — see the [root README](../README.md).
