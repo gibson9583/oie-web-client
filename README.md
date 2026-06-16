@@ -20,15 +20,24 @@ about the engine install changes.
 
 ## Repository layout
 
+An npm-workspaces monorepo: the application plus the `@oie/*` framework packages
+plugin authors build against.
+
 ```
 oie-web-client/
 ├── LICENSE
 ├── README.md                 ← you are here
+├── package.json              workspaces + `npm run lint`
+├── packages/                 @oie/* framework libs (for plugin authors)
+│   ├── web-api/              engine REST client + model helpers
+│   ├── web-ui/               DOM toolkit, tables, forms, code editor, connector panels
+│   ├── web-shell/            platform extension points
+│   └── eslint-config/        shared lint config enforcing the @oie/* boundary
 └── web-administrator/        ← the application
-    ├── client/               browser SPA (plain ES modules, no build step)
+    ├── client/               browser SPA (ES modules; Vite build, source served in dev)
     ├── server/               Node/Express server, /api reverse proxy, serializer bridge
     ├── plugins/              bundled web plugins (server + browser extensions)
-    ├── docs/                 PLUGINS.md + parity audits
+    ├── docs/                 PLUGINS.md + parity/feedback docs
     ├── config.example.json   copy to config.json and edit
     └── package.json
 ```
@@ -36,15 +45,19 @@ oie-web-client/
 ## Quick start
 
 ```bash
+npm install                              # at the repo root — installs all workspaces
 cd web-administrator
-npm install
-cp config.example.json config.json      # then edit for your engine
+cp config.example.json config.json       # then edit for your engine
 npm start
 # open http://localhost:3030 and sign in with your engine credentials
 ```
 
-`npm run dev` restarts the server on changes. The frontend has no build step —
-edit files under `client/` and refresh the browser.
+`npm run dev` (in `web-administrator/`) runs the server with file-watch and
+Vite's dev middleware, serving and transforming `client/` source on the fly — no
+manual build needed while developing. For an optimized production bundle, `npm
+run build` emits `client/dist`, which `npm start` serves when present (otherwise
+it serves the source directly). Either path keeps the framework a single shared
+instance, so runtime-loaded plugins resolve against the same copy.
 
 ## Configuration
 
@@ -70,6 +83,24 @@ Setting `engineHome` (a path to an OIE install with a JVM available) lets the
 server run a warm Java sidecar on the engine's own jars, so message-tree
 serialization and JavaScript validation are byte-identical to the runtime.
 Without it, the app falls back to built-in JS parsing.
+
+## Framework packages (`@oie/*`)
+
+Plugins build against published workspace packages instead of reaching into
+shell internals:
+
+| Package | Purpose |
+|---|---|
+| [`@oie/web-api`](packages/web-api) | Engine REST client + model helpers |
+| [`@oie/web-ui`](packages/web-ui) | DOM toolkit, tables, forms, code editor, connector-panel helpers |
+| [`@oie/web-shell`](packages/web-shell) | `platform` extension points (nav, views, settings, connectors) |
+| [`@oie/eslint-config`](packages/eslint-config) | Shared lint config enforcing the public-API boundary |
+
+At runtime the host page's import map resolves `@oie/*` to the shell's loaded
+copy, so a plugin shares one framework instance whether it's bundled or served
+from an extension zip. Plugins may also import the framework by absolute URL
+(`/core/ui.js`); `@oie/*` is preferred for the dev-time types and lint. Run
+`npm run lint` at the repo root to enforce the boundary.
 
 ## Documentation
 

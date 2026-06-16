@@ -21,8 +21,8 @@ about the engine install changes.
 ## Quick start
 
 ```bash
+npm install                              # run once at the repo root — installs all workspaces
 cd web-administrator
-npm install
 OIE_URL=https://localhost:8443 npm start
 # open http://localhost:3030 and sign in with your engine credentials (admin/admin by default)
 ```
@@ -37,7 +37,8 @@ OIE_URL=https://localhost:8443 npm start
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
 | `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
-| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./plugins` | Web admin plugin directory |
+| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./plugins` | Primary web admin plugin directory |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional plugin directories (e.g. the engine's `extensions/`); `:`-separated in the env var |
 | `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge (below) |
 
 Example `config.json`:
@@ -128,11 +129,20 @@ extension point. Bundled plugins:
 - `plugins/connection-status` — Connection column + Connection Log tab.
 - `plugins/global-maps` — Global Maps dashboard tab.
 
-For a complete third-party example that ships engine + Swing + web UI in one
-extension zip, see the SQS connector repository.
+Plugins register through the platform extension points and build against the
+`@oie/*` framework packages ([`../packages`](../packages)) — see
+[docs/PLUGINS.md](docs/PLUGINS.md). For a complete third-party example that ships
+engine + Swing + web UI in one extension zip, see the SQS connector repository.
 
 ## Development
 
-No build step. The frontend is plain ES modules (`client/`); edit and refresh.
-`npm run dev` restarts the Node server on changes. The visual design system
-lives in `client/css/app.css` (dark/light themes via CSS variables).
+The frontend is ES modules under `client/`. In development, `npm run dev` (from
+this directory) runs the Node server with file-watch plus Vite's dev middleware,
+serving and transforming source on the fly — no manual build while developing.
+For production, `npm run build` emits an optimized `client/dist` that `npm
+start` serves when present (otherwise it serves the source directly).
+
+Plugins build against the `@oie/*` packages; `npm run lint` at the repo root
+enforces that they use only the public API (and flags unused code). The visual
+design system lives in `client/css/app.css` (dark/light themes via CSS
+variables).
