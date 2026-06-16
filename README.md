@@ -27,7 +27,9 @@ plugin authors build against.
 oie-web-client/
 ├── LICENSE
 ├── README.md                 ← you are here
-├── package.json              workspaces + `npm run lint`
+├── package.json              workspaces + lint / typecheck / e2e scripts
+├── e2e/                       Playwright end-to-end tests (mock-by-default; `npm run e2e`)
+├── type-tests/                TypeScript checks for the @oie/* public types (`npm run typecheck`)
 ├── packages/                 @oie/* framework libs (for plugin authors)
 │   ├── web-api/              engine REST client + model helpers
 │   ├── web-ui/               DOM toolkit, tables, forms, code editor, connector panels
@@ -73,6 +75,7 @@ machine-specific paths), with environment-variable overrides. Start from
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIR` | `./plugins` | Extra plugin directories (e.g. the engine's `extensions/`) |
 | `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge |
+| `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 
 > **Authentication** is the engine's own: the login form posts to
 > `/api/users/_login` and the engine's `JSESSIONID` cookie carries the session.
@@ -101,6 +104,17 @@ copy, so a plugin shares one framework instance whether it's bundled or served
 from an extension zip. Plugins may also import the framework by absolute URL
 (`/core/ui.js`); `@oie/*` is preferred for the dev-time types and lint. Run
 `npm run lint` at the repo root to enforce the boundary.
+
+## Development
+
+Run from the repo root:
+
+| Command | What it does |
+|---|---|
+| `npm run lint` | ESLint across the repo, including the `@oie/*` import-boundary rules |
+| `npm run typecheck` | `tsc` over `type-tests/` — validates the `@oie/*` public type surface |
+| `npm run e2e` | Playwright suite; `/api/*` is mocked in-browser, so it runs with no engine |
+| `npm run e2e:live` | The same specs against a real engine (opt-in via `E2E_LIVE=1`) |
 
 ## Documentation
 
