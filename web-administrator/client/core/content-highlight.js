@@ -5,11 +5,9 @@
  *
  * HL7 fields carry a `data-tooltip` naming the field (e.g. "PID-5 · Patient
  * Name"). Names come from the engine's serializer sidecar when available (a
- * nodeName→description map, the same one used by the transformer message tree)
- * and fall back to the bundled static dictionary.
+ * nodeName→description map, the same one used by the transformer message tree).
+ * Without the sidecar the tooltip degrades to the path only (e.g. "PID-5").
  */
-
-import { HL7_FIELD_DICTIONARY } from './hl7-dictionary.js';
 
 /* ---- helpers ---------------------------------------------------------------- */
 
@@ -136,16 +134,15 @@ function parseEncodingChars(mshLine) {
     };
 }
 
-// Field name from the sidecar descriptions map (preferred, by node id like
-// PID.5 / PID.5.1) or the static dictionary (by field index).
+// Field name from the sidecar descriptions map (by node id like PID.5 / PID.5.1).
+// Without the sidecar there's no name — the tooltip falls back to the path.
 function hl7Name(seg, field, comp, descriptions) {
     if (descriptions) {
         if (comp > 1 && descriptions[`${seg}.${field}.${comp}`]) return descriptions[`${seg}.${field}.${comp}`];
         if (descriptions[`${seg}.${field}.1`] && comp <= 1) return descriptions[`${seg}.${field}.1`];
         if (descriptions[`${seg}.${field}`]) return descriptions[`${seg}.${field}`];
     }
-    const fields = HL7_FIELD_DICTIONARY[seg];
-    return fields ? fields[field - 1] : undefined;
+    return undefined;
 }
 
 function hl7Tooltip(seg, field, comp, descriptions) {
