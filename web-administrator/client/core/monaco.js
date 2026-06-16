@@ -84,6 +84,47 @@ const RHINO_GLOBALS = [
     ['$r', 'Response map accessor']
 ];
 
+/* Reserved scope variables get keyword-style coloring (like the Swing editor),
+   applied as editor decorations since Monaco's JS tokenizer would otherwise
+   treat them as plain identifiers. Custom boundaries ([\w$]) so the $-accessors
+   ($, $co, $gc, …) match exactly. Longest-first so $co wins over $. */
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const RESERVED_NAMES = RHINO_GLOBALS.map(([n]) => n).sort((a, b) => b.length - a.length);
+const RESERVED_RE = new RegExp(`(?<![\\w$])(?:${RESERVED_NAMES.map(escapeRe).join('|')})(?![\\w$])`, 'g');
+// Don't color a match that falls inside a string/comment/regexp literal.
+const TOKEN_SKIP = /string|comment|regexp/;
+
+function tokenTypeAt(tokens, column) {
+    let type = '';
+    for (const t of tokens) { if (t.offset <= column) type = t.type; else break; }
+    return type;
+}
+
+/* Recolor every reserved-variable occurrence in a javascript model. Tokenizes
+   the whole value once (state carried across lines, so multi-line comments /
+   template literals are respected) then decorates the non-string/comment hits. */
+function highlightReservedVars(monaco, instance) {
+    const model = instance.getModel();
+    if (!model || model.getLanguageId() !== 'javascript') return;
+    const lineTokens = monaco.editor.tokenize(model.getValue(), 'javascript');
+    const decorations = [];
+    for (let ln = 1, n = model.getLineCount(); ln <= n; ln++) {
+        const text = model.getLineContent(ln);
+        if (!text) continue;
+        const tokens = lineTokens[ln - 1] || [];
+        RESERVED_RE.lastIndex = 0;
+        let m;
+        while ((m = RESERVED_RE.exec(text)) !== null) {
+            if (TOKEN_SKIP.test(tokenTypeAt(tokens, m.index))) continue;
+            decorations.push({
+                range: new monaco.Range(ln, m.index + 1, ln, m.index + 1 + m[0].length),
+                options: { inlineClassName: 'rhino-global' }
+            });
+        }
+    }
+    instance._rhinoDecos = instance.deltaDecorations(instance._rhinoDecos || [], decorations);
+}
+
 function setup(monaco) {
     // Mirth scripts run in Rhino (E4X XML literals, Java interop) — Monaco's TS
     // parser would false-flag valid Rhino syntax, so disable its diagnostics and
@@ -106,6 +147,17 @@ function setup(monaco) {
             documentFormattingEdits: false, documentRangeFormattingEdits: false, onTypeFormattingEdits: false,
         });
     } catch { /* typescript service unavailable — highlighting still works */ }
+
+    // Reserved-variable coloring — keyword-blue per theme (vs / vs-dark are the
+    // base classes Monaco puts on the editor for our oie-light / oie-dark themes).
+    if (!document.getElementById('oie-rhino-global-style')) {
+        const style = document.createElement('style');
+        style.id = 'oie-rhino-global-style';
+        style.textContent =
+            '.monaco-editor.vs .rhino-global{color:#0000ff !important}' +
+            '.monaco-editor.vs-dark .rhino-global{color:#569cd6 !important}';
+        document.head.appendChild(style);
+    }
 
     // Format Document → the engine's own Rhino/E4X-safe pretty-printer
     // (JavaScriptSharedUtil.prettyPrint via the serializer bridge), the same one
@@ -220,9 +272,17 @@ export function mountMonaco(monaco, editor, opts = {}) {
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 }
     });
 
+    let hlTimer = null;
+    const scheduleHighlight = () => {
+        if (hlTimer) clearTimeout(hlTimer);
+        hlTimer = setTimeout(() => highlightReservedVars(monaco, instance), 120);
+    };
+
     instance.onDidChangeModelContent(() => {
         opts.onChange && opts.onChange(instance.getValue());
+        scheduleHighlight();
     });
+    highlightReservedVars(monaco, instance);   // initial paint
 
     // Code-template completions are channel + context scoped: when this editor
     // gains focus, make its scope active so the completion provider offers the
