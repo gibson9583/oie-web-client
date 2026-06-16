@@ -13,7 +13,7 @@ export async function bridgeAvailable() {
         const res = await fetch('/webadmin/serialize/status');
         const status = res.ok ? await res.json() : null;
         available = !!(status && status.configured);
-    } catch (e) {
+    } catch {
         available = false;
     }
     return available;
@@ -41,7 +41,7 @@ export async function serializeTemplate(dataType, serializationProperties, messa
         const j = await res.json();
         if (!j.ok) return null;
         return { format: j.format, text: j.data, meta: j.meta || null };
-    } catch (e) {
+    } catch {
         return null;
     }
 }

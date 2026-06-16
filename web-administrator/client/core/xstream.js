@@ -108,7 +108,7 @@ export function toDisplayString(v) {
         return inner == null ? '' : String(inner);
     }
     if (keys.includes('entry')) return formatEntryMap(v);
-    try { return JSON.stringify(v); } catch (e) { return String(v); }
+    try { return JSON.stringify(v); } catch { return String(v); }
 }
 
 /** Unwrap a MapContent value to its <map> node, descending single-key wrappers. */
@@ -173,5 +173,5 @@ export function parseResponse(content) {
             statusMessage: directChildText(root, 'statusMessage'),
             message: directChildText(root, 'message')
         };
-    } catch (e) { return null; }
+    } catch { return null; }
 }

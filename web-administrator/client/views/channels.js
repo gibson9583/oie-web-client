@@ -146,12 +146,6 @@ function firstLine(text) {
     return String(text || '').split('\n')[0].trim();
 }
 
-function lastModifiedMillis(channel) {
-    const v = channel?.exportData?.metadata?.lastModified;
-    if (v === null || v === undefined) return 0;
-    return typeof v === 'object' ? Number(v.time ?? v.timestamp ?? 0) : Number(v) || 0;
-}
-
 function renderChannels(platform) {
     let channels = [];
     let tags = [];

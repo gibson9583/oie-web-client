@@ -214,7 +214,7 @@ async function renderEditor(platform, { params, query }) {
             }));
             for (const t of tagState.all) if (t.channelIds.includes(channel.id)) tagState.assigned.add(t.name);
             tagState.available = true;
-        } catch (e) { /* tags unavailable; can still create tags locally */ }
+        } catch { /* tags unavailable; can still create tags locally */ }
         // Restore any unsaved tag selection already written onto the channel, so
         // it survives an editor re-render (e.g. after editing a connector) before
         // the first save — the channel object itself lives on in the store.
@@ -963,7 +963,6 @@ async function renderEditor(platform, { params, query }) {
 
     async function openDependenciesModal() {
         const idSet = (value) => api.asList(value, 'string').map(String);
-        const setsEqual = (a, b) => a.size === b.size && [...a].every(x => b.has(x));
         const props = channel.properties = channel.properties || {};
 
         let idsAndNames, deps, libraries, resourcesRaw;

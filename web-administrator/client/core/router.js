@@ -75,7 +75,7 @@ async function handleChange() {
         }
         acceptedHash = location.hash;
 
-        if (currentTeardown) { try { currentTeardown(); } catch (e) { /* view cleanup */ } currentTeardown = null; }
+        if (currentTeardown) { try { currentTeardown(); } catch { /* view cleanup */ } currentTeardown = null; }
 
         const result = await route.handler({ path, params, query, meta: route.meta });
         if (result) {

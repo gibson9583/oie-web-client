@@ -31,35 +31,6 @@ export function register(platform) {
    Be defensive about singletons, {entry:...} maps and plain objects, and keep
    every property (known or not) so saves never drop server-side keys. */
 
-function propsToList(raw) {
-    const list = [];
-    if (!raw || typeof raw !== 'object') return list;
-    if (raw.property !== undefined) {
-        for (const p of api.asList(raw.property)) {
-            if (!p || typeof p !== 'object') continue;
-            list.push({ name: String(p['@name'] ?? p.name ?? ''), value: p.$ ?? p.value ?? '' });
-        }
-        return list;
-    }
-    if (raw.entry !== undefined) {
-        for (const e of api.asList(raw.entry)) {
-            if (!e || typeof e !== 'object') continue;
-            const s = e.string;
-            if (Array.isArray(s)) list.push({ name: String(s[0] ?? ''), value: s.length > 1 ? s[1] : '' });
-            else {
-                const vals = Object.values(e);
-                list.push({ name: String(vals[0] ?? ''), value: vals.length > 1 ? vals[1] : '' });
-            }
-        }
-        return list;
-    }
-    for (const [name, value] of Object.entries(raw)) {
-        if (name.startsWith('@')) continue;
-        list.push({ name, value });
-    }
-    return list;
-}
-
 function listToProps(list) {
     return { property: list.map(p => ({ '@name': p.name, $: String(p.value ?? '') })) };
 }
@@ -135,11 +106,6 @@ function yesNo(initial, onChange) {
         get checked() { return g.value === 'yes'; },
         set checked(v) { g.value = v ? 'yes' : 'no'; }
     };
-}
-
-function labelCase(key) {
-    const s = String(key || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2');
-    return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function loadFailed(host, e) {
@@ -246,7 +212,7 @@ function renderServerTab({ setTasks }) {
            simply omitted if it cannot be loaded. */
         try {
             updateSettings = (await api.server.updateSettings()) || {};
-        } catch (e) {
+        } catch {
             updateSettings = null;
         }
         build();

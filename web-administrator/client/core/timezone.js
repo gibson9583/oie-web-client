@@ -16,12 +16,12 @@ const MODE_KEY = 'webadmin-tz-mode';
 const MODES = ['server', 'local', 'utc'];
 const LOCAL_TZ = (() => {
     try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
-    catch (e) { return 'UTC'; }
+    catch { return 'UTC'; }
 })();
 
 let mode = (() => {
     let v = null;
-    try { v = localStorage.getItem(MODE_KEY); } catch (e) { /* private mode */ }
+    try { v = localStorage.getItem(MODE_KEY); } catch { /* private mode */ }
     return MODES.includes(v) ? v : 'server';
 })();
 // The engine's GET /server/timezone returns a DISPLAY string built from the
@@ -38,7 +38,7 @@ const listeners = new Set();
 
 /** Subscribe to mode/server-zone changes. Returns an unsubscribe function. */
 export function onTimezoneChange(cb) { listeners.add(cb); return () => listeners.delete(cb); }
-function emit() { for (const cb of listeners) { try { cb(); } catch (e) { /* listener error */ } } }
+function emit() { for (const cb of listeners) { try { cb(); } catch { /* listener error */ } } }
 
 export function timezoneMode() { return mode; }
 export function serverTimezone() { return serverLabel || serverZone; }
@@ -46,7 +46,7 @@ export function serverTimezone() { return serverLabel || serverZone; }
 export function setTimezoneMode(next) {
     if (!MODES.includes(next) || next === mode) return;
     mode = next;
-    try { localStorage.setItem(MODE_KEY, mode); } catch (e) { /* private mode */ }
+    try { localStorage.setItem(MODE_KEY, mode); } catch { /* private mode */ }
     emit();
 }
 
@@ -67,7 +67,7 @@ export function tzAbbr(zone = resolvedZone()) {
     try {
         const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' }).formatToParts(new Date());
         return parts.find(p => p.type === 'timeZoneName')?.value || zone;
-    } catch (e) { return zone; }
+    } catch { return zone; }
 }
 
 /** Abbreviation for the current mode — uses the engine's own short name in
@@ -96,7 +96,7 @@ function formatterFor(zone) {
 export function formatInZone(date, zone = resolvedZone()) {
     let parts;
     try { parts = formatterFor(zone).formatToParts(date); }
-    catch (e) { parts = formatterFor('UTC').formatToParts(date); }
+    catch { parts = formatterFor('UTC').formatToParts(date); }
     const get = (t) => parts.find(p => p.type === t)?.value ?? '';
     let hh = get('hour');
     if (hh === '24') hh = '00';   // Intl hour12:false can emit "24" at midnight
@@ -128,5 +128,5 @@ export async function loadServerTimezone() {
         serverZone = zoneForOffset(off);
         serverLabel = raw.split('(UTC')[0].trim() || tzAbbr(serverZone);
         emit();
-    } catch (e) { /* leave empty — server mode falls back to UTC */ }
+    } catch { /* leave empty — server mode falls back to UTC */ }
 }

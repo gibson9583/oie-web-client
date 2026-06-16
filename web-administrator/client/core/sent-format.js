@@ -244,9 +244,9 @@ export function formatSentProperties(content) {
         const doc = new DOMParser().parseFromString(content, 'text/xml');
         root = doc.documentElement;
         if (!root || doc.querySelector('parsererror')) return null;
-    } catch (e) { return null; }
+    } catch { return null; }
     // ConnectorProperties classes live under com.mirth.connect.connectors.*
     if (!/^com\.mirth\.connect\.connectors\..*Properties$/.test(root.nodeName)) return null;
     const fmt = FORMATTERS[root.nodeName];
-    try { return fmt ? fmt(root) : fmtGeneric(root); } catch (e) { return null; }
+    try { return fmt ? fmt(root) : fmtGeneric(root); } catch { return null; }
 }

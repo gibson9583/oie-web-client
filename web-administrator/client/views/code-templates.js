@@ -547,13 +547,13 @@ function renderCodeTemplates(platform) {
                 : `Delete library "${entry.library.name}"? Save All commits the removal.`;
             if (!await confirmDialog('Delete Library', message, { danger: true, okLabel: 'Delete' })) return;
             for (const template of entry.templates) {
-                try { await api.codeTemplates.remove(template.id); } catch (e) { /* not yet saved */ }
+                try { await api.codeTemplates.remove(template.id); } catch { /* not yet saved */ }
             }
             libraries = libraries.filter(en => en !== entry);
         } else {
             const { entry, template } = found;
             if (!await confirmDialog('Delete Code Template', `Delete code template "${template.name}"?`, { danger: true, okLabel: 'Delete' })) return;
-            try { await api.codeTemplates.remove(template.id); } catch (e) { /* not yet saved */ }
+            try { await api.codeTemplates.remove(template.id); } catch { /* not yet saved */ }
             entry.templates = entry.templates.filter(t => t !== template);
         }
         selected = null;

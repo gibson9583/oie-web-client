@@ -46,11 +46,11 @@ function childrenOf(status) {
 }
 
 function lsGet(key, fallback) {
-    try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+    try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
 }
 
 function lsSet(key, value) {
-    try { localStorage.setItem(key, value); } catch (e) { /* private mode */ }
+    try { localStorage.setItem(key, value); } catch { /* private mode */ }
 }
 
 /* "Just deployed" highlight: a one-time, session-scoped cue. A deploy is
@@ -119,7 +119,7 @@ function renderDashboard(platform) {
     let sortKey = 'name';
     let sortDir = 1;                      // 1 = asc, -1 = desc
     let hiddenCols;                       // Set of hidden column keys, persisted
-    try { hiddenCols = new Set(JSON.parse(lsGet('oie-dash-cols', '[]'))); } catch (e) { hiddenCols = new Set(); }
+    try { hiddenCols = new Set(JSON.parse(lsGet('oie-dash-cols', '[]'))); } catch { hiddenCols = new Set(); }
     const colMgr = createColumnManager('dashboard', DASH_COL_WIDTHS);
     hiddenCols.delete('name');            // Name can never be hidden
     let timer = null;

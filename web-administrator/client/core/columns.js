@@ -24,11 +24,11 @@ export function createColumnManager(storageKey, defaults) {
         const raw = JSON.parse(localStorage.getItem(PREFIX + storageKey) || '{}');
         if (Array.isArray(raw.order)) order = raw.order;
         if (raw.widths && typeof raw.widths === 'object') widths = raw.widths;
-    } catch (e) { /* defaults */ }
+    } catch { /* defaults */ }
 
     function save() {
         try { localStorage.setItem(PREFIX + storageKey, JSON.stringify({ order, widths })); }
-        catch (e) { /* private mode */ }
+        catch { /* private mode */ }
     }
 
     return {

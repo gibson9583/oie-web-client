@@ -263,7 +263,7 @@ function renderExtensions(platform) {
                 try {
                     const v = await api.extensions.isEnabled(row.name);
                     row.enabled = v === true || String(v).trim() === 'true';
-                } catch (e) {
+                } catch {
                     row.enabled = true;
                 }
             }));

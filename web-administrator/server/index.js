@@ -76,7 +76,7 @@ async function start() {
         app.get('*', (req, res) => {
             let html;
             try { html = fs.readFileSync(indexHtmlPath, 'utf8'); }
-            catch (e) { return res.status(500).type('text').send('index.html not found — run "npm run build"'); }
+            catch { return res.status(500).type('text').send('index.html not found — run "npm run build"'); }
             const preloads = plugins.clientEntries(config)
                 .map((e) => `<link rel="modulepreload" href="${e}">`).join('\n  ');
             if (preloads) html = html.replace('</head>', `  ${preloads}\n</head>`);

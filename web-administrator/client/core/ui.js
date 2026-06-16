@@ -245,7 +245,7 @@ export class DataTable {
         // Persisted when options.columnsMenuKey is set.
         this.hidden = new Set();
         if (options.columnsMenuKey) {
-            try { this.hidden = new Set(JSON.parse(localStorage.getItem(options.columnsMenuKey) || '[]')); } catch (e) { /* private mode */ }
+            try { this.hidden = new Set(JSON.parse(localStorage.getItem(options.columnsMenuKey) || '[]')); } catch { /* private mode */ }
         }
         this.el = h('div.dt-wrap');
         this.render();
@@ -257,7 +257,7 @@ export class DataTable {
 
     saveHidden() {
         if (this.options.columnsMenuKey) {
-            try { localStorage.setItem(this.options.columnsMenuKey, JSON.stringify([...this.hidden])); } catch (e) { /* private mode */ }
+            try { localStorage.setItem(this.options.columnsMenuKey, JSON.stringify([...this.hidden])); } catch { /* private mode */ }
         }
     }
 

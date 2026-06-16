@@ -300,24 +300,24 @@ function initRestartWatch(banner) {
     };
 
     function stopWatch() {
-        try { localStorage.removeItem(RESTART_KEY); } catch (e) { /* private mode */ }
+        try { localStorage.removeItem(RESTART_KEY); } catch { /* private mode */ }
         if (restartTimer) { clearInterval(restartTimer); restartTimer = null; }
     }
 
     async function poll() {
         let saved = null;
-        try { saved = JSON.parse(localStorage.getItem(RESTART_KEY)); } catch (e) { /* corrupt */ }
+        try { saved = JSON.parse(localStorage.getItem(RESTART_KEY)); } catch { /* corrupt */ }
         if (!saved) { stopWatch(); banner.classList.add('hidden'); return; }
         try {
             const sig = await extensionSignature();
             if (sig !== saved.sig) {
                 render('done');
                 if (restartTimer) { clearInterval(restartTimer); restartTimer = null; }
-                try { localStorage.removeItem(RESTART_KEY); } catch (e) { /* ok */ }
+                try { localStorage.removeItem(RESTART_KEY); } catch { /* ok */ }
             } else {
                 render('waiting');
             }
-        } catch (e) {
+        } catch {
             render('offline');
         }
     }
@@ -326,7 +326,7 @@ function initRestartWatch(banner) {
         try {
             const sig = await extensionSignature().catch(() => null);
             localStorage.setItem(RESTART_KEY, JSON.stringify({ sig, ts: Date.now() }));
-        } catch (e) { /* private mode — banner still shows for this session */ }
+        } catch { /* private mode — banner still shows for this session */ }
         render('waiting');
         if (!restartTimer) restartTimer = setInterval(poll, 8000);
     }
@@ -335,7 +335,7 @@ function initRestartWatch(banner) {
 
     // Resume after a page reload while a restart was still pending.
     let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(RESTART_KEY)); } catch (e) { /* none */ }
+    try { saved = JSON.parse(localStorage.getItem(RESTART_KEY)); } catch { /* none */ }
     if (saved) {
         render('waiting');
         poll();
@@ -352,7 +352,7 @@ function openApiDocs() {
 
 async function showAbout() {
     let about = null;
-    try { about = await api.server.about(); } catch (e) { /* show what we can */ }
+    try { about = await api.server.about(); } catch { /* show what we can */ }
     const entries = [];
     if (about && typeof about === 'object') {
         const raw = about.entry ? api.asList(about.entry) : Object.entries(about).map(([k, v]) => ({ string: [k, v] }));
@@ -373,7 +373,7 @@ async function showAbout() {
 }
 
 async function logout() {
-    try { await api.auth.logout(); } catch (e) { /* session may already be gone */ }
+    try { await api.auth.logout(); } catch { /* session may already be gone */ }
     store.setState('user', null);
     store.setState('navGuard', null);
     resetSessionExpired();
@@ -407,7 +407,7 @@ async function startApp() {
         try {
             const res = await fetch('/webadmin/config.json');
             if (res.ok) store.setState('webadminConfig', await res.json());
-        } catch (e) { /* optional */ }
+        } catch { /* optional */ }
 
         // Warm up Monaco in the background so code editors upgrade instantly;
         // air-gapped installs silently keep the built-in editor.
@@ -466,7 +466,7 @@ async function boot() {
             await startApp();
             return;
         }
-    } catch (e) { /* not signed in */ }
+    } catch { /* not signed in */ }
     showLogin();
 }
 

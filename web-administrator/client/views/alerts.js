@@ -27,7 +27,7 @@
  *   all-disabled -> disabledChannels, mixed -> partialChannels.
  */
 
-import { h, clear, toast, taskButton, confirmDialog, promptDialog, contextMenu, DataTable, field, textInput, select, checkbox, loading, icon, saveFile, pickFile } from '@oie/web-ui';
+import { h, clear, toast, taskButton, confirmDialog, contextMenu, DataTable, field, textInput, select, checkbox, loading, icon, saveFile, pickFile } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { uuid } from '@oie/web-api';
 

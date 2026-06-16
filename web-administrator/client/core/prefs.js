@@ -25,7 +25,7 @@ let cache = null;
 function all() {
     if (cache) return cache;
     try { cache = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
-    catch (e) { cache = { ...PREF_DEFAULTS }; }
+    catch { cache = { ...PREF_DEFAULTS }; }
     return cache;
 }
 
@@ -38,11 +38,11 @@ export function getPref(key) {
 /** Merge and persist a set of preferences. */
 export function setPrefs(obj) {
     cache = { ...all(), ...obj };
-    try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch (e) { /* private mode */ }
+    try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch { /* private mode */ }
 }
 
 /** Reset all preferences to their defaults. */
 export function resetPrefs() {
     cache = { ...PREF_DEFAULTS };
-    try { localStorage.removeItem(KEY); } catch (e) { /* private mode */ }
+    try { localStorage.removeItem(KEY); } catch { /* private mode */ }
 }

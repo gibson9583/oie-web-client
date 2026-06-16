@@ -4,7 +4,7 @@
  * FAIL_LOCKED_OUT, FAIL_VERSION_MISMATCH).
  */
 
-import { h, icon } from '@oie/web-ui';
+import { h } from '@oie/web-ui';
 import api from '@oie/web-api';
 
 export function renderLogin(onSuccess) {

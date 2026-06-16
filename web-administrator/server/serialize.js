@@ -62,7 +62,7 @@ function createBridge(config) {
     }
 
     function sourceMtime() {
-        try { return fs.statSync(source).mtimeMs; } catch (e) { return 0; }
+        try { return fs.statSync(source).mtimeMs; } catch { return 0; }
     }
 
     // The bridge runs `java --source 21 Serializer.java`, which compiles the
@@ -83,7 +83,7 @@ function createBridge(config) {
         old.removeAllListeners('error');
         old.on('error', () => {});
         rejectAll(new Error('serializer bridge reloading (Serializer.java changed)'));
-        try { old.kill(); } catch (e) { /* already gone */ }
+        try { old.kill(); } catch { /* already gone */ }
     }
 
     function start() {
@@ -128,7 +128,7 @@ function createBridge(config) {
             if (parts[2] === 'OK') {
                 let meta = null;
                 if (parts[5]) {
-                    try { meta = JSON.parse(Buffer.from(parts[5], 'base64').toString('utf8')); } catch (e) { /* ignore */ }
+                    try { meta = JSON.parse(Buffer.from(parts[5], 'base64').toString('utf8')); } catch { /* ignore */ }
                 }
                 p.resolve({ format: parts[3], text: Buffer.from(parts[4] || '', 'base64').toString('utf8'), meta });
             } else {

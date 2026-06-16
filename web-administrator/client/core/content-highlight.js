@@ -58,7 +58,7 @@ export function prettyPrintXml(xml) {
 }
 
 export function prettyPrintJson(json) {
-    try { return JSON.stringify(JSON.parse(json), null, 2); } catch (e) { return json; }
+    try { return JSON.stringify(JSON.parse(json), null, 2); } catch { return json; }
 }
 
 /* ---- XML highlighter -------------------------------------------------------- */

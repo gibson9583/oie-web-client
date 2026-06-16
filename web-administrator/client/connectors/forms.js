@@ -484,7 +484,7 @@ export function apiErrorMessage(e) {
                     || (parsed.cause && parsed.cause.detailMessage);
                 if (msg && typeof msg === 'string') return msg;
             }
-        } catch (err) { /* fall through */ }
+        } catch { /* fall through */ }
     }
     return e && e.message ? e.message : String(e);
 }

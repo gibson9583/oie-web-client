@@ -36,14 +36,14 @@ export function on(event, fn) {
 
 export function setTheme(theme) {
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem('oie-theme', theme); } catch (e) { /* private mode */ }
+    try { localStorage.setItem('oie-theme', theme); } catch { /* private mode */ }
     setState('theme', theme);
 }
 
 export function initTheme() {
     // Light is the default: it matches the classic Swing Administrator look.
     let theme = 'light';
-    try { theme = localStorage.getItem('oie-theme') || 'light'; } catch (e) { /* private mode */ }
+    try { theme = localStorage.getItem('oie-theme') || 'light'; } catch { /* private mode */ }
     document.documentElement.dataset.theme = theme;
     state.theme = theme;
 }

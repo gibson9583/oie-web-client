@@ -1345,13 +1345,13 @@ async function renderEditor(platform, { params }, kindName) {
                     try {
                         nodes = ser.format === 'json' ? jsonTree(ser.text, varName) : xmlTree(ser.text, varName, ser.meta);
                         sourceBadge.textContent = '· exact (engine)';
-                    } catch (e) { nodes = null; }
+                    } catch { nodes = null; }
                 }
                 if (!nodes) {
                     try {
                         nodes = parseTemplateTree(tmpl, dataType, varName);
                         sourceBadge.textContent = ser === null ? '· approximate (offline)' : '';
-                    } catch (e) {
+                    } catch {
                         clear(body);
                         body.appendChild(h('div.faint', { style: { padding: '4px 12px', fontSize: '12px' } },
                             `Template could not be parsed as ${dtLabel()}`));

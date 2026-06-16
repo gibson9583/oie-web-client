@@ -224,7 +224,7 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
     let connectors = [];
     try {
         connectors = connectorEntries(await api.channels.connectorNames(channelId));
-    } catch (e) { /* destinations unknown — dialog still works, sends to all */ }
+    } catch { /* destinations unknown — dialog still works, sends to all */ }
 
     const editor = createCodeEditor({ value: '', minHeight: '340px', placeholder: 'Raw message payload…' });
 
@@ -742,9 +742,9 @@ function renderBrowser(platform, channelId, options = {}) {
 
     /* Column visibility (persisted) */
     let columnVis = {};
-    try { columnVis = JSON.parse(localStorage.getItem('webadmin-msg-columns') || '{}'); } catch (e) { columnVis = {}; }
+    try { columnVis = JSON.parse(localStorage.getItem('webadmin-msg-columns') || '{}'); } catch { columnVis = {}; }
     const isVisible = (c) => (c.key in columnVis) ? !!columnVis[c.key] : !!c.def;
-    const saveColumnVis = () => { try { localStorage.setItem('webadmin-msg-columns', JSON.stringify(columnVis)); } catch (e) { /* private mode */ } };
+    const saveColumnVis = () => { try { localStorage.setItem('webadmin-msg-columns', JSON.stringify(columnVis)); } catch { /* private mode */ } };
 
     /* Table state */
     let messages = [];
@@ -1209,7 +1209,7 @@ function renderBrowser(platform, channelId, options = {}) {
 
     function attachmentBlock(message, attachment) {
         const viewer = platform.attachmentViewers().find(v => {
-            try { return v.canHandle(attachment); } catch (e) { return false; }
+            try { return v.canHandle(attachment); } catch { return false; }
         });
         if (viewer) {
             const body = h('div.mt');
@@ -1229,7 +1229,7 @@ function renderBrowser(platform, channelId, options = {}) {
                         const full = await api.messages.attachment(channelId, message.messageId, attachment.id);
                         let content = full?.content ?? full;
                         if (typeof content === 'string') {
-                            try { content = atob(content); } catch (e) { /* keep base64 */ }
+                            try { content = atob(content); } catch { /* keep base64 */ }
                         }
                         clear(contentHost).appendChild(h('pre.content-pre.mt', displayValue(content)));
                     } catch (e) {
@@ -1266,7 +1266,7 @@ function renderBrowser(platform, channelId, options = {}) {
                     const bytes = new Uint8Array(binary.length);
                     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
                     return isTextualAttachment(type) ? new TextDecoder().decode(bytes) : new Blob([bytes], { type });
-                } catch (e) { return content; /* not Base64 — save as-is */ }
+                } catch { return content; /* not Base64 — save as-is */ }
             });
             toast('Attachment exported');
         } catch (e) {
@@ -1688,11 +1688,11 @@ function renderBrowser(platform, channelId, options = {}) {
                         const bytes = new Uint8Array(bin.length);
                         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                         payload = isTextualAttachment(type) ? new TextDecoder().decode(bytes) : bytes;
-                    } catch (e) { /* not base64 */ }
+                    } catch { /* not base64 */ }
                     await sink(`${noExt}_attachment_${id}${attachmentExtension(type)}`, payload);
                     n++;
                 }
-            } catch (e) { /* attachments are best-effort */ }
+            } catch { /* attachments are best-effort */ }
             return n;
         }
 
@@ -1793,7 +1793,7 @@ function renderBrowser(platform, channelId, options = {}) {
             try {
                 const full = await api.messages.get(channelId, row.messageId);
                 if (full && typeof full === 'object') message = full;
-            } catch (e) { /* export the search result row instead */ }
+            } catch { /* export the search result row instead */ }
             return JSON.stringify({ message }, null, 2);
         });
     }
@@ -1843,7 +1843,7 @@ function renderBrowser(platform, channelId, options = {}) {
         try {
             metaDataColumns = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
             if (metaDataColumns.length) rebuildTable();
-        } catch (e) { /* channel has no custom metadata columns */ }
+        } catch { /* channel has no custom metadata columns */ }
         try {
             const map = await api.channels.idsAndNames();
             const found = idNamePairs(map).find(c => c.id === channelId);
@@ -1855,7 +1855,7 @@ function renderBrowser(platform, channelId, options = {}) {
                     detail: { title: `Channel Messages - ${found.name}` }
                 }));
             }
-        } catch (e) { /* keep the channel id as the label */ }
+        } catch { /* keep the channel id as the label */ }
         search(true);
     })();
 

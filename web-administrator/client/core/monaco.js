@@ -38,7 +38,7 @@ export function ensureMonaco() {
                 window.require(['vs/editor/editor.main'],
                     () => { clearTimeout(timeout); setup(window.monaco); resolve(window.monaco); },
                     () => { clearTimeout(timeout); resolve(null); });
-            } catch (e) {
+            } catch {
                 clearTimeout(timeout);
                 resolve(null);
             }
@@ -89,7 +89,7 @@ function setup(monaco) {
             noSemanticValidation: true,
             noSyntaxValidation: false
         });
-    } catch (e) { /* typescript service unavailable — highlighting still works */ }
+    } catch { /* typescript service unavailable — highlighting still works */ }
 
     monaco.languages.registerCompletionItemProvider('javascript', {
         provideCompletionItems(model, position) {

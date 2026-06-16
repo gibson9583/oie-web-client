@@ -77,13 +77,13 @@ export function parseBody(text) {
     if (!text) return null;
     const trimmed = text.trim();
     if (trimmed[0] === '{' || trimmed[0] === '[') {
-        try { return unwrap(JSON.parse(trimmed)); } catch (e) { /* fall through */ }
+        try { return unwrap(JSON.parse(trimmed)); } catch { /* fall through */ }
     }
     if (trimmed[0] === '<') {
         try {
             const doc = new DOMParser().parseFromString(trimmed, 'text/xml');
             if (!doc.querySelector('parsererror')) return xmlToObj(doc.documentElement);
-        } catch (e) { /* fall through */ }
+        } catch { /* fall through */ }
     }
     return trimmed;
 }
@@ -99,7 +99,7 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
             try {
                 const parsed = parseBody(text);
                 if (parsed && typeof parsed === 'object') message = parsed.message || parsed.error || message;
-            } catch (e) { /* keep default */ }
+            } catch { /* keep default */ }
             throw new ApiError(401, message, text);
         }
         // Background polls all hit 401 at once when the engine restarts —
@@ -118,7 +118,7 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
             if (parsed && typeof parsed === 'object') {
                 message = parsed.message || parsed.detailedError || parsed.error || message;
             }
-        } catch (e) { /* keep raw text */ }
+        } catch { /* keep raw text */ }
         throw new ApiError(response.status, message, text);
     }
     if (raw) return text;
