@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "WEBADMIN_DEV=1 node --watch server/index.js",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "for f in client/core/*.test.js; do node \"$f\" || exit 1; done"
   },
   "engines": {
     "node": ">=18"
@@ -19,6 +20,7 @@
     "express": "^4.19.2"
   },
   "devDependencies": {
+    "@zip.js/zip.js": "^2.8.26",
     "vite": "^5.4.10"
   }
 }

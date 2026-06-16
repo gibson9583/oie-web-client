@@ -24,6 +24,7 @@ export default [
             '**/node_modules/**',
             '**/dist/**',
             'web-administrator/client/assets/**', // vendored (Monaco, fonts)
+            'web-administrator/client/vendor/**',  // vendored third-party libs (zip.js)
         ],
     },
 
