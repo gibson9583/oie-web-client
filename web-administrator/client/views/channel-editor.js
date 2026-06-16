@@ -10,7 +10,7 @@
 
 import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, tabs, toast, confirmDialog, promptDialog, modal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
-import * as mirth from '@oie/web-api';
+import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import { validateScript } from '../core/serialize.js';
 import { register as registerFilterTransformer } from './filter-transformer.js';
@@ -222,7 +222,7 @@ async function renderEditor(platform, { params, query }) {
             if (!ct || !ct.name) continue;
             if (!tagState.all.some(t => t.name === ct.name)) {
                 tagState.all.push({
-                    id: ct.id || mirth.uuid(), name: ct.name,
+                    id: ct.id || oie.uuid(), name: ct.name,
                     channelIds: api.asList(ct.channelIds, 'string').map(String),
                     backgroundColor: ct.backgroundColor
                 });
@@ -264,7 +264,7 @@ async function renderEditor(platform, { params, query }) {
     }
 
     async function save() {
-        const problems = mirth.validateChannel(channel);
+        const problems = oie.validateChannel(channel);
         if (problems.length) {
             modal({
                 title: 'Cannot Save Channel',
@@ -311,7 +311,7 @@ async function renderEditor(platform, { params, query }) {
     // Validate Connector (Swing channelEditPopupMenu) — structural well-formedness
     // of the channel/connectors (same check applied on save).
     function validateConnector() {
-        const problems = mirth.validateChannel(channel);
+        const problems = oie.validateChannel(channel);
         if (!problems.length) { toast('Connector configuration is valid'); return; }
         modal({
             title: 'Validation Errors',
@@ -669,7 +669,7 @@ async function renderEditor(platform, { params, query }) {
                 // Create the tag if it doesn't exist yet (Swing tag field allows
                 // creating tags; new tags default to lightGray like ChannelTag).
                 if (!tagState.all.some(t => t.name === name)) {
-                    tagState.all.push({ id: mirth.uuid(), name, channelIds: [], backgroundColor: randomTagColor() });
+                    tagState.all.push({ id: oie.uuid(), name, channelIds: [], backgroundColor: randomTagColor() });
                 }
                 tagState.assigned.add(name); applyTagsToChannel(); markDirty(); renderTags();
             });
@@ -741,10 +741,10 @@ async function renderEditor(platform, { params, query }) {
         const dtOptions = dataTypeList().map(dt => ({ value: dt.name, label: dt.label }));
 
         channel.sourceConnector.transformer =
-            channel.sourceConnector.transformer || mirth.emptyTransformer(version);
+            channel.sourceConnector.transformer || oie.emptyTransformer(version);
         const rows = [{ label: 'Source Connector', transformer: channel.sourceConnector.transformer }];
-        for (const dest of mirth.destinationsOf(channel)) {
-            dest.transformer = dest.transformer || mirth.emptyTransformer(version);
+        for (const dest of oie.destinationsOf(channel)) {
+            dest.transformer = dest.transformer || oie.emptyTransformer(version);
             rows.push({ label: dest.name || `Destination ${dest.metaDataId}`, transformer: dest.transformer });
         }
         for (const row of rows) {
@@ -1062,7 +1062,7 @@ async function renderEditor(platform, { params, query }) {
             { key: 'null', label: 'Channel Scripts', leaves: ['Deploy Script', 'Undeploy Script', 'Preprocessor Script', 'Postprocessor Script', 'Attachment Script', 'Batch Script'], holder: () => props },
             { key: '0', label: 'Source Connector' + (src.transportName ? ` (${src.transportName})` : ''), leaves: ['Receiver', 'Filter / Transformer Script'], holder: () => srcProps }
         ];
-        for (const d of mirth.destinationsOf(channel)) {
+        for (const d of oie.destinationsOf(channel)) {
             const dp = (d.properties && d.properties.destinationConnectorProperties) || null;
             resourceTargets.push({ key: String(d.metaDataId), label: (d.name || `Destination ${d.metaDataId}`) + (d.transportName ? ` (${d.transportName})` : ''), leaves: ['Filter / Transformer Script', 'Dispatcher', 'Response Transformer Script'], holder: () => dp });
         }
@@ -1396,7 +1396,7 @@ async function renderEditor(platform, { params, query }) {
             }
             meterBar.style.width = Math.max(0, Math.min(100, perf)) + '%';
             const queued = (mode === 'RAW' || mode === 'METADATA' || mode === 'DISABLED') &&
-                mirth.destinationsOf(channel).some(d => d.properties && d.properties.destinationConnectorProperties && d.properties.destinationConnectorProperties.queueEnabled);
+                oie.destinationsOf(channel).some(d => d.properties && d.properties.destinationConnectorProperties && d.properties.destinationConnectorProperties.queueEnabled);
             queueWarn.textContent = queued ? 'Disable destination queueing before using this mode' : '';
         }
 
@@ -1798,7 +1798,7 @@ async function renderEditor(platform, { params, query }) {
                         ? ['None', 'Auto-generate (Before processing)', 'Auto-generate (After source transformer)', 'Auto-generate (Destinations completed)', 'Postprocessor']
                         : ['None', 'Auto-generate (Before processing)']).map(v => ({ value: v, label: v }));
                     if (respondAfter) {
-                        for (const d of mirth.destinationsOf(channel)) {
+                        for (const d of oie.destinationsOf(channel)) {
                             respOpts.push({ value: 'd' + d.metaDataId, label: d.name || `Destination ${d.metaDataId}` });
                         }
                     }
@@ -1942,7 +1942,7 @@ async function renderEditor(platform, { params, query }) {
 
         const editorHost = h('div.mt');
 
-        const dests = () => mirth.destinationsOf(channel);
+        const dests = () => oie.destinationsOf(channel);
         const selectedDest = () => dests().find(d => String(d.metaDataId) === String(selectedId));
 
         function refresh() {
@@ -1969,11 +1969,11 @@ async function renderEditor(platform, { params, query }) {
             const name = await promptDialog('New Destination', 'Destination name', `Destination ${dests().length + 1}`);
             if (name === null || !name.trim()) return;
             const metaDataId = Number(channel.nextMetaDataId) || (dests().length + 1);
-            const dest = mirth.defaultDestinationConnector(version, metaDataId, name.trim());
+            const dest = oie.defaultDestinationConnector(version, metaDataId, name.trim());
             channel.nextMetaDataId = metaDataId + 1;
             const list = dests().slice();
             list.push(dest);
-            mirth.setDestinations(channel, list);
+            oie.setDestinations(channel, list);
             selectedId = metaDataId;
             table.selected = new Set([String(metaDataId)]);
             markDirty();
@@ -1985,7 +1985,7 @@ async function renderEditor(platform, { params, query }) {
             if (!dest) return;
             if (dests().length <= 1) { toast('A channel must have at least one destination', 'warn'); return; }
             if (!await confirmDialog('Delete Destination', `Delete destination "${dest.name}"?`, { danger: true, okLabel: 'Delete' })) return;
-            mirth.setDestinations(channel, dests().filter(d => d !== dest));
+            oie.setDestinations(channel, dests().filter(d => d !== dest));
             selectedId = null;
             markDirty();
             refresh();
@@ -2000,7 +2000,7 @@ async function renderEditor(platform, { params, query }) {
             if (next < 0 || next >= list.length) return;
             list.splice(index, 1);
             list.splice(next, 0, dest);
-            mirth.setDestinations(channel, list);
+            oie.setDestinations(channel, list);
             markDirty();
             refresh();
         }
@@ -2032,9 +2032,9 @@ async function renderEditor(platform, { params, query }) {
                 `Replace the settings of "${dest.name}" with the imported ${imported.transportName} connector? The destination keeps its id and name.`)) return;
             dest.transportName = imported.transportName;
             dest.properties = imported.properties;
-            dest.filter = imported.filter || mirth.emptyFilter(version);
-            dest.transformer = imported.transformer || mirth.emptyTransformer(version);
-            dest.responseTransformer = imported.responseTransformer || dest.responseTransformer || mirth.emptyTransformer(version);
+            dest.filter = imported.filter || oie.emptyFilter(version);
+            dest.transformer = imported.transformer || oie.emptyTransformer(version);
+            dest.responseTransformer = imported.responseTransformer || dest.responseTransformer || oie.emptyTransformer(version);
             markDirty();
             refresh();
         }
@@ -2055,7 +2055,7 @@ async function renderEditor(platform, { params, query }) {
             channel.nextMetaDataId = metaDataId + 1;
             const list = dests().slice();
             list.push(copy);
-            mirth.setDestinations(channel, list);
+            oie.setDestinations(channel, list);
             selectedId = metaDataId;
             markDirty();
             refresh();

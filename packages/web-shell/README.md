@@ -37,7 +37,13 @@ view actually appears. A bundled second copy would register into a dead
 registry and silently do nothing — which is why the runtime resolves through
 the page's import map, not the bundled `dist/`.
 
-Types are inferred from the shipped `.js` for now.
+The package ships hand-authored TypeScript declarations (`index.d.ts`),
+including a `Platform` interface you can use to type your `register(platform)`:
+
+```ts
+import type { Platform } from '@oie/web-shell';
+export function register(platform: Platform) { /* ... */ }
+```
 
 ## License
 

@@ -13,7 +13,7 @@
 
 import { h, clear, field, textInput, select, taskButton, tabs, modal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
-import * as mirth from '@oie/web-api';
+import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import { serializeTemplate, validateScript } from '../core/serialize.js';
 import { dataTypeDef, dataTypeList } from '../datatypes/index.js';
@@ -57,7 +57,7 @@ async function renderEditor(platform, { params }, kindName) {
 
     const connector = String(params.metaDataId) === '0'
         ? channel.sourceConnector
-        : mirth.destinationsOf(channel).find(d => Number(d.metaDataId) === Number(params.metaDataId));
+        : oie.destinationsOf(channel).find(d => Number(d.metaDataId) === Number(params.metaDataId));
 
     if (!connector) {
         toast(`Connector ${params.metaDataId} not found`, 'error');
@@ -66,7 +66,7 @@ async function renderEditor(platform, { params }, kindName) {
     }
 
     if (!connector[kind.targetKey]) {
-        connector[kind.targetKey] = isFilter ? mirth.emptyFilter(version) : mirth.emptyTransformer(version);
+        connector[kind.targetKey] = isFilter ? oie.emptyFilter(version) : oie.emptyTransformer(version);
     }
     const target = connector[kind.targetKey];
     // Connector type drives which data type property groups apply (see props-editor).
@@ -92,12 +92,12 @@ async function renderEditor(platform, { params }, kindName) {
     function hydrateChildren(list) {
         for (const el of list) {
             if (isIteratorType(el.__type)) {
-                el.__children = mirth.elementsToArray(el.properties && el.properties.children);
+                el.__children = oie.elementsToArray(el.properties && el.properties.children);
                 hydrateChildren(el.__children);
             }
         }
     }
-    let elements = mirth.elementsToArray(target.elements);
+    let elements = oie.elementsToArray(target.elements);
     hydrateChildren(elements);
 
     // Selection is a path of indices from the root ([2] or [2,0]); null = none.
@@ -141,7 +141,7 @@ async function renderEditor(platform, { params }, kindName) {
             if (!isIteratorType(el.__type)) return el;
             const { __children, ...rest } = el;
             const properties = { ...(rest.properties || {}) };
-            properties.children = mirth.arrayToElements(serializeList(__children || [])) || '';
+            properties.children = oie.arrayToElements(serializeList(__children || [])) || '';
             return { ...rest, properties };
         });
     }
@@ -174,13 +174,13 @@ async function renderEditor(platform, { params }, kindName) {
         // The first rule in each list has no boolean operator; the rest do.
         if (isFilter) normalizeOperators(elements);
         stampVersions(elements);
-        target.elements = mirth.arrayToElements(serializeList(elements));
+        target.elements = oie.arrayToElements(serializeList(elements));
         platform.store.setState('editingChannel', channel);
     }
 
     async function saveChannel() {
         commit();
-        const problems = mirth.validateChannel(channel);
+        const problems = oie.validateChannel(channel);
         if (problems.length) {
             modal({
                 title: 'Cannot Save Channel',
@@ -216,7 +216,7 @@ async function renderEditor(platform, { params }, kindName) {
     }
 
     function elementName(el) {
-        return el.name || (typeDef(el.__type) ? typeDef(el.__type).label : mirth.elementTypeLabel(el.__type));
+        return el.name || (typeDef(el.__type) ? typeDef(el.__type).label : oie.elementTypeLabel(el.__type));
     }
 
     function operatorSelect(el) {
@@ -251,7 +251,7 @@ async function renderEditor(platform, { params }, kindName) {
             isFilter ? h('th', { style: { width: '90px' } }, 'Operator') : null,
             h('th', 'Name'),
             h('th', { style: { width: '180px' } }, 'Type')));
-        const baseTypeOptions = availableTypeEntries().map(([type, def]) => ({ value: type, label: def.label || mirth.elementTypeLabel(type) }));
+        const baseTypeOptions = availableTypeEntries().map(([type, def]) => ({ value: type, label: def.label || oie.elementTypeLabel(type) }));
         const tbody = h('tbody');
         for (const { el, path, depth } of flattenRows(elements, [], 0, [])) {
             const idx = path[path.length - 1];
@@ -266,7 +266,7 @@ async function renderEditor(platform, { params }, kindName) {
             // steals focus; select the row via the other cells.
             const nameField = h('input.grid-name', {
                 type: 'text', value: el.name || '',
-                placeholder: typeDef(el.__type) ? typeDef(el.__type).label : mirth.elementTypeLabel(el.__type),
+                placeholder: typeDef(el.__type) ? typeDef(el.__type).label : oie.elementTypeLabel(el.__type),
                 style: { marginLeft: `${depth * 18}px` },
                 onInput: (e) => { el.name = e.target.value; commit(); }
             });
@@ -275,7 +275,7 @@ async function renderEditor(platform, { params }, kindName) {
             // element to the chosen type, keeping its name/enabled/operator.
             const typeOptions = baseTypeOptions.some(o => o.value === el.__type)
                 ? baseTypeOptions
-                : [{ value: el.__type, label: mirth.elementTypeLabel(el.__type) }, ...baseTypeOptions];
+                : [{ value: el.__type, label: oie.elementTypeLabel(el.__type) }, ...baseTypeOptions];
             const typeSel = select(typeOptions, el.__type, {
                 style: { width: '100%' },
                 onChange: (e) => changeElementType(path, e.target.value)
@@ -319,7 +319,7 @@ async function renderEditor(platform, { params }, kindName) {
         } else if (typeof element.script === 'string') {
             script = element.script;
         } else {
-            script = `// ${mirth.elementTypeLabel(element.__type)} ${kind.noun.toLowerCase()} — script is generated by the server`;
+            script = `// ${oie.elementTypeLabel(element.__type)} ${kind.noun.toLowerCase()} — script is generated by the server`;
         }
         generatedEditor.setValue(script);
     }
@@ -336,7 +336,7 @@ async function renderEditor(platform, { params }, kindName) {
 
         // Name is edited inline in the step/rule grid above (Swing parity).
         const panel = h('div.panel',
-            h('div.panel-header', `${kind.noun} ${selectedPath[selectedPath.length - 1] + 1} — ${mirth.elementTypeLabel(element.__type)}`),
+            h('div.panel-header', `${kind.noun} ${selectedPath[selectedPath.length - 1] + 1} — ${oie.elementTypeLabel(element.__type)}`),
             h('div.panel-body'));
         const body = panel.querySelector('.panel-body');
 
@@ -388,7 +388,7 @@ async function renderEditor(platform, { params }, kindName) {
         for (const [type, def] of entries) {
             const item = h('div.step-item',
                 h('div', { style: { flex: '1' } },
-                    h('div', def.label || mirth.elementTypeLabel(type))));
+                    h('div', def.label || oie.elementTypeLabel(type))));
             item.addEventListener('click', () => {
                 m.close();
                 const element = def.create ? def.create() : { __type: type, name: '', enabled: true };
@@ -477,7 +477,7 @@ async function renderEditor(platform, { params }, kindName) {
             }
             let imported = null;
             if (Array.isArray(source)) imported = source;
-            else if (source && typeof source === 'object') imported = mirth.elementsToArray(source);
+            else if (source && typeof source === 'object') imported = oie.elementsToArray(source);
             if (!imported) throw new Error('no steps/rules/elements found in the file');
             const cleaned = imported.filter(item =>
                 item && typeof item === 'object' && typeof item.__type === 'string');
@@ -902,8 +902,8 @@ async function renderEditor(platform, { params }, kindName) {
                                 // outbound, so changing the SOURCE outbound type also
                                 // sets every destination's inbound type + default props.
                                 if (side === 'outbound' && connectorType === 'SOURCE') {
-                                    for (const dest of mirth.destinationsOf(channel)) {
-                                        if (!dest.transformer) dest.transformer = mirth.emptyTransformer(version);
+                                    for (const dest of oie.destinationsOf(channel)) {
+                                        if (!dest.transformer) dest.transformer = oie.emptyTransformer(version);
                                         dest.transformer.inboundDataType = value;
                                         dest.transformer.inboundProperties = makeDefaultProps(value);
                                     }

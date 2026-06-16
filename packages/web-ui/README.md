@@ -34,8 +34,8 @@ modal({ title: 'Hello', body: field('Name', textInput('')), buttons: [{ label: '
 
 Like `@oie/web-api`, this resolves at runtime (via the page import map) to the
 shell's loaded `/core/pkg-ui.js`, so dialogs, toasts, and the timezone state
-your plugin uses are the same instances the shell uses. Types are inferred from
-the shipped `.js` for now.
+your plugin uses are the same instances the shell uses. The package ships
+hand-authored TypeScript declarations (`index.d.ts`) for the component surface.
 
 ## License
 

@@ -15,7 +15,7 @@ function eq(label, got, want) {
 }
 
 /* ---- toDisplayString: scalars / collections / Response ---- */
-eq('plain string', toDisplayString('LA.OCHSNER'), 'LA.OCHSNER');
+eq('plain string', toDisplayString('FACILITYX'), 'FACILITYX');
 eq('boxed int', toDisplayString({ int: 8 }), '8');
 eq('linked-hash-set single', toDisplayString({ 'linked-hash-set': { int: 1 } }), '[1]');
 eq('list multi', toDisplayString({ list: { string: ['a', 'b'] } }), '[a, b]');
@@ -49,9 +49,9 @@ eq('custom HashMap (Map<String,String> interleaved)', toDisplayString(stringMap)
 const sourceMap = { content: { m: { entry: { string: 'destinationSet', 'linked-hash-set': { int: 1 } } } } };
 eq('mappingEntries destinationSet', JSON.stringify(mappingEntries(sourceMap)), JSON.stringify([['destinationSet', '[1]']]));
 
-const connectorMap = { content: { entry: [{ string: ['mirth_source', 'LA.OCHSNER'] }, { string: ['mirth_version', '2.5.1'] }] } };
+const connectorMap = { content: { entry: [{ string: ['mirth_source', 'FACILITYX'] }, { string: ['mirth_version', '2.5.1'] }] } };
 eq('mappingEntries connector string-pairs', JSON.stringify(mappingEntries(connectorMap)),
-    JSON.stringify([['mirth_source', 'LA.OCHSNER'], ['mirth_version', '2.5.1']]));
+    JSON.stringify([['mirth_source', 'FACILITYX'], ['mirth_version', '2.5.1']]));
 
 const responseMap = { content: { entry: { string: 'd1', response: { status: 'SENT', statusMessage: 'Message routed successfully to channel id: none' } } } };
 eq('mappingEntries response value', JSON.stringify(mappingEntries(responseMap)),

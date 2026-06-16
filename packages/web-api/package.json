@@ -4,13 +4,27 @@
   "description": "OIE engine REST client + model helpers for web-admin plugin authors.",
   "license": "MPL-2.0",
   "type": "module",
-  "exports": { ".": "./dist/index.js" },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "main": "./dist/index.js",
-  "files": ["dist", "index.js", "README.md"],
+  "types": "./index.d.ts",
+  "files": [
+    "dist",
+    "index.js",
+    "index.d.ts",
+    "oie-schema.d.ts",
+    "README.md"
+  ],
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "gen:schema": "node gen-schema.mjs"
   },
   "devDependencies": {
+    "openapi-typescript": "^7.13.0",
     "vite": "^5.4.10"
   }
 }

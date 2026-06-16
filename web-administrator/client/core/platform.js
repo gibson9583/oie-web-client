@@ -27,7 +27,7 @@ import * as router from './router.js';
 import * as store from './store.js';
 import * as apiModule from './api.js';
 import * as ui from './ui.js';
-import * as mirth from './mirth.js';
+import * as oie from './oie.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 
@@ -55,7 +55,7 @@ export const platform = {
     /* core libraries, handed to plugins so they share the app's toolkit */
     api: apiModule.default,
     ui,
-    mirth,
+    oie,
     columns,
     router: { navigate: router.navigate, currentPath: router.currentPath },
     store: { getState: store.getState, setState: store.setState, subscribe: store.subscribe },

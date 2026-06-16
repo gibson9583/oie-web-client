@@ -17,7 +17,7 @@ function externalLayers(map) {
     };
 }
 export default defineConfig({
-    plugins: [externalLayers({ '@oie/web-api': ['api.js', 'mirth.js'] })],
+    plugins: [externalLayers({ '@oie/web-api': ['api.js', 'oie.js'] })],
     build: { outDir: 'dist', emptyOutDir: true, lib: { entry: 'index.js', formats: ['es'], fileName: () => 'index.js' },
         rollupOptions: { external: ['@oie/web-api'] } }
 });

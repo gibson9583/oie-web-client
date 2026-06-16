@@ -28,8 +28,10 @@ your plugin shares the shell's single API/session instance. The bundled
 `dist/` here exists for build-time resolution and standalone use; never assume
 a second copy is created at runtime.
 
-Types are inferred from the shipped `.js` for now; hand-authored `.d.ts` is a
-planned follow-up.
+The package ships hand-authored TypeScript declarations (`index.d.ts`) for the
+full method surface. Engine model objects are typed loosely (`OieObject`) —
+precise per-type modeling is a separate effort (generating the API from the Java
+definitions).
 
 ## License
 
