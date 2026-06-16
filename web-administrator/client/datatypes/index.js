@@ -19,7 +19,7 @@
  * This module is just the read side over the platform registry.
  */
 
-import { platform } from '../core/platform.js';
+import { platform } from '@oie/web-shell';
 
 /** Look up a registered data type definition; undefined for unknown types
  *  (the properties editor then shows a raw-JSON panel). */

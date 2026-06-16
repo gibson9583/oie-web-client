@@ -9,8 +9,8 @@
  * an empty list means success.
  */
 
-import { h, toast, taskButton, confirmDialog, contextMenu, DataTable, modal, field, textInput, fmtDate } from '../core/ui.js';
-import api from '../core/api.js';
+import { h, toast, taskButton, confirmDialog, contextMenu, DataTable, modal, field, textInput, fmtDate } from '@oie/web-ui';
+import api from '@oie/web-api';
 
 export function register(platform) {
     platform.registerNavItem({ id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2 });

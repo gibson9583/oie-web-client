@@ -7,11 +7,11 @@
  * runs along the bottom.
  */
 
-import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, contextMenu, modal, select, field, textInput, saveFile, pickFile, fmtDate } from '../core/ui.js';
-import api from '../core/api.js';
-import { newChannel, uuid } from '../core/mirth.js';
+import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, contextMenu, modal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
+import api from '@oie/web-api';
+import { newChannel, uuid } from '@oie/web-api';
 import { getPref } from '../core/prefs.js';
-import { createColumnManager, decorateColumns } from '../core/columns.js';
+import { createColumnManager, decorateColumns } from '@oie/web-ui';
 
 // Canonical data columns (after the leading twisty), with default widths.
 const CHANNEL_COLUMNS = [

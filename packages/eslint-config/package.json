@@ -1,0 +1,12 @@
+{
+  "name": "@oie/eslint-config",
+  "version": "0.1.0",
+  "description": "Shared ESLint flat config for OIE web-admin plugins — enforces the @oie/* public API boundary.",
+  "license": "MPL-2.0",
+  "type": "module",
+  "exports": { ".": "./index.js" },
+  "main": "./index.js",
+  "files": ["index.js", "README.md"],
+  "peerDependencies": { "eslint": ">=9" },
+  "dependencies": { "globals": "^17.6.0" }
+}

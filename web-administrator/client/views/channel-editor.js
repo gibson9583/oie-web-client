@@ -8,10 +8,10 @@
  * the filter/transformer editors so unsaved edits survive the round trip.
  */
 
-import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, tabs, toast, confirmDialog, promptDialog, modal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '../core/ui.js';
-import api from '../core/api.js';
-import * as mirth from '../core/mirth.js';
-import { createCodeEditor } from '../core/codeeditor.js';
+import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, tabs, toast, confirmDialog, promptDialog, modal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
+import api from '@oie/web-api';
+import * as mirth from '@oie/web-api';
+import { createCodeEditor } from '@oie/web-ui';
 import { validateScript } from '../core/serialize.js';
 import { register as registerFilterTransformer } from './filter-transformer.js';
 import { dataTypeDef, dataTypeList } from '../datatypes/index.js';

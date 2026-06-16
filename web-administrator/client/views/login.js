@@ -4,8 +4,8 @@
  * FAIL_LOCKED_OUT, FAIL_VERSION_MISMATCH).
  */
 
-import { h, icon } from '../core/ui.js';
-import api from '../core/api.js';
+import { h, icon } from '@oie/web-ui';
+import api from '@oie/web-api';
 
 export function renderLogin(onSuccess) {
     const error = h('div.login-error.hidden');

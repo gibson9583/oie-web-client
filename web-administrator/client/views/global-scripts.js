@@ -8,8 +8,8 @@
  * script bodies mirror JavaScriptConstants.DEFAULT_GLOBAL_*.
  */
 
-import { h, clear, toast, taskButton, confirmDialog, tabs, loading, saveFile, pickFile } from '../core/ui.js';
-import api from '../core/api.js';
+import { h, clear, toast, taskButton, confirmDialog, tabs, loading, saveFile, pickFile } from '@oie/web-ui';
+import api from '@oie/web-api';
 import { validateScript } from '../core/serialize.js';
 
 /* ScriptController script keys + JavaScriptConstants default bodies */

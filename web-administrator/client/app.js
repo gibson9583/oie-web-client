@@ -9,13 +9,13 @@
  * load plugins → build chrome → start router.
  */
 
-import { h, clear, icon, toast, modal } from './core/ui.js';
+import { h, clear, icon, toast, modal } from '@oie/web-ui';
 import { timezoneMode, cycleTimezone, resolvedAbbr, loadServerTimezone, onTimezoneChange } from './core/timezone.js';
 import { initSplitters } from './core/resize.js';
 import * as router from './core/router.js';
 import * as store from './core/store.js';
-import api, { onSessionExpired, resetSessionExpired } from './core/api.js';
-import { platform, loadPlugins } from './core/platform.js';
+import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
+import { platform, loadPlugins } from '@oie/web-shell';
 import { renderLogin } from './views/login.js';
 
 import { register as registerDashboard } from './views/dashboard.js';

@@ -11,10 +11,10 @@
  * unsaved edits survive navigation between the channel editor and this view.
  */
 
-import { h, clear, field, textInput, select, taskButton, tabs, modal, toast, loading, saveFile, pickFile, contextMenu } from '../core/ui.js';
-import api from '../core/api.js';
-import * as mirth from '../core/mirth.js';
-import { createCodeEditor } from '../core/codeeditor.js';
+import { h, clear, field, textInput, select, taskButton, tabs, modal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import api from '@oie/web-api';
+import * as mirth from '@oie/web-api';
+import { createCodeEditor } from '@oie/web-ui';
 import { serializeTemplate, validateScript } from '../core/serialize.js';
 import { dataTypeDef, dataTypeList } from '../datatypes/index.js';
 import { dataTypePropertiesEditor } from '../datatypes/props-editor.js';

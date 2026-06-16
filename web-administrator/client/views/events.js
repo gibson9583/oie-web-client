@@ -12,8 +12,8 @@
  * outcome (SUCCESS/FAILURE), userId, ipAddress, serverId.
  */
 
-import { h, clear, icon, toast, taskButton, confirmDialog, select, field, checkbox, fmtDate, fmtNumber, DataTable, contextMenu } from '../core/ui.js';
-import api from '../core/api.js';
+import { h, clear, icon, toast, taskButton, confirmDialog, select, field, checkbox, fmtDate, fmtNumber, DataTable, contextMenu } from '@oie/web-ui';
+import api from '@oie/web-api';
 import { toDisplayString } from '../core/xstream.js';
 import { getPref } from '../core/prefs.js';
 

@@ -13,8 +13,8 @@
  * XStream "@class"/"@version" attributes and unknown keys survive.
  */
 
-import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, modal, tabs, DataTable, field, textInput, numberInput, select, checkbox, loading, saveFile, pickFile, contextMenu } from '../core/ui.js';
-import api from '../core/api.js';
+import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, modal, tabs, DataTable, field, textInput, numberInput, select, checkbox, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import api from '@oie/web-api';
 import { getPref, setPrefs, resetPrefs } from '../core/prefs.js';
 import { setTheme } from '../core/store.js';
 

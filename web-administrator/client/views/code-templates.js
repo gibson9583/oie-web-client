@@ -16,11 +16,11 @@
  * — the server replaces refs with ids anyway (replaceCodeTemplatesWithIds).
  */
 
-import { h, clear, icon, toast, taskButton, confirmDialog, field, textInput, checkbox, select, loading, saveFile, pickFile, contextMenu, fmtDate } from '../core/ui.js';
-import api from '../core/api.js';
-import { uuid } from '../core/mirth.js';
+import { h, clear, icon, toast, taskButton, confirmDialog, field, textInput, checkbox, select, loading, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
+import api from '@oie/web-api';
+import { uuid } from '@oie/web-api';
 import { validateScript } from '../core/serialize.js';
-import { createColumnManager, decorateColumns } from '../core/columns.js';
+import { createColumnManager, decorateColumns } from '@oie/web-ui';
 
 const CT_COLUMNS = ['name', 'id', 'description', 'revision', 'lastModified'];
 const CT_COL_WIDTHS = { name: 300, id: 280, description: 260, revision: 80, lastModified: 150 };

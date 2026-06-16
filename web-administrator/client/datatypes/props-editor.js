@@ -10,8 +10,8 @@
  * replaced). '@class', '@version' and unknown keys are always preserved.
  */
 
-import { h, field, textInput, numberInput, select, checkbox, toast, modal, pickFile } from '../core/ui.js';
-import { createCodeEditor } from '../core/codeeditor.js';
+import { h, field, textInput, numberInput, select, checkbox, toast, modal, pickFile } from '@oie/web-ui';
+import { createCodeEditor } from '@oie/web-ui';
 import { dataTypeDef } from './index.js';
 
 /* Script editor in a modal (the Swing data-type properties "Edit" → Script

@@ -37,6 +37,18 @@ function externalFramework() {
 export default defineConfig({
     root: 'client',
     plugins: [externalFramework()],
+    // The @oie/web-* packages resolve to the canonical framework source (single
+    // source of truth). At runtime, the import map in index.html maps the same
+    // specifiers to the served /core/*.js modules — so the shell bundle and
+    // plugins share one instance. (The published packages are built from these
+    // same files for plugin authors.)
+    resolve: {
+        alias: {
+            '@oie/web-api': path.join(clientDir, 'core/pkg-api.js'),
+            '@oie/web-ui': path.join(clientDir, 'core/pkg-ui.js'),
+            '@oie/web-shell': path.join(clientDir, 'core/pkg-shell.js')
+        }
+    },
     server: { hmr: true },
     build: {
         outDir: 'dist',

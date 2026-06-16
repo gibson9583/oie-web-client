@@ -1,0 +1,16 @@
+{
+  "name": "@oie/web-api",
+  "version": "0.1.0",
+  "description": "OIE engine REST client + model helpers for web-admin plugin authors.",
+  "license": "MPL-2.0",
+  "type": "module",
+  "exports": { ".": "./dist/index.js" },
+  "main": "./dist/index.js",
+  "files": ["dist", "index.js", "README.md"],
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "oie-web-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OIE Web Client monorepo: the web administrator app + the @oie/web-* framework packages plugin authors build against.",
+  "license": "MPL-2.0",
+  "workspaces": [
+    "packages/*",
+    "web-administrator"
+  ],
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "globals": "^17.6.0",
+    "typescript": "^6.0.3"
+  }
+}

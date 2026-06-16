@@ -4,6 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Open Integration Engine — Administrator</title>
+    <!-- Plugins (and the shell bundle's externalized imports) reference the
+         framework by the @oie/web-* package names; this maps them to the single
+         shared instance the shell serves at /core/*.js. The legacy /core/*.js
+         path imports keep working unchanged. -->
+    <script type="importmap">
+    {
+      "imports": {
+        "@oie/web-api": "/core/pkg-api.js",
+        "@oie/web-ui": "/core/pkg-ui.js",
+        "@oie/web-shell": "/core/pkg-shell.js"
+      }
+    }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,300..800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">

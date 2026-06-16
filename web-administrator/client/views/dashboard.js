@@ -6,12 +6,12 @@
  * Plugin columns (DashboardColumnPlugin) render after the statistics columns.
  */
 
-import { h, clear, icon, toast, taskButton, confirmDialog, modal, checkbox, contextMenu, fmtNumber, fmtDate, loading } from '../core/ui.js';
-import api from '../core/api.js';
-import { statePip, stateLabel } from '../core/mirth.js';
+import { h, clear, icon, toast, taskButton, confirmDialog, modal, checkbox, contextMenu, fmtNumber, fmtDate, loading } from '@oie/web-ui';
+import api from '@oie/web-api';
+import { statePip, stateLabel } from '@oie/web-api';
 import { openSendMessageDialog } from './messages.js';
 import { getPref } from '../core/prefs.js';
-import { createColumnManager, decorateColumns } from '../core/columns.js';
+import { createColumnManager, decorateColumns } from '@oie/web-ui';
 
 // Default widths for the dashboard's resizable data columns (after the twisty).
 const DASH_COL_WIDTHS = {

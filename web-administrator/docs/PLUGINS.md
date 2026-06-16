@@ -100,6 +100,63 @@ the engine regardless of which administrator you use; when they expose REST
 servlets (`apiProvider`), the web admin reaches them at
 `/api/extensions/<path>` exactly like the bundled Server Log plugin does.
 
+## Building against the `@oie/*` packages
+
+A plugin reaches the web-admin framework through three published packages:
+
+| Package | What it is | Swing analogue |
+|---|---|---|
+| [`@oie/web-api`](../../packages/web-api) | Engine REST client + model helpers (`api`, `asList`, `uuid`) | `mirth-client-core` server API |
+| [`@oie/web-ui`](../../packages/web-ui) | DOM toolkit, `DataTable`, dialogs, forms, code editor, columns | the Swing widget toolkit |
+| [`@oie/web-shell`](../../packages/web-shell) | The `platform` extension points you register through | `ClientPlugin` SPI |
+
+```js
+import { platform } from '@oie/web-shell';
+import { h, DataTable, modal } from '@oie/web-ui';
+import api from '@oie/web-api';
+
+export function register() {
+    platform.registerNavItem({ id: 'my-plugin', label: 'My Plugin', icon: 'plug',
+        path: '/my-plugin', section: 'Engine', order: 99 });
+    platform.registerView('/my-plugin', () => ({
+        el: h('div.view', h('h1', 'Hello from a plugin')) }), { title: 'My Plugin' });
+}
+```
+
+### Two import styles, one runtime instance
+
+There are two ways to pull in the framework, and **both resolve to the same
+single shell instance at runtime**:
+
+- **`@oie/*` bare specifiers** — for plugins developed as their own repo/package.
+  You get `npm install`, type inference, lint, and bundler support. At runtime
+  the page's **import map** rewrites `@oie/web-ui` → `/core/pkg-ui.js` (the
+  shell's already-loaded copy).
+- **Absolute URLs** (`/core/ui.js`, `/connectors/forms.js`) — the original style
+  the bundled plugins use. Works with zero build tooling because `client/` is the
+  web root. Still fully supported.
+
+The single-instance rule is what makes registrations stick: your
+`platform.registerView(...)` must mutate the **shell's** registry. That's why you
+must **never deep-import** (`@oie/web-ui/dist/...`) or bundle a second copy of the
+framework into your plugin — a duplicate registers into a dead registry and
+silently does nothing. The `@oie/eslint-config` rule below enforces this.
+
+### Lint config
+
+Add [`@oie/eslint-config`](../../packages/eslint-config) so the build fails if a
+plugin reaches past the public API into shell internals or a package's deep
+paths:
+
+```js
+// eslint.config.js
+import oie from '@oie/eslint-config';
+export default oie;
+```
+
+It also enables `no-undef` / `no-unused-vars` — the class of mistake `node --check`
+misses in ES modules (e.g. an unbalanced paren).
+
 ## Browser side
 
 `web/plugin.js` is dynamically imported and must export:
@@ -107,6 +164,10 @@ servlets (`apiProvider`), the web admin reaches them at
 ```js
 export function register(platform) { ... }
 ```
+
+> The `platform` argument and the `@oie/web-shell` `platform` export are the same
+> object — use whichever reads better. `@oie/*` imports additionally give you
+> `api`/`h`/etc. directly, equivalent to `platform.api` / `platform.ui.h`.
 
 ### Extension points (Swing equivalents in parentheses)
 
@@ -285,14 +346,23 @@ channel editor's Connector Type select lists every type the engine reports
 invent the engine's `@class` properties object. Existing channels that
 already use such a type still render through the generic JSON fallback panel.
 To make a custom connector fully editable, ship a companion web admin plugin
-that registers a connector panel. The bundled `plugins/sqs-connector/` is the
-worked example for the SQS engine connector:
+that registers a connector panel.
+
+> **A connector's web half is only a property panel.** The connector itself
+> (e.g. the AWS SQS transport) is an *engine* extension — Java that runs in the
+> engine regardless of which administrator you use. The web plugin just renders
+> the settings form. That's why its toolkit lives in `@oie/web-ui` (the form
+> builder and connector-panel helpers), not in any "connectors" package.
+
+The SQS connector is the worked example. Its panel imports the framework from
+`@oie/web-ui`; the host page's import map resolves that to the shell's loaded
+copy at runtime, so the plugin still ships inside the engine extension zip with
+no bundling:
 
 ```js
-// plugins/sqs-connector/web/plugin.js (abridged)
-import { h } from '/core/ui.js';
-import { buildForm, pollSection, defaultPollProperties,
-         defaultSourceProperties } from '/connectors/forms.js';
+// sqs-source-connector .../webadmin/web/plugin.js (abridged)
+import { h, buildForm, pollSection, defaultPollProperties,
+         defaultSourceProperties } from '@oie/web-ui';
 
 const sqsReader = {
     defaults(version) {
@@ -349,13 +419,14 @@ Three things must line up with the engine plugin:
    initializes with the same default values, and the built-in sub-objects
    (`sourceConnectorProperties` / `pollConnectorProperties` /
    `destinationConnectorProperties`) when the Java class implements the
-   corresponding interface. The helpers in `/connectors/forms.js`
+   corresponding interface. The connector-panel helpers in `@oie/web-ui`
    (`defaultSourceProperties`, `defaultPollProperties`,
    `defaultDestinationProperties`) produce those shapes.
-3. **Import core modules by absolute URL** — plugin modules are served at
-   `/plugins/<id>/...` while the app's `client/` directory is the web root, so
-   relative imports won't reach core code. Use `'/connectors/forms.js'`,
-   `'/core/ui.js'`, etc. (static or dynamic `import()` both work).
+3. **Import the framework from `@oie/web-ui`** — the host page's import map
+   resolves it to the shell's loaded copy at runtime, so a zip-served plugin
+   needs no build step. (The original absolute-URL form, `'/core/ui.js'` /
+   `'/connectors/forms.js'`, still works — `client/` is the web root — but
+   `@oie/web-ui` is the documented style and gives you types and lint.)
 
 The web panel registration alone makes the type selectable; if the engine
 plugin isn't installed, saving/deploying a channel that uses it will fail on

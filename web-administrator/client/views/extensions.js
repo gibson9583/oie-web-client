@@ -6,8 +6,8 @@
  * /extensions/{name}/enabled because MetaData itself has no enabled field.
  */
 
-import { h, clear, icon, toast, taskButton, modal, confirmDialog, DataTable, loading, contextMenu } from '../core/ui.js';
-import api from '../core/api.js';
+import { h, clear, icon, toast, taskButton, modal, confirmDialog, DataTable, loading, contextMenu } from '@oie/web-ui';
+import api from '@oie/web-api';
 import { toDisplayString } from '../core/xstream.js';
 
 export function register(platform) {

@@ -15,16 +15,16 @@
  * /messages/_reprocess (Reprocess Results).
  */
 
-import { h, clear, icon, toast, taskButton, modal, confirmDialog, promptDialog, checkbox, select, field, loading, fmtDate, fmtNumber, saveFile, pickFile, contextMenu, DataTable } from '../core/ui.js';
-import api from '../core/api.js';
-import { MESSAGE_STATUSES, messageStatusTag } from '../core/mirth.js';
+import { h, clear, icon, toast, taskButton, modal, confirmDialog, promptDialog, checkbox, select, field, loading, fmtDate, fmtNumber, saveFile, pickFile, contextMenu, DataTable } from '@oie/web-ui';
+import api from '@oie/web-api';
+import { MESSAGE_STATUSES, messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../core/content-highlight.js';
 import { formatSentProperties } from '../core/sent-format.js';
 import { mappingEntries, parseResponse, toDisplayString } from '../core/xstream.js';
 import { getPref } from '../core/prefs.js';
 import { serializeTemplate } from '../core/serialize.js';
 import { createZip } from '../core/zip.js';
-import { createCodeEditor } from '../core/codeeditor.js';
+import { createCodeEditor } from '@oie/web-ui';
 
 export function register(platform) {
     // Reached via task buttons (Dashboard/Channels), matching the Swing client.
