@@ -10,7 +10,8 @@
     "web-administrator"
   ],
   "scripts": {
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "typecheck": "tsc -p type-tests/tsconfig.json"
   },
   "devDependencies": {
     "eslint": "^9.39.4",
