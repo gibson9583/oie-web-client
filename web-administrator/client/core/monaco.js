@@ -100,15 +100,24 @@ function tokenTypeAt(tokens, column) {
     return type;
 }
 
-/* Recolor every reserved-variable occurrence in a javascript model. Tokenizes
-   the whole value once (state carried across lines, so multi-line comments /
-   template literals are respected) then decorates the non-string/comment hits. */
-function highlightReservedVars(monaco, instance) {
+/* Recolor reserved-variable occurrences in a javascript model. Only the lines in
+   [fromLine, toLine] are re-scanned and re-decorated (defaults to the whole model
+   on the initial paint); on a keystroke that range is just the edited lines, so
+   typing stays cheap on large scripts. Tokenization still runs from the document
+   start through `toLine` so multi-line comment / template-literal state is correct
+   for the scanned lines (monaco.editor.tokenize carries state line to line). */
+function highlightReservedVars(monaco, instance, fromLine, toLine) {
     const model = instance.getModel();
     if (!model || model.getLanguageId() !== 'javascript') return;
-    const lineTokens = monaco.editor.tokenize(model.getValue(), 'javascript');
+    const total = model.getLineCount();
+    const a = Math.max(1, fromLine || 1);
+    const b = Math.min(total, toLine || total);
+    if (a > b) return;
+
+    const head = model.getValueInRange({ startLineNumber: 1, startColumn: 1, endLineNumber: b, endColumn: model.getLineMaxColumn(b) });
+    const lineTokens = monaco.editor.tokenize(head, 'javascript');
     const decorations = [];
-    for (let ln = 1, n = model.getLineCount(); ln <= n; ln++) {
+    for (let ln = a; ln <= b; ln++) {
         const text = model.getLineContent(ln);
         if (!text) continue;
         const tokens = lineTokens[ln - 1] || [];
@@ -122,7 +131,12 @@ function highlightReservedVars(monaco, instance) {
             });
         }
     }
-    instance._rhinoDecos = instance.deltaDecorations(instance._rhinoDecos || [], decorations);
+    // Replace only this range's existing reserved-var decorations; the rest (and
+    // their auto-shifted positions on insert/delete) are left untouched.
+    const oldIds = model.getLinesDecorations(a, b)
+        .filter((d) => d.options && d.options.inlineClassName === 'rhino-global')
+        .map((d) => d.id);
+    instance.deltaDecorations(oldIds, decorations);
 }
 
 function setup(monaco) {
@@ -293,17 +307,27 @@ export function mountMonaco(monaco, editor, opts = {}) {
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 }
     });
 
-    let hlTimer = null;
-    const scheduleHighlight = () => {
+    // Re-highlight only the lines an edit touched (debounced), not the whole doc.
+    let hlTimer = null, hlFrom = Infinity, hlTo = 0;
+    const scheduleHighlight = (changes) => {
+        for (const c of (changes || [])) {
+            const start = c.range.startLineNumber;
+            const added = (c.text.match(/\n/g) || []).length;   // lines the new text spans
+            if (start < hlFrom) hlFrom = start;
+            if (start + added > hlTo) hlTo = start + added;
+        }
         if (hlTimer) clearTimeout(hlTimer);
-        hlTimer = setTimeout(() => highlightReservedVars(monaco, instance), 120);
+        hlTimer = setTimeout(() => {
+            highlightReservedVars(monaco, instance, hlFrom, hlTo);
+            hlFrom = Infinity; hlTo = 0;
+        }, 120);
     };
 
-    const changeSub = instance.onDidChangeModelContent(() => {
+    const changeSub = instance.onDidChangeModelContent((e) => {
         opts.onChange && opts.onChange(instance.getValue());
-        scheduleHighlight();
+        scheduleHighlight(e.changes);
     });
-    highlightReservedVars(monaco, instance);   // initial paint
+    highlightReservedVars(monaco, instance);   // initial paint (whole document)
 
     // Code-template completions are channel + context scoped: when this editor
     // gains focus, make its scope active so the completion provider offers the
