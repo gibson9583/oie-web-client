@@ -271,9 +271,10 @@ function renderEvents(platform) {
         { key: 'userId', label: 'User', width: '110px', sortValue: (e) => username(e.userId), render: (e) => username(e.userId) },
         { key: 'outcome', label: 'Outcome', width: '110px', render: (e) => outcomeTag(e.outcome) },
         { key: 'ipAddress', label: 'IP Address', className: 'mono', width: '130px' },
-        { key: 'channelMsgId', label: 'Channel ID - Message ID', className: 'mono', sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
-        { key: 'channelName', label: 'Channel Name', sortValue: eventChannelName, render: eventChannelName },
-        { key: 'patientId', label: 'Patient ID', sortValue: (e) => eventAttr(e, 'patientId'), render: (e) => eventAttr(e, 'patientId') }
+        // Available via the column menu but off by default, matching the Swing client.
+        { key: 'channelMsgId', label: 'Channel ID - Message ID', className: 'mono', defaultHidden: true, sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
+        { key: 'channelName', label: 'Channel Name', defaultHidden: true, sortValue: eventChannelName, render: eventChannelName },
+        { key: 'patientId', label: 'Patient ID', defaultHidden: true, sortValue: (e) => eventAttr(e, 'patientId'), render: (e) => eventAttr(e, 'patientId') }
     ], {
         selectable: 'single',
         rowKey: (e) => String(e.id),

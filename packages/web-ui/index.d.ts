@@ -172,7 +172,7 @@ export interface DecorateColumnsOptions {
     pinnedWidths?: number[];
     onChange?: () => void;
 }
-export function createColumnManager(storageKey: string, defaults: Record<string, number>): ColumnManager;
+export function createColumnManager(storageKey: string, defaults: Record<string, number>, defaultHidden?: string[]): ColumnManager;
 export function decorateColumns(table: HTMLTableElement, opts: DecorateColumnsOptions): void;
 export interface ColumnMenuOptions {
     manager: ColumnManager;

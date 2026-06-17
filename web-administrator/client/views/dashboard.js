@@ -118,8 +118,14 @@ function renderDashboard(platform) {
     let tagMode = ['names', 'icons', 'off'].includes(savedTagMode) ? savedTagMode : 'names';
     let sortKey = 'name';
     let sortDir = 1;                      // 1 = asc, -1 = desc
+    // Type + Port are web-only columns Swing's dashboard doesn't have, so they
+    // start hidden (reachable via the column menu) — matching Swing's default set.
+    const DASH_DEFAULT_HIDDEN = ['type', 'port'];
     let hiddenCols;                       // Set of hidden column keys, persisted
-    try { hiddenCols = new Set(JSON.parse(lsGet('oie-dash-cols', '[]'))); } catch { hiddenCols = new Set(); }
+    try {
+        const saved = lsGet('oie-dash-cols', null);
+        hiddenCols = new Set(saved != null ? JSON.parse(saved) : DASH_DEFAULT_HIDDEN);
+    } catch { hiddenCols = new Set(DASH_DEFAULT_HIDDEN); }
     const colMgr = createColumnManager('dashboard', DASH_COL_WIDTHS);
     hiddenCols.delete('name');            // Name can never be hidden
     let timer = null;
@@ -515,8 +521,8 @@ function renderDashboard(platform) {
         items.push('-', {
             label: 'Restore Default',
             onClick: () => {
-                hiddenCols.clear();
-                lsSet('oie-dash-cols', JSON.stringify([]));
+                hiddenCols = new Set(DASH_DEFAULT_HIDDEN);
+                lsSet('oie-dash-cols', JSON.stringify([...hiddenCols]));
                 colMgr.reset();
                 renderTable();
             }

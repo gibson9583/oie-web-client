@@ -243,9 +243,13 @@ export class DataTable {
         this.sortDir = 1;
         // Hidden columns for the header column-visibility menu (Swing parity).
         // Persisted when options.columnsMenuKey is set.
-        this.hidden = new Set();
+        // Columns may be hidden by default (col.defaultHidden) — Swing parity; a
+        // saved preference (if the menu key has ever been written) overrides them.
+        this.defaultHidden = new Set(columns.filter(c => c.defaultHidden).map(c => c.key));
+        this.hidden = new Set(this.defaultHidden);
         if (options.columnsMenuKey) {
-            try { this.hidden = new Set(JSON.parse(localStorage.getItem(options.columnsMenuKey) || '[]')); } catch { /* private mode */ }
+            const saved = localStorage.getItem(options.columnsMenuKey);
+            if (saved != null) { try { this.hidden = new Set(JSON.parse(saved)); } catch { /* keep defaults */ } }
         }
         this.el = h('div.dt-wrap');
         this.render();
@@ -274,7 +278,7 @@ export class DataTable {
                 this.render();
             }
         }));
-        items.push('-', { label: 'Restore Default', onClick: () => { this.hidden.clear(); this.saveHidden(); this.render(); } });
+        items.push('-', { label: 'Restore Default', onClick: () => { this.hidden = new Set(this.defaultHidden); this.saveHidden(); this.render(); } });
         contextMenu(e.clientX, e.clientY, items);
     }
 

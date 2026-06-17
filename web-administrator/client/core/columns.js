@@ -16,11 +16,13 @@ import { h, contextMenu } from './ui.js';
 
 const PREFIX = 'webadmin-cols-';
 
-/** Per-view persistent column order + widths + hidden set. `defaults` maps key -> width px. */
-export function createColumnManager(storageKey, defaults) {
+/** Per-view persistent column order + widths + hidden set. `defaults` maps key ->
+    width px; `defaultHidden` lists keys hidden by default (Swing parity) until the
+    user changes them. */
+export function createColumnManager(storageKey, defaults, defaultHidden = []) {
     let order = null;        // saved data-column key order, or null = canonical
     let widths = {};
-    let hidden = new Set();  // column keys the user has hidden
+    let hidden = new Set(defaultHidden);  // column keys hidden (seeded from defaults)
     try {
         const raw = JSON.parse(localStorage.getItem(PREFIX + storageKey) || '{}');
         if (Array.isArray(raw.order)) order = raw.order;
@@ -49,7 +51,7 @@ export function createColumnManager(storageKey, defaults) {
         setOrder(keys) { order = keys.slice(); save(); },
         isHidden(key) { return hidden.has(key); },
         setHidden(key, v) { if (v) hidden.add(key); else hidden.delete(key); save(); },
-        reset() { order = null; widths = {}; hidden = new Set(); save(); }
+        reset() { order = null; widths = {}; hidden = new Set(defaultHidden); save(); }
     };
 }
 

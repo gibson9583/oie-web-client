@@ -129,7 +129,9 @@ function renderCodeTemplates(platform) {
     const collapsed = new Set(); // collapsed library ids
 
     const tableHost = h('div.dt-wrap', { style: { flex: '1', minHeight: '0' } }, loading('Loading…'));
-    const colMgr = createColumnManager('codetemplates', CT_COL_WIDTHS);
+    // Swing hides Id (and Type) by default — only Name/Description/Revision/Last
+    // Modified show until the user enables more via the column menu.
+    const colMgr = createColumnManager('codetemplates', CT_COL_WIDTHS, ['id']);
     // Right-click on empty space (below the rows) shows the non-contextual tasks.
     tableHost.addEventListener('contextmenu', (e) => {
         if (e.target.closest('tr')) return;   // row menus are handled per-row
