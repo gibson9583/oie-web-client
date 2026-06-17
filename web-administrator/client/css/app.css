@@ -1350,8 +1350,14 @@ table.dt tr.drop-target td {
 table.dt td .twisty {
     cursor: pointer;
     color: var(--text-faint);
+    /* Bigger click target without moving the glyph: keep it left-aligned at its
+       original 14px footprint (so it never clips in the narrow indented first
+       column), and extend the hit area with padding offset by negative margin. */
     display: inline-block;
     width: 14px;
+    padding: 5px 8px;
+    margin: -5px -8px;
+    border-radius: 3px;
     user-select: none;
 }
 
