@@ -27,6 +27,28 @@ const DEV = process.env.WEBADMIN_DEV === '1';
 
 app.disable('x-powered-by');
 
+// --- Content-Security-Policy -------------------------------------------------
+// Same-origin by default. Allows the two CDNs the SPA actually uses — Google
+// Fonts (fonts.googleapis.com / fonts.gstatic.com) and Monaco (cdn.jsdelivr.net,
+// incl. its blob: worker) — plus data: images/frames for the attachment viewers.
+// 'unsafe-inline' (the importmap + pervasive inline styles) and 'unsafe-eval'
+// (Monaco's worker + the datatype script validator) are required by the current
+// client. Dev (Vite HMR) additionally needs a WebSocket.
+const CSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+    "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
+    "img-src 'self' data:",
+    "worker-src 'self' blob:",
+    `connect-src 'self' https://cdn.jsdelivr.net${DEV ? ' ws: wss:' : ''}`,
+    "frame-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'"
+].join('; ');
+app.use((req, res, next) => { res.setHeader('Content-Security-Policy', CSP); next(); });
+
 // --- Engine REST API proxy ---------------------------------------------------
 app.use('/api', createApiProxy(config));
 
