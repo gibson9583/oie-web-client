@@ -153,9 +153,13 @@ async function renderEditor(platform, { params, query }) {
 
     const version = channel['@version'] || platform.store.getState('serverVersion') || '4.5.2';
 
-    window.dispatchEvent(new CustomEvent('webadmin:set-title', {
-        detail: { title: `Edit Channel - ${channel.name || ''}` }
-    }));
+    // route:changed resets the banner to the static route title ("Edit Channel")
+    // after this async handler returns; defer past it (rAF runs after that
+    // microtask, before paint) so the channel name sticks without a flash.
+    const bannerTitle = channel.name ? `Edit Channel - ${channel.name}` : 'Edit Channel';
+    window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('webadmin:set-title', {
+        detail: { title: bannerTitle }
+    })));
 
     // Unsaved state is tracked in a shared store flag ('editingChannelDirty') so
     // it survives navigation to the filter/transformer sub-editors and back.

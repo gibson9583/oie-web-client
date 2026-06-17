@@ -74,6 +74,15 @@ async function renderEditor(platform, { params }, kindName) {
     const connectorType = kindName === 'response' ? 'RESPONSE'
         : (String(params.metaDataId) === '0' ? 'SOURCE' : 'DESTINATION');
 
+    // Banner: "Edit Channel - <name> - <connector> <Filter/Transformer>" (Swing
+    // parity). Deferred past the route:changed title reset (see channel-editor)
+    // with rAF so it sticks without a flash.
+    const connectorLabel = String(params.metaDataId) === '0' ? 'Source' : (connector.name || `Destination ${params.metaDataId}`);
+    const bannerTitle = (channel.name ? `Edit Channel - ${channel.name} - ` : '') + `${connectorLabel} ${kind.title}`;
+    window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('webadmin:set-title', {
+        detail: { title: bannerTitle }
+    })));
+
     // Scope code-template completions to this connector's editor context. This
     // view is a single context, so set it once (covers every step/rule editor,
     // including the plugin-rendered JavaScript ones) rather than per editor.
