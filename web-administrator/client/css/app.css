@@ -1051,6 +1051,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .msg-table td.indent { padding-left: 26px; }
 /* Empty model value — centered, faint "--" placeholder (Swing parity). */
 .msg-table td.cell-dash { text-align: center; color: var(--text-faint); }
+/* Not-yet-processed message — gray italic across all columns (Swing parity). */
+.msg-table tr.unprocessed td { color: var(--text-faint); font-style: italic; }
 
 /* ---- Step editor fills the bottom pane (single-field steps like JavaScript) -------------------------------------------------- */
 

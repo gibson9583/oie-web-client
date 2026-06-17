@@ -1018,6 +1018,10 @@ function renderBrowser(platform, channelId, options = {}) {
                 : h('td' + (baseCls ? '.' + baseCls : '') + extraSel, value);
         for (const m of sortedMessages()) {
             const source = sourceOf(m);
+            // Not-yet-processed messages render gray italic across all columns,
+            // on the parent and its children (Swing's italic cell renderer).
+            const unprocessed = m.processed === false || m.processed === 'false';
+            const rowCls = (key) => [key, unprocessed ? 'unprocessed' : ''].filter(Boolean).join(' ') || null;
             const dests = connectorMessagesOf(m).filter(cm => Number(cm.metaDataId) > 0);
             const expanded = expandedIds.has(String(m.messageId));
             const tw = h('span.msg-twisty', dests.length ? (expanded ? '▾' : '▸') : '');
@@ -1026,14 +1030,14 @@ function renderBrowser(platform, channelId, options = {}) {
                 expanded ? expandedIds.delete(String(m.messageId)) : expandedIds.add(String(m.messageId));
                 renderTable();
             });
-            const ptr = h('tr', { class: sel === `${m.messageId}:0` ? 'selected' : null },
+            const ptr = h('tr', { class: rowCls(sel === `${m.messageId}:0` ? 'selected' : '') },
                 h('td', tw), ...cols.map(c => buildCell(c.parent(m, source), c.cls)));
             ptr.addEventListener('click', () => selectMessage(m, 0));
             ptr.addEventListener('contextmenu', (e) => messageRowMenu(m, 0, e));
             tbody.appendChild(ptr);
 
             if (expanded) for (const cm of dests) {
-                const ctr = h('tr.child', { class: sel === `${m.messageId}:${cm.metaDataId}` ? 'selected' : null },
+                const ctr = h('tr.child', { class: rowCls(sel === `${m.messageId}:${cm.metaDataId}` ? 'selected' : '') },
                     h('td', ''), ...cols.map(c => buildCell(c.child(cm), c.cls, c.key === 'connector' ? '.indent' : '')));
                 ctr.addEventListener('click', () => selectMessage(m, Number(cm.metaDataId)));
                 ctr.addEventListener('contextmenu', (e) => messageRowMenu(m, Number(cm.metaDataId), e));
