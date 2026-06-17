@@ -70,8 +70,9 @@ function renderExtensions(platform) {
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', onClick: () => load() },
             '-',
-            { label: 'Enable Extension', icon: 'check', onClick: () => setEnabled(true) },
-            { label: 'Disable Extension', icon: 'x', onClick: () => setEnabled(false) },
+            // Swing shows only the applicable action for the row's current state.
+            { label: 'Enable Extension', icon: 'check', hidden: !!row.enabled, onClick: () => setEnabled(true) },
+            { label: 'Disable Extension', icon: 'x', hidden: !row.enabled, onClick: () => setEnabled(false) },
             '-',
             { label: 'Show Properties', icon: 'eye', onClick: () => showProperties() },
             '-',
@@ -286,10 +287,12 @@ function renderExtensions(platform) {
 
     // Selection-dependent tasks only show when an extension row is selected
     // (classic task-pane behavior).
+    const enableBtn = taskButton('Enable', 'check', () => setEnabled(true));
+    const disableBtn = taskButton('Disable', 'x', () => setEnabled(false));
     const ctxTasks = h('div.ctx-tasks.hidden',
         h('span.sep'),
-        taskButton('Enable', 'check', () => setEnabled(true)),
-        taskButton('Disable', 'x', () => setEnabled(false)),
+        enableBtn,
+        disableBtn,
         h('span.sep'),
         taskButton('Properties', 'eye', showProperties),
         h('span.sep'),
@@ -302,6 +305,9 @@ function renderExtensions(platform) {
 
     function updateTaskVisibility() {
         ctxTasks.classList.toggle('hidden', !selected);
+        // Show only the action that applies to the selected extension's state.
+        enableBtn.classList.toggle('hidden', !selected || !!selected.enabled);
+        disableBtn.classList.toggle('hidden', !selected || !selected.enabled);
     }
 
     load();
