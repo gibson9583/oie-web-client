@@ -10,7 +10,7 @@
 import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, contextMenu, modal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { newChannel, uuid } from '@oie/web-api';
-import { getPref } from '../core/prefs.js';
+import { getPref, setPrefs } from '../core/prefs.js';
 import { createColumnManager, decorateColumns } from '@oie/web-ui';
 
 // Canonical data columns (after the leading twisty), with default widths.
@@ -30,14 +30,129 @@ const CHANNEL_COLUMNS = [
    channel XML. Import must merge those libraries itself — the engine doesn't auto-import
    exportData.codeTemplateLibraries on channel create (ChannelPanel does it client-side). */
 
-// Per the "Import code template libraries with channels" preference.
-async function shouldImportBundledLibraries(count) {
-    const lp = getPref('importLibrariesWithChannels');
-    if (lp === 'yes') return true;
-    if (lp === 'no') return false;
-    return confirmDialog('Import Channel',
-        `This export bundles ${count} code template librar${count === 1 ? 'y' : 'ies'}. Import ${count === 1 ? 'it' : 'them'} too?`,
-        { okLabel: 'Import' });
+// OK-only warning (Swing alertWarning).
+function alertWarning(message) {
+    return new Promise(resolve => modal({
+        title: 'Warning', body: h('div', String(message)), onClose: resolve,
+        buttons: [{ label: 'OK', primary: true, onClick: resolve }]
+    }));
+}
+
+// Yes / No option (Swing alertOption): resolves true on Yes, false on No/closed.
+function optionYesNo(title, message) {
+    return new Promise(resolve => modal({
+        title, body: h('div', String(message)), onClose: () => resolve(false),
+        buttons: [
+            { label: 'No', onClick: () => resolve(false) },
+            { label: 'Yes', primary: true, onClick: () => resolve(true) }
+        ]
+    }));
+}
+
+// "Channel X has code template libraries included — import them?" — Yes/No/Cancel
+// with an "always" checkbox that persists the importLibrariesWithChannels pref.
+// Returns 'yes' | 'no' | 'cancel'.
+function promptImportLibraries(channelName, count) {
+    const pref = getPref('importLibrariesWithChannels');
+    if (pref === 'yes') return Promise.resolve('yes');
+    if (pref === 'no') return Promise.resolve('no');
+    const plural = count === 1 ? 'y' : 'ies';
+    const them = count === 1 ? 'it' : 'them';
+    return new Promise(resolve => {
+        const always = h('input', { type: 'checkbox' });
+        const remember = (choice) => { if (always.checked) setPrefs({ importLibrariesWithChannels: choice }); return choice; };
+        modal({
+            title: 'Import Channel',
+            body: h('div',
+                h('div', { style: { marginBottom: '10px' } },
+                    `Channel "${channelName}" has code template librar${plural} included with it. Would you like to import ${them}?`),
+                h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' } },
+                    always, 'Always choose this option by default in the future (may be changed in Settings)')),
+            onClose: () => resolve('cancel'),
+            buttons: [
+                { label: 'Cancel', onClick: () => resolve('cancel') },
+                { label: 'No', onClick: () => resolve(remember('no')) },
+                { label: 'Yes', primary: true, onClick: () => resolve(remember('yes')) }
+            ]
+        });
+    });
+}
+
+// Code template library names linked to a channel (same predicate as the Set
+// Dependencies modal): enabled for the channel, or include-new and not disabled.
+async function linkedLibraryNames(channelId) {
+    try {
+        const libs = await api.codeTemplates.libraries(false);
+        const idSet = (v) => api.asList(v, 'string').map(String);
+        const cid = String(channelId);
+        return libs.filter(lib =>
+            idSet(lib.enabledChannelIds).includes(cid) ||
+            (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(cid)))
+            .map(lib => lib.name || '(unnamed library)');
+    } catch { return []; }
+}
+
+// Swing channel-export dialog: lists the linked libraries and asks whether to
+// bundle them, Yes/No/Cancel, with an "always" checkbox persisting the
+// exportLibrariesWithChannels pref. Returns 'yes' | 'no' | 'cancel'.
+function promptExportLibraries(names) {
+    return new Promise(resolve => {
+        const always = h('input', { type: 'checkbox' });
+        const remember = (choice) => { if (always.checked) setPrefs({ exportLibrariesWithChannels: choice }); return choice; };
+        modal({
+            title: 'Export Channel',
+            body: h('div',
+                h('div', { style: { marginBottom: '6px' } }, 'The following code template libraries are linked to this channel:'),
+                h('div', { style: { border: '1px solid var(--line)', borderRadius: '4px', background: 'var(--bg1)', padding: '6px 10px', maxHeight: '140px', overflow: 'auto' } },
+                    h('ul', { style: { margin: '0', paddingLeft: '18px' } }, names.map(n => h('li', n)))),
+                h('div', { style: { margin: '10px 0 8px' } }, 'Do you wish to include these libraries in the channel export?'),
+                h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' } },
+                    always, 'Always choose this option by default in the future (may be changed in Settings)')),
+            onClose: () => resolve('cancel'),
+            buttons: [
+                { label: 'Cancel', onClick: () => resolve('cancel') },
+                { label: 'No', onClick: () => resolve(remember('no')) },
+                { label: 'Yes', primary: true, onClick: () => resolve(remember('yes')) }
+            ]
+        });
+    });
+}
+
+const CHANNEL_NAME_RE = /^[a-zA-Z_0-9\-\s]*$/;
+
+/* Resolve a name/id collision on channel import, mirroring Swing's
+   ChannelPanel.importChannel + Frame.checkChannelName: warn that the channel
+   exists, then offer overwrite (reuse the existing id + revision) or create-new
+   (prompt for a free name, fresh id). Returns { id, name, revision, overwrite }
+   to apply to the imported channel, or null to abort. */
+async function resolveImportName(name, id, existing) {
+    const tempId = uuid();
+    const nameClash = (n, candidateId) => existing.some(c =>
+        String(c.name || '').toLowerCase() === String(n).toLowerCase() && c.id !== candidateId);
+
+    async function checkName(n, candidateId) {
+        if (!n) { await alertWarning('Channel name cannot be empty.'); return false; }
+        if (n.length > 40) { await alertWarning('Channel name cannot be longer than 40 characters.'); return false; }
+        if (!CHANNEL_NAME_RE.test(n)) { await alertWarning('Channel name cannot have special characters besides hyphen, underscore, and space.'); return false; }
+        if (nameClash(n, candidateId)) { await alertWarning(`Channel "${n}" already exists.`); return false; }
+        return true;
+    }
+
+    if (!(await checkName(name, tempId))) {
+        if (!(await optionYesNo('Import Channel', "Would you like to overwrite the existing channel?  Choose 'No' to create a new channel."))) {
+            let newName = name;
+            do {
+                newName = await promptDialog('Import Channel', 'Please enter a new name for the channel.', newName);
+                if (newName == null) return null;             // Cancel → abort
+            } while (!(await checkName(newName, tempId)));
+            return { id: tempId, name: newName, revision: 0, overwrite: false };
+        }
+        const match = existing.find(c => String(c.name || '').toLowerCase() === String(name).toLowerCase());
+        return { id: match ? match.id : id, name, revision: match ? (Number(match.revision) || 0) : 0, overwrite: true };
+    }
+    // No name collision — make sure the id is free too.
+    const idClash = existing.some(c => c.id === id);
+    return { id: idClash ? tempId : id, name, revision: 0, overwrite: false };
 }
 
 // Merge bundled <codeTemplateLibrary> elements (from a channel XML export) into the
@@ -70,18 +185,53 @@ async function importLibraryElementsXml(bundledEls) {
     await api.putXml('/codeTemplateLibraries', new XMLSerializer().serializeToString(doc), { override: true });
 }
 
-// Import a channel XML export, handling bundled libraries per the preference.
-async function importChannelXml(xml) {
+// Import a channel XML export: resolve a name/id collision (warn + overwrite or
+// rename), handle bundled libraries, then create or overwrite. Returns false if
+// the user cancelled. `existing` is the current channel list (for collision).
+async function importChannelXml(xml, existing) {
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
-    if (doc.querySelector('parsererror')) throw new Error('Not a valid channel XML file');
-    const libsContainer = doc.querySelector('exportData > codeTemplateLibraries');
+    if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'channel') {
+        throw new Error('Not a valid channel XML file');
+    }
+    const channelEl = doc.documentElement;
+    const directChild = (tag) => [...channelEl.children].find(c => c.tagName === tag);
+    const setChild = (tag, value) => {
+        let el = directChild(tag);
+        if (!el) { el = doc.createElement(tag); channelEl.appendChild(el); }
+        el.textContent = value;
+    };
+
+    const name = directChild('name')?.textContent || '';
+    const id = directChild('id')?.textContent || '';
+
+    const resolved = await resolveImportName(name, id, existing);
+    if (!resolved) return false;
+
+    if (resolved.id !== id) {
+        // Re-point bundled libraries from the old channel id to the new one.
+        for (const enabled of channelEl.querySelectorAll('exportData > codeTemplateLibraries > codeTemplateLibrary > enabledChannelIds')) {
+            [...enabled.children].forEach(s => { if (s.tagName === 'string' && s.textContent === id) s.remove(); });
+            const s = doc.createElement('string'); s.textContent = resolved.id; enabled.appendChild(s);
+        }
+        setChild('id', resolved.id);
+    }
+    if (resolved.name !== name) setChild('name', resolved.name);
+    setChild('revision', String(resolved.revision));
+
+    const libsContainer = channelEl.querySelector('exportData > codeTemplateLibraries');
     const bundled = libsContainer ? [...libsContainer.children].filter(c => c.tagName === 'codeTemplateLibrary') : [];
-    if (bundled.length && await shouldImportBundledLibraries(bundled.length)) {
-        await importLibraryElementsXml(bundled);
+    if (bundled.length) {
+        const choice = await promptImportLibraries(resolved.name, bundled.length);
+        if (choice === 'cancel') return false;
+        if (choice === 'yes') await importLibraryElementsXml(bundled);
     }
     // The engine ignores bundled libraries on create; strip them from the channel.
     if (libsContainer && libsContainer.parentNode) libsContainer.parentNode.removeChild(libsContainer);
-    await api.post('/channels', new XMLSerializer().serializeToString(doc), { contentType: 'application/xml' });
+
+    const body = new XMLSerializer().serializeToString(doc);
+    if (resolved.overwrite) await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override: true });
+    else await api.post('/channels', body, { contentType: 'application/xml' });
+    return true;
 }
 
 // Merge bundled libraries into the existing server set (port of
@@ -539,21 +689,39 @@ function renderChannels(platform) {
         try {
             const content = String(file.content || '').trim();
             if (content.startsWith('<')) {
-                // XML export — handles bundled code template libraries.
-                await importChannelXml(content);
+                // XML export — name/id collision flow + bundled libraries.
+                if (await importChannelXml(content, channels) === false) return;
             } else {
                 let obj = JSON.parse(content);
                 if (obj && typeof obj === 'object' && obj.channel) obj = obj.channel;
+                const resolved = await resolveImportName(obj.name || '', obj.id || '', channels);
+                if (!resolved) return;   // cancelled
                 // JSON bundle (web-admin native): merge bundled libraries as objects.
                 const bundled = api.asList(obj.exportData && obj.exportData.codeTemplateLibraries, 'codeTemplateLibrary')
                     .filter(l => l && typeof l === 'object' && l.id);
-                if (bundled.length && await shouldImportBundledLibraries(bundled.length)) {
-                    const existing = await api.codeTemplates.libraries(true);
-                    await api.codeTemplates.updateLibraries(mergeImportedLibraries(existing, bundled, obj.id));
+                if (resolved.id !== obj.id) {
+                    // Re-point bundled libraries from the old channel id to the new one.
+                    for (const lib of bundled) {
+                        const ids = new Set(api.asList(lib.enabledChannelIds, 'string').map(String));
+                        ids.delete(String(obj.id)); ids.add(resolved.id);
+                        lib.enabledChannelIds = { string: [...ids] };
+                    }
+                    obj.id = resolved.id;
                 }
-                // Libraries are saved separately; strip them before creating the channel.
+                obj.name = resolved.name;
+                obj.revision = resolved.revision;
+                if (bundled.length) {
+                    const choice = await promptImportLibraries(resolved.name, bundled.length);
+                    if (choice === 'cancel') return;
+                    if (choice === 'yes') {
+                        const existing = await api.codeTemplates.libraries(true);
+                        await api.codeTemplates.updateLibraries(mergeImportedLibraries(existing, bundled, obj.id));
+                    }
+                }
+                // Libraries are saved separately; strip them before saving the channel.
                 if (obj.exportData) delete obj.exportData.codeTemplateLibraries;
-                await api.channels.create(obj);
+                if (resolved.overwrite) await api.channels.update(obj.id, obj);
+                else await api.channels.create(obj);
             }
             toast(`Imported ${file.name}`);
             refresh();
@@ -569,19 +737,27 @@ function renderChannels(platform) {
     async function exportTask() {
         const channel = single();
         if (!channel) return;
+        // Ask up front (before the save dialog) whether to bundle code template
+        // libraries — only when the channel actually has linked ones. saveFile
+        // falls back to a normal download if the native picker can't engage
+        // outside the click gesture.
+        const pref = getPref('exportLibrariesWithChannels');
+        let includeLibs;
+        if (pref === 'yes' || pref === 'no') {
+            includeLibs = pref === 'yes';
+        } else {
+            const linked = await linkedLibraryNames(channel.id);
+            if (!linked.length) {
+                includeLibs = false;   // nothing to bundle — no prompt
+            } else {
+                const choice = await promptExportLibraries(linked);
+                if (choice === 'cancel') return;   // abort the export
+                includeLibs = choice === 'yes';
+            }
+        }
         try {
-            // The Save dialog must open within the click gesture, so it's the
-            // first await — the "include libraries?" prompt + fetch run inside the
-            // content callback (after the file is chosen).
-            await saveFile(`${channel.name || channel.id}.xml`, 'application/xml', async () => {
-                const pref = getPref('exportLibrariesWithChannels');
-                let includeLibs = pref === 'yes';
-                if (pref === 'ask') {
-                    includeLibs = await confirmDialog('Export Channel',
-                        'Include this channel\'s code template libraries in the export?', { okLabel: 'Include' });
-                }
-                return api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined);
-            });
+            await saveFile(`${channel.name || channel.id}.xml`, 'application/xml',
+                () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined));
         } catch (e) {
             toast(e.message, 'error');
         }
