@@ -502,6 +502,20 @@ function renderBrowser(platform, channelId, options = {}) {
     }
     updateAdvIndicator();
 
+    /* Reset clears every criterion (main bar + advanced) without running a search
+       — matching Swing's resetSearchCriteria. The Current Search box keeps showing
+       the last executed search until the next Search. */
+    function resetSearch() {
+        startInput.value = '';
+        endInput.value = '';
+        statusSelected.clear(); refreshStatusBtn(); closeStatusMenu();
+        textSearchInput.value = '';
+        connectorSel.value = '';
+        pageSizeSel.value = String(Number(getPref('messagePageSize')) || 20);
+        adv = defaultAdvancedCriteria();
+        updateAdvIndicator();
+    }
+
     const criteriaBody = h('div.panel-body',
         h('div.form-row',
             field('Start Date', startInput),
@@ -511,6 +525,7 @@ function renderBrowser(platform, channelId, options = {}) {
             field('Connector', connectorSel),
             field('Page Size', pageSizeSel),
             taskButton('Search', 'search', () => search(true), { primary: true }),
+            taskButton('Reset', null, () => resetSearch()),
             advBtn),
         searchSummary);
 
