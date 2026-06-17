@@ -950,6 +950,13 @@ function renderBrowser(platform, channelId, options = {}) {
 
         const sel = selKey();
         const tbody = h('tbody');
+        // A null/empty model value renders as a centered, faint "--" (Swing parity):
+        // e.g. connector-derived columns on a source-less parent row, or message-level
+        // columns on a destination child row. String/DOM values pass through as-is.
+        const buildCell = (value, baseCls, extraSel = '') =>
+            (value === '' || value === null || value === undefined)
+                ? h('td.cell-dash' + extraSel, '--')
+                : h('td' + (baseCls ? '.' + baseCls : '') + extraSel, value);
         for (const m of sortedMessages()) {
             const source = sourceOf(m);
             const dests = connectorMessagesOf(m).filter(cm => Number(cm.metaDataId) > 0);
@@ -961,14 +968,14 @@ function renderBrowser(platform, channelId, options = {}) {
                 renderTable();
             });
             const ptr = h('tr', { class: sel === `${m.messageId}:0` ? 'selected' : null },
-                h('td', tw), ...cols.map(c => h('td' + (c.cls ? '.' + c.cls : ''), c.parent(m, source))));
+                h('td', tw), ...cols.map(c => buildCell(c.parent(m, source), c.cls)));
             ptr.addEventListener('click', () => selectMessage(m, 0));
             ptr.addEventListener('contextmenu', (e) => messageRowMenu(m, 0, e));
             tbody.appendChild(ptr);
 
             if (expanded) for (const cm of dests) {
                 const ctr = h('tr.child', { class: sel === `${m.messageId}:${cm.metaDataId}` ? 'selected' : null },
-                    h('td', ''), ...cols.map(c => h('td' + (c.cls ? '.' + c.cls : '') + (c.key === 'connector' ? '.indent' : ''), c.child(cm))));
+                    h('td', ''), ...cols.map(c => buildCell(c.child(cm), c.cls, c.key === 'connector' ? '.indent' : '')));
                 ctr.addEventListener('click', () => selectMessage(m, Number(cm.metaDataId)));
                 ctr.addEventListener('contextmenu', (e) => messageRowMenu(m, Number(cm.metaDataId), e));
                 tbody.appendChild(ctr);
