@@ -148,6 +148,11 @@ function renderDashboard(platform) {
 
     /* ---- tasks (relocated to the "Dashboard Tasks" sidebar pane) --------------- */
 
+    // Halt applies only to transitional states; Undeploy is suppressed while a
+    // channel is transitioning (except SYNCING) — matching the Swing dashboard.
+    const isHaltable = (s) => !['STARTED', 'STOPPED', 'PAUSED'].includes(s);
+    const isHaltableNonSyncing = (s) => isHaltable(s) && s !== 'SYNCING';
+
     async function controlSelected(action, label) {
         if (!selected.size) { toast('Select a channel first', 'warn'); return; }
         for (const channelId of selected) {
@@ -175,6 +180,13 @@ function renderDashboard(platform) {
 
     // Selection-dependent tasks live in a context group that only shows when
     // a channel is selected (classic task-pane behavior).
+    const btnClearStats = taskButton('Clear Statistics', 'clear', needSel((ids) => openClearStatisticsDialog(ids)));
+    const btnUndeploy = taskButton('Undeploy Channel', 'undeploy', needSel(async (ids) => {
+        if (await confirmDialog('Undeploy', `Undeploy ${ids.length} channel(s)?`, { okLabel: 'Undeploy' })) {
+            try { await api.engine.undeployMany(ids); } catch (e) { toast(e.message, 'error'); }
+            refresh();
+        }
+    }));
     const ctxTasks = h('div.ctx-tasks.hidden',
         taskButton('Send Message', 'send', needSel((ids) => openSendMessageDialog(platform, ids[0], () => refresh()))),
         taskButton('View Messages', 'messages', needSel((ids) => platform.router.navigate(`/messages/${ids[0]}`))),
@@ -187,14 +199,9 @@ function renderDashboard(platform) {
                 refresh();
             }
         }), { danger: true }),
-        taskButton('Clear Statistics', 'clear', needSel((ids) => openClearStatisticsDialog(ids))),
+        btnClearStats,
         btnStart, btnPause, btnStop, btnHalt,
-        taskButton('Undeploy Channel', 'undeploy', needSel(async (ids) => {
-            if (await confirmDialog('Undeploy', `Undeploy ${ids.length} channel(s)?`, { okLabel: 'Undeploy' })) {
-                try { await api.engine.undeployMany(ids); } catch (e) { toast(e.message, 'error'); }
-                refresh();
-            }
-        })));
+        btnUndeploy);
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Dashboard Tasks' } },
         taskButton('Refresh', 'refresh', () => refresh(true)),
@@ -254,8 +261,11 @@ function renderDashboard(platform) {
         btnStart.classList.toggle('hidden', !any(s => s.state === 'STOPPED' || s.state === 'PAUSED'));
         btnPause.classList.toggle('hidden', !any(s => s.state === 'STARTED'));
         btnStop.classList.toggle('hidden', !any(s => s.state === 'STARTED' || s.state === 'PAUSED'));
-        // Halt only applies to transitional states (Starting, Stopping, ...).
-        btnHalt.classList.toggle('hidden', !any(s => !['STARTED', 'STOPPED', 'PAUSED'].includes(s.state)));
+        // Halt is single-channel + transitional; Undeploy hides while a channel is
+        // transitioning (except Syncing); Clear Statistics hides in Lifetime mode.
+        btnHalt.classList.toggle('hidden', !(sel.length === 1 && isHaltable(sel[0].state)));
+        btnUndeploy.classList.toggle('hidden', any(s => isHaltableNonSyncing(s.state)));
+        btnClearStats.classList.toggle('hidden', lifetime);
     }
 
     /* ---- connector metadata (Type + Port columns) --------------------------------- */
@@ -619,13 +629,13 @@ function renderDashboard(platform) {
                 { label: 'Send Message', icon: 'send', onClick: () => openSendMessageDialog(platform, first.channelId, () => refresh()) },
                 { label: 'View Messages', icon: 'messages', onClick: () => platform.router.navigate(`/messages/${first.channelId}`) },
                 { label: 'Remove All Messages', icon: 'trash', danger: true, onClick: () => btnFor('Remove All Messages')?.click() },
-                { label: 'Clear Statistics', icon: 'clear', onClick: () => btnFor('Clear Statistics')?.click() },
+                { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, onClick: () => btnFor('Clear Statistics')?.click() },
                 '-',
                 { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), onClick: () => controlSelected('start', 'Start') },
                 { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), onClick: () => controlSelected('pause', 'Pause') },
                 { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), onClick: () => controlSelected('stop', 'Stop') },
-                { label: 'Halt', icon: 'halt', hidden: !anyState(x => !['STARTED', 'STOPPED', 'PAUSED'].includes(x.state)), onClick: () => btnFor('Halt')?.click() },
-                { label: 'Undeploy Channels', icon: 'undeploy', onClick: () => btnFor('Undeploy Channel')?.click() }
+                { label: 'Halt', icon: 'halt', hidden: !(members.length === 1 && isHaltable(members[0].state)), onClick: () => btnFor('Halt')?.click() },
+                { label: 'Undeploy Channels', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), onClick: () => btnFor('Undeploy Channel')?.click() }
             ]);
         });
         return tr;
@@ -706,13 +716,13 @@ function renderDashboard(platform) {
                 { label: 'Send Message', icon: 'send', onClick: () => openSendMessageDialog(platform, st.channelId, () => refresh()) },
                 { label: 'View Messages', icon: 'messages', onClick: () => platform.router.navigate(`/messages/${st.channelId}`) },
                 { label: 'Remove All Messages', icon: 'trash', danger: true, onClick: () => btnFor('Remove All Messages')?.click() },
-                { label: 'Clear Statistics', icon: 'clear', onClick: () => btnFor('Clear Statistics')?.click() },
+                { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, onClick: () => btnFor('Clear Statistics')?.click() },
                 '-',
                 { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), onClick: () => controlSelected('start', 'Start') },
                 { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), onClick: () => controlSelected('pause', 'Pause') },
                 { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), onClick: () => controlSelected('stop', 'Stop') },
-                { label: 'Halt', icon: 'halt', hidden: !anyState(x => !['STARTED', 'STOPPED', 'PAUSED'].includes(x.state)), onClick: () => btnFor('Halt')?.click() },
-                { label: 'Undeploy Channel', icon: 'undeploy', onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err) { toast(err.message, 'error'); } refresh(); } },
+                { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), onClick: () => btnFor('Halt')?.click() },
+                { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err) { toast(err.message, 'error'); } refresh(); } },
                 '-',
                 { label: 'Edit Channel', icon: 'edit', onClick: () => platform.router.navigate(`/channels/${st.channelId}/edit`) },
                 { label: 'Edit Filter', icon: 'filter', onClick: () => platform.router.navigate(`/channels/${st.channelId}/filter/0`) },
@@ -724,9 +734,26 @@ function renderDashboard(platform) {
 
     function connectorRow(child, cols) {
         const stats = statsOf(child, lifetime);
-        return h('tr', { style: { background: 'var(--bg0)' } },
+        const tr = h('tr', { style: { background: 'var(--bg0)', cursor: 'pointer' } },
             h('td', ''),
             cols.map(col => col.renderConnector ? col.renderConnector(child, stats) : h('td', '')));
+        // Right-click a source/destination connector row to start/stop just that
+        // connector (Swing DASHBOARD_START_CONNECTOR / STOP_CONNECTOR).
+        tr.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const runConnector = (method) => async () => {
+                try { await api.status[method](child.channelId, child.metaDataId); }
+                catch (err) { toast(err.message, 'error'); }
+                refresh();
+            };
+            contextMenu(e.clientX, e.clientY, [
+                { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
+                '-',
+                { label: 'Start Connector', icon: 'play', hidden: !(child.state === 'STOPPED' || child.state === 'PAUSED'), onClick: runConnector('startConnector') },
+                { label: 'Stop Connector', icon: 'stop', hidden: !(child.state === 'STARTED' || child.state === 'PAUSED'), onClick: runConnector('stopConnector') }
+            ]);
+        });
+        return tr;
     }
 
     function updateCounts() {
@@ -891,8 +918,8 @@ function renderDashboard(platform) {
             h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '5px' } },
                 h('span', { style: { color: 'var(--text-faint)', fontSize: '11px' } }, 'Tags:'), tagToggle)),
         h('div.radio-group.inline', { style: { marginLeft: '0' } },
-            h('label', h('input', { type: 'radio', name: radioName, checked: true, onChange: () => { lifetime = false; renderTable(); } }), 'Current Statistics'),
-            h('label', h('input', { type: 'radio', name: radioName, onChange: () => { lifetime = true; renderTable(); } }), 'Lifetime Statistics')));
+            h('label', h('input', { type: 'radio', name: radioName, checked: true, onChange: () => { lifetime = false; renderTable(); updateTaskVisibility(); } }), 'Current Statistics'),
+            h('label', h('input', { type: 'radio', name: radioName, onChange: () => { lifetime = true; renderTable(); updateTaskVisibility(); } }), 'Lifetime Statistics')));
 
     /* ---- plugin dashboard tabs (Server Log, Connection Log, Global Maps, ...) --------- */
 
