@@ -20,6 +20,11 @@ export const SAMPLE_CHANNELS = [
     { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1 },
 ];
 
+export const SAMPLE_USERS = [
+    { id: 1, username: 'admin', firstName: 'Admin', lastName: 'User', email: 'admin@example.com' },
+    { id: 2, username: 'operator', firstName: 'Op', lastName: 'Erator', email: 'op@example.com' },
+];
+
 /** Authenticated happy-path defaults. Tests override individual keys as needed. */
 export const DEFAULT_FIXTURES = {
     // Auth — current returns a user, so boot skips the login screen by default.
@@ -42,6 +47,9 @@ export const DEFAULT_FIXTURES = {
     'GET /channels': { list: { channel: SAMPLE_CHANNELS } },
     'GET /channels/idsAndNames': {},
     'GET /channelgroups': '',
+
+    // Users view.
+    'GET /users': { list: { user: SAMPLE_USERS } },
 
     // Extensions (restart watcher / extensions view) — empty maps.
     'GET /extensions/connectors': {},

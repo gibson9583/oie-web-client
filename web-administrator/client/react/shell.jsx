@@ -11,7 +11,9 @@ import {
     useStoreKey, useTheme, useTimezone, useViewTitle, useRouteChange,
     useServerIdentity, useRestartWatch, Icon
 } from './bridges.jsx';
-import { relocateTaskbars, paneCollapsed } from './legacy-tasks.js';
+import { relocateTaskbars } from './legacy-tasks.js';
+import { RailPane } from './ui.jsx';
+import { setReactTasksHost } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
@@ -26,7 +28,7 @@ import { register as registerChannelEditor } from '../views/channel-editor.js';
 import { register as registerMessages } from '../views/messages.js';
 import { register as registerEvents } from '../views/events.js';
 import { register as registerAlerts } from '../views/alerts.js';
-import { register as registerUsers } from '../views/users.js';
+import { register as registerUsers } from './views/users.jsx';
 import { register as registerSettings } from '../views/settings.js';
 import { register as registerCodeTemplates } from '../views/code-templates.js';
 import { register as registerGlobalScripts } from '../views/global-scripts.js';
@@ -106,21 +108,6 @@ async function showAbout() {
 }
 
 /* ---- rail ---- */
-
-function RailPane({ title, paneKey, className, children }) {
-    const k = paneKey || title;
-    const [collapsed, setCollapsed] = useState(() => paneCollapsed.get(k) || false);
-    const toggle = () => { const next = !collapsed; setCollapsed(next); paneCollapsed.set(k, next); };
-    return (
-        <div className={'rail-pane' + (collapsed ? ' collapsed' : '') + (className ? ' ' + className : '')}>
-            <div className="rail-pane-header" onClick={toggle}>
-                <span className="pane-title">{title}</span>
-                <span className="pane-chevron">▲</span>
-            </div>
-            <div className="rail-pane-body">{children}</div>
-        </div>
-    );
-}
 
 // Nav panes, grouped by section. `only`/`exclude` split the Engine pane (top)
 // from plugin panes (below the contextual task panes) — matching app.js order.
@@ -263,10 +250,12 @@ function RestartBanner() {
 function AppShell({ user, onLogout }) {
     const outletRef = useRef(null);
     const tasksHostRef = useRef(null);
+    const reactTasksRef = useRef(null);
     const serverInfo = useServerIdentity();
 
     // Hand core/router.js the React outlet, start the engine once, then route.
     useEffect(() => {
+        setReactTasksHost(reactTasksRef.current);
         let cancelled = false;
         (async () => {
             await startEngine();
@@ -311,6 +300,7 @@ function AppShell({ user, onLogout }) {
                 <div className="rail-panes">
                     <Nav only="Engine" />
                     <div ref={tasksHostRef} />
+                    <div ref={reactTasksRef} />
                     <Nav exclude="Engine" />
                     <OtherPane onLogout={onLogout} />
                 </div>
