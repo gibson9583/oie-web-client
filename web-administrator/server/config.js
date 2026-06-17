@@ -24,6 +24,9 @@
  *                        "true" to allow non-loopback clients to reach the
  *                        unauthenticated serializer bridge endpoints (default
  *                        loopback-only).
+ *   WEBADMIN_TRUSTED_PROXIES
+ *                        Comma-separated peer IPs trusted to set X-Forwarded-For
+ *                        (loopback is always trusted). Default none.
  */
 
 'use strict';
@@ -60,7 +63,11 @@ const defaults = {
     // to /api and never reaches them) and drive the warm JVM. Local browsers and
     // a same-host reverse proxy work as-is; set this true only if the web admin
     // is exposed directly to remote browsers AND fronted by your own auth/TLS.
-    serializeAllowRemote: false
+    serializeAllowRemote: false,
+    // Peer IPs trusted to set X-Forwarded-For (a front TLS terminator / reverse
+    // proxy). Loopback is always trusted; list a non-loopback front proxy here.
+    // Requests from untrusted peers can't spoof the engine's audit-log client IP.
+    trustedProxies: []
 };
 
 function load() {
@@ -87,6 +94,7 @@ function load() {
     if (process.env.OIE_HOME) config.engineHome = process.env.OIE_HOME;
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE) config.serializeAllowRemote = process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE === 'true';
+    if (process.env.WEBADMIN_TRUSTED_PROXIES) config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
     if (config.engineHome) config.engineHome = path.resolve(config.engineHome);
 
     // Effective search list: the primary dir plus any extras from config.json

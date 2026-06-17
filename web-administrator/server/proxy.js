@@ -21,10 +21,22 @@ const HOP_BY_HOP = new Set([
     'te', 'trailer', 'transfer-encoding', 'upgrade', 'host'
 ]);
 
+// Compute the X-Forwarded-For to send upstream. The inbound chain is trusted
+// (and our peer appended) only when the immediate peer is a trusted proxy;
+// otherwise the peer's claimed chain is forgeable, so we send just the real
+// socket IP. Pure + exported for testing.
+function resolveForwardedFor(remoteAddress, priorXff, trusted) {
+    const peer = String(remoteAddress || '').replace(/^::ffff:/, '');
+    if (!peer) return priorXff || undefined;
+    const peerTrusted = peer === '127.0.0.1' || peer === '::1' || peer.startsWith('127.') || (trusted && trusted.has(peer));
+    return (priorXff && peerTrusted) ? `${priorXff}, ${peer}` : peer;
+}
+
 function createApiProxy(config) {
     const target = new URL(config.engine.url);
     const isHttps = target.protocol === 'https:';
     const transport = isHttps ? https : http;
+    const trustedProxies = new Set(Array.isArray(config.trustedProxies) ? config.trustedProxies : []);
 
     const agent = isHttps
         ? new https.Agent({ keepAlive: true, rejectUnauthorized: config.engine.verifyTls })
@@ -41,16 +53,13 @@ function createApiProxy(config) {
         // custom header without a preflight the engine rejects. The SPA sets it
         // on every request (client/core/api.js), so it passes through here as-is
         // for legitimate calls; forging it server-side would defeat the guard.
-        // Forward the real client IP for the engine's audit log. The engine reads
-        // X-Forwarded-For and only falls back to the socket address — which here
-        // is this proxy's loopback connection, so without this header every event
-        // is logged as ::1. Append to any chain an upstream proxy already set so
-        // the original client stays leftmost. (::ffff: is the IPv4-mapped prefix.)
-        const clientIp = (req.socket.remoteAddress || '').replace(/^::ffff:/, '');
-        if (clientIp) {
-            const prior = req.headers['x-forwarded-for'];
-            headers['x-forwarded-for'] = prior ? `${prior}, ${clientIp}` : clientIp;
-        }
+        // Forward the real client IP for the engine's audit log (the engine reads
+        // X-Forwarded-For, else the socket address = this proxy's loopback). A
+        // client-supplied chain is honored ONLY when the immediate peer is a
+        // trusted proxy (loopback by default, plus config.trustedProxies);
+        // otherwise it's forgeable, so we overwrite with the real socket IP.
+        const xff = resolveForwardedFor(req.socket.remoteAddress, req.headers['x-forwarded-for'], trustedProxies);
+        if (xff) headers['x-forwarded-for'] = xff;
 
         const upstream = transport.request({
             agent,
@@ -100,4 +109,4 @@ function createApiProxy(config) {
     };
 }
 
-module.exports = { createApiProxy };
+module.exports = { createApiProxy, resolveForwardedFor };
