@@ -57,6 +57,32 @@ function mapEntries(map) {
     return out;
 }
 
+/* The engine packs channel/message/patient context into the event attribute
+   map; ServerEvent derives the browser's columns from it
+   (server/.../ServerEvent.java). The "channel" attribute is a Channel toString
+   like "[id=<id>, name=<name>]". */
+function eventAttr(event, key) {
+    for (const [k, v] of mapEntries(event && event.attributes)) {
+        if (k === key) return v == null ? '' : String(v).trim();
+    }
+    return '';
+}
+function eventChannelId(event) {
+    const channel = eventAttr(event, 'channel');
+    const i = channel.indexOf('id='), c = channel.indexOf(',');
+    return (i !== -1 && c !== -1) ? channel.slice(i + 3, c) : '';
+}
+function eventChannelName(event) {
+    const channel = eventAttr(event, 'channel');
+    const i = channel.indexOf('name='), b = channel.indexOf(']');
+    return (i !== -1 && b !== -1) ? channel.slice(i + 5, b) : '';
+}
+function eventChannelIdWithMessageId(event) {
+    const id = eventChannelId(event);
+    const msg = eventAttr(event, 'messageId');
+    return id ? (msg ? `${id} - ${msg}` : id) : '';
+}
+
 /* ServerEvent is XStream-aliased to "event", so the API helper's
    asList(v, 'serverEvent') can hand back [{event:[...]}] — unwrap it. */
 function normalizeEvents(rows) {
@@ -244,7 +270,10 @@ function renderEvents(platform) {
         { key: 'serverId', label: 'Server ID', width: '150px', className: 'mono faint', render: (e) => displayValue(e.serverId) },
         { key: 'userId', label: 'User', width: '110px', sortValue: (e) => username(e.userId), render: (e) => username(e.userId) },
         { key: 'outcome', label: 'Outcome', width: '110px', render: (e) => outcomeTag(e.outcome) },
-        { key: 'ipAddress', label: 'IP Address', className: 'mono', width: '130px' }
+        { key: 'ipAddress', label: 'IP Address', className: 'mono', width: '130px' },
+        { key: 'channelMsgId', label: 'Channel ID - Message ID', className: 'mono', sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
+        { key: 'channelName', label: 'Channel Name', sortValue: eventChannelName, render: eventChannelName },
+        { key: 'patientId', label: 'Patient ID', sortValue: (e) => eventAttr(e, 'patientId'), render: (e) => eventAttr(e, 'patientId') }
     ], {
         selectable: 'single',
         rowKey: (e) => String(e.id),
