@@ -101,11 +101,10 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
         // don't fire the global session-expired handler.
         if (noAuthHandler) {
             const text = await response.text().catch(() => '');
+            // parseBody is total (its parses are internally guarded), so no try/catch.
             let message = 'Unauthorized';
-            try {
-                const parsed = parseBody(text);
-                if (parsed && typeof parsed === 'object') message = parsed.message || parsed.error || message;
-            } catch { /* keep default */ }
+            const parsed = parseBody(text);
+            if (parsed && typeof parsed === 'object') message = parsed.message || parsed.error || message;
             throw new ApiError(401, message, text);
         }
         // Background polls all hit 401 at once when the engine restarts —
@@ -119,12 +118,11 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
     const text = await response.text();
     if (!response.ok) {
         let message = text || `${response.status} ${response.statusText}`;
-        try {
-            const parsed = parseBody(text);
-            if (parsed && typeof parsed === 'object') {
-                message = parsed.message || parsed.detailedError || parsed.error || message;
-            }
-        } catch { /* keep raw text */ }
+        // parseBody is total (its parses are internally guarded), so no try/catch.
+        const parsed = parseBody(text);
+        if (parsed && typeof parsed === 'object') {
+            message = parsed.message || parsed.detailedError || parsed.error || message;
+        }
         throw new ApiError(response.status, message, text);
     }
     if (raw) return text;
@@ -143,6 +141,10 @@ function qs(params) {
     }
     return parts.length ? '?' + parts.join('&') : '';
 }
+
+// Encode interpolated path segments (ids are server-generated UUIDs/numbers, so
+// this is a no-op in practice — defense-in-depth against a stray reserved char).
+const enc = encodeURIComponent;
 
 export function get(path, params, opts) {
     return fetch(BASE + path + qs(params), {
@@ -246,14 +248,14 @@ export const users = {
     list: () => get('/users').then(v => asList(v, 'user')),
     get: (idOrName) => get(`/users/${encodeURIComponent(idOrName)}`),
     create: (user) => post('/users', user, { wrapKey: 'user' }),
-    update: (userId, user) => put(`/users/${userId}`, user, { wrapKey: 'user' }),
-    remove: (userId) => del(`/users/${userId}`),
+    update: (userId, user) => put(`/users/${enc(userId)}`, user, { wrapKey: 'user' }),
+    remove: (userId) => del(`/users/${enc(userId)}`),
     updatePassword: (userId, plainPassword) =>
-        put(`/users/${userId}/password`, plainPassword, { contentType: 'text/plain' }),
+        put(`/users/${enc(userId)}/password`, plainPassword, { contentType: 'text/plain' }),
     checkPassword: (plainPassword) => post('/users/_checkPassword', plainPassword, { contentType: 'text/plain' }),
-    isLoggedIn: (userId) => get(`/users/${userId}/loggedIn`),
-    getPreferences: (userId) => get(`/users/${userId}/preferences`),
-    setPreferences: (userId, props) => put(`/users/${userId}/preferences`, props, { wrapKey: 'properties' })
+    isLoggedIn: (userId) => get(`/users/${enc(userId)}/loggedIn`),
+    getPreferences: (userId) => get(`/users/${enc(userId)}/preferences`),
+    setPreferences: (userId, props) => put(`/users/${enc(userId)}/preferences`, props, { wrapKey: 'properties' })
 };
 
 /* ===========================================================================
@@ -266,17 +268,17 @@ export const channels = {
     // Transformer templates are base64-wrapped on the wire (engine
     // Base64StringConverter); decode on read and re-encode a clone on write so
     // the in-memory channel keeps plain-text templates. See oie.js.
-    get: (channelId) => get(`/channels/${channelId}`).then(c => oie.decodeChannelTemplates(c)),
+    get: (channelId) => get(`/channels/${enc(channelId)}`).then(c => oie.decodeChannelTemplates(c)),
     create: (channel) => post('/channels', oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel' }),
     update: (channelId, channel, override = true) =>
-        put(`/channels/${channelId}`, oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel', params: { override } }),
-    remove: (channelId) => del(`/channels/${channelId}`),
+        put(`/channels/${enc(channelId)}`, oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel', params: { override } }),
+    remove: (channelId) => del(`/channels/${enc(channelId)}`),
     idsAndNames: () => get('/channels/idsAndNames'),
-    connectorNames: (channelId) => get(`/channels/${channelId}/connectorNames`),
-    metaDataColumns: (channelId) => get(`/channels/${channelId}/metaDataColumns`).then(v => asList(v, 'metaDataColumn')),
+    connectorNames: (channelId) => get(`/channels/${enc(channelId)}/connectorNames`),
+    metaDataColumns: (channelId) => get(`/channels/${enc(channelId)}/metaDataColumns`).then(v => asList(v, 'metaDataColumn')),
     portsInUse: () => get('/channels/portsInUse').then(v => asList(v, 'channelPortData')),
-    setEnabled: (channelId, enabled) => post(`/channels/${channelId}/enabled/${enabled}`),
-    setInitialState: (channelId, state) => post(`/channels/${channelId}/initialState/${state}`)
+    setEnabled: (channelId, enabled) => post(`/channels/${enc(channelId)}/enabled/${enabled}`),
+    setInitialState: (channelId, state) => post(`/channels/${enc(channelId)}/initialState/${state}`)
 };
 
 export const channelGroups = {
@@ -296,21 +298,21 @@ export const status = {
         get('/channels/statuses', { channelId: channelIds, filter, includeUndeployed })
             .then(v => asList(v, 'dashboardStatus')),
     initial: (fetchSize = 100, filter) => get('/channels/statuses/initial', { fetchSize, filter }),
-    one: (channelId) => get(`/channels/${channelId}/status`),
-    start: (channelId) => post(`/channels/${channelId}/_start`),
-    stop: (channelId) => post(`/channels/${channelId}/_stop`),
-    halt: (channelId) => post(`/channels/${channelId}/_halt`),
-    pause: (channelId) => post(`/channels/${channelId}/_pause`),
-    resume: (channelId) => post(`/channels/${channelId}/_resume`),
-    startConnector: (channelId, metaDataId) => post(`/channels/${channelId}/connector/${metaDataId}/_start`),
-    stopConnector: (channelId, metaDataId) => post(`/channels/${channelId}/connector/${metaDataId}/_stop`)
+    one: (channelId) => get(`/channels/${enc(channelId)}/status`),
+    start: (channelId) => post(`/channels/${enc(channelId)}/_start`),
+    stop: (channelId) => post(`/channels/${enc(channelId)}/_stop`),
+    halt: (channelId) => post(`/channels/${enc(channelId)}/_halt`),
+    pause: (channelId) => post(`/channels/${enc(channelId)}/_pause`),
+    resume: (channelId) => post(`/channels/${enc(channelId)}/_resume`),
+    startConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_start`),
+    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`)
 };
 
 export const statistics = {
     list: (channelIds, includeUndeployed) =>
         get('/channels/statistics', { channelId: channelIds, includeUndeployed })
             .then(v => asList(v, 'channelStatistics')),
-    one: (channelId) => get(`/channels/${channelId}/statistics`),
+    one: (channelId) => get(`/channels/${enc(channelId)}/statistics`),
     clear: (channelIdsToConnectors, received = true, filtered = true, sent = true, errored = true) => {
         // Serialize Map<String, List<Integer>> as XStream's native XML — JSON
         // can't unambiguously express a list element of null. A plain
@@ -333,10 +335,10 @@ export const statistics = {
 /* ---- Engine (deploy) --------------------------------------------------------- */
 
 export const engine = {
-    deploy: (channelId, returnErrors = true) => post(`/channels/${channelId}/_deploy`, null, { params: { returnErrors } }),
+    deploy: (channelId, returnErrors = true) => post(`/channels/${enc(channelId)}/_deploy`, null, { params: { returnErrors } }),
     deployMany: (channelIds, returnErrors = true) =>
         post('/channels/_deploy', { set: { string: channelIds } }, { params: { returnErrors } }),
-    undeploy: (channelId, returnErrors = true) => post(`/channels/${channelId}/_undeploy`, null, { params: { returnErrors } }),
+    undeploy: (channelId, returnErrors = true) => post(`/channels/${enc(channelId)}/_undeploy`, null, { params: { returnErrors } }),
     undeployMany: (channelIds, returnErrors = true) =>
         post('/channels/_undeploy', { set: { string: channelIds } }, { params: { returnErrors } }),
     redeployAll: (returnErrors = true) => post('/channels/_redeployAll', null, { params: { returnErrors } })
@@ -348,27 +350,27 @@ export const engine = {
 
 export const messages = {
     search: (channelId, params) =>
-        get(`/channels/${channelId}/messages`, params).then(v => asList(v, 'message')),
-    count: (channelId, params) => get(`/channels/${channelId}/messages/count`, params),
-    get: (channelId, messageId) => get(`/channels/${channelId}/messages/${messageId}`),
-    maxMessageId: (channelId) => get(`/channels/${channelId}/messages/maxMessageId`),
+        get(`/channels/${enc(channelId)}/messages`, params).then(v => asList(v, 'message')),
+    count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params),
+    get: (channelId, messageId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
+    maxMessageId: (channelId) => get(`/channels/${enc(channelId)}/messages/maxMessageId`),
     attachments: (channelId, messageId) =>
-        get(`/channels/${channelId}/messages/${messageId}/attachments`).then(v => asList(v, 'attachment')),
+        get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments`).then(v => asList(v, 'attachment')),
     attachment: (channelId, messageId, attachmentId) =>
-        get(`/channels/${channelId}/messages/${messageId}/attachments/${encodeURIComponent(attachmentId)}`),
+        get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments/${encodeURIComponent(attachmentId)}`),
     processNew: (channelId, rawData, destinationMetaDataIds, sourceMapEntries) => {
         const params = {};
         if (destinationMetaDataIds && destinationMetaDataIds.length) params.destinationMetaDataId = destinationMetaDataIds;
         if (sourceMapEntries && sourceMapEntries.length) params.sourceMapEntry = sourceMapEntries;
-        return post(`/channels/${channelId}/messages`, rawData, { contentType: 'text/plain', params });
+        return post(`/channels/${enc(channelId)}/messages`, rawData, { contentType: 'text/plain', params });
     },
     reprocess: (channelId, messageId, replace = false, filterDestinations = false, metaDataIds = []) =>
-        post(`/channels/${channelId}/messages/${messageId}/_reprocess`, null, {
+        post(`/channels/${enc(channelId)}/messages/${enc(messageId)}/_reprocess`, null, {
             params: { replace, filterDestinations, metaDataId: metaDataIds }
         }),
-    remove: (channelId, messageId) => del(`/channels/${channelId}/messages/${messageId}`),
+    remove: (channelId, messageId) => del(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
     removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) =>
-        del(`/channels/${channelId}/messages/_removeAll`, { restartRunningChannels, clearStatistics })
+        del(`/channels/${enc(channelId)}/messages/_removeAll`, { restartRunningChannels, clearStatistics })
 };
 
 /* ===========================================================================
@@ -378,7 +380,7 @@ export const messages = {
 export const events = {
     search: (params) => get('/events', params).then(v => asList(v, 'serverEvent')),
     count: (params) => get('/events/count', params),
-    get: (eventId) => get(`/events/${eventId}`),
+    get: (eventId) => get(`/events/${enc(eventId)}`),
     maxEventId: () => get('/events/maxEventId')
 };
 
@@ -388,14 +390,14 @@ export const events = {
 
 export const alerts = {
     list: () => get('/alerts').then(v => asList(v, 'alertModel')),
-    get: (alertId) => get(`/alerts/${alertId}`),
+    get: (alertId) => get(`/alerts/${enc(alertId)}`),
     statuses: () => get('/alerts/statuses').then(v => asList(v, 'alertStatus')),
     create: (alert) => post('/alerts', alert, { wrapKey: 'alertModel' }),
-    update: (alertId, alert) => put(`/alerts/${alertId}`, alert, { wrapKey: 'alertModel' }),
-    remove: (alertId) => del(`/alerts/${alertId}`),
-    enable: (alertId) => post(`/alerts/${alertId}/_enable`),
-    disable: (alertId) => post(`/alerts/${alertId}/_disable`),
-    info: (alertId) => post(`/alerts/${alertId}/_getInfo`, null),
+    update: (alertId, alert) => put(`/alerts/${enc(alertId)}`, alert, { wrapKey: 'alertModel' }),
+    remove: (alertId) => del(`/alerts/${enc(alertId)}`),
+    enable: (alertId) => post(`/alerts/${enc(alertId)}/_enable`),
+    disable: (alertId) => post(`/alerts/${enc(alertId)}/_disable`),
+    info: (alertId) => post(`/alerts/${enc(alertId)}/_getInfo`, null),
     options: () => get('/alerts/options')
 };
 
@@ -463,9 +465,9 @@ export const codeTemplates = {
     libraries: (includeCodeTemplates = true) =>
         get('/codeTemplateLibraries', { includeCodeTemplates }).then(v => asList(v, 'codeTemplateLibrary')),
     list: () => get('/codeTemplates').then(v => asList(v, 'codeTemplate')),
-    get: (id) => get(`/codeTemplates/${id}`),
-    update: (id, codeTemplate) => put(`/codeTemplates/${id}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override: true } }),
-    remove: (id) => del(`/codeTemplates/${id}`),
+    get: (id) => get(`/codeTemplates/${enc(id)}`),
+    update: (id, codeTemplate) => put(`/codeTemplates/${enc(id)}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override: true } }),
+    remove: (id) => del(`/codeTemplates/${enc(id)}`),
     updateLibraries: (libraries) =>
         put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override: true } })
 };

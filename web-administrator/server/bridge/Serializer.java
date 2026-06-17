@@ -256,6 +256,11 @@ public class Serializer {
         return b.append('"').toString();
     }
 
+    // Safe by construction: writes only fields that already exist on the target's
+    // own class hierarchy (findField — unknown keys are skipped), coerced solely to
+    // boolean/int/String, on a brand-new throwaway DataTypeProperties per request
+    // (never a live engine instance). Override keys are dynamic per data type, so no
+    // static allow-list is imposed — it could reject a valid serialization property.
     private static void applyOverrides(Object target, String overrides) {
         for (String pair : overrides.split("\n")) {
             int eq = pair.indexOf('=');
