@@ -1116,6 +1116,9 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .accent-text { color: var(--accent); }
 .err-text { color: var(--err); }
 .warn-text { color: var(--warn); }
+/* Filled amber cell flag — draws the eye to a "needs attention" cell (out-of-sync
+   Rev Δ, the one-time just-deployed cue) far more than colored text alone. */
+.cell-flag { background: #f0e68c; color: #1f2c38; font-weight: 600; }
 .flex { display: flex; align-items: center; gap: 8px; }
 .flex-wrap { flex-wrap: wrap; }
 .grow { flex: 1; }

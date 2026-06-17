@@ -368,6 +368,15 @@ function renderChannels(platform) {
     function channelRow(channel) {
         const status = statusById[channel.id];
         const delta = status ? Number(status.deployedRevisionDelta) || 0 : null;
+        // A channel is out of sync (needs redeploy) when its saved revision is
+        // ahead of the deployed one OR its code templates changed since deploy —
+        // so the delta can read 0 yet still be flagged (matches the engine).
+        const ctChanged = !!status && (status.codeTemplatesChanged === true || status.codeTemplatesChanged === 'true');
+        const outOfSync = delta > 0 || ctChanged;
+        const revTitle = !outOfSync ? undefined
+            : delta > 0 && ctChanged ? 'Channel and code templates changed since last deployment'
+                : delta > 0 ? 'Channel changed since last deployment'
+                    : 'Code templates changed since last deployment';
 
         const tr = h('tr', { class: selected.has(channel.id) ? 'selected' : null, style: { cursor: 'pointer' } },
             h('td', ''),
@@ -376,7 +385,9 @@ function renderChannels(platform) {
             h('td', nameCell(channel)),
             h('td.mono', h('span', { style: { color: 'var(--text-faint)' } }, channel.id || '')),
             h('td', descriptionCell(channel.description)),
-            h('td.num', delta === null ? '--' : (delta > 0 ? h('span.warn-text', `+${delta}`) : '0')),
+            delta === null ? h('td.num', '--')
+                : outOfSync ? h('td.num.cell-flag', { title: revTitle }, String(delta))
+                    : h('td.num', '0'),
             h('td.mono', status ? fmtDate(status.deployedDate) : '--'),
             h('td.mono', fmtDate(channel.exportData?.metadata?.lastModified)));
 

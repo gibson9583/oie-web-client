@@ -422,16 +422,22 @@ function renderDashboard(platform) {
         {
             key: 'rev', label: 'Rev Δ',
             sortValue: (st) => Number(st.deployedRevisionDelta) || 0,
-            renderChannel: (st) => h('td.num', st.deployedRevisionDelta ? h('span.warn-text', `+${st.deployedRevisionDelta}`) : '0'),
+            renderChannel: (st) => {
+                const d = Number(st.deployedRevisionDelta) || 0;
+                // Out of sync on revision delta OR code-template changes (see channels.js).
+                const ct = st.codeTemplatesChanged === true || st.codeTemplatesChanged === 'true';
+                const title = d > 0 && ct ? 'Channel and code templates changed since last deployment'
+                    : d > 0 ? 'Channel changed since last deployment'
+                        : ct ? 'Code templates changed since last deployment' : undefined;
+                return (d > 0 || ct) ? h('td.num.cell-flag', { title }, String(d)) : h('td.num', '0');
+            },
             renderGroupAggregate: () => h('td.num', '--'),
             renderConnector: () => h('td', '')
         },
         {
             key: 'deployed', label: 'Last Deployed',
             sortValue: (st) => st.deployedDate?.time ?? 0,
-            renderChannel: (st) => h('td.mono', isJustDeployed(st)
-                ? { style: { background: '#f0e68c', color: '#1f2c38', fontWeight: '600' } }
-                : {}, fmtDate(st.deployedDate)),
+            renderChannel: (st) => h('td.mono' + (isJustDeployed(st) ? '.cell-flag' : ''), fmtDate(st.deployedDate)),
             renderGroupAggregate: () => h('td.mono', '--'),
             renderConnector: () => h('td', '')
         },
