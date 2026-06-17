@@ -40,6 +40,15 @@ no web administrator restart is needed. The exception is a plugin's optional
 already-loaded server entry requires a restart (Node module cache). Load
 status appears under **Extensions → Web Administrator Plugins**.
 
+> ⚠️ **Install only trusted plugins.** A plugin runs code in the browser, and an
+> optional `server.js` runs code in the web administrator's Node process
+> (mounted at `/plugin-api/<id>`, with this server's filesystem and config in
+> reach). Treat installing a plugin as running its code — install only from
+> sources you trust. This is the same trust model as the Swing client's
+> `plugin.xml`/`*Classes` extensions, which load Java into the client/server.
+> Note that `pluginDirs` may point at the engine's `extensions/` tree, so an
+> installed engine extension carrying a `webadmin/` folder is loaded too.
+
 ## How the engine's own extensions are packaged (same as yours)
 
 Every extension in an engine install — including all the "built-in" ones
@@ -335,6 +344,12 @@ do directly (filesystem, other backends, secrets). Requests to `/api/...` are
 proxied to the engine and carry the browser's engine session; `/plugin-api`
 endpoints are **not** authenticated by the engine — add your own checks if you
 expose anything sensitive.
+
+> **`server.js` runs arbitrary Node in the web admin process** (it can read this
+> host's filesystem and config). Only install plugins from trusted sources — see
+> the "Install only trusted plugins" note above. For most needs prefer an engine
+> extension's REST servlet (reachable at `/api/extensions/<path>`, the way the
+> bundled `server-log` plugin works), which runs in the engine with its auth.
 
 ## Adding UI for custom engine connectors
 
