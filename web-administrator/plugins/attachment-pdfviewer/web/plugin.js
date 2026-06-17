@@ -22,10 +22,15 @@ export function register(platform) {
                     const full = await platform.api.messages.attachment(channelId, messageId, attachment.id);
                     const b64 = String(full?.content ?? '').replace(/\s+/g, '');
                     platform.ui.clear(host);
-                    host.appendChild(h('iframe', {
-                        src: `data:application/pdf;base64,${b64}`,
+                    // Sandbox the attacker-controlled PDF: opaque origin, no
+                    // scripts, no top-frame navigation (render-only). Set before
+                    // src so it applies to the loaded document.
+                    const frame = h('iframe', {
                         style: { width: '100%', height: '640px', border: '1px solid var(--bg3)', borderRadius: '4px' }
-                    }));
+                    });
+                    frame.setAttribute('sandbox', '');
+                    frame.src = `data:application/pdf;base64,${b64}`;
+                    host.appendChild(frame);
                 } catch (e) {
                     platform.ui.clear(host);
                     host.appendChild(h('div.faint', `Could not load PDF: ${e.message}`));

@@ -15,7 +15,7 @@
 import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
-import { getActiveCompletions, setActiveScope } from './script-completions.js';
+import { getActiveCompletions } from './script-completions.js';
 
 const BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
 const LOAD_TIMEOUT_MS = 10000;
@@ -329,16 +329,6 @@ export function mountMonaco(monaco, editor, opts = {}) {
     });
     highlightReservedVars(monaco, instance);   // initial paint (whole document)
 
-    // Code-template completions are channel + context scoped: when this editor
-    // gains focus, make its scope active so the completion provider offers the
-    // right templates. opts.scriptScope = { channelId, contexts: [contextType] }.
-    let focusSub = null;
-    if (opts.scriptScope && opts.scriptScope.channelId) {
-        focusSub = instance.onDidFocusEditorText(() => {
-            setActiveScope(opts.scriptScope.channelId, opts.scriptScope.contexts || []);
-        });
-    }
-
     // Release the model, listeners, layout observer and timer. Idempotent. Called
     // explicitly from a view teardown, or automatically by the detached-sweep.
     let disposed = false;
@@ -348,7 +338,6 @@ export function mountMonaco(monaco, editor, opts = {}) {
         disposed = true;
         if (hlTimer) clearTimeout(hlTimer);
         changeSub.dispose();
-        if (focusSub) focusSub.dispose();
         const model = instance.getModel();
         instance.dispose();
         if (model) model.dispose();

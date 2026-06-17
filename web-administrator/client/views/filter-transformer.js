@@ -15,7 +15,7 @@ import { h, clear, field, textInput, select, taskButton, tabs, modal, toast, loa
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
-import { setActiveScope } from '../core/script-completions.js';
+import { setActiveScope, clearActiveScope } from '../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../core/serialize.js';
 import { dataTypeDef, dataTypeList } from '../datatypes/index.js';
 import { dataTypePropertiesEditor } from '../datatypes/props-editor.js';
@@ -1461,6 +1461,7 @@ async function renderEditor(platform, { params }, kindName) {
     el.addEventListener('dragover', onAccessorDragOver);
     el.addEventListener('drop', onAccessorDrop);
 
-    // Teardown persists the working copy but must not mark dirty (see persist()).
-    return { el, teardown: persist };
+    // Teardown persists the working copy but must not mark dirty (see persist()),
+    // then clears the editor's code-template scope so it can't leak to the next view.
+    return { el, teardown: () => { persist(); clearActiveScope(); } };
 }

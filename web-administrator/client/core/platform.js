@@ -89,7 +89,7 @@ export const platform = {
        getEntry() returns the current entry or null; setEntry(obj|null)
        creates/replaces/removes it while preserving sibling plugin entries. */
     registerConnectorPropertiesPanel(def) { registries.connectorPropertiesPanels.push(def); },
-    registerDataType(name, def) { registries.dataTypes.set(name, def); },
+    registerDataType(name, def) { registries.dataTypes.set(name, { name, ...def }); },
     registerTransmissionMode(name, def) { registries.transmissionModes.set(name, { name, ...def }); },
     registerResourceType(type, def) { registries.resourceTypes.set(type, { type, ...def }); },
 

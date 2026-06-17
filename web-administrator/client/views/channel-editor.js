@@ -13,7 +13,7 @@ import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import { validateScript } from '../core/serialize.js';
-import { setActiveScope } from '../core/script-completions.js';
+import { setActiveScope, clearActiveScope } from '../core/script-completions.js';
 import { register as registerFilterTransformer } from './filter-transformer.js';
 import { dataTypeDef, dataTypeList } from '../datatypes/index.js';
 import { dataTypePropertiesEditor } from '../datatypes/props-editor.js';
@@ -2558,6 +2558,9 @@ async function renderEditor(platform, { params, query }) {
             // In-flow hops (filter/transformer) re-register on return; anything
             // else must not inherit a stale guard.
             platform.store.setState('navGuard', null);
+            // Drop this channel's code-template completion scope so it can't
+            // leak into the next channel's script editors.
+            clearActiveScope();
         }
     };
 }
