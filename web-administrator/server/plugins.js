@@ -126,9 +126,25 @@ function install(app, config) {
         const found = discover(dirs).find(p => p.manifest.id === req.params.id);
         if (!found) return res.status(404).json({ error: 'PLUGIN_NOT_FOUND' });
         const file = path.normalize(req.params[0]);
-        if (file.startsWith('..')) return res.status(400).end();
-        res.sendFile(path.join(found.dir, file), (err) => {
-            if (err && !res.headersSent) res.status(404).end();
+        if (file.startsWith('..') || path.isAbsolute(file)) return res.status(400).end();
+        // normalize() / { root } only constrain the path STRING — a symlink
+        // landed inside the plugin dir (e.g. via an extension zip) would still
+        // be followed off-tree. Resolve real paths and require the target to
+        // stay within the plugin directory before serving.
+        let realRoot, realTarget;
+        try {
+            realRoot = fs.realpathSync(found.dir);
+            realTarget = fs.realpathSync(path.join(found.dir, file));
+        } catch {
+            return res.status(404).end();
+        }
+        if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
+            return res.status(403).end();
+        }
+        // dotfiles:'deny' rejects dotfile segments (a checked-out .git/config,
+        // .env, …) that sendFile's default 'ignore' only blocks as a leaf.
+        res.sendFile(file, { root: found.dir, dotfiles: 'deny' }, (err) => {
+            if (err && !res.headersSent) res.status(err.statusCode || 404).end();
         });
     });
 
