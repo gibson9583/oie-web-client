@@ -15,7 +15,7 @@
  * /messages/_reprocess (Reprocess Results).
  */
 
-import { h, clear, icon, toast, taskButton, modal, confirmDialog, promptDialog, checkbox, select, field, loading, fmtDate, fmtNumber, saveFile, pickFile, contextMenu, DataTable } from '@oie/web-ui';
+import { h, clear, icon, toast, taskButton, modal, confirmDialog, promptDialog, checkbox, select, field, loading, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../core/content-highlight.js';
@@ -27,8 +27,8 @@ import { createZip } from '../core/zip.js';
 import { createCodeEditor } from '@oie/web-ui';
 
 export function register(platform) {
-    // Reached via task buttons (Dashboard/Channels), matching the Swing client.
-    platform.registerView('/messages', () => renderChannelPicker(platform), { title: 'Messages' });
+    // The message browser is always per-channel (reached via Dashboard/Channels
+    // "View Messages"), matching the Swing client — there is no standalone picker.
     platform.registerView('/messages/:channelId', ({ params, query }) =>
         renderBrowser(platform, params.channelId, { send: query.send === '1', metaDataId: query.metaDataId }), { title: 'Messages' });
 }
@@ -359,53 +359,6 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
         ]
     });
     setTimeout(() => editor.focus(), 30);
-}
-
-/* ---- channel picker ------------------------------------------------------------ */
-
-function renderChannelPicker(platform) {
-    const table = new DataTable([
-        { key: 'name', label: 'Channel Name' },
-        { key: 'id', label: 'Id', className: 'mono', render: (r) => h('span', { style: { color: 'var(--text-faint)' } }, r.id) }
-    ], {
-        selectable: 'single',
-        rowKey: (r) => r.id,
-        emptyText: 'No channels found',
-        columnsMenu: true,
-        columnsMenuKey: 'webadmin-cols-channelpicker',
-        onSelect: (rows) => { if (rows.length) platform.router.navigate(`/messages/${rows[0].id}`); }
-    });
-
-    async function refresh() {
-        try {
-            const map = await api.channels.idsAndNames();
-            const rows = idNamePairs(map).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-            table.setRows(rows);
-        } catch (e) {
-            toast(`Failed to load channels: ${e.message}`, 'error');
-        }
-    }
-
-    refresh();
-
-    const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Message Tasks' } },
-        taskButton('Refresh', 'refresh', refresh),
-        h('span.taskbar-spacer'),
-        h('span.faint', 'Select a channel to browse its messages'));
-
-    // Fill the viewport: the panel stretches and the DataTable wrapper is the
-    // scroller (sticky headers), so the page itself never scrolls.
-    table.el.style.flex = '1';
-    table.el.style.minHeight = '0';
-
-    const el = h('div.view',
-        taskbar,
-        h('div.view-body', { style: { display: 'flex', flexDirection: 'column', minHeight: '0', overflow: 'hidden' } },
-            h('div.panel', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } },
-                h('div.panel-header', { style: { flex: 'none' } }, 'Channels'),
-                h('div.panel-body.flush', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } }, table.el))));
-
-    return { el };
 }
 
 /* ---- message browser ------------------------------------------------------------- */
@@ -1965,46 +1918,29 @@ function renderBrowser(platform, channelId, options = {}) {
         }
     }
 
-    async function exportTask() {
-        const row = requireSelection();
-        if (!row) return;
-        await saveFile(`message-${row.messageId}.json`, 'application/json', async () => {
-            let message = row;
-            try {
-                const full = await api.messages.get(channelId, row.messageId);
-                if (full && typeof full === 'object') message = full;
-            } catch { /* export the search result row instead */ }
-            return JSON.stringify({ message }, null, 2);
-        });
-    }
-
-    // Selection-dependent tasks live in a context group that only shows when
-    // a message is selected (classic task-pane behavior).
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        h('span.sep'),
-        taskButton('Reprocess', 'transform', reprocessTask),
-        taskButton('Export Selected', 'export', exportTask),
-        taskButton('Remove Message', 'trash', removeMessageTask, { danger: true }));
+    // Per-message tasks are hidden until a message is selected and sit inline —
+    // Remove Message after Remove Results, Reprocess Message after Reprocess
+    // Results — matching the Swing message task pane (item set + order).
+    const removeMessageBtn = taskButton('Remove Message', 'trash', removeMessageTask, { danger: true });
+    const reprocessMessageBtn = taskButton('Reprocess Message', 'transform', reprocessTask);
+    removeMessageBtn.classList.add('hidden');
+    reprocessMessageBtn.classList.add('hidden');
 
     function updateTaskVisibility() {
-        ctxTasks.classList.toggle('hidden', !selectedRow);
+        removeMessageBtn.classList.toggle('hidden', !selectedRow);
+        reprocessMessageBtn.classList.toggle('hidden', !selectedRow);
     }
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Message Tasks' } },
-        taskButton('Channels', 'channels', () => platform.router.navigate('/messages')),
-        h('span.sep'),
-        taskButton('Search', 'refresh', () => search(true)),
+        taskButton('Refresh', 'refresh', () => search(true)),
         taskButton('Send Message', 'send', sendMessageTask, { primary: true }),
-        h('span.sep'),
         taskButton('Import Messages', 'import', importMessagesTask),
         taskButton('Export Results', 'export', exportResultsTask),
-        taskButton('Reprocess Results', 'transform', reprocessResultsTask),
-        taskButton('Remove Results', 'trash', removeResultsTask, { danger: true }),
-        ctxTasks,
-        h('span.sep'),
         taskButton('Remove All Messages', 'trash', removeAllTask, { danger: true }),
-        h('span.taskbar-spacer'),
-        h('span.faint#msg-channel-name', channelId));
+        taskButton('Remove Results', 'trash', removeResultsTask, { danger: true }),
+        removeMessageBtn,
+        taskButton('Reprocess Results', 'transform', reprocessResultsTask),
+        reprocessMessageBtn);
 
     /* ---- bootstrap ----------------------------------------------------------------- */
 
@@ -2029,8 +1965,6 @@ function renderBrowser(platform, channelId, options = {}) {
             const found = idNamePairs(map).find(c => c.id === channelId);
             if (found) {
                 channelName = found.name;
-                const label = taskbar.querySelector('#msg-channel-name');
-                if (label) label.textContent = found.name;
                 window.dispatchEvent(new CustomEvent('webadmin:set-title', {
                     detail: { title: `Channel Messages - ${found.name}` }
                 }));
