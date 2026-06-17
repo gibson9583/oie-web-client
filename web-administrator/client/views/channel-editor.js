@@ -2457,10 +2457,10 @@ async function renderEditor(platform, { params, query }) {
 
     function renderScripts() {
         const scripts = [
-            { key: 'deployScript', label: 'Deploy', hint: 'Runs once when the channel is deployed', context: 'GLOBAL_DEPLOY' },
-            { key: 'undeployScript', label: 'Undeploy', hint: 'Runs once when the channel is undeployed', context: 'GLOBAL_UNDEPLOY' },
-            { key: 'preprocessingScript', label: 'Preprocessor', hint: 'Runs before every message is processed', context: 'GLOBAL_PREPROCESSOR' },
-            { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed', context: 'GLOBAL_POSTPROCESSOR' }
+            { key: 'deployScript', label: 'Deploy', hint: 'Runs once when the channel is deployed', context: 'CHANNEL_DEPLOY' },
+            { key: 'undeployScript', label: 'Undeploy', hint: 'Runs once when the channel is undeployed', context: 'CHANNEL_UNDEPLOY' },
+            { key: 'preprocessingScript', label: 'Preprocessor', hint: 'Runs before every message is processed', context: 'CHANNEL_PREPROCESSOR' },
+            { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed', context: 'CHANNEL_POSTPROCESSOR' }
         ];
         let current = scripts[0];
         let switching = false;     // suppress markDirty while loading a script
