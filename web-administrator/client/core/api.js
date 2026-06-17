@@ -13,10 +13,16 @@
  * attributes and any properties contributed by server-side plugins.
  */
 
+import * as oie from './oie.js';
+
 const BASE = '/api';
 
 const listeners = { sessionExpired: [] };
 let sessionExpiredFired = false;
+
+// Deep clone JSON-serializable data (channels are plain engine JSON), so write
+// transforms don't mutate the object the editor still holds.
+const cloneJson = (o) => JSON.parse(JSON.stringify(o));
 
 export function onSessionExpired(fn) { listeners.sessionExpired.push(fn); }
 
@@ -257,10 +263,13 @@ export const users = {
 export const channels = {
     list: (channelIds, pollingOnly) =>
         get('/channels', { channelId: channelIds, pollingOnly }).then(v => asList(v, 'channel')),
-    get: (channelId) => get(`/channels/${channelId}`),
-    create: (channel) => post('/channels', channel, { wrapKey: 'channel' }),
+    // Transformer templates are base64-wrapped on the wire (engine
+    // Base64StringConverter); decode on read and re-encode a clone on write so
+    // the in-memory channel keeps plain-text templates. See oie.js.
+    get: (channelId) => get(`/channels/${channelId}`).then(c => oie.decodeChannelTemplates(c)),
+    create: (channel) => post('/channels', oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel' }),
     update: (channelId, channel, override = true) =>
-        put(`/channels/${channelId}`, channel, { wrapKey: 'channel', params: { override } }),
+        put(`/channels/${channelId}`, oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel', params: { override } }),
     remove: (channelId) => del(`/channels/${channelId}`),
     idsAndNames: () => get('/channels/idsAndNames'),
     connectorNames: (channelId) => get(`/channels/${channelId}/connectorNames`),

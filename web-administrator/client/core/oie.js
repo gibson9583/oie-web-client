@@ -278,6 +278,67 @@ export function setDestinations(channel, destinations) {
     channel.destinationConnectors = { connector: destinations };
 }
 
+/* ---- transformer template base64 codec --------------------------------------
+   The engine annotates Transformer.inboundTemplate / outboundTemplate with its
+   Base64StringConverter: those two fields are ALWAYS serialized as
+   { '@encoding': 'base64', '$': <base64 of the UTF-8 text> } to preserve exact
+   bytes — XML normalizes CR, so an HL7 template's '\r' segment separators would
+   otherwise be lost (verified: sending plaintext drops the CR). We therefore
+   decode these fields to plain strings on read and re-encode on write, so the
+   round-trip is byte-faithful and the rest of the app sees ordinary strings.
+   Standard base64 via the platform's atob/btoa (UTF-8 through TextEncoder/Decoder). */
+const TEMPLATE_KEYS = ['inboundTemplate', 'outboundTemplate'];
+
+function b64DecodeUtf8(b64) {
+    const bin = atob(String(b64).replace(/\s+/g, ''));
+    return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+function b64EncodeUtf8(str) {
+    const bytes = new TextEncoder().encode(String(str));
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+}
+
+function transformersOf(channel) {
+    const out = [];
+    if (channel && channel.sourceConnector && channel.sourceConnector.transformer) {
+        out.push(channel.sourceConnector.transformer);
+    }
+    for (const d of destinationsOf(channel)) {
+        if (d && d.transformer) out.push(d.transformer);
+        if (d && d.responseTransformer) out.push(d.responseTransformer);
+    }
+    return out;
+}
+
+/** Decode the base64-wrapped template fields of every transformer to plain text. */
+export function decodeChannelTemplates(channel) {
+    for (const t of transformersOf(channel)) {
+        for (const k of TEMPLATE_KEYS) {
+            const v = t[k];
+            if (v && typeof v === 'object' && String(v['@encoding'] || '').toLowerCase() === 'base64') {
+                try { t[k] = b64DecodeUtf8(v.$ ?? ''); } catch { t[k] = ''; }
+            }
+        }
+    }
+    return channel;
+}
+
+/** Re-encode plain-text template fields to the engine's base64 wrapper form. */
+export function encodeChannelTemplates(channel) {
+    for (const t of transformersOf(channel)) {
+        for (const k of TEMPLATE_KEYS) {
+            const v = t[k];
+            if (typeof v === 'string' && v !== '') {
+                t[k] = { '@encoding': 'base64', '$': b64EncodeUtf8(v) };
+            }
+        }
+    }
+    return channel;
+}
+
 /* Structural validation run before any create/save/deploy so the web admin can
    never persist a channel the engine would fail to deploy (e.g. a connector
    with null properties). Returns an array of human-readable problems; empty
