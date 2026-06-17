@@ -1133,19 +1133,23 @@ function renderResourcesTab({ setTasks, platform }) {
             updateTaskVisibility();
             contextMenu(e.clientX, e.clientY, [
                 { label: 'Add Resource', icon: 'plus', onClick: () => addResource() },
-                { label: 'Remove Resource', icon: 'trash', danger: true, onClick: () => removeResource() },
+                { label: 'Remove Resource', icon: 'trash', danger: true, hidden: isDefault(row), onClick: () => removeResource() },
                 { label: 'Reload Resource', icon: 'refresh', onClick: () => reloadResource() }
             ]);
         }
     });
 
     // Selection-dependent tasks only show when a resource is selected.
+    const removeBtn = taskButton('Remove Resource', 'trash', removeResource, { danger: true });
     const ctxTasks = h('div.ctx-tasks.hidden',
-        taskButton('Remove Resource', 'trash', removeResource, { danger: true }),
+        removeBtn,
         taskButton('Reload Resource', 'refresh', reloadResource));
 
     function updateTaskVisibility() {
-        ctxTasks.classList.toggle('hidden', table.selectedRows().length === 0);
+        const sel = table.selectedRows();
+        ctxTasks.classList.toggle('hidden', sel.length === 0);
+        // The Default Resource cannot be removed (Swing hides Remove for it).
+        removeBtn.classList.toggle('hidden', sel.length === 0 || isDefault(sel[0]));
     }
 
     const detailHost = h('div');
