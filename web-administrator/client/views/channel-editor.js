@@ -1309,9 +1309,14 @@ async function renderEditor(platform, { params, query }) {
                             }
 
                             // 2. Code template libraries — mutate this channel's
-                            //    membership, then PUT the full list.
+                            //    membership, then PUT the full list. Changing a
+                            //    library's channel set edits the SHARED libraries,
+                            //    so confirm first (matches Swing).
                             const changedLibs = libraries.filter(lib => libChecked.get(lib.id) !== libInitial.get(lib.id));
                             if (changedLibs.length) {
+                                const ok = await confirmDialog('Save Code Template Libraries',
+                                    "You've made changes to code template libraries, which will be saved now. Are you sure you wish to continue?");
+                                if (!ok) return false;
                                 for (const lib of changedLibs) {
                                     const enabled = new Set(idSet(lib.enabledChannelIds));
                                     const disabled = new Set(idSet(lib.disabledChannelIds));
