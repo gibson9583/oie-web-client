@@ -155,7 +155,7 @@ function renderCodeTemplates(platform) {
     });
     const editorHost = h('div', { style: { display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0', padding: '14px 16px', overflow: 'auto' } });
 
-    function markDirty() { dirty = true; }
+    function markDirty() { dirty = true; updateTaskVisibility(); }
 
     /* ---- data ------------------------------------------------------------------ */
 
@@ -780,23 +780,29 @@ function renderCodeTemplates(platform) {
     // Selection-dependent tasks. Export Library shows for a selected library;
     // Export Code Template / Validate Script show for a selected template;
     // Delete acts on either.
+    // Task pane matching the Swing Code Template Tasks (flat list): New Code
+    // Template appears with any selection; Export/Delete are labelled by the
+    // selected kind; Validate Script is template-only; Save All shows only when
+    // there are unsaved changes.
+    const newTemplateBtn = taskButton('New Code Template', 'plus', newTemplate);
     const exportLibraryBtn = taskButton('Export Library', 'export', exportLibrary);
     const exportTemplateBtn = taskButton('Export Code Template', 'export', exportTemplate);
+    const deleteLibraryBtn = taskButton('Delete Library', 'trash', deleteSelected, { danger: true });
+    const deleteTemplateBtn = taskButton('Delete Code Template', 'trash', deleteSelected, { danger: true });
     const validateBtn = taskButton('Validate Script', 'check', validateScriptTask);
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        exportLibraryBtn,
-        exportTemplateBtn,
-        taskButton('Delete', 'trash', deleteSelected, { danger: true }),
-        validateBtn);
+    const saveChangesBtn = taskButton('Save Changes', 'check', saveAll, { primary: true });
 
     function updateTaskVisibility() {
         const found = findSelected();
-        ctxTasks.classList.toggle('hidden', !found);
         const isTemplate = found && selected.kind === 'template';
         const isLibrary = found && selected.kind === 'library';
-        exportLibraryBtn.style.display = isLibrary ? '' : 'none';
-        exportTemplateBtn.style.display = isTemplate ? '' : 'none';
-        validateBtn.style.display = isTemplate ? '' : 'none';
+        newTemplateBtn.classList.toggle('hidden', !found);
+        exportLibraryBtn.classList.toggle('hidden', !isLibrary);
+        exportTemplateBtn.classList.toggle('hidden', !isTemplate);
+        deleteLibraryBtn.classList.toggle('hidden', !isLibrary);
+        deleteTemplateBtn.classList.toggle('hidden', !isTemplate);
+        validateBtn.classList.toggle('hidden', !isTemplate);
+        saveChangesBtn.classList.toggle('hidden', !dirty);
     }
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Code Template Tasks' } },
@@ -804,15 +810,20 @@ function renderCodeTemplates(platform) {
             if (dirty && !await confirmDialog('Refresh', 'Discard unsaved changes and refresh?', { okLabel: 'Refresh' })) return;
             load();
         }),
-        h('span.sep'),
-        taskButton('New Code Template', 'plus', newTemplate),
+        saveChangesBtn,
+        newTemplateBtn,
         taskButton('New Library', 'folder', newLibrary),
         taskButton('Import Code Templates', 'import', importCodeTemplates),
         taskButton('Import Libraries', 'import', importLibraries),
-        taskButton('Export All Libraries', 'export', exportLibraries),
-        ctxTasks,
-        h('span.sep'),
-        taskButton('Save All', 'check', saveAll, { primary: true }));
+        exportTemplateBtn,
+        exportLibraryBtn,
+        deleteTemplateBtn,
+        deleteLibraryBtn,
+        validateBtn);
+
+    [newTemplateBtn, exportLibraryBtn, exportTemplateBtn, deleteLibraryBtn, deleteTemplateBtn, validateBtn, saveChangesBtn]
+        .forEach(b => b.classList.add('hidden'));
+    updateTaskVisibility();
 
     // Top: the libraries/templates table + filter bar (Swing's upper grid).
     // Bottom: the library/template editor. A horizontal handle splits the two.

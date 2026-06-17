@@ -657,6 +657,17 @@ function renderChannels(platform) {
         return channels.filter(c => selected.has(c.id));
     }
 
+    // Channels an action targets: the selected channels, or — when a group row is
+    // selected — that group's channels (so Deploy/Enable/Disable work on a group).
+    function effectiveChannels() {
+        if (selected.size) return selectedChannels();
+        if (lastGroupId) {
+            const g = groupedChannels().find(x => x.id === lastGroupId);
+            return g ? g.channels : [];
+        }
+        return [];
+    }
+
     function single() {
         const rows = selectedChannels();
         if (rows.length !== 1) { toast('Select a single channel', 'warn'); return null; }
@@ -806,8 +817,8 @@ function renderChannels(platform) {
     }
 
     async function setEnabledTask(enabled) {
-        const rows = multi();
-        if (!rows) return;
+        const rows = effectiveChannels();
+        if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         for (const channel of rows) {
             try { await api.channels.setEnabled(channel.id, enabled); } catch (e) { toast(e.message, 'error'); }
         }
@@ -815,8 +826,8 @@ function renderChannels(platform) {
     }
 
     async function deployTask() {
-        const rows = multi();
-        if (!rows) return;
+        const rows = effectiveChannels();
+        if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         try {
             await api.engine.deployMany(rows.map(c => c.id));
             toast('Deploy task sent');
@@ -1034,59 +1045,72 @@ function renderChannels(platform) {
 
     /* ---- task bars -------------------------------------------------------------------- */
 
-    const selButtons = [
-        taskButton('Export Channel', 'export', exportTask),
-        taskButton('Clone', 'copy', cloneTask),
-        taskButton('Delete', 'trash', deleteTask, { danger: true }),
-        taskButton('Enable', 'check', () => setEnabledTask(true)),
-        taskButton('Disable', 'x', () => setEnabledTask(false)),
-        taskButton('Deploy', 'deploy', deployTask),
-        taskButton('View Messages', 'messages', messagesTask),
-        taskButton('Move to Group…', 'folder', moveToGroupTask)
-    ];
-
-    // Selection-dependent tasks live in a context group that only shows when
-    // a channel is selected (classic task-pane behavior).
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        h('span.sep'),
-        selButtons);
-
-    function updateTasks() {
-        const none = selected.size === 0;
-        for (const btn of selButtons) btn.disabled = none;
-        ctxTasks.classList.toggle('hidden', none);
-    }
-    updateTasks();
-
-    // Group tasks that require a selected (real) group — hidden otherwise.
-    const groupSelButtons = [
-        taskButton('Edit Group Details', 'edit', editGroupTask),
-        taskButton('Delete Group', 'trash', deleteGroupTask, { danger: true }),
-        taskButton('Export Group', 'export', exportGroupTask)
-    ];
-    const groupCtxTasks = h('div.ctx-tasks.hidden', h('span.sep'), groupSelButtons);
-
-    function updateGroupTasks() {
-        const hasGroup = !!lastGroupId && lastGroupId !== DEFAULT_GROUP_ID && groups.some(g => g.id === lastGroupId);
-        groupCtxTasks.classList.toggle('hidden', !hasGroup);
-    }
+    // Channel Tasks pane — selection-dependent items hide until the matching
+    // selection (channel / single channel / channel-or-group). Order + labels
+    // match the Swing Channel Tasks pane. (No "Debug Channel" — the web has no
+    // debug-deploy endpoint.)
+    const cDeploy = taskButton('Deploy Channel', 'deploy', deployTask);
+    const cExport = taskButton('Export Channel', 'export', exportTask);
+    const cDelete = taskButton('Delete Channel', 'trash', deleteTask, { danger: true });
+    const cClone = taskButton('Clone Channel', 'copy', cloneTask);
+    const cEdit = taskButton('Edit Channel', 'edit', () => { const c = single(); if (c) platform.router.navigate(`/channels/${c.id}/edit`); });
+    const cEnable = taskButton('Enable Channel', 'check', () => setEnabledTask(true));
+    const cDisable = taskButton('Disable Channel', 'x', () => setEnabledTask(false));
+    const cMessages = taskButton('View Messages', 'messages', messagesTask);
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Channel Tasks' } },
         taskButton('Refresh', 'refresh', () => refresh()),
         taskButton('Redeploy All', 'deploy', redeployAllTask),
+        cDeploy,
         taskButton('Edit Global Scripts', 'scripts', () => platform.router.navigate('/global-scripts')),
         taskButton('Edit Code Templates', 'code', () => platform.router.navigate('/code-templates')),
         taskButton('New Channel', 'plus', newTask, { primary: true }),
         taskButton('Import Channel', 'import', importTask),
-        taskButton('Export All Channels', 'export', exportAllTask),
-        ctxTasks);
+        cExport, cDelete, cClone, cEdit, cEnable, cDisable, cMessages);
 
-    const groupTaskbar = h('div.taskbar',
+    // Group Tasks pane.
+    const gAssign = taskButton('Assign To Group', 'folder', moveToGroupTask);
+    const gEdit = taskButton('Edit Group Details', 'edit', editGroupTask);
+    const gExport = taskButton('Export Group', 'export', exportGroupTask);
+    const gDelete = taskButton('Delete Group', 'trash', deleteGroupTask, { danger: true });
+
+    const groupTaskbar = h('div.taskbar', { dataset: { paneTitle: 'Group Tasks' } },
+        gAssign,
         taskButton('New Group', 'plus', newGroupTask),
+        gEdit,
         taskButton('Import Group', 'import', importGroupTask),
         taskButton('Export All Groups', 'export', exportGroupsTask),
-        groupCtxTasks);
-    groupTaskbar.dataset.paneTitle = 'Group Tasks';
+        gExport,
+        gDelete);
+
+    function updateTasks() {
+        const eff = effectiveChannels();
+        const channelSel = selected.size > 0;
+        const singleChannel = selected.size === 1;
+        const deployable = channelSel || !!lastGroupId;
+        cDeploy.classList.toggle('hidden', !deployable);
+        cExport.classList.toggle('hidden', !channelSel);
+        cDelete.classList.toggle('hidden', !channelSel);
+        cClone.classList.toggle('hidden', !singleChannel);
+        cEdit.classList.toggle('hidden', !singleChannel);
+        cEnable.classList.toggle('hidden', !(deployable && eff.some(c => !isEnabled(c))));
+        cDisable.classList.toggle('hidden', !(deployable && eff.some(c => isEnabled(c))));
+        cMessages.classList.toggle('hidden', !singleChannel);
+    }
+
+    function updateGroupTasks() {
+        const channelSel = selected.size > 0;
+        const realGroup = !!lastGroupId && lastGroupId !== DEFAULT_GROUP_ID && groups.some(g => g.id === lastGroupId);
+        gAssign.classList.toggle('hidden', !channelSel);
+        gEdit.classList.toggle('hidden', !realGroup);
+        gExport.classList.toggle('hidden', !realGroup);
+        gDelete.classList.toggle('hidden', !realGroup);
+    }
+
+    // Hide every selection-dependent task initially (nothing selected on load).
+    [cDeploy, cExport, cDelete, cClone, cEdit, cEnable, cDisable, cMessages, gAssign, gEdit, gExport, gDelete]
+        .forEach(b => b.classList.add('hidden'));
+    updateTasks();
     updateGroupTasks();
 
     /* ---- filter bar ---------------------------------------------------------------------- */
