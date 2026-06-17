@@ -557,6 +557,7 @@ function renderCodeTemplates(platform) {
             try { await api.codeTemplates.remove(template.id); } catch { /* not yet saved */ }
             entry.templates = entry.templates.filter(t => t !== template);
         }
+        invalidateCompletions();   // deleted templates no longer autocomplete
         selected = null;
         markDirty();
         renderTable();
@@ -676,6 +677,7 @@ function renderCodeTemplates(platform) {
                     new XMLSerializer().serializeToString(el), { override: true });
             }
             await api.putXml('/codeTemplateLibraries', xml, { override: true });
+            invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${file.name}`);
             selected = null;
             await load();
@@ -735,6 +737,7 @@ function renderCodeTemplates(platform) {
                 };
             });
             await api.codeTemplates.updateLibraries(payload);
+            invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${els.length} code template${els.length === 1 ? '' : 's'} into "${target.library.name || 'library'}"`);
             await load();
         } catch (e) {
