@@ -427,22 +427,33 @@ async function renderEditor(platform, { params, query }) {
     const destTasks = {};          // handlers exposed by renderDestinations()
     let activeTab = 'Summary';
 
+    // Count the filter rules / transformer steps on a connector so the task
+    // buttons can show a "(n)" indicator (Swing shows none; this surfaces that a
+    // connector has steps without opening it). Returns 0 for a missing connector.
+    function stepCount(connector, key) {
+        const el = connector && connector[key];
+        return el ? oie.elementsToArray(el.elements).length : 0;
+    }
+    const withCount = (label, n) => n > 0 ? `${label} (${n})` : label;
+
     function rebuildConnectorTasks() {
         clear(ctxTasks);
         if (activeTab === 'Source') {
+            const src = channel.sourceConnector;
             ctxTasks.appendChild(h('span.sep'));
-            ctxTasks.appendChild(taskButton('Edit Filter', 'filter', () => gotoElements('filter', 0)));
-            ctxTasks.appendChild(taskButton('Edit Transformer', 'transform', () => gotoElements('transformer', 0)));
+            ctxTasks.appendChild(taskButton(withCount('Edit Filter', stepCount(src, 'filter')), 'filter', () => gotoElements('filter', 0)));
+            ctxTasks.appendChild(taskButton(withCount('Edit Transformer', stepCount(src, 'transformer')), 'transform', () => gotoElements('transformer', 0)));
         } else if (activeTab === 'Destinations') {
+            const dest = destTasks.selected && destTasks.selected();
             ctxTasks.appendChild(h('span.sep'));
             ctxTasks.appendChild(taskButton('New Destination', 'plus', () => destTasks.newDestination()));
             ctxTasks.appendChild(taskButton('Delete Destination', 'trash', () => destTasks.deleteDestination(), { danger: true }));
             ctxTasks.appendChild(taskButton('Move Dest. Up', 'arrowUp', () => destTasks.move(-1)));
             ctxTasks.appendChild(taskButton('Move Dest. Down', 'arrowDown', () => destTasks.move(1)));
             ctxTasks.appendChild(h('span.sep'));
-            ctxTasks.appendChild(taskButton('Edit Filter', 'filter', () => destTasks.editElements('filter')));
-            ctxTasks.appendChild(taskButton('Edit Transformer', 'transform', () => destTasks.editElements('transformer')));
-            ctxTasks.appendChild(taskButton('Edit Response', 'transform', () => destTasks.editElements('response')));
+            ctxTasks.appendChild(taskButton(withCount('Edit Filter', stepCount(dest, 'filter')), 'filter', () => destTasks.editElements('filter')));
+            ctxTasks.appendChild(taskButton(withCount('Edit Transformer', stepCount(dest, 'transformer')), 'transform', () => destTasks.editElements('transformer')));
+            ctxTasks.appendChild(taskButton(withCount('Edit Response', stepCount(dest, 'responseTransformer')), 'transform', () => destTasks.editElements('response')));
             ctxTasks.appendChild(h('span.sep'));
             ctxTasks.appendChild(taskButton('Import Connector', 'import', () => destTasks.importConnector()));
             ctxTasks.appendChild(taskButton('Export Connector', 'export', () => destTasks.exportConnector()));
@@ -2085,7 +2096,7 @@ async function renderEditor(platform, { params, query }) {
 
         Object.assign(destTasks, {
             newDestination, deleteDestination, move, importConnector, exportConnector,
-            cloneDestination, setEnabled,
+            cloneDestination, setEnabled, selected: selectedDest,
             editElements(kind) {
                 const dest = needSelection();
                 if (dest) gotoElements(kind, dest.metaDataId);
