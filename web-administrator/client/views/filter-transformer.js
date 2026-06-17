@@ -177,7 +177,22 @@ async function renderEditor(platform, { params }, kindName) {
         }
     }
 
-    function commit() {
+    // While a step editor renders, some step plugins call onChange() to persist
+    // default-filled fields — that must NOT mark the channel dirty (opening or
+    // selecting a step would otherwise look like an unsaved edit). Set during the
+    // plugin's render only; real user edits happen with this false.
+    let settling = false;
+    let saveBtn = null;
+    const channelDirty = () =>
+        platform.store.getState('editingChannelNew') === true ||
+        platform.store.getState('editingChannelDirty') === true;
+    // Save Channel shows only when there are unsaved changes (matches the channel editor).
+    function refreshSave() { if (saveBtn) saveBtn.classList.toggle('hidden', !channelDirty()); }
+
+    // Serialize the working step list back onto the channel in the store. Used
+    // on teardown too, so it must NOT touch the dirty flag (otherwise leaving the
+    // editor after a save would re-mark the channel dirty).
+    function persist() {
         // The first rule in each list has no boolean operator; the rest do.
         if (isFilter) normalizeOperators(elements);
         stampVersions(elements);
@@ -185,8 +200,17 @@ async function renderEditor(platform, { params }, kindName) {
         platform.store.setState('editingChannel', channel);
     }
 
+    // Called by the edit handlers: persist AND mark the shared dirty flag the
+    // channel editor reads, so unsaved step edits prompt on exit.
+    function commit() {
+        persist();
+        if (settling) return;            // plugin initialization, not a user edit
+        platform.store.setState('editingChannelDirty', true);
+        refreshSave();
+    }
+
     async function saveChannel() {
-        commit();
+        persist();
         const problems = oie.validateChannel(channel);
         if (problems.length) {
             modal({
@@ -206,6 +230,8 @@ async function renderEditor(platform, { params }, kindName) {
                 channel.revision = (Number(channel.revision) || 0) + 1;
                 await api.channels.update(channel.id, channel);
             }
+            platform.store.setState('editingChannelDirty', false);
+            refreshSave();
             toast(`Saved ${channel.name}`);
         } catch (e) {
             toast(e.message, 'error');
@@ -349,7 +375,12 @@ async function renderEditor(platform, { params }, kindName) {
 
         const def = typeDef(element.__type);
         if (def && typeof def.render === 'function') {
-            def.render(body, { element, platform, onChange });
+            // Plugins may onChange() during render to persist defaults — suppress
+            // dirty-marking for the synchronous render so opening/selecting a step
+            // doesn't flag the channel unsaved.
+            settling = true;
+            try { def.render(body, { element, platform, onChange }); }
+            finally { settling = false; }
         } else {
             // Unknown plugin type: raw JSON fallback so nothing is lost.
             const area = h('textarea', { rows: 14, spellcheck: 'false' },
@@ -633,6 +664,7 @@ async function renderEditor(platform, { params }, kindName) {
         ctxTasks.classList.toggle('hidden', !elementAtPath(selectedPath));
     }
 
+    saveBtn = taskButton('Save Channel', 'check', saveChannel, { primary: true });
     const taskbar = h('div.taskbar',
         taskButton(`Add New ${kind.noun}`, 'plus', addElement),
         ctxTasks,
@@ -641,11 +673,12 @@ async function renderEditor(platform, { params }, kindName) {
         taskButton('Export', 'export', exportElements),
         taskButton('Validate', 'check', validateElements),
         h('span.sep'),
-        taskButton('Save Channel', 'check', saveChannel, { primary: true }),
+        saveBtn,
         taskButton('Back to Channel', 'chevR', () => {
-            commit();
+            persist();    // navigating back is not an edit — don't mark dirty
             platform.router.navigate(`/channels/${channel.id}/edit`);
         }));
+    refreshSave();   // hidden unless the channel already has unsaved changes
 
     /* ---- right panel: Reference ----------------------------------------------------- */
 
@@ -1428,5 +1461,6 @@ async function renderEditor(platform, { params }, kindName) {
     el.addEventListener('dragover', onAccessorDragOver);
     el.addEventListener('drop', onAccessorDrop);
 
-    return { el, teardown: commit };
+    // Teardown persists the working copy but must not mark dirty (see persist()).
+    return { el, teardown: persist };
 }

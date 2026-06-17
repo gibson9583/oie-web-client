@@ -157,13 +157,22 @@ async function renderEditor(platform, { params, query }) {
         detail: { title: `Edit Channel - ${channel.name || ''}` }
     }));
 
-    // Came back from the filter/transformer editor (or is a brand new channel):
-    // assume there may be unsaved edits.
-    let dirty = !!(stored && stored.id === params.channelId);
+    // Unsaved state is tracked in a shared store flag ('editingChannelDirty') so
+    // it survives navigation to the filter/transformer sub-editors and back.
+    // Previously "the channel is in the store" was treated as dirty, but those
+    // sub-editors leave it in the store even after they save — which falsely
+    // re-prompted on exit. A freshly loaded existing channel starts clean; a
+    // brand-new channel is dirty until saved.
+    const returning = !!(stored && stored.id === params.channelId);
+    if (!returning) platform.store.setState('editingChannelDirty', false);
+    // The shared flag is the single source of truth (it stays live while the
+    // filter/transformer sub-editors edit the same channel), so read it rather
+    // than mirror it in a local that goes stale across sub-editor navigation.
+    const isDirty = () => isNew || platform.store.getState('editingChannelDirty') === true;
     let saveBtn = null;
     // The Save button shows only when there are unsaved changes (Swing isSaveEnabled).
-    function refreshSaveVisibility() { if (saveBtn) saveBtn.classList.toggle('hidden', !dirty); }
-    function markDirty() { dirty = true; refreshSaveVisibility(); }
+    function refreshSaveVisibility() { if (saveBtn) saveBtn.classList.toggle('hidden', !isDirty()); }
+    function markDirty() { platform.store.setState('editingChannelDirty', true); refreshSaveVisibility(); }
 
     /* Leaving the editor with unsaved changes asks Save / Don't Save / Cancel
        (classic behavior). Navigation within this channel's editing flow
@@ -185,7 +194,7 @@ async function renderEditor(platform, { params, query }) {
 
     platform.store.setState('navGuard', async ({ path }) => {
         if (path.startsWith(`/channels/${params.channelId}/`)) return; // same editing flow
-        if (dirty) {
+        if (isDirty()) {
             const choice = await promptSaveChanges();
             if (choice === 'cancel') return false;
             if (choice === 'save' && !await save()) return false;
@@ -194,6 +203,7 @@ async function renderEditor(platform, { params, query }) {
         // never prompt again for navigation outside the editor.
         platform.store.setState('editingChannel', null);
         platform.store.setState('editingChannelNew', false);
+        platform.store.setState('editingChannelDirty', false);
         platform.store.setState('navGuard', null);
     });
 
@@ -293,7 +303,7 @@ async function renderEditor(platform, { params, query }) {
                 channel.revision = (Number(channel.revision) || 0) + 1;
                 await api.channels.update(channel.id, channel);
             }
-            dirty = false;
+            platform.store.setState('editingChannelDirty', false);
             refreshSaveVisibility();
             toast(`Saved ${channel.name}`);
             return true;
@@ -306,7 +316,7 @@ async function renderEditor(platform, { params, query }) {
     async function deploy() {
         // Match the Swing channel-view deploy (Frame.doDeployFromChannelView):
         // unsaved changes prompt to save-and-deploy; otherwise a plain confirm.
-        if (dirty) {
+        if (isDirty()) {
             if (!await confirmDialog('Deploy Channel',
                 'This channel will be saved before it is deployed. Are you sure you want to save and deploy this channel?',
                 { okLabel: 'Save and Deploy' })) return;
