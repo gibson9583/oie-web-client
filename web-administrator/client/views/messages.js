@@ -413,7 +413,8 @@ function renderBrowser(platform, channelId, options = {}) {
     let channelName = channelId;
     let offset = 0;
     let limit = Number(getPref('messagePageSize')) || 20;
-    let total = 0;
+    let total = null;             // full match count — null until counted (lazy) or auto-resolved on the last page
+    let hasNextPage = false;      // probed via a limit+1 fetch, so paging needs no COUNT
     let selectedRow = null;       // search-result Message
     let lastParams = {};
     let metaDataColumns = [];     // [{name, type, mappingName}] from /channels/{id}/metaDataColumns
@@ -1054,15 +1055,34 @@ function renderBrowser(platform, channelId, options = {}) {
     const firstBtn = taskButton('« First', null, () => { offset = 0; search(false); });
     const prevBtn = taskButton('‹ Prev', null, () => { offset = Math.max(0, offset - limit); search(false); });
     const nextBtn = taskButton('Next ›', null, () => { offset += limit; search(false); });
-    const lastBtn = taskButton('Last »', null, () => { offset = Math.max(0, Math.floor(Math.max(0, total - 1) / limit) * limit); search(false); });
-    const pagerBar = h('div.filterbar', { style: { flex: 'none' } }, firstBtn, prevBtn, nextBtn, lastBtn, pagerLabel);
+    const lastBtn = taskButton('Last »', null, () => { if (total != null) { offset = Math.max(0, Math.floor(Math.max(0, total - 1) / limit) * limit); search(false); } });
+    const countBtn = taskButton('Count', null, () => doCount());
+    const pagerBar = h('div.filterbar', { style: { flex: 'none' } }, firstBtn, prevBtn, nextBtn, lastBtn, pagerLabel, countBtn);
+
+    /* The total match count is resolved lazily (Swing's Count button): a COUNT is
+       expensive on large tables, so we don't run one on every search. Resolves on
+       demand and caches in `total`; returns it. */
+    async function ensureTotal() {
+        if (total == null) total = toCount(await api.messages.count(channelId, lastParams));
+        return total;
+    }
+    async function doCount() {
+        countBtn.disabled = true;
+        try { await ensureTotal(); }
+        catch (e) { toast(`Count failed: ${e.message}`, 'error'); countBtn.disabled = false; return; }
+        updatePager();
+    }
 
     function updatePager() {
-        const from = total === 0 ? 0 : offset + 1;
-        const to = Math.min(offset + limit, total);
-        pagerLabel.textContent = total ? `${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(total)}` : 'No results';
+        const shown = messages.length;
+        const totalStr = total == null ? '?' : fmtNumber(total);
+        pagerLabel.textContent = shown === 0
+            ? 'No results'
+            : `${fmtNumber(offset + 1)}–${fmtNumber(offset + shown)} of ${totalStr}`;
         firstBtn.disabled = prevBtn.disabled = offset <= 0;
-        nextBtn.disabled = lastBtn.disabled = offset + limit >= total;
+        nextBtn.disabled = !hasNextPage;
+        lastBtn.disabled = total == null;     // can't jump to the last page without a total
+        countBtn.disabled = total != null;    // nothing left to count once it's known
     }
 
     async function search(resetOffset) {
@@ -1071,18 +1091,22 @@ function renderBrowser(platform, channelId, options = {}) {
             lastParams = buildParams();
             limit = Number(pageSizeSel.value) || 20;
             searchSummary.textContent = `Current Search: ${describeSearch()}`;
+            total = null;   // lazily counted (Count button) or auto-resolved on the last page
         }
         try {
-            const [rows, count] = await Promise.all([
-                api.messages.search(channelId, { ...lastParams, offset, limit }),
-                api.messages.count(channelId, lastParams)
-            ]);
-            total = toCount(count);
+            // Fetch one extra row to learn whether a next page exists, instead of
+            // paying for a COUNT on every search (Swing's lazy-count model).
+            const rows = await api.messages.search(channelId, { ...lastParams, offset, limit: limit + 1 });
+            const list = rows.filter(m => m && typeof m === 'object');
+            hasNextPage = list.length > limit;
+            if (hasNextPage) list.pop();   // drop the probe row
+            messages = list;
+            // Last (or empty) page → the total is known for free; no COUNT needed.
+            if (!hasNextPage) total = offset + messages.length;
             selectedRow = null;
             selectedMetaDataId = 0;
             updateTaskVisibility();
             collapseDetail();
-            messages = rows.filter(m => m && typeof m === 'object');
             // Destinations expanded by default, matching the Swing browser.
             expandedIds.clear();
             for (const m of messages) {
@@ -1550,6 +1574,8 @@ function renderBrowser(platform, channelId, options = {}) {
 
     async function removeResultsTask() {
         const filter = { ...lastParams };
+        try { await ensureTotal(); }
+        catch (e) { toast(`Count failed: ${e.message}`, 'error'); return; }
         if (getPref('confirmReprocessRemove') !== false) {
             const text = await promptDialog('Remove Results',
                 `Permanently remove all ${fmtNumber(total)} message(s) matching the current search from ${channelName}? ` +
@@ -1572,7 +1598,9 @@ function renderBrowser(platform, channelId, options = {}) {
         }
     }
 
-    function reprocessResultsTask() {
+    async function reprocessResultsTask() {
+        try { await ensureTotal(); }
+        catch (e) { toast(`Count failed: ${e.message}`, 'error'); return; }
         reprocessDialog({ isResults: true });
     }
 
@@ -1606,7 +1634,9 @@ function renderBrowser(platform, channelId, options = {}) {
         search(true);
     }
 
-    function exportResultsTask() {
+    async function exportResultsTask() {
+        try { await ensureTotal(); }
+        catch (e) { toast(`Count failed: ${e.message}`, 'error'); return; }
         if (!total) { toast('No results to export', 'warn'); return; }
         exportResultsDialog();
     }
