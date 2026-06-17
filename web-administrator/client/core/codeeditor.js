@@ -87,6 +87,10 @@ export class CodeEditor {
     }
 
     focus() { this.area.focus(); }
+
+    // No-op for the baseline (its listeners are GC'd with the DOM); Monaco
+    // overrides editor.dispose to release its model/listeners/timer.
+    dispose() {}
 }
 
 /**
