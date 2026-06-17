@@ -565,12 +565,56 @@ function renderBrowser(platform, channelId, options = {}) {
         return params;
     }
 
-    function describeParams(params) {
+    /* Connectors clause for the search summary: included names, "all except …"
+       for an excluded set, the quick dropdown's single connector, or "(any)". */
+    function describeConnectors() {
+        const nameOf = (id) => {
+            const c = connectors.find(x => String(x.metaDataId) === String(id));
+            return c ? c.name : `Id ${id}`;
+        };
+        if (adv.includedMetaDataIds) return adv.includedMetaDataIds.length ? adv.includedMetaDataIds.map(nameOf).join(', ') : '(none)';
+        if (adv.excludedMetaDataIds) return `all except ${adv.excludedMetaDataIds.map(nameOf).join(', ')}`;
+        if (connectorSel.value !== '') return nameOf(connectorSel.value);
+        return '(any)';
+    }
+
+    /* Human-readable "Current Search" summary (Swing's labeled box) rather than a
+       raw key=value dump. Built from the live criteria at search time, which match
+       the params just sent. Statuses / Date Range / Connectors always show (with
+       "(any)"); the rest appear only when set. */
+    function describeSearch() {
+        const range = (lo, hi) => {
+            lo = String(lo ?? '').trim(); hi = String(hi ?? '').trim();
+            if (lo && hi) return `${lo}–${hi}`;
+            if (lo) return `≥ ${lo}`;
+            if (hi) return `≤ ${hi}`;
+            return null;
+        };
+        const dt = (v) => v ? v.replace('T', ' ') : '(any)';
         const parts = [];
-        for (const [key, value] of Object.entries(params)) {
-            for (const item of Array.isArray(value) ? value : [value]) parts.push(`${key}=${item}`);
+        parts.push(`Statuses: ${statusSelected.size ? [...statusSelected].join(', ') : '(any)'}`);
+        parts.push(`Date Range: ${dt(startInput.value)} to ${dt(endInput.value)}`);
+        const text = textSearchInput.value.trim();
+        if (text) parts.push(`Text Search: "${text}"${adv.textSearchRegex ? ' (regex)' : ''}`);
+        parts.push(`Connectors: ${describeConnectors()}`);
+        let r;
+        if ((r = range(adv.minMessageId, adv.maxMessageId))) parts.push(`Message Id: ${r}`);
+        if ((r = range(adv.minOriginalId, adv.maxOriginalId))) parts.push(`Original Id: ${r}`);
+        if ((r = range(adv.minImportId, adv.maxImportId))) parts.push(`Import Id: ${r}`);
+        if (adv.serverId.trim()) parts.push(`Server Id: ${adv.serverId.trim()}`);
+        if ((r = range(adv.minSendAttempts, adv.maxSendAttempts))) parts.push(`Send Attempts: ${r}`);
+        for (const cs of adv.contentSearches) {
+            if (!cs.text) continue;
+            const label = (CONTENT_SEARCH_TYPES.find(t => t.value === cs.type) || {}).label || cs.type;
+            parts.push(`${label} contains "${cs.text}"`);
         }
-        return parts.length ? parts.join(', ') : 'All messages';
+        for (const ms of adv.metaDataSearches) {
+            if (!ms.column) continue;
+            parts.push(`${ms.column} ${ms.operator} ${ms.value}${ms.ignoreCase ? ' (ignore case)' : ''}`);
+        }
+        if (adv.attachment) parts.push('Has Attachment');
+        if (adv.error) parts.push('Has Error');
+        return parts.join(' · ');
     }
 
     /* ---- advanced search dialog ------------------------------------------- */
@@ -1007,7 +1051,7 @@ function renderBrowser(platform, channelId, options = {}) {
             offset = 0;
             lastParams = buildParams();
             limit = Number(pageSizeSel.value) || 20;
-            searchSummary.textContent = `Current Search: ${describeParams(lastParams)}`;
+            searchSummary.textContent = `Current Search: ${describeSearch()}`;
         }
         try {
             const [rows, count] = await Promise.all([
