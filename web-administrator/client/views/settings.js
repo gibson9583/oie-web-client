@@ -955,6 +955,12 @@ function renderDatabaseTasksTab({ setTasks }) {
     const host = tabHost();
     host.appendChild(loading());
 
+    // Status-driven menu gating (Swing parity): Run only when no task is running;
+    // Cancel only for the running task.
+    let allRows = [];
+    const isRunning = (t) => String((t && t.status) || '').toUpperCase() === 'RUNNING';
+    const anyRunning = () => allRows.some(isRunning);
+
     const table = new DataTable([
         { key: 'name', label: 'Name', render: (t) => t.name || '' },
         { key: 'description', label: 'Description', render: (t) => t.description || '' },
@@ -976,19 +982,23 @@ function renderDatabaseTasksTab({ setTasks }) {
             table.selected = new Set([row.id]);
             updateTaskVisibility();
             contextMenu(e.clientX, e.clientY, [
-                { label: 'Run Task', icon: 'play', onClick: () => runTask() },
-                { label: 'Cancel Task', icon: 'stop', danger: true, onClick: () => cancelTask() }
+                { label: 'Run Task', icon: 'play', hidden: anyRunning(), onClick: () => runTask() },
+                { label: 'Cancel Task', icon: 'stop', danger: true, hidden: !isRunning(row), onClick: () => cancelTask() }
             ]);
         }
     });
 
     // Selection-dependent tasks only show when a task row is selected.
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        taskButton('Run Task', 'play', runTask),
-        taskButton('Cancel Task', 'stop', cancelTask, { danger: true }));
+    const runBtn = taskButton('Run Task', 'play', runTask);
+    const cancelBtn = taskButton('Cancel Task', 'stop', cancelTask, { danger: true });
+    const ctxTasks = h('div.ctx-tasks.hidden', runBtn, cancelBtn);
 
     function updateTaskVisibility() {
-        ctxTasks.classList.toggle('hidden', table.selectedRows().length === 0);
+        const sel = table.selectedRows();
+        ctxTasks.classList.toggle('hidden', sel.length === 0);
+        // Run when nothing is running; Cancel only for the running selection.
+        runBtn.classList.toggle('hidden', sel.length === 0 || anyRunning());
+        cancelBtn.classList.toggle('hidden', sel.length === 0 || !isRunning(sel[0]));
     }
 
     function normalize(raw) {
@@ -1012,7 +1022,8 @@ function renderDatabaseTasksTab({ setTasks }) {
     let firstLoad = true;
     async function load() {
         try {
-            table.setRows(normalize(await api.databaseTasks.list()));
+            allRows = normalize(await api.databaseTasks.list());
+            table.setRows(allRows);
             updateTaskVisibility();
             if (firstLoad) {
                 firstLoad = false;
@@ -1049,6 +1060,7 @@ function renderDatabaseTasksTab({ setTasks }) {
     async function cancelTask() {
         const task = selectedTask();
         if (!task) return;
+        if (!isRunning(task)) { toast(`Task "${task.name}" is not currently running.`, 'warn'); return; }
         try {
             await api.databaseTasks.cancel(task.id);
             toast('Cancel requested');
