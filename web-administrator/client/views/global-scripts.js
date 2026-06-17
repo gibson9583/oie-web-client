@@ -59,7 +59,7 @@ function renderGlobalScripts(platform) {
         const editor = platform.createCodeEditor({
             value: def.defaultValue,
             language: 'javascript',
-            onChange: () => { dirty = true; }
+            onChange: () => { dirty = true; updateTaskVisibility(); }
         });
         editor.el.style.flex = '1';
         editor.el.style.minHeight = '0';
@@ -96,6 +96,7 @@ function renderGlobalScripts(platform) {
                 editors[def.key].setValue(value === undefined || value === '' ? def.defaultValue : value);
             }
             dirty = false;
+            updateTaskVisibility();
             buildTabs();
         } catch (e) {
             toast(`Load failed: ${e.message}`, 'error');
@@ -108,16 +109,11 @@ function renderGlobalScripts(platform) {
             const map = { entry: SCRIPTS.map(def => ({ string: [def.key, editors[def.key].getValue()] })) };
             await api.server.setGlobalScripts(map);
             dirty = false;
+            updateTaskVisibility();
             toast('Global scripts saved');
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');
         }
-    }
-
-    async function revert() {
-        if (dirty && !await confirmDialog('Revert', 'Discard unsaved changes and reload the scripts from the server?', { okLabel: 'Revert' })) return;
-        await load();
-        toast('Scripts reverted');
     }
 
     /* Import/export use the engine's own XStream <map> XML so the files are
@@ -147,13 +143,20 @@ function renderGlobalScripts(platform) {
         }
     }
 
+    // Swing Script Tasks pane is flat: Save Scripts only appears once a script
+    // is edited (TASK_GLOBAL_SCRIPTS_SAVE, gated on the dirty flag); Validate /
+    // Import / Export are always available.
+    const saveBtn = taskButton('Save Scripts', 'save', save, { primary: true });
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Script Tasks' } },
-        taskButton('Save Scripts', 'check', save, { primary: true }),
+        saveBtn,
         taskButton('Validate Script', 'check', validateActive),
-        taskButton('Revert', 'refresh', revert),
-        h('span.sep'),
         taskButton('Import Scripts', 'import', importScripts),
         taskButton('Export Scripts', 'export', exportScripts));
+
+    function updateTaskVisibility() {
+        saveBtn.classList.toggle('hidden', !dirty);
+    }
+    updateTaskVisibility();
 
     load();
 

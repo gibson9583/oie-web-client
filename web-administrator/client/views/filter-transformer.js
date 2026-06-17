@@ -654,30 +654,40 @@ async function renderEditor(platform, { params }, kindName) {
     });
 
     // Selection-dependent tasks only show when a step/rule row is selected
-    // (the editor auto-selects the first row when the list is non-empty).
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        taskButton('Delete', 'trash', deleteElement, { danger: true }),
-        taskButton('Move Up', 'arrowUp', () => move(-1)),
-        taskButton('Move Down', 'arrowDown', () => move(1)));
+    // (the editor auto-selects the first row when the list is non-empty). Matches
+    // the Swing Transformer/Filter Tasks pane: Delete + Assign/Remove Iterator +
+    // the single-step Validate appear with a selection; Move Up/Down stay in the
+    // right-click menu (reorder is via drag in Swing).
+    const deleteBtn = taskButton(`Delete ${kind.noun}`, 'trash', deleteElement, { danger: true });
+    const assignBtn = taskButton('Assign To Iterator', 'plus', assignToIterator);
+    const removeBtn = taskButton('Remove From Iterator', 'minus', removeFromIterator);
+    const validateStepBtn = taskButton(`Validate ${kind.noun}`, 'check', validateElement);
 
     function updateTaskVisibility() {
-        ctxTasks.classList.toggle('hidden', !elementAtPath(selectedPath));
+        const el = elementAtPath(selectedPath);
+        const onStep = !!el;
+        deleteBtn.classList.toggle('hidden', !onStep);
+        validateStepBtn.classList.toggle('hidden', !onStep);
+        assignBtn.classList.toggle('hidden', !(onStep && !isIteratorType(el.__type)));
+        removeBtn.classList.toggle('hidden', !(onStep && selectedPath.length > 1));
     }
 
-    saveBtn = taskButton('Save Channel', 'check', saveChannel, { primary: true });
-    const taskbar = h('div.taskbar',
+    saveBtn = taskButton('Save Channel', 'save', saveChannel, { primary: true });
+    const taskbar = h('div.taskbar', { dataset: { paneTitle: `${kind.title} Tasks` } },
         taskButton(`Add New ${kind.noun}`, 'plus', addElement),
-        ctxTasks,
-        h('span.sep'),
-        taskButton('Import', 'import', importElements),
-        taskButton('Export', 'export', exportElements),
-        taskButton('Validate', 'check', validateElements),
-        h('span.sep'),
+        deleteBtn,
+        assignBtn,
+        removeBtn,
+        taskButton(`Import ${kind.title}`, 'import', importElements),
+        taskButton(`Export ${kind.title}`, 'export', exportElements),
+        taskButton(`Validate ${kind.title}`, 'check', validateElements),
+        validateStepBtn,
         saveBtn,
         taskButton('Back to Channel', 'chevR', () => {
             persist();    // navigating back is not an edit — don't mark dirty
             platform.router.navigate(`/channels/${channel.id}/edit`);
         }));
+    [deleteBtn, assignBtn, removeBtn, validateStepBtn].forEach(b => b.classList.add('hidden'));
     refreshSave();   // hidden unless the channel already has unsaved changes
 
     /* ---- right panel: Reference ----------------------------------------------------- */

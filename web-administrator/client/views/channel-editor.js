@@ -418,7 +418,7 @@ async function renderEditor(platform, { params, query }) {
     // group's children later updates the pane in place.
     const ctxTasks = h('div.ctx-tasks.hidden');
 
-    saveBtn = taskButton('Save Changes', 'check', save, { primary: true });
+    saveBtn = taskButton('Save Changes', 'save', save, { primary: true });
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Channel Tasks' } },
         saveBtn,
         taskButton('Deploy Channel', 'deploy', deploy),
@@ -1953,7 +1953,7 @@ async function renderEditor(platform, { params, query }) {
                 rebuildConnectorTasks();
                 // Full Swing channelEditPopupMenu set, plus Edit Filter/Transformer/Response.
                 contextMenu(e.clientX, e.clientY, [
-                    { label: 'Save Changes', icon: 'check', onClick: () => save() },
+                    { label: 'Save Changes', icon: 'save', onClick: () => save() },
                     { label: 'Validate Connector', icon: 'check', onClick: () => validateConnector() },
                     '-',
                     { label: 'New Destination', icon: 'plus', onClick: () => destTasks.newDestination() },

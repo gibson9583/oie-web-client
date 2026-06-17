@@ -26,6 +26,7 @@ const P = {
     minus: 'M5 12h14',
     x: 'M6 6l12 12M18 6L6 18',
     check: 'M4 13l5 5L20 7',
+    save: 'M5 4h11l3 3v13H5zM9 4v4h5V4M8 20v-7h8v7',
     edit: 'M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3',
     trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6',
     copy: 'M9 9h11v11H9zM5 15H4V4h11v1',

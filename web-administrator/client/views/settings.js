@@ -483,7 +483,7 @@ function renderServerTab({ setTasks }) {
 
     setTasks('Server Tasks', [
         taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'check', save, { primary: true }),
+        taskButton('Save', 'save', save, { primary: true }),
         '-',
         taskButton('Backup Config', 'export', backupConfig),
         taskButton('Restore Config', 'import', restoreConfig),
@@ -591,7 +591,7 @@ function renderAdministratorTab({ setTasks }) {
 
         setTasks('Administrator Tasks', [
             taskButton('Refresh', 'refresh', build),
-            taskButton('Save', 'check', save, { primary: true }),
+            taskButton('Save', 'save', save, { primary: true }),
             taskButton('Restore Defaults', 'refresh', () => { resetPrefs(); build(); toast('Preferences reset to defaults'); })
         ]);
     }
@@ -779,7 +779,7 @@ function renderTagsTab({ setTasks }) {
 
     setTasks('Tag Tasks', [
         taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'check', save, { primary: true }),
+        taskButton('Save', 'save', save, { primary: true }),
         taskButton('Add Tag', 'plus', addTag),
         ctxTasks
     ]);
@@ -936,7 +936,7 @@ function renderConfigurationMapTab({ setTasks }) {
 
     setTasks('Configuration Map Tasks', [
         taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'check', save, { primary: true }),
+        taskButton('Save', 'save', save, { primary: true }),
         taskButton('Import Map', 'import', importMap),
         taskButton('Export Map', 'export', exportMap)
     ]);
@@ -1275,7 +1275,7 @@ function renderResourcesTab({ setTasks, platform }) {
 
     setTasks('Resource Tasks', [
         taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'check', save, { primary: true }),
+        taskButton('Save', 'save', save, { primary: true }),
         taskButton('Add Resource', 'plus', addResource),
         ctxTasks
     ]);

@@ -296,7 +296,7 @@ function renderCodeTemplates(platform) {
             { label: 'Validate Script', icon: 'check', hidden: !isTemplate, onClick: () => validateScriptTask() },
             { label: 'Delete', icon: 'trash', danger: true, onClick: () => deleteSelected() },
             '-',
-            { label: 'Save All', icon: 'check', onClick: () => saveAll() }
+            { label: 'Save All', icon: 'save', onClick: () => saveAll() }
         ]);
     }
 
@@ -790,7 +790,7 @@ function renderCodeTemplates(platform) {
     const deleteLibraryBtn = taskButton('Delete Library', 'trash', deleteSelected, { danger: true });
     const deleteTemplateBtn = taskButton('Delete Code Template', 'trash', deleteSelected, { danger: true });
     const validateBtn = taskButton('Validate Script', 'check', validateScriptTask);
-    const saveChangesBtn = taskButton('Save Changes', 'check', saveAll, { primary: true });
+    const saveChangesBtn = taskButton('Save Changes', 'save', saveAll, { primary: true });
 
     function updateTaskVisibility() {
         const found = findSelected();

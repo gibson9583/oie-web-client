@@ -356,40 +356,38 @@ function renderAlerts(platform) {
         }
     }
 
-    // Selection-dependent tasks live in a context group that only shows when
-    // an alert is selected (classic task-pane behavior).
-    const editBtn = taskButton('Edit', 'edit', editTask);
+    // Selection-dependent tasks (hidden until an alert is selected): Export/Edit
+    // need a single selection; Delete works on any; Enable/Disable show only the
+    // applicable action for the selected alerts' status. Order + labels match the
+    // Swing Alert Tasks pane (flat, no separators).
     const exportBtn = taskButton('Export Alert', 'export', exportTask);
-    const enableBtn = taskButton('Enable', 'check', () => setEnabledTask(true));
-    const disableBtn = taskButton('Disable', 'x', () => setEnabledTask(false));
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        editBtn,
-        exportBtn,
-        h('span.sep'),
-        enableBtn,
-        disableBtn,
-        h('span.sep'),
-        taskButton('Delete', 'trash', deleteTask, { danger: true }));
+    const deleteBtn = taskButton('Delete Alert', 'trash', deleteTask, { danger: true });
+    const editBtn = taskButton('Edit Alert', 'edit', editTask);
+    const enableBtn = taskButton('Enable Alert', 'check', () => setEnabledTask(true));
+    const disableBtn = taskButton('Disable Alert', 'x', () => setEnabledTask(false));
 
     function updateTaskVisibility() {
         const sel = table.selectedRows();
         const one = sel.length === 1 ? sel[0] : null;
-        ctxTasks.classList.toggle('hidden', sel.length === 0);
-        // Single-selection items hide on multi-select; Enable/Disable show only
-        // the action applicable to the selected alert's status (Swing parity).
-        editBtn.classList.toggle('hidden', !one);
         exportBtn.classList.toggle('hidden', !one);
-        enableBtn.classList.toggle('hidden', !one || one.enabled);
-        disableBtn.classList.toggle('hidden', !one || !one.enabled);
+        editBtn.classList.toggle('hidden', !one);
+        deleteBtn.classList.toggle('hidden', sel.length === 0);
+        enableBtn.classList.toggle('hidden', !sel.some(a => !a.enabled));
+        disableBtn.classList.toggle('hidden', !sel.some(a => a.enabled));
     }
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Alert Tasks' } },
         taskButton('Refresh', 'refresh', () => refresh()),
-        h('span.sep'),
         taskButton('New Alert', 'plus', newTask, { primary: true }),
         taskButton('Import Alert', 'import', importTask),
         taskButton('Export All Alerts', 'export', exportAllTask),
-        ctxTasks);
+        exportBtn,
+        deleteBtn,
+        editBtn,
+        enableBtn,
+        disableBtn);
+
+    [exportBtn, deleteBtn, editBtn, enableBtn, disableBtn].forEach(b => b.classList.add('hidden'));
 
     refresh();
 
@@ -442,7 +440,7 @@ function renderAlertEditor(platform, alertId, query = {}) {
     }
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Alert Edit Tasks' } },
-        taskButton('Save Alert', 'check', save, { primary: true }),
+        taskButton('Save Alert', 'save', save, { primary: true }),
         taskButton('Export Alert', 'export', exportTask),
         h('span.sep'),
         taskButton('Back to Alerts', 'logout', () => platform.router.navigate('/alerts')));

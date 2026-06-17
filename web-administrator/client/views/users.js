@@ -246,21 +246,25 @@ function renderUsers(platform) {
 
     // Selection-dependent tasks live in a context group that only shows when
     // a user is selected (classic task-pane behavior).
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        taskButton('Edit User', 'edit', () => editTask()),
-        taskButton('Change Password', 'key', () => passwordTask()),
-        h('span.sep'),
-        taskButton('Delete', 'trash', () => deleteTask(), { danger: true }));
+    // Edit User / Delete User appear when a user is selected (Swing User Tasks,
+    // flat, no separators). Change Password isn't a Swing task-pane item — it
+    // stays in the row right-click menu.
+    const editBtn = taskButton('Edit User', 'edit', () => editTask());
+    const deleteBtn = taskButton('Delete User', 'trash', () => deleteTask(), { danger: true });
 
     function updateTaskVisibility() {
-        ctxTasks.classList.toggle('hidden', table.selectedRows().length === 0);
+        const hasSel = table.selectedRows().length > 0;
+        editBtn.classList.toggle('hidden', !hasSel);
+        deleteBtn.classList.toggle('hidden', !hasSel);
     }
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'User Tasks' } },
         taskButton('Refresh', 'refresh', () => refresh()),
-        h('span.sep'),
         taskButton('New User', 'plus', () => newTask(), { primary: true }),
-        ctxTasks);
+        editBtn,
+        deleteBtn);
+
+    [editBtn, deleteBtn].forEach(b => b.classList.add('hidden'));
 
     refresh();
 

@@ -292,12 +292,9 @@ function renderExtensions(platform) {
     const enableBtn = taskButton('Enable', 'check', () => setEnabled(true));
     const disableBtn = taskButton('Disable', 'x', () => setEnabled(false));
     const ctxTasks = h('div.ctx-tasks.hidden',
-        h('span.sep'),
         enableBtn,
         disableBtn,
-        h('span.sep'),
         taskButton('Properties', 'eye', showProperties),
-        h('span.sep'),
         taskButton('Uninstall', 'trash', uninstallExtension, { danger: true }));
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Extension Tasks' } },
