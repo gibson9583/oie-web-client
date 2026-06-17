@@ -141,6 +141,20 @@ function renderDashboard(platform) {
         updateTaskVisibility();
         platform.events.emit('dashboard:selection', []);
     });
+    // Right-click the empty space below the rows: deselect and show the
+    // no-selection dashboard popup (just Refresh), matching the Swing dashboard.
+    tableHost.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('tr')) return;   // row + header menus handle their own
+        e.preventDefault();
+        if (selected.size) {
+            selected = new Set();
+            lastClicked = null;
+            renderTable();
+            updateTaskVisibility();
+            platform.events.emit('dashboard:selection', []);
+        }
+        contextMenu(e.clientX, e.clientY, [{ label: 'Refresh', icon: 'refresh', onClick: () => refresh() }]);
+    });
     const countsLabel = h('span.counts', '');
     const tabsHost = h('div', { style: { flex: 'none', height: '230px', overflow: 'hidden', display: 'flex', flexDirection: 'column' } });
     // Draggable divider (handled globally by core/resize.js) — resizes the tabs area.
