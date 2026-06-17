@@ -12,22 +12,24 @@
  * are neither movable nor resizable.
  */
 
-import { h } from './ui.js';
+import { h, contextMenu } from './ui.js';
 
 const PREFIX = 'webadmin-cols-';
 
-/** Per-view persistent column order + widths. `defaults` maps key -> width px. */
+/** Per-view persistent column order + widths + hidden set. `defaults` maps key -> width px. */
 export function createColumnManager(storageKey, defaults) {
     let order = null;        // saved data-column key order, or null = canonical
     let widths = {};
+    let hidden = new Set();  // column keys the user has hidden
     try {
         const raw = JSON.parse(localStorage.getItem(PREFIX + storageKey) || '{}');
         if (Array.isArray(raw.order)) order = raw.order;
         if (raw.widths && typeof raw.widths === 'object') widths = raw.widths;
+        if (Array.isArray(raw.hidden)) hidden = new Set(raw.hidden);
     } catch { /* defaults */ }
 
     function save() {
-        try { localStorage.setItem(PREFIX + storageKey, JSON.stringify({ order, widths })); }
+        try { localStorage.setItem(PREFIX + storageKey, JSON.stringify({ order, widths, hidden: [...hidden] })); }
         catch { /* private mode */ }
     }
 
@@ -45,8 +47,38 @@ export function createColumnManager(storageKey, defaults) {
         width(key) { return widths[key] != null ? widths[key] : (defaults[key] || 120); },
         setWidth(key, px) { widths[key] = Math.max(40, Math.round(px)); save(); },
         setOrder(keys) { order = keys.slice(); save(); },
-        reset() { order = null; widths = {}; save(); }
+        isHidden(key) { return hidden.has(key); },
+        setHidden(key, v) { if (v) hidden.add(key); else hidden.delete(key); save(); },
+        reset() { order = null; widths = {}; hidden = new Set(); save(); }
     };
+}
+
+/**
+ * Wire a Swing MirthTable-style "show/hide columns + Restore Default" menu onto a
+ * header element's right-click. `columns` is the full canonical [{key,label}] set;
+ * `pinnedKeys` names columns that can never be hidden. Toggling a column (or
+ * Restore Default) updates the manager and calls onChange so the view re-renders.
+ */
+export function attachColumnMenu(headerEl, { manager, columns, onChange, pinnedKeys = [] }) {
+    headerEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();   // don't fall through to a table-level context menu
+        const toggleable = columns.filter(c => !pinnedKeys.includes(c.key));
+        const visibleCount = toggleable.filter(c => !manager.isHidden(c.key)).length;
+        const items = toggleable.map(c => {
+            const shown = !manager.isHidden(c.key);
+            return {
+                label: `${shown ? '✓  ' : '     '}${c.label || c.key}`,
+                onClick: () => {
+                    if (shown && visibleCount <= 1) return;   // keep at least one column visible
+                    manager.setHidden(c.key, shown);
+                    onChange && onChange();
+                }
+            };
+        });
+        items.push('-', { label: 'Restore Default', onClick: () => { manager.reset(); onChange && onChange(); } });
+        contextMenu(e.clientX, e.clientY, items);
+    });
 }
 
 /**

@@ -11,18 +11,18 @@ import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, context
 import api from '@oie/web-api';
 import { newChannel, uuid } from '@oie/web-api';
 import { getPref, setPrefs } from '../core/prefs.js';
-import { createColumnManager, decorateColumns } from '@oie/web-ui';
+import { createColumnManager, decorateColumns, attachColumnMenu } from '@oie/web-ui';
 
 // Canonical data columns (after the leading twisty), with default widths.
 const CHANNEL_COLUMNS = [
-    { key: 'status', width: 90 },
-    { key: 'dataType', width: 95 },
-    { key: 'name', width: 280 },
-    { key: 'id', width: 250 },
-    { key: 'description', width: 240 },
-    { key: 'revDelta', width: 60 },
-    { key: 'lastDeployed', width: 150 },
-    { key: 'lastModified', width: 150 }
+    { key: 'status', label: 'Status', width: 90 },
+    { key: 'dataType', label: 'Data Type', width: 95 },
+    { key: 'name', label: 'Name', width: 280 },
+    { key: 'id', label: 'Id', width: 250 },
+    { key: 'description', label: 'Description', width: 240 },
+    { key: 'revDelta', label: 'Rev Δ', width: 60 },
+    { key: 'lastDeployed', label: 'Last Deployed', width: 150 },
+    { key: 'lastModified', label: 'Last Modified', width: 150 }
 ];
 
 /* ---- code template library bundling (Swing "import/export libraries with channels") ----
@@ -307,6 +307,8 @@ function renderChannels(platform) {
     const collapsed = new Set();    // group ids (default expanded)
     let filterText = '';
     const colMgr = createColumnManager('channels', Object.fromEntries(CHANNEL_COLUMNS.map(c => [c.key, c.width])));
+    // Recomputed each render; group/channel rows emit cells only for these.
+    let visibleCols = CHANNEL_COLUMNS.slice();
 
     const tableHost = h('div.dt-wrap', { style: { flex: '1', minHeight: '0', overflow: 'auto' } });
     // Click on empty space (not a row) clears the selection, dismissing the
@@ -384,16 +386,12 @@ function renderChannels(platform) {
             return;
         }
 
+        // Only the columns the user hasn't hidden, in canonical order (widths are
+        // applied by decorateColumns via the column manager).
+        visibleCols = CHANNEL_COLUMNS.filter(c => !colMgr.isHidden(c.key));
         const thead = h('thead', h('tr',
             h('th', { style: { width: '24px' } }, ''),
-            h('th', { style: { width: '90px' } }, 'Status'),
-            h('th', { style: { width: '90px' } }, 'Data Type'),
-            h('th', 'Name'),
-            h('th', { style: { width: '250px' } }, 'Id'),
-            h('th', 'Description'),
-            h('th', { style: { width: '50px' } }, 'Rev Δ'),
-            h('th', { style: { width: '140px' } }, 'Last Deployed'),
-            h('th', { style: { width: '140px' } }, 'Last Modified')));
+            visibleCols.map(c => h('th', c.label))));
 
         const tbody = h('tbody');
         for (const group of grouped) {
@@ -408,11 +406,13 @@ function renderChannels(platform) {
         tableHost.appendChild(table);
         decorateColumns(table, {
             manager: colMgr,
-            presentKeys: CHANNEL_COLUMNS.map(c => c.key),
+            presentKeys: visibleCols.map(c => c.key),
             pinned: 1,
             pinnedWidths: [24],
             onChange: renderTable
         });
+        // Name is the primary identifier (and carries tags), so keep it always shown.
+        attachColumnMenu(thead, { manager: colMgr, columns: CHANNEL_COLUMNS, onChange: renderTable, pinnedKeys: ['name'] });
     }
 
     let dragIds = null;   // channel ids being dragged onto a group row
@@ -433,17 +433,20 @@ function renderChannels(platform) {
             updateTasks();
             updateGroupTasks();
         };
+        const cells = {
+            status: h('td', ''),
+            dataType: h('td', ''),
+            name: h('td', { style: { fontWeight: '700' } }, `[${group.name}]`),
+            id: h('td.mono', h('span', { style: { color: 'var(--text-faint)' } },
+                group.id === DEFAULT_GROUP_ID ? 'Default Group' : (group.id || '--'))),
+            description: h('td.muted', descriptionCell(group.description)),
+            revDelta: h('td.num', '--'),
+            lastDeployed: h('td.mono', '--'),
+            lastModified: h('td.mono', '--')
+        };
         const tr = h('tr', { class: isSelected ? 'selected' : null, style: { cursor: 'pointer', background: isSelected ? null : 'var(--bg1)' } },
             h('td', h('span.twisty', { style: { cursor: 'pointer' }, onClick: (e) => { e.stopPropagation(); toggleCollapse(); } }, isCollapsed ? '▸' : '▾')),
-            h('td', ''),
-            h('td', ''),
-            h('td', { style: { fontWeight: '700' } }, `[${group.name}]`),
-            h('td.mono', h('span', { style: { color: 'var(--text-faint)' } },
-                group.id === DEFAULT_GROUP_ID ? 'Default Group' : (group.id || '--'))),
-            h('td.muted', descriptionCell(group.description)),
-            h('td.num', '--'),
-            h('td.mono', '--'),
-            h('td.mono', '--'));
+            visibleCols.map(c => cells[c.key]));
         tr.addEventListener('click', selectGroup);
         tr.addEventListener('dblclick', toggleCollapse);
         tr.addEventListener('contextmenu', (e) => {
@@ -528,18 +531,21 @@ function renderChannels(platform) {
                 : delta > 0 ? 'Channel changed since last deployment'
                     : 'Code templates changed since last deployment';
 
-        const tr = h('tr', { class: selected.has(channel.id) ? 'selected' : null, style: { cursor: 'pointer' } },
-            h('td', ''),
-            h('td', statusCell(channel)),
-            h('td', channel.sourceConnector?.transformer?.inboundDataType || ''),
-            h('td', nameCell(channel)),
-            h('td.mono', h('span', { style: { color: 'var(--text-faint)' } }, channel.id || '')),
-            h('td', descriptionCell(channel.description)),
-            delta === null ? h('td.num', '--')
+        const cells = {
+            status: h('td', statusCell(channel)),
+            dataType: h('td', channel.sourceConnector?.transformer?.inboundDataType || ''),
+            name: h('td', nameCell(channel)),
+            id: h('td.mono', h('span', { style: { color: 'var(--text-faint)' } }, channel.id || '')),
+            description: h('td', descriptionCell(channel.description)),
+            revDelta: delta === null ? h('td.num', '--')
                 : outOfSync ? h('td.num.cell-flag', { title: revTitle }, String(delta))
                     : h('td.num', '0'),
-            h('td.mono', status ? fmtDate(status.deployedDate) : '--'),
-            h('td.mono', fmtDate(channel.exportData?.metadata?.lastModified)));
+            lastDeployed: h('td.mono', status ? fmtDate(status.deployedDate) : '--'),
+            lastModified: h('td.mono', fmtDate(channel.exportData?.metadata?.lastModified))
+        };
+        const tr = h('tr', { class: selected.has(channel.id) ? 'selected' : null, style: { cursor: 'pointer' } },
+            h('td', ''),
+            visibleCols.map(c => cells[c.key]));
 
         tr.addEventListener('click', (e) => {
             if (e.metaKey || e.ctrlKey) {

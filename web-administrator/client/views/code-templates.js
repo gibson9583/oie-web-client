@@ -21,9 +21,15 @@ import api from '@oie/web-api';
 import { uuid } from '@oie/web-api';
 import { validateScript } from '../core/serialize.js';
 import { invalidate as invalidateCompletions } from '../core/script-completions.js';
-import { createColumnManager, decorateColumns } from '@oie/web-ui';
+import { createColumnManager, decorateColumns, attachColumnMenu } from '@oie/web-ui';
 
-const CT_COLUMNS = ['name', 'id', 'description', 'revision', 'lastModified'];
+const CT_COLUMNS = [
+    { key: 'name', label: 'Name' },
+    { key: 'id', label: 'Id' },
+    { key: 'description', label: 'Description' },
+    { key: 'revision', label: 'Revision', align: 'right' },
+    { key: 'lastModified', label: 'Last Modified' }
+];
 const CT_COL_WIDTHS = { name: 300, id: 280, description: 260, revision: 80, lastModified: 150 };
 
 const PROPERTIES_CLASS = 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties';
@@ -203,10 +209,30 @@ function renderCodeTemplates(platform) {
         }
 
         const term = filterText.trim().toLowerCase();
+        // Render only the columns the user hasn't hidden, in canonical order.
+        const visibleCols = CT_COLUMNS.filter(c => !colMgr.isHidden(c.key));
+
+        // One cell per visible column for a library or template row. `twisty` is
+        // the expand/collapse control that lives in the (pinned) Name cell of a
+        // library row.
+        function cellFor(col, node, kind, twisty) {
+            switch (col.key) {
+                case 'name':
+                    return kind === 'library'
+                        ? h('td', h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
+                            twisty, icon('folder', 14), h('span', node.name || '(unnamed library)')))
+                        : h('td', h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px', paddingLeft: '22px' } },
+                            icon('file', 14), h('span', node.name || '(unnamed template)')));
+                case 'id': return h('td.mono', node.id || '');
+                case 'description': return h('td', kind === 'library' ? (node.description || '') : templateDescription(node));
+                case 'revision': return h('td', { style: { textAlign: 'right' } }, String(node.revision ?? ''));
+                case 'lastModified': return h('td', fmtDate(node.lastModified));
+                default: return h('td', '');
+            }
+        }
+
         const thead = h('thead', h('tr',
-            h('th', 'Name'), h('th', 'Id'), h('th', 'Description'),
-            h('th', { style: { textAlign: 'right' } }, 'Revision'),
-            h('th', 'Last Modified')));
+            visibleCols.map(c => h('th', c.align === 'right' ? { style: { textAlign: 'right' } } : null, c.label))));
         const tbody = h('tbody');
 
         for (const entry of libraries) {
@@ -223,17 +249,10 @@ function renderCodeTemplates(platform) {
                 if (collapsed.has(lib.id)) collapsed.delete(lib.id); else collapsed.add(lib.id);
                 renderTable();
             } }, isCollapsed ? '▸' : '▾');
-            const libRow = h(`tr.group-row${selLib ? '.selected' : ''}`, {
+            tbody.appendChild(h(`tr.group-row${selLib ? '.selected' : ''}`, {
                 onClick: () => selectNode(libSel),
                 onContextMenu: (e) => nodeMenu(libSel, e)
-            },
-                h('td', h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px' } },
-                    twisty, icon('folder', 14), h('span', lib.name || '(unnamed library)'))),
-                h('td.mono', lib.id || ''),
-                h('td', lib.description || ''),
-                h('td', { style: { textAlign: 'right' } }, String(lib.revision ?? '')),
-                h('td', fmtDate(lib.lastModified)));
-            tbody.appendChild(libRow);
+            }, visibleCols.map(c => cellFor(c, lib, 'library', twisty))));
 
             if (isCollapsed) continue;
             const shown = term ? matchingTemplates : entry.templates;
@@ -243,19 +262,15 @@ function renderCodeTemplates(platform) {
                 tbody.appendChild(h(`tr${tSel ? '.selected' : ''}`, {
                     onClick: () => selectNode(tplSel),
                     onContextMenu: (e) => nodeMenu(tplSel, e)
-                },
-                    h('td', h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '6px', paddingLeft: '22px' } },
-                        icon('file', 14), h('span', template.name || '(unnamed template)'))),
-                    h('td.mono', template.id || ''),
-                    h('td', templateDescription(template)),
-                    h('td', { style: { textAlign: 'right' } }, String(template.revision ?? '')),
-                    h('td', fmtDate(template.lastModified))));
+                }, visibleCols.map(c => cellFor(c, template, 'template'))));
             }
         }
 
         const table = h('table.dt', thead, tbody);
         tableHost.appendChild(table);
-        decorateColumns(table, { manager: colMgr, presentKeys: CT_COLUMNS, onChange: renderTable });
+        decorateColumns(table, { manager: colMgr, presentKeys: visibleCols.map(c => c.key), onChange: renderTable });
+        // Name holds the tree twisty, so it can't be hidden (Swing's hierarchical column).
+        attachColumnMenu(thead, { manager: colMgr, columns: CT_COLUMNS, onChange: renderTable, pinnedKeys: ['name'] });
     }
 
     // Right-click parity with the Swing Code Templates tree (codeTemplatePopupMenu).

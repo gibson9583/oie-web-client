@@ -174,6 +174,15 @@ export interface DecorateColumnsOptions {
 }
 export function createColumnManager(storageKey: string, defaults: Record<string, number>): ColumnManager;
 export function decorateColumns(table: HTMLTableElement, opts: DecorateColumnsOptions): void;
+export interface ColumnMenuOptions {
+    manager: ColumnManager;
+    /** Full canonical column set ({ key, label }). */
+    columns: Array<{ key: string; label?: string }>;
+    onChange?: () => void;
+    /** Column keys that can never be hidden. */
+    pinnedKeys?: string[];
+}
+export function attachColumnMenu(headerEl: HTMLElement, opts: ColumnMenuOptions): void;
 
 /* ---- code editor (codeeditor.js) ------------------------------------------- */
 

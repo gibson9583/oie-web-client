@@ -481,12 +481,23 @@ function renderDashboard(platform) {
 
     function headerMenu(e) {
         e.preventDefault();
-        contextMenu(e.clientX, e.clientY, allColumns()
+        const items = allColumns()
             .filter(col => col.key !== 'name')    // Name cannot be hidden
             .map(col => ({
                 label: `${hiddenCols.has(col.key) ? '   ' : '✓'} ${col.label}`,
                 onClick: () => toggleColumn(col.key)
-            })));
+            }));
+        // Restore Default: show all columns + reset order/widths (Swing parity).
+        items.push('-', {
+            label: 'Restore Default',
+            onClick: () => {
+                hiddenCols.clear();
+                lsSet('oie-dash-cols', JSON.stringify([]));
+                colMgr.reset();
+                renderTable();
+            }
+        });
+        contextMenu(e.clientX, e.clientY, items);
     }
 
     /* ---- table -------------------------------------------------------------------- */
