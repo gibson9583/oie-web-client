@@ -106,7 +106,11 @@ function connectorMessagesOf(message) {
 
 function sourceOf(message) {
     const cms = connectorMessagesOf(message);
-    return cms.find(cm => Number(cm.metaDataId) === 0) ?? cms[0] ?? null;
+    // No fallback to cms[0]: when a filter (e.g. status=SENT) returns only
+    // destination connector messages, the message has no source row — the parent
+    // row then renders blank source-derived columns (Swing parity) instead of
+    // borrowing a destination's connector name / status / dates / metadata.
+    return cms.find(cm => Number(cm.metaDataId) === 0) ?? null;
 }
 
 function contentOf(messageContent) {
@@ -430,6 +434,30 @@ function renderBrowser(platform, channelId, options = {}) {
 
     const searchSummary = h('div.faint', { style: { marginTop: '6px' } }, 'Current Search: (none — press Search)');
 
+    /* The Advanced… button carries a dot whenever any advanced criterion is
+       staged, so an applied advanced filter is visible without reopening the
+       dialog. Applying advanced criteria does NOT auto-search — the user runs it
+       with Search (parity with the Swing browser). */
+    const advBtn = taskButton('Advanced…', 'filter', () => openAdvancedSearch());
+    const advDot = h('span', { style: {
+        display: 'inline-block', width: '7px', height: '7px', marginLeft: '7px',
+        borderRadius: '50%', background: 'var(--accent)'
+    } });
+    function advIsActive() {
+        const ranges = ['minMessageId', 'maxMessageId', 'minOriginalId', 'maxOriginalId',
+            'minImportId', 'maxImportId', 'minSendAttempts', 'maxSendAttempts'];
+        return !!(adv.includedMetaDataIds || adv.excludedMetaDataIds || adv.error
+            || adv.attachment || adv.contentSearches.length || adv.metaDataSearches.length
+            || adv.serverId.trim() || ranges.some(k => String(adv[k]).trim() !== ''));
+    }
+    function updateAdvIndicator() {
+        const on = advIsActive();
+        if (on && !advDot.isConnected) advBtn.appendChild(advDot);
+        else if (!on && advDot.isConnected) advDot.remove();
+        advBtn.title = on ? 'Advanced filter applied — press Search to run it' : '';
+    }
+    updateAdvIndicator();
+
     const criteriaBody = h('div.panel-body',
         h('div.form-row',
             field('Start Date', startInput),
@@ -439,7 +467,7 @@ function renderBrowser(platform, channelId, options = {}) {
             field('Connector', connectorSel),
             field('Page Size', pageSizeSel),
             taskButton('Search', 'search', () => search(true), { primary: true }),
-            taskButton('Advanced…', 'filter', () => openAdvancedSearch())),
+            advBtn),
         searchSummary);
 
     const criteriaChevron = h('span', { style: { cursor: 'pointer' } }, '▾');
@@ -640,7 +668,7 @@ function renderBrowser(platform, channelId, options = {}) {
             buttons: [
                 {
                     label: 'Reset',
-                    onClick: () => { adv = defaultAdvancedCriteria(); search(true); }
+                    onClick: () => { adv = defaultAdvancedCriteria(); updateAdvIndicator(); }
                 },
                 { label: 'Cancel' },
                 {
@@ -674,7 +702,9 @@ function renderBrowser(platform, channelId, options = {}) {
                                 .map(r => ({ column: String(r.column.value).trim(), operator: r.operator.value, value: r.value.value, ignoreCase: r.ignoreCase.checked }))
                                 .filter(r => r.column)
                         };
-                        search(true);
+                        // Stage the criteria + flag the button; the user runs the
+                        // search with Search (no auto-search on apply).
+                        updateAdvIndicator();
                     }
                 }
             ]
@@ -718,13 +748,13 @@ function renderBrowser(platform, channelId, options = {}) {
        default-visible. parent() renders the source row, child() a destination. */
     const COLUMNS = [
         { key: 'id', label: 'Id', def: true, w: '90px', cls: 'num', sort: (m) => Number(m.messageId), parent: (m) => String(m.messageId), child: () => '' },
-        { key: 'connector', label: 'Connector', def: true, sort: (m) => sourceOf(m)?.connectorName || '', parent: (m) => sourceOf(m)?.connectorName || 'Source', child: (cm) => cm.connectorName || `Destination ${cm.metaDataId}` },
-        { key: 'status', label: 'Status', def: true, w: '110px', sort: (m) => sourceOf(m)?.status || '', parent: (m, s) => statusTag(s && s.status), child: (cm) => statusTag(cm.status) },
+        { key: 'connector', label: 'Connector', def: true, sort: (m) => sourceOf(m)?.connectorName || '', parent: (m, s) => s ? (s.connectorName || 'Source') : '', child: (cm) => cm.connectorName || `Destination ${cm.metaDataId}` },
+        { key: 'status', label: 'Status', def: true, w: '110px', sort: (m) => sourceOf(m)?.status || '', parent: (m, s) => s ? statusTag(s.status) : '', child: (cm) => statusTag(cm.status) },
         { key: 'origReceived', label: 'Orig. Received Date', cls: 'mono', sort: (m) => fmtDate(m.receivedDate), parent: (m) => fmtDate(m.receivedDate), child: () => '' },
-        { key: 'received', label: 'Received Date', def: true, cls: 'mono', sort: (m) => fmtDate(sourceOf(m)?.receivedDate ?? m.receivedDate), parent: (m, s) => fmtDate((s && s.receivedDate) ?? m.receivedDate), child: (cm) => fmtDate(cm.receivedDate) },
+        { key: 'received', label: 'Received Date', def: true, cls: 'mono', sort: (m) => fmtDate(sourceOf(m)?.receivedDate ?? m.receivedDate), parent: (m, s) => s ? fmtDate(s.receivedDate ?? m.receivedDate) : '', child: (cm) => fmtDate(cm.receivedDate) },
         { key: 'sendAttempts', label: 'Send Attempts', w: '100px', cls: 'num', sort: (m) => maxAttempts(m), parent: (m) => String(maxAttempts(m)), child: (cm) => String(Number(cm.sendAttempts) || 0) },
-        { key: 'sendDate', label: 'Send Date', cls: 'mono', sort: (m) => fmtDate(sourceOf(m)?.sendDate), parent: (m, s) => fmtDate(s && s.sendDate), child: (cm) => fmtDate(cm.sendDate) },
-        { key: 'responseDate', label: 'Response Date', def: true, cls: 'mono', sort: (m) => fmtDate(sourceOf(m)?.responseDate), parent: (m, s) => fmtDate(s && s.responseDate), child: (cm) => fmtDate(cm.responseDate) },
+        { key: 'sendDate', label: 'Send Date', cls: 'mono', sort: (m) => fmtDate(sourceOf(m)?.sendDate), parent: (m, s) => s ? fmtDate(s.sendDate) : '', child: (cm) => fmtDate(cm.sendDate) },
+        { key: 'responseDate', label: 'Response Date', def: true, cls: 'mono', sort: (m) => fmtDate(sourceOf(m)?.responseDate), parent: (m, s) => s ? fmtDate(s.responseDate) : '', child: (cm) => fmtDate(cm.responseDate) },
         { key: 'errors', label: 'Errors', def: true, w: '90px', sort: (m) => messageHasError(m) ? 0 : 1, parent: (m, s) => errBadge(errorLabel(s)), child: (cm) => errBadge(errorLabel(cm)) },
         { key: 'serverId', label: 'Server Id', cls: 'mono', sort: (m) => m.serverId || '', parent: (m) => m.serverId || '', child: (cm) => cm.serverId || '' },
         { key: 'origServerId', label: 'Original Server Id', cls: 'mono', sort: (m) => m.originalServerId || '', parent: (m) => m.originalServerId || '', child: () => '' },
@@ -736,7 +766,10 @@ function renderBrowser(platform, channelId, options = {}) {
     const allColumns = () => [...COLUMNS, ...metaDataColumns.map(col => ({
         key: `meta:${col.name}`, label: col.name, def: true,
         sort: (m) => metaDataValue(m, col.name),
-        parent: (m) => metaDataValue(m, col.name),
+        // Parent = the source connector message's metadata only (Swing parity):
+        // blank when the source row isn't in the result, even if a destination
+        // carries the value (that still shows on the destination's own row).
+        parent: (m, s) => s ? metaOfCm(s, col.name) : '',
         child: (cm) => metaOfCm(cm, col.name)
     }))];
 
@@ -793,7 +826,12 @@ function renderBrowser(platform, channelId, options = {}) {
         selectedRow = m;
         selectedMetaDataId = metaDataId;
         updateTaskVisibility();
-        showDetail(m, metaDataId);
+        // The parent (source) row is a placeholder when the source connector
+        // message isn't in the result (e.g. a destination-only status filter):
+        // there's no connector in context, so show nothing rather than fetching
+        // the full message and rendering its source — matching the Swing browser.
+        if (Number(metaDataId) === 0 && !sourceOf(m)) collapseDetail();
+        else showDetail(m, metaDataId);
         renderTable();
     }
 
