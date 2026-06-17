@@ -28,7 +28,13 @@ export function invalidate() { librariesPromise = null; }
 
 function loadLibraries() {
     if (!librariesPromise) {
-        librariesPromise = api.codeTemplates.libraries(true).catch(() => []);
+        librariesPromise = api.codeTemplates.libraries(true).catch((e) => {
+            // Don't cache a transient failure — retry on the next focus instead
+            // of going silently empty for the whole session.
+            librariesPromise = null;
+            console.warn('[script-completions] could not load code templates:', e && e.message);
+            return [];
+        });
     }
     return librariesPromise;
 }
