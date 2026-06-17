@@ -218,19 +218,22 @@ function renderAlerts(platform) {
         // Full Swing alertPopupMenu (Frame.alertPopupMenu).
         onContextMenu: (a, e) => {
             updateTaskVisibility();
+            // Swing alertPopupMenu order + gating: single-selection items (Export/
+            // Edit/Enable/Disable) hide on multi-select; Enable/Disable show only the
+            // one applicable to the alert's status; Delete works on any selection.
+            const sel = table.selectedRows();
+            const one = sel.length === 1 ? sel[0] : null;
             contextMenu(e.clientX, e.clientY, [
                 { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
                 { label: 'New Alert', icon: 'plus', onClick: () => newTask() },
                 { label: 'Import Alert', icon: 'import', onClick: () => importTask() },
                 { label: 'Export All Alerts', icon: 'export', onClick: () => exportAllTask() },
                 '-',
-                { label: 'Edit Alert', icon: 'edit', onClick: () => editTask() },
-                { label: 'Export Alert', icon: 'export', onClick: () => exportTask() },
-                '-',
-                { label: 'Enable Alert', icon: 'check', onClick: () => setEnabledTask(true) },
-                { label: 'Disable Alert', icon: 'x', onClick: () => setEnabledTask(false) },
-                '-',
-                { label: 'Delete Alert', icon: 'trash', danger: true, onClick: () => deleteTask() }
+                { label: 'Export Alert', icon: 'export', hidden: !one, onClick: () => exportTask() },
+                { label: 'Delete Alert', icon: 'trash', danger: true, onClick: () => deleteTask() },
+                { label: 'Edit Alert', icon: 'edit', hidden: !one, onClick: () => editTask() },
+                { label: 'Enable Alert', icon: 'check', hidden: !one || one.enabled, onClick: () => setEnabledTask(true) },
+                { label: 'Disable Alert', icon: 'x', hidden: !one || !one.enabled, onClick: () => setEnabledTask(false) }
             ]);
         }
     });
@@ -355,17 +358,29 @@ function renderAlerts(platform) {
 
     // Selection-dependent tasks live in a context group that only shows when
     // an alert is selected (classic task-pane behavior).
+    const editBtn = taskButton('Edit', 'edit', editTask);
+    const exportBtn = taskButton('Export Alert', 'export', exportTask);
+    const enableBtn = taskButton('Enable', 'check', () => setEnabledTask(true));
+    const disableBtn = taskButton('Disable', 'x', () => setEnabledTask(false));
     const ctxTasks = h('div.ctx-tasks.hidden',
-        taskButton('Edit', 'edit', editTask),
-        taskButton('Export Alert', 'export', exportTask),
+        editBtn,
+        exportBtn,
         h('span.sep'),
-        taskButton('Enable', 'check', () => setEnabledTask(true)),
-        taskButton('Disable', 'x', () => setEnabledTask(false)),
+        enableBtn,
+        disableBtn,
         h('span.sep'),
         taskButton('Delete', 'trash', deleteTask, { danger: true }));
 
     function updateTaskVisibility() {
-        ctxTasks.classList.toggle('hidden', table.selectedRows().length === 0);
+        const sel = table.selectedRows();
+        const one = sel.length === 1 ? sel[0] : null;
+        ctxTasks.classList.toggle('hidden', sel.length === 0);
+        // Single-selection items hide on multi-select; Enable/Disable show only
+        // the action applicable to the selected alert's status (Swing parity).
+        editBtn.classList.toggle('hidden', !one);
+        exportBtn.classList.toggle('hidden', !one);
+        enableBtn.classList.toggle('hidden', !one || one.enabled);
+        disableBtn.classList.toggle('hidden', !one || !one.enabled);
     }
 
     const taskbar = h('div.taskbar', { dataset: { paneTitle: 'Alert Tasks' } },
