@@ -638,7 +638,7 @@ function renderDashboard(platform) {
         }
         const ctx = { group, members, started };
         const tr = h('tr.group-row',
-            h('td', h('span.twisty', { onClick: (e) => { e.stopPropagation(); toggleGroup(group.id); } }, isCollapsed ? '▸' : '▾')),
+            h('td', h('span.twisty.twisty-lg', { onClick: (e) => { e.stopPropagation(); toggleGroup(group.id); } }, isCollapsed ? '▸' : '▾')),
             cols.map(col => col.renderGroupAggregate ? col.renderGroupAggregate(totals, ctx) : h('td', '')));
         tr.addEventListener('click', () => toggleGroup(group.id));
         tr.addEventListener('contextmenu', (e) => {
@@ -710,7 +710,7 @@ function renderDashboard(platform) {
         const isExpanded = expandedChannels.has(st.channelId);
 
         const tr = h('tr', { class: selected.has(st.channelId) ? 'selected' : null, style: { cursor: 'pointer' } },
-            h('td', { style: { paddingLeft: '20px' } }, kids.length ? h('span.twisty', {
+            h('td', { style: { paddingLeft: '20px' } }, kids.length ? h('span.twisty.twisty-lg', {
                 onClick: (e) => {
                     e.stopPropagation();
                     isExpanded ? expandedChannels.delete(st.channelId) : expandedChannels.add(st.channelId);
