@@ -30,7 +30,7 @@ export function register(platform) {
     // Reached via task buttons (Dashboard/Channels), matching the Swing client.
     platform.registerView('/messages', () => renderChannelPicker(platform), { title: 'Messages' });
     platform.registerView('/messages/:channelId', ({ params, query }) =>
-        renderBrowser(platform, params.channelId, { send: query.send === '1' }), { title: 'Messages' });
+        renderBrowser(platform, params.channelId, { send: query.send === '1', metaDataId: query.metaDataId }), { title: 'Messages' });
 }
 
 /* ---- XStream JSON normalization helpers -------------------------------------- */
@@ -421,6 +421,11 @@ function renderBrowser(platform, channelId, options = {}) {
     let lastParams = {};
     let metaDataColumns = [];     // [{name, type, mappingName}] from /channels/{id}/metaDataColumns
     let adv = defaultAdvancedCriteria();
+    // Deep-link from the dashboard (double-click a connector row): pre-filter the
+    // search to that single connector by its metaDataId.
+    if (options.metaDataId != null && options.metaDataId !== '') {
+        adv.includedMetaDataIds = [Number(options.metaDataId)];
+    }
 
     /* ---- search criteria ------------------------------------------------- */
 

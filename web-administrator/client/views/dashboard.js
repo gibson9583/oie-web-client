@@ -108,6 +108,14 @@ function renderDashboard(platform) {
     let tags = [];
     let selected = new Set();             // channelIds
     let lastClicked = null;               // anchor for shift-range selection
+    let selectedConnector = null;         // { channelId, metaDataId } when a connector row is selected
+    let remountActiveTab = () => {};      // re-renders the open dashboard tab with the current selection
+    // Selection handed to the dashboard tabs (Connection Log, …): the selected
+    // connector's scope, otherwise the selected channels.
+    const currentSelection = () => selectedConnector
+        ? [{ channelId: selectedConnector.channelId, metaDataId: selectedConnector.metaDataId }]
+        : statuses.filter(s => selected.has(s.channelId));
+    const emitSelection = () => { platform.events.emit('dashboard:selection', currentSelection()); remountActiveTab(); };
     let expandedChannels = new Set();     // channels showing connector rows
     let collapsedGroups = new Set();      // groups default to expanded
     let filterText = '';
@@ -140,24 +148,26 @@ function renderDashboard(platform) {
     // contextual task buttons can be dismissed.
     tableHost.addEventListener('click', (e) => {
         if (e.target.closest('tr')) return;
-        if (!selected.size) return;
+        if (!selected.size && !selectedConnector) return;
         selected = new Set();
+        selectedConnector = null;
         lastClicked = null;
         renderTable();
         updateTaskVisibility();
-        platform.events.emit('dashboard:selection', []);
+        emitSelection();
     });
     // Right-click the empty space below the rows: deselect and show the
     // no-selection dashboard popup (just Refresh), matching the Swing dashboard.
     tableHost.addEventListener('contextmenu', (e) => {
         if (e.target.closest('tr')) return;   // row + header menus handle their own
         e.preventDefault();
-        if (selected.size) {
+        if (selected.size || selectedConnector) {
             selected = new Set();
+            selectedConnector = null;
             lastClicked = null;
             renderTable();
             updateTaskVisibility();
-            platform.events.emit('dashboard:selection', []);
+            emitSelection();
         }
         contextMenu(e.clientX, e.clientY, [{ label: 'Refresh', icon: 'refresh', onClick: () => refresh() }]);
     });
@@ -638,9 +648,10 @@ function renderDashboard(platform) {
             // menu acting on that selection (handlers reused via btnFor /
             // controlSelected; Send/View target the first member).
             selected = new Set(members.map(m => m.channelId));
+            selectedConnector = null;
             renderTable();
             updateTaskVisibility();
-            platform.events.emit('dashboard:selection', statuses.filter(s => selected.has(s.channelId)));
+            emitSelection();
             const first = members[0];
             const anyState = (fn) => members.some(fn);
             contextMenu(e.clientX, e.clientY, [
@@ -720,9 +731,10 @@ function renderDashboard(platform) {
                 selected = new Set([st.channelId]);
             }
             lastClicked = st.channelId;
+            selectedConnector = null;
             renderTable();
             updateTaskVisibility();
-            platform.events.emit('dashboard:selection', statuses.filter(s => selected.has(s.channelId)));
+            emitSelection();
         });
         tr.addEventListener('dblclick', () => platform.router.navigate(`/messages/${st.channelId}`));
         tr.addEventListener('contextmenu', (e) => {
@@ -754,9 +766,23 @@ function renderDashboard(platform) {
 
     function connectorRow(child, cols) {
         const stats = statsOf(child, lifetime);
-        const tr = h('tr', { style: { background: 'var(--bg0)', cursor: 'pointer' } },
+        const isSel = selectedConnector
+            && selectedConnector.channelId === child.channelId
+            && Number(selectedConnector.metaDataId) === Number(child.metaDataId);
+        const tr = h('tr', { class: isSel ? 'selected' : null, style: { background: isSel ? null : 'var(--bg0)', cursor: 'pointer' } },
             h('td', ''),
             cols.map(col => col.renderConnector ? col.renderConnector(child, stats) : h('td', '')));
+        // Click selects just this connector (scoping the Connection Log); double-
+        // click opens the message browser filtered to it (Swing parity).
+        tr.addEventListener('click', () => {
+            selectedConnector = { channelId: child.channelId, metaDataId: child.metaDataId };
+            selected = new Set();
+            lastClicked = null;
+            renderTable();
+            updateTaskVisibility();
+            emitSelection();
+        });
+        tr.addEventListener('dblclick', () => platform.router.navigate(`/messages/${child.channelId}?metaDataId=${child.metaDataId}`));
         // Right-click a source/destination connector row to start/stop just that
         // connector (Swing DASHBOARD_START_CONNECTOR / STOP_CONNECTOR).
         tr.addEventListener('contextmenu', (e) => {
@@ -948,6 +974,7 @@ function renderDashboard(platform) {
         if (!defs.length) { tabsHost.style.display = 'none'; tabsHandle.style.display = 'none'; return; }
         const bar = h('div.tabs', { style: { flex: 'none' } });
         const body = h('div', { style: { flex: '1', overflow: 'auto', minHeight: '0' } });
+        let activeDef = null;
         defs.forEach((def, i) => {
             bar.appendChild(h('button.tab', {
                 class: i === 0 ? 'active' : null,
@@ -959,16 +986,18 @@ function renderDashboard(platform) {
             }, def.label));
         });
         const mount = (def) => {
+            activeDef = def;
             clear(body);
             const host = h('div');
             // Attach before rendering so plugin code sees host.isConnected === true.
             body.appendChild(host);
-            const result = def.render(host, {
-                selection: statuses.filter(s => selected.has(s.channelId)),
-                platform
-            });
+            const result = def.render(host, { selection: currentSelection(), platform });
             if (result instanceof Node) host.appendChild(result);
         };
+        // Re-render the open tab when the selection changes so the Connection Log
+        // re-scopes to the selected channel/connector (the old tab's poll loop
+        // self-stops once its detached host is no longer connected).
+        remountActiveTab = () => { if (activeDef) mount(activeDef); };
         clear(tabsHost);
         tabsHost.appendChild(bar);
         tabsHost.appendChild(body);
@@ -992,6 +1021,7 @@ function renderDashboard(platform) {
             // Prune selection of channels that no longer exist, then sync tasks.
             const ids = new Set(statuses.map(x => x.channelId));
             for (const id of [...selected]) if (!ids.has(id)) selected.delete(id);
+            if (selectedConnector && !ids.has(selectedConnector.channelId)) selectedConnector = null;
             // Refresh open suggestions in place when polling brings new data.
             if (!typeahead.classList.contains('hidden') && document.activeElement === filterInput) openTypeahead();
             renderTable();

@@ -106,12 +106,17 @@ export function register(platform) {
                 if (started && !host.isConnected) { clearTimeout(timer); return; }
                 started = true;
                 try {
-                    const channelId = selection && selection.length === 1 ? selection[0].channelId : null;
+                    const sel = selection && selection.length === 1 ? selection[0] : null;
+                    const channelId = sel ? sel.channelId : null;
+                    // When a single connector row is selected, sel carries its
+                    // metaDataId — scope the (per-channel) log to that connector.
+                    const metaDataId = sel && sel.metaDataId != null ? Number(sel.metaDataId) : null;
                     const path = channelId
                         ? `/extensions/dashboardstatus/connectionLogs/${channelId}`
                         : '/extensions/dashboardstatus/connectionLogs';
-                    const items = platform.api.asList(
+                    let items = platform.api.asList(
                         await platform.api.get(path, { fetchSize: 100 }), 'connectionLogItem');
+                    if (metaDataId != null) items = items.filter(it => Number(it.metadataId) === metaDataId);
                     table.textContent = '';
                     table.appendChild(h('thead', h('tr',
                         h('th', 'Id'), h('th', 'Timestamp'), h('th', 'Channel'),
