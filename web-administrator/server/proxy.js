@@ -95,13 +95,16 @@ function createApiProxy(config) {
             // arrive as an AggregateError with an empty message — unwrap it.
             const causes = err.errors ? err.errors.map(e => e.message) : [err.message];
             const detail = `${err.code || ''} ${causes.join('; ')}`.trim();
+            // Full diagnostics (engine URL + socket error) go to the server log
+            // only; the browser gets a generic message so we don't disclose the
+            // internal engine address/port or socket topology to a client.
             console.error(`[proxy] ${req.method} ${req.originalUrl} -> ${config.engine.url} failed: ${detail}`);
             if (!res.headersSent) {
                 res.writeHead(502, { 'Content-Type': 'application/json' });
             }
             res.end(JSON.stringify({
                 error: 'ENGINE_UNREACHABLE',
-                message: `Could not reach the engine at ${config.engine.url}: ${detail}`
+                message: 'Could not reach the Open Integration Engine. Check the web administrator logs for details.'
             }));
         });
 
