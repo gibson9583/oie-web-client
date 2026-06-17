@@ -212,6 +212,14 @@ public class Serializer {
     private static void collectDescriptions(String xml, Object vocab, Map<String, String> map) throws Exception {
         DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
         f.setNamespaceAware(false);
+        // XXE hardening: this parses the engine serializer's own toXML() output,
+        // but the factory runs on the full engine classpath behind a network
+        // endpoint, so disable DOCTYPE/external entities defensively.
+        f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        f.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        f.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        f.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        f.setExpandEntityReferences(false);
         Document doc = f.newDocumentBuilder().parse(new InputSource(new StringReader(xml)));
         walk(doc.getDocumentElement(), vocab, map, new HashSet<String>());
     }

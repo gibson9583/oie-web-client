@@ -20,6 +20,10 @@
  *   WEBADMIN_CODE_TEMPLATE_COMPLETIONS
  *                        "false" to disable code-template autocompletion in the
  *                        script editors (avoids fetching large catalogs).
+ *   WEBADMIN_SERIALIZE_ALLOW_REMOTE
+ *                        "true" to allow non-loopback clients to reach the
+ *                        unauthenticated serializer bridge endpoints (default
+ *                        loopback-only).
  */
 
 'use strict';
@@ -50,7 +54,13 @@ const defaults = {
     // script editors (scoped to the channel + editor context). This fetches the
     // full code-template library set; on servers with very large catalogs an
     // admin may want to turn it off. Default on.
-    codeTemplateCompletions: true
+    codeTemplateCompletions: true,
+    // The serializer bridge endpoints (/webadmin/serialize*) are reachable only
+    // from loopback by default — they are unauthenticated (JSESSIONID is scoped
+    // to /api and never reaches them) and drive the warm JVM. Local browsers and
+    // a same-host reverse proxy work as-is; set this true only if the web admin
+    // is exposed directly to remote browsers AND fronted by your own auth/TLS.
+    serializeAllowRemote: false
 };
 
 function load() {
@@ -76,6 +86,7 @@ function load() {
     if (process.env.WEBADMIN_PLUGIN_DIR) config.pluginDir = path.resolve(process.env.WEBADMIN_PLUGIN_DIR);
     if (process.env.OIE_HOME) config.engineHome = process.env.OIE_HOME;
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
+    if (process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE) config.serializeAllowRemote = process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE === 'true';
     if (config.engineHome) config.engineHome = path.resolve(config.engineHome);
 
     // Effective search list: the primary dir plus any extras from config.json

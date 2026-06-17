@@ -17,6 +17,10 @@ const { spawn } = require('child_process');
 
 const REQUEST_TIMEOUT_MS = 15000;
 const RESTART_BACKOFF_MS = 5000;
+// One JVM serves all requests over a serial stdin loop, so cap how many can be
+// outstanding at once — past this the warm process is saturated and further
+// requests are shed (429) rather than queued unboundedly.
+const MAX_PENDING = 16;
 
 function buildClasspath(engineHome) {
     const cp = [];
@@ -92,7 +96,7 @@ function createBridge(config) {
         if (Date.now() - lastExitAt < RESTART_BACKOFF_MS) return;   // crash-loop guard
         const cp = buildClasspath(engineHome);
         try {
-            proc = spawn(javaBin, ['--source', '21', '-cp', cp, source], {
+            proc = spawn(javaBin, ['-Xmx512m', '--source', '21', '-cp', cp, source], {
                 cwd: path.dirname(source),
                 stdio: ['pipe', 'pipe', 'pipe']
             });
@@ -140,6 +144,10 @@ function createBridge(config) {
     function serialize({ dataType, serializationProperties, message }) {
         return new Promise((resolve, reject) => {
             if (!configured) return reject(new Error('serializer bridge not configured'));
+            if (pending.size >= MAX_PENDING) {
+                const e = new Error('serializer bridge busy'); e.busy = true;
+                return reject(e);
+            }
             start();
             if (!proc) return reject(new Error(lastError || 'serializer bridge unavailable'));
             const id = String(nextId++);
@@ -162,8 +170,11 @@ function createBridge(config) {
         });
     }
 
+    // Coarse status only — the engine install path and raw JVM stderr stay
+    // server-side (the route is unauthenticated). The client only needs
+    // `configured` to decide whether to use the bridge or fall back.
     function status() {
-        return { configured, ready, engineHome: engineHome || null, error: lastError };
+        return { configured, ready };
     }
 
     // Warm start so the first real request is fast.
@@ -187,20 +198,35 @@ function flattenProps(props) {
     return lines.join('\n');
 }
 
+// The serializer routes are unauthenticated (JSESSIONID is scoped to /api and
+// never reaches /webadmin) and drive the warm JVM, so restrict them to loopback
+// by default — local browsers and a same-host reverse proxy reach them; direct
+// remote exposure requires the explicit serializeAllowRemote opt-in.
+function isLoopback(addr) {
+    if (!addr) return false;
+    const a = addr.replace(/^::ffff:/, '');
+    return a === '127.0.0.1' || a === '::1' || a.startsWith('127.');
+}
+
 function installSerialize(app, config) {
     const bridge = createBridge(config);
+    const localOnly = (req, res, next) => {
+        if (config.serializeAllowRemote || isLoopback(req.socket && req.socket.remoteAddress)) return next();
+        return res.status(403).json({ ok: false, error: 'serializer bridge is loopback-only' });
+    };
 
-    app.get('/webadmin/serialize/status', (req, res) => res.json(bridge.status()));
+    app.get('/webadmin/serialize/status', localOnly, (req, res) => res.json(bridge.status()));
 
     // Body: { dataType, serializationProperties?, message }
-    app.post('/webadmin/serialize', express_json_limit, (req, res) => {
+    app.post('/webadmin/serialize', localOnly, express_json_limit, (req, res) => {
         const body = req.body || {};
         if (!body.dataType || body.message == null) {
             return res.status(400).json({ ok: false, error: 'dataType and message are required' });
         }
         bridge.serialize(body).then(
             ({ format, text, meta }) => res.json({ ok: true, format, data: text, meta: meta || null }),
-            (err) => res.status(bridge.configured() ? 502 : 503).json({ ok: false, error: err.message })
+            (err) => res.status(err.busy ? 429 : (bridge.configured() ? 502 : 503))
+                .json({ ok: false, error: err.message })
         );
     });
 
@@ -211,4 +237,4 @@ function installSerialize(app, config) {
 const express = require('express');
 const express_json_limit = express.json({ limit: '8mb' });
 
-module.exports = { installSerialize, createBridge };
+module.exports = { installSerialize, createBridge, isLoopback };
