@@ -36,8 +36,11 @@ function createApiProxy(config) {
             if (!HOP_BY_HOP.has(name.toLowerCase())) headers[name] = value;
         }
         headers['host'] = target.host;
-        // The engine's CSRF protection requires this header on /api requests.
-        if (!headers['x-requested-with']) headers['x-requested-with'] = 'OpenIntegrationEngine-WebAdmin';
+        // Do NOT synthesize the engine's anti-CSRF header (X-Requested-With):
+        // that guard works precisely because a cross-site request can't set a
+        // custom header without a preflight the engine rejects. The SPA sets it
+        // on every request (client/core/api.js), so it passes through here as-is
+        // for legitimate calls; forging it server-side would defeat the guard.
         // Forward the real client IP for the engine's audit log. The engine reads
         // X-Forwarded-For and only falls back to the socket address — which here
         // is this proxy's loopback connection, so without this header every event
