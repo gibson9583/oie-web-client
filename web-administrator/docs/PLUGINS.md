@@ -149,13 +149,17 @@ The single-instance rule is what makes registrations stick: your
 `platform.registerView(...)` must mutate the **shell's** registry. That's why you
 must **never deep-import** (`@oie/web-ui/dist/...`) or bundle a second copy of the
 framework into your plugin — a duplicate registers into a dead registry and
-silently does nothing. The `@oie/eslint-config` rule below enforces this.
+silently does nothing. The `@oie/eslint-config` rule below flags the static
+imports that would do this.
 
 ### Lint config
 
-Add [`@oie/eslint-config`](../../packages/eslint-config) so the build fails if a
-plugin reaches past the public API into shell internals or a package's deep
-paths:
+Add [`@oie/eslint-config`](../../packages/eslint-config) so the build fails when a
+plugin's **static imports** reach past the public API into shell internals
+(`client/core`, `client/connectors`, `client/views`, the `/core/*` absolute-URL
+form) or a package's deep paths. It's a lint-time guard over `import` statements —
+it can't catch a dynamic `import()` of a computed path, so still treat `@oie/*` as
+the only entry by convention:
 
 ```js
 // eslint.config.js

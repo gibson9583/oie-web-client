@@ -25,7 +25,19 @@ const pluginBoundary = {
     patterns: [
         ...noDeepPackageImports.patterns,
         {
-            group: ['**/client/core/*', '**/web-administrator/**', '**/core/api.js', '**/core/ui.js', '**/core/platform.js'],
+            // Shell internals are off-limits however the path is spelled: a
+            // relative reach into the web-admin source tree, or the bundled
+            // absolute-URL form (/core/*, /connectors/*, /views/*). ESLint matches
+            // an absolute "/core/api.js" only via "**/core/**" (a leading-slash
+            // pattern won't), so we glob whole directories rather than the three
+            // named files the old rule listed — that's where store.js, router.js,
+            // serialize.js, etc. slipped through. Plugins use @oie/* only.
+            group: [
+                '**/web-administrator/**',
+                '**/core/**',
+                '**/connectors/**',
+                '**/views/**',
+            ],
             message: 'Plugins must use the @oie/* public API, not web-admin shell internals.',
         },
     ],
