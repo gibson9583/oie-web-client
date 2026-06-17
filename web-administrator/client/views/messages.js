@@ -17,7 +17,7 @@
 
 import { h, clear, icon, toast, taskButton, modal, confirmDialog, promptDialog, checkbox, select, field, loading, fmtDate, fmtNumber, saveFile, pickFile, contextMenu, DataTable } from '@oie/web-ui';
 import api from '@oie/web-api';
-import { MESSAGE_STATUSES, messageStatusTag } from '@oie/web-api';
+import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../core/content-highlight.js';
 import { formatSentProperties } from '../core/sent-format.js';
 import { mappingEntries, parseResponse, toDisplayString } from '../core/xstream.js';
@@ -423,7 +423,51 @@ function renderBrowser(platform, channelId, options = {}) {
 
     const startInput = h('input', { type: 'datetime-local' });
     const endInput = h('input', { type: 'datetime-local' });
-    const statusSel = select([{ value: '', label: 'Any' }, ...MESSAGE_STATUSES], '');
+    /* Multi-select status filter — the Swing browser's status checkboxes (any
+       combination). A compact dropdown trigger opens a checklist; buildParams()
+       emits one `status=` query param per selected status. */
+    const STATUS_FILTER_ORDER = ['RECEIVED', 'TRANSFORMED', 'FILTERED', 'QUEUED', 'SENT', 'ERROR', 'PENDING'];
+    const statusSelected = new Set();
+    const statusBtnLabel = h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Any');
+    const statusBtn = h('button.btn', {
+        type: 'button',
+        style: { justifyContent: 'space-between', minWidth: '132px', fontWeight: 'normal' },
+        onClick: (e) => { e.stopPropagation(); toggleStatusMenu(); }
+    }, statusBtnLabel, h('span.faint', { style: { marginLeft: '8px' } }, '▾'));
+    function refreshStatusBtn() {
+        statusBtnLabel.textContent = statusSelected.size === 0 ? 'Any'
+            : statusSelected.size === 1 ? [...statusSelected][0]
+                : `${statusSelected.size} selected`;
+    }
+    let statusMenu = null;
+    function closeStatusMenu() {
+        if (statusMenu) { statusMenu.remove(); statusMenu = null; document.removeEventListener('mousedown', statusMenuDismiss); }
+    }
+    function statusMenuDismiss(e) {
+        if (statusMenu && !statusMenu.contains(e.target) && !statusBtn.contains(e.target)) closeStatusMenu();
+    }
+    function toggleStatusMenu() {
+        if (statusMenu) { closeStatusMenu(); return; }
+        const menu = h('div.ctx-menu', { style: { minWidth: '160px' } });
+        for (const s of STATUS_FILTER_ORDER) {
+            const cb = checkbox(s, statusSelected.has(s), {
+                onChange: (e) => { e.target.checked ? statusSelected.add(s) : statusSelected.delete(s); refreshStatusBtn(); }
+            });
+            cb.el.style.padding = '5px 8px';
+            cb.el.style.display = 'flex';
+            menu.appendChild(cb.el);
+        }
+        menu.appendChild(h('div.ctx-sep'));
+        menu.appendChild(h('button.ctx-item', {
+            onClick: () => { statusSelected.clear(); refreshStatusBtn(); closeStatusMenu(); }
+        }, 'Clear (Any)'));
+        document.body.appendChild(menu);
+        const r = statusBtn.getBoundingClientRect();
+        menu.style.left = r.left + 'px';
+        menu.style.top = (r.bottom + 4) + 'px';
+        statusMenu = menu;
+        setTimeout(() => document.addEventListener('mousedown', statusMenuDismiss), 0);
+    }
     const textSearchInput = h('input', {
         type: 'text', placeholder: 'Search message content…',
         style: { width: '220px' },
@@ -462,7 +506,7 @@ function renderBrowser(platform, channelId, options = {}) {
         h('div.form-row',
             field('Start Date', startInput),
             field('End Date', endInput),
-            field('Status', statusSel),
+            field('Status', statusBtn),
             field('Text Search', textSearchInput),
             field('Connector', connectorSel),
             field('Page Size', pageSizeSel),
@@ -486,7 +530,7 @@ function renderBrowser(platform, channelId, options = {}) {
         const end = toCalendarParam(endInput.value);
         if (start) params.startDate = start;
         if (end) params.endDate = end;
-        if (statusSel.value) params.status = statusSel.value;
+        if (statusSelected.size) params.status = [...statusSelected];
         const text = textSearchInput.value.trim();
         if (text) {
             params.textSearch = text;
