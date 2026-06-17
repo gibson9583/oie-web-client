@@ -65,6 +65,18 @@ function createApiProxy(config) {
             for (const [name, value] of Object.entries(upstreamRes.headers)) {
                 if (!HOP_BY_HOP.has(name.toLowerCase())) resHeaders[name] = value;
             }
+            // Harden the engine's session cookie as it crosses our origin: add
+            // SameSite (CSRF defense-in-depth) and, when the connection is HTTPS,
+            // Secure so the session can't be sent over plain HTTP. The engine
+            // sets neither because it serves the cookie on its own context.
+            if (Array.isArray(resHeaders['set-cookie'])) {
+                const https = req.headers['x-forwarded-proto'] === 'https' || !!req.socket.encrypted;
+                resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c) => {
+                    if (!/;\s*samesite=/i.test(c)) c += '; SameSite=Lax';
+                    if (https && !/;\s*secure/i.test(c)) c += '; Secure';
+                    return c;
+                });
+            }
             res.writeHead(upstreamRes.statusCode, resHeaders);
             upstreamRes.pipe(res);
         });
