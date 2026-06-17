@@ -118,7 +118,9 @@ function renderExtensions(platform) {
         { key: 'description', label: 'Description', render: (p) => p.description || '' }
     ], {
         rowKey: (p) => p.id || p.name,
-        emptyText: 'No web administrator plugins installed'
+        emptyText: 'No web administrator plugins installed',
+        columnsMenu: true,
+        columnsMenuKey: 'webadmin-cols-webplugins'
     });
     webTable.setRows(platform.store.getState('webPlugins') || []);
     const unsubscribe = platform.store.subscribe('webPlugins', (rows) => webTable.setRows(rows || []));

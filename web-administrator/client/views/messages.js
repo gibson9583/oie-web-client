@@ -371,6 +371,8 @@ function renderChannelPicker(platform) {
         selectable: 'single',
         rowKey: (r) => r.id,
         emptyText: 'No channels found',
+        columnsMenu: true,
+        columnsMenuKey: 'webadmin-cols-channelpicker',
         onSelect: (rows) => { if (rows.length) platform.router.navigate(`/messages/${rows[0].id}`); }
     });
 
