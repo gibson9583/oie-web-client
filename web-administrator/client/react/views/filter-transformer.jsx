@@ -33,7 +33,8 @@ import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { dataTypePropertiesEditor } from '../../datatypes/props-editor.js';
 import { REFERENCE_CATALOG } from '../../core/reference-catalog.js';
 import { platform } from '@oie/web-shell';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 
 const KINDS = {
@@ -442,6 +443,7 @@ function buildBody(params, kindName, onTasksChange) {
     /* ---- element editor + generated script (bottom tabs) ------------------------ */
 
     const editorHost = h('div.step-editor-fill', { style: { padding: '12px 14px' } });
+    let elementEditorRoot = null;   // teardown for the mounted step/rule React editor
     const generatedHost = h('div', { style: { padding: '12px 14px' } });
     const generatedEditor = createCodeEditor({ value: '', readOnly: true, minHeight: '200px' });
     generatedHost.appendChild(generatedEditor.el);
@@ -460,6 +462,7 @@ function buildBody(params, kindName, onTasksChange) {
     }
 
     function renderElementEditor() {
+        if (elementEditorRoot) { elementEditorRoot(); elementEditorRoot = null; }
         clear(editorHost);
         const element = elementAtPath(selectedPath);
         if (!element) {
@@ -476,12 +479,12 @@ function buildBody(params, kindName, onTasksChange) {
         const body = panel.querySelector('.panel-body');
 
         const def = typeDef(element.__type);
-        if (def && typeof def.render === 'function') {
-            // Plugins may onChange() during render to persist defaults — suppress
-            // dirty-marking for the synchronous render so opening/selecting a step
-            // doesn't flag the channel unsaved.
+        if (def && typeof def.component === 'function') {
+            // Plugins may onChange() during the synchronous (flushSync) mount to
+            // persist defaults — suppress dirty-marking so opening/selecting a
+            // step doesn't flag the channel unsaved.
             settling = true;
-            try { def.render(body, { element, platform, onChange }); }
+            try { elementEditorRoot = mountReact(body, <PluginSlot def={def} ctx={{ element, platform, onChange }} />); }
             finally { settling = false; }
         } else {
             // Unknown plugin type: raw JSON fallback so nothing is lost.
@@ -1540,7 +1543,7 @@ function buildBody(params, kindName, onTasksChange) {
 
     // The task pane is React; the body is just the split layout (no .taskbar here).
     const el = h('div.view-body.flush', { style: { display: 'flex', flex: '1', minHeight: '0' } },
-        h('div.split',
+        h('div.split', { style: { flex: '1', minWidth: '0' } },
             h('div.split-a.split.vertical', { style: { flex: '1', minWidth: '0' } },
                 h('div.split-a', { style: { height: '40%', flex: 'none' } }, tableHost),
                 h('div.split-handle'),
@@ -1569,6 +1572,6 @@ function buildBody(params, kindName, onTasksChange) {
         },
         // Teardown persists the working copy but must not mark dirty (see persist()),
         // then clears the editor's code-template scope so it can't leak to the next view.
-        teardown: () => { persist(); clearActiveScope(); }
+        teardown: () => { if (elementEditorRoot) elementEditorRoot(); persist(); clearActiveScope(); }
     };
 }

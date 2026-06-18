@@ -6,6 +6,7 @@
  * return DOM and their taskbars relocate into the rail. The strangler seam.
  */
 
+import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import {
     useStoreKey, useTheme, useTimezone, useViewTitle, useRouteChange,
@@ -13,7 +14,7 @@ import {
 } from './bridges.jsx';
 import { relocateTaskbars } from './legacy-tasks.js';
 import { RailPane } from './ui.jsx';
-import { setReactTasksHost } from './mount.jsx';
+import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
@@ -44,6 +45,13 @@ let engineStarted = null;
 function startEngine() {
     if (engineStarted) return engineStarted;
     engineStarted = (async () => {
+        // Share the host's React with plugins (so plugin components use the same
+        // instance the app renders with). Set before any plugin/view registers.
+        platform.React = React;
+        // Lets a plugin register a full routed view from a React component:
+        // platform.registerView(path, platform.reactView(MyView), { title }).
+        platform.reactView = reactView;
+
         try {
             const res = await fetch('/webadmin/config.json');
             if (res.ok) store.setState('webadminConfig', await res.json());

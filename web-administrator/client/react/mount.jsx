@@ -37,6 +37,19 @@ export function reactView(Component) {
     };
 }
 
+// Mount a React element into an existing (imperatively built) host element and
+// return a teardown. Used by the heavy imperative DOM islands (channel-editor
+// connector/properties panels, filter-transformer step/rule editors, settings
+// plugin tabs, message attachment viewers) to host a plugin's React component.
+// flushSync makes the first render synchronous so the DOM exists before the
+// caller measures/returns. Call the returned teardown when rebuilding/clearing
+// the host so the React root doesn't leak.
+export function mountReact(hostEl, element) {
+    const root = createRoot(hostEl);
+    flushSync(() => root.render(element));
+    return () => root.unmount();
+}
+
 // Render task panes into the rail. Children should be <RailPane> nodes (one per
 // task group), matching the classic stacked task-pane look.
 export function ViewTasks({ children }) {

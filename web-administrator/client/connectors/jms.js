@@ -1,109 +1,97 @@
-/*
- * JMS Listener (JmsReceiverProperties) / JMS Sender (JmsDispatcherProperties).
- * Field names and defaults mirror server/src/com/mirth/connect/connectors/jms
- * (both extend JmsConnectorProperties).
- */
-
-import { h } from '../core/ui.js';
+import { React } from "./react-platform.js";
 import {
-    buildForm, asBool, YES_NO,
-    defaultSourceProperties, defaultDestinationProperties
-} from './forms.js';
-
-/* JmsConnectorProperties constructor defaults (shared by listener/sender). */
+  ConnectorForm,
+  asBool,
+  YES_NO,
+  defaultSourceProperties,
+  defaultDestinationProperties
+} from "./react-forms.js";
 function jmsConnectorDefaults() {
-    return {
-        useJndi: false,
-        jndiProviderUrl: '',
-        jndiInitialContextFactory: '',
-        jndiConnectionFactoryName: '',
-        connectionFactoryClass: '',
-        connectionProperties: { '@class': 'linked-hash-map' },
-        username: '',
-        password: '',
-        destinationName: '',
-        topic: false,
-        clientId: ''
-    };
+  return {
+    useJndi: false,
+    jndiProviderUrl: "",
+    jndiInitialContextFactory: "",
+    jndiConnectionFactoryName: "",
+    connectionFactoryClass: "",
+    connectionProperties: { "@class": "linked-hash-map" },
+    username: "",
+    password: "",
+    destinationName: "",
+    topic: false,
+    clientId: ""
+  };
 }
-
 const useJndi = (p) => asBool(p.useJndi);
-
-/* Connection fields shared by listener and sender. */
 function jmsConnectionFields() {
-    return [
-        { section: 'Connection Settings' },
-        { key: 'useJndi', label: 'Use JNDI', type: 'radio', options: YES_NO, refresh: true },
-        { key: 'jndiProviderUrl', label: 'Provider URL', type: 'text', width: '420px', visible: useJndi },
-        { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', type: 'text', width: '420px', visible: useJndi },
-        { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', type: 'text', width: '320px', visible: useJndi },
-        { key: 'connectionFactoryClass', label: 'Connection Factory Class', type: 'text', width: '420px', visible: (p) => !useJndi(p) },
-        { key: 'connectionProperties', label: 'Connection Properties', type: 'keyvalue' },
-        { key: 'username', label: 'Username', type: 'text', width: '220px' },
-        { key: 'password', label: 'Password', type: 'password', width: '220px' }
-    ];
+  return [
+    { section: "Connection Settings" },
+    { key: "useJndi", label: "Use JNDI", type: "radio", options: YES_NO, refresh: true },
+    { key: "jndiProviderUrl", label: "Provider URL", type: "text", width: "420px", visible: useJndi },
+    { key: "jndiInitialContextFactory", label: "Initial Context Factory", type: "text", width: "420px", visible: useJndi },
+    { key: "jndiConnectionFactoryName", label: "Connection Factory Name", type: "text", width: "320px", visible: useJndi },
+    { key: "connectionFactoryClass", label: "Connection Factory Class", type: "text", width: "420px", visible: (p) => !useJndi(p) },
+    { key: "connectionProperties", label: "Connection Properties", type: "keyvalue" },
+    { key: "username", label: "Username", type: "text", width: "220px" },
+    { key: "password", label: "Password", type: "password", width: "220px" }
+  ];
 }
-
 const jmsListener = {
-    defaults(version) {
-        return Object.assign({
-            '@class': 'com.mirth.connect.connectors.jms.JmsReceiverProperties',
-            '@version': version,
-            pluginProperties: null,
-            sourceConnectorProperties: defaultSourceProperties(version),
-            selector: '',
-            reconnectIntervalMillis: '10000',
-            durableTopic: false
-        }, jmsConnectorDefaults());
-    },
-    render(host, { properties, onChange }) {
-        const formHost = h('div');
-        host.appendChild(formHost);
-        buildForm(formHost, properties, [
-            ...jmsConnectionFields(),
-            { section: 'Destination Settings' },
-            { key: 'destinationName', label: 'Destination Name', type: 'text', width: '320px' },
-            { key: 'topic', label: 'Destination Type', type: 'radio', refresh: true, visible: (p) => !useJndi(p), options: [
-                { value: false, label: 'Queue' },
-                { value: true, label: 'Topic' }
-            ] },
-            { key: 'durableTopic', label: 'Durable Topic', type: 'radio', options: YES_NO, visible: (p) => !useJndi(p) && asBool(p.topic) },
-            { key: 'clientId', label: 'Client ID', type: 'text', width: '220px' },
-            { key: 'selector', label: 'Selector Expression', type: 'text', width: '320px' },
-            { key: 'reconnectIntervalMillis', label: 'Reconnect Interval (ms)', type: 'number', width: '120px' }
-        ], onChange);
-    }
+  defaults(version) {
+    return Object.assign({
+      "@class": "com.mirth.connect.connectors.jms.JmsReceiverProperties",
+      "@version": version,
+      pluginProperties: null,
+      sourceConnectorProperties: defaultSourceProperties(version),
+      selector: "",
+      reconnectIntervalMillis: "10000",
+      durableTopic: false
+    }, jmsConnectorDefaults());
+  },
+  component({ properties, onChange }) {
+    return /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
+      ...jmsConnectionFields(),
+      { section: "Destination Settings" },
+      { key: "destinationName", label: "Destination Name", type: "text", width: "320px" },
+      { key: "topic", label: "Destination Type", type: "radio", refresh: true, visible: (p) => !useJndi(p), options: [
+        { value: false, label: "Queue" },
+        { value: true, label: "Topic" }
+      ] },
+      { key: "durableTopic", label: "Durable Topic", type: "radio", options: YES_NO, visible: (p) => !useJndi(p) && asBool(p.topic) },
+      { key: "clientId", label: "Client ID", type: "text", width: "220px" },
+      { key: "selector", label: "Selector Expression", type: "text", width: "320px" },
+      { key: "reconnectIntervalMillis", label: "Reconnect Interval (ms)", type: "number", width: "120px" }
+    ] });
+  }
 };
-
 const jmsSender = {
-    defaults(version) {
-        return Object.assign({
-            '@class': 'com.mirth.connect.connectors.jms.JmsDispatcherProperties',
-            '@version': version,
-            pluginProperties: null,
-            destinationConnectorProperties: defaultDestinationProperties(version),
-            template: '${message.encodedData}'
-        }, jmsConnectorDefaults());
-    },
-    render(host, { properties, onChange }) {
-        const formHost = h('div');
-        host.appendChild(formHost);
-        buildForm(formHost, properties, [
-            ...jmsConnectionFields(),
-            { section: 'Destination Settings' },
-            { key: 'destinationName', label: 'Destination Name', type: 'text', width: '320px' },
-            { key: 'topic', label: 'Destination Type', type: 'radio', visible: (p) => !useJndi(p), options: [
-                { value: false, label: 'Queue' },
-                { value: true, label: 'Topic' }
-            ] },
-            { key: 'clientId', label: 'Client ID', type: 'text', width: '220px' },
-            { section: 'Template' },
-            { key: 'template', label: 'Template', type: 'code', minHeight: '140px' }
-        ], onChange);
-    }
+  defaults(version) {
+    return Object.assign({
+      "@class": "com.mirth.connect.connectors.jms.JmsDispatcherProperties",
+      "@version": version,
+      pluginProperties: null,
+      destinationConnectorProperties: defaultDestinationProperties(version),
+      template: "${message.encodedData}"
+    }, jmsConnectorDefaults());
+  },
+  component({ properties, onChange }) {
+    return /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
+      ...jmsConnectionFields(),
+      { section: "Destination Settings" },
+      { key: "destinationName", label: "Destination Name", type: "text", width: "320px" },
+      { key: "topic", label: "Destination Type", type: "radio", visible: (p) => !useJndi(p), options: [
+        { value: false, label: "Queue" },
+        { value: true, label: "Topic" }
+      ] },
+      { key: "clientId", label: "Client ID", type: "text", width: "220px" },
+      { section: "Template" },
+      { key: "template", label: "Template", type: "code", minHeight: "140px" }
+    ] });
+  }
 };
-
-export function register(platform) {
-    platform.registerConnectorPanel('JMS Listener', 'SOURCE', jmsListener);
-    platform.registerConnectorPanel('JMS Sender', 'DESTINATION', jmsSender);
+function register(platform) {
+  platform.registerConnectorPanel("JMS Listener", "SOURCE", jmsListener);
+  platform.registerConnectorPanel("JMS Sender", "DESTINATION", jmsSender);
 }
+export {
+  register
+};

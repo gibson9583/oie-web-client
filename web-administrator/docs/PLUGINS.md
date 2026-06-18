@@ -6,6 +6,12 @@ administrator loads JavaScript modules declared in `plugin.json`. Built-in
 views register through the **same registries** plugins use, so a plugin can do
 anything a core view can.
 
+> **Plugins are React.** Every plugin's UI is authored in React against the
+> host's own React instance (`platform.React`), and registries hold a
+> **`component`** (a React component), not the old imperative `render(host)`
+> function. See [Writing plugins in React](#writing-plugins-in-react) for the
+> contract and the one-line rule for porting older `render(host, ctx)` panels.
+
 ## Anatomy of a plugin
 
 ```
@@ -14,9 +20,16 @@ plugins/
     ├── plugin.json          # manifest (required)
     ├── server.js            # optional Node/Express extension
     └── web/
-        ├── plugin.js        # optional browser entry (ES module)
+        ├── plugin.jsx       # browser entry — React SOURCE you author
+        ├── plugin.js        # COMPILED output (the served entry; what plugin.json points to)
         └── ...              # any other assets, served at /plugins/my-plugin/...
 ```
+
+You author **`plugin.jsx`**; a build step compiles it to **`plugin.js`** (the
+served entry). The browser can't run JSX — it loads the compiled `.js`, which is
+served raw and dynamically `import()`-ed at runtime (so it shares the one running
+framework instance instead of bundling its own). See
+[Building the browser entry](#building-the-browser-entry).
 
 `plugin.json`:
 
@@ -33,12 +46,14 @@ plugins/
 }
 ```
 
-Drop the folder into `plugins/` (or any configured `pluginDirs` entry) and
-**refresh the browser** — plugin directories are re-scanned on every load, so
-no web administrator restart is needed. The exception is a plugin's optional
-`server.js`: new ones mount on first discovery, but *updating* an
-already-loaded server entry requires a restart (Node module cache). Load
-status appears under **Extensions → Web Administrator Plugins**.
+Drop the folder into `plugins/` (or any configured `pluginDirs` entry) — with a
+built `web/plugin.js` present (see [Building the browser entry](#building-the-browser-entry)) —
+and **refresh the browser**. Plugin directories are re-scanned on every load, so
+no web administrator restart is needed; the running tab only picks up the change
+on refresh (it loads plugins once at boot). The exception is a plugin's optional
+`server.js`: new ones mount on first discovery, but *updating* an already-loaded
+server entry requires a restart (Node module cache). Load status appears under
+**Extensions → Web Administrator Plugins**.
 
 > ⚠️ **Install only trusted plugins.** A plugin runs code in the browser, and an
 > optional `server.js` runs code in the web administrator's Node process
@@ -119,16 +134,19 @@ A plugin reaches the web-admin framework through three published packages:
 | [`@oie/web-ui`](../../packages/web-ui) | DOM toolkit, `DataTable`, dialogs, forms, code editor, columns | the Swing widget toolkit |
 | [`@oie/web-shell`](../../packages/web-shell) | The `platform` extension points you register through | `ClientPlugin` SPI |
 
-```js
+```jsx
 import { platform } from '@oie/web-shell';
-import { h, DataTable, modal } from '@oie/web-ui';
-import api from '@oie/web-api';
+const React = platform.React;          // share the host's React (see "Writing plugins in React")
+
+function MyView() {
+    return <div className="view"><h1>Hello from a plugin</h1></div>;
+}
 
 export function register() {
     platform.registerNavItem({ id: 'my-plugin', label: 'My Plugin', icon: 'plug',
         path: '/my-plugin', section: 'Engine', order: 99 });
-    platform.registerView('/my-plugin', () => ({
-        el: h('div.view', h('h1', 'Hello from a plugin')) }), { title: 'My Plugin' });
+    // reactView() wraps a component as a routed-view handler.
+    platform.registerView('/my-plugin', platform.reactView(MyView), { title: 'My Plugin' });
 }
 ```
 
@@ -141,9 +159,13 @@ single shell instance at runtime**:
   You get `npm install`, type inference, lint, and bundler support. At runtime
   the page's **import map** rewrites `@oie/web-ui` → `/core/pkg-ui.js` (the
   shell's already-loaded copy).
-- **Absolute URLs** (`/core/ui.js`, `/connectors/forms.js`) — the original style
-  the bundled plugins use. Works with zero build tooling because `client/` is the
-  web root. Still fully supported.
+- **Absolute URLs** (`/core/ui.js`, `/connectors/forms.js`) — the original style,
+  resolving against `client/` as the web root. Still fully supported for the
+  framework imports.
+
+Either way the plugin's JSX is compiled to `web/plugin.js` first (React comes
+from `platform.React`, not an import) — see
+[Building the browser entry](#building-the-browser-entry).
 
 The single-instance rule is what makes registrations stick: your
 `platform.registerView(...)` must mutate the **shell's** registry. That's why you
@@ -182,48 +204,126 @@ export function register(platform) { ... }
 > object — use whichever reads better. `@oie/*` imports additionally give you
 > `api`/`h`/etc. directly, equivalent to `platform.api` / `platform.ui.h`.
 
+### Writing plugins in React
+
+Plugin UI is **React**, sharing the host app's single React instance. The rule:
+
+```jsx
+import { platform } from '@oie/web-shell';
+const React = platform.React;          // the host's React — NOT an `import 'react'`
+```
+
+- **Get React from `platform.React`**, at module scope, before any JSX. Do **not**
+  `import React from 'react'` or bundle your own copy — a second React instance
+  breaks hooks/context and registers into a dead tree. (`platform.React` is set by
+  the shell at boot, before any plugin loads.) Once `React` is in scope you write
+  ordinary JSX and use `React.useState`/`useEffect`/`useRef`/etc.
+- **Registries hold a `component`, not a `render(host)`.** Each extension point
+  below takes a React component (or, for per-row dashboard columns, `cell`
+  functions that *return* JSX). The host renders it in-tree; you never touch a
+  `host` DOM node or `appendChild`.
+- **The one-line port rule** (from the old imperative contract): an extension's
+  **`render(host, ctx)` becomes `component(ctx)`** — a React function component
+  that receives the **same `ctx` as props** and **returns JSX** instead of
+  appending to `host`. Everything else on the descriptor (`defaults`, `create`,
+  `canHandle`, `isSupported`, `propertiesClass`, transmission `apply`/`sampleFrame`)
+  is plain data/logic and is **unchanged**. Imperative helpers are still fine to
+  *call* from handlers — `platform.ui.modal/confirmDialog/toast`, `platform.api.*`.
+- Style with `client/css/app.css` classes/variables so you match both themes.
+
+The bundled plugins are the reference implementations — read
+`plugins/connection-status/web/plugin.jsx` (a dashboard tab component + column
+`cell`/`connectorCell`) and `plugins/global-maps/web/plugin.jsx` (a polled tab
+with a JSX table + modal).
+
+### Building the browser entry
+
+The browser loads `web/plugin.js`; you author `web/plugin.jsx`. Compile JSX to
+`React.createElement` with React taken from `platform.React` (so it stays out of
+your bundle), keeping `@oie/*` external:
+
+- **First-party** plugins (in this repo's `plugins/`) are built automatically by
+  `npm run build` (which runs `tools/build-plugins.mjs`, esbuild). Just write the
+  `.jsx`; the `.js` is generated.
+- **Third-party** plugins ship a **pre-built `web/plugin.js`** in their zip (the
+  repo's builder only scans its own `plugins/`). Compile with esbuild (or any
+  bundler) using the same settings:
+
+  ```js
+  // build.mjs
+  import { build } from 'esbuild';
+  await build({
+      entryPoints: ['web/plugin.jsx'],
+      outfile: 'web/plugin.js',
+      bundle: true, format: 'esm', target: 'es2022',
+      jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment',
+      external: ['@oie/web-api', '@oie/web-ui', '@oie/web-shell'],
+  });
+  ```
+
 ### Extension points (Swing equivalents in parentheses)
 
-```js
+```jsx
+import { platform } from '@oie/web-shell';
+const React = platform.React;
+
 // Full routed view + rail navigation (ClientPlugin)
 platform.registerNavItem({ id, label, icon, path, section, order });
-platform.registerView('/my-path/:param?', ({ params, query }) => {
-    return { el, teardown };          // el: DOM node; teardown(): clear timers
-}, { title: 'My View' });
+platform.registerView('/my-path/:param?',
+    platform.reactView(({ params, query }) => <div className="view">…</div>),
+    { title: 'My View' });
 
 // Dashboard tab below the status table (DashboardTabPlugin)
 platform.registerDashboardTab({ id, label, order,
-    render(host, { selection, platform }) {} });
+    component: ({ selection }) => <div className="dt-wrap">…</div> });
 
-// Extra dashboard column (DashboardColumnPlugin)
-platform.registerDashboardColumn({ id, label, order, render(dashboardStatus) {} });
+// Extra dashboard column (DashboardColumnPlugin) — cell/connectorCell RETURN JSX
+// (per-row, so not a single component).
+platform.registerDashboardColumn({ id, label, order,
+    cell: (status) => <span>…</span>,            // channel row
+    connectorCell: (child) => <span>…</span> });  // connector child row
 
 // Tab inside the channel editor (ChannelTabPlugin)
 platform.registerChannelTab({ id, label, order,
-    render(host, { channel, platform, onChange }) {} });
+    component: ({ channel, onChange }) => <div>…</div> });
 
-// Tab in Settings (SettingsPanelPlugin)
-platform.registerSettingsPanel({ id, label, order, render(host, { platform }) {} });
+// Tab in Settings (SettingsPanelPlugin). The component declares its task pane by
+// calling ctx.setTasks(title, items) (from an effect) — same callback as before.
+platform.registerSettingsPanel({ id, label, order,
+    component: ({ platform, setTasks }) => <div className="view">…</div> });
 
 // Message attachment renderer (AttachmentViewer)
 platform.registerAttachmentViewer({ id,
     canHandle(attachment) { return attachment.type === 'application/dicom'; },
-    render(host, { attachment, channelId, messageId, platform }) {} });
+    component: ({ attachment, channelId, messageId }) => <div>…</div> });
 
 // Transformer step / filter rule editors (TransformerStepPlugin / FilterRulePlugin)
 platform.registerStepType('com.example.MyStep', {
     label: 'My Step',
     create() { return { __type: 'com.example.MyStep', name: 'New Step', enabled: true }; },
-    render(host, { element, onChange }) {} });
+    // ctx: { element, platform, onChange }. Mutate `element` in place, then onChange().
+    component: ({ element, platform, onChange }) => <div>…</div> });
 platform.registerRuleType('com.example.MyRule', { /* same contract */ });
 
-// Connector property panel (ConnectorSettingsPanel) — e.g. for a custom connector
+// Connector property panel (ConnectorSettingsPanel) — e.g. for a custom connector.
+// NOTE: connector panels are the last extension type finishing its React
+// migration — the bundled connectors still register imperative render() panels
+// today, and the channel editor renders them imperatively. The `component`
+// contract below is the target; full React connector-panel support (and the SQS
+// worked example) lands with the connectors build-pipeline pass.
 platform.registerConnectorPanel('My Listener', 'SOURCE', {
     defaults(version) { return { '@class': 'com.example.MyReceiverProperties', '@version': version /* … */ }; },
-    render(host, { properties, connector, channel, platform, onChange }) {} });
+    component: ({ properties, connector, channel, onChange }) => <div>…</div> });
 
-// Custom data type registration
-platform.registerDataType('MYTYPE', { label: 'My Type', propertiesClass: 'com.example…' });
+// Custom data type registration. Data types are DATA-ONLY: a schema of groups +
+// fields + defaults(version). The shared central editor (client/datatypes/
+// props-editor.js) renders any registered type from this data — a data type does
+// NOT supply its own component.
+platform.registerDataType('MYTYPE', { name: 'MYTYPE', label: 'My Type', order: 99,
+    propertiesClass: 'com.example.MyDataTypeProperties',
+    groups: [{ key: 'serialization', label: 'Serialization', class: 'com.example…',
+        fields: [{ key: 'stripNamespaces', label: 'Strip Namespaces', type: 'checkbox', default: true }] }],
+    defaults(version) { /* the engine properties object */ return { /* … */ }; } });
 
 // Extra settings section on existing connectors (ConnectorPropertiesPlugin) —
 // the pattern used by SSL-style plugins that extend HTTP/TCP connectors.
@@ -238,31 +338,33 @@ platform.registerConnectorPropertiesPanel({
     isSupported: (transportName, mode) =>
         ['HTTP Sender', 'TCP Sender', 'TCP Listener', 'HTTP Listener'].includes(transportName),
     defaults: (version) => ({ '@version': version, enabled: false, protocols: null /* …every Java field… */ }),
-    render(host, { getEntry, setEntry, connector, channel, platform, onChange }) {
+    component: ({ getEntry, setEntry, connector, channel, onChange }) => {
         // getEntry() → current entry or null; setEntry(obj|null) creates/removes
         // it while preserving sibling plugin entries (e.g. HTTP auth).
+        return <div>…</div>;
     }
 });
 
 // Transmission mode for framed connectors like TCP (TransmissionModePlugin).
-// The connector renders a Transmission Mode dropdown of all registered modes;
-// the active mode's apply()/sampleFrame()/openSettings() drive the UI. Each
-// mode edits connector.properties.transmissionModeProperties.
+// A transmission mode has NO React component — its whole surface is the three
+// callbacks: apply()/sampleFrame() are pure (the connector reads them), and the
+// ⚙ settings dialog stays an imperative modal (open it via platform.ui.modal).
+// Each mode edits connector.properties.transmissionModeProperties.
 platform.registerTransmissionMode('MLLP', {
     label: 'MLLP', order: 10,
     apply(tm) { tm.pluginPointName = 'MLLP'; tm.startOfMessageBytes = '0B'; tm.endOfMessageBytes = '1C0D'; },
     sampleFrame(tm) { return '<VT> Message Data <FS><CR>'; },   // preview text
-    openSettings(tm, onChange) { /* modal editing the mode's properties */ }
+    openSettings(tm, onChange) { /* platform.ui.modal editing the mode's properties */ }
 });
 
 // Resource type for Settings → Resources (ResourceClientPlugin). The Resources
-// panel is generic; each type supplies its factory + detail editor.
+// panel is generic; each type supplies its factory + detail editor component.
 platform.registerResourceType('Directory', {
     label: 'Directory',
     propertiesClass: 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties',
     detailHeader: 'Directory Settings',
     create({ version, containerIsArray }) { return { /* new resource object */ }; },
-    renderDetail(host, { entry, locked, platform, refreshTable }) {}
+    component: ({ entry, locked, platform, refreshTable }) => <div>…</div>   // detail editor
 });
 ```
 
@@ -270,6 +372,8 @@ platform.registerResourceType('Directory', {
 
 | API | Purpose |
 |---|---|
+| `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
+| `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
 | `platform.ui` | DOM toolkit: `h()`, `DataTable`, `tabs()`, `modal()`, `confirmDialog`, `promptDialog`, `toast`, `contextMenu`, form helpers, `downloadFile`, `pickFile`, `fmtDate`, `icon(name)`. `fmtDate` renders every timestamp in the user's chosen time zone (the topbar Server/Local/UTC toggle, `core/timezone.js`) — use it for all displayed dates. |
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
@@ -281,11 +385,18 @@ platform.registerResourceType('Directory', {
 
 ### Resizable / reorderable columns
 
-`platform.columns` (core module `core/columns.js`) makes any hand-built
-`table.dt` grid's columns drag-to-reorder, drag-to-resize, and double-click-to-
-auto-fit, with the order and widths persisted per table in `localStorage`. It is
-used by the Dashboard, Channels, Code Templates, Connection Log, and Global Maps
-tables.
+`platform.columns` (core module `core/columns.js`) makes any **imperatively
+built** `table.dt` grid's columns drag-to-reorder, drag-to-resize, and
+double-click-to-auto-fit, with the order and widths persisted per table in
+`localStorage`.
+
+> In a React plugin, render a plain JSX `<table className="dt">` for most tables.
+> To add the resizable/reorderable affordances on top, mount the decorator from a
+> ref: `const ref = React.useRef(); React.useEffect(() => decorateColumns(ref.current, …), [])`
+> and put the `ref` on the `<table>`. (The host's own grids use the React
+> `<TreeTable>` component instead — it bakes these affordances in — but that's
+> internal and not exposed to plugins.) The imperative recipe below is for the
+> absolute-URL / non-React authoring style.
 
 Build your header/body rows in a **fixed canonical column order**, then call
 `decorateColumns` after the table is in the DOM — it switches the table to fixed
@@ -373,15 +484,17 @@ that registers a connector panel.
 > the settings form. That's why its toolkit lives in `@oie/web-ui` (the form
 > builder and connector-panel helpers), not in any "connectors" package.
 
-The SQS connector is the worked example. Its panel imports the framework from
-`@oie/web-ui`; the host page's import map resolves that to the shell's loaded
-copy at runtime, so the plugin still ships inside the engine extension zip with
-no bundling:
+The SQS connector is the worked example. Its panel takes React from
+`platform.React` and imports the form helpers from `@oie/web-ui`; the host page's
+import map resolves that to the shell's loaded copy at runtime, so **React and the
+framework stay out of the plugin's bundle** — only the panel's own JSX is compiled
+to `web/plugin.js`, which ships inside the engine extension zip:
 
-```js
-// sqs-source-connector .../webadmin/web/plugin.js (abridged)
-import { h, buildForm, pollSection, defaultPollProperties,
-         defaultSourceProperties } from '@oie/web-ui';
+```jsx
+// sqs-source-connector .../webadmin/web/plugin.jsx (abridged) — compiled to plugin.js
+import { platform } from '@oie/web-shell';
+import { defaultPollProperties, defaultSourceProperties } from '@oie/web-ui';
+const React = platform.React;
 
 const sqsReader = {
     defaults(version) {
@@ -395,18 +508,27 @@ const sqsReader = {
             queueUrl: '', region: '', authType: 'DEFAULT', /* … every Java field … */
         };
     },
-    render(host, { properties, onChange }) {
-        const formHost = h('div');
-        host.appendChild(formHost);
-        buildForm(formHost, properties, [ /* schema-driven fields */ ], onChange);
-        host.appendChild(pollSection(properties, onChange));
-    }
+    // Mutate the engine `properties` object in place, then call onChange().
+    component: ({ properties, onChange }) => (
+        <div className="form">
+            <label>Queue URL
+                <input value={properties.queueUrl || ''}
+                    onChange={e => { properties.queueUrl = e.target.value; onChange(); }} />
+            </label>
+            {/* … the rest of the schema-driven fields … */}
+        </div>
+    )
 };
 
 export function register(platform) {
     platform.registerConnectorPanel('SQS Reader', 'SOURCE', sqsReader);
 }
 ```
+
+> `@oie/web-ui` provides connector-panel building blocks (the
+> `default*Properties` shape helpers above, plus form helpers). The bundled
+> connector panels under `client/connectors/` are the reference for laying out a
+> full connector form in React.
 
 ### Shipping the web UI inside the engine extension
 
@@ -441,11 +563,12 @@ Three things must line up with the engine plugin:
    corresponding interface. The connector-panel helpers in `@oie/web-ui`
    (`defaultSourceProperties`, `defaultPollProperties`,
    `defaultDestinationProperties`) produce those shapes.
-3. **Import the framework from `@oie/web-ui`** — the host page's import map
-   resolves it to the shell's loaded copy at runtime, so a zip-served plugin
-   needs no build step. (The original absolute-URL form, `'/core/ui.js'` /
-   `'/connectors/forms.js'`, still works — `client/` is the web root — but
-   `@oie/web-ui` is the documented style and gives you types and lint.)
+3. **Take React from `platform.React` and the framework from `@oie/web-ui`** —
+   the host page's import map resolves `@oie/*` to the shell's loaded copy at
+   runtime, so React and the framework are **never bundled** into the plugin. The
+   plugin's own JSX **does** need compiling to `web/plugin.js` (the served entry)
+   — ship that pre-built `.js` in the zip (see
+   [Building the browser entry](#building-the-browser-entry)).
 
 The web panel registration alone makes the type selectable; if the engine
 plugin isn't installed, saving/deploying a channel that uses it will fail on

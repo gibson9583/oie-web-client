@@ -38,7 +38,8 @@ import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { dataTypePropertiesEditor } from '../../datatypes/props-editor.js';
 import { platform } from '@oie/web-shell';
 import { register as registerFilterTransformer } from './filter-transformer.jsx';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
@@ -1772,11 +1773,16 @@ function buildBody(params, query, onTasksChange, returning) {
         return sel;
     }
 
+    // Teardowns for plugin React panels (connector-properties panels) mounted
+    // into the imperative connector area; unmounted on editor teardown.
+    const pluginPanelRoots = [];
+
     function connectorPanelHost(connector, mode) {
         const def = platform.connectorPanel(connector.transportName, mode) || platform.connectorPanel('*', mode);
         const container = h('div');
-        if (def && typeof def.render === 'function') {
-            def.render(container, { properties: connector.properties, connector, channel, platform, onChange: markDirty });
+        if (def && typeof def.component === 'function') {
+            pluginPanelRoots.push(mountReact(container, <PluginSlot def={def}
+                ctx={{ properties: connector.properties, connector, channel, platform, onChange: markDirty }} />));
         } else {
             const area = h('textarea', { rows: 16, spellcheck: 'false' },
                 JSON.stringify(connector.properties, null, 2));
@@ -1846,7 +1852,7 @@ function buildBody(params, query, onTasksChange, returning) {
                     }
                     markDirty();
                 };
-                ppDef.render(host, { getEntry, setEntry, propertiesClass: fqcn, connector, channel, platform, onChange: markDirty });
+                pluginPanelRoots.push(mountReact(host, <PluginSlot def={ppDef} ctx={{ getEntry, setEntry, propertiesClass: fqcn, connector, channel, platform, onChange: markDirty }} />));
                 root.appendChild(h('div.panel',
                     h('div.panel-header', ppDef.title || ppDef.id),
                     h('div.panel-body', host)));
@@ -2637,6 +2643,9 @@ function buildBody(params, query, onTasksChange, returning) {
             destExport: () => destTasks.exportConnector && destTasks.exportConnector()
         },
         teardown: () => {
+            // Unmount any plugin React panels mounted into the imperative editor.
+            pluginPanelRoots.forEach(t => { try { t(); } catch { /* ignore */ } });
+            pluginPanelRoots.length = 0;
             // In-flow hops (filter/transformer) re-register on return; anything
             // else must not inherit a stale guard.
             store.setState('navGuard', null);

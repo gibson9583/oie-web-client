@@ -26,7 +26,8 @@ import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
 import { setTheme } from '../../core/store.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane } from '../ui.jsx';
 
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
@@ -1110,6 +1111,7 @@ function renderResourcesTab({ setTasks, platform }) {
     }
 
     const detailHost = h('div');
+    let detailRoot = null;   // teardown for the mounted resource-detail React component
 
     function normalize(raw) {
         entries = [];
@@ -1148,6 +1150,7 @@ function renderResourcesTab({ setTasks, platform }) {
     // ResourceClientPlugin (e.g. plugins/directoryresource); the Resources panel
     // itself stays generic.
     function renderDetail(entry) {
+        if (detailRoot) { detailRoot(); detailRoot = null; }
         clear(detailHost);
         if (!entry) {
             detailHost.appendChild(h('div.faint', 'Select a resource above to edit its settings'));
@@ -1155,11 +1158,11 @@ function renderResourcesTab({ setTasks, platform }) {
         }
         const types = platform.resourceTypes();
         const def = types.find(t => t.type === entry.obj.type) || types[0];
-        if (def && def.renderDetail) {
-            def.renderDetail(detailHost, {
+        if (def && def.component) {
+            detailRoot = mountReact(detailHost, <PluginSlot def={def} ctx={{
                 entry, locked: isDefault(entry), platform,
                 refreshTable: () => table.setRows(entries)
-            });
+            }} />);
         } else {
             detailHost.appendChild(h('div.faint', `No editor registered for resource type "${entry.obj.type || '?'}"`));
         }
@@ -1273,13 +1276,10 @@ function buildTabDefs(plat) {
             label: panel.label,
             render: (ctx) => {
                 const tabHostEl = tabHost();
-                ctx.setTasks(`${panel.label} Tasks`, []);
-                try {
-                    const result = panel.render(tabHostEl, ctx);
-                    if (result instanceof Node && result !== tabHostEl) tabHostEl.appendChild(result);
-                } catch (e) {
-                    toast(`Settings panel "${panel.label}" failed: ${e.message}`, 'error');
-                }
+                ctx.setTasks(`${panel.label} Tasks`, []);   // initial pane; the panel calls setTasks itself
+                // Host the panel's React component; teardown is tracked on the
+                // node so SettingsTab can unmount the root on tab switch.
+                tabHostEl.__teardown = mountReact(tabHostEl, <PluginSlot def={panel} ctx={ctx} />);
                 return tabHostEl;
             }
         });
@@ -1298,7 +1298,7 @@ function SettingsTab({ def, ctx }) {
         host.replaceChildren();
         const node = def.render(ctx);
         if (node instanceof Node && node !== host) host.appendChild(node);
-        return () => host.replaceChildren();
+        return () => { if (node && node.__teardown) node.__teardown(); host.replaceChildren(); };
         // Build once per tab activation (keyed by label in the parent); the
         // legacy builder owns its own load()/setTasks() lifecycle.
         // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "WEBADMIN_DEV=1 node --watch server/index.js",
-    "build": "vite build",
+    "build": "vite build && node tools/build-plugins.mjs && node tools/build-connectors.mjs",
     "test": "for f in client/core/*.test.js; do node \"$f\" || exit 1; done"
   },
   "engines": {

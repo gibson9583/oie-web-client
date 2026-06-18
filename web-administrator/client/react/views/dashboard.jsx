@@ -27,6 +27,7 @@ import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { TreeTable } from '../tree-table.jsx';
+import { PluginSlot } from '../plugin-slot.jsx';
 import { iconPath } from '../../core/icons.js';
 
 export function register(platform) {
@@ -118,42 +119,6 @@ function segControl(options, current, onChange) {
     return wrap;
 }
 
-/* Mounts a plugin dashboard tab's render() into a ref'd div ONCE per remount
-   key (the def + selection signature change). The parent re-mounts this (via a
-   key encoding the active tab + selection) when the selection changes, so the
-   tab re-scopes exactly when the legacy remountActiveTab() did — NOT on every
-   poll tick. ctx flows through a ref so a routine re-render (poll forceRender)
-   never re-runs the build. Plugin code sees host.isConnected === true before
-   render runs (the host is attached first), matching the legacy tab mount. */
-function PluginHost({ def, ctx }) {
-    const ref = useRef(null);
-    const ctxRef = useRef(ctx);
-    ctxRef.current = ctx;
-    useEffect(() => {
-        const host = ref.current;
-        if (!host) return;
-        host.replaceChildren();
-        const result = def.render(host, ctxRef.current);
-        if (result instanceof Node) host.appendChild(result);
-        return () => host.replaceChildren();
-    }, [def]);
-    return <div ref={ref} style={{ flex: '1', overflow: 'auto', minHeight: '0' }} />;
-}
-
-/* Renders a plugin dashboard column's cell value. The plugin render() may return
-   a DOM Node (mounted into a span) or a string/number (rendered directly). */
-function DomCell({ value }) {
-    const ref = useRef(null);
-    useEffect(() => {
-        const host = ref.current;
-        if (!host) return;
-        host.replaceChildren();
-        if (value instanceof Node) host.appendChild(value);
-        return () => host.replaceChildren();
-    }, [value]);
-    if (value instanceof Node) return <span ref={ref} />;
-    return value == null ? '' : String(value);
-}
 
 function DashboardView() {
     const [, forceRender] = useReducer((x) => x + 1, 0);
@@ -510,15 +475,15 @@ function DashboardView() {
     ];
 
     // The built-in columns plus any plugin dashboard columns (rendered last). A
-    // plugin column's render()/renderConnector() returns a DOM Node|string, so it
-    // is mounted via <DomCell> (strings/numbers render directly).
+    // plugin column's cell(status)/connectorCell(child) return React content,
+    // rendered directly into the cell.
     function allColumns() {
         return COLUMNS.concat(platform.dashboardColumns().map(c => ({
             key: c.id ? String(c.id) : String(c.label),
             label: c.label,
-            renderChannel: (st) => <DomCell value={c.render ? (c.render(st) ?? '') : ''} />,
+            renderChannel: (st) => (c.cell ? (c.cell(st) ?? '') : ''),
             renderGroupAggregate: () => '',
-            renderConnector: (child) => <DomCell value={c.renderConnector ? (c.renderConnector(child) ?? '') : ''} />
+            renderConnector: (child) => (c.connectorCell ? (c.connectorCell(child) ?? '') : '')
         })));
     }
 
@@ -1177,8 +1142,10 @@ function DashboardView() {
                                 ))}
                             </div>
                             {activeTab && (
-                                <PluginHost key={(activeTab.id || activeTab.label) + '|' + selectionSig}
-                                    def={activeTab} ctx={tabCtx} />
+                                <div key={(activeTab.id || activeTab.label) + '|' + selectionSig}
+                                    style={{ flex: '1', overflow: 'auto', minHeight: '0' }}>
+                                    <PluginSlot def={activeTab} ctx={tabCtx} />
+                                </div>
                             )}
                         </div>
                     </>

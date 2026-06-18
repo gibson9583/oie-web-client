@@ -93,8 +93,11 @@ async function start() {
         const distDir = path.join(clientDir, 'dist');
         const built = fs.existsSync(path.join(distDir, 'index.html'));
         const shellDir = built ? distDir : clientDir;
-        if (built) app.use(express.static(distDir));
-        app.use(express.static(clientDir));
+        // dotfiles:'deny' rejects nested dotfile segments (e.g. a /.git/config or
+        // .env that ever landed under a served root) — express.static's default
+        // 'ignore' only blocks them as a leaf. Matches the /plugins handler.
+        if (built) app.use(express.static(distDir, { dotfiles: 'deny' }));
+        app.use(express.static(clientDir, { dotfiles: 'deny' }));
         // SPA fallback: render the shell with <link rel="modulepreload"> hints for
         // each plugin entry, so the browser fetches plugin code in parallel with
         // the app bundle rather than discovering it after the plugins.json fetch.

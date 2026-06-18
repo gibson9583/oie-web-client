@@ -30,7 +30,8 @@ import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
 import { createCodeEditor } from '@oie/web-ui';
 import { platform } from '../../core/platform.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 
 export function register(platform) {
@@ -1358,10 +1359,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const viewer = platform.attachmentViewers().find(v => {
             try { return v.canHandle(attachment); } catch { return false; }
         });
-        if (viewer) {
+        if (viewer && viewer.component) {
+            // Host the viewer's React component inside this imperative block.
             const body = h('div.mt');
-            const result = viewer.render(body, { attachment, channelId, messageId: message.messageId, platform });
-            if (result instanceof Node) body.appendChild(result);
+            mountReact(body, <PluginSlot def={viewer} ctx={{ attachment, channelId, messageId: message.messageId, platform }} />);
             return body;
         }
 

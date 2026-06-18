@@ -1,41 +1,53 @@
-/*
- * Image attachment viewer — web admin plugin (AttachmentViewer equivalent).
- * Renders image attachments inline from their Base64 content.
- */
-
-const IMAGE_RE = /^image\/|(^|[^a-z])(png|jpe?g|gif|bmp|webp|svg|tiff?)([^a-z]|$)/i;
-
+// plugins/attachment-imageviewer/web/plugin.jsx
+import { platform } from "@oie/web-shell";
+var React = platform.React;
+var IMAGE_RE = /^image\/|(^|[^a-z])(png|jpe?g|gif|bmp|webp|svg|tiff?)([^a-z]|$)/i;
 function typeOf(att) {
-    const t = att && att.type;
-    return String(typeof t === 'string' ? t : (t && (t._ || t.$)) || '').trim();
+  const t = att && att.type;
+  return String(typeof t === "string" ? t : t && (t._ || t.$) || "").trim();
 }
-
-export function register(platform) {
-    const { h } = platform.ui;
-
-    platform.registerAttachmentViewer({
-        id: 'imageviewer',
-        canHandle: (att) => IMAGE_RE.test(typeOf(att)),
-        render(_body, { attachment, channelId, messageId, platform }) {
-            const host = h('div.mt');
-            host.appendChild(h('div.faint', { style: { fontSize: '11px', marginBottom: '4px' } }, 'Loading image…'));
-            (async () => {
-                try {
-                    const full = await platform.api.messages.attachment(channelId, messageId, attachment.id);
-                    const b64 = String(full?.content ?? '').replace(/\s+/g, '');
-                    let mime = typeOf(full) || typeOf(attachment) || 'image/png';
-                    if (!mime.includes('/')) mime = 'image/' + (mime.toLowerCase() === 'jpg' ? 'jpeg' : mime.toLowerCase());
-                    platform.ui.clear(host);
-                    host.appendChild(h('img', {
-                        src: `data:${mime};base64,${b64}`,
-                        style: { maxWidth: '100%', maxHeight: '600px', border: '1px solid var(--bg3)', borderRadius: '4px' }
-                    }));
-                } catch (e) {
-                    platform.ui.clear(host);
-                    host.appendChild(h('div.faint', `Could not load image: ${e.message}`));
-                }
-            })();
-            return host;
+function register(platform2) {
+  function ImageViewer({ attachment, channelId, messageId, platform: platform3 }) {
+    const [state, setState] = React.useState({ status: "loading" });
+    React.useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const full = await platform3.api.messages.attachment(channelId, messageId, attachment.id);
+          const b64 = String(full?.content ?? "").replace(/\s+/g, "");
+          let mime = typeOf(full) || typeOf(attachment) || "image/png";
+          if (!mime.includes("/")) mime = "image/" + (mime.toLowerCase() === "jpg" ? "jpeg" : mime.toLowerCase());
+          if (cancelled) return;
+          setState({ status: "ready", src: `data:${mime};base64,${b64}` });
+        } catch (e) {
+          if (cancelled) return;
+          setState({ status: "error", message: e.message });
         }
-    });
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [channelId, messageId, attachment.id]);
+    if (state.status === "loading") {
+      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint", style: { fontSize: "11px", marginBottom: "4px" } }, "Loading image\u2026"));
+    }
+    if (state.status === "error") {
+      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint" }, `Could not load image: ${state.message}`));
+    }
+    return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement(
+      "img",
+      {
+        src: state.src,
+        style: { maxWidth: "100%", maxHeight: "600px", border: "1px solid var(--bg3)", borderRadius: "4px" }
+      }
+    ));
+  }
+  platform2.registerAttachmentViewer({
+    id: "imageviewer",
+    canHandle: (att) => IMAGE_RE.test(typeOf(att)),
+    component: ImageViewer
+  });
 }
+export {
+  register
+};

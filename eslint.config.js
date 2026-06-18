@@ -28,6 +28,7 @@ export default [
             'web-administrator/client/assets/**', // vendored (Monaco, fonts)
             'web-administrator/client/vendor/**',  // vendored third-party libs (zip.js)
             'web-administrator/client/core/userapi.generated.js', // generated User API .d.ts string
+            'web-administrator/client/connectors/*.jsx', // deferred React-connector WIP (not yet wired; see PLUGINS connectors follow-up)
         ],
     },
 
