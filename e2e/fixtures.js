@@ -25,6 +25,11 @@ export const SAMPLE_USERS = [
     { id: 2, username: 'operator', firstName: 'Op', lastName: 'Erator', email: 'op@example.com' },
 ];
 
+export const SAMPLE_EVENTS = [
+    { id: 101, eventTime: { time: 1700000000000 }, level: 'INFORMATION', name: 'Server startup', outcome: 'SUCCESS', userId: 0, ipAddress: '127.0.0.1', serverId: 'srv-1', attributes: '' },
+    { id: 102, eventTime: { time: 1700000100000 }, level: 'ERROR', name: 'Channel deploy failed', outcome: 'FAILURE', userId: 1, ipAddress: '10.0.0.5', serverId: 'srv-1', attributes: '' },
+];
+
 /** Authenticated happy-path defaults. Tests override individual keys as needed. */
 export const DEFAULT_FIXTURES = {
     // Auth — current returns a user, so boot skips the login screen by default.
@@ -50,6 +55,10 @@ export const DEFAULT_FIXTURES = {
 
     // Users view.
     'GET /users': { list: { user: SAMPLE_USERS } },
+
+    // Events view (ServerEvent is XStream-aliased to "event"; api unwraps it).
+    'GET /events': { list: { serverEvent: SAMPLE_EVENTS } },
+    'GET /events/count': '2',
 
     // Global scripts view (XStream map of script key -> body).
     'GET /server/globalScripts': { map: { entry: [

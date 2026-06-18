@@ -26,7 +26,7 @@ import { register as registerDashboard } from '../views/dashboard.js';
 import { register as registerChannels } from '../views/channels.js';
 import { register as registerChannelEditor } from '../views/channel-editor.js';
 import { register as registerMessages } from '../views/messages.js';
-import { register as registerEvents } from '../views/events.js';
+import { register as registerEvents } from './views/events.jsx';
 import { register as registerAlerts } from '../views/alerts.js';
 import { register as registerUsers } from './views/users.jsx';
 import { register as registerSettings } from '../views/settings.js';
