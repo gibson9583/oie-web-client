@@ -62,7 +62,7 @@ export function register(platform) {
 
 /* ---- model helpers ---------------------------------------------------------- */
 
-function newAlert(name, version) {
+export function newAlert(name, version) {
     return {
         // '@version' is required — the engine's migrator 500s without it.
         '@version': version || '4.6.0',
@@ -401,7 +401,7 @@ function renderAlerts(platform) {
 
 /* ---- editor view ------------------------------------------------------------------ */
 
-function renderAlertEditor(platform, alertId, query = {}) {
+export function renderAlertEditor(platform, alertId, query = {}) {
     const isNew = query.new === '1';
     const body = h('div.view-body', loading('Loading alert…'));
 
@@ -693,6 +693,19 @@ function renderAlertEditor(platform, alertId, query = {}) {
 
         const actionsHost = h('div');
 
+        const addAction = () => { actionRows.push({ protocol: protocols[0], recipient: '' }); renderActions(); };
+        const removeAction = (row) => { actionRows = actionRows.filter(r => r !== row); renderActions(); };
+        // Right-click parity (Swing alert action popup): Add Action anywhere in the
+        // panel, Delete Action on a row.
+        actionsHost.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            const tr = e.target.closest('tbody tr');
+            const row = tr ? actionRows[[...tr.parentNode.children].indexOf(tr)] : null;
+            const items = [{ label: 'Add Action', icon: 'plus', onClick: addAction }];
+            if (row) items.push({ label: 'Delete Action', icon: 'trash', danger: true, onClick: () => removeAction(row) });
+            contextMenu(e.clientX, e.clientY, items);
+        });
+
         // Channel/User protocols carry an id->name option list (from /alerts/options);
         // fall back to the loaded channel list for Channel if the server omits it.
         function recipientList(protocol) {
@@ -740,7 +753,7 @@ function renderAlertEditor(platform, alertId, query = {}) {
                     h('td', { style: { width: '40px', textAlign: 'right' } },
                         h('button.icon-btn', {
                             title: 'Remove action',
-                            onClick: () => { actionRows = actionRows.filter(r => r !== row); renderActions(); }
+                            onClick: () => removeAction(row)
                         }, icon('trash')))));
             }
             actionsHost.appendChild(h('div.dt-wrap', h('table.dt',
@@ -753,10 +766,7 @@ function renderAlertEditor(platform, alertId, query = {}) {
             h('div.panel-header', 'Actions'),
             h('div.panel-body', { style: { flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' } },
                 h('div', { style: { flex: '1', overflow: 'auto', minHeight: '0' } }, actionsHost),
-                h('div.mt', taskButton('Add', 'plus', () => {
-                    actionRows.push({ protocol: protocols[0], recipient: '' });
-                    renderActions();
-                }))));
+                h('div.mt', taskButton('Add', 'plus', addAction))));
 
         /* ---- bottom column 2: subject + template ---- */
 

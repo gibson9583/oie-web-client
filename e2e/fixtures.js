@@ -25,6 +25,11 @@ export const SAMPLE_USERS = [
     { id: 2, username: 'operator', firstName: 'Op', lastName: 'Erator', email: 'op@example.com' },
 ];
 
+export const SAMPLE_ALERTS = [
+    { id: 'al-1', name: 'Error Alert', enabled: true },
+    { id: 'al-2', name: 'Deploy Alert', enabled: false },
+];
+
 export const SAMPLE_EVENTS = [
     { id: 101, eventTime: { time: 1700000000000 }, level: 'INFORMATION', name: 'Server startup', outcome: 'SUCCESS', userId: 0, ipAddress: '127.0.0.1', serverId: 'srv-1', attributes: '' },
     { id: 102, eventTime: { time: 1700000100000 }, level: 'ERROR', name: 'Channel deploy failed', outcome: 'FAILURE', userId: 1, ipAddress: '10.0.0.5', serverId: 'srv-1', attributes: '' },
@@ -55,6 +60,9 @@ export const DEFAULT_FIXTURES = {
 
     // Users view.
     'GET /users': { list: { user: SAMPLE_USERS } },
+
+    // Alerts view.
+    'GET /alerts': { list: { alertModel: SAMPLE_ALERTS } },
 
     // Events view (ServerEvent is XStream-aliased to "event"; api unwraps it).
     'GET /events': { list: { serverEvent: SAMPLE_EVENTS } },
