@@ -1,9 +1,9 @@
 /*
  * Alerts list (React port of the list half of views/alerts.js). Multi-select
- * table + the selection-gated Alert Tasks pane. The alert EDITOR remains the
- * proven legacy renderAlertEditor (its connector-granular channel tree and the
- * intricate AlertChannels serialization are reused verbatim) — registered here
- * as a DOM view while the list is React.
+ * table + the selection-gated Alert Tasks pane. The alert EDITOR is now also
+ * React (../views/alert-editor.jsx): its connector-granular channel tree and the
+ * intricate AlertChannels serialization are reused verbatim there, mounted into
+ * a ref'd host. Both halves register here.
  */
 
 import { useState, useEffect, useRef } from 'react';
@@ -13,14 +13,12 @@ import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
-import { newAlert, renderAlertEditor } from '../../views/alerts.js';
+import { newAlert, AlertEditor } from './alert-editor.jsx';
 
 export function register(platform) {
     platform.registerNavItem({ id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Engine', order: 4 });
     platform.registerView('/alerts', reactView(AlertsList), { title: 'Alerts' });
-    // Editor stays the legacy DOM view (reused verbatim) for now.
-    platform.registerView('/alerts/:alertId/edit',
-        ({ params, query }) => renderAlertEditor(platform, params.alertId, query), { title: 'Edit Alert' });
+    platform.registerView('/alerts/:alertId/edit', reactView(AlertEditor), { title: 'Edit Alert' });
 }
 
 const COLUMNS = [

@@ -68,6 +68,21 @@ export const DEFAULT_FIXTURES = {
     'GET /events': { list: { serverEvent: SAMPLE_EVENTS } },
     'GET /events/count': '2',
 
+    // Code Templates view (library with one FUNCTION template).
+    'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [
+        {
+            '@version': '4.5.0', id: 'lib-1', name: 'Demo Library', revision: 1, description: 'Demo',
+            includeNewChannels: false, enabledChannelIds: '', disabledChannelIds: '',
+            codeTemplates: { codeTemplate: [
+                {
+                    '@version': '4.5.0', id: 'tpl-1', name: 'Trim Whitespace', revision: 1,
+                    contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
+                    properties: { '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties', type: 'FUNCTION', code: 'function trim(s) { return String(s).trim(); }' }
+                }
+            ] }
+        }
+    ] } },
+
     // Global scripts view (XStream map of script key -> body).
     'GET /server/globalScripts': { map: { entry: [
         { string: ['Deploy', 'return;'] },

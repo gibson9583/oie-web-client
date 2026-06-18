@@ -20,19 +20,19 @@ import { initSplitters } from '../core/resize.js';
 import { h, icon, modal, toast } from '@oie/web-ui';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { platform, loadPlugins } from '@oie/web-shell';
-import { renderLogin } from '../views/login.js';
+import { LoginForm } from './views/login.jsx';
 
-import { register as registerDashboard } from '../views/dashboard.js';
-import { register as registerChannels } from '../views/channels.js';
-import { register as registerChannelEditor } from '../views/channel-editor.js';
-import { register as registerMessages } from '../views/messages.js';
+import { register as registerDashboard } from './views/dashboard.jsx';
+import { register as registerChannels } from './views/channels.jsx';
+import { register as registerChannelEditor } from './views/channel-editor.jsx';
+import { register as registerMessages } from './views/messages.jsx';
 import { register as registerEvents } from './views/events.jsx';
 import { register as registerAlerts } from './views/alerts.jsx';
 import { register as registerUsers } from './views/users.jsx';
-import { register as registerSettings } from '../views/settings.js';
-import { register as registerCodeTemplates } from '../views/code-templates.js';
+import { register as registerSettings } from './views/settings.jsx';
+import { register as registerCodeTemplates } from './views/code-templates.jsx';
 import { register as registerGlobalScripts } from './views/global-scripts.jsx';
-import { register as registerExtensions } from '../views/extensions.js';
+import { register as registerExtensions } from './views/extensions.jsx';
 import { register as registerConnectors } from '../connectors/index.js';
 
 const HOMEPAGE_URL = 'https://github.com/OpenIntegrationEngine/engine';
@@ -318,21 +318,6 @@ function AppShell({ user, onLogout }) {
 
 /* ---- login + auth gate ---- */
 
-function LoginMount({ onSuccess }) {
-    const ref = useRef(null);
-    // Mount the (vanilla) login form once; call the latest onSuccess via a ref so
-    // the effect needn't depend on it (and re-mount).
-    const onSuccessRef = useRef(onSuccess);
-    onSuccessRef.current = onSuccess;
-    useEffect(() => {
-        const node = renderLogin((u) => onSuccessRef.current(u));
-        const host = ref.current;
-        host.appendChild(node);
-        return () => { if (host) host.replaceChildren(); };
-    }, []);
-    return <div ref={ref} style={{ height: '100%' }} />;
-}
-
 function BootSplash() {
     return (
         <div className="boot-splash">
@@ -358,6 +343,10 @@ export function App() {
             finally { if (alive) setAuthChecked(true); }
         })();
         const off = onSessionExpired(() => {
+            // Ignore while already on the login screen (the boot auth-check 401),
+            // matching the vanilla shell's loginShowing guard — otherwise a
+            // spurious setState re-render can disrupt the login form.
+            if (!store.getState('user')) return;
             toast('Session expired — please sign in again', 'warn');
             store.setState('user', null);
         });
@@ -379,6 +368,6 @@ export function App() {
     };
 
     if (!authChecked) return <BootSplash />;
-    if (!user) return <LoginMount onSuccess={onLoginSuccess} />;
+    if (!user) return <LoginForm onSuccess={onLoginSuccess} />;
     return <AppShell user={user} onLogout={onLogout} />;
 }

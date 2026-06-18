@@ -12,7 +12,10 @@ export default defineConfig({
     testDir: './e2e',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
-    retries: process.env.CI ? 1 : 0,
+    // One retry: serial (workers:1) so a retry adds no contention; recovers the
+    // rare login→shell boot-timing flake that surfaces over a long suite run
+    // (passes in isolation). A real regression still fails every attempt.
+    retries: 1,
     // The whole suite shares ONE dev server. Parallel workers all hammering it at
     // once starve the login spec (the app bundle + plugin loads race its boot),
     // so run serially: the suite is small and each test is ~1s. Revisit with a

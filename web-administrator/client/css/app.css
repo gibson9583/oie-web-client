@@ -1122,7 +1122,9 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .warn-text { color: var(--warn); }
 /* Filled amber cell flag — draws the eye to a "needs attention" cell (out-of-sync
    Rev Δ, the one-time just-deployed cue) far more than colored text alone. */
-.cell-flag { background: #f0e68c; color: #1f2c38; font-weight: 600; }
+/* display:block + negative margins cancel the td's 6px 12px padding so the
+   highlight fills the whole cell (not just the text), matching Swing. */
+.cell-flag { display: block; margin: -6px -12px; padding: 6px 12px; background: #f0e68c; color: #1f2c38; font-weight: 600; }
 .flex { display: flex; align-items: center; gap: 8px; }
 .flex-wrap { flex-wrap: wrap; }
 .grow { flex: 1; }
