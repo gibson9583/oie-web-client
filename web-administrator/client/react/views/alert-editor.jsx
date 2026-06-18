@@ -38,7 +38,7 @@
  */
 
 import { useEffect, useRef, useReducer } from 'react';
-import { h, clear, toast, contextMenu, field, textInput, select, checkbox, loading, icon, saveFile, taskButton } from '@oie/web-ui';
+import { h, clear, toast, contextMenu, confirmDialog, field, textInput, select, checkbox, loading, icon, saveFile, taskButton } from '@oie/web-ui';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -243,6 +243,16 @@ export function AlertEditor({ params, query = {} }) {
     // alert + options load. saveModel reads the controls they create via refs.
     const panelsRef = useRef(null);
 
+    // Unsaved-changes detection: the serialized model captured once the form is
+    // built (clean baseline). The nav guard re-serializes on leave and prompts
+    // when it differs — no per-edit markDirty, no false positives from UI-only
+    // state (filter/selection live outside the model).
+    const cleanSnapshotRef = useRef(null);
+    function syncedModelJson() {
+        try { saveModelRef.current(); } catch { return null; }
+        return JSON.stringify(modelRef.current);
+    }
+
     async function save() {
         const model = modelRef.current;
         if (!model) return;
@@ -252,6 +262,7 @@ export function AlertEditor({ params, query = {} }) {
             if (isNew) await api.alerts.create(model);
             else await api.alerts.update(model.id, model);
             store.setState('editingAlert', null);
+            store.setState('navGuard', null);   // saved — don't prompt on the redirect
             toast(isNew ? `Alert "${model.name}" created` : `Alert "${model.name}" saved`);
             router.navigate('/alerts');
         } catch (e) {
@@ -689,8 +700,26 @@ export function AlertEditor({ params, query = {} }) {
     // effect is correct.
     useEffect(() => {
         load();
+        // Prompt before leaving with unsaved alert edits (Swing parity).
+        store.setState('navGuard', async () => {
+            if (cleanSnapshotRef.current === null || !modelRef.current) return;
+            const now = syncedModelJson();
+            if (now === null || now === cleanSnapshotRef.current) return;
+            const ok = await confirmDialog('Unsaved Changes',
+                'You have unsaved alert changes. Leave without saving?',
+                { danger: true, okLabel: 'Leave' });
+            return ok ? undefined : false;
+        });
+        return () => store.setState('navGuard', null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Capture the clean baseline once the form panels are built (before edits).
+    useEffect(() => {
+        if (cleanSnapshotRef.current === null && panelsRef.current && modelRef.current) {
+            cleanSnapshotRef.current = syncedModelJson();
+        }
+    });
 
     const state = treeStateRef.current;
     const panels = panelsRef.current;

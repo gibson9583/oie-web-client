@@ -723,6 +723,15 @@ function CodeTemplatesView() {
 
     useEffect(() => {
         load();
+        // Prompt before leaving with unsaved library/template edits (Swing parity).
+        store.setState('navGuard', async () => {
+            if (!dirtyRef.current) return;
+            const ok = await confirmDialog('Unsaved Changes',
+                'You have unsaved code template changes. Leave without saving?',
+                { danger: true, okLabel: 'Leave' });
+            return ok ? undefined : false;
+        });
+        return () => store.setState('navGuard', null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
