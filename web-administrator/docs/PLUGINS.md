@@ -531,28 +531,25 @@ export function register(platform) {
 
 ### Shipping the web UI inside the engine extension
 
-Instead of a separate install, an engine extension can carry its web admin
-plugin in a `webadmin/` folder inside the extension zip
-(`<extension>/webadmin/plugin.json` + assets). The web administrator discovers
-the engine's extensions directory **automatically when `engineHome` is set**
-(`OIE_HOME` env or `config.json` `"engineHome"`) — it appends
-`<engineHome>/extensions` to its plugin search list. (You can also point at any
-directory explicitly via `WEBADMIN_PLUGIN_DIRS=/path/to/oie/extensions` or
-`config.json` `"pluginDirs": [...]`.) The loader checks each entry for
-`plugin.json` directly (native layout) or under `webadmin/` (engine-extension
-layout); duplicate plugin ids are loaded first-found.
+Instead of a separate install, an engine extension carries its web admin plugin
+in a `webadmin/` folder inside the extension zip (`<extension>/webadmin/plugin.json`
++ assets).
 
-**Install through the UI.** With `engineHome` set, the normal flow is:
-**Extensions → Install Extension** uploads the zip (`POST /extensions/_install`)
-to the engine, which unpacks it to `<engineHome>/extensions/<name>/`; **restart
-the engine**, then **refresh the browser** — the web admin discovers
-`<name>/webadmin/plugin.json` and loads the React plugin. (The SQS connector and
-`oie-source-code-search` are the worked third-party examples.)
+**Install through the UI** (one action, decoupled): **Extensions → Install
+Extension** uploads the zip to the *web administrator*, which forwards it to the
+engine's installer (the engine enforces `EXTENSIONS_MANAGE`) and, on success,
+extracts the `webadmin/` half into its **own `pluginDir`**. **Restart the engine**
+(for the engine half), then **refresh the browser** (the web half is hot-scanned
+from `pluginDir`). The web admin owns its plugins in `pluginDir` and does **not**
+read the engine's filesystem.
 
-> Because the import currently routes through the **engine** installer, the web
-> admin and engine must share that extensions directory. Decoupling them (a
-> dedicated authenticated web-admin plugin-install endpoint so one upload can
-> place the engine half and the web half independently) is a planned direction.
+The loader checks each search dir for `plugin.json` directly (native layout) or
+under `webadmin/` (engine-extension layout); duplicate ids load first-found. To
+*also* surface the web halves of extensions installed **directly into an engine**
+(not through this UI), add that engine's `extensions/` dir explicitly —
+`config.json` `"pluginDirs": ["/path/to/oie/extensions"]` or
+`WEBADMIN_PLUGIN_DIRS=/path/to/oie/extensions`. (`engineHome` does **not** add it;
+that setting drives only the datatype serializer bridge.)
 
 **Building the webadmin half in Maven.** Since `web/plugin.js` is now a compiled
 artifact (from `web/plugin.jsx`), build it before packaging. Either commit the

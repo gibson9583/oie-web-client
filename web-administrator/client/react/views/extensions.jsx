@@ -184,11 +184,13 @@ function ExtensionsView() {
         }
     }
 
-    /* POST /extensions/_install (verified in ExtensionServletInterface):
-       multipart/form-data with the zip in a part named "file"
-       (@FormDataParam("file")). api.post passes FormData through untouched so
-       the browser sets the multipart boundary; the X-Requested-With header is
-       added by headers() as usual. */
+    /* Engine-gated install (one upload, fanned out server-side): the zip is
+       forwarded to the engine's own installer — which enforces EXTENSIONS_MANAGE —
+       and ONLY if the engine accepts is the webadmin/ half extracted into the web
+       admin's pluginDir. Same single Install Extension action for the user; the
+       server does the routing. multipart/form-data, "file" part (the engine's
+       @FormDataParam contract); api.post passes FormData through untouched and
+       headers() adds X-Requested-With (the CSRF + cookie the server forwards). */
     function installExtension() {
         const input = h('input', { type: 'file', accept: '.zip', style: { display: 'none' } });
         input.addEventListener('change', async () => {
@@ -198,8 +200,9 @@ function ExtensionsView() {
             try {
                 const form = new FormData();
                 form.append('file', file, file.name);
-                await api.post('/extensions/_install', form);
-                toast(`"${file.name}" installed — restart the engine to load it`);
+                const result = (await api.post('/_webadmin/plugins/_install', form)) || {};
+                const web = result.webInstalled ? ' Web UI installed — refresh to load it.' : '';
+                toast(`"${file.name}" installed — restart the engine to load it.${web}`);
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e) {
                 toast(`Install failed: ${e.message}`, 'error');
@@ -209,10 +212,11 @@ function ExtensionsView() {
         input.click();
     }
 
-    /* POST /extensions/_uninstall: the body is the extension's MetaData
-       "path" attribute sent VERBATIM (the engine writes the raw body straight
-       into its extensions/uninstall marker, one path per line, consumed by
-       the launcher at next startup). Never wrap it in JSON/XML. */
+    /* Engine-gated uninstall: the extension's MetaData "path" is forwarded to the
+       engine's _uninstall (which enforces EXTENSIONS_MANAGE and writes its
+       uninstall marker, applied on the next engine restart). On success the web
+       admin removes its own copy of the web half too — correlated to a web plugin
+       by id/name so it's torn down in the same action. */
     async function uninstallExtension() {
         const s = requireSelection();
         if (!s) return;
@@ -227,11 +231,15 @@ function ExtensionsView() {
             `Uninstall "${s.name}"? Its server-side files will be removed on the next engine restart. This cannot be undone.`,
             { danger: true, okLabel: 'Uninstall' })) {
             try {
-                // The endpoint takes the body VERBATIM as the extension path —
-                // do not wrap it (a wrapped body ends up in the uninstall marker
-                // file literally and the launcher then deletes nothing).
-                await api.post('/extensions/_uninstall', String(path), { contentType: 'application/json' });
-                toast(`${s.name} uninstalled — restart the engine to apply`);
+                // Best-effort match of the extension to its installed web plugin so
+                // the web half is removed alongside the engine half.
+                const lower = String(s.name).toLowerCase();
+                const web = webPlugins.find((p) => String(p.id).toLowerCase() === lower || String(p.name).toLowerCase() === lower);
+                const result = (await api.post('/_webadmin/plugins/_uninstall',
+                    JSON.stringify({ path: String(path), pluginId: web ? web.id : null }),
+                    { contentType: 'application/json' })) || {};
+                const w = result.webRemoved ? ' Web UI removed.' : '';
+                toast(`${s.name} uninstalled — restart the engine to apply.${w}`);
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e) {
                 toast(`Uninstall failed: ${e.message}`, 'error');
