@@ -406,7 +406,7 @@ function DashboardView() {
        Statistics read the closure `lifetime` flag (via lifetimeRef). */
     const COLUMNS = [
         {
-            key: 'state', label: 'Status', tree: true,
+            key: 'state', label: 'Status',
             sortValue: (st) => stateLabel(st.state) || String(st.state || ''),
             renderChannel: (st) => <span className="status-cell"><span className={`pip ${statePip(st.state)}`} />{stateLabel(st.state)}</span>,
             renderGroupAggregate: (totals, ctx) => {
@@ -420,10 +420,10 @@ function DashboardView() {
                 }
                 return <span className="status-cell"><span className="pip warn" />Mixed</span>;
             },
-            renderConnector: (child) => <span className="status-cell" style={{ paddingLeft: '14px' }}><span className={`pip ${statePip(child.state)}`} />{stateLabel(child.state)}</span>
+            renderConnector: (child) => <span className="status-cell"><span className={`pip ${statePip(child.state)}`} />{stateLabel(child.state)}</span>
         },
         {
-            key: 'name', label: 'Name',
+            key: 'name', label: 'Name', tree: true,
             sortValue: (st) => String(st.name || '').toLowerCase(),
             renderChannel: (st) => <NameCell st={st} />,
             renderGroupAggregate: (totals, ctx) => `[${ctx.group.name}]`,
@@ -1107,7 +1107,7 @@ function DashboardView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="grow" style={{ overflow: 'auto', flex: 1, minHeight: 0 }}
+                <div className="grow" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, 1fr)' }}
                     onClick={onEmptyClick}
                     onContextMenu={(e) => { if (!e.target.closest('tr') && !e.target.closest('thead')) onEmptyContextMenu(e); }}>
                     <TreeTable
@@ -1116,6 +1116,7 @@ function DashboardView() {
                         getChildren={(n) => n.children}
                         rowKey={rowKey}
                         rowClassName={(n) => (n.kind === 'group' ? 'group-row' : '')}
+                        autoGroupRow={false}
                         selectedKeys={selectedKeys}
                         onSelect={onSelect}
                         onActivate={onActivate}

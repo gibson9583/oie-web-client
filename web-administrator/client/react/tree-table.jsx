@@ -34,7 +34,12 @@ export function TreeTable({
     selectedKey, selectedKeys, onSelect, onActivate, onRowContextMenu, onEmptyContextMenu,
     rowDraggable, onRowDrop,
     columnsKey, columnWidths = {}, defaultHidden = [], pinnedKeys = [],
-    emptyText = 'No items', matches, collapsedKeys, onToggleCollapse
+    emptyText = 'No items', matches, collapsedKeys, onToggleCollapse,
+    // When true (default) every expandable row gets the bold/tinted `group-row`
+    // style. Trees with multiple expandable levels (e.g. the dashboard, where
+    // channels are also expandable) set this false and class only true group
+    // rows via rowClassName.
+    autoGroupRow = true
 }) {
     const [, force] = useReducer((x) => x + 1, 0);
     const mgrRef = useRef(null);
@@ -185,7 +190,7 @@ export function TreeTable({
                 <tbody>
                     {rows.map(({ node, key, depth, expandable }) => {
                         const selected = selectedKeys ? selectedKeys.has(key) : (selectedKey != null && key === selectedKey);
-                        const cls = ['', expandable ? 'group-row' : '', selected ? 'selected' : '',
+                        const cls = ['', (expandable && autoGroupRow) ? 'group-row' : '', selected ? 'selected' : '',
                             rowClassName ? rowClassName(node, depth) : ''].filter(Boolean).join(' ');
                         const drag = rowDraggable && rowDraggable(node);
                         return (
