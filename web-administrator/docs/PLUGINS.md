@@ -306,11 +306,9 @@ platform.registerStepType('com.example.MyStep', {
 platform.registerRuleType('com.example.MyRule', { /* same contract */ });
 
 // Connector property panel (ConnectorSettingsPanel) — e.g. for a custom connector.
-// NOTE: connector panels are the last extension type finishing its React
-// migration — the bundled connectors still register imperative render() panels
-// today, and the channel editor renders them imperatively. The `component`
-// contract below is the target; full React connector-panel support (and the SQS
-// worked example) lands with the connectors build-pipeline pass.
+// `component` gets { properties, connector, channel, onChange }; mutate `properties`
+// in place + call onChange(). Build the form with <ConnectorForm fields={…}/> (and
+// <PollSection/> for poll sources) from @oie/web-ui — see the SQS worked example.
 platform.registerConnectorPanel('My Listener', 'SOURCE', {
     defaults(version) { return { '@class': 'com.example.MyReceiverProperties', '@version': version /* … */ }; },
     component: ({ properties, connector, channel, onChange }) => <div>…</div> });
@@ -493,8 +491,10 @@ to `web/plugin.js`, which ships inside the engine extension zip:
 ```jsx
 // sqs-source-connector .../webadmin/web/plugin.jsx (abridged) — compiled to plugin.js
 import { platform } from '@oie/web-shell';
-import { defaultPollProperties, defaultSourceProperties } from '@oie/web-ui';
+import { ConnectorForm, PollSection, defaultPollProperties, defaultSourceProperties } from '@oie/web-ui';
 const React = platform.React;
+
+const awsFields = () => [ /* schema-driven field defs: queueUrl, region, authType, … */ ];
 
 const sqsReader = {
     defaults(version) {
@@ -508,14 +508,13 @@ const sqsReader = {
             queueUrl: '', region: '', authType: 'DEFAULT', /* … every Java field … */
         };
     },
-    // Mutate the engine `properties` object in place, then call onChange().
+    // <ConnectorForm> consumes the same field-schema array the old buildForm did
+    // and mutates `properties` in place; <PollSection> renders the poll schedule.
     component: ({ properties, onChange }) => (
-        <div className="form">
-            <label>Queue URL
-                <input value={properties.queueUrl || ''}
-                    onChange={e => { properties.queueUrl = e.target.value; onChange(); }} />
-            </label>
-            {/* … the rest of the schema-driven fields … */}
+        <div>
+            <ConnectorForm properties={properties} onChange={onChange}
+                fields={[ ...awsFields(), { section: 'Receive Settings' } /* … */ ]} />
+            <PollSection properties={properties} onChange={onChange} />
         </div>
     )
 };
@@ -534,20 +533,54 @@ export function register(platform) {
 
 Instead of a separate install, an engine extension can carry its web admin
 plugin in a `webadmin/` folder inside the extension zip
-(`<extension>/webadmin/plugin.json` + assets). Point the web administrator's
-plugin search path at the engine's extensions directory and it is discovered
-automatically:
+(`<extension>/webadmin/plugin.json` + assets). The web administrator discovers
+the engine's extensions directory **automatically when `engineHome` is set**
+(`OIE_HOME` env or `config.json` `"engineHome"`) — it appends
+`<engineHome>/extensions` to its plugin search list. (You can also point at any
+directory explicitly via `WEBADMIN_PLUGIN_DIRS=/path/to/oie/extensions` or
+`config.json` `"pluginDirs": [...]`.) The loader checks each entry for
+`plugin.json` directly (native layout) or under `webadmin/` (engine-extension
+layout); duplicate plugin ids are loaded first-found.
 
-```bash
-WEBADMIN_PLUGIN_DIRS=/path/to/oie/extensions npm start
-# or in config.json:  { "pluginDirs": ["/path/to/oie/extensions"] }
+**Install through the UI.** With `engineHome` set, the normal flow is:
+**Extensions → Install Extension** uploads the zip (`POST /extensions/_install`)
+to the engine, which unpacks it to `<engineHome>/extensions/<name>/`; **restart
+the engine**, then **refresh the browser** — the web admin discovers
+`<name>/webadmin/plugin.json` and loads the React plugin. (The SQS connector and
+`oie-source-code-search` are the worked third-party examples.)
+
+> Because the import currently routes through the **engine** installer, the web
+> admin and engine must share that extensions directory. Decoupling them (a
+> dedicated authenticated web-admin plugin-install endpoint so one upload can
+> place the engine half and the web half independently) is a planned direction.
+
+**Building the webadmin half in Maven.** Since `web/plugin.js` is now a compiled
+artifact (from `web/plugin.jsx`), build it before packaging. Either commit the
+built `web/plugin.js` (your `maven-resources` copy picks it up), or wire
+`frontend-maven-plugin` to build it during `mvn package` (runs in
+`generate-resources`, before the `webadmin/` copy) — and exclude the build
+tooling from the copied resources:
+
+```xml
+<plugin>
+  <groupId>com.github.eirslett</groupId>
+  <artifactId>frontend-maven-plugin</artifactId>
+  <version>1.15.1</version>
+  <configuration><workingDirectory>webadmin</workingDirectory>
+    <installDirectory>${project.build.directory}</installDirectory></configuration>
+  <executions>
+    <execution><id>install-node-and-npm</id><phase>generate-resources</phase>
+      <goals><goal>install-node-and-npm</goal></goals>
+      <configuration><nodeVersion>v20.18.0</nodeVersion></configuration></execution>
+    <execution><id>npm-install</id><phase>generate-resources</phase>
+      <goals><goal>npm</goal></goals><configuration><arguments>install</arguments></configuration></execution>
+    <execution><id>npm-build-webadmin</id><phase>generate-resources</phase>
+      <goals><goal>npm</goal></goals><configuration><arguments>run build</arguments></configuration></execution>
+  </executions>
+</plugin>
+<!-- on the webadmin copy-resources <resource>, exclude: node_modules/**,
+     package.json, package-lock.json, web/build.mjs, web/plugin.jsx -->
 ```
-
-The loader checks each entry for `plugin.json` directly (native layout) or
-under `webadmin/` (engine-extension layout); duplicate plugin ids are loaded
-first-found. The SQS connector repo demonstrates the full pattern — one
-Maven build produces a zip that serves the engine, the Swing client, and the
-web administrator.
 
 Three things must line up with the engine plugin:
 
