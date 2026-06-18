@@ -13,9 +13,7 @@
  * <TaskButton>s gated on the current selection (effectiveChannels()/single()/
  * multi()); a useReducer force-update (renderTable()) refreshes the React tree +
  * task panes. New Channel seeds store.editingChannel and navigates to the
- * still-legacy channel editor (channel-editor.js stays as-is).
- *
- * The channel EDITOR is intentionally NOT ported — it stays the legacy DOM view.
+ * channel editor — a React view registered at /channels/:channelId/edit.
  */
 
 import { useEffect, useRef, useReducer } from 'react';

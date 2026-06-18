@@ -65,7 +65,7 @@ const wsListener = {
 const WS_DEFAULT_OPERATION = 'Press Get Operations';
 
 const isTrue = (v) => v === true || v === 'true';
-const useAuth = (p) => isTrue(p.useAuthentication);
+const usingAuth = (p) => isTrue(p.useAuthentication);
 
 function asArray(value) {
     if (value === null || value === undefined || value === '') return [];
@@ -353,8 +353,8 @@ const wsSender = {
                     key: 'useAuthentication', label: 'Authentication', type: 'radio', options: YES_NO, refresh: true,
                     onSet: (p, v) => { if (!v) { p.username = ''; p.password = ''; } }
                 },
-                { key: 'username', label: 'Username', type: 'text', width: '220px', visible: useAuth },
-                { key: 'password', label: 'Password', type: 'password', width: '220px', visible: useAuth },
+                { key: 'username', label: 'Username', type: 'text', width: '220px', visible: usingAuth },
+                { key: 'password', label: 'Password', type: 'password', width: '220px', visible: usingAuth },
                 { key: 'oneWay', label: 'Invocation Type', type: 'radio', options: [
                     { value: false, label: 'Two-Way' },
                     { value: true, label: 'One-Way' }

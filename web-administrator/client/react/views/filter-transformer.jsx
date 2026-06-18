@@ -30,7 +30,7 @@ import * as router from '../../core/router.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../../core/serialize.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
-import { dataTypePropertiesEditor } from '../../datatypes/props-editor.js';
+import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { REFERENCE_CATALOG } from '../../core/reference-catalog.js';
 import { platform } from '@oie/web-shell';
 import { reactView, ViewTasks, mountReact } from '../mount.jsx';
@@ -1008,13 +1008,16 @@ function buildBody(params, kindName, onTasksChange) {
         function openPropsModal(side, title) {
             const typeName = target[`${side}DataType`] || 'RAW';
             let draft = JSON.parse(JSON.stringify(ensureProps(side)));
+            const editorHost = h('div');
+            const root = mountReact(editorHost, <DataTypePropertiesEditor
+                typeName={typeName} props={draft} version={version}
+                direction={side} connectorType={connectorType}
+                onReplace={(obj) => { draft = obj; }} />);
             modal({
                 title: `${title} Data Type Properties — ${dtLabel(typeName)}`,
                 size: 'wide',
-                body: h('div', dataTypePropertiesEditor(typeName, draft, version, {
-                    direction: side, connectorType,
-                    onReplace: (obj) => { draft = obj; }
-                })),
+                body: editorHost,
+                onClose: () => { try { root(); } catch { /* ignore */ } },
                 buttons: [
                     { label: 'Cancel' },
                     {
@@ -1572,6 +1575,6 @@ function buildBody(params, kindName, onTasksChange) {
         },
         // Teardown persists the working copy but must not mark dirty (see persist()),
         // then clears the editor's code-template scope so it can't leak to the next view.
-        teardown: () => { if (elementEditorRoot) elementEditorRoot(); persist(); clearActiveScope(); }
+        teardown: () => { if (elementEditorRoot) elementEditorRoot(); generatedEditor.dispose && generatedEditor.dispose(); persist(); clearActiveScope(); }
     };
 }

@@ -123,7 +123,7 @@ const httpSender = {
     };
   },
   component({ properties, channel, onChange }) {
-    const useAuth = (p) => asBool(p.useAuthentication);
+    const usingAuth = (p) => asBool(p.useAuthentication);
     return /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
       { section: "Connection Settings" },
       {
@@ -148,10 +148,10 @@ const httpSender = {
       ] },
       { section: "HTTP Authentication" },
       { key: "useAuthentication", label: "Use Authentication", type: "radio", options: YES_NO, refresh: true },
-      { key: "authenticationType", label: "Authentication Type", type: "radio", options: ["Basic", "Digest"], visible: useAuth },
-      { key: "usePreemptiveAuthentication", label: "Preemptive", type: "checkbox", visible: useAuth },
-      { key: "username", label: "Username", type: "text", width: "220px", visible: useAuth },
-      { key: "password", label: "Password", type: "password", width: "220px", visible: useAuth },
+      { key: "authenticationType", label: "Authentication Type", type: "radio", options: ["Basic", "Digest"], visible: usingAuth },
+      { key: "usePreemptiveAuthentication", label: "Preemptive", type: "checkbox", visible: usingAuth },
+      { key: "username", label: "Username", type: "text", width: "220px", visible: usingAuth },
+      { key: "password", label: "Password", type: "password", width: "220px", visible: usingAuth },
       { section: "Request Settings" },
       { key: "parameters", label: "Query Parameters", type: "keyvalue", mapShape: "list" },
       { key: "headers", label: "Headers", type: "keyvalue", mapShape: "list" },

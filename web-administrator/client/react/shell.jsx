@@ -12,7 +12,6 @@ import {
     useStoreKey, useTheme, useTimezone, useViewTitle, useRouteChange,
     useServerIdentity, useRestartWatch, Icon
 } from './bridges.jsx';
-import { relocateTaskbars } from './legacy-tasks.js';
 import { RailPane } from './ui.jsx';
 import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
@@ -257,7 +256,6 @@ function RestartBanner() {
 
 function AppShell({ user, onLogout }) {
     const outletRef = useRef(null);
-    const tasksHostRef = useRef(null);
     const reactTasksRef = useRef(null);
     const serverInfo = useServerIdentity();
 
@@ -280,22 +278,6 @@ function AppShell({ user, onLogout }) {
         return () => { cancelled = true; };
     }, []);
 
-    // Relocate legacy view taskbars into the rail on each route change; retitle a
-    // task pane when a view swaps tasks without navigating (e.g. settings tabs).
-    useEffect(() => {
-        const onRoute = (e) => relocateTaskbars(outletRef.current, tasksHostRef.current, e.detail?.meta?.title);
-        const onRetitle = (e) => {
-            const pane = tasksHostRef.current?.querySelector('.rail-pane .pane-title');
-            if (pane && e.detail?.title) pane.textContent = e.detail.title;
-        };
-        window.addEventListener('route:changed', onRoute);
-        window.addEventListener('webadmin:retitle-tasks', onRetitle);
-        return () => {
-            window.removeEventListener('route:changed', onRoute);
-            window.removeEventListener('webadmin:retitle-tasks', onRetitle);
-        };
-    }, []);
-
     const railVersion = serverInfo && !serverInfo.error ? `engine v${serverInfo.version}` : '';
 
     return (
@@ -307,7 +289,6 @@ function AppShell({ user, onLogout }) {
                 </div>
                 <div className="rail-panes">
                     <Nav only="Engine" />
-                    <div ref={tasksHostRef} />
                     <div ref={reactTasksRef} />
                     <Nav exclude="Engine" />
                     <OtherPane onLogout={onLogout} />

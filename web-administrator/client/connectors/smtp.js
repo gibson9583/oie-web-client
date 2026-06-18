@@ -1,6 +1,6 @@
 import { React } from "./react-platform.js";
 import { ConnectorForm, ConnectorTestButton, asBool, YES_NO, defaultDestinationProperties, CHARSETS } from "./react-forms.js";
-const useAuth = (p) => asBool(p.authentication);
+const usingAuth = (p) => asBool(p.authentication);
 const smtpSender = {
   defaults(version) {
     return {
@@ -47,8 +47,8 @@ const smtpSender = {
         { value: "SSL", label: "SSL" }
       ] },
       { key: "authentication", label: "Use Authentication", type: "radio", options: YES_NO, refresh: true },
-      { key: "username", label: "Username", type: "text", width: "220px", visible: useAuth },
-      { key: "password", label: "Password", type: "password", width: "220px", visible: useAuth },
+      { key: "username", label: "Username", type: "text", width: "220px", visible: usingAuth },
+      { key: "password", label: "Password", type: "password", width: "220px", visible: usingAuth },
       { section: "Email Settings" },
       { key: "from", label: "From", type: "text", width: "220px" },
       { key: "to", label: "To", type: "text", tooltip: "Comma-separated addresses" },

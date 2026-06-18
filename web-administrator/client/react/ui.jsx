@@ -9,9 +9,12 @@
 
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Icon } from './bridges.jsx';
-import { paneCollapsed } from './legacy-tasks.js';
 import { DataTable } from '@oie/web-ui';
 import { createCodeEditor } from '../core/codeeditor.js';
+
+// Rail-pane collapse state, shared across the shell's nav panes and view task
+// panes; persists for the session.
+const paneCollapsed = new Map();
 
 /* Collapsible rail pane (shared by the shell nav and React view task panes). */
 export function RailPane({ title, paneKey, className, children }) {

@@ -65,6 +65,7 @@ function CodeField({ value, language, minHeight, placeholder, onChange }) {
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
     useEffect(() => {
+        const host = hostRef.current;
         const editor = createCodeEditor({
             value: value === null || value === undefined ? '' : String(value),
             language: language || 'text',
@@ -73,8 +74,8 @@ function CodeField({ value, language, minHeight, placeholder, onChange }) {
             onChange: (v) => onChangeRef.current && onChangeRef.current(v)
         });
         edRef.current = editor;
-        hostRef.current.appendChild(editor.el);
-        return () => { try { editor.dispose && editor.dispose(); } catch { /* baseline no-op */ } edRef.current = null; if (hostRef.current) hostRef.current.replaceChildren(); };
+        host.appendChild(editor.el);
+        return () => { try { editor.dispose && editor.dispose(); } catch { /* baseline no-op */ } edRef.current = null; if (host) host.replaceChildren(); };
         // Built once; subsequent value changes are reconciled by the effect below.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

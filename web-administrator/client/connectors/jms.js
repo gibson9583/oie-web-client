@@ -21,15 +21,15 @@ function jmsConnectorDefaults() {
     clientId: ""
   };
 }
-const useJndi = (p) => asBool(p.useJndi);
+const usingJndi = (p) => asBool(p.useJndi);
 function jmsConnectionFields() {
   return [
     { section: "Connection Settings" },
     { key: "useJndi", label: "Use JNDI", type: "radio", options: YES_NO, refresh: true },
-    { key: "jndiProviderUrl", label: "Provider URL", type: "text", width: "420px", visible: useJndi },
-    { key: "jndiInitialContextFactory", label: "Initial Context Factory", type: "text", width: "420px", visible: useJndi },
-    { key: "jndiConnectionFactoryName", label: "Connection Factory Name", type: "text", width: "320px", visible: useJndi },
-    { key: "connectionFactoryClass", label: "Connection Factory Class", type: "text", width: "420px", visible: (p) => !useJndi(p) },
+    { key: "jndiProviderUrl", label: "Provider URL", type: "text", width: "420px", visible: usingJndi },
+    { key: "jndiInitialContextFactory", label: "Initial Context Factory", type: "text", width: "420px", visible: usingJndi },
+    { key: "jndiConnectionFactoryName", label: "Connection Factory Name", type: "text", width: "320px", visible: usingJndi },
+    { key: "connectionFactoryClass", label: "Connection Factory Class", type: "text", width: "420px", visible: (p) => !usingJndi(p) },
     { key: "connectionProperties", label: "Connection Properties", type: "keyvalue" },
     { key: "username", label: "Username", type: "text", width: "220px" },
     { key: "password", label: "Password", type: "password", width: "220px" }
@@ -52,11 +52,11 @@ const jmsListener = {
       ...jmsConnectionFields(),
       { section: "Destination Settings" },
       { key: "destinationName", label: "Destination Name", type: "text", width: "320px" },
-      { key: "topic", label: "Destination Type", type: "radio", refresh: true, visible: (p) => !useJndi(p), options: [
+      { key: "topic", label: "Destination Type", type: "radio", refresh: true, visible: (p) => !usingJndi(p), options: [
         { value: false, label: "Queue" },
         { value: true, label: "Topic" }
       ] },
-      { key: "durableTopic", label: "Durable Topic", type: "radio", options: YES_NO, visible: (p) => !useJndi(p) && asBool(p.topic) },
+      { key: "durableTopic", label: "Durable Topic", type: "radio", options: YES_NO, visible: (p) => !usingJndi(p) && asBool(p.topic) },
       { key: "clientId", label: "Client ID", type: "text", width: "220px" },
       { key: "selector", label: "Selector Expression", type: "text", width: "320px" },
       { key: "reconnectIntervalMillis", label: "Reconnect Interval (ms)", type: "number", width: "120px" }
@@ -78,7 +78,7 @@ const jmsSender = {
       ...jmsConnectionFields(),
       { section: "Destination Settings" },
       { key: "destinationName", label: "Destination Name", type: "text", width: "320px" },
-      { key: "topic", label: "Destination Type", type: "radio", visible: (p) => !useJndi(p), options: [
+      { key: "topic", label: "Destination Type", type: "radio", visible: (p) => !usingJndi(p), options: [
         { value: false, label: "Queue" },
         { value: true, label: "Topic" }
       ] },

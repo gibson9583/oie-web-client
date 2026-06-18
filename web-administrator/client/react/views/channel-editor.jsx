@@ -35,7 +35,7 @@ import * as router from '../../core/router.js';
 import { validateScript } from '../../core/serialize.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
-import { dataTypePropertiesEditor } from '../../datatypes/props-editor.js';
+import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
 import { register as registerFilterTransformer } from './filter-transformer.jsx';
 import { reactView, ViewTasks, mountReact } from '../mount.jsx';
@@ -680,6 +680,7 @@ function buildBody(params, query, onTasksChange, returning) {
         }
 
         // Editor body for the attachment Properties modal (per handler type).
+        // Returns { body, editor } so the modal can dispose a code editor on close.
         function attachmentEditor() {
             if (ap.type === 'JavaScript') {
                 const map = entriesToObj(ap.properties);
@@ -693,13 +694,13 @@ function buildBody(params, query, onTasksChange, returning) {
                         markDirty();
                     }
                 });
-                return field('Attachment Script', editor.el);
+                return { body: field('Attachment Script', editor.el), editor };
             }
-            if (ap.type === 'Regex') return renderRegexEditor();
-            if (ap.type === 'Entire Message') return renderIdentityEditor();
+            if (ap.type === 'Regex') return { body: renderRegexEditor() };
+            if (ap.type === 'Entire Message') return { body: renderIdentityEditor() };
             if (ap.type && ap.type !== 'None' && ap.type !== 'DICOM' &&
-                !ATTACHMENT_TYPES.some(t => t.value === ap.type)) return renderCustomEditor();
-            return h('div.faint', 'This attachment handler has no configurable properties.');
+                !ATTACHMENT_TYPES.some(t => t.value === ap.type)) return { body: renderCustomEditor() };
+            return { body: h('div.faint', 'This attachment handler has no configurable properties.') };
         }
 
         // A plugin-contributed type already on the channel stays selectable.
@@ -732,7 +733,15 @@ function buildBody(params, query, onTasksChange, returning) {
         // "Properties" button opens the handler editor in a modal (enabled only
         // when a handler other than None/DICOM is selected, matching Swing).
         const propsBtn = taskButton('Properties', null, () => {
-            modal({ title: 'Set Attachment Handler', body: attachmentEditor(), buttons: [{ label: 'Close', primary: true }] });
+            const { body, editor } = attachmentEditor();
+            modal({
+                title: 'Set Attachment Handler',
+                body,
+                buttons: [{ label: 'Close', primary: true }],
+                // Dispose the code editor (when present) on any close path; guarded
+                // because the plain-textarea baseline has no dispose().
+                onClose: () => { try { editor && editor.dispose && editor.dispose(); } catch { /* baseline no-op */ } }
+            });
         });
         propsBtn.classList.add('btn-sm');
         const attachWarn = h('div', { style: { color: '#d00', fontSize: '11px', margin: '2px 0 0' } });
@@ -885,6 +894,10 @@ function buildBody(params, query, onTasksChange, returning) {
         const panelsHost = h('div', {
             style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '14px', marginTop: '14px', alignItems: 'start' }
         });
+        // Teardowns for the mounted <DataTypePropertiesEditor> React roots;
+        // unmounted on each rebuild (renderPanels) and on dialog close.
+        const dtEditorRoots = [];
+        const clearDtEditors = () => { dtEditorRoots.forEach(t => { try { t(); } catch { /* ignore */ } }); dtEditorRoots.length = 0; };
 
         function setType(row, side, name) {
             if (row.draft[`${side}DataType`] === name) return;
@@ -969,17 +982,21 @@ function buildBody(params, query, onTasksChange, returning) {
                 })),
                 h('div', { style: { paddingBottom: '12px' } }, restoreBtn));
 
+            const editorHost = h('div');
+            dtEditorRoots.push(mountReact(editorHost, <DataTypePropertiesEditor
+                typeName={typeName}
+                props={row.draft[`${side}Properties`]}
+                version={version}
+                direction={side}
+                connectorType={row.label === 'Source Connector' ? 'SOURCE' : 'DESTINATION'}
+                onReplace={(obj) => { row.draft[`${side}Properties`] = obj; }} />));
             return h('div.panel', { style: { marginTop: '0' } },
                 h('div.panel-header', `${title} — ${row.label}`),
-                h('div.panel-body', head,
-                    dataTypePropertiesEditor(typeName, row.draft[`${side}Properties`], version, {
-                        direction: side,
-                        connectorType: row.label === 'Source Connector' ? 'SOURCE' : 'DESTINATION',
-                        onReplace: (obj) => { row.draft[`${side}Properties`] = obj; }
-                    })));
+                h('div.panel-body', head, editorHost));
         }
 
         function renderPanels() {
+            clearDtEditors();
             clear(panelsHost);
             if (bulkMode) {
                 // Side toggles + an explicit apply button operating on the bulk draft.
@@ -1033,6 +1050,7 @@ function buildBody(params, query, onTasksChange, returning) {
         modal({
             title: 'Set Data Types',
             size: 'xwide',
+            onClose: clearDtEditors,
             body: h('div',
                 modeBar,
                 h('div.panel', { style: { marginTop: '0' } }, h('div.panel-body.flush', tableHost)),
@@ -1774,8 +1792,20 @@ function buildBody(params, query, onTasksChange, returning) {
     }
 
     // Teardowns for plugin React panels (connector-properties panels) mounted
-    // into the imperative connector area; unmounted on editor teardown.
+    // into the imperative connector area; unmounted before each connector
+    // rebuild (renderSource/renderDestEditor) and on editor teardown.
     const pluginPanelRoots = [];
+    const clearPluginPanels = () => { pluginPanelRoots.forEach(t => { try { t(); } catch { /* ignore */ } }); pluginPanelRoots.length = 0; };
+
+    // The Scripts tab's single code editor is recreated each time that tab is
+    // rendered (the tab system clear()s the body with no per-tab teardown), so
+    // track the live instance and dispose the prior one when the tab is rebuilt
+    // or the view is torn down. Guarded: the baseline textarea has no dispose().
+    let scriptsEditor = null;
+    const clearScriptsEditor = () => {
+        try { scriptsEditor && scriptsEditor.dispose && scriptsEditor.dispose(); } catch { /* baseline no-op */ }
+        scriptsEditor = null;
+    };
 
     function connectorPanelHost(connector, mode) {
         const def = platform.connectorPanel(connector.transportName, mode) || platform.connectorPanel('*', mode);
@@ -1874,6 +1904,7 @@ function buildBody(params, query, onTasksChange, returning) {
         const connector = channel.sourceConnector;
 
         function rebuild() {
+            clearPluginPanels();
             clear(root);
             root.appendChild(h('div.panel',
                 h('div.panel-header', 'Connector Type'),
@@ -2193,6 +2224,7 @@ function buildBody(params, query, onTasksChange, returning) {
         });
 
         function renderDestEditor() {
+            clearPluginPanels();
             clear(editorHost);
             const dest = selectedDest();
             if (!dest) {
@@ -2530,6 +2562,9 @@ function buildBody(params, query, onTasksChange, returning) {
      * ====================================================================== */
 
     function renderScripts() {
+        // A new editor is built below; dispose the one from a prior render of
+        // this tab (it is no longer mounted) before replacing the reference.
+        clearScriptsEditor();
         const scripts = [
             { key: 'deployScript', label: 'Deploy', hint: 'Runs once when the channel is deployed', context: 'CHANNEL_DEPLOY' },
             { key: 'undeployScript', label: 'Undeploy', hint: 'Runs once when the channel is undeployed', context: 'CHANNEL_UNDEPLOY' },
@@ -2557,6 +2592,7 @@ function buildBody(params, query, onTasksChange, returning) {
         });
         editor.el.style.flex = '1';
         editor.el.style.minHeight = '0';
+        scriptsEditor = editor;
 
         const scriptSelect = select(scripts.map(s => ({ value: s.key, label: s.label })), current.key, {
             style: { width: '180px' },
@@ -2644,8 +2680,9 @@ function buildBody(params, query, onTasksChange, returning) {
         },
         teardown: () => {
             // Unmount any plugin React panels mounted into the imperative editor.
-            pluginPanelRoots.forEach(t => { try { t(); } catch { /* ignore */ } });
-            pluginPanelRoots.length = 0;
+            clearPluginPanels();
+            // Dispose the Scripts-tab code editor if it's still live.
+            clearScriptsEditor();
             // In-flow hops (filter/transformer) re-register on return; anything
             // else must not inherit a stale guard.
             store.setState('navGuard', null);

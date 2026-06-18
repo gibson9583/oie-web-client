@@ -991,9 +991,10 @@ function DashboardView() {
     }
 
     function loop() {
+        if (destroyedRef.current) return;
         // Auto-refresh interval is a user preference (Administrator settings).
         const intervalMs = Math.max(1, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000;
-        timerRef.current = setTimeout(async () => { await refresh(); loop(); }, intervalMs);
+        timerRef.current = setTimeout(async () => { await refresh(); if (!destroyedRef.current) loop(); }, intervalMs);
     }
 
     // Click on empty space (not a row) clears the channel selection, so the

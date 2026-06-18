@@ -42,7 +42,7 @@ import { h, clear, toast, contextMenu, confirmDialog, field, textInput, select, 
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
@@ -873,11 +873,4 @@ export function AlertEditor({ params, query = {} }) {
             </div>
         </div>
     );
-}
-
-// renderAlertEditor-equivalent: a vanilla view handler that mounts <AlertEditor>
-// via the React bridge (parity with the legacy export signature, for callers
-// that register a DOM view handler rather than reactView()).
-export function renderAlertEditor(_platform, alertId, query = {}) {
-    return reactView(AlertEditor)({ params: { alertId }, query });
 }

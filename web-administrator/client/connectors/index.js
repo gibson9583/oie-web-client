@@ -5,20 +5,21 @@ function GenericPanel({ properties, onChange }) {
   const hostRef = useRef(null);
   const editorRef = useRef(null);
   useEffect(() => {
+    const host = hostRef.current;
     const editor = createCodeEditor({
       value: JSON.stringify(properties, null, 2),
       language: "text",
       minHeight: "320px"
     });
     editorRef.current = editor;
-    hostRef.current.appendChild(editor.el);
+    host.appendChild(editor.el);
     return () => {
       try {
         editor.dispose && editor.dispose();
       } catch {
       }
       editorRef.current = null;
-      if (hostRef.current) hostRef.current.replaceChildren();
+      if (host) host.replaceChildren();
     };
   }, []);
   const apply = () => {

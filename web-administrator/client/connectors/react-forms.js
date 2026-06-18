@@ -35,6 +35,7 @@ function CodeField({ value, language, minHeight, placeholder, onChange }) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   useEffect(() => {
+    const host = hostRef.current;
     const editor = createCodeEditor({
       value: value === null || value === void 0 ? "" : String(value),
       language: language || "text",
@@ -43,14 +44,14 @@ function CodeField({ value, language, minHeight, placeholder, onChange }) {
       onChange: (v) => onChangeRef.current && onChangeRef.current(v)
     });
     edRef.current = editor;
-    hostRef.current.appendChild(editor.el);
+    host.appendChild(editor.el);
     return () => {
       try {
         editor.dispose && editor.dispose();
       } catch {
       }
       edRef.current = null;
-      if (hostRef.current) hostRef.current.replaceChildren();
+      if (host) host.replaceChildren();
     };
   }, []);
   useEffect(() => {

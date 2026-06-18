@@ -1241,6 +1241,9 @@ function renderResourcesTab({ setTasks, platform }) {
     ]);
 
     load();
+    // Unmount the resource-detail React root on tab switch (SettingsTab teardown
+    // calls host.__teardown); detailRoot is reassigned lazily in renderDetail.
+    host.__teardown = () => { if (detailRoot) { detailRoot(); detailRoot = null; } };
     return host;
 }
 

@@ -327,6 +327,7 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
     modal({
         title: 'Message',
         size: 'wide',
+        onClose: () => { editor.dispose && editor.dispose(); },
         body: h('div',
             editor.el,
             fileButtons,
@@ -915,14 +916,23 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     // attachments, each with the existing Fetch Content + Export controls.
     function viewAttachmentsModal(m) {
         const host = h('div', { style: { minWidth: '480px', maxHeight: '60vh', overflow: 'auto' } }, loading('Loading attachments…'));
-        modal({ title: `Attachments — Message ${m.messageId}`, size: 'wide', body: host, buttons: [{ label: 'Close' }] });
+        // The modal owns its attachment-viewer roots and tears them down on close,
+        // independent of the detail pane's roots.
+        const modalRoots = [];
+        let closed = false;
+        const sweep = () => { modalRoots.forEach(t => { try { t(); } catch { /* ignore */ } }); modalRoots.length = 0; };
+        modal({
+            title: `Attachments — Message ${m.messageId}`, size: 'wide', body: host, buttons: [{ label: 'Close' }],
+            onClose: () => { closed = true; sweep(); }
+        });
         (async () => {
             try {
                 const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId);
                 m.__attachments = attachments;
                 clear(host);
                 if (!attachments.length) { host.appendChild(h('div.faint', 'No attachments')); return; }
-                for (const a of attachments) host.appendChild(attachmentBlock(m, a));
+                for (const a of attachments) host.appendChild(attachmentBlock(m, a, modalRoots));
+                if (closed) sweep(); // closed mid-load — tear down the roots we just mounted
             } catch (e) { clear(host).appendChild(h('div.faint', `Failed to load attachments: ${e.message}`)); }
         })();
     }
@@ -1104,6 +1114,11 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     let detailHeight = '38%'; // last expanded height (preserved across selections)
     let detailExpanded = false;
 
+    // Teardowns for the mounted attachment-viewer React roots; unmounted on each
+    // detail re-render (renderDetail) and on view destroy.
+    const attachmentRoots = [];
+    const clearAttachmentRoots = () => { attachmentRoots.forEach(t => { try { t(); } catch { /* ignore */ } }); attachmentRoots.length = 0; };
+
     // Slim empty-state strip instead of a dead pane when nothing is selected.
     function collapseDetail() {
         if (detailExpanded) detailHeight = detailPane.style.height || detailHeight;
@@ -1140,6 +1155,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     }
 
     function renderDetail(message, metaDataId = 0) {
+        // Tear down any attachment-viewer roots from the previously shown detail
+        // before clearing/re-rendering the pane, so repeated selections don't
+        // accumulate orphaned React roots.
+        clearAttachmentRoots();
         const cms = connectorMessagesOf(message);
         if (!cms.length) {
             clear(detailPane);
@@ -1162,6 +1181,9 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         });
 
         function renderConnectorTabs(cm) {
+            // Switching connectors discards the current connector tabs, which may
+            // hold a mounted Attachments-tab viewer root — sweep before clearing.
+            clearAttachmentRoots();
             clear(tabsHost);
             tabsHost.appendChild(connectorTabs(message, cm).el);
         }
@@ -1276,7 +1298,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         defs.push({ label: 'Mappings', render: () => renderMappings(cm) });
         // Attachments tab only when the message actually has attachments.
         if (message.__attachments && message.__attachments.length) {
-            defs.push({ label: 'Attachments', render: () => renderAttachments(message) });
+            defs.push({ label: 'Attachments', render: () => renderAttachments(message, attachmentRoots) });
         }
 
         return tabsBlock(defs);
@@ -1292,6 +1314,9 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 onClick: (e) => {
                     bar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
                     e.currentTarget.classList.add('active');
+                    // Leaving a tab tears down its body, which may drop a mounted
+                    // Attachments-tab viewer root — sweep before clearing.
+                    clearAttachmentRoots();
                     clear(body).appendChild(def.render());
                 }
             }, def.label));
@@ -1331,7 +1356,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 tbody));
     }
 
-    function renderAttachments(message) {
+    function renderAttachments(message, roots) {
         const host = h('div', { style: { padding: '10px', overflow: 'auto' } });
         host.appendChild(loading('Loading attachments…'));
         (async () => {
@@ -1345,7 +1370,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     return;
                 }
                 for (const attachment of attachments) {
-                    host.appendChild(attachmentBlock(message, attachment));
+                    host.appendChild(attachmentBlock(message, attachment, roots));
                 }
             } catch (e) {
                 clear(host);
@@ -1355,14 +1380,16 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         return host;
     }
 
-    function attachmentBlock(message, attachment) {
+    function attachmentBlock(message, attachment, roots) {
         const viewer = platform.attachmentViewers().find(v => {
             try { return v.canHandle(attachment); } catch { return false; }
         });
         if (viewer && viewer.component) {
-            // Host the viewer's React component inside this imperative block.
+            // Host the viewer's React component inside this imperative block. The
+            // caller passes its own teardown sink (detail pane vs. modal) so the
+            // two lifecycles never unmount each other's roots.
             const body = h('div.mt');
-            mountReact(body, <PluginSlot def={viewer} ctx={{ attachment, channelId, messageId: message.messageId, platform }} />);
+            roots.push(mountReact(body, <PluginSlot def={viewer} ctx={{ attachment, channelId, messageId: message.messageId, platform }} />));
             return body;
         }
 
@@ -1989,7 +2016,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         sendMessageTask, importMessagesTask, exportResultsTask,
         removeAllTask, removeResultsTask, removeMessageTask,
         reprocessResultsTask, reprocessTask,
-        destroy: closeStatusMenu
+        destroy: () => { closeStatusMenu(); clearAttachmentRoots(); }
     };
 }
 

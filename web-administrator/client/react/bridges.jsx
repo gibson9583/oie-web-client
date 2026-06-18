@@ -168,14 +168,3 @@ export function Icon({ name, size = 16 }) {
         </svg>
     );
 }
-
-const BRAND_MARK_PATH = 'M12 2a10 10 0 1 0 10 10M22 2l-8.5 8.5M22 2h-6M22 2v6M7.5 12A4.5 4.5 0 1 0 12 7.5';
-
-export function BrandMark({ size = 26 }) {
-    return (
-        <svg className="brand-mark" viewBox="0 0 24 24" width={size} height={size} fill="none"
-            stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-            <path d={BRAND_MARK_PATH} />
-        </svg>
-    );
-}

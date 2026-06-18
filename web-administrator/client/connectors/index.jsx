@@ -5,8 +5,8 @@
  *
  * The bundled transports now load as plugins (plugins/connector-*); their panel
  * implementations live in this shared client connector library (./vm.jsx,
- * ./tcp.jsx, …) and build on the shared React form layer (./forms.jsx, which
- * re-exports the pure ./forms.js helpers) — the web equivalent of Mirth's
+ * ./tcp.jsx, …) and build on the shared React form layer (./react-forms.jsx,
+ * which re-exports the pure ./forms.js helpers) — the web equivalent of Mirth's
  * client-core that connector extensions depend on.
  *
  * React port: the generic fallback panel's render(host, ctx) becomes
@@ -26,14 +26,15 @@ function GenericPanel({ properties, onChange }) {
     const hostRef = useRef(null);
     const editorRef = useRef(null);
     useEffect(() => {
+        const host = hostRef.current;
         const editor = createCodeEditor({
             value: JSON.stringify(properties, null, 2),
             language: 'text',
             minHeight: '320px'
         });
         editorRef.current = editor;
-        hostRef.current.appendChild(editor.el);
-        return () => { try { editor.dispose && editor.dispose(); } catch { /* baseline no-op */ } editorRef.current = null; if (hostRef.current) hostRef.current.replaceChildren(); };
+        host.appendChild(editor.el);
+        return () => { try { editor.dispose && editor.dispose(); } catch { /* baseline no-op */ } editorRef.current = null; if (host) host.replaceChildren(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     const apply = () => {

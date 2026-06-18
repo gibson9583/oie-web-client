@@ -28,7 +28,6 @@ export default [
             'web-administrator/client/assets/**', // vendored (Monaco, fonts)
             'web-administrator/client/vendor/**',  // vendored third-party libs (zip.js)
             'web-administrator/client/core/userapi.generated.js', // generated User API .d.ts string
-            'web-administrator/client/connectors/*.jsx', // deferred React-connector WIP (not yet wired; see PLUGINS connectors follow-up)
         ],
     },
 
@@ -54,6 +53,9 @@ export default [
     // so React need not be in scope.
     {
         files: ['web-administrator/client/**/*.jsx'],
+        // Connector panels are .jsx too but use the classic JSX runtime — they
+        // get their own block below (this one assumes the automatic runtime).
+        ignores: ['web-administrator/client/connectors/*.jsx'],
         languageOptions: {
             ecmaVersion: 'latest',
             sourceType: 'module',
@@ -67,6 +69,34 @@ export default [
             'no-undef': 'warn',
             'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
             'react/jsx-uses-vars': 'error',
+            'react/jsx-key': 'warn',
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
+        },
+    },
+
+    // Raw-served React connector panels (.jsx). Unlike the shell views above,
+    // these are served UNBUNDLED and compiled by tools/build-connectors.mjs with
+    // the CLASSIC JSX runtime, so each imports `React` from ./react-platform.js
+    // (the lazy host-React bridge) and JSX compiles to React.createElement.
+    // jsx-uses-react marks that `React` import as used — without it the
+    // automatic-runtime block above would flag the import no-unused-vars.
+    {
+        files: ['web-administrator/client/connectors/*.jsx'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            globals: { ...globals.browser },
+            parserOptions: { ecmaFeatures: { jsx: true } },
+        },
+        plugins: { react, 'react-hooks': reactHooks },
+        settings: { react: { version: 'detect' } },
+        rules: {
+            'no-restricted-imports': ['error', noDeepPackageImports],
+            'no-undef': 'warn',
+            'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
+            'react/jsx-uses-vars': 'error',
+            'react/jsx-uses-react': 'error',
             'react/jsx-key': 'warn',
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'warn',
