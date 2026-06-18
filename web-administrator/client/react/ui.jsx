@@ -7,10 +7,11 @@
  * directly from React handlers; no rewrite needed.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Icon } from './bridges.jsx';
 import { paneCollapsed } from './legacy-tasks.js';
 import { DataTable } from '@oie/web-ui';
+import { createCodeEditor } from '../core/codeeditor.js';
 
 /* Collapsible rail pane (shared by the shell nav and React view task panes). */
 export function RailPane({ title, paneKey, className, children }) {
@@ -56,4 +57,60 @@ export function DataTableHost({ columns, options, rows, onReady }) {
         if (tableRef.current && rows) tableRef.current.setRows(rows);
     }, [rows]);
     return <div ref={ref} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }} />;
+}
+
+/* Monaco code-editor island. Wraps createCodeEditor (baseline textarea now,
+   Monaco upgrade when the CDN resolves — air-gapped keeps the baseline). Created
+   ONCE; value/onChange flow through refs so re-renders never clobber the cursor.
+   Imperative handle (getValue/setValue/focus) mirrors the vanilla editor API so
+   views read/write exactly as before. */
+export const CodeEditor = forwardRef(function CodeEditor({ language, readOnly, defaultValue, onChange, style }, apiRef) {
+    const ref = useRef(null);
+    const edRef = useRef(null);
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
+    useEffect(() => {
+        const host = ref.current;
+        const ed = createCodeEditor({
+            value: defaultValue, language, readOnly,
+            onChange: (v) => onChangeRef.current && onChangeRef.current(v)
+        });
+        edRef.current = ed;
+        host.appendChild(ed.el);
+        ed.el.style.flex = '1';
+        ed.el.style.minHeight = '0';
+        return () => { try { ed.dispose(); } catch { /* baseline no-op */ } host.replaceChildren(); };
+        // Build once; value/language/onChange handled via refs + the imperative handle.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    useImperativeHandle(apiRef, () => ({
+        getValue: () => (edRef.current ? edRef.current.getValue() : ''),
+        setValue: (v) => edRef.current && edRef.current.setValue(v),
+        focus: () => edRef.current && edRef.current.focus()
+    }), []);
+    return <div ref={ref} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, ...style }} />;
+});
+
+/* Tabs (controlled). Every panel stays MOUNTED (inactive ones hidden via CSS) so
+   editors/state inside survive tab switches — matches the vanilla tabs(). */
+export function Tabs({ tabs, active, onActiveChange }) {
+    // flex-based height chain (not height:100%) so editors/content fill even when
+    // the parent's height is flex-computed — matches the vanilla tabs().
+    return (
+        <div className="tabs-wrap" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <div className="tabs">
+                {tabs.map((t, i) => (
+                    <button key={i} className={'tab' + (i === active ? ' active' : '')}
+                        onClick={() => onActiveChange(i)}>{t.label}</button>
+                ))}
+            </div>
+            <div className="tab-body" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                {tabs.map((t, i) => (
+                    <div key={i} style={{ flex: 1, minHeight: 0, display: i === active ? 'flex' : 'none', flexDirection: 'column' }}>
+                        {t.content}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }

@@ -31,7 +31,7 @@ import { register as registerAlerts } from '../views/alerts.js';
 import { register as registerUsers } from './views/users.jsx';
 import { register as registerSettings } from '../views/settings.js';
 import { register as registerCodeTemplates } from '../views/code-templates.js';
-import { register as registerGlobalScripts } from '../views/global-scripts.js';
+import { register as registerGlobalScripts } from './views/global-scripts.jsx';
 import { register as registerExtensions } from '../views/extensions.js';
 import { register as registerConnectors } from '../connectors/index.js';
 

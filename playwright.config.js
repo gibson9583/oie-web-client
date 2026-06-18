@@ -13,6 +13,11 @@ export default defineConfig({
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 1 : 0,
+    // The whole suite shares ONE dev server. Parallel workers all hammering it at
+    // once starve the login spec (the app bundle + plugin loads race its boot),
+    // so run serially: the suite is small and each test is ~1s. Revisit with a
+    // per-worker server or a lighter bundle if runtime becomes a problem.
+    workers: 1,
     reporter: process.env.CI ? 'github' : 'list',
     use: {
         baseURL: BASE_URL,

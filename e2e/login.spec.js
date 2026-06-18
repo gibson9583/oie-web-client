@@ -15,9 +15,11 @@ test.describe('login', () => {
 
         await login(page, 'admin', 'admin');
 
-        // Booted into the shell with the dashboard's channel rows.
-        await expect(page.locator('.shell')).toBeVisible();
-        await expect(page.getByText('Demo Started')).toBeVisible();
+        // Booted into the shell with the dashboard's channel rows. Generous
+        // timeout: the login→shell transition (register views + load plugins) can
+        // be slow under parallel-worker contention on the shared dev server.
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('Demo Started')).toBeVisible({ timeout: 15_000 });
     });
 
     test('shows an error on bad credentials', async ({ page }) => {
@@ -27,9 +29,12 @@ test.describe('login', () => {
         });
 
         await page.goto('/');
+        // Wait for the login form to render before interacting (the auth gate
+        // resolves api.auth.current() before showing it).
+        await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
         await login(page, 'admin', 'wrong');
 
-        await expect(page.getByText('Invalid username or password.')).toBeVisible();
+        await expect(page.getByText('Invalid username or password.')).toBeVisible({ timeout: 15_000 });
         // Still on the login screen.
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     });

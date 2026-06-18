@@ -51,6 +51,14 @@ export const DEFAULT_FIXTURES = {
     // Users view.
     'GET /users': { list: { user: SAMPLE_USERS } },
 
+    // Global scripts view (XStream map of script key -> body).
+    'GET /server/globalScripts': { map: { entry: [
+        { string: ['Deploy', 'return;'] },
+        { string: ['Undeploy', 'return;'] },
+        { string: ['Preprocessor', 'return message;'] },
+        { string: ['Postprocessor', 'return;'] }
+    ] } },
+
     // Extensions (restart watcher / extensions view) — empty maps.
     'GET /extensions/connectors': {},
     'GET /extensions/plugins': {},
