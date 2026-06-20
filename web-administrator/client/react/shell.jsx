@@ -316,6 +316,22 @@ function BootSplash() {
     );
 }
 
+/* Login Notification + consent modal (Swing CustomBannerPanelDialog). Resolves
+   true when the user accepts, false on decline / dismiss. */
+function loginNotificationDialog(message) {
+    return new Promise((resolve) => {
+        modal({
+            title: 'Login Notification',
+            body: h('div', { style: { whiteSpace: 'pre-wrap', maxWidth: '540px', maxHeight: '55vh', overflow: 'auto', lineHeight: '1.55' } }, String(message ?? '')),
+            onClose: () => resolve(false),
+            buttons: [
+                { label: 'I Decline', onClick: () => resolve(false) },
+                { label: 'I Accept', primary: true, onClick: () => resolve(true) }
+            ]
+        });
+    });
+}
+
 export function App() {
     const user = useStoreKey('user');
     const [authChecked, setAuthChecked] = useState(false);
@@ -350,7 +366,23 @@ export function App() {
         location.hash = '';
     };
 
-    const onLoginSuccess = (u) => {
+    const onLoginSuccess = async (u) => {
+        // Login notification + consent (Swing LoginPanel.handleSuccess): when the
+        // server requires it, the user must accept the message before entering;
+        // declining logs them back out.
+        try {
+            const pub = await api.server.publicSettings();
+            const enabled = pub && (pub.loginNotificationEnabled === true || pub.loginNotificationEnabled === 'true');
+            if (enabled && String(pub.loginNotificationMessage ?? '').trim()) {
+                const accepted = await loginNotificationDialog(pub.loginNotificationMessage);
+                if (!accepted) {
+                    await api.auth.logout().catch(() => {});
+                    toast('Login canceled — you must accept the notification to continue.', 'warn');
+                    return;
+                }
+                if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
+            }
+        } catch { /* public settings unavailable — don't block login */ }
         resetSessionExpired();
         store.setState('navGuard', null);
         store.setState('user', u);

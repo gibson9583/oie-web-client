@@ -234,7 +234,7 @@ function register(platform2) {
         taskButton("Refresh", "refresh", () => {
           load();
         }),
-        taskButton("Save", "check", save, { primary: true }),
+        taskButton("Save", "save", save, { primary: true }),
         taskButton("View Events", "events", () => platform3.router.navigate("/events")),
         taskButton("Prune Now", "play", pruneNow),
         taskButton("Stop Pruner", "stop", stopPruner, { danger: true })

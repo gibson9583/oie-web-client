@@ -255,7 +255,8 @@ export const users = {
     checkPassword: (plainPassword) => post('/users/_checkPassword', plainPassword, { contentType: 'text/plain' }),
     isLoggedIn: (userId) => get(`/users/${enc(userId)}/loggedIn`),
     getPreferences: (userId) => get(`/users/${enc(userId)}/preferences`),
-    setPreferences: (userId, props) => put(`/users/${enc(userId)}/preferences`, props, { wrapKey: 'properties' })
+    setPreferences: (userId, props) => put(`/users/${enc(userId)}/preferences`, props, { wrapKey: 'properties' }),
+    acknowledgeNotification: (userId) => post(`/users/${enc(userId)}/notificationAcknowledged`)
 };
 
 /* ===========================================================================
@@ -417,6 +418,7 @@ export const server = {
     charsets: () => get('/server/charsets').then(v => asList(v, 'string')),
     settings: () => get('/server/settings'),
     setSettings: (settings) => put('/server/settings', settings, { wrapKey: 'serverSettings' }),
+    publicSettings: () => get('/server/publicSettings'),
     updateSettings: () => get('/server/updateSettings'),
     setUpdateSettings: (settings) => put('/server/updateSettings', settings, { wrapKey: 'updateSettings' }),
     configuration: (params) => get('/server/configuration', params),

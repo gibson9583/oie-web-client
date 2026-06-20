@@ -25,8 +25,9 @@ import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, modal, 
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
-import { setTheme } from '../../core/store.js';
+import { setTheme, getState, setState } from '../../core/store.js';
 import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { applyEnvironmentColor, environmentColorVars, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane } from '../ui.jsx';
 
@@ -150,7 +151,7 @@ const DEFAULT_META_COLUMNS = {
     VERSION: { name: 'VERSION', type: 'STRING', mappingName: 'mirth_version' }
 };
 
-function renderServerTab({ setTasks }) {
+function renderServerTab({ setTasks, markClean, setSave }) {
     const host = tabHost();
     host.appendChild(loading());
     let settings = null;
@@ -187,6 +188,38 @@ function renderServerTab({ setTasks }) {
             value: colorToHex(settings.defaultAdministratorBackgroundColor, '#2a75b2'),
             style: { width: '60px', padding: '2px', height: '32px' }
         });
+        // Reset the picker to the engine default (ServerSettings.DEFAULT_COLOR =
+        // 0x2A75B2); Save persists + re-tints.
+        const bgColorRestore = h('button.btn', {
+            type: 'button', style: { marginLeft: '8px' },
+            title: 'Reset to the default background color', onClick: () => { bgColor.value = '#2a75b2'; paintBgPreview(); }
+        }, 'Restore Default');
+
+        // Live preview of the rail + topbar tint in both light and dark mode
+        // (Swing's color-chooser Preview panel), updating as the color changes.
+        const bgPreview = h('div', { style: { display: 'flex', gap: '14px', flexWrap: 'wrap' } });
+        function miniPreview(colorObj, dark) {
+            const v = environmentColorVars(colorObj, dark);
+            return h('div', { style: { width: '190px' } },
+                h('div', { style: { fontSize: '10px', color: 'var(--text-faint)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.1em' } }, dark ? 'Dark mode' : 'Light mode'),
+                h('div', { style: { border: '1px solid var(--line)', borderRadius: '5px', overflow: 'hidden' } },
+                    h('div', { style: { background: v.topbarBg, color: v.fg, padding: '5px 9px', fontSize: '11px', fontWeight: '650' } }, 'Dashboard'),
+                    h('div', { style: { display: 'flex', minHeight: '64px' } },
+                        h('div', { style: { background: v.railBg, padding: '7px 8px', width: '64px', fontSize: '10px' } },
+                            h('div', { style: { color: v.fgDim, fontWeight: '700', letterSpacing: '0.1em', marginBottom: '3px' } }, 'TASKS'),
+                            h('div', { style: { color: v.fg } }, 'Channels'),
+                            h('div', { style: { color: v.fgDim } }, 'Messages'),
+                            h('div', { style: { color: v.fgDim } }, 'Settings')),
+                        h('div', { style: { flex: '1', padding: '8px', fontSize: '11px', color: dark ? '#c8d4e0' : '#33414f', background: dark ? '#111922' : '#f4f7fa' } }, 'Sample Text'))));
+        }
+        function paintBgPreview() {
+            clear(bgPreview);
+            const colorObj = hexToColor(bgColor.value, 255);
+            bgPreview.appendChild(miniPreview(colorObj, false));
+            bgPreview.appendChild(miniPreview(colorObj, true));
+        }
+        bgColor.addEventListener('input', paintBgPreview);
+        paintBgPreview();
         const autoLogoutInterval = numberInput(settings.administratorAutoLogoutIntervalField ?? 5,
             { min: 1, disabled: settings.administratorAutoLogoutIntervalEnabled !== true });
         const autoLogout = yesNo(settings.administratorAutoLogoutIntervalEnabled === true,
@@ -241,7 +274,8 @@ function renderServerTab({ setTasks }) {
             h('div.panel-body', h('div.form-grid',
                 field('Environment name', envName),
                 field('Server name', srvName),
-                field('Default Background Color', bgColor),
+                field('Default Background Color', h('div', { style: { display: 'flex', alignItems: 'center' } }, bgColor, bgColorRestore)),
+                h('div.field.span-2', h('label', 'Preview'), bgPreview),
                 h('div.field', h('label', 'Enable Auto Logout'), autoLogout.el),
                 field('Auto Logout Interval (minutes)', autoLogoutInterval),
                 usageStats ? h('div.field', h('label', 'Provide usage statistics'), usageStats.el) : null))));
@@ -322,11 +356,17 @@ function renderServerTab({ setTasks }) {
                 updateSettings.statsEnabled = form.usageStats.checked;
                 await api.server.setUpdateSettings(updateSettings);
             }
+            // Re-tint the rail + topbar live with the saved color.
+            applyEnvironmentColor(settings.defaultAdministratorBackgroundColor);
             toast('Server settings saved');
+            markClean();
+            return true;
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');
+            return false;
         }
     }
+    setSave(save);
 
     function sendTestEmail() {
         if (!form) return;
@@ -488,7 +528,7 @@ function channelIdNamePairs(raw) {
    Preferences); stored per-browser via core/prefs.js.
    ============================================================================ */
 
-function renderAdministratorTab({ setTasks }) {
+function renderAdministratorTab({ setTasks, markClean, setSave }) {
     const host = tabHost();
 
     function build() {
@@ -506,6 +546,30 @@ function renderAdministratorTab({ setTasks }) {
         const importLibs = yesNoAsk(getPref('importLibrariesWithChannels'));
         const exportLibs = yesNoAsk(getPref('exportLibrariesWithChannels'));
         const themeSel = select([{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], themeNow);
+
+        // Per-user background-color override (Swing SettingsPanelAdministrator):
+        // "Server Default" uses the server's color; "Custom" overrides it for this
+        // user. Stored as the server user preference "backgroundColor".
+        const userId = getState('user')?.id;
+        let serverDefaultColor = null;   // loaded async, for the live preview on save
+        const bgMode = select([{ value: 'default', label: 'Server Default' }, { value: 'custom', label: 'Custom' }], 'default');
+        const bgPicker = h('input', {
+            type: 'color', value: '#2a75b2', disabled: true,
+            style: { width: '60px', padding: '2px', height: '32px', marginLeft: '8px' }
+        });
+        bgMode.addEventListener('change', () => { bgPicker.disabled = bgMode.value !== 'custom'; });
+        const bgOverride = h('div', { style: { display: 'flex', alignItems: 'center' } }, bgMode, bgPicker);
+        (async () => {
+            try {
+                const [srv, prefs] = await Promise.all([
+                    api.server.settings().catch(() => null),
+                    userId != null ? api.users.getPreferences(userId).catch(() => null) : Promise.resolve(null)
+                ]);
+                serverDefaultColor = srv && srv.defaultAdministratorBackgroundColor;
+                const override = prefs && parseColorPref(prefs.backgroundColor);
+                if (override) { bgMode.value = 'custom'; bgPicker.disabled = false; bgPicker.value = colorToHex(override, '#2a75b2'); }
+            } catch { /* ignore */ }
+        })();
 
         // Stacked label-left / control-right rows (matches the Swing settings layout
         // and fills the panel width, one preference per line).
@@ -531,9 +595,10 @@ function renderAdministratorTab({ setTasks }) {
         host.appendChild(h('div.panel',
             h('div.panel-header', 'User Preferences'),
             h('div.panel-body',
-                prefRow('Theme', themeSel))));
+                prefRow('Theme', themeSel),
+                prefRow('Background color', bgOverride))));
 
-        function save() {
+        async function save() {
             setPrefs({
                 dashboardRefreshSeconds: Math.max(1, parseInt(dashRefresh.value, 10) || 5),
                 messagePageSize: Number(msgPageSize.value) || 20,
@@ -544,8 +609,31 @@ function renderAdministratorTab({ setTasks }) {
                 exportLibrariesWithChannels: exportLibs.value
             });
             setTheme(themeSel.value);
+            // Persist the per-user color override (or clear it) and re-tint live.
+            if (userId != null) {
+                try {
+                    const current = await api.users.getPreferences(userId).catch(() => ({}));
+                    const props = (current && typeof current === 'object') ? { ...current } : {};
+                    let effective;
+                    if (bgMode.value === 'custom') {
+                        const c = hexToColor(bgPicker.value, 255);
+                        props.backgroundColor = serializeColorPref(c);   // <awt-color> XML (Swing-compatible)
+                        effective = c;
+                    } else {
+                        props.backgroundColor = '';   // blank = no override (Swing reads it as server default)
+                        effective = serverDefaultColor;
+                    }
+                    await api.users.setPreferences(userId, props);
+                    applyEnvironmentColor(effective);
+                } catch (e) {
+                    toast(`Could not save background color: ${e.message}`, 'error');
+                }
+            }
+            markClean();
             toast('Preferences saved');
+            return true;
         }
+        setSave(save);
 
         setTasks('Administrator Tasks', [
             taskButton('Refresh', 'refresh', build),
@@ -558,7 +646,7 @@ function renderAdministratorTab({ setTasks }) {
     return host;
 }
 
-function renderTagsTab({ setTasks }) {
+function renderTagsTab({ setTasks, markClean, setSave }) {
     const host = tabHost();
     host.appendChild(loading());
     let tags = [];
@@ -728,12 +816,16 @@ function renderTagsTab({ setTasks }) {
     async function save() {
         try {
             await api.server.setChannelTags(tags);
+            markClean();
             toast('Tags saved');
             load();
+            return true;
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');
+            return false;
         }
     }
+    setSave(save);
 
     setTasks('Tag Tasks', [
         taskButton('Refresh', 'refresh', load),
@@ -752,7 +844,7 @@ function renderTagsTab({ setTasks }) {
             {value, comment}}]}
    ============================================================================ */
 
-function renderConfigurationMapTab({ setTasks }) {
+function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
     const host = tabHost();
     host.appendChild(loading());
     let rows = [];
@@ -839,11 +931,15 @@ function renderConfigurationMapTab({ setTasks }) {
                 [r.propKey || CONFIGURATION_PROPERTY_CLASS]: { ...(r.prop || {}), value: r.value, comment: r.comment }
             }));
             await api.server.setConfigurationMap({ entry });
+            markClean();
             toast('Configuration map saved');
+            return true;
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');
+            return false;
         }
     }
+    setSave(save);
 
     async function importMap() {
         const file = await pickFile('.properties');
@@ -1050,7 +1146,7 @@ function renderDatabaseTasksTab({ setTasks }) {
    (verified in DirectoryResourceServletInterface.java).
    ============================================================================ */
 
-function renderResourcesTab({ setTasks, platform }) {
+function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
     const host = tabHost();
     host.appendChild(loading());
     let entries = [];               // [{ className, obj }]
@@ -1226,12 +1322,16 @@ function renderResourcesTab({ setTasks, platform }) {
     async function save() {
         try {
             await api.server.setResources(container());
+            markClean();
             toast('Resources saved');
             load();
+            return true;
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');
+            return false;
         }
     }
+    setSave(save);
 
     setTasks('Resource Tasks', [
         taskButton('Refresh', 'refresh', load),
@@ -1290,6 +1390,22 @@ function buildTabDefs(plat) {
     return defs;
 }
 
+/* Save/Discard/Cancel prompt for unsaved settings changes (Swing parity). */
+function promptSaveSettings() {
+    return new Promise((resolve) => {
+        modal({
+            title: 'Unsaved Changes',
+            body: h('div', 'You have unsaved changes on this settings tab. Would you like to save them?'),
+            onClose: () => resolve('cancel'),
+            buttons: [
+                { label: 'Cancel', onClick: () => resolve('cancel') },
+                { label: "Don't Save", danger: true, onClick: () => resolve('discard') },
+                { label: 'Save Changes', primary: true, onClick: () => resolve('save') }
+            ]
+        });
+    });
+}
+
 // Mounts the active tab's legacy builder once and tracks its declared task pane.
 // The builder's setTasks(title, items) writes into tasksRef; notify() forces a
 // re-render so the portaled <RailPane> reflects the new title + buttons.
@@ -1299,9 +1415,21 @@ function SettingsTab({ def, ctx }) {
         const host = ref.current;
         if (!host) return;
         host.replaceChildren();
+        ctx.setSave(null);               // reset; the builder re-registers its own save
         const node = def.render(ctx);
         if (node instanceof Node && node !== host) host.appendChild(node);
-        return () => { if (node && node.__teardown) node.__teardown(); host.replaceChildren(); };
+        ctx.markClean();                 // a freshly built tab starts clean
+        // Any user edit marks the tab dirty. Programmatic value sets during the
+        // builder's load() don't dispatch input/change, so they don't false-trip.
+        const onEdit = () => ctx.markDirty();
+        host.addEventListener('input', onEdit);
+        host.addEventListener('change', onEdit);
+        return () => {
+            host.removeEventListener('input', onEdit);
+            host.removeEventListener('change', onEdit);
+            if (node && node.__teardown) node.__teardown();
+            host.replaceChildren();
+        };
         // Build once per tab activation (keyed by label in the parent); the
         // legacy builder owns its own load()/setTasks() lifecycle.
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1335,9 +1463,12 @@ function TasksPane({ title, items }) {
 
 function SettingsView() {
     const [active, setActive] = useState(0);
+    const [dirty, setDirtyState] = useState(false);   // drives the unsaved-tab indicator
     const [, force] = useReducer((x) => x + 1, 0);
     // The active tab's declared task pane (title + legacy DOM items).
     const tasksRef = useRef({ title: 'Server Tasks', items: [] });
+    const dirtyRef = useRef(false);
+    const saveRef = useRef(null);   // the active tab's save(), if it supports saving
 
     // Tab defs (built-ins + plugin panels) are stable for the view's lifetime.
     const defsRef = useRef(null);
@@ -1345,21 +1476,54 @@ function SettingsView() {
     const defs = defsRef.current;
 
     // setTasks is what each legacy builder calls; it captures the task spec and
-    // forces a re-render of the portaled pane. ctx mirrors the vanilla shell ctx.
+    // forces a re-render of the portaled pane. ctx mirrors the vanilla shell ctx,
+    // plus dirty-tracking hooks (markDirty/markClean/setSave) used by the tabs.
     const ctxRef = useRef(null);
     if (!ctxRef.current) {
-        const ctx = {
-            platform,
-            setTasks(title, items) {
-                tasksRef.current = { title, items };
-                force();
+        // When dirty, install a route-leave guard that prompts to save/discard.
+        function refreshGuard() {
+            if (dirtyRef.current) {
+                setState('navGuard', async () => {
+                    const choice = await promptSaveSettings();
+                    if (choice === 'cancel') return false;
+                    if (choice === 'save' && saveRef.current && (await saveRef.current()) === false) return false;
+                    setClean();
+                });
+            } else {
+                setState('navGuard', null);
             }
+        }
+        function setDirty() {
+            // Only tabs that registered a save() participate in dirty tracking.
+            if (!saveRef.current || dirtyRef.current) return;
+            dirtyRef.current = true; setDirtyState(true); refreshGuard();
+        }
+        function setClean() {
+            dirtyRef.current = false; setDirtyState(false); setState('navGuard', null);
+        }
+        ctxRef.current = {
+            platform,
+            setTasks(title, items) { tasksRef.current = { title, items }; force(); },
+            markDirty: setDirty,
+            markClean: setClean,
+            setSave(fn) { saveRef.current = fn || null; }
         };
-        ctxRef.current = ctx;
     }
     const ctx = ctxRef.current;
 
     const def = defs[active] || defs[0];
+
+    // Tab-switch guard: prompt if the current tab has unsaved changes.
+    async function requestTab(i) {
+        if (i === active) return;
+        if (dirtyRef.current) {
+            const choice = await promptSaveSettings();
+            if (choice === 'cancel') return;
+            if (choice === 'save' && saveRef.current && (await saveRef.current()) === false) return;
+        }
+        ctx.markClean();
+        setActive(i);
+    }
 
     // Clear the task spec the instant the active tab changes, so the pane never
     // shows the previous tab's buttons during the window before the new tab's
@@ -1369,6 +1533,9 @@ function SettingsView() {
         shownRef.current = active;
         tasksRef.current = { title: `${def.label} Tasks`, items: [] };
     }
+
+    // Drop the leave-guard when the settings view itself unmounts.
+    useEffect(() => () => { setState('navGuard', null); }, []);
 
     const { title, items } = tasksRef.current;
 
@@ -1382,7 +1549,9 @@ function SettingsView() {
                     <div className="tabs">
                         {defs.map((d, i) => (
                             <button key={d.label} className={'tab' + (i === active ? ' active' : '')}
-                                onClick={() => setActive(i)}>{d.label}</button>
+                                onClick={() => requestTab(i)}>
+                                {d.label}{i === active && dirty ? ' ●' : ''}
+                            </button>
                         ))}
                     </div>
                     <div className="tab-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>

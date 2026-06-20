@@ -20,13 +20,16 @@ export function LoginForm({ onSuccess }) {
     const [error, setError] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const userRef = useRef(null);
+    const busyRef = useRef(false);   // re-entry guard (state is async)
     useEffect(() => {
         const t = setTimeout(() => userRef.current && userRef.current.focus(), 50);
         return () => clearTimeout(t);
     }, []);
 
     async function submit(e) {
-        e.preventDefault();
+        if (e && e.preventDefault) e.preventDefault();
+        if (busyRef.current) return;
+        busyRef.current = true;
         setError('');
         setSubmitting(true);
         try {
@@ -35,7 +38,7 @@ export function LoginForm({ onSuccess }) {
             if (status === 'SUCCESS' || status === 'SUCCESS_GRACE_PERIOD') {
                 if (status === 'SUCCESS_GRACE_PERIOD') console.warn('Password grace period:', result?.message);
                 const user = await api.auth.current();
-                onSuccess(user);
+                await onSuccess(user);
                 return;
             }
             setError(result?.message || STATUS_MESSAGES[status] || 'Login failed.');
@@ -45,12 +48,21 @@ export function LoginForm({ onSuccess }) {
             setError(err.status === 401 ? 'Invalid username or password.' : (err.message || 'Could not reach the engine.'));
         } finally {
             setSubmitting(false);
+            busyRef.current = false;
         }
     }
 
     return (
         <div className="login-stage">
-            <form className="login-card" onSubmit={submit}>
+            <form className="login-card" onSubmit={submit}
+                onKeyDown={(e) => {
+                    // Explicit Enter-to-submit so pressing Enter in either field
+                    // logs in regardless of native implicit-submission quirks.
+                    if (e.key === 'Enter' && !e.isComposing && e.target.tagName === 'INPUT') {
+                        e.preventDefault();
+                        submit(e);
+                    }
+                }}>
                 <div className="login-brand">
                     <span>
                         <img className="logo-on-light" src="assets/oie_logo_bottom_text.svg" alt="Open Integration Engine" style={{ width: 120, display: 'block' }} />
