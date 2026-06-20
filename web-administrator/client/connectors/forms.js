@@ -36,6 +36,42 @@ export function setPath(obj, path, value) {
     return obj;
 }
 
+/* Listener address picker (shared Swing ListenerSettingsPanel): "All interfaces"
+   (host 0.0.0.0, address field disabled) vs "Specific interface:" (free-text
+   address). Returns a custom-field def for the connector form; pass the dotted
+   property key holding the host (e.g. 'listenerConnectorProperties.host'). */
+let listenerAddrUid = 0;
+export function listenerAddressField(hostKey, label = 'Listener Address') {
+    return {
+        label, type: 'custom', span: true,
+        render: (p, ctx) => {
+            const name = `listener-addr-${++listenerAddrUid}`;
+            // Mode is derived from the host (0.0.0.0 => all), then held locally so
+            // "Specific" stays selected even before an address is typed.
+            let mode = String(getPath(p, hostKey) ?? '0.0.0.0') === '0.0.0.0' ? 'all' : 'specific';
+            const input = textInput(String(getPath(p, hostKey) ?? ''), {
+                style: { width: '200px' },
+                onInput: (e) => { setPath(p, hostKey, e.target.value); ctx.onChange(); }
+            });
+            const sync = () => { input.disabled = mode === 'all'; input.style.opacity = mode === 'all' ? '0.5' : '1'; };
+            const setMode = (m) => {
+                mode = m;
+                if (m === 'all') { setPath(p, hostKey, '0.0.0.0'); input.value = '0.0.0.0'; ctx.onChange(); }
+                sync();
+            };
+            const allRadio = h('input', { type: 'radio', name, checked: mode === 'all' });
+            const specRadio = h('input', { type: 'radio', name, checked: mode === 'specific' });
+            allRadio.addEventListener('change', () => setMode('all'));
+            specRadio.addEventListener('change', () => setMode('specific'));
+            sync();
+            return h('div', { style: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' } },
+                h('label.check', allRadio, 'All interfaces'),
+                h('label.check', specRadio, 'Specific interface:'),
+                input);
+        }
+    };
+}
+
 /* ---- XStream map shapes ----------------------------------------------------
  * Map<String,String>       { entry: [{ string: [key, value] }] }
  * Map<String,List<String>> { entry: [{ string: key, list: { string: [v...] } }] }
@@ -570,7 +606,19 @@ export function frameModeSampleFrame(tm) {
 
 /* "Transmission Mode Settings" dialog — Start/End of Message Bytes (hex) plus a
    clickable Byte Abbreviations reference that inserts the byte into the field. */
-export function frameModeSettingsDialog(tm, onChange) {
+/* Live "<ABBR>" hint for a hex-byte field (e.g. 06 -> <ACK>). */
+function abbrevFor(hex) {
+    const clean = String(hex || '').replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+    const out = [];
+    for (let i = 0; i + 2 <= clean.length; i += 2) {
+        const a = CONTROL_ABBR[clean.slice(i, i + 2)];
+        if (a) out.push(`<${a}>`);
+    }
+    return out.join('');
+}
+
+export function frameModeSettingsDialog(tm, onChange, opts = {}) {
+    const mllp = !!opts.mllp;
     const hexInput = (val) => textInput(String(val || ''), { style: { width: '120px', fontFamily: 'var(--font-mono)' } });
     const startInput = hexInput(tm.startOfMessageBytes);
     const endInput = hexInput(tm.endOfMessageBytes);
@@ -583,20 +631,70 @@ export function frameModeSettingsDialog(tm, onChange) {
     }, Object.entries(CONTROL_ABBR).map(([hex, abbr]) => h('div.tree-node', {
         title: `Insert 0x${hex}`,
         style: { cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '12px' },
-        onClick: () => { lastFocused.value = (lastFocused.value || '') + hex; lastFocused.focus(); }
+        onClick: () => { lastFocused.value = (lastFocused.value || '') + hex; lastFocused.focus(); if (lastFocused.oninput) lastFocused.oninput(); }
     }, `<${abbr}>`)));
 
-    const hexRow = (label, input) => h('div.flex', { style: { alignItems: 'center', gap: '6px', marginBottom: '8px' } },
-        h('label', { style: { minWidth: '160px' } }, label), h('span.mono.faint', '0x'), input);
+    const hexRow = (label, input, abbrevEl) => h('div.flex', { style: { alignItems: 'center', gap: '6px', marginBottom: '8px' } },
+        h('label', { style: { minWidth: '160px' } }, label), h('span.mono.faint', '0x'), input, abbrevEl || null);
+
+    const leftRows = [
+        h('div', { style: { fontWeight: '650', marginBottom: '8px' } }, mllp ? 'MLLP Settings' : 'Basic Settings'),
+        hexRow('Start of Message Bytes:', startInput, h('span.mono.faint', abbrevFor(tm.startOfMessageBytes))),
+        hexRow('End of Message Bytes:', endInput, h('span.mono.faint', abbrevFor(tm.endOfMessageBytes)))
+    ];
+
+    // MLLP adds Use MLLPv2 + Commit ACK/NACK bytes + Max Retry Count, with the
+    // ack/nack/retry fields enabled only when MLLPv2 is on (Swing
+    // useMLLPv2Yes/NoRadioActionPerformed).
+    let writeMllp = () => {};
+    if (mllp) {
+        const ackInput = hexInput(tm.ackBytes != null ? tm.ackBytes : '06');
+        const nackInput = hexInput(tm.nackBytes != null ? tm.nackBytes : '15');
+        const retryInput = textInput(String(tm.maxRetries != null ? tm.maxRetries : '2'), { style: { width: '80px' } });
+        const ackAbbrev = h('span.mono.faint', abbrevFor(ackInput.value));
+        const nackAbbrev = h('span.mono.faint', abbrevFor(nackInput.value));
+        ackInput.addEventListener('focus', () => { lastFocused = ackInput; });
+        nackInput.addEventListener('focus', () => { lastFocused = nackInput; });
+        ackInput.oninput = () => { ackAbbrev.textContent = abbrevFor(ackInput.value); };
+        nackInput.oninput = () => { nackAbbrev.textContent = abbrevFor(nackInput.value); };
+
+        const useV2 = asBool(tm.useMLLPv2);
+        const v2Yes = h('input', { type: 'radio', name: 'mllpv2', checked: useV2 });
+        const v2No = h('input', { type: 'radio', name: 'mllpv2', checked: !useV2 });
+        const ackRow = hexRow('Commit ACK Bytes:', ackInput, ackAbbrev);
+        const nackRow = hexRow('Commit NACK Bytes:', nackInput, nackAbbrev);
+        const retryRow = h('div.flex', { style: { alignItems: 'center', gap: '6px', marginBottom: '8px' } },
+            h('label', { style: { minWidth: '160px' } }, 'Max Retry Count:'), retryInput);
+        const setV2Enabled = (on) => {
+            [ackInput, nackInput, retryInput].forEach((el) => { el.disabled = !on; });
+            [ackRow, nackRow, retryRow].forEach((r) => { r.style.opacity = on ? '1' : '0.5'; });
+        };
+        v2Yes.addEventListener('change', () => setV2Enabled(true));
+        v2No.addEventListener('change', () => setV2Enabled(false));
+        setV2Enabled(useV2);
+
+        leftRows.push(
+            h('div.flex', { style: { alignItems: 'center', gap: '6px', marginBottom: '8px' } },
+                h('label', { style: { minWidth: '160px' } }, 'Use MLLPv2:'),
+                h('label.check', v2Yes, 'Yes'), h('label.check', v2No, 'No')),
+            ackRow, nackRow, retryRow);
+
+        writeMllp = () => {
+            tm.useMLLPv2 = v2Yes.checked;
+            tm.ackBytes = ackInput.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+            tm.nackBytes = nackInput.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+            tm.maxRetries = retryInput.value.replace(/[^0-9]/g, '');
+        };
+    }
+
+    startInput.oninput = () => { leftRows[1].lastChild.textContent = abbrevFor(startInput.value); };
+    endInput.oninput = () => { leftRows[2].lastChild.textContent = abbrevFor(endInput.value); };
 
     modal({
-        title: 'Transmission Mode Settings',
+        title: mllp ? 'MLLP Settings' : 'Transmission Mode Settings',
         size: 'wide',
         body: h('div', { style: { display: 'flex', gap: '18px', minWidth: '520px' } },
-            h('div', { style: { flex: '1' } },
-                h('div', { style: { fontWeight: '650', marginBottom: '8px' } }, 'Basic Settings'),
-                hexRow('Start of Message Bytes:', startInput),
-                hexRow('End of Message Bytes:', endInput)),
+            h('div', { style: { flex: '1' } }, leftRows),
             h('div', h('div', { style: { fontWeight: '650', marginBottom: '8px' } }, 'Byte Abbreviations'), abbrevList)),
         buttons: [
             { label: 'Cancel' },
@@ -605,6 +703,7 @@ export function frameModeSettingsDialog(tm, onChange) {
                 onClick: () => {
                     tm.startOfMessageBytes = startInput.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
                     tm.endOfMessageBytes = endInput.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+                    writeMllp();
                     onChange();
                 }
             }

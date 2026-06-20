@@ -1,150 +1,115 @@
-/*
- * Connection Status — web admin plugin.
- *
- * Web counterpart of com.mirth.connect.plugins.dashboardstatus:
- *   - "Connection" dashboard column showing each channel's connector state
- *     (Idle, Connected, ...) from GET /extensions/dashboardstatus/connectorStates
- *   - "Connection Log" dashboard tab from GET /extensions/dashboardstatus/connectionLogs
- */
-
-export function register(platform) {
-    const { h, fmtNumber } = platform.ui;
-
-    /* connectorStates is a Map<"channelId_metaDataId", Object[]> where the
-       array holds a color name and a state label. Normalized defensively. */
-    let states = new Map();
-    let polling = false;
-    let lastError = null;
-
-    function stateOf(value) {
-        // value may be ['black', 'Idle'], {string: ['black','Idle']}, or similar.
-        const flat = [];
-        (function walk(v) {
-            if (v === null || v === undefined) return;
-            if (Array.isArray(v)) { v.forEach(walk); return; }
-            if (typeof v === 'object') { Object.values(v).forEach(walk); return; }
-            flat.push(String(v));
-        })(value);
-        return flat[flat.length - 1] || '';
+// plugins/connection-status/web/plugin.jsx
+import { platform } from "@oie/web-shell";
+var React = platform.React;
+function register(platform2) {
+  const { fmtNumber } = platform2.ui;
+  let states = /* @__PURE__ */ new Map();
+  let polling = false;
+  let lastError = null;
+  function stateOf(value) {
+    const flat = [];
+    (function walk(v) {
+      if (v === null || v === void 0) return;
+      if (Array.isArray(v)) {
+        v.forEach(walk);
+        return;
+      }
+      if (typeof v === "object") {
+        Object.values(v).forEach(walk);
+        return;
+      }
+      flat.push(String(v));
+    })(value);
+    return flat[flat.length - 1] || "";
+  }
+  async function poll() {
+    try {
+      const map = await platform2.api.get("/extensions/dashboardstatus/connectorStates");
+      const next = /* @__PURE__ */ new Map();
+      for (const entry of platform2.api.asList(map?.entry)) {
+        const values = Object.values(entry);
+        const key = values.find((v) => typeof v === "string");
+        if (key !== void 0) {
+          const value = values.find((v) => v !== key);
+          next.set(key, stateOf(value));
+        }
+      }
+      states = next;
+      lastError = null;
+    } catch (e) {
+      lastError = e.message;
     }
-
-    async function poll() {
+  }
+  function ensurePolling() {
+    if (polling) return;
+    polling = true;
+    poll();
+    setInterval(poll, 5e3);
+  }
+  const dotColor = (state) => {
+    const s = state.toLowerCase();
+    if (!s || s === "idle") return "var(--idle)";
+    if (s.includes("connect") || s.includes("receiv") || s.includes("send") || s.includes("read") || s.includes("writ") || s.includes("poll")) return "var(--ok)";
+    if (s.includes("wait")) return "var(--warn)";
+    return "var(--busy)";
+  };
+  const StateCell = (state) => state ? /* @__PURE__ */ React.createElement("span", { className: "status-cell" }, /* @__PURE__ */ React.createElement("span", { style: { width: "7px", height: "7px", borderRadius: "50%", background: dotColor(state), display: "inline-block" } }), state) : "";
+  platform2.registerDashboardColumn({
+    id: "connection",
+    label: "Connection",
+    order: 10,
+    // Channel-level: show the source connector (metaDataId 0) state.
+    cell(status) {
+      ensurePolling();
+      return StateCell(states.get(`${status.channelId}_0`) || "");
+    },
+    connectorCell(child) {
+      ensurePolling();
+      return StateCell(states.get(`${child.channelId}_${child.metaDataId}`) || "");
+    }
+  });
+  function ConnectionLogTab({ selection }) {
+    const [items, setItems] = React.useState([]);
+    const [error, setError] = React.useState(null);
+    const sel = selection && selection.length === 1 ? selection[0] : null;
+    const channelId = sel ? sel.channelId : null;
+    const metaDataId = sel && sel.metaDataId != null ? Number(sel.metaDataId) : null;
+    React.useEffect(() => {
+      let timer = null;
+      let cancelled = false;
+      async function refresh() {
         try {
-            const map = await platform.api.get('/extensions/dashboardstatus/connectorStates');
-            const next = new Map();
-            for (const entry of platform.api.asList(map?.entry)) {
-                const values = Object.values(entry);
-                const key = values.find(v => typeof v === 'string');
-                if (key !== undefined) {
-                    const value = values.find(v => v !== key);
-                    next.set(key, stateOf(value));
-                }
-            }
-            states = next;
-            lastError = null;
+          const path = channelId ? `/extensions/dashboardstatus/connectionLogs/${channelId}` : "/extensions/dashboardstatus/connectionLogs";
+          let next = platform2.api.asList(
+            await platform2.api.get(path, { fetchSize: 100 }),
+            "connectionLogItem"
+          );
+          if (metaDataId != null) next = next.filter((it) => Number(it.metadataId) === metaDataId);
+          if (cancelled) return;
+          setItems(next);
+          setError(null);
         } catch (e) {
-            lastError = e.message;
+          if (cancelled) return;
+          setItems([]);
+          setError(e.message);
         }
-    }
-
-    function ensurePolling() {
-        if (polling) return;
-        polling = true;
-        poll();
-        setInterval(poll, 5000);
-    }
-
-    const dotColor = (state) => {
-        const s = state.toLowerCase();
-        if (!s || s === 'idle') return 'var(--idle)';
-        if (s.includes('connect') || s.includes('receiv') || s.includes('send') || s.includes('read') || s.includes('writ') || s.includes('poll')) return 'var(--ok)';
-        if (s.includes('wait')) return 'var(--warn)';
-        return 'var(--busy)';
-    };
-
-    const cell = (state) => state
-        ? h('span.status-cell',
-            h('span', { style: { width: '7px', height: '7px', borderRadius: '50%', background: dotColor(state), display: 'inline-block' } }),
-            state)
-        : '';
-
-    platform.registerDashboardColumn({
-        id: 'connection',
-        label: 'Connection',
-        order: 10,
-        render(status) {
-            ensurePolling();
-            // Channel-level: show the source connector (metaDataId 0) state.
-            return cell(states.get(`${status.channelId}_0`) || '');
-        },
-        renderConnector(child) {
-            ensurePolling();
-            return cell(states.get(`${child.channelId}_${child.metaDataId}`) || '');
-        }
-    });
-
-    /* ---- Connection Log tab ---------------------------------------------------- */
-
-    platform.registerDashboardTab({
-        id: 'connection-log',
-        label: 'Connection Log',
-        order: 20,
-        render(host, { selection }) {
-            const table = h('table.dt');
-            const wrap = h('div.dt-wrap', { style: { maxHeight: '260px' } }, table);
-            host.appendChild(wrap);
-
-            const CLOG_COLS = ['logId', 'timestamp', 'channel', 'connector', 'event', 'information'];
-            const colMgr = platform.columns.createColumnManager('connection-log', {
-                logId: 80, timestamp: 180, channel: 170, connector: 130, event: 110, information: 260
-            });
-
-            let timer = null;
-            let started = false;
-            async function refresh() {
-                // Allow the first run even if rendered pre-attach; stop once removed.
-                if (started && !host.isConnected) { clearTimeout(timer); return; }
-                started = true;
-                try {
-                    const sel = selection && selection.length === 1 ? selection[0] : null;
-                    const channelId = sel ? sel.channelId : null;
-                    // When a single connector row is selected, sel carries its
-                    // metaDataId — scope the (per-channel) log to that connector.
-                    const metaDataId = sel && sel.metaDataId != null ? Number(sel.metaDataId) : null;
-                    const path = channelId
-                        ? `/extensions/dashboardstatus/connectionLogs/${channelId}`
-                        : '/extensions/dashboardstatus/connectionLogs';
-                    let items = platform.api.asList(
-                        await platform.api.get(path, { fetchSize: 100 }), 'connectionLogItem');
-                    if (metaDataId != null) items = items.filter(it => Number(it.metadataId) === metaDataId);
-                    table.textContent = '';
-                    table.appendChild(h('thead', h('tr',
-                        h('th', 'Id'), h('th', 'Timestamp'), h('th', 'Channel'),
-                        h('th', 'Connector'), h('th', 'Event'), h('th', 'Information'))));
-                    const tbody = h('tbody');
-                    for (const item of items) {
-                        tbody.appendChild(h('tr',
-                            h('td.num', fmtNumber(item.logId)),
-                            h('td.mono', String(item.dateAdded ?? '')),
-                            h('td', String(item.channelName ?? '')),
-                            h('td', String(item.connectorType ?? '')),
-                            h('td', cell(String(item.eventState ?? ''))),
-                            h('td.mono', String(item.information ?? ''))));
-                    }
-                    table.appendChild(tbody);
-                    platform.columns.decorateColumns(table, { manager: colMgr, presentKeys: CLOG_COLS, onChange: refresh });
-                    if (!items.length) {
-                        table.appendChild(h('caption', { style: { captionSide: 'bottom', padding: '14px', color: 'var(--text-faint)' } },
-                            lastError ? `Connection log unavailable: ${lastError}` : 'No connection events yet.'));
-                    }
-                } catch (e) {
-                    table.textContent = '';
-                    table.appendChild(h('caption', { style: { padding: '14px', color: 'var(--text-faint)' } },
-                        `Connection log unavailable: ${e.message}`));
-                }
-                timer = setTimeout(refresh, 5000);
-            }
-            refresh();
-        }
-    });
+        if (!cancelled) timer = setTimeout(refresh, 5e3);
+      }
+      refresh();
+      return () => {
+        cancelled = true;
+        if (timer) clearTimeout(timer);
+      };
+    }, [channelId, metaDataId]);
+    return /* @__PURE__ */ React.createElement("div", { className: "dt-wrap", style: { maxHeight: "260px" } }, /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Id"), /* @__PURE__ */ React.createElement("th", null, "Timestamp"), /* @__PURE__ */ React.createElement("th", null, "Channel"), /* @__PURE__ */ React.createElement("th", null, "Connector"), /* @__PURE__ */ React.createElement("th", null, "Event"), /* @__PURE__ */ React.createElement("th", null, "Information"))), /* @__PURE__ */ React.createElement("tbody", null, items.map((item, i) => /* @__PURE__ */ React.createElement("tr", { key: item.logId != null ? `log-${item.logId}` : `row-${i}` }, /* @__PURE__ */ React.createElement("td", { className: "num" }, fmtNumber(item.logId)), /* @__PURE__ */ React.createElement("td", { className: "mono" }, String(item.dateAdded ?? "")), /* @__PURE__ */ React.createElement("td", null, String(item.channelName ?? "")), /* @__PURE__ */ React.createElement("td", null, String(item.connectorType ?? "")), /* @__PURE__ */ React.createElement("td", null, StateCell(String(item.eventState ?? ""))), /* @__PURE__ */ React.createElement("td", { className: "mono" }, String(item.information ?? ""))))), !items.length && /* @__PURE__ */ React.createElement("caption", { style: { captionSide: "bottom", padding: "14px", color: "var(--text-faint)" } }, error ? `Connection log unavailable: ${error}` : lastError ? `Connection log unavailable: ${lastError}` : "No connection events yet.")));
+  }
+  platform2.registerDashboardTab({
+    id: "connection-log",
+    label: "Connection Log",
+    order: 20,
+    component: ConnectionLogTab
+  });
 }
+export {
+  register
+};

@@ -41,7 +41,6 @@ export function onTimezoneChange(cb) { listeners.add(cb); return () => listeners
 function emit() { for (const cb of listeners) { try { cb(); } catch { /* listener error */ } } }
 
 export function timezoneMode() { return mode; }
-export function serverTimezone() { return serverLabel || serverZone; }
 
 export function setTimezoneMode(next) {
     if (!MODES.includes(next) || next === mode) return;

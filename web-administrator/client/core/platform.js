@@ -57,6 +57,13 @@ export const platform = {
     ui,
     oie,
     columns,
+    // The host's React instance (set by the shell at boot). Plugins author React
+    // UI against THIS — e.g. `const React = platform.React` then JSX — so plugin
+    // components share the one React the app renders with (hooks/context work).
+    React: null,
+    // Wraps a React component as a routed-view handler (set by the shell at
+    // boot): platform.registerView(path, platform.reactView(MyView), { title }).
+    reactView: null,
     router: { navigate: router.navigate, currentPath: router.currentPath },
     store: { getState: store.getState, setState: store.setState, subscribe: store.subscribe },
     events: { on: store.on, emit: store.emit },

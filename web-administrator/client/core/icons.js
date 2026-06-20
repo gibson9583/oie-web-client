@@ -76,4 +76,6 @@ export function icon(name, size = 16) {
     return svg;
 }
 
-export const iconNames = Object.keys(P);
+// Raw path data for renderers that build their own <svg> (e.g. the React <Icon>
+// component) instead of using icon()'s DOM SVGElement. Mirrors icon()'s fallback.
+export function iconPath(name) { return P[name] || P.info; }

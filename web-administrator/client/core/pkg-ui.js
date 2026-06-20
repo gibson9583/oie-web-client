@@ -8,4 +8,6 @@
 export * from './ui.js';
 export * from './columns.js';
 export * from './codeeditor.js';
-export * from '../connectors/forms.js';
+// react-forms re-exports the pure ./forms.js helpers AND adds the React form
+// components (ConnectorForm, PollSection, …) that React connector plugins use.
+export * from '../connectors/react-forms.js';

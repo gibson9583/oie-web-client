@@ -98,10 +98,15 @@ function load() {
     if (config.engineHome) config.engineHome = path.resolve(config.engineHome);
 
     // Effective search list: the primary dir plus any extras from config.json
-    // ("pluginDirs": [...]) or WEBADMIN_PLUGIN_DIRS.
+    // ("pluginDirs": [...]) or WEBADMIN_PLUGIN_DIRS, plus — when engineHome is
+    // set — the engine's own extensions/ directory, so a web plugin shipped
+    // inside an engine extension (extensions/<name>/webadmin/plugin.json) is
+    // discovered automatically after Install Extension + an engine restart, with
+    // no extra plugin-dir config.
     const extra = []
         .concat(Array.isArray(config.pluginDirs) ? config.pluginDirs : [])
         .concat(process.env.WEBADMIN_PLUGIN_DIRS ? process.env.WEBADMIN_PLUGIN_DIRS.split(path.delimiter) : [])
+        .concat(config.engineHome ? [path.join(config.engineHome, 'extensions')] : [])
         .filter(Boolean)
         .map(p => path.resolve(p));
     config.pluginDirs = [config.pluginDir, ...extra];

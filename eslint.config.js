@@ -13,6 +13,8 @@
  * extend it. See that package's README.
  */
 import globals from 'globals';
+import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
 // Shell uses the lenient boundary (it legitimately owns the core internals a
 // plugin may not touch), so it reuses only the deep-import guard from the
 // shared plugin config rather than the full strict ruleset.
@@ -41,6 +43,63 @@ export default [
             'no-restricted-imports': ['error', noDeepPackageImports],
             'no-undef': 'warn',
             'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
+        },
+    },
+
+    // React shell/views (.jsx) — browser runtime + React rules. jsx-uses-vars
+    // keeps no-unused-vars from false-flagging components used only in JSX;
+    // react-hooks catches the effect-deps/once-only-setup bugs that bite ported
+    // imperative code (Monaco, intervals, subscriptions). Automatic JSX runtime,
+    // so React need not be in scope.
+    {
+        files: ['web-administrator/client/**/*.jsx'],
+        // Connector panels are .jsx too but use the classic JSX runtime — they
+        // get their own block below (this one assumes the automatic runtime).
+        ignores: ['web-administrator/client/connectors/*.jsx'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            globals: { ...globals.browser },
+            parserOptions: { ecmaFeatures: { jsx: true } },
+        },
+        plugins: { react, 'react-hooks': reactHooks },
+        settings: { react: { version: 'detect' } },
+        rules: {
+            'no-restricted-imports': ['error', noDeepPackageImports],
+            'no-undef': 'warn',
+            'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
+            'react/jsx-uses-vars': 'error',
+            'react/jsx-key': 'warn',
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
+        },
+    },
+
+    // Raw-served React connector panels (.jsx). Unlike the shell views above,
+    // these are served UNBUNDLED and compiled by tools/build-connectors.mjs with
+    // the CLASSIC JSX runtime, so each imports `React` from ./react-platform.js
+    // (the lazy host-React bridge) and JSX compiles to React.createElement.
+    // jsx-uses-react marks that `React` import as used — without it the
+    // automatic-runtime block above would flag the import no-unused-vars.
+    {
+        files: ['web-administrator/client/connectors/*.jsx'],
+        languageOptions: {
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+            globals: { ...globals.browser },
+            parserOptions: { ecmaFeatures: { jsx: true } },
+        },
+        plugins: { react, 'react-hooks': reactHooks },
+        settings: { react: { version: 'detect' } },
+        rules: {
+            'no-restricted-imports': ['error', noDeepPackageImports],
+            'no-undef': 'warn',
+            'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
+            'react/jsx-uses-vars': 'error',
+            'react/jsx-uses-react': 'error',
+            'react/jsx-key': 'warn',
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
         },
     },
 
