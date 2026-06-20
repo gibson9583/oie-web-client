@@ -198,19 +198,30 @@ export function useRestartWatch() {
             if (!saved) { stop(); setState('hidden'); return; }
             try {
                 const sig = await extensionSignature();
-                if (sig !== saved.sig) {
+                // The engine is reachable. The restart is complete when EITHER it
+                // cycled (we saw it go offline and it's now back) OR the extension
+                // list changed. The offline->online transition is the reliable
+                // signal: re-installing an already-present extension doesn't change
+                // the name list, so the signature alone would never flip and the
+                // banner would hang. (See the offline branch below.)
+                if (saved.sawOffline || sig !== saved.sig) {
                     setState('done');
                     if (timer) { clearInterval(timer); timer = null; }
                     try { localStorage.removeItem(RESTART_KEY); } catch { /* ok */ }
                 } else {
                     setState('waiting');
                 }
-            } catch { setState('offline'); }
+            } catch {
+                // Unreachable — the restart is underway; remember it so the next
+                // successful poll counts as "came back".
+                try { localStorage.setItem(RESTART_KEY, JSON.stringify({ ...saved, sawOffline: true })); } catch { /* ok */ }
+                setState('offline');
+            }
         };
         const arm = async () => {
             try {
                 const sig = await extensionSignature().catch(() => null);
-                localStorage.setItem(RESTART_KEY, JSON.stringify({ sig, ts: Date.now() }));
+                localStorage.setItem(RESTART_KEY, JSON.stringify({ sig, ts: Date.now(), sawOffline: false }));
             } catch { /* private mode — still shows this session */ }
             setState('waiting');
             if (!timer) timer = setInterval(poll, 8000);
