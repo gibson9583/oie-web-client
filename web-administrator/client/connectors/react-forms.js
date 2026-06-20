@@ -29,7 +29,7 @@ const DEFAULT_WIDTHS = {
   select: "220px"
 };
 let cformUid = 0;
-function CodeField({ value, language, minHeight, placeholder, onChange }) {
+function CodeField({ value, language, minHeight, placeholder, onChange, disabled }) {
   const hostRef = useRef(null);
   const edRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -41,6 +41,7 @@ function CodeField({ value, language, minHeight, placeholder, onChange }) {
       language: language || "text",
       minHeight: minHeight || "240px",
       placeholder,
+      readOnly: !!disabled,
       onChange: (v) => onChangeRef.current && onChangeRef.current(v)
     });
     edRef.current = editor;
@@ -53,14 +54,19 @@ function CodeField({ value, language, minHeight, placeholder, onChange }) {
       edRef.current = null;
       if (host) host.replaceChildren();
     };
-  }, []);
+  }, [language]);
   useEffect(() => {
     const ed = edRef.current;
     if (!ed) return;
     const next = value === null || value === void 0 ? "" : String(value);
     if (ed.getValue() !== next) ed.setValue(next);
   }, [value]);
-  return /* @__PURE__ */ React.createElement("div", { ref: hostRef });
+  useEffect(() => {
+    const ed = edRef.current;
+    if (ed && ed.opts) ed.opts.readOnly = !!disabled;
+    if (ed && ed.area) ed.area.readOnly = !!disabled;
+  }, [disabled]);
+  return /* @__PURE__ */ React.createElement("div", { ref: hostRef, style: disabled ? { opacity: 0.6 } : void 0 });
 }
 function DomNode({ node }) {
   const ref = useRef(null);
@@ -73,22 +79,30 @@ function DomNode({ node }) {
   }, [node]);
   return /* @__PURE__ */ React.createElement("span", { ref, style: { display: "contents" } });
 }
-function KeyValueEditor({ properties, field, onChange }) {
+function KeyValueEditor({ properties, field, onChange, disabled }) {
   const [, tick] = useReducer((n) => n + 1, 0);
   const rowsRef = useRef(null);
-  if (rowsRef.current === null) rowsRef.current = mapEntries(getPath(properties, field.key));
+  const lastMapRef = useRef(void 0);
+  const currentMap = getPath(properties, field.key);
+  if (rowsRef.current === null || currentMap !== lastMapRef.current) {
+    rowsRef.current = mapEntries(currentMap);
+    lastMapRef.current = currentMap;
+  }
   const rows = rowsRef.current;
   const commit = () => {
-    setPath(properties, field.key, writeMapEntries(getPath(properties, field.key), rows, field.mapShape || "string"));
+    const written = writeMapEntries(getPath(properties, field.key), rows, field.mapShape || "string");
+    setPath(properties, field.key, written);
+    lastMapRef.current = written;
     onChange();
   };
-  return /* @__PURE__ */ React.createElement("div", null, rows.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: "6px", marginBottom: "6px" } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: disabled ? { opacity: 0.6 } : void 0 }, rows.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: "6px", marginBottom: "6px" } }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
       value: row[0],
       placeholder: "Name",
       style: { flex: "1" },
+      disabled,
       onChange: (e) => {
         row[0] = e.target.value;
         tick();
@@ -102,6 +116,7 @@ function KeyValueEditor({ properties, field, onChange }) {
       value: row[1],
       placeholder: "Value",
       style: { flex: "2" },
+      disabled,
       onChange: (e) => {
         row[1] = e.target.value;
         tick();
@@ -114,6 +129,7 @@ function KeyValueEditor({ properties, field, onChange }) {
       type: "button",
       className: "icon-btn",
       title: "Remove",
+      disabled,
       onClick: () => {
         rows.splice(i, 1);
         commit();
@@ -121,7 +137,7 @@ function KeyValueEditor({ properties, field, onChange }) {
       }
     },
     /* @__PURE__ */ React.createElement(Icon, { name: "x" })
-  ))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => {
+  ))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", disabled, onClick: () => {
     rows.push(["", ""]);
     tick();
   } }, "Add"));
@@ -129,6 +145,8 @@ function KeyValueEditor({ properties, field, onChange }) {
 function FieldRow({ properties, field, onChange, repaint }) {
   const f = field;
   const value = f.key === void 0 ? void 0 : getPath(properties, f.key);
+  const disabled = typeof f.disabled === "function" ? f.disabled(properties) : !!f.disabled;
+  const labelText = typeof f.label === "function" ? f.label(properties) : f.label;
   const set = (v) => {
     if (f.key !== void 0) setPath(properties, f.key, v);
     if (f.onSet) f.onSet(properties, v);
@@ -144,7 +162,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
   const inputStyle = width && (f.width || isInputType) ? { width } : void 0;
   switch (f.type) {
     case "checkbox":
-      control = /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: asBool(value), onChange: (e) => set(e.target.checked) }), f.checkLabel || "");
+      control = /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: asBool(value), disabled, onChange: (e) => set(e.target.checked) }), f.checkLabel || "");
       break;
     case "radio": {
       const name = `cform-radio-${++cformUid}`;
@@ -155,6 +173,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
           {
             type: "radio",
             name,
+            disabled,
             checked: String(o.value) === String(value ?? ""),
             onChange: () => set(o.value)
           }
@@ -175,6 +194,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
           value: value ?? "",
           placeholder: f.placeholder,
           style: inputStyle,
+          disabled,
           onChange: (e) => set(f.numeric ? parseInt(e.target.value, 10) || 0 : e.target.value)
         }
       );
@@ -185,6 +205,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         {
           value: value ?? "",
           style: inputStyle,
+          disabled,
           onChange: (e) => set(f.numeric ? parseInt(e.target.value, 10) : e.target.value)
         },
         (f.options || []).map((opt, i) => {
@@ -199,6 +220,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         {
           rows: f.rows || 5,
           placeholder: f.placeholder,
+          disabled,
           value: value === null || value === void 0 ? "" : String(value),
           onChange: (e) => set(e.target.value)
         }
@@ -210,16 +232,17 @@ function FieldRow({ properties, field, onChange, repaint }) {
         CodeField,
         {
           value,
-          language: f.language,
+          language: typeof f.language === "function" ? f.language(properties) : f.language,
           minHeight: f.minHeight,
           placeholder: f.placeholder,
-          onChange: (v) => set(v)
+          onChange: (v) => set(v),
+          disabled
         }
       );
       wide = true;
       break;
     case "keyvalue":
-      control = /* @__PURE__ */ React.createElement(KeyValueEditor, { properties, field: f, onChange });
+      control = /* @__PURE__ */ React.createElement(KeyValueEditor, { properties, field: f, onChange, disabled });
       wide = true;
       break;
     case "custom": {
@@ -235,6 +258,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         {
           type: f.type === "password" ? "password" : "text",
           value: value ?? "",
+          disabled,
           placeholder: f.placeholder,
           style: inputStyle,
           onChange: (e) => set(e.target.value)
@@ -243,7 +267,18 @@ function FieldRow({ properties, field, onChange, repaint }) {
   }
   const appendNode = f.append ? f.append(properties, { onChange, repaint: repaint || (() => {
   }) }) : null;
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("label", { className: "cform-label" + (wide ? " top" : ""), title: f.tooltip || void 0 }, f.label ? `${f.label}:` : ""), /* @__PURE__ */ React.createElement("div", { className: "cform-control" + (wide ? " wide" : ""), title: f.tooltip || void 0 }, control, appendNode ? /* @__PURE__ */ React.createElement(DomNode, { node: appendNode }) : null));
+  if (f.full) {
+    return /* @__PURE__ */ React.createElement("div", { className: "cform-control", style: { gridColumn: "1 / -1" } }, control, appendNode ? /* @__PURE__ */ React.createElement(DomNode, { node: appendNode }) : null);
+  }
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+    "label",
+    {
+      className: "cform-label" + (wide ? " top" : ""),
+      title: f.tooltip || void 0,
+      style: disabled ? { opacity: 0.5 } : void 0
+    },
+    labelText ? `${labelText}:` : ""
+  ), /* @__PURE__ */ React.createElement("div", { className: "cform-control" + (wide ? " wide" : ""), title: f.tooltip || void 0 }, control, appendNode ? /* @__PURE__ */ React.createElement(DomNode, { node: appendNode }) : null));
 }
 function ConnectorForm({ properties, fields, onChange }) {
   const [, repaint] = useReducer((n) => n + 1, 0);
@@ -273,7 +308,7 @@ function ConnectorForm({ properties, fields, onChange }) {
   return /* @__PURE__ */ React.createElement("div", { className: "cform" }, sections.map((section, si) => /* @__PURE__ */ React.createElement("div", { className: "cform-section", key: si }, section.title ? /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, section.title) : null, /* @__PURE__ */ React.createElement("div", { className: "cform-grid" }, section.rows.map((f, ri) => /* @__PURE__ */ React.createElement(
     FieldRow,
     {
-      key: f.key || f.label || `row-${si}-${ri}`,
+      key: f.key || (typeof f.label === "string" ? f.label : "") || `row-${si}-${ri}`,
       properties,
       field: f,
       onChange: notify,
@@ -442,7 +477,7 @@ function PollSettings({ properties, onChange }) {
   ))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => {
     cron.push({ expression: "", description: "" });
     tick();
-  } }, "Add Cron Job"))), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+  } }, "Add Cron Job"))), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "\xA0"), /* @__PURE__ */ React.createElement("div", { style: { minHeight: "34px", display: "flex", alignItems: "center" } }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "checkbox",
@@ -452,7 +487,7 @@ function PollSettings({ properties, onChange }) {
         onChange();
       }
     }
-  ), "Poll Once on Start")));
+  ), "Poll Once on Start"))));
 }
 function defaultFrameMode() {
   return {

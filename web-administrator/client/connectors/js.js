@@ -18,7 +18,7 @@ const javascriptReader = {
     };
   },
   component({ properties, onChange }) {
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(PollSection, { properties, onChange }), /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
       { section: "JavaScript Reader Settings" },
       {
         key: "script",
@@ -28,7 +28,7 @@ const javascriptReader = {
         minHeight: "260px",
         placeholder: "// Return one or more messages to be processed"
       }
-    ] }), /* @__PURE__ */ React.createElement(PollSection, { properties, onChange }));
+    ] }));
   }
 };
 const javascriptWriter = {

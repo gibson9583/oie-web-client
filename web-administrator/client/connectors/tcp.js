@@ -1,4 +1,5 @@
 import { React } from "./react-platform.js";
+import { checkbox } from "@oie/web-ui";
 import {
   ConnectorForm,
   TransmissionModePanel,
@@ -49,43 +50,49 @@ const tcpListener = {
     };
   },
   component({ properties, onChange }) {
+    const serverMode = (p) => p.serverMode !== false;
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(TransmissionModePanel, { properties, onChange }), /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
       { section: "Listener Settings" },
-      // Mode: Server binds and listens locally; Client connects out to a
-      // remote address (with optional local-binding override).
       { key: "serverMode", label: "Mode", type: "radio", refresh: true, options: [
         { value: true, label: "Server" },
         { value: false, label: "Client" }
       ] },
-      { key: "remoteAddress", label: "Remote Address", type: "text", width: "200px", visible: (p) => p.serverMode === false },
-      { key: "remotePort", label: "Remote Port", type: "number", width: "90px", visible: (p) => p.serverMode === false },
-      { key: "overrideLocalBinding", label: "Override Local Binding", type: "radio", options: YES_NO, refresh: true, visible: (p) => p.serverMode === false },
-      { key: "listenerConnectorProperties.host", label: "Local Address", type: "text", width: "200px", visible: (p) => p.serverMode !== false || asBool(p.overrideLocalBinding) },
-      { key: "listenerConnectorProperties.port", label: "Local Port", type: "number", width: "90px", append: () => portsInUseButton(), visible: (p) => p.serverMode !== false || asBool(p.overrideLocalBinding) },
-      { section: "TCP Listener Settings" },
-      { key: "maxConnections", label: "Max Connections", type: "number", width: "110px" },
-      { key: "receiveTimeout", label: "Receive Timeout (ms)", type: "number", width: "120px", tooltip: "0 = never time out" },
-      { key: "bufferSize", label: "Buffer Size (bytes)", type: "number", width: "120px" },
+      { key: "remoteAddress", label: "Remote Address", type: "text", width: "200px", disabled: serverMode },
+      { key: "remotePort", label: "Remote Port", type: "number", width: "90px", disabled: serverMode },
+      { key: "overrideLocalBinding", label: "Override Local Binding", type: "radio", options: YES_NO, disabled: serverMode },
+      { key: "reconnectInterval", label: "Reconnect Interval (ms)", type: "number", width: "90px", disabled: serverMode },
+      { key: "maxConnections", label: "Max Connections", type: "number", width: "90px", disabled: (p) => p.serverMode === false },
+      { key: "receiveTimeout", label: "Receive Timeout (ms)", type: "number", width: "90px", tooltip: "0 = never time out" },
+      { key: "bufferSize", label: "Buffer Size (bytes)", type: "number", width: "90px" },
       { key: "keepConnectionOpen", label: "Keep Connection Open", type: "radio", options: YES_NO },
-      { key: "dataTypeBinary", label: "Data Type", type: "radio", options: [
-        { value: true, label: "Binary" },
-        { value: false, label: "Text" }
-      ] },
-      { key: "charsetEncoding", label: "Encoding", type: "select", options: CHARSETS, width: "160px" },
-      { section: "Response Settings" },
+      {
+        key: "dataTypeBinary",
+        label: "Data Type",
+        type: "radio",
+        refresh: true,
+        // Binary disables Encoding and forces it back to the default (Swing setSelectedIndex(0)).
+        onSet: (p) => {
+          if (asBool(p.dataTypeBinary)) p.charsetEncoding = "DEFAULT_ENCODING";
+        },
+        options: [
+          { value: true, label: "Binary" },
+          { value: false, label: "Text" }
+        ]
+      },
+      { key: "charsetEncoding", label: "Encoding", type: "select", options: CHARSETS, width: "160px", disabled: (p) => asBool(p.dataTypeBinary) },
       {
         key: "respondOnNewConnection",
-        label: "Respond on",
+        label: "Respond on New Connection",
         type: "radio",
         refresh: true,
         options: [
-          { value: 0, label: "Same Connection" },
-          { value: 1, label: "New Connection" },
-          { value: 2, label: "New Connection on Recovery" }
+          { value: 1, label: "Yes" },
+          { value: 0, label: "No" },
+          { value: 2, label: "Message Recovery" }
         ]
       },
-      { key: "responseAddress", label: "Response Address", type: "text", width: "200px", visible: (p) => Number(p.respondOnNewConnection) > 0 },
-      { key: "responsePort", label: "Response Port", type: "number", width: "90px", visible: (p) => Number(p.respondOnNewConnection) > 0 }
+      { key: "responseAddress", label: "Response Address", type: "text", width: "200px", disabled: (p) => Number(p.respondOnNewConnection) === 0 },
+      { key: "responsePort", label: "Response Port", type: "number", width: "90px", disabled: (p) => Number(p.respondOnNewConnection) === 0 }
     ] }));
   }
 };
@@ -117,33 +124,64 @@ const tcpSender = {
     };
   },
   component({ properties, channel, onChange }) {
+    const serverMode = (p) => p.serverMode === true;
+    const localBindingDisabled = (p) => p.serverMode !== true && !asBool(p.overrideLocalBinding);
+    const sendDisabled = (p) => p.serverMode === true || !asBool(p.keepConnectionOpen);
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(TransmissionModePanel, { properties, onChange }), /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
       { section: "Connection Settings" },
+      // Swing initLayout adds modeClientRadio then modeServerRadio
+      // (TcpSender.java:654-655), so on-screen order is Client, Server.
+      { key: "serverMode", label: "Mode", type: "radio", refresh: true, options: [
+        { value: false, label: "Client" },
+        { value: true, label: "Server" }
+      ] },
       {
         key: "remoteAddress",
         label: "Remote Address",
         type: "text",
         width: "200px",
+        disabled: serverMode,
         append: () => connectorTestButton({ path: "/connectors/tcp/_testConnection", channel, properties })
       },
-      { key: "remotePort", label: "Remote Port", type: "number", width: "90px" },
-      { key: "overrideLocalBinding", label: "Override Local Binding", type: "radio", options: YES_NO, refresh: true },
-      { key: "localAddress", label: "Local Address", type: "text", width: "200px", visible: (p) => asBool(p.overrideLocalBinding) },
-      { key: "localPort", label: "Local Port", type: "number", width: "90px", visible: (p) => asBool(p.overrideLocalBinding) },
-      { section: "TCP Sender Settings" },
-      { key: "sendTimeout", label: "Send Timeout (ms)", type: "number", width: "120px" },
-      { key: "responseTimeout", label: "Response Timeout (ms)", type: "number", width: "120px" },
-      { key: "queueOnResponseTimeout", label: "Queue on Response Timeout", type: "checkbox" },
-      { key: "ignoreResponse", label: "Ignore Response", type: "radio", options: YES_NO },
-      { key: "bufferSize", label: "Buffer Size (bytes)", type: "number", width: "120px" },
-      { key: "maxConnections", label: "Max Connections", type: "number", width: "110px" },
-      { key: "keepConnectionOpen", label: "Keep Connection Open", type: "radio", options: YES_NO },
-      { key: "checkRemoteHost", label: "Check Remote Host", type: "radio", options: YES_NO },
-      { key: "dataTypeBinary", label: "Data Type", type: "radio", options: [
-        { value: true, label: "Binary" },
-        { value: false, label: "Text" }
-      ] },
-      { key: "charsetEncoding", label: "Encoding", type: "select", options: CHARSETS, width: "160px" },
+      { key: "remotePort", label: "Remote Port", type: "number", width: "90px", disabled: serverMode },
+      { key: "overrideLocalBinding", label: "Override Local Binding", type: "radio", options: YES_NO, refresh: true, disabled: serverMode },
+      { key: "localAddress", label: "Local Address", type: "text", width: "200px", disabled: localBindingDisabled },
+      { key: "localPort", label: "Local Port", type: "number", width: "90px", append: () => portsInUseButton(), disabled: localBindingDisabled },
+      { key: "maxConnections", label: "Max Connections", type: "number", width: "90px", disabled: (p) => p.serverMode !== true },
+      { key: "keepConnectionOpen", label: "Keep Connection Open", type: "radio", options: YES_NO, refresh: true, disabled: serverMode },
+      { key: "checkRemoteHost", label: "Check Remote Host", type: "radio", options: YES_NO, disabled: sendDisabled },
+      { key: "sendTimeout", label: "Send Timeout (ms)", type: "number", width: "90px", disabled: sendDisabled },
+      { key: "bufferSize", label: "Buffer Size (bytes)", type: "number", width: "90px" },
+      {
+        key: "responseTimeout",
+        label: "Response Timeout (ms)",
+        type: "number",
+        width: "90px",
+        // Swing pairs the Ignore Response checkbox inline with Response Timeout;
+        // it gates Queue on Response Timeout below.
+        append: (p, ctx) => checkbox("Ignore Response", asBool(p.ignoreResponse), {
+          onChange: (e) => {
+            p.ignoreResponse = e.target.checked;
+            ctx.onChange();
+          }
+        }).el
+      },
+      { key: "queueOnResponseTimeout", label: "Queue on Response Timeout", type: "radio", options: YES_NO, disabled: (p) => asBool(p.ignoreResponse) },
+      {
+        key: "dataTypeBinary",
+        label: "Data Type",
+        type: "radio",
+        refresh: true,
+        // Binary disables Encoding and forces it back to the default (Swing setSelectedIndex(0)).
+        onSet: (p) => {
+          if (asBool(p.dataTypeBinary)) p.charsetEncoding = "DEFAULT_ENCODING";
+        },
+        options: [
+          { value: true, label: "Binary" },
+          { value: false, label: "Text" }
+        ]
+      },
+      { key: "charsetEncoding", label: "Encoding", type: "select", options: CHARSETS, width: "160px", disabled: (p) => asBool(p.dataTypeBinary) },
       { section: "Template" },
       { key: "template", label: "Template", type: "code", minHeight: "140px" }
     ] }));

@@ -2003,7 +2003,7 @@ function buildBody(params, query, onTasksChange, returning) {
      * ====================================================================== */
 
     function renderDestinations() {
-        const root = h('div');
+        const root = h('div', { style: { flex: '1', minHeight: '0' } });
         let selectedId = null;
         let destHeaderEl = null;   // detail-panel header, kept in sync with inline name edits
 
@@ -2085,7 +2085,7 @@ function buildBody(params, query, onTasksChange, returning) {
             }
         });
 
-        const editorHost = h('div.mt');
+        const editorHost = h('div.mt', { style: { flex: '1', minHeight: '0', overflow: 'auto', scrollbarGutter: 'stable' } });
 
         const dests = () => oie.destinationsOf(channel);
         const selectedDest = () => dests().find(d => String(d.metaDataId) === String(selectedId));
@@ -2234,22 +2234,29 @@ function buildBody(params, query, onTasksChange, returning) {
             }
 
             destHeaderEl = h('div.panel-header', `Destination ${dest.metaDataId} — ${dest.name}`);
-            editorHost.appendChild(h('div.panel',
+            // Wait-for is pushed to the right; Enabled is toggled from the
+            // destinations grid / Enable–Disable Destination tasks instead.
+            const waitBox = checkbox('Wait for previous destination', dest.waitForPrevious !== false, {
+                onChange: (e) => { dest.waitForPrevious = e.target.checked; markDirty(); table.setRows(dests()); }
+            });
+            waitBox.el.style.marginLeft = 'auto';
+            const typeSelect = connectorTypeSelect(dest, 'DESTINATION', renderDestEditor);
+            typeSelect.style.width = '200px';
+            // Static header: connector type + wait-for on ONE compact line (Swing
+            // parity) — always visible above the scrollable connector panel below.
+            editorHost.appendChild(h('div.panel', { style: { margin: '0', position: 'sticky', top: '0', zIndex: '1' } },
                 destHeaderEl,
-                h('div.panel-body', h('div.form-grid',
-                    // Name is edited inline in the destinations grid above (Swing parity).
-                    field('Connector Type', connectorTypeSelect(dest, 'DESTINATION', renderDestEditor)),
-                    h('div.span-2', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px 18px' } },
-                        checkbox('Enabled', dest.enabled !== false, {
-                            onChange: (e) => { dest.enabled = e.target.checked; markDirty(); table.setRows(dests()); }
-                        }).el,
-                        checkbox('Wait for previous destination', dest.waitForPrevious !== false, {
-                            onChange: (e) => { dest.waitForPrevious = e.target.checked; markDirty(); table.setRows(dests()); }
-                        }).el)))));
+                h('div.panel-body', { style: { padding: '6px 12px' } },
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                        h('label', { style: { fontWeight: '600', whiteSpace: 'nowrap' } }, 'Connector Type:'),
+                        typeSelect,
+                        waitBox.el))));
 
+            // Queue settings + connector panel scroll UNDER the sticky header above.
+            // Sharing editorHost's single scroll keeps one scrollbar aligned with
+            // both the header and the panels (no full-width/pinched-body mismatch).
             const dcp = dest.properties && dest.properties.destinationConnectorProperties;
             if (dcp) editorHost.appendChild(renderDestinationSettings(dcp));
-
             editorHost.appendChild(connectorPanelHost(dest, 'DESTINATION'));
         }
 
@@ -2543,8 +2550,8 @@ function buildBody(params, query, onTasksChange, returning) {
         }
 
         refresh();
-        const main = h('div', { style: { flex: '1 1 auto', minWidth: '0' } },
-            h('div.panel', h('div.panel-body.flush', table.el)),
+        const main = h('div', { style: { flex: '1 1 auto', minWidth: '0', display: 'flex', flexDirection: 'column', minHeight: '0' } },
+            h('div.panel', { style: { flex: 'none' } }, h('div.panel-body.flush', table.el)),
             editorHost);
         main.addEventListener('focusin', trackFocus);
         root.addEventListener('dragover', onMappingDragOver);
@@ -2620,7 +2627,7 @@ function buildBody(params, query, onTasksChange, returning) {
     const tabDefs = [
         { label: 'Summary', render: renderSummary },
         { label: 'Source', render: renderSource },
-        { label: 'Destinations', render: renderDestinations },
+        { label: 'Destinations', render: renderDestinations, fill: true },
         { label: 'Scripts', render: renderScripts, fill: true }
     ];
 

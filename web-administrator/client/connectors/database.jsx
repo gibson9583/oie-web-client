@@ -10,8 +10,8 @@
  */
 
 import { React } from './react-platform.js';
-import { h, modal, textInput, select, icon, toast, clear } from '@oie/web-ui';
-import { ConnectorForm, PollSection, YES_NO, defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, CHARSETS } from './react-forms.js';
+import { h, modal, textInput, select, icon, toast, clear, confirmDialog } from '@oie/web-ui';
+import { ConnectorForm, PollSection, asBool, YES_NO, defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, CHARSETS } from './react-forms.js';
 import api from '../core/api.js';
 
 const DRIVER_DEFAULT = 'Please Select One';
@@ -25,6 +25,72 @@ let driversPromise = null;
 function loadDrivers(platform) {
     if (!driversPromise) driversPromise = platform.api.server.databaseDrivers();
     return driversPromise;
+}
+
+/* Boilerplate "Connection" code generators (Swing generateConnectionString /
+   generateUpdateConnectionString). Pure client-side string building from the
+   driver/url/username/password fields — no server call — matching the engine
+   character-for-character so the generated JavaScript is identical. */
+function generateConnectionString(p) {
+    return 'var dbConn;\n' +
+        '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
+        (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
+        (p.username || '') + '\',\'' + (p.password || '') +
+        '\');\n\n\t// You may access this result below with $(\'column_name\')\n\treturn result;\n} finally {' +
+        '\n\tif (dbConn) { \n\t\tdbConn.close();\n\t}\n}';
+}
+
+/* Reader post-process connection boilerplate (DatabaseReader.generateUpdateConnectionString).
+   The leading comment varies with the post-process mode (each row vs once) and an
+   extra note is added when results are aggregated. updateMode: UPDATE_EACH=3. */
+function generateUpdateConnectionString(p) {
+    let s = '';
+    if (Number(p.updateMode) === 3) {
+        s += '// This update script will be executed once for every result returned from the above query.\n';
+    } else {
+        s += '// This update script will be executed once after all results have been processed.\n';
+    }
+    if (asBool(p.aggregateResults)) {
+        s += '// If "Aggregate Results" is enabled, you have access to "results",\n// a List of Map objects representing all rows returned from the above query.\n';
+    }
+    s += 'var dbConn;\n' +
+        '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
+        (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
+        (p.username || '') + '\',\'' + (p.password || '') +
+        '\');\n\n} finally {' +
+        '\n\tif (dbConn) { \n\t\tdbConn.close();\n\t}\n}';
+    return s;
+}
+
+/* Writer connection boilerplate (DatabaseWriter.generateConnectionString) — like
+   the reader's but with no leading comment and no "return result" line. */
+function generateWriterConnectionString(p) {
+    return 'var dbConn;\n' +
+        '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
+        (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
+        (p.username || '') + '\',\'' + (p.password || '') +
+        '\');\n\n} finally {' +
+        '\n\tif (dbConn) { \n\t\tdbConn.close();\n\t}\n}';
+}
+
+
+/* "Insert URL Template" button (Swing insertURLTemplateButton): fills the URL
+   field with the selected driver's JDBC URL template, confirming first when a
+   URL is already present (matching insertURLTemplateButtonActionPerformed). */
+function insertUrlTemplateButton(properties, platform, onChange) {
+    return h('button.btn', {
+        type: 'button', style: { marginLeft: '6px' },
+        onClick: async () => {
+            const drivers = await loadDrivers(platform).catch(() => []);
+            const d = drivers.find((x) => x && String(x.className) === String(properties.driver));
+            const template = d && d.template ? String(d.template) : '';
+            if (!template) { toast('The selected driver has no URL template.', 'warn'); return; }
+            if (properties.url && !(await confirmDialog('Insert URL Template',
+                'Replace your current connection URL with the template URL?', { okLabel: 'Replace' }))) return;
+            properties.url = template;
+            onChange();
+        }
+    }, 'Insert URL Template');
 }
 
 /* The Driver <select> DOM node, populated asynchronously from the cached drivers
@@ -194,40 +260,68 @@ const databaseReader = {
     component({ properties, platform, onChange }) {
         return (
             <div>
+                <PollSection properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
                     { section: 'Connection Settings' },
                     { type: 'custom', label: 'Driver', render: () => driverControlNode(properties, platform, onChange) },
-                    { key: 'url', label: 'URL', type: 'text', width: '420px', placeholder: 'jdbc:...' },
+                    { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p, ctx) => insertUrlTemplateButton(p, platform, ctx.onChange) },
                     { key: 'username', label: 'Username', type: 'text', width: '220px' },
                     { key: 'password', label: 'Password', type: 'password', width: '220px' },
                     { section: 'Database Reader Settings' },
-                    { key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO },
-                    { key: 'aggregateResults', label: 'Aggregate Results', type: 'radio', options: YES_NO },
-                    { key: 'cacheResults', label: 'Cache Results', type: 'radio', options: YES_NO },
-                    { key: 'fetchSize', label: 'Fetch Size', type: 'number', width: '110px' },
-                    { key: 'retryCount', label: 'Retries on Error', type: 'number', width: '110px' },
+                    {
+                        // Swing useScriptYes/NoActionPerformed: toggling re-seeds the editors —
+                        // Yes fills the Select + Post-Process editors with the connection
+                        // boilerplate (and switches them to JavaScript); No clears them back to SQL.
+                        key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true,
+                        onSet: (p, v) => {
+                            if (asBool(v)) {
+                                p.select = generateConnectionString(p);
+                                p.update = generateUpdateConnectionString(p);
+                            } else {
+                                p.select = '';
+                                p.update = '';
+                            }
+                        }
+                    },
+                    // Swing useScriptYes/No: Keep Connection Open is disabled in JavaScript mode.
+                    { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, disabled: (p) => asBool(p.useScript) },
+                    // Swing aggregateResultsActionPerformed(true): forces Cache Results=Yes and disables it.
+                    {
+                        key: 'aggregateResults', label: 'Aggregate Results', type: 'radio', options: YES_NO, refresh: true,
+                        onSet: (p) => { if (asBool(p.aggregateResults)) p.cacheResults = true; }
+                    },
+                    // Swing: Cache Results enabled only when Use JavaScript=No AND Aggregate Results=No.
+                    { key: 'cacheResults', label: 'Cache Results', type: 'radio', options: YES_NO, refresh: true, disabled: (p) => asBool(p.useScript) || asBool(p.aggregateResults) },
+                    // Swing: Fetch Size enabled only when Use JavaScript=No AND Cache Results=No (aggregate forces cache=Yes).
+                    { key: 'fetchSize', label: 'Fetch Size', type: 'number', width: '110px', disabled: (p) => asBool(p.useScript) || asBool(p.cacheResults) || asBool(p.aggregateResults) },
+                    { key: 'retryCount', label: '# of Retries on Error', type: 'number', width: '110px' },
                     { key: 'retryInterval', label: 'Retry Interval (ms)', type: 'number', width: '120px' },
                     { key: 'encoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px' },
                     { section: 'Query' },
                     {
-                        key: 'select', label: 'Select Query / Script', type: 'code', minHeight: '180px', language: 'sql',
+                        // Swing flips selectSQLLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
+                        key: 'select', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '180px',
+                        language: (p) => asBool(p.useScript) ? 'javascript' : 'sql',
                         tooltip: 'SQL select statement, or a JavaScript script when "Use JavaScript" is Yes'
                     },
                     {
-                        key: 'updateMode', label: 'Run Post-Process Update', type: 'radio', refresh: true,
+                        // Swing option labels (UPDATE_NEVER=1, UPDATE_EACH=3, UPDATE_ONCE=2);
+                        // runPostProcessSQLLabel flips 'SQL'<->'Script' on Use JavaScript.
+                        key: 'updateMode', label: (p) => asBool(p.useScript) ? 'Run Post-Process Script' : 'Run Post-Process SQL', type: 'radio', refresh: true,
                         options: [
                             { value: 1, label: 'Never' },
-                            { value: 2, label: 'Once per Poll' },
-                            { value: 3, label: 'For each Message' }
+                            { value: 3, label: 'After each message' },
+                            { value: 2, label: 'Once after all messages' }
                         ]
                     },
                     {
-                        key: 'update', label: 'Update Query / Script', type: 'code', minHeight: '140px', language: 'sql',
-                        visible: (p) => Number(p.updateMode) !== 1
+                        // Swing updateNeverActionPerformed keeps this editor VISIBLE but disabled at Never.
+                        // The `code` field now honours `disabled`, so match Swing: grey it out (not hide it).
+                        key: 'update', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '140px',
+                        language: (p) => asBool(p.useScript) ? 'javascript' : 'sql',
+                        disabled: (p) => Number(p.updateMode) === 1
                     }
                 ]} />
-                <PollSection properties={properties} onChange={onChange} />
             </div>
         );
     }
@@ -254,12 +348,22 @@ const databaseWriter = {
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Connection Settings' },
                 { type: 'custom', label: 'Driver', render: () => driverControlNode(properties, platform, onChange) },
-                { key: 'url', label: 'URL', type: 'text', width: '420px', placeholder: 'jdbc:...' },
+                { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p, ctx) => insertUrlTemplateButton(p, platform, ctx.onChange) },
                 { key: 'username', label: 'Username', type: 'text', width: '220px' },
                 { key: 'password', label: 'Password', type: 'password', width: '220px' },
                 { section: 'Query' },
-                { key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true },
-                { key: 'query', label: 'SQL / Script', type: 'code', minHeight: '200px', language: 'sql' }
+                {
+                    // Swing useJavaScriptYes/NoActionPerformed: toggling re-seeds the editor —
+                    // Yes fills it with the connection boilerplate (and switches to JavaScript);
+                    // No clears it back to SQL.
+                    key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true,
+                    onSet: (p, v) => { p.query = asBool(v) ? generateWriterConnectionString(p) : ''; }
+                },
+                {
+                    // Swing flips sqlLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
+                    key: 'query', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '200px',
+                    language: (p) => asBool(p.useScript) ? 'javascript' : 'sql'
+                }
             ]} />
         );
     }

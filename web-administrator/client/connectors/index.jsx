@@ -86,7 +86,14 @@ export function register(platform) {
     // MLLP framing ships as the mllpmode plugin.
     platform.registerTransmissionMode('Basic', {
         label: 'Basic TCP', order: 20,
-        apply(tm) { tm.pluginPointName = 'Basic'; tm.startOfMessageBytes = ''; tm.endOfMessageBytes = ''; },
+        apply(tm) {
+            tm['@class'] = 'com.mirth.connect.model.transmission.framemode.FrameModeProperties';
+            tm.pluginPointName = 'Basic';
+            tm.startOfMessageBytes = '';
+            tm.endOfMessageBytes = '';
+            // Drop MLLP-only fields when switching away from MLLP.
+            delete tm.useMLLPv2; delete tm.ackBytes; delete tm.nackBytes; delete tm.maxRetries;
+        },
         sampleFrame: frameModeSampleFrame,
         openSettings: frameModeSettingsDialog
     });

@@ -392,7 +392,11 @@ export function register(platform) {
         // (and thus the stored class) is managed inside the component via pluginProperties.
         propertiesClass: (transportName, mode, connector) =>
             AUTH_CLASSES[currentAuthType((connector && connector.properties) || {})] || AUTH_CLASSES.NONE,
-        isSupported: (transportName, mode) => transportName === 'HTTP Listener' && mode === 'SOURCE',
+        // Engine parity: HttpAuthConnectorPropertiesPlugin.isConnectorPropertiesPluginSupported
+        // attaches to these source listeners.
+        isSupported: (transportName, mode) => mode === 'SOURCE' && [
+            'HTTP Listener', 'Web Service Listener', 'FHIR Listener', 'Health Data Hub Listener'
+        ].includes(transportName),
         component: HttpAuthPanel
     });
 }

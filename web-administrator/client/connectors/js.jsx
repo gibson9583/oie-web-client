@@ -25,6 +25,7 @@ const javascriptReader = {
     component({ properties, onChange }) {
         return (
             <div>
+                <PollSection properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
                     { section: 'JavaScript Reader Settings' },
                     {
@@ -32,7 +33,6 @@ const javascriptReader = {
                         placeholder: '// Return one or more messages to be processed'
                     }
                 ]} />
-                <PollSection properties={properties} onChange={onChange} />
             </div>
         );
     }

@@ -59,7 +59,7 @@ let cformUid = 0;
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
    SOAP envelope, then repaints), the editor is updated to the new value — but
    only when it differs, so normal typing never clobbers the cursor. */
-function CodeField({ value, language, minHeight, placeholder, onChange }) {
+function CodeField({ value, language, minHeight, placeholder, onChange, disabled }) {
     const hostRef = useRef(null);
     const edRef = useRef(null);
     const onChangeRef = useRef(onChange);
@@ -71,21 +71,31 @@ function CodeField({ value, language, minHeight, placeholder, onChange }) {
             language: language || 'text',
             minHeight: minHeight || '240px',
             placeholder,
+            readOnly: !!disabled,
             onChange: (v) => onChangeRef.current && onChangeRef.current(v)
         });
         edRef.current = editor;
         host.appendChild(editor.el);
         return () => { try { editor.dispose && editor.dispose(); } catch { /* baseline no-op */ } edRef.current = null; if (host) host.replaceChildren(); };
-        // Built once; subsequent value changes are reconciled by the effect below.
+        // Rebuilt when the language changes (e.g. SQL <-> JavaScript on the DB
+        // reader's Use JavaScript toggle); value changes reconcile via the effect
+        // below, so they don't rebuild.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [language]);
     useEffect(() => {
         const ed = edRef.current;
         if (!ed) return;
         const next = value === null || value === undefined ? '' : String(value);
         if (ed.getValue() !== next) ed.setValue(next);
     }, [value]);
-    return <div ref={hostRef} />;
+    // Reflect disabled (Swing setEnabled) onto the editor: the baseline textarea
+    // honours readOnly; a richer registry editor reads opts.readOnly on edit.
+    useEffect(() => {
+        const ed = edRef.current;
+        if (ed && ed.opts) ed.opts.readOnly = !!disabled;
+        if (ed && ed.area) ed.area.readOnly = !!disabled;
+    }, [disabled]);
+    return <div ref={hostRef} style={disabled ? { opacity: 0.6 } : undefined} />;
 }
 
 /* Mounts a DOM Node (returned by a field's custom render() or an `append`
@@ -102,30 +112,39 @@ function DomNode({ node }) {
 
 /* ---- key/value (XStream linked-hash-map) editor ----------------------------- */
 
-function KeyValueEditor({ properties, field, onChange }) {
+function KeyValueEditor({ properties, field, onChange, disabled }) {
     const [, tick] = useReducer((n) => n + 1, 0);
     // rows live in a ref so edits mutate the same array across renders, exactly
     // like the imperative keyValueEditor's closure-captured `rows`.
     const rowsRef = useRef(null);
-    if (rowsRef.current === null) rowsRef.current = mapEntries(getPath(properties, field.key));
+    // Re-read from the property when the map is REPLACED externally (e.g. loading
+    // a JMS connection template) — detected by identity vs. our own last write.
+    const lastMapRef = useRef(undefined);
+    const currentMap = getPath(properties, field.key);
+    if (rowsRef.current === null || currentMap !== lastMapRef.current) {
+        rowsRef.current = mapEntries(currentMap);
+        lastMapRef.current = currentMap;
+    }
     const rows = rowsRef.current;
     const commit = () => {
-        setPath(properties, field.key, writeMapEntries(getPath(properties, field.key), rows, field.mapShape || 'string'));
+        const written = writeMapEntries(getPath(properties, field.key), rows, field.mapShape || 'string');
+        setPath(properties, field.key, written);
+        lastMapRef.current = written;
         onChange();
     };
     return (
-        <div>
+        <div style={disabled ? { opacity: 0.6 } : undefined}>
             {rows.map((row, i) => (
                 <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-                    <input type="text" value={row[0]} placeholder="Name" style={{ flex: '1' }}
+                    <input type="text" value={row[0]} placeholder="Name" style={{ flex: '1' }} disabled={disabled}
                         onChange={(e) => { row[0] = e.target.value; tick(); commit(); }} />
-                    <input type="text" value={row[1]} placeholder="Value" style={{ flex: '2' }}
+                    <input type="text" value={row[1]} placeholder="Value" style={{ flex: '2' }} disabled={disabled}
                         onChange={(e) => { row[1] = e.target.value; tick(); commit(); }} />
-                    <button type="button" className="icon-btn" title="Remove"
+                    <button type="button" className="icon-btn" title="Remove" disabled={disabled}
                         onClick={() => { rows.splice(i, 1); commit(); tick(); }}><Icon name="x" /></button>
                 </div>
             ))}
-            <button type="button" className="btn" onClick={() => { rows.push(['', '']); tick(); }}>Add</button>
+            <button type="button" className="btn" disabled={disabled} onClick={() => { rows.push(['', '']); tick(); }}>Add</button>
         </div>
     );
 }
@@ -135,6 +154,12 @@ function KeyValueEditor({ properties, field, onChange }) {
 function FieldRow({ properties, field, onChange, repaint }) {
     const f = field;
     const value = f.key === undefined ? undefined : getPath(properties, f.key);
+    // Swing greys (disables) fields that don't apply to the current selection;
+    // `disabled: (p) => bool` mirrors that (the control stays visible but inert).
+    const disabled = typeof f.disabled === 'function' ? f.disabled(properties) : !!f.disabled;
+    // Labels may be dynamic (Swing relabels some fields per selection); a function
+    // label is re-evaluated on every repaint.
+    const labelText = typeof f.label === 'function' ? f.label(properties) : f.label;
     const set = (v) => {
         if (f.key !== undefined) setPath(properties, f.key, v);
         if (f.onSet) f.onSet(properties, v);
@@ -160,7 +185,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         case 'checkbox':
             control = (
                 <label className="check">
-                    <input type="checkbox" checked={asBool(value)} onChange={(e) => set(e.target.checked)} />
+                    <input type="checkbox" checked={asBool(value)} disabled={disabled} onChange={(e) => set(e.target.checked)} />
                     {f.checkLabel || ''}
                 </label>
             );
@@ -173,7 +198,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
                         const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
                         return (
                             <label className="check" key={i}>
-                                <input type="radio" name={name}
+                                <input type="radio" name={name} disabled={disabled}
                                     checked={String(o.value) === String(value ?? '')}
                                     onChange={() => set(o.value)} />
                                 {o.label}
@@ -191,12 +216,12 @@ function FieldRow({ properties, field, onChange, repaint }) {
             break;
         }
         case 'number':
-            control = <input type="number" value={value ?? ''} placeholder={f.placeholder} style={inputStyle}
+            control = <input type="number" value={value ?? ''} placeholder={f.placeholder} style={inputStyle} disabled={disabled}
                 onChange={(e) => set(f.numeric ? (parseInt(e.target.value, 10) || 0) : e.target.value)} />;
             break;
         case 'select':
             control = (
-                <select value={value ?? ''} style={inputStyle}
+                <select value={value ?? ''} style={inputStyle} disabled={disabled}
                     onChange={(e) => set(f.numeric ? parseInt(e.target.value, 10) : e.target.value)}>
                     {(f.options || []).map((opt, i) => {
                         const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
@@ -206,18 +231,18 @@ function FieldRow({ properties, field, onChange, repaint }) {
             );
             break;
         case 'textarea':
-            control = <textarea rows={f.rows || 5} placeholder={f.placeholder}
+            control = <textarea rows={f.rows || 5} placeholder={f.placeholder} disabled={disabled}
                 value={value === null || value === undefined ? '' : String(value)}
                 onChange={(e) => set(e.target.value)} />;
             wide = true;
             break;
         case 'code':
-            control = <CodeField value={value} language={f.language} minHeight={f.minHeight}
-                placeholder={f.placeholder} onChange={(v) => set(v)} />;
+            control = <CodeField value={value} language={typeof f.language === 'function' ? f.language(properties) : f.language} minHeight={f.minHeight}
+                placeholder={f.placeholder} onChange={(v) => set(v)} disabled={disabled} />;
             wide = true;
             break;
         case 'keyvalue':
-            control = <KeyValueEditor properties={properties} field={f} onChange={onChange} />;
+            control = <KeyValueEditor properties={properties} field={f} onChange={onChange} disabled={disabled} />;
             wide = true;
             break;
         case 'custom': {
@@ -231,16 +256,28 @@ function FieldRow({ properties, field, onChange, repaint }) {
         default:
             // 'text' and 'password' (and any unknown type) render as a plain
             // input — password just swaps the input type, matching forms.js.
-            control = <input type={f.type === 'password' ? 'password' : 'text'} value={value ?? ''}
+            control = <input type={f.type === 'password' ? 'password' : 'text'} value={value ?? ''} disabled={disabled}
                 placeholder={f.placeholder} style={inputStyle} onChange={(e) => set(e.target.value)} />;
     }
 
     const appendNode = f.append ? f.append(properties, { onChange, repaint: repaint || (() => {}) }) : null;
 
+    // `full` fields occupy the whole row (both grid columns, no label cell) — for
+    // self-laid-out custom blocks that bring their own label column.
+    if (f.full) {
+        return (
+            <div className="cform-control" style={{ gridColumn: '1 / -1' }}>
+                {control}
+                {appendNode ? <DomNode node={appendNode} /> : null}
+            </div>
+        );
+    }
+
     return (
         <>
-            <label className={'cform-label' + (wide ? ' top' : '')} title={f.tooltip || undefined}>
-                {f.label ? `${f.label}:` : ''}
+            <label className={'cform-label' + (wide ? ' top' : '')} title={f.tooltip || undefined}
+                style={disabled ? { opacity: 0.5 } : undefined}>
+                {labelText ? `${labelText}:` : ''}
             </label>
             <div className={'cform-control' + (wide ? ' wide' : '')} title={f.tooltip || undefined}>
                 {control}
@@ -282,7 +319,7 @@ export function ConnectorForm({ properties, fields, onChange }) {
                     {section.title ? <div className="cform-section-title">{section.title}</div> : null}
                     <div className="cform-grid">
                         {section.rows.map((f, ri) => (
-                            <FieldRow key={f.key || f.label || `row-${si}-${ri}`} properties={properties} field={f}
+                            <FieldRow key={f.key || (typeof f.label === 'string' ? f.label : '') || `row-${si}-${ri}`} properties={properties} field={f}
                                 onChange={notify}
                                 repaint={(f.refresh || f.type === 'custom') ? repaint : null} />
                         ))}
@@ -442,11 +479,16 @@ function PollSettings({ properties, onChange }) {
             )}
 
             <div className="field">
-                <label className="check">
-                    <input type="checkbox" checked={asBool(p.pollOnStart)}
-                        onChange={(e) => { p.pollOnStart = e.target.checked; onChange(); }} />
-                    Poll Once on Start
-                </label>
+                {/* Empty label spacer so the checkbox drops to the control row,
+                    aligning with the Schedule Type / Frequency inputs alongside. */}
+                <label>&nbsp;</label>
+                <div style={{ minHeight: '34px', display: 'flex', alignItems: 'center' }}>
+                    <label className="check">
+                        <input type="checkbox" checked={asBool(p.pollOnStart)}
+                            onChange={(e) => { p.pollOnStart = e.target.checked; onChange(); }} />
+                        Poll Once on Start
+                    </label>
+                </div>
             </div>
         </div>
     );
