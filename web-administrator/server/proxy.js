@@ -112,4 +112,48 @@ function createApiProxy(config) {
     };
 }
 
-module.exports = { createApiProxy, resolveForwardedFor };
+// Server-initiated request to the engine REST API (used by the web-admin plugin
+// install/uninstall endpoints to forward to /api/extensions/_install etc. so the
+// ENGINE makes the EXTENSIONS_MANAGE authorization decision). Same transport +
+// TLS posture as the proxy: honors config.engine.verifyTls, targets the
+// configured engine host, never trusts a user-supplied URL. Buffers the response.
+function engineRequest(config, { method, path: reqPath, headers, body }) {
+    return new Promise((resolve, reject) => {
+        const target = new URL(config.engine.url);
+        const isHttps = target.protocol === 'https:';
+        const transport = isHttps ? https : http;
+        const agent = isHttps
+            ? new https.Agent({ rejectUnauthorized: config.engine.verifyTls })
+            : new http.Agent();
+        const h = {};
+        for (const [name, value] of Object.entries(headers || {})) {
+            if (value != null && !HOP_BY_HOP.has(name.toLowerCase())) h[name] = value;
+        }
+        h.host = target.host;
+        const MAX_RESPONSE = 16 * 1024 * 1024;   // bound the buffered engine response
+        const upstream = transport.request({
+            agent,
+            protocol: target.protocol,
+            hostname: target.hostname,
+            port: target.port || (isHttps ? 443 : 80),
+            method,
+            path: reqPath,
+            headers: h
+        }, (res) => {
+            const chunks = [];
+            let size = 0;
+            res.on('data', (c) => {
+                size += c.length;
+                if (size > MAX_RESPONSE) { res.destroy(); reject(new Error('engine response too large')); return; }
+                chunks.push(c);
+            });
+            res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+        });
+        upstream.setTimeout(120000, () => upstream.destroy(new Error('engine request timed out')));
+        upstream.on('error', reject);
+        if (body && body.length) upstream.write(body);
+        upstream.end();
+    });
+}
+
+module.exports = { createApiProxy, resolveForwardedFor, engineRequest };

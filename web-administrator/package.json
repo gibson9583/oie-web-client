@@ -11,17 +11,17 @@
     "start": "node server/index.js",
     "dev": "WEBADMIN_DEV=1 node --watch server/index.js",
     "build": "vite build && node tools/build-plugins.mjs && node tools/build-connectors.mjs",
-    "test": "for f in client/core/*.test.js; do node \"$f\" || exit 1; done"
+    "test": "for f in client/core/*.test.js server/*.test.js; do node \"$f\" || exit 1; done"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "@zip.js/zip.js": "^2.8.26",
     "express": "^4.19.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",
-    "@zip.js/zip.js": "^2.8.26",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0",

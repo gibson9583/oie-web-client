@@ -14,6 +14,7 @@ const express = require('express');
 
 const { load } = require('./config');
 const { createApiProxy } = require('./proxy');
+const { installPluginRoutes } = require('./plugin-install');
 const plugins = require('./plugins');
 const { installSerialize } = require('./serialize');
 
@@ -48,6 +49,11 @@ const CSP = [
     "frame-ancestors 'none'"
 ].join('; ');
 app.use((req, res, next) => { res.setHeader('Content-Security-Policy', CSP); next(); });
+
+// --- Web-admin plugin install/uninstall (engine-gated) -----------------------
+// Local /api/_webadmin/* routes, registered BEFORE the proxy so they're handled
+// here (the engine has no such path) while the /api session cookie still flows.
+installPluginRoutes(app, config);
 
 // --- Engine REST API proxy ---------------------------------------------------
 app.use('/api', createApiProxy(config));

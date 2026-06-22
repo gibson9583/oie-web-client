@@ -90,26 +90,32 @@ function load() {
     if (process.env.WEBADMIN_HOST) config.host = process.env.WEBADMIN_HOST;
     if (process.env.OIE_URL) config.engine.url = process.env.OIE_URL;
     if (process.env.OIE_VERIFY_TLS) config.engine.verifyTls = process.env.OIE_VERIFY_TLS === 'true';
-    if (process.env.WEBADMIN_PLUGIN_DIR) config.pluginDir = path.resolve(process.env.WEBADMIN_PLUGIN_DIR);
+    if (process.env.WEBADMIN_PLUGIN_DIR) config.pluginDir = process.env.WEBADMIN_PLUGIN_DIR;
     if (process.env.OIE_HOME) config.engineHome = process.env.OIE_HOME;
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE) config.serializeAllowRemote = process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES) config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
     if (config.engineHome) config.engineHome = path.resolve(config.engineHome);
 
-    // Effective search list: the primary dir plus any extras from config.json
-    // ("pluginDirs": [...]) or WEBADMIN_PLUGIN_DIRS, plus — when engineHome is
-    // set — the engine's own extensions/ directory, so a web plugin shipped
-    // inside an engine extension (extensions/<name>/webadmin/plugin.json) is
-    // discovered automatically after Install Extension + an engine restart, with
-    // no extra plugin-dir config.
+    // The primary plugin dir is the INSTALL TARGET (where the Extensions import
+    // writes a web plugin). Relative paths from config.json / WEBADMIN_PLUGIN_DIR
+    // anchor to the web admin install dir (ROOT), NOT the launch cwd, so they're
+    // predictable however the server is started.
+    config.pluginDir = path.resolve(ROOT, config.pluginDir);
+
+    // Effective SEARCH list: the install target, the shipped first-party plugins
+    // dir (ALWAYS searched — so overriding pluginDir to a custom install dir does
+    // not drop the bundled plugins), then read-only extras from config.json
+    // ("pluginDirs": [...]) or WEBADMIN_PLUGIN_DIRS (also ROOT-anchored). De-duped.
+    // engineHome is NOT searched — it drives only the datatype serializer bridge;
+    // to surface an engine's extensions/<name>/webadmin halves, list that dir
+    // explicitly in pluginDirs.
     const extra = []
         .concat(Array.isArray(config.pluginDirs) ? config.pluginDirs : [])
         .concat(process.env.WEBADMIN_PLUGIN_DIRS ? process.env.WEBADMIN_PLUGIN_DIRS.split(path.delimiter) : [])
-        .concat(config.engineHome ? [path.join(config.engineHome, 'extensions')] : [])
         .filter(Boolean)
-        .map(p => path.resolve(p));
-    config.pluginDirs = [config.pluginDir, ...extra];
+        .map(p => path.resolve(ROOT, p));
+    config.pluginDirs = [...new Set([config.pluginDir, path.join(ROOT, 'plugins'), ...extra])];
 
     config.root = ROOT;
     return config;
