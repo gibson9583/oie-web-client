@@ -149,6 +149,66 @@ const jmsDispatcher = () => Object.assign({
     destinationConnectorProperties: destinationConnectorProperties(), template: '${message.encodedData}'
 }, jmsConnection());
 
+const jsReceiver = () => ({
+    '@class': 'com.mirth.connect.connectors.js.JavaScriptReceiverProperties', '@version': V, pluginProperties: null,
+    pollConnectorProperties: pollProps(), sourceConnectorProperties: sourceConnectorProperties(), script: ''
+});
+const jsDispatcher = () => ({
+    '@class': 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties', '@version': V, pluginProperties: null,
+    destinationConnectorProperties: destinationConnectorProperties(), script: ''
+});
+
+const wsReceiver = () => ({
+    '@class': 'com.mirth.connect.connectors.ws.WebServiceReceiverProperties', '@version': V, pluginProperties: null,
+    listenerConnectorProperties: listenerProps('8081'), sourceConnectorProperties: sourceConnectorProperties(),
+    className: 'com.mirth.connect.connectors.ws.DefaultAcceptMessage', serviceName: 'OIE', soapBinding: 'DEFAULT'
+});
+const wsDispatcher = () => ({
+    '@class': 'com.mirth.connect.connectors.ws.WebServiceDispatcherProperties', '@version': V, pluginProperties: null,
+    destinationConnectorProperties: destinationConnectorProperties(),
+    wsdlUrl: '', service: '', port: '', operation: 'Press Get Operations', locationURI: '', socketTimeout: '30000',
+    useAuthentication: false, username: '', password: '', envelope: '', oneWay: false,
+    headers: { '@class': 'linked-hash-map' }, headersVariable: '', isUseHeadersVariable: false, useMtom: false,
+    attachmentNames: { '@class': 'java.util.ArrayList' }, attachmentContents: { '@class': 'java.util.ArrayList' },
+    attachmentTypes: { '@class': 'java.util.ArrayList' }, attachmentsVariable: '', isUseAttachmentsVariable: false,
+    soapAction: '', wsdlDefinitionMap: { map: { '@class': 'linked-hash-map' } }
+});
+
+const dicomReceiver = () => ({
+    '@class': 'com.mirth.connect.connectors.dimse.DICOMReceiverProperties', '@version': V, pluginProperties: null,
+    listenerConnectorProperties: listenerProps('104'), sourceConnectorProperties: sourceConnectorProperties(),
+    applicationEntity: '', localHost: '', localPort: '', localApplicationEntity: '', soCloseDelay: '50', releaseTo: '5',
+    requestTo: '5', idleTo: '60', reaper: '10', rspDelay: '0', pdv1: false, sndpdulen: '16', rcvpdulen: '16', async: '0',
+    bigEndian: false, bufSize: '1', defts: false, dest: '', nativeData: false, sorcvbuf: '0', sosndbuf: '0', tcpDelay: true,
+    keyPW: '', keyStore: '', keyStorePW: '', noClientAuth: true, nossl2: true, tls: 'notls', trustStore: '', trustStorePW: ''
+});
+const dicomDispatcher = () => ({
+    '@class': 'com.mirth.connect.connectors.dimse.DICOMDispatcherProperties', '@version': V, pluginProperties: null,
+    destinationConnectorProperties: destinationConnectorProperties(),
+    host: '127.0.0.1', port: '104', applicationEntity: '', localHost: '', localPort: '', localApplicationEntity: '',
+    template: '${DICOMMESSAGE}', acceptTo: '5000', async: '0', bufSize: '1', connectTo: '0', priority: 'med', passcode: '',
+    pdv1: false, rcvpdulen: '16', reaper: '10', releaseTo: '5', rspTo: '60', shutdownDelay: '1000', sndpdulen: '16',
+    soCloseDelay: '50', sorcvbuf: '0', sosndbuf: '0', stgcmt: false, tcpDelay: true, ts1: false, uidnegrsp: false,
+    username: '', keyPW: '', keyStore: '', keyStorePW: '', noClientAuth: true, nossl2: true, tls: 'notls', trustStore: '', trustStorePW: ''
+});
+
+const smtpDispatcher = () => ({
+    '@class': 'com.mirth.connect.connectors.smtp.SmtpDispatcherProperties', '@version': V, pluginProperties: null,
+    destinationConnectorProperties: destinationConnectorProperties(),
+    smtpHost: '', smtpPort: '25', overrideLocalBinding: false, localAddress: '0.0.0.0', localPort: '0', timeout: '5000',
+    encryption: 'none', authentication: false, username: '', password: '', to: '', from: '', cc: '', bcc: '', replyTo: '',
+    headers: { '@class': 'linked-hash-map' }, headersVariable: '', isUseHeadersVariable: false, subject: '',
+    charsetEncoding: 'DEFAULT_ENCODING', html: false, body: '', attachments: { '@class': 'java.util.ArrayList' },
+    attachmentsVariable: '', isUseAttachmentsVariable: false
+});
+
+const docDispatcher = () => ({
+    '@class': 'com.mirth.connect.connectors.doc.DocumentDispatcherProperties', '@version': V, pluginProperties: null,
+    destinationConnectorProperties: destinationConnectorProperties(),
+    host: '', outputPattern: '', documentType: 'pdf', encrypt: false, output: 'FILE', password: '',
+    pageWidth: '8.5', pageHeight: '11', pageUnit: 'INCHES', template: ''
+});
+
 /* The table the spec iterates. `properties` is a factory. `name` is the connector's
    transportName (what registerConnectorPanel keys on); `class` is the expected @class. */
 export const CASES = [
@@ -164,6 +224,14 @@ export const CASES = [
     { name: 'Database Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties', properties: dbDispatcher },
     { name: 'JMS Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.jms.JmsReceiverProperties', properties: jmsReceiver },
     { name: 'JMS Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.jms.JmsDispatcherProperties', properties: jmsDispatcher },
+    { name: 'JavaScript Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.js.JavaScriptReceiverProperties', properties: jsReceiver },
+    { name: 'JavaScript Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties', properties: jsDispatcher },
+    { name: 'Web Service Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.ws.WebServiceReceiverProperties', properties: wsReceiver },
+    { name: 'Web Service Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.ws.WebServiceDispatcherProperties', properties: wsDispatcher },
+    { name: 'DICOM Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.dimse.DICOMReceiverProperties', properties: dicomReceiver },
+    { name: 'DICOM Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.dimse.DICOMDispatcherProperties', properties: dicomDispatcher },
+    { name: 'SMTP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.smtp.SmtpDispatcherProperties', properties: smtpDispatcher },
+    { name: 'Document Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.doc.DocumentDispatcherProperties', properties: docDispatcher },
 ];
 
 /* Build a channel with `conn` ({ transportName, properties }) plugged in as the
