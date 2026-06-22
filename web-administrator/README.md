@@ -130,7 +130,7 @@ editor to insert its accessor at the drop point.
 
 ## Plugins
 
-See [docs/PLUGINS.md](docs/PLUGINS.md) — it includes worked examples for every
+See [PLUGINS.md](PLUGINS.md) — it includes worked examples for every
 extension point. Nearly everything ships as a plugin: each connector
 (`plugins/connector-*`), data type (`plugins/datatype-*`), the transformer
 steps/rules (`plugins/transformer-steps`), and the attachment viewers

@@ -361,7 +361,7 @@ function ExtensionsView() {
                     </div>
                     <div className="panel-body">
                         <div className="hint">
-                            Web administrator plugins are folders under the web administrator&apos;s plugins/ directory — see docs/PLUGINS.md.
+                            Web administrator plugins are folders under the web administrator&apos;s plugins/ directory — see PLUGINS.md.
                         </div>
                     </div>
                 </div>

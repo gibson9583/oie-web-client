@@ -12,6 +12,47 @@ anything a core view can.
 > function. See [Writing plugins in React](#writing-plugins-in-react) for the
 > contract and the one-line rule for porting older `render(host, ctx)` panels.
 
+## Adding a web UI: three starting points
+
+**A — You already have an engine extension (Java + Swing).** The common case,
+and the cheapest. Your plugin's server side already exists as an engine
+extension with REST servlets (and a Swing `ClientPlugin` panel). To bring it to
+the web administrator you write **only the web UI half** — a React connector
+panel, settings tab, or view that calls your *existing* engine endpoints at
+`/api/extensions/<path>`. No new server code, no second copy of your logic. The
+web UI can **replace** the Swing panel or **run side by side** with it (the
+engine doesn't care which administrator a user opens), so you can ship the web
+UI incrementally while the Swing client keeps working. The bundled `server-log`,
+`datapruner`, `httpauth`, and `mllpmode` plugins — and the third-party SQS
+connector and TLS Manager plugins — are all this shape. See
+[Pairing with engine-side extensions](#pairing-with-engine-side-extensions) and
+[Adding UI for custom engine connectors](#adding-ui-for-custom-engine-connectors).
+
+**B — A brand-new plugin with an engine (Java) backend.** Build the engine
+extension from scratch — the connector, servlet, or service that runs **in the
+engine** — and pair it with a UI. The UI can be **web** (a React plugin like the
+ones here), **Swing** (a classic `ClientPlugin`), or **both** at once: they're
+independent clients of the same engine extension, so you can ship one and add
+the other later. This is the classic full-plugin shape; everything in **A**
+applies the moment the engine half exists. Ship the engine half as a normal
+engine extension and the web half as a web admin plugin with the same name —
+optionally [bundling the web UI inside the engine extension zip](#shipping-the-web-ui-inside-the-engine-extension)
+so a single install delivers both.
+
+**C — Pure web plugin, no Java (`server.js`).** *New.* A plugin can now ship its
+own **Node/Express backend** (`server.js`, mounted at `/plugin-api/<id>`) right
+inside the web administrator. That means a plugin needing server-side logic no
+longer requires an engine (Java) extension at all: a React frontend **plus** a
+`server.js` backend is a fully self-contained, **pure-JavaScript plugin** —
+something that wasn't possible before, when *any* server-side behaviour meant
+authoring and deploying a Java engine extension. Use it for web-only tooling,
+talking to other backends, or anything that doesn't belong in the engine. See
+[Server side](#server-side).
+
+Most plugins are **A** or **B** (logic that belongs in the engine, reachable by
+either administrator). Reach for **C** only when you genuinely need server code
+that has no place in the engine.
+
 ## Anatomy of a plugin
 
 ```
@@ -70,8 +111,9 @@ Every extension in an engine install — including all the "built-in" ones
 (`datapruner`, `serverlog`, `dashboardstatus`, the `datatype-*` set, `mllpmode`,
 and the connectors themselves) — uses the identical packaging: a folder under
 `extensions/` containing `plugin.xml` (and/or `source.xml`/`destination.xml`)
-plus `libs/*.jar`, declaring `<serverClasses>`, `<clientClasses>`,
-`<sharedClasses>` and optional `apiProvider` REST servlets. In the engine
+plus its `*-client.jar`/`*-server.jar`/`*-shared.jar` libraries, declaring
+`<serverClasses>`, `<clientClasses>`, `<library>` entries (CLIENT/SERVER/SHARED
+jars) and optional `apiProvider` REST servlets. In the engine
 source they are ordinary packages under `server/src/com/mirth/connect/plugins/`
 and `.../connectors/`. Third-party extensions are first-class citizens of the
 same mechanism — the SQS connector repo is representative of how the bundled
@@ -90,7 +132,7 @@ ones are built.
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
 | `ConnectorPropertiesPlugin` | `httpauth` (HTTP Authentication), SSL managers | `httpauth` ships as a web plugin (`plugins/httpauth`) calling `registerConnectorPropertiesPanel`; renders as the "Authentication" panel on HTTP Listener sources |
-| `DataTypeClientPlugin` | `datatypes/*` (HL7 v2, XML, …) | each ships as a web plugin (`plugins/datatype-*`) calling `registerDataType`; `client/datatypes/index.js` is just the registry read-side (`dataTypeDef` / `dataTypeList`), and `props-editor.js` renders any registered type |
+| `DataTypeClientPlugin` | `datatypes/*` (HL7 v2, XML, …) | each ships as a web plugin (`plugins/datatype-*`) calling `registerDataType`; `client/datatypes/index.js` is just the registry read-side (`dataTypeDef` / `dataTypeList`), and `props-editor.jsx` renders any registered type |
 | `TransmissionModePlugin` | `mllpmode` (MLLP framing) | `registerTransmissionMode` — Basic is built in; `mllpmode` ships as a plugin. TCP's Transmission Mode dropdown + ⚙ settings dialog + Sample Frame are driven by the registry |
 | `ResourceClientPlugin` | `directoryresource` (Directory resource type) | `registerResourceType` — the Settings → Resources panel is generic; `directoryresource` ships as a plugin providing the Directory type editor |
 | `ChannelColumnPlugin` / `ChannelPanelPlugin` / `ChannelWizardPlugin` / `TaskPlugin` / `MultiFactorAuthenticationClientPlugin` | various | not yet — ask if you need one |
@@ -101,7 +143,7 @@ Like the Swing client, the web administrator does **not** privilege its built-in
 features — they ship as plugins under `plugins/`, loaded through the same
 mechanism a third-party plugin uses. The core client is a thin shell plus the
 shared frameworks they build on (the connector toolkit `client/connectors/forms.js`,
-the data-type properties renderer `client/datatypes/props-editor.js`, the form
+the data-type properties renderer `client/datatypes/props-editor.jsx`, the form
 builder, etc.). Current set:
 
 - **Connectors** (`connector-*`): vm, tcp, http, file, database, javascript, smtp, ws, dicom, jms, document
@@ -110,7 +152,7 @@ builder, etc.). Current set:
 - **Dashboard tabs/columns**: `server-log`, `global-maps`, `connection-status`
 - **Attachment viewers** (`attachment-*`): imageviewer, pdfviewer, textviewer, dicomviewer
 - **Settings panel**: `datapruner`
-- **Connector properties**: `httpauth`
+- **Connector properties**: `httpauth`, `tls-manager`
 - **Transmission mode**: `mllpmode` (Basic is built in)
 - **Resource type**: `directoryresource`
 
@@ -315,7 +357,7 @@ platform.registerConnectorPanel('My Listener', 'SOURCE', {
 
 // Custom data type registration. Data types are DATA-ONLY: a schema of groups +
 // fields + defaults(version). The shared central editor (client/datatypes/
-// props-editor.js) renders any registered type from this data — a data type does
+// props-editor.jsx) renders any registered type from this data — a data type does
 // NOT supply its own component.
 platform.registerDataType('MYTYPE', { name: 'MYTYPE', label: 'My Type', order: 99,
     propertiesClass: 'com.example.MyDataTypeProperties',
@@ -444,7 +486,12 @@ Notes:
 
 ## Server side
 
-`server.js` (CommonJS) lets a plugin add endpoints on the Node server:
+`server.js` (CommonJS) lets a plugin add endpoints on the **web administrator's
+own Node server** — *no engine (Java) extension required*. This is the piece that
+makes a **pure-JavaScript plugin** possible: a React frontend plus a `server.js`
+backend, fully self-contained. Before this, any server-side behaviour had to be
+written and deployed as a Java engine extension; now a plugin can own its
+backend in Node:
 
 ```js
 module.exports = function register(router, { config, manifest, log }) {
