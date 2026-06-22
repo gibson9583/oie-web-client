@@ -47,11 +47,12 @@ platform.registerSettingsPanel({ label: 'My Plugin', component: MyPanel });
 platform.registerView('/my-plugin', platform.reactView(MyPanel), { title: 'My Plugin' });
 ```
 
-Two points don't take a `component`: **`registerChannelTab`** is imperative
-(`render(host, ctx)` — its host in the channel editor is still vanilla DOM), and
-a **dashboard column** is a pair of per-cell renderers (`cell(status)` /
-`connectorCell(child)`) the dashboard table calls for every row rather than one
-mounted component. The TypeScript declarations (`index.d.ts`) encode which is which.
+**`registerChannelTab`** takes a `component` too, but also still accepts an
+imperative `render(host, ctx)` for back-compat (its host in the channel editor is
+vanilla DOM). The one point that is *not* a component is a **dashboard column**:
+it's a pair of per-cell renderers (`cell(status)` / `connectorCell(child)`) the
+dashboard table calls for every row rather than one mounted component. The
+TypeScript declarations (`index.d.ts`) encode which is which.
 
 ## Runtime model
 

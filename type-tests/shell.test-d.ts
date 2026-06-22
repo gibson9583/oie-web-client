@@ -19,6 +19,11 @@ export function register(p: Platform) {
         label: 'Demo Settings',
         component: ({ platform: plat, setSave, markDirty }) => { void plat; void setSave; void markDirty; return null; },
     });
+    // Channel tabs accept a React component (preferred) or imperative render.
+    p.registerChannelTab({
+        id: 'demo-tab', label: 'Demo Tab',
+        component: ({ channel, onChange }) => { void channel; void onChange; return null; },
+    });
 }
 
 async function libraries() {

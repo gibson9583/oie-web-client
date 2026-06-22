@@ -1796,6 +1796,12 @@ function buildBody(params, query, onTasksChange, returning) {
     // rebuild (renderSource/renderDestEditor) and on editor teardown.
     const pluginPanelRoots = [];
     const clearPluginPanels = () => { pluginPanelRoots.forEach(t => { try { t(); } catch { /* ignore */ } }); pluginPanelRoots.length = 0; };
+    // Channel-tab React roots are tracked separately from the connector panels:
+    // clearPluginPanels() fires on connector rebuilds, which must not tear down a
+    // mounted plugin channel tab. tabs() re-renders + clears on every switch, so a
+    // component tab keeps at most one live root (unmounted before the next render).
+    const channelTabRoots = [];
+    const clearChannelTabRoots = () => { channelTabRoots.forEach(t => { try { t(); } catch { /* ignore */ } }); channelTabRoots.length = 0; };
 
     // The Scripts tab's single code editor is recreated each time that tab is
     // rendered (the tab system clear()s the body with no per-tab teardown), so
@@ -2636,8 +2642,17 @@ function buildBody(params, query, onTasksChange, returning) {
             label: def.label,
             render: () => {
                 const host = h('div');
-                const result = def.render(host, { channel, platform, onChange: markDirty });
-                if (result instanceof Node) host.appendChild(result);
+                const ctx = { channel, platform, onChange: markDirty };
+                if (typeof def.component === 'function') {
+                    // React tab (preferred): mount it like every other plugin slot.
+                    // Drop the prior root first — tabs() cleared the old body DOM.
+                    clearChannelTabRoots();
+                    channelTabRoots.push(mountReact(host, <PluginSlot def={def} ctx={ctx} />));
+                } else if (typeof def.render === 'function') {
+                    // Imperative fallback: build into the host (or return a Node).
+                    const result = def.render(host, ctx);
+                    if (result instanceof Node) host.appendChild(result);
+                }
                 return host;
             }
         });
@@ -2688,6 +2703,7 @@ function buildBody(params, query, onTasksChange, returning) {
         teardown: () => {
             // Unmount any plugin React panels mounted into the imperative editor.
             clearPluginPanels();
+            clearChannelTabRoots();
             // Dispose the Scripts-tab code editor if it's still live.
             clearScriptsEditor();
             // In-flow hops (filter/transformer) re-register on return; anything
