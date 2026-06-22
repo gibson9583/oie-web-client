@@ -30,6 +30,15 @@ type OieHelpers = Pick<
     | 'CHANNEL_STATES' | 'MESSAGE_STATUSES' | 'STEP_TYPES' | 'RULE_TYPES'
 >;
 
+/**
+ * A plugin's React component for an extension point. Plugins author UI against
+ * `platform.React` (the shell's single React instance, so hooks/context work);
+ * the shell renders it in-tree as `<Component {...props} />`. Typed structurally
+ * — @oie/web-shell carries no `react` type dependency — so a component returning
+ * JSX assigns cleanly to the `unknown` return.
+ */
+export type PluginComponent<P = Record<string, unknown>> = (props: P) => unknown;
+
 export interface RouterApi {
     navigate(path: string): void;
     currentPath(): string;
@@ -73,51 +82,63 @@ export interface DashboardTab {
     id: string;
     label: string;
     order?: number;
-    render(host: HTMLElement, ctx: { selection: any; platform: Platform }): void;
+    /** Rendered in the dashboard's bottom tab strip; re-mounts when the selection changes. */
+    component: PluginComponent<{ selection: any; platform: Platform }>;
     [key: string]: any;
 }
 export interface DashboardColumn {
     id: string;
     label: string;
     order?: number;
-    render(dashboardStatus: OieObject): Node | string | number | null | undefined;
+    /** Channel-row cell content (a React node or string), called by the dashboard table for each status row — a per-cell renderer, not a mounted component. */
+    cell(status: OieObject): unknown;
+    /** Optional per-connector (child row) cell content; omit to leave connector rows blank in this column. */
+    connectorCell?(child: OieObject): unknown;
     [key: string]: any;
 }
 export interface ChannelTab {
     id: string;
     label: string;
     order?: number;
-    render(host: HTMLElement, ctx: { channel: OieObject; platform: Platform; onChange(): void }): void;
+    /** Imperative tab body: build into `host` (or return a Node). Hosted in the legacy tab strip, not React. */
+    render(host: HTMLElement, ctx: { channel: OieObject; platform: Platform; onChange(): void }): Node | void;
     [key: string]: any;
 }
 export interface SettingsPanel {
     id?: string;
     label: string;
     order?: number;
-    render(host: HTMLElement, ctx: { platform: Platform }): void;
+    /** A Settings tab. `setSave` registers the tab's save handler (Swing-style floppy task); `markDirty`/`markClean` drive the unsaved-changes prompt. */
+    component: PluginComponent<{
+        platform: Platform;
+        setTasks(title: string, items: any[]): void;
+        setSave(save: (() => boolean) | null): void;
+        markDirty(): void;
+        markClean(): void;
+    }>;
     [key: string]: any;
 }
 export interface AttachmentViewer {
     id: string;
     canHandle(attachment: OieObject): boolean;
-    render(host: HTMLElement, ctx: { attachment: OieObject; channelId: string; messageId: string | number; platform: Platform }): void;
+    component: PluginComponent<{ attachment: OieObject; channelId: string; messageId: string | number; platform: Platform }>;
     [key: string]: any;
 }
 export interface StepRuleType {
     label: string;
     create(): OieObject;
-    render(host: HTMLElement, ctx: { element: OieObject; onChange(): void }): void;
+    component: PluginComponent<{ element: OieObject; onChange(): void; platform: Platform }>;
     [key: string]: any;
 }
 export interface ConnectorPanel {
     defaults(version: string): OieObject;
-    render(host: HTMLElement, ctx: {
+    component: PluginComponent<{
         properties: OieObject;
         connector?: OieObject;
         channel?: OieObject;
         platform: Platform;
         onChange(): void;
-    }): void;
+    }>;
     [key: string]: any;
 }
 export interface ConnectorPropertiesPanel {
@@ -127,7 +148,7 @@ export interface ConnectorPropertiesPanel {
     propertiesClass: string | ((transportName: string, mode: ConnectorMode, connector: OieObject) => string);
     isSupported(transportName: string, mode: ConnectorMode, connector?: OieObject): boolean;
     defaults(version: string, transportName?: string, mode?: ConnectorMode, connector?: OieObject): OieObject;
-    render(host: HTMLElement, ctx: {
+    component: PluginComponent<{
         getEntry(): OieObject | null;
         setEntry(entry: OieObject | null): void;
         propertiesClass: string;
@@ -135,7 +156,7 @@ export interface ConnectorPropertiesPanel {
         channel: OieObject;
         platform: Platform;
         onChange(): void;
-    }): void;
+    }>;
     [key: string]: any;
 }
 export interface DataTypeDef {
@@ -156,7 +177,8 @@ export interface ResourceTypeDef {
     propertiesClass?: string;
     detailHeader?: string;
     create(ctx: { version: string; containerIsArray: boolean }): OieObject;
-    renderDetail(host: HTMLElement, ctx: { entry: OieObject; locked: boolean; platform: Platform; refreshTable(): void }): void;
+    /** The resource's detail editor. `locked` is true for the built-in default resource; `refreshTable` re-reads the list. */
+    component: PluginComponent<{ entry: OieObject; locked: boolean; platform: Platform; refreshTable(): void }>;
     [key: string]: any;
 }
 
@@ -183,6 +205,10 @@ export interface Platform {
     events: EventsApi;
     createCodeEditor: typeof import('@oie/web-ui').createCodeEditor;
     setCodeEditorFactory: typeof import('@oie/web-ui').setCodeEditorFactory;
+    /** The shell's own React instance — author plugin components against this so every plugin shares one React (hooks/context work). */
+    React: any;
+    /** Wrap a React component as a routed-view handler: `registerView(path, reactView(MyView), { title })`. The component receives the route's `ViewContext` as props. */
+    reactView(component: PluginComponent<ViewContext>): ViewHandler;
 
     /* extension points */
     registerNavItem(item: NavItem): void;

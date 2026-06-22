@@ -23,10 +23,35 @@ export function register() {
 ## Extension points
 
 - `platform.registerNavItem(...)` / `platform.registerView(...)`
-- `platform.registerSettingsPanel(...)` — informational/config panels in Settings
-- `platform.registerConnectorPropertiesPanel(...)` — connector editor panels
-- `platform.registerDashboardTask(...)` and related task hooks
-- `platform.store` / `platform.router` — shared app state and routing
+- `platform.registerSettingsPanel(...)` — config panels in Settings
+- `platform.registerConnectorPanel(...)` / `platform.registerConnectorPropertiesPanel(...)` — connector editor panels
+- `platform.registerDashboardTab(...)` / `platform.registerDashboardColumn(...)` — dashboard tabs and columns
+- `platform.registerChannelTab(...)`, `platform.registerAttachmentViewer(...)`, `platform.registerStepType(...)` / `registerRuleType(...)`, `platform.registerResourceType(...)`
+- `platform.store` / `platform.router` / `platform.events` — shared app state, routing, and the event bus
+
+## Plugin UI is React
+
+Most extension points take a React **`component`** (rendered by the shell as
+`<Component {...ctx} />`), not an imperative `render(host, ctx)`. Author it
+against **`platform.React`** — the shell's single React instance — so hooks and
+context work and you don't bundle a second copy:
+
+```js
+const { React } = platform;
+function MyPanel({ platform }) {
+  return React.createElement('div', { className: 'view' }, 'Hello');
+}
+platform.registerSettingsPanel({ label: 'My Plugin', component: MyPanel });
+
+// A full routed view from a component: wrap it with reactView.
+platform.registerView('/my-plugin', platform.reactView(MyPanel), { title: 'My Plugin' });
+```
+
+Two points don't take a `component`: **`registerChannelTab`** is imperative
+(`render(host, ctx)` — its host in the channel editor is still vanilla DOM), and
+a **dashboard column** is a pair of per-cell renderers (`cell(status)` /
+`connectorCell(child)`) the dashboard table calls for every row rather than one
+mounted component. The TypeScript declarations (`index.d.ts`) encode which is which.
 
 ## Runtime model
 

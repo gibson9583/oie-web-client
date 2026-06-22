@@ -3,15 +3,21 @@
  */
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
-import { h, buildForm } from '@oie/web-ui';
+import { h } from '@oie/web-ui';
 
 // A plugin's register(platform) entry point typed against the public contract.
 export function register(p: Platform) {
     p.registerNavItem({ id: 'demo', label: 'Demo', path: '/demo', section: 'Engine', order: 9 });
     p.registerView('/demo', () => ({ el: h('div', 'hi') }), { title: 'Demo' });
+    // Plugin UI is a React `component` (rendered as <Component {...ctx}/>), not an
+    // imperative render(host, ctx). Authored against platform.React.
     p.registerConnectorPanel('My Reader', 'SOURCE', {
         defaults: (v) => ({ '@version': v }),
-        render: (host, { properties, onChange }) => buildForm(host, properties, [{ key: 'x', label: 'X' }], onChange),
+        component: ({ properties, onChange }) => { void properties; void onChange; return null; },
+    });
+    p.registerSettingsPanel({
+        label: 'Demo Settings',
+        component: ({ platform: plat, setSave, markDirty }) => { void plat; void setSave; void markDirty; return null; },
     });
 }
 
@@ -24,7 +30,7 @@ async function libraries() {
 
 function badUsage() {
     // @ts-expect-error connector mode must be 'SOURCE' | 'DESTINATION'
-    platform.registerConnectorPanel('X', 'BOTH', { defaults: () => ({}), render: () => {} });
+    platform.registerConnectorPanel('X', 'BOTH', { defaults: () => ({}), component: () => null });
     // @ts-expect-error buildForm is not on platform.ui (the DOM-toolkit subset)
     platform.ui.buildForm;
     // @ts-expect-error renamed away from platform.mirth to platform.oie
