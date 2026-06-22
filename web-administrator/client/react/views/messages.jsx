@@ -1169,16 +1169,6 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
         const initial = cms.find(c => Number(c.metaDataId) === Number(metaDataId)) || cms[0];
         const tabsHost = h('div', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' } });
-        const connectorOptions = cms.map(cm => ({
-            value: String(cm.metaDataId),
-            label: `${Number(cm.metaDataId) === 0 ? 'Source' : 'Destination'} ${cm.metaDataId}: ${cm.connectorName || ''}`
-        }));
-        const cmSel = select(connectorOptions, String(initial.metaDataId), {
-            onChange: () => {
-                const cm = cms.find(c => String(c.metaDataId) === cmSel.value) ?? cms[0];
-                renderConnectorTabs(cm);
-            }
-        });
 
         function renderConnectorTabs(cm) {
             // Switching connectors discards the current connector tabs, which may
@@ -1188,10 +1178,13 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             tabsHost.appendChild(connectorTabs(message, cm).el);
         }
 
+        // The connector shown is chosen by selecting the source/destination row in
+        // the tree above (selectMessage → renderDetail with its metaDataId), so the
+        // detail header is just the message label — no status pill or connector
+        // dropdown.
         clear(detailPane);
         detailPane.appendChild(h('div.panel-header', { style: { flex: 'none' } },
-            `Message ${message.messageId}`,
-            h('div.panel-tools', statusTag(sourceOf(message)?.status), cmSel)));
+            `Message ${message.messageId}`));
         detailPane.appendChild(tabsHost);
         renderConnectorTabs(initial);
     }
