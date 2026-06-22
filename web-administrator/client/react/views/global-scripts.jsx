@@ -7,8 +7,9 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { toast, confirmDialog, saveFile, pickFile } from '@oie/web-ui';
+import { toast, confirmDialog, saveFile, pickFile, modal, h } from '@oie/web-ui';
 import api from '@oie/web-api';
+import * as store from '../../core/store.js';
 import { validateScript } from '../../core/serialize.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, CodeEditor, Tabs } from '../ui.jsx';
@@ -40,8 +41,11 @@ function GlobalScriptsView() {
     const [active, setActive] = useState(0);
     const [dirty, setDirty] = useState(false);
     const editors = useRef({});   // key -> CodeEditor imperative handle
+    // Mirror dirty into a ref so the mount-once nav guard reads the live value.
+    const dirtyRef = useRef(false);
+    const setDirtyState = (v) => { dirtyRef.current = v; setDirty(v); };
 
-    const markDirty = () => setDirty(true);
+    const markDirty = () => setDirtyState(true);
 
     const load = async () => {
         try {
@@ -50,18 +54,48 @@ function GlobalScriptsView() {
                 const value = scripts[def.key];
                 editors.current[def.key]?.setValue(value === undefined || value === '' ? def.defaultValue : value);
             }
-            setDirty(false);
+            setDirtyState(false);
         } catch (e) {
             toast(`Load failed: ${e.message}`, 'error');
         }
     };
-    useEffect(() => { load(); }, []);
+
+    // Save / Don't Save / Cancel before leaving with unsaved scripts (Swing parity).
+    function promptSave() {
+        return new Promise((resolve) => {
+            modal({
+                title: 'Unsaved Changes',
+                body: h('div', 'You have unsaved changes to the global scripts. Would you like to save them?'),
+                onClose: () => resolve('cancel'),
+                buttons: [
+                    { label: 'Cancel', onClick: () => resolve('cancel') },
+                    { label: "Don't Save", danger: true, onClick: () => resolve('discard') },
+                    { label: 'Save Changes', primary: true, onClick: () => resolve('save') }
+                ]
+            });
+        });
+    }
+
+    useEffect(() => {
+        load();
+        store.setState('navGuard', async () => {
+            if (!dirtyRef.current) return;
+            const choice = await promptSave();
+            if (choice === 'cancel') return false;
+            // save() clears dirty on success; if it's still dirty the request
+            // failed, so keep the user here rather than dropping their edits.
+            if (choice === 'save') { await save(); if (dirtyRef.current) return false; }
+            return undefined;
+        });
+        return () => store.setState('navGuard', null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     async function save() {
         try {
             const map = { entry: SCRIPTS.map(def => ({ string: [def.key, editors.current[def.key]?.getValue() ?? ''] })) };
             await api.server.setGlobalScripts(map);
-            setDirty(false);
+            setDirtyState(false);
             toast('Global scripts saved');
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');

@@ -300,7 +300,10 @@ function buildBody(params, kindName, onTasksChange) {
         if (isFilter) normalizeOperators(elements);
         stampVersions(elements);
         target.elements = oie.arrayToElements(serializeList(elements));
-        store.setState('editingChannel', channel);
+        // Refresh the store's working copy only while we're still in the editing
+        // flow. If the nav guard cleared it (left the editor with Don't Save), the
+        // teardown persist() must not resurrect the discarded copy.
+        if (store.getState('editingChannel')) store.setState('editingChannel', channel);
     }
 
     // Called by the edit handlers: persist AND mark the shared dirty flag the
@@ -340,6 +343,42 @@ function buildBody(params, kindName, onTasksChange) {
             toast(e.message, 'error');
         }
     }
+
+    /* Leaving the channel's editing flow with unsaved step/rule edits asks
+       Save / Don't Save / Cancel (same as the channel editor). Navigation that
+       stays within /channels/<id>/... (back to the editor or another sub-editor)
+       keeps the working copy without prompting. */
+    function promptSaveChanges() {
+        return new Promise((resolve) => {
+            modal({
+                title: 'Unsaved Changes',
+                body: h('div', `Would you like to save the changes made to "${channel.name || 'this channel'}"?`),
+                onClose: () => resolve('cancel'),
+                buttons: [
+                    { label: 'Cancel', onClick: () => { resolve('cancel'); } },
+                    { label: "Don't Save", danger: true, onClick: () => { resolve('discard'); } },
+                    { label: 'Save Changes', primary: true, onClick: () => { resolve('save'); } }
+                ]
+            });
+        });
+    }
+
+    store.setState('navGuard', async ({ path }) => {
+        if (path.startsWith(`/channels/${params.channelId}/`)) return; // same editing flow
+        if (channelDirty()) {
+            const choice = await promptSaveChanges();
+            if (choice === 'cancel') return false;
+            // saveChannel() clears the dirty flag on success; if it's still dirty
+            // (validation blocked or the request failed) keep the user here.
+            if (choice === 'save') { await saveChannel(); if (channelDirty()) return false; }
+        }
+        // Left the editor entirely: drop the working copy AND this guard so it can
+        // never prompt again for navigation outside the editing flow.
+        store.setState('editingChannel', null);
+        store.setState('editingChannelNew', false);
+        store.setState('editingChannelDirty', false);
+        store.setState('navGuard', null);
+    });
 
     /* ---- element table (top pane, classic grid) -------------------------------- */
 
@@ -1575,6 +1614,6 @@ function buildBody(params, kindName, onTasksChange) {
         },
         // Teardown persists the working copy but must not mark dirty (see persist()),
         // then clears the editor's code-template scope so it can't leak to the next view.
-        teardown: () => { if (elementEditorRoot) elementEditorRoot(); generatedEditor.dispose && generatedEditor.dispose(); persist(); clearActiveScope(); }
+        teardown: () => { if (elementEditorRoot) elementEditorRoot(); generatedEditor.dispose && generatedEditor.dispose(); persist(); store.setState('navGuard', null); clearActiveScope(); }
     };
 }
