@@ -124,11 +124,19 @@ async function start() {
         console.log('');
         console.log('  Open Integration Engine — Web Administrator');
         console.log('  --------------------------------------------');
-        console.log(`  UI:      http://${config.host === '0.0.0.0' ? 'localhost' : config.host}:${config.port}${DEV ? '  (dev — Vite HMR)' : ''}`);
+        // 0.0.0.0 / :: are bind-all addresses, not browsable — print the loopback
+        // URL you actually open, and note the interface it's bound to.
+        const wildcard = config.host === '0.0.0.0' || config.host === '::';
+        console.log(`  UI:      http://${wildcard ? 'localhost' : config.host}:${config.port}`
+            + (wildcard ? `  (bound to ${config.host} — all interfaces)` : '')
+            + (DEV ? '  (dev — Vite HMR)' : ''));
         console.log(`  Engine:  ${config.engine.url} (TLS verify: ${config.engine.verifyTls})`);
         console.log(`  Plugins: ${loaded.length} loaded from ${config.pluginDir}`);
         const sb = serializerBridge.status();
-        console.log(`  Serializer bridge: ${sb.configured ? `enabled (engine: ${sb.engineHome})` : 'disabled — using built-in JS parsing (set OIE_HOME for exact serialization)'}`);
+        // sb.status() is coarse ({ configured, ready }) — it omits the engine path
+        // on purpose (that status is also served unauthenticated). Read the path
+        // from config here, which is server-side only.
+        console.log(`  Serializer bridge: ${sb.configured ? `enabled (engine: ${config.engineHome})` : 'disabled — using built-in JS parsing (set OIE_HOME for exact serialization)'}`);
         console.log('');
     });
 }
