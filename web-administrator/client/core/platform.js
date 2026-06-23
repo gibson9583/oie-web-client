@@ -137,7 +137,9 @@ export async function loadPlugins() {
     // ~3.4s). Server-side modulepreload hints start these fetches even earlier.
     const imported = await Promise.all(manifests.map(async (manifest) => {
         if (!manifest.entry) return { manifest, module: null };
-        try { return { manifest, module: await import(manifest.entry) }; }
+        // Plugin entries are runtime URLs (/plugins/<id>/…), not build-time paths —
+        // tell Vite/Rollup not to analyze/bundle this import (it's loaded live).
+        try { return { manifest, module: await import(/* @vite-ignore */ manifest.entry) }; }
         catch (e) { return { manifest, error: e }; }
     }));
 
