@@ -74,15 +74,19 @@ function createApiProxy(config) {
             for (const [name, value] of Object.entries(upstreamRes.headers)) {
                 if (!HOP_BY_HOP.has(name.toLowerCase())) resHeaders[name] = value;
             }
-            // Harden the engine's session cookie as it crosses our origin: add
-            // SameSite (CSRF defense-in-depth) and, when the connection is HTTPS,
-            // Secure so the session can't be sent over plain HTTP. The engine
-            // sets neither because it serves the cookie on its own context.
+            // Reconcile the engine's session cookie with THIS connection's scheme as
+            // it crosses our origin. Add SameSite=Lax (CSRF defense-in-depth). When
+            // the front is HTTPS, add Secure. When the front is plain HTTP, STRIP any
+            // Secure flag the engine set (it serves over HTTPS and Jetty marks the
+            // JSESSIONID Secure): a browser silently drops a Secure cookie received
+            // over HTTP, so leaving it on breaks login on an HTTP deployment — and
+            // Secure protects nothing over a connection that's already plaintext.
             if (Array.isArray(resHeaders['set-cookie'])) {
                 const https = req.headers['x-forwarded-proto'] === 'https' || !!req.socket.encrypted;
                 resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c) => {
                     if (!/;\s*samesite=/i.test(c)) c += '; SameSite=Lax';
-                    if (https && !/;\s*secure/i.test(c)) c += '; Secure';
+                    if (https) { if (!/;\s*secure/i.test(c)) c += '; Secure'; }
+                    else c = c.replace(/;\s*secure\b/ig, '');
                     return c;
                 });
             }
