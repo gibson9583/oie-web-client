@@ -6,6 +6,6 @@
         "verifyTls": false
     },
     "engineHome": "/path/to/oie",
-    "pluginDirs": ["/path/to/oie/extensions"],
+    "pluginDirs": ["./custom-plugins"],
     "codeTemplateCompletions": true
 }

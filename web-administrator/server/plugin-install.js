@@ -83,6 +83,22 @@ async function extractWebadmin(zipBytes, pluginDir) {
         catch { throw new Error('webadmin/plugin.json is not valid JSON'); }
         if (typeof id !== 'string' || !ID_RE.test(id)) throw new Error(`invalid plugin id: ${id}`);
 
+        // Record the engine extension's identity so uninstall can correlate the
+        // forwarded extension back to THIS web-plugin dir (instead of a fragile
+        // client-side name guess). The engine descriptor (plugin.xml) sits one
+        // level up from webadmin/; its <name> is exactly what the Extensions list
+        // shows, and the folder is the extension's install path.
+        const extDir = prefix.replace(/webadmin\/$/, '').replace(/\/$/, '');   // "<folder>" or ""
+        let engineName = null;
+        const descriptor = entries.find((e) => e.filename === prefix.replace(/webadmin\/$/, '') + 'plugin.xml');
+        if (descriptor && (descriptor.uncompressedSize || 0) <= MAX_ENTRY_SIZE) {
+            try {
+                const xml = Buffer.from(await descriptor.getData(new zip.Uint8ArrayWriter())).toString('utf8');
+                const m = /<name>([\s\S]*?)<\/name>/.exec(xml);
+                if (m) engineName = m[1].trim() || null;
+            } catch { /* leave null — uninstall falls back to folder/id */ }
+        }
+
         const webFiles = entries.filter((e) => e.filename.startsWith(prefix) && !e.directory);
         let total = 0;
         for (const e of webFiles) total += (e.uncompressedSize || 0);
@@ -108,6 +124,10 @@ async function extractWebadmin(zipBytes, pluginDir) {
             // can't be planted to redirect a later write.
             await fsp.writeFile(dest, Buffer.from(data));
         }
+
+        // Uninstall-correlation marker (a dotfile — never served, dotfiles:'deny';
+        // ignored by the loader, which only reads plugin.json).
+        await fsp.writeFile(path.join(realTmp, '.oie-ext.json'), JSON.stringify({ engineName, extDir }));
 
         // Atomic swap: replace any prior install of this id.
         const target = path.join(realPluginDir, id);
@@ -189,17 +209,35 @@ async function handleUninstall(req, res, config) {
     if (engineRes.status < 200 || engineRes.status >= 300) return relayEngine(res, engineRes);
 
     // Engine authorized + accepted ⇒ remove our own copy of the web half.
+    // Correlate the forwarded extension back to its installed dir via the marker
+    // we wrote at install — exact engine <name>, else the extension folder —
+    // falling back to the client-supplied pluginId for pre-marker installs.
     let webRemoved = false;
-    if (pluginId && ID_RE.test(pluginId)) {
-        try {
-            const realPluginDir = await fsp.realpath(config.pluginDir);
-            const target = path.join(realPluginDir, pluginId);
-            if (path.dirname(target) === realPluginDir && fs.existsSync(target)) {
-                await fsp.rm(target, { recursive: true, force: true });
-                webRemoved = true;
+    try {
+        const realPluginDir = await fsp.realpath(config.pluginDir).catch(() => null);
+        if (realPluginDir) {
+            const fwdName = req.body && typeof req.body.name === 'string' ? req.body.name : null;
+            const fwdPathBase = enginePath ? path.basename(String(enginePath)) : null;
+            let dirName = null;
+            for (const ent of await fsp.readdir(realPluginDir, { withFileTypes: true })) {
+                if (!ent.isDirectory()) continue;
+                let marker;
+                try { marker = JSON.parse(await fsp.readFile(path.join(realPluginDir, ent.name, '.oie-ext.json'), 'utf8')); }
+                catch { continue; }                          // no/invalid marker — skip
+                if ((fwdName && marker.engineName && marker.engineName === fwdName) ||
+                    (fwdPathBase && marker.extDir && marker.extDir === fwdPathBase)) { dirName = ent.name; break; }
             }
-        } catch (e) { console.error('[plugin-install] web-half removal failed:', e.message); }
-    }
+            // Legacy fallback: plugins installed before markers existed.
+            if (!dirName && pluginId && ID_RE.test(pluginId)) dirName = pluginId;
+            if (dirName) {
+                const target = path.join(realPluginDir, dirName);
+                if (path.dirname(target) === realPluginDir && fs.existsSync(target)) {
+                    await fsp.rm(target, { recursive: true, force: true });
+                    webRemoved = true;
+                }
+            }
+        }
+    } catch (e) { console.error('[plugin-install] web-half removal failed:', e.message); }
     res.json({ engineUninstalled: true, webRemoved, restartEngine: true, refresh: webRemoved });
 }
 

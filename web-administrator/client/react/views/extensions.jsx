@@ -231,12 +231,13 @@ function ExtensionsView() {
             `Uninstall "${s.name}"? Its server-side files will be removed on the next engine restart. This cannot be undone.`,
             { danger: true, okLabel: 'Uninstall' })) {
             try {
-                // Best-effort match of the extension to its installed web plugin so
-                // the web half is removed alongside the engine half.
+                // The server correlates the extension to its installed web plugin
+                // by the marker it wrote at install (exact engine name / folder);
+                // forward both, plus a best-effort pluginId as a legacy fallback.
                 const lower = String(s.name).toLowerCase();
                 const web = webPlugins.find((p) => String(p.id).toLowerCase() === lower || String(p.name).toLowerCase() === lower);
                 const result = (await api.post('/_webadmin/plugins/_uninstall',
-                    JSON.stringify({ path: String(path), pluginId: web ? web.id : null }),
+                    JSON.stringify({ path: String(path), name: String(s.name), pluginId: web ? web.id : null }),
                     { contentType: 'application/json' })) || {};
                 const w = result.webRemoved ? ' Web UI removed.' : '';
                 toast(`${s.name} uninstalled — restart the engine to apply.${w}`);

@@ -7,7 +7,7 @@
  * multipart slice, and the CSRF check.
  */
 const assert = require('assert');
-const { mkdtempSync, existsSync, rmSync, lstatSync } = require('fs');
+const { mkdtempSync, existsSync, rmSync, lstatSync, readFileSync } = require('fs');
 const os = require('os');
 const path = require('path');
 const { extractWebadmin, zipFromMultipart, csrfOk } = require('./plugin-install.js');
@@ -45,6 +45,19 @@ async function test(name, fn) {
         assert.ok(existsSync(path.join(d, 'ext/web/plugin.js')));
         assert.ok(!existsSync(path.join(d, 'ext/libs')), 'engine jars must not be extracted');
         assert.ok(lstatSync(path.join(d, 'ext/web/plugin.js')).isFile(), 'must be a regular file (never a symlink)');
+    });
+
+    await test('writes an .oie-ext.json marker with the engine name + folder (uninstall correlation)', async () => {
+        const z = await buildZip({
+            'oie-source-code-search/plugin.xml': '<extension>\n  <name>OIE Source Code Search</name>\n</extension>',
+            'oie-source-code-search/webadmin/plugin.json': JSON.stringify({ id: 'source-code-search', name: 'Source Code Search' }),
+            'oie-source-code-search/webadmin/web/plugin.js': 'x'
+        });
+        const d = newDir();
+        assert.strictEqual(await extractWebadmin(z, d), 'source-code-search');
+        const marker = JSON.parse(readFileSync(path.join(d, 'source-code-search/.oie-ext.json'), 'utf8'));
+        assert.strictEqual(marker.engineName, 'OIE Source Code Search', 'records the engine plugin.xml <name>');
+        assert.strictEqual(marker.extDir, 'oie-source-code-search', 'records the engine extension folder');
     });
 
     await test('rejects zip-slip and writes nothing outside pluginDir', async () => {
