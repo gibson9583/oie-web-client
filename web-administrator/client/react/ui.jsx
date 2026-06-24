@@ -8,19 +8,53 @@
  */
 
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { Icon } from './bridges.jsx';
+import { Icon, useStoreKey } from './bridges.jsx';
 import { DataTable } from '@oie/web-ui';
 import { createCodeEditor } from '../core/codeeditor.js';
+import * as store from '../core/store.js';
 
 // Rail-pane collapse state, shared across the shell's nav panes and view task
 // panes; persists for the session.
 const paneCollapsed = new Map();
 
 /* Collapsible rail pane (shared by the shell nav and React view task panes). */
-export function RailPane({ title, paneKey, className, children }) {
+// Section → icon for the collapsed mini-rail. Task panes (title ends in "Tasks")
+// fall back to a tasks glyph; anything else to a generic one.
+const SECTION_ICONS = { Engine: 'server', Plugins: 'puzzle', Other: 'grip' };
+
+export function RailPane({ title, paneKey, icon, className, children }) {
     const k = paneKey || title;
+    const railCollapsed = useStoreKey('railCollapsed');
     const [collapsed, setCollapsed] = useState(() => paneCollapsed.get(k) || false);
     const toggle = () => { const next = !collapsed; setCollapsed(next); paneCollapsed.set(k, next); };
+
+    // Collapsed mini-rail: each section is a single icon; clicking it pops out a
+    // selector listing the items underneath. One flyout open at a time (a shared
+    // store key); any click (an item, or outside) closes it.
+    const openKey = useStoreKey('railFlyout');
+    const open = railCollapsed && openKey === k;
+    useEffect(() => {
+        if (!open) return;
+        const close = () => store.setState('railFlyout', null);
+        document.addEventListener('click', close);
+        return () => document.removeEventListener('click', close);
+    }, [open]);
+
+    if (railCollapsed) {
+        const secIcon = icon || SECTION_ICONS[title] || (/tasks?$/i.test(title) ? 'scripts' : 'grip');
+        return (
+            <div className={'rail-pane rail-pane-mini' + (open ? ' open' : '') + (className ? ' ' + className : '')}>
+                <button className="rail-mini-icon" title={title}
+                    onClick={(e) => { e.stopPropagation(); store.setState('railFlyout', open ? null : k); }}>
+                    <Icon name={secIcon} size={18} />
+                </button>
+                <div className="rail-mini-flyout">
+                    <div className="rail-mini-title">{title}</div>
+                    <div className="rail-pane-body">{children}</div>
+                </div>
+            </div>
+        );
+    }
     return (
         <div className={'rail-pane' + (collapsed ? ' collapsed' : '') + (className ? ' ' + className : '')}>
             <div className="rail-pane-header" onClick={toggle}>

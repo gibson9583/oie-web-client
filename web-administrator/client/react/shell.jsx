@@ -186,7 +186,7 @@ function TopBar({ user, onLogout, serverInfo }) {
     return (
         <header className="topbar">
             <button className="icon-btn rail-toggle"
-                title={railCollapsed ? 'Show navigation' : 'Hide navigation'}
+                title={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
                 onClick={() => store.setRailCollapsed(!railCollapsed)}>
                 <Icon name="menu" />
             </button>
@@ -291,8 +291,8 @@ function AppShell({ user, onLogout }) {
         <div className={'shell' + (railCollapsed ? ' rail-collapsed' : '')}>
             <aside className="rail">
                 <div className="rail-brand">
-                    <img src="assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine"
-                        style={{ width: 172, height: 'auto', display: 'block' }} />
+                    <img className="brand-mark-img" src="assets/oie_logo_only_white_background_32x32.png" alt="Open Integration Engine" />
+                    <span className="brand-wordmark">Open Integration Engine</span>
                 </div>
                 <div className="rail-panes">
                     <Nav only="Engine" />

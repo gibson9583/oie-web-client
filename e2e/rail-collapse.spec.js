@@ -2,31 +2,45 @@ import { test, expect } from '@playwright/test';
 import { mockEngine } from './mock.js';
 
 /*
- * The left navigation rail collapses via the topbar hamburger, and the choice
- * persists (localStorage) across reloads.
+ * The topbar hamburger collapses the left nav to a narrow strip of one icon per
+ * top-level section (Engine, Dashboard Tasks, Plugins, Other). Clicking a section
+ * icon pops out a selector listing that section's items. The collapsed state
+ * persists across reloads.
  */
-test('hamburger collapses and restores the left nav rail, and the choice persists', async ({ page }) => {
+test('hamburger collapses nav to a section-icon rail; clicking an icon pops out its items; persists', async ({ page }) => {
     await mockEngine(page);
     await page.goto('/#/dashboard');
+    const channels = page.getByRole('button', { name: 'Channels', exact: true });
+    await expect(channels).toBeVisible();
 
-    const rail = page.locator('.rail');
-    const shell = page.locator('.shell');
-    const toggle = page.getByRole('button', { name: 'Hide navigation' });
-    await expect(rail).toBeVisible();
-    await expect(shell).not.toHaveClass(/rail-collapsed/);
+    // Collapse → narrow section-icon rail; items are hidden until popped out.
+    await page.getByRole('button', { name: 'Collapse navigation' }).click();
+    await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
+    await expect(channels).toBeHidden();
+    const engineIcon = page.getByRole('button', { name: 'Engine' });
+    await expect(engineIcon).toBeVisible();
 
-    // Collapse → the rail closes (zero-width column) and the toggle flips label.
-    await toggle.click();
-    await expect(shell).toHaveClass(/rail-collapsed/);
-    await expect.poll(async () => (await rail.boundingBox())?.width ?? 0).toBeLessThan(2);
-    await expect(page.getByRole('button', { name: 'Show navigation' })).toBeVisible();
+    // Click the Engine section icon → pop-out lists its items (Channels appears).
+    await engineIcon.click();
+    await expect(channels).toBeVisible();
 
-    // Persists across a reload.
+    // Guard the contrast regression: items must read clearly on the flyout surface
+    // (they were once light-on-light, "visible" to the DOM but invisible on screen).
+    const delta = await page.evaluate(() => {
+        const fly = document.querySelector('.rail-pane-mini.open .rail-mini-flyout');
+        const item = fly && fly.querySelector('.rail-item');
+        const sum = (c) => (c.match(/\d+/g) || []).slice(0, 3).reduce((a, b) => a + Number(b), 0);
+        return Math.abs(sum(getComputedStyle(fly).backgroundColor) - sum(getComputedStyle(item).color));
+    });
+    expect(delta).toBeGreaterThan(150);
+
+    // Collapsed mode persists across a reload.
     await page.reload();
     await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
+    await expect(page.getByRole('button', { name: 'Channels', exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Engine' })).toBeVisible();
 
-    // Restore.
-    await page.getByRole('button', { name: 'Show navigation' }).click();
-    await expect(page.locator('.shell')).not.toHaveClass(/rail-collapsed/);
-    await expect(page.locator('.rail')).toBeVisible();
+    // Expanding via the hamburger restores the full rail.
+    await page.getByRole('button', { name: 'Expand navigation' }).click();
+    await expect(page.getByRole('button', { name: 'Channels', exact: true })).toBeVisible();
 });

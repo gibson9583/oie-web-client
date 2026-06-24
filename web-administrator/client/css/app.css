@@ -94,6 +94,7 @@
 
     --radius: 5px;
     --rail-w: 216px;
+    --rail-w-collapsed: 56px;
     --topbar-h: 48px;
     --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     --grid-dot: rgba(133, 158, 178, 0.05);
@@ -208,12 +209,7 @@ code, pre, .mono { font-family: var(--font-mono); }
     grid-template-areas: "rail topbar" "rail content" "status status";
     height: 100vh;
     animation: shell-in 0.35s ease-out;
-    transition: grid-template-columns 0.22s ease;
 }
-
-/* Collapsed via the topbar hamburger: close the rail's column so the content
-   spans full width (the rail clips horizontally as it closes). */
-.shell.rail-collapsed { grid-template-columns: 0 1fr; }
 
 @keyframes shell-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -226,7 +222,6 @@ code, pre, .mono { font-family: var(--font-mono); }
     display: flex;
     flex-direction: column;
     overflow-y: auto;
-    overflow-x: hidden;
 }
 
 .rail-brand {
@@ -304,6 +299,71 @@ code, pre, .mono { font-family: var(--font-mono); }
     color: var(--rail-fg-dim);
     font-family: var(--font-mono);
 }
+
+/* ---- Collapsed mini-rail (hamburger) ----------------------------------------
+   The rail narrows to a strip of one icon per top-level section; clicking an icon
+   pops out a selector listing that section's items. */
+.shell { transition: grid-template-columns 0.2s ease; }
+.shell.rail-collapsed { grid-template-columns: var(--rail-w-collapsed) 1fr; }
+/* Only a few section icons, so it never needs to scroll — let the pop-outs escape. */
+.rail-collapsed .rail { overflow: visible; }
+.rail-collapsed .rail-panes { padding: 6px 0; overflow: visible; }
+.rail-collapsed .rail-foot { display: none; }
+
+/* Brand: full banner when open, logo mark when collapsed. */
+/* One consistent logo: the round mark persists in both states; the wordmark text
+   appears only when expanded (hidden in the collapsed mini-rail). */
+.rail-brand .brand-mark-img { display: block; width: 30px; height: 30px; border-radius: 50%; flex: none; }
+.rail-brand .brand-wordmark {
+    font-size: 12.5px; font-weight: 650; line-height: 1.3; letter-spacing: -0.012em;
+    color: var(--rail-fg); white-space: nowrap;
+}
+.rail-collapsed .rail-brand { justify-content: center; padding: 0; gap: 0; }
+.rail-collapsed .rail-brand .brand-wordmark { display: none; }
+
+.rail-collapsed .rail-pane + .rail-pane { margin-top: 2px; padding-top: 0; border-top: 0; }
+
+.rail-pane-mini { position: relative; display: flex; justify-content: center; }
+.rail-mini-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 40px; height: 40px; margin: 2px 0;
+    border: 0; background: none; border-radius: 9px;
+    color: var(--rail-fg-dim); cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.rail-mini-icon:hover { background: color-mix(in srgb, var(--rail-fg) 12%, transparent); color: var(--rail-fg); }
+.rail-pane-mini.open .rail-mini-icon { background: color-mix(in srgb, var(--rail-fg) 16%, transparent); color: var(--rail-fg); }
+.rail-mini-icon svg { width: 19px; height: 19px; }
+
+/* The pop-out selector: the section's items, listed to the right of its icon. */
+.rail-mini-flyout {
+    position: absolute;
+    left: calc(100% + 6px);
+    top: -4px;
+    min-width: 184px;
+    background: var(--bg2);
+    border: 1px solid var(--line-strong);
+    border-radius: 9px;
+    box-shadow: var(--shadow);
+    padding: 6px;
+    z-index: 60;
+    display: none;
+}
+.rail-pane-mini.open .rail-mini-flyout { display: block; }
+.rail-mini-title {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--text-faint); padding: 4px 9px 6px;
+}
+/* Higher specificity so these beat `.rail-pane .rail-item` / `.rail-pane-body
+   .taskbar .btn`, which otherwise leave items light-on-light on the neutral
+   flyout surface. */
+.rail-mini-flyout .taskbar { background: none; border: 0; padding: 0; }
+.rail-mini-flyout .rail-pane-body { padding: 0; }
+.rail-pane-mini .rail-mini-flyout .rail-item { color: var(--text-dim); border-left: 0; border-radius: 6px; padding: 7px 10px; }
+.rail-pane-mini .rail-mini-flyout .rail-item:hover { background: var(--bg3); color: var(--text); }
+.rail-pane-mini .rail-mini-flyout .rail-item.active { color: var(--accent); background: var(--accent-glow); }
+.rail-pane-mini .rail-mini-flyout .taskbar .btn { color: var(--text-dim); border-radius: 6px; }
+.rail-pane-mini .rail-mini-flyout .taskbar .btn:hover { background: var(--bg3); color: var(--text); }
 
 /* ---- Top bar ---------------------------------------------------------------- */
 

@@ -1110,7 +1110,7 @@ function ChannelsView() {
                         {showMessages && <TaskButton label="View Messages" icon="messages" onClick={messagesTask} />}
                     </div>
                 </RailPane>
-                <RailPane title="Group Tasks" paneKey="tasks:Group Tasks">
+                <RailPane title="Group Tasks" paneKey="tasks:Group Tasks" icon="folder">
                     <div className="taskbar" data-pane-title="Group Tasks">
                         {showAssign && <TaskButton label="Assign To Group" icon="folder" onClick={moveToGroupTask} />}
                         <TaskButton label="New Group" icon="plus" onClick={newGroupTask} />
