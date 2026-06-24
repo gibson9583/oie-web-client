@@ -143,7 +143,7 @@ function ImperativeMount({ build, deps = [], style }) {
         return () => host.replaceChildren();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, deps);
-    return <div ref={ref} style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0', ...style }} />;
+    return <div ref={ref} className="flex flex-col flex-1 min-h-0" style={style} />;
 }
 
 function CodeTemplatesView() {
@@ -290,18 +290,18 @@ function CodeTemplatesView() {
             + `${counts.DRAG_AND_DROP_CODE} Drag-and-Drop Code Block${counts.DRAG_AND_DROP_CODE === 1 ? '' : 's'}, `
             + `${counts.COMPILED_CODE} Compiled Code Block${counts.COMPILED_CODE === 1 ? '' : 's'}`;
 
-        const descArea = h('textarea', { onInput: (e) => { library.description = e.target.value; markDirty(); }, style: { flex: '1', minHeight: '120px', resize: 'none' } });
+        const descArea = h('textarea', { onInput: (e) => { library.description = e.target.value; markDirty(); }, class: 'flex-1 min-h-[120px] resize-none' });
         descArea.value = library.description || '';
 
-        const descColumn = h('div', { style: { display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0', marginRight: '14px' } },
-            h('div', { style: { marginBottom: '10px', fontSize: '12px', color: 'var(--text-dim)' } },
-                h('span', { style: { fontWeight: '650' } }, 'Summary: '), summaryText),
-            h('label', { style: { fontSize: '11px', fontWeight: '650', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: '6px' } }, 'Description'),
+        const descColumn = h('div', { class: 'flex flex-col flex-1 min-h-0 mr-3.5' },
+            h('div', { class: 'mb-2.5 text-[12px] text-text-dim' },
+                h('span', { class: 'font-[650]' }, 'Summary: '), summaryText),
+            h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5' }, 'Description'),
             descArea);
 
         /* ---- Channels panel (Swing's right-hand checkbox list) ---- */
-        const channelHost = h('div', { style: { overflow: 'auto', flex: '1' } }, loading('Loading channels…'));
-        const channelFilter = textInput('', { placeholder: 'Filter…', style: { width: '100%', marginBottom: '6px' } });
+        const channelHost = h('div', { class: 'overflow-auto flex-1' }, loading('Loading channels…'));
+        const channelFilter = textInput('', { placeholder: 'Filter…', class: 'w-full mb-1.5' });
         let allRows = [];
         function channelChecked(id) { return idSetOf(library.enabledChannelIds).includes(id); }
         function setChannel(id, on) {
@@ -329,13 +329,13 @@ function CodeTemplatesView() {
         }
         channelFilter.addEventListener('input', paintChannels);
 
-        const channelsPanel = h('div', { style: { width: '300px', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: '0', borderLeft: '1px solid var(--line)', paddingLeft: '14px' } },
-            h('div', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '8px' } },
-                h('label', { style: { fontSize: '11px', fontWeight: '650', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' } }, 'Channels'),
-                h('span', { style: { fontSize: '11px' } },
-                    h('a', { href: '#', style: { color: 'var(--accent)' }, onClick: (e) => { e.preventDefault(); setAllChannels(true); } }, 'Select All'),
-                    h('span', { style: { color: 'var(--text-faint)', margin: '0 6px' } }, '|'),
-                    h('a', { href: '#', style: { color: 'var(--accent)' }, onClick: (e) => { e.preventDefault(); setAllChannels(false); } }, 'Deselect All'))),
+        const channelsPanel = h('div', { class: 'w-[300px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5' },
+            h('div', { class: 'flex items-baseline justify-between mb-2' },
+                h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim' }, 'Channels'),
+                h('span', { class: 'text-[11px]' },
+                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAllChannels(true); } }, 'Select All'),
+                    h('span', { class: 'text-text-faint my-0 mx-1.5' }, '|'),
+                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAllChannels(false); } }, 'Deselect All'))),
             channelFilter,
             channelHost);
 
@@ -350,11 +350,11 @@ function CodeTemplatesView() {
             clear(channelHost).appendChild(h('div.faint', `Channels unavailable: ${e.message}`));
         });
 
-        return h('div', { style: { display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' } },
-            h('div.form-grid', { style: { marginBottom: '12px' } },
+        return h('div', { class: 'flex flex-col flex-1 min-h-0' },
+            h('div.form-grid', { class: 'mb-3' },
                 field('Name', nameInput),
-                h('div.field', { style: { justifyContent: 'flex-end' } }, includeNew.el)),
-            h('div', { style: { display: 'flex', flex: '1', minHeight: '0' } },
+                h('div.field', { class: 'justify-end' }, includeNew.el)),
+            h('div', { class: 'flex flex-1 min-h-0' },
                 descColumn,
                 channelsPanel));
     }
@@ -393,7 +393,7 @@ function CodeTemplatesView() {
             onChange: (e) => { template.properties.type = e.target.value; markDirty(); }
         });
 
-        return h('div.form-grid', { style: { marginBottom: '12px' } },
+        return h('div.form-grid', { class: 'mb-3' },
             field('Name', nameInput),
             field('Library', librarySelect),
             field('Type', typeSelect));
@@ -413,7 +413,7 @@ function CodeTemplatesView() {
                 const cb = checkbox(label, contextsOf(template).includes(type), { onChange: () => { applyContexts(); syncGroup(); } });
                 contextChecks.set(type, cb.input);
                 itemChecks.push(cb.input);
-                return h('div', { style: { paddingLeft: '20px' } }, cb.el);
+                return h('div', { class: 'pl-5' }, cb.el);
             });
             const groupCb = checkbox(group.label, false, {
                 onChange: (e) => { itemChecks.forEach(i => { i.checked = e.target.checked; }); applyContexts(); }
@@ -424,21 +424,21 @@ function CodeTemplatesView() {
                 groupCb.input.indeterminate = on > 0 && on < itemChecks.length;
             }
             syncGroup();
-            return { el: h('div', { style: { marginBottom: '6px' } }, h('div', groupCb.el), ...items), syncGroup };
+            return { el: h('div', { class: 'mb-1.5' }, h('div', groupCb.el), ...items), syncGroup };
         });
         function setAll(value) {
             contextChecks.forEach(i => { i.checked = value; });
             groupNodes.forEach(g => g.syncGroup());
             applyContexts();
         }
-        return h('div', { style: { width: '260px', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: '0', borderLeft: '1px solid var(--line)', paddingLeft: '14px' } },
-            h('div', { style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '8px' } },
-                h('label', { style: { fontSize: '11px', fontWeight: '650', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' } }, 'Context'),
-                h('span', { style: { fontSize: '11px' } },
-                    h('a', { href: '#', style: { color: 'var(--accent)' }, onClick: (e) => { e.preventDefault(); setAll(true); } }, 'Select All'),
-                    h('span', { style: { color: 'var(--text-faint)', margin: '0 6px' } }, '|'),
-                    h('a', { href: '#', style: { color: 'var(--accent)' }, onClick: (e) => { e.preventDefault(); setAll(false); } }, 'Deselect All'))),
-            h('div', { style: { overflow: 'auto', flex: '1' } }, ...groupNodes.map(g => g.el)));
+        return h('div', { class: 'w-[260px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5' },
+            h('div', { class: 'flex items-baseline justify-between mb-2' },
+                h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim' }, 'Context'),
+                h('span', { class: 'text-[11px]' },
+                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAll(true); } }, 'Select All'),
+                    h('span', { class: 'text-text-faint my-0 mx-1.5' }, '|'),
+                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAll(false); } }, 'Deselect All'))),
+            h('div', { class: 'overflow-auto flex-1' }, ...groupNodes.map(g => g.el)));
     }
 
     /* ---- tasks --------------------------------------------------------------------- */
@@ -773,11 +773,11 @@ function CodeTemplatesView() {
                     </div>
                 </RailPane>
             </ViewTasks>
-            <div className="view-body flush" style={{ display: 'flex' }}>
+            <div className="view-body flush flex">
                 {/* Top: libraries/templates tree-table + filter bar; bottom: editor. */}
-                <div className="split vertical" style={{ flex: '1', minWidth: '0' }}>
-                    <div className="split-a" style={{ height: '320px', flex: 'none', display: 'flex', flexDirection: 'column', minHeight: '0' }}>
-                        <div style={{ flex: '1', minHeight: '0', overflow: 'auto' }}>
+                <div className="split vertical flex-1 min-w-0">
+                    <div className="split-a h-[320px] flex-none flex flex-col min-h-0">
+                        <div className="flex-1 min-h-0 overflow-auto">
                             <TreeTable
                                 data={treeData}
                                 columns={treeColumns()}
@@ -797,18 +797,18 @@ function CodeTemplatesView() {
                                 pinnedKeys={['name']}
                                 emptyText="No code template libraries" />
                         </div>
-                        <div className="filterbar" style={{ flex: 'none' }}>
+                        <div className="filterbar flex-none">
                             <span className="counts">{countsText}</span>
-                            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span className="ml-auto inline-flex items-center gap-1.5">
                                 <label>Filter:</label>
-                                <input type="text" placeholder="Filter…" style={{ maxWidth: '260px' }}
+                                <input type="text" placeholder="Filter…" className="max-w-[260px]"
                                     onInput={(e) => { filterRef.current = e.target.value; renderTable(); }} />
                             </span>
                         </div>
                     </div>
                     <div className="split-handle" data-orient="v" data-resize="prev" />
-                    <div className="split-b" style={{ display: 'flex', flexDirection: 'column', minHeight: '0' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0', padding: '14px 16px', overflow: 'auto' }}>
+                    <div className="split-b flex flex-col min-h-0">
+                        <div className="flex flex-col flex-1 min-h-0 py-3.5 px-4 overflow-auto">
                             <EditorPane found={found} kind={selected && selected.kind}
                                 buildLibraryEditor={buildLibraryEditor}
                                 buildTemplateForm={buildTemplateForm}
@@ -844,11 +844,11 @@ function EditorPane({ found, kind, buildLibraryEditor, buildTemplateForm, buildC
 
 function TemplateEditor({ entry, template, buildTemplateForm, buildContextPanel, markDirty }) {
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }}>
+        <div className="flex flex-col flex-1 min-h-0">
             <ImperativeMount build={() => buildTemplateForm(entry, template)} style={{ flex: 'none' }} />
-            <div style={{ display: 'flex', flex: '1', minHeight: '0' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0', marginRight: '14px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '650', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)', marginBottom: '6px' }}>Code</label>
+            <div className="flex flex-1 min-h-0">
+                <div className="flex flex-col flex-1 min-h-0 mr-3.5">
+                    <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5">Code</label>
                     <CodeEditor language="javascript"
                         defaultValue={template.properties.code || ''}
                         onChange={(v) => { template.properties.code = v; markDirty(); }}

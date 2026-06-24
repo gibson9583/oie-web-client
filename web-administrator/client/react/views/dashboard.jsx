@@ -98,12 +98,12 @@ function tagRgb(tag, alpha) {
 
 /* Compact two-option segmented control used in the filter bar. */
 function segControl(options, current, onChange) {
-    const wrap = h('span', { style: { display: 'inline-flex', flex: 'none', border: '1px solid var(--line-strong)', borderRadius: '4px', overflow: 'hidden' } });
+    const wrap = h('span', { class: 'inline-flex flex-none border border-line-strong rounded-[4px] overflow-hidden' });
     const buttons = options.map(opt => h('button', {
         type: 'button', title: opt.title || opt.label || '',
+        class: 'border-none cursor-pointer py-[3px] px-2 text-[11px] inline-flex items-center gap-1',
         style: {
-            border: 'none', background: 'transparent', color: 'var(--text-dim)', cursor: 'pointer',
-            padding: '3px 8px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '4px'
+            background: 'transparent', color: 'var(--text-dim)'
         },
         onClick: () => { paint(opt.value); onChange(opt.value); }
     }, opt.icon ? icon(opt.icon, 13) : null, opt.label || null));
@@ -221,7 +221,7 @@ function DashboardView() {
             title: 'Clear Statistics',
             body: h('div',
                 h('div.mb', `Clear the selected statistics for ${ids.length} channel(s)? This cannot be undone.`),
-                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                h('div', { class: 'flex flex-col gap-1.5' },
                     received.el, filtered.el, sent.el, errored.el),
                 h('div.hint.mt', 'Queued statistics cannot be cleared.')),
             buttons: [
@@ -700,7 +700,7 @@ function DashboardView() {
     function tagIconJsx(tag, key) {
         const color = tagRgb(tag) || 'var(--text-dim)';
         return (
-            <span key={key} title={tag.name} style={{ display: 'inline-flex', flex: 'none' }}>
+            <span key={key} title={tag.name} className="inline-flex flex-none">
                 <svg viewBox="0 0 24 24" width={12} height={12} fill={color}
                     stroke={`color-mix(in srgb, ${color} 75%, black)`}
                     strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -720,8 +720,8 @@ function DashboardView() {
     // Single line, never wrapping — excess tags clip rather than grow the row.
     function NameCell({ st }) {
         return (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', overflow: 'hidden', maxWidth: '100%' }}>
-                <span style={{ flexShrink: '0' }}>{st.name}</span>
+            <span className="inline-flex items-center gap-1.5 flex-nowrap overflow-hidden max-w-full">
+                <span className="shrink-0">{st.name}</span>
                 {tagChipsJsx(st.channelId)}
             </span>
         );
@@ -806,16 +806,16 @@ function DashboardView() {
             const isTag = chip.kind === 'tag';
             const tag = isTag ? tagsRef.current.find(t => String(t.name) === chip.value) : null;
             chipHost.appendChild(h('span.tag', {
+                class: 'inline-flex items-center gap-1 py-px pr-1 pl-[7px]',
                 style: {
-                    display: 'inline-flex', alignItems: 'center', gap: '4px',
-                    background: isTag ? (tagRgb(tag, 0.25) || 'var(--bg3)') : 'var(--bg3)',
-                    padding: '1px 4px 1px 7px'
+                    background: isTag ? (tagRgb(tag, 0.25) || 'var(--bg3)') : 'var(--bg3)'
                 }
             },
                 icon(isTag ? 'tag' : 'server', 12),
                 h('span', chip.value),
                 h('button', {
-                    title: 'Remove', style: { border: 'none', background: 'none', cursor: 'pointer', color: 'inherit', fontSize: '14px', lineHeight: '1', padding: '0 1px' },
+                    title: 'Remove', class: 'border-none cursor-pointer text-inherit text-[14px] leading-none py-0 px-px',
+                    style: { background: 'none' },
                     onClick: () => removeChip(chip)
                 }, '×')));
         }
@@ -906,7 +906,7 @@ function DashboardView() {
         typeaheadRef.current = typeahead;
         // Explicit picks render as pills (tag/channel icon) before the input,
         // which stays usable so multiple tags/channels can be selected.
-        const chipHost = h('span.filter-chip-host', { style: { display: 'none', gap: '4px', flexWrap: 'wrap' } });
+        const chipHost = h('span.filter-chip-host', { class: 'gap-1 flex-wrap', style: { display: 'none' } });
         chipHostRef.current = chipHost;
 
         const filterInput = h('input', {
@@ -951,11 +951,11 @@ function DashboardView() {
         const radioName = 'dash-stats-' + Math.floor(performance.now());
         const filterbar = h('div.filterbar',
             h('label', 'Filter:'), chipHost, filterInput, typeahead, countsLabel,
-            h('span', { style: { marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '10px', flex: 'none' } },
+            h('span', { class: 'ml-auto inline-flex items-center gap-2.5 flex-none' },
                 viewToggle,
-                h('span', { style: { display: 'inline-flex', alignItems: 'center', gap: '5px' } },
-                    h('span', { style: { color: 'var(--text-faint)', fontSize: '11px' } }, 'Tags:'), tagToggle)),
-            h('div.radio-group.inline', { style: { marginLeft: '0' } },
+                h('span', { class: 'inline-flex items-center gap-[5px]' },
+                    h('span', { class: 'text-text-faint text-[11px]' }, 'Tags:'), tagToggle)),
+            h('div.radio-group.inline', { class: 'ml-0' },
                 h('label', h('input', { type: 'radio', name: radioName, checked: true, onChange: () => { lifetimeRef.current = false; renderTable(); forceRender(); } }), 'Current Statistics'),
                 h('label', h('input', { type: 'radio', name: radioName, onChange: () => { lifetimeRef.current = true; renderTable(); forceRender(); } }), 'Lifetime Statistics')));
         filterbarHost.appendChild(filterbar);
@@ -1107,8 +1107,8 @@ function DashboardView() {
                     </div>
                 </RailPane>
             </ViewTasks>
-            <div className="view-body flush" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="flex-1" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, 1fr)' }}
+            <div className="view-body flush flex flex-col">
+                <div className="flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)]"
                     onClick={onEmptyClick}
                     onContextMenu={(e) => { if (!e.target.closest('tr') && !e.target.closest('thead')) onEmptyContextMenu(e); }}>
                     <TreeTable
@@ -1131,12 +1131,12 @@ function DashboardView() {
                         pinnedKeys={['state', 'name']}
                         emptyText={emptyText} />
                 </div>
-                <div ref={filterbarHostRef} style={{ flex: 'none' }} />
+                <div ref={filterbarHostRef} className="flex-none" />
                 {tabDefs.length > 0 && (
                     <>
                         <div className="split-handle" data-orient="v" data-resize="next" />
-                        <div style={{ flex: 'none', height: '230px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                            <div className="tabs" style={{ flex: 'none' }}>
+                        <div className="flex-none h-[230px] overflow-hidden flex flex-col">
+                            <div className="tabs flex-none">
                                 {tabDefs.map((def) => (
                                     <button key={def.id || def.label}
                                         className={'tab' + (def === activeTab ? ' active' : '')}
@@ -1145,7 +1145,7 @@ function DashboardView() {
                             </div>
                             {activeTab && (
                                 <div key={(activeTab.id || activeTab.label) + '|' + selectionSig}
-                                    style={{ flex: '1', overflow: 'auto', minHeight: '0' }}>
+                                    className="flex-1 overflow-auto min-h-0">
                                     <PluginSlot def={activeTab} ctx={tabCtx} />
                                 </div>
                             )}

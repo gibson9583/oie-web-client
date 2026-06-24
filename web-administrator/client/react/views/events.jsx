@@ -87,11 +87,7 @@ function levelTag(level) {
 }
 function outcomeTag(outcome) {
     if (outcome === 'SUCCESS') {
-        return h('span.tag', { style: {
-            color: 'var(--ok)',
-            borderColor: 'color-mix(in srgb, var(--ok) 40%, transparent)',
-            background: 'color-mix(in srgb, var(--ok) 10%, transparent)'
-        } }, icon('check', 11), 'SUCCESS');
+        return h('span.tag', { class: 'text-ok border-[color-mix(in_srgb,var(--ok)_40%,transparent)] bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]' }, icon('check', 11), 'SUCCESS');
     }
     if (outcome === 'FAILURE') return h('span.tag.red', icon('x', 11), 'FAILURE');
     return h('span.tag', outcome || '');
@@ -136,17 +132,17 @@ function Field({ label, children }) {
 function EventDetail({ event, username }) {
     if (!event) return <div className="dt-empty">Select an event to view its details.</div>;
     const kv = (label, value) => (
-        <span className="flex items-center" style={{ gap: 5 }}>
-            <span className="faint" style={{ fontSize: '10.5px', fontWeight: 640, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{label}</span>
-            <span className="mono" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{value}</span>
+        <span className="flex items-center gap-[5px]">
+            <span className="faint text-[10.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
+            <span className="mono font-mono text-[12px]">{value}</span>
         </span>
     );
     const attributes = mapEntries(event.attributes)
         .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '');
-    const valueStyle = { whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: '11.5px' };
+    const valueClass = 'whitespace-pre-wrap [word-break:break-word] font-mono text-[11.5px]';
     return (
         <>
-            <div className="flex flex-wrap items-center" style={{ gap: 18, padding: '8px 14px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
+            <div className="flex flex-wrap items-center gap-[18px] py-2 px-3.5 border-b border-line flex-none">
                 {kv('Id', displayValue(event.id))}
                 {kv('Level', displayValue(event.level))}
                 {kv('Outcome', displayValue(event.outcome))}
@@ -155,15 +151,15 @@ function EventDetail({ event, username }) {
             </div>
             {attributes.length
                 ? <table className="dt">
-                    <thead><tr><th style={{ width: '1%' }}>Name</th><th>Value</th></tr></thead>
+                    <thead><tr><th className="w-[1%]">Name</th><th>Value</th></tr></thead>
                     <tbody>{attributes.map(([k, v], i) => (
                         <tr key={i}>
-                            <td style={{ whiteSpace: 'nowrap', verticalAlign: 'top', fontWeight: 600 }}>{k}</td>
-                            <td className="mono" style={valueStyle}>{v}</td>
+                            <td className="whitespace-nowrap align-top font-semibold">{k}</td>
+                            <td className={"mono " + valueClass}>{v}</td>
                         </tr>
                     ))}</tbody>
                 </table>
-                : <div className="faint" style={{ padding: '12px 14px' }}>This event has no attributes.</div>}
+                : <div className="faint py-3 px-3.5">This event has no attributes.</div>}
         </>
     );
 }
@@ -316,12 +312,12 @@ function EventsView() {
                     </div>
                 </RailPane>
             </ViewTasks>
-            <div className="view-body flush" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div style={{ flex: 'none', padding: '10px 14px', background: 'var(--bg1)', borderBottom: '1px solid var(--line)' }}>
+            <div className="view-body flush flex flex-col">
+                <div className="flex-none py-2.5 px-3.5 bg-bg1 border-b border-line">
                     <div className="form-row">
                         <Field label="Start Time"><input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
                         <Field label="End Time"><input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
-                        <Field label="Name"><input type="text" placeholder="Event name contains…" style={{ width: 190 }} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Name"><input type="text" placeholder="Event name contains…" className="w-[190px]" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
                         <Field label="Level">
                             <div className="flex items-center gap-2">
                                 {LEVELS.map((l) => (
@@ -348,15 +344,15 @@ function EventsView() {
                         <TaskButton label="Search" icon="search" primary onClick={() => search(true)} />
                     </div>
                     {advancedOpen && (
-                        <div className="form-row" style={{ marginTop: 8 }}>
-                            <Field label="User Id"><input type="number" min="0" style={{ width: 90 }} value={userId} onChange={(e) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                            <Field label="IP Address"><input type="text" style={{ width: 130 }} value={ip} onChange={(e) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
-                            <Field label="Server Id"><input type="text" style={{ width: 230 }} value={serverId} onChange={(e) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                            <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" style={{ width: 190 }} value={attrSearch} onChange={(e) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <div className="form-row mt-2">
+                            <Field label="User Id"><input type="number" min="0" className="w-[90px]" value={userId} onChange={(e) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                            <Field label="IP Address"><input type="text" className="w-[130px]" value={ip} onChange={(e) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
+                            <Field label="Server Id"><input type="text" className="w-[230px]" value={serverId} onChange={(e) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                            <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[190px]" value={attrSearch} onChange={(e) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
                         </div>
                     )}
                 </div>
-                <div className="flex-1" style={{ overflow: 'auto', minHeight: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div className="flex-1 overflow-auto min-h-0 flex flex-col">
                     <DataTableHost columns={COLUMNS} options={options} onReady={(t) => { tableRef.current = t; }} />
                 </div>
                 <div className="filterbar">
@@ -367,7 +363,7 @@ function EventsView() {
                     <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(s.total)}`}</span>
                 </div>
                 <div className="split-handle" data-orient="v" data-resize="next" />
-                <div style={{ flex: 'none', height: '35%', minHeight: 48, overflow: 'auto', background: 'var(--bg1)' }}>
+                <div className="flex-none h-[35%] min-h-[48px] overflow-auto bg-bg1">
                     <EventDetail event={selected} username={username} />
                 </div>
             </div>

@@ -88,9 +88,9 @@ function promptImportLibraries(channelName, count) {
         modal({
             title: 'Import Channel',
             body: h('div',
-                h('div', { style: { marginBottom: '10px' } },
+                h('div', { class: 'mb-2.5' },
                     `Channel "${channelName}" has code template librar${plural} included with it. Would you like to import ${them}?`),
-                h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' } },
+                h('label', { class: 'flex items-center gap-1.5 text-[12px]' },
                     always, 'Always choose this option by default in the future (may be changed in Settings)')),
             onClose: () => resolve('cancel'),
             buttons: [
@@ -126,11 +126,11 @@ function promptExportLibraries(names) {
         modal({
             title: 'Export Channel',
             body: h('div',
-                h('div', { style: { marginBottom: '6px' } }, 'The following code template libraries are linked to this channel:'),
-                h('div', { style: { border: '1px solid var(--line)', borderRadius: '4px', background: 'var(--bg1)', padding: '6px 10px', maxHeight: '140px', overflow: 'auto' } },
-                    h('ul', { style: { margin: '0', paddingLeft: '18px' } }, names.map(n => h('li', n)))),
-                h('div', { style: { margin: '10px 0 8px' } }, 'Do you wish to include these libraries in the channel export?'),
-                h('label', { style: { display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px' } },
+                h('div', { class: 'mb-1.5' }, 'The following code template libraries are linked to this channel:'),
+                h('div', { class: 'border border-line rounded-[4px] bg-bg1 py-1.5 px-2.5 max-h-[140px] overflow-auto' },
+                    h('ul', { class: 'm-0 pl-[18px]' }, names.map(n => h('li', n)))),
+                h('div', { class: 'mt-2.5 mx-0 mb-2' }, 'Do you wish to include these libraries in the channel export?'),
+                h('label', { class: 'flex items-center gap-1.5 text-[12px]' },
                     always, 'Always choose this option by default in the future (may be changed in Settings)')),
             onClose: () => resolve('cancel'),
             buttons: [
@@ -381,7 +381,7 @@ function ChannelsView() {
 
     function descriptionCell(text) {
         return (
-            <span style={{ display: 'inline-block', maxWidth: '320px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>
+            <span className="inline-block max-w-[320px] truncate align-bottom">
                 {firstLine(text)}
             </span>
         );
@@ -401,13 +401,13 @@ function ChannelsView() {
         // Single line, never wrapping: the name always shows in full; if there are
         // more tags than fit, they clip horizontally rather than growing the row.
         return (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', verticalAlign: 'middle' }}>
-                <span style={{ flexShrink: 0 }}>{channel.name || ''}</span>
+            <span className="inline-flex items-center gap-1.5 flex-nowrap align-middle">
+                <span className="shrink-0">{channel.name || ''}</span>
                 {chips.length
-                    ? <span style={{ display: 'inline-flex', gap: '6px', flexWrap: 'nowrap', overflow: 'hidden', maxWidth: '260px' }}>
+                    ? <span className="inline-flex gap-1.5 flex-nowrap overflow-hidden max-w-[260px]">
                         {chips.map((tag) => {
                             const color = tagColor(tag);
-                            return <span key={tag.name} className="tag" style={{ flexShrink: 0, ...(color ? { background: color } : {}) }}>{tag.name}</span>;
+                            return <span key={tag.name} className="tag shrink-0" style={color ? { background: color } : {}}>{tag.name}</span>;
                         })}
                     </span>
                     : null}
@@ -448,11 +448,11 @@ function ChannelsView() {
                     case 'status': return isGroup ? '' : statusCell(n.channel);
                     case 'dataType': return isGroup ? '' : (n.channel.sourceConnector?.transformer?.inboundDataType || '');
                     case 'name': return isGroup
-                        ? <span style={{ fontWeight: 700 }}>{`[${n.group.name}]`}</span>
+                        ? <span className="font-bold">{`[${n.group.name}]`}</span>
                         : nameCell(n.channel);
                     case 'id': return isGroup
-                        ? <span style={{ color: 'var(--text-faint)' }}>{n.group.id === DEFAULT_GROUP_ID ? 'Default Group' : (n.group.id || '--')}</span>
-                        : <span style={{ color: 'var(--text-faint)' }}>{n.channel.id || ''}</span>;
+                        ? <span className="text-text-faint">{n.group.id === DEFAULT_GROUP_ID ? 'Default Group' : (n.group.id || '--')}</span>
+                        : <span className="text-text-faint">{n.channel.id || ''}</span>;
                     case 'description': return isGroup
                         ? <span className="muted">{descriptionCell(n.group.description)}</span>
                         : descriptionCell(n.channel.description);
@@ -1122,12 +1122,12 @@ function ChannelsView() {
                     </div>
                 </RailPane>
             </ViewTasks>
-            <div className="view-body flush" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div className="view-body flush flex flex-col overflow-hidden">
                 {/* Grid so the TreeTable's own .dt-wrap stretches to fill the
                     region (a flex child wouldn't grow on the main axis); this
                     leaves clickable empty space below a short tree for
                     click-to-clear, matching the legacy flex:1 grid host. */}
-                <div style={{ flex: '1', minHeight: '0', display: 'grid', gridTemplateRows: 'minmax(0, 1fr)' }} onClick={onEmptyClick}>
+                <div className="flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)]" onClick={onEmptyClick}>
                     <TreeTable
                         data={treeData}
                         columns={treeColumns()}

@@ -81,9 +81,9 @@ function randomPastel() {
 
 function swatch(color) {
     return h('span', {
+        class: 'inline-block w-[14px] h-[14px] rounded-[3px] border border-line-strong align-middle',
         style: {
-            display: 'inline-block', width: '14px', height: '14px', borderRadius: '3px',
-            background: colorCss(color), border: '1px solid var(--line-strong)', verticalAlign: 'middle'
+            background: colorCss(color)
         }
     });
 }
@@ -130,7 +130,7 @@ function loadFailed(host, e) {
 }
 
 function tabHost() {
-    return h('div', { style: { padding: '14px', overflow: 'auto', flex: '1' } });
+    return h('div', { class: 'p-3.5 overflow-auto flex-1' });
 }
 
 /* =============================================================================
@@ -185,32 +185,32 @@ function renderServerTab({ setTasks, markClean, setSave }) {
         const srvName = textInput(settings.serverName ?? '');
         const bgColor = h('input', {
             type: 'color',
-            value: colorToHex(settings.defaultAdministratorBackgroundColor, '#2a75b2'),
-            style: { width: '60px', padding: '2px', height: '32px' }
+            class: 'w-[60px] p-0.5 h-8',
+            value: colorToHex(settings.defaultAdministratorBackgroundColor, '#2a75b2')
         });
         // Reset the picker to the engine default (ServerSettings.DEFAULT_COLOR =
         // 0x2A75B2); Save persists + re-tints.
         const bgColorRestore = h('button.btn', {
-            type: 'button', style: { marginLeft: '8px' },
+            type: 'button', class: 'ml-2',
             title: 'Reset to the default background color', onClick: () => { bgColor.value = '#2a75b2'; paintBgPreview(); }
         }, 'Restore Default');
 
         // Live preview of the rail + topbar tint in both light and dark mode
         // (Swing's color-chooser Preview panel), updating as the color changes.
-        const bgPreview = h('div', { style: { display: 'flex', gap: '14px', flexWrap: 'wrap' } });
+        const bgPreview = h('div', { class: 'flex gap-3.5 flex-wrap' });
         function miniPreview(colorObj, dark) {
             const v = environmentColorVars(colorObj, dark);
-            return h('div', { style: { width: '190px' } },
-                h('div', { style: { fontSize: '10px', color: 'var(--text-faint)', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.1em' } }, dark ? 'Dark mode' : 'Light mode'),
-                h('div', { style: { border: '1px solid var(--line)', borderRadius: '5px', overflow: 'hidden' } },
-                    h('div', { style: { background: v.topbarBg, color: v.fg, padding: '5px 9px', fontSize: '11px', fontWeight: '650' } }, 'Dashboard'),
-                    h('div', { style: { display: 'flex', minHeight: '64px' } },
-                        h('div', { style: { background: v.railBg, padding: '7px 8px', width: '64px', fontSize: '10px' } },
-                            h('div', { style: { color: v.fgDim, fontWeight: '700', letterSpacing: '0.1em', marginBottom: '3px' } }, 'TASKS'),
+            return h('div', { class: 'w-[190px]' },
+                h('div', { class: 'text-[10px] text-text-faint mb-[3px] uppercase tracking-[0.1em]' }, dark ? 'Dark mode' : 'Light mode'),
+                h('div', { class: 'border border-line rounded overflow-hidden' },
+                    h('div', { class: 'py-[5px] px-[9px] text-[11px] font-[650]', style: { background: v.topbarBg, color: v.fg } }, 'Dashboard'),
+                    h('div', { class: 'flex min-h-16' },
+                        h('div', { class: 'py-[7px] px-2 w-16 text-[10px]', style: { background: v.railBg } },
+                            h('div', { class: 'font-bold tracking-[0.1em] mb-[3px]', style: { color: v.fgDim } }, 'TASKS'),
                             h('div', { style: { color: v.fg } }, 'Channels'),
                             h('div', { style: { color: v.fgDim } }, 'Messages'),
                             h('div', { style: { color: v.fgDim } }, 'Settings')),
-                        h('div', { style: { flex: '1', padding: '8px', fontSize: '11px', color: dark ? '#c8d4e0' : '#33414f', background: dark ? '#111922' : '#f4f7fa' } }, 'Sample Text'))));
+                        h('div', { class: 'flex-1 p-2 text-[11px]', style: { color: dark ? '#c8d4e0' : '#33414f', background: dark ? '#111922' : '#f4f7fa' } }, 'Sample Text'))));
         }
         function paintBgPreview() {
             clear(bgPreview);
@@ -274,7 +274,7 @@ function renderServerTab({ setTasks, markClean, setSave }) {
             h('div.panel-body', h('div.form-grid',
                 field('Environment name', envName),
                 field('Server name', srvName),
-                field('Default Background Color', h('div', { style: { display: 'flex', alignItems: 'center' } }, bgColor, bgColorRestore)),
+                field('Default Background Color', h('div', { class: 'flex items-center' }, bgColor, bgColorRestore)),
                 h('div.field.span-2', h('label', 'Preview'), bgPreview),
                 h('div.field', h('label', 'Enable Auto Logout'), autoLogout.el),
                 field('Auto Logout Interval (minutes)', autoLogoutInterval),
@@ -555,10 +555,10 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
         const bgMode = select([{ value: 'default', label: 'Server Default' }, { value: 'custom', label: 'Custom' }], 'default');
         const bgPicker = h('input', {
             type: 'color', value: '#2a75b2', disabled: true,
-            style: { width: '60px', padding: '2px', height: '32px', marginLeft: '8px' }
+            class: 'w-[60px] p-0.5 h-8 ml-2'
         });
         bgMode.addEventListener('change', () => { bgPicker.disabled = bgMode.value !== 'custom'; });
-        const bgOverride = h('div', { style: { display: 'flex', alignItems: 'center' } }, bgMode, bgPicker);
+        const bgOverride = h('div', { class: 'flex items-center' }, bgMode, bgPicker);
         (async () => {
             try {
                 const [srv, prefs] = await Promise.all([
@@ -574,12 +574,9 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
         // Stacked label-left / control-right rows (matches the Swing settings layout
         // and fills the panel width, one preference per line).
         const prefRow = (label, control) => h('div', {
-            style: {
-                display: 'flex', alignItems: 'center', gap: '16px',
-                padding: '10px 0', borderBottom: '1px solid var(--line)'
-            }
-        }, h('label', { style: { flex: '1', margin: '0' } }, label),
-            h('div', { style: { flex: 'none' } }, control));
+            class: 'flex items-center gap-4 py-2.5 px-0 border-b border-line'
+        }, h('label', { class: 'flex-1 m-0' }, label),
+            h('div', { class: 'flex-none' }, control));
 
         host.appendChild(h('div.panel',
             h('div.panel-header', 'System Preferences'),
@@ -689,10 +686,10 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
     }
 
     const filterInput = h('input', {
-        type: 'text', placeholder: 'Filter channels', style: { maxWidth: '280px' },
+        type: 'text', placeholder: 'Filter channels', class: 'max-w-[280px]',
         onInput: () => renderChannelList()
     });
-    const channelListHost = h('div', { style: { maxHeight: '260px', overflow: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' } });
+    const channelListHost = h('div', { class: 'max-h-[260px] overflow-auto flex flex-col gap-1.5' });
 
     function visibleChannels() {
         const filter = filterInput.value.trim().toLowerCase();
@@ -778,7 +775,7 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
 
     function editTag(tag) {
         const nameInput = textInput(tag.name || '', { maxlength: 24, title: 'Letters, numbers, spaces, - and _ only (max 24 chars)' });
-        const colorInput = h('input', { type: 'color', value: colorToHex(tag.backgroundColor), style: { width: '60px', padding: '2px' } });
+        const colorInput = h('input', { type: 'color', value: colorToHex(tag.backgroundColor), class: 'w-[60px] p-0.5' });
         modal({
             title: 'Edit Tag',
             body: h('div',
@@ -881,7 +878,7 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
             tbody.appendChild(h('tr', h('td', { colspan: 4 }, h('span.faint', 'No configuration map entries'))));
         }
         tableHost.appendChild(h('table.dt',
-            h('thead', h('tr', h('th', 'Key'), h('th', 'Value'), h('th', 'Comment'), h('th', { style: { width: '40px' } }, ''))),
+            h('thead', h('tr', h('th', 'Key'), h('th', 'Value'), h('th', 'Comment'), h('th', { class: 'w-10' }, ''))),
             tbody));
     }
 
@@ -1435,7 +1432,7 @@ function SettingsTab({ def, ctx }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     // Hand the task-pane host back so the parent can portal its taskbar DOM.
-    return <div ref={ref} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }} />;
+    return <div ref={ref} className="flex flex-col flex-1 min-h-0" />;
 }
 
 // Hosts the legacy taskbar DOM (built by the active tab via setTasks) inside the
@@ -1456,7 +1453,7 @@ function TasksPane({ title, items }) {
     }, [title, items]);
     return (
         <RailPane title={title} paneKey={'tasks:' + title}>
-            <div ref={ref} style={{ display: 'contents' }} />
+            <div ref={ref} className="[display:contents]" />
         </RailPane>
     );
 }
@@ -1544,8 +1541,8 @@ function SettingsView() {
             <ViewTasks>
                 <TasksPane title={title} items={items} />
             </ViewTasks>
-            <div className="view-body flush" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="tabs-wrap" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <div className="view-body flush flex flex-col">
+                <div className="tabs-wrap flex flex-col flex-1 min-h-0 overflow-hidden">
                     <div className="tabs">
                         {defs.map((d, i) => (
                             <button key={d.label} className={'tab' + (i === active ? ' active' : '')}
@@ -1554,7 +1551,7 @@ function SettingsView() {
                             </button>
                         ))}
                     </div>
-                    <div className="tab-body" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+                    <div className="tab-body flex flex-col flex-1 min-h-0">
                         {/* Only the active tab is mounted; keyed by label so switching
                             tabs remounts (and reloads) it, matching vanilla tabs(). */}
                         <SettingsTab key={def.label} def={def} ctx={ctx} />
