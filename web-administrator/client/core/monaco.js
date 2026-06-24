@@ -36,11 +36,16 @@ export function ensureMonaco() {
             try {
                 window.require.config({ paths: { vs: `${BASE}/vs` } });
                 // Blob worker shim: a worker spawned from a blob: URL has an
-                // opaque origin, so it loads Monaco's worker via importScripts
-                // from the absolute (same-origin) /vendor/monaco path.
+                // opaque origin, so a root-relative importScripts('/vendor/...')
+                // is an invalid URL *inside the worker* — it can't resolve '/...'
+                // against the blob: base. Use a fully-qualified same-origin URL so
+                // the worker (and its AMD baseUrl, which loads the language-service
+                // workers like tsWorker.js) resolve against this server. Without
+                // this the TS worker fails and IntelliSense/completion stops.
+                const workerBase = `${window.location.origin}${BASE}`;
                 window.MonacoEnvironment = {
                     getWorkerUrl: () => URL.createObjectURL(new Blob([
-                        `self.MonacoEnvironment={baseUrl:'${BASE}/'};importScripts('${BASE}/vs/base/worker/workerMain.js');`
+                        `self.MonacoEnvironment={baseUrl:'${workerBase}/'};importScripts('${workerBase}/vs/base/worker/workerMain.js');`
                     ], { type: 'text/javascript' }))
                 };
                 window.require(['vs/editor/editor.main'],
