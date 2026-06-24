@@ -67,7 +67,7 @@ function connectionTemplatesField() {
     type: "custom",
     span: true,
     render: (p, ctx) => {
-      const wrap = h("div", { style: { display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" } });
+      const wrap = h("div", { class: "flex items-center gap-1.5 flex-wrap" });
       const names = () => [...PREDEFINED_NAMES, ...Object.keys(serverTemplates).filter((n) => !isPredefined(n))];
       const templateFor = (name) => isPredefined(name) ? PREDEFINED_TEMPLATES[name] : serverTemplates[name];
       function paint() {

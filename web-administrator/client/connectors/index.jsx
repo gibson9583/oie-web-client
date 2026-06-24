@@ -58,11 +58,11 @@ function GenericPanel({ properties, onChange }) {
     };
     return (
         <div>
-            <div className="hint" style={{ marginBottom: '6px' }}>
+            <div className="hint mb-1.5">
                 No dedicated editor for this connector type — edit the raw properties JSON. "@class" and "@version" must be preserved.
             </div>
             <div ref={hostRef} />
-            <div style={{ marginTop: '8px' }}>
+            <div className="mt-2">
                 <button className="btn btn-primary" onClick={apply}>Apply</button>
             </div>
         </div>

@@ -120,11 +120,7 @@ function FieldControl({ groupObj, f, notify }) {
     }
 }
 
-const GROUP_LABEL_STYLE = {
-    fontWeight: '600', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.04em',
-    color: 'var(--text-dim, inherit)', borderBottom: '1px solid var(--line)',
-    padding: '10px 0 4px', marginBottom: '8px'
-};
+const GROUP_LABEL_CLASS = 'font-semibold text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim,inherit)] border-b border-line pt-2.5 px-0 pb-1 mb-2';
 
 /* Unknown/plugin data types: raw JSON editor over the properties object. */
 function RawProperties({ typeName, props, onReplace }) {
@@ -155,7 +151,7 @@ export function DataTypePropertiesEditor({ typeName, props, version, direction =
     if (!def) return <RawProperties typeName={typeName} props={props} onReplace={onReplace || (() => {})} />;
 
     const specs = groupSpecsFor(def, direction, connectorType);
-    if (!specs.length) return <div className="faint" style={{ padding: '8px 0' }}>This data type has no properties.</div>;
+    if (!specs.length) return <div className="faint py-2 px-0">This data type has no properties.</div>;
 
     const defaults = def.defaults(version);
     const byKey = new Map(def.groups.map((g) => [g.key, g]));
@@ -170,8 +166,8 @@ export function DataTypePropertiesEditor({ typeName, props, version, direction =
                     : (props[group.key] = defaults[group.key]);
                 return (
                     <div key={spec.key}>
-                        <div style={GROUP_LABEL_STYLE}>{spec.label}</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div className={GROUP_LABEL_CLASS}>{spec.label}</div>
+                        <div className="flex flex-col gap-1.5">
                             {group.fields.map((f) => <FieldControl key={f.key} groupObj={groupObj} f={f} notify={notify} />)}
                         </div>
                     </div>

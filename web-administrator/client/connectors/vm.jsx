@@ -42,7 +42,7 @@ const channelReader = {
         return (
             <div className="cform-section">
                 <div className="cform-section-title">Channel Reader Settings</div>
-                <div className="hint" style={{ padding: '2px 0' }}>
+                <div className="hint py-0.5 px-0">
                     Channel Reader listens for messages routed from other channels on this server. It has no connector-specific settings.
                 </div>
             </div>
@@ -78,17 +78,17 @@ const NOT_FOUND_LABEL = '<Channel Not Found>';
    Combo option order matches Swing: '<None>' first, then channels sorted
    alpha-numerically by NAME (Collections.sort on channelNameArray). */
 function channelControlNode(properties, platform, onChange) {
-    const wrap = h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } });
+    const wrap = h('div', { class: 'flex items-center gap-1.5' });
     // channelList: name -> id, used to resolve the combo selection and reverse-sync.
     let channelList = [];
 
     const field = textInput(properties.channelId === 'none' ? '' : (properties.channelId ?? ''), {
         placeholder: '<None>', title: "The destination channel's unique global id.",
-        style: { width: '250px' }
+        class: 'w-[250px]'
     });
     const combo = select([{ value: NONE_LABEL, label: NONE_LABEL }], NONE_LABEL, {
         title: 'Select the channel to which messages accepted by this destination\'s filter should be written, or none to not write the message at all.',
-        style: { width: '250px' }
+        class: 'w-[250px]'
     });
 
     // Reverse-sync the combo selection to whatever the field text holds, matching
@@ -179,25 +179,25 @@ function mapVariablesTable(properties, onChange) {
     }
     function paint() {
         clear(wrap);
-        const table = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } });
-        table.appendChild(h('div', { className: 'cform-label', style: { fontWeight: '600', fontSize: '12px' } }, 'Map Variable'));
+        const table = h('div', { class: 'flex flex-col gap-1' });
+        table.appendChild(h('div', { className: 'cform-label', class: 'font-semibold text-[12px]' }, 'Map Variable'));
         rows.forEach((value, i) => {
             const input = textInput(value, {
-                placeholder: 'Map Variable', style: { flex: '1' },
+                placeholder: 'Map Variable', class: 'flex-1',
                 onInput: (e) => { rows[i] = e.target.value; commit(); }
             });
             const delBtn = h('button.icon-btn', {
                 type: 'button', title: 'Delete',
                 onClick: () => { rows.splice(i, 1); commit(); paint(); }
             }, icon('x'));
-            table.appendChild(h('div', { style: { display: 'flex', gap: '6px', marginBottom: '4px', alignItems: 'center' } }, input, delBtn));
+            table.appendChild(h('div', { class: 'flex gap-1.5 mb-1 items-center' }, input, delBtn));
         });
         const newBtn = h('button.btn', {
             type: 'button',
             onClick: () => { rows.push(uniqueName()); commit(); paint(); }
         }, 'New');
         wrap.appendChild(table);
-        wrap.appendChild(h('div', { style: { marginTop: '6px' } }, newBtn));
+        wrap.appendChild(h('div', { class: 'mt-1.5' }, newBtn));
     }
     paint();
     return wrap;

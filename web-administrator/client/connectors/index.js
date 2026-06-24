@@ -41,7 +41,7 @@ function GenericPanel({ properties, onChange }) {
     onChange();
     toast("Properties applied");
   };
-  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "hint", style: { marginBottom: "6px" } }, 'No dedicated editor for this connector type \u2014 edit the raw properties JSON. "@class" and "@version" must be preserved.'), /* @__PURE__ */ React.createElement("div", { ref: hostRef }), /* @__PURE__ */ React.createElement("div", { style: { marginTop: "8px" } }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: apply }, "Apply")));
+  return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "hint mb-1.5" }, 'No dedicated editor for this connector type \u2014 edit the raw properties JSON. "@class" and "@version" must be preserved.'), /* @__PURE__ */ React.createElement("div", { ref: hostRef }), /* @__PURE__ */ React.createElement("div", { className: "mt-2" }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: apply }, "Apply")));
 }
 function genericPanel() {
   return {

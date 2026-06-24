@@ -50,7 +50,7 @@ export function listenerAddressField(hostKey, label = 'Listener Address') {
             // "Specific" stays selected even before an address is typed.
             let mode = String(getPath(p, hostKey) ?? '0.0.0.0') === '0.0.0.0' ? 'all' : 'specific';
             const input = textInput(String(getPath(p, hostKey) ?? ''), {
-                style: { width: '200px' },
+                class: 'w-[200px]',
                 onInput: (e) => { setPath(p, hostKey, e.target.value); ctx.onChange(); }
             });
             const sync = () => { input.disabled = mode === 'all'; input.style.opacity = mode === 'all' ? '0.5' : '1'; };
@@ -64,7 +64,7 @@ export function listenerAddressField(hostKey, label = 'Listener Address') {
             allRadio.addEventListener('change', () => setMode('all'));
             specRadio.addEventListener('change', () => setMode('specific'));
             sync();
-            return h('div', { style: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' } },
+            return h('div', { class: 'flex items-center gap-[14px] flex-wrap' },
                 h('label.check', allRadio, 'All interfaces'),
                 h('label.check', specRadio, 'Specific interface:'),
                 input);
@@ -133,9 +133,9 @@ function keyValueEditor(properties, f, onChange) {
     function paint() {
         clear(wrap);
         rows.forEach((row, i) => {
-            wrap.appendChild(h('div', { style: { display: 'flex', gap: '6px', marginBottom: '6px' } },
-                textInput(row[0], { placeholder: 'Name', style: { flex: '1' }, onInput: (e) => { row[0] = e.target.value; commit(); } }),
-                textInput(row[1], { placeholder: 'Value', style: { flex: '2' }, onInput: (e) => { row[1] = e.target.value; commit(); } }),
+            wrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
+                textInput(row[0], { placeholder: 'Name', class: 'flex-1', onInput: (e) => { row[0] = e.target.value; commit(); } }),
+                textInput(row[1], { placeholder: 'Value', class: 'flex-[2]', onInput: (e) => { row[1] = e.target.value; commit(); } }),
                 h('button.icon-btn', { type: 'button', title: 'Remove', onClick: () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
         });
         wrap.appendChild(h('button.btn', { type: 'button', onClick: () => { rows.push(['', '']); paint(); } }, 'Add'));
@@ -345,7 +345,7 @@ export const YES_NO = [
 
 /* pollSettingsPanel wrapped as a classic fieldset-style section. */
 export function pollSection(properties, onChange) {
-    return h('div.cform-section', { style: { marginTop: '16px' } },
+    return h('div.cform-section', { class: 'mt-4' },
         h('div.cform-section-title', 'Polling Settings'),
         pollSettingsPanel(properties, onChange));
 }
@@ -394,9 +394,9 @@ export function pollSettingsPanel(properties, onChange) {
             const paintCron = () => {
                 clear(cronWrap);
                 rows.forEach((row, i) => {
-                    cronWrap.appendChild(h('div', { style: { display: 'flex', gap: '6px', marginBottom: '6px' } },
-                        textInput(row.expression, { placeholder: 'Cron expression (e.g. 0 */5 * ? * *)', style: { flex: '2' }, onInput: (e) => { row.expression = e.target.value; commit(); } }),
-                        textInput(row.description, { placeholder: 'Description', style: { flex: '1' }, onInput: (e) => { row.description = e.target.value; commit(); } }),
+                    cronWrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
+                        textInput(row.expression, { placeholder: 'Cron expression (e.g. 0 */5 * ? * *)', class: 'flex-[2]', onInput: (e) => { row.expression = e.target.value; commit(); } }),
+                        textInput(row.description, { placeholder: 'Description', class: 'flex-1', onInput: (e) => { row.description = e.target.value; commit(); } }),
                         h('button.icon-btn', { type: 'button', title: 'Remove', onClick: () => { rows.splice(i, 1); commit(); paintCron(); } }, icon('x'))));
                 });
                 cronWrap.appendChild(h('button.btn', { type: 'button', onClick: () => { rows.push({ expression: '', description: '' }); paintCron(); } }, 'Add Cron Job'));
@@ -619,7 +619,7 @@ function abbrevFor(hex) {
 
 export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     const mllp = !!opts.mllp;
-    const hexInput = (val) => textInput(String(val || ''), { style: { width: '120px', fontFamily: 'var(--font-mono)' } });
+    const hexInput = (val) => textInput(String(val || ''), { class: 'w-[120px] font-mono' });
     const startInput = hexInput(tm.startOfMessageBytes);
     const endInput = hexInput(tm.endOfMessageBytes);
     let lastFocused = startInput;
@@ -627,18 +627,18 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     endInput.addEventListener('focus', () => { lastFocused = endInput; });
 
     const abbrevList = h('div', {
-        style: { maxHeight: '280px', overflow: 'auto', border: '1px solid var(--bg3)', borderRadius: '4px', padding: '4px', minWidth: '110px' }
+        class: 'max-h-[280px] overflow-auto border border-[var(--bg3)] rounded-[4px] p-1 min-w-[110px]'
     }, Object.entries(CONTROL_ABBR).map(([hex, abbr]) => h('div.tree-node', {
         title: `Insert 0x${hex}`,
-        style: { cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '12px' },
+        class: 'cursor-pointer font-mono text-[12px]',
         onClick: () => { lastFocused.value = (lastFocused.value || '') + hex; lastFocused.focus(); if (lastFocused.oninput) lastFocused.oninput(); }
     }, `<${abbr}>`)));
 
-    const hexRow = (label, input, abbrevEl) => h('div.flex', { style: { alignItems: 'center', gap: '6px', marginBottom: '8px' } },
-        h('label', { style: { minWidth: '160px' } }, label), h('span.mono.faint', '0x'), input, abbrevEl || null);
+    const hexRow = (label, input, abbrevEl) => h('div.flex', { class: 'items-center gap-1.5 mb-2' },
+        h('label', { class: 'min-w-[160px]' }, label), h('span.mono.faint', '0x'), input, abbrevEl || null);
 
     const leftRows = [
-        h('div', { style: { fontWeight: '650', marginBottom: '8px' } }, mllp ? 'MLLP Settings' : 'Basic Settings'),
+        h('div', { class: 'font-[650] mb-2' }, mllp ? 'MLLP Settings' : 'Basic Settings'),
         hexRow('Start of Message Bytes:', startInput, h('span.mono.faint', abbrevFor(tm.startOfMessageBytes))),
         hexRow('End of Message Bytes:', endInput, h('span.mono.faint', abbrevFor(tm.endOfMessageBytes)))
     ];
@@ -650,7 +650,7 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     if (mllp) {
         const ackInput = hexInput(tm.ackBytes != null ? tm.ackBytes : '06');
         const nackInput = hexInput(tm.nackBytes != null ? tm.nackBytes : '15');
-        const retryInput = textInput(String(tm.maxRetries != null ? tm.maxRetries : '2'), { style: { width: '80px' } });
+        const retryInput = textInput(String(tm.maxRetries != null ? tm.maxRetries : '2'), { class: 'w-[80px]' });
         const ackAbbrev = h('span.mono.faint', abbrevFor(ackInput.value));
         const nackAbbrev = h('span.mono.faint', abbrevFor(nackInput.value));
         ackInput.addEventListener('focus', () => { lastFocused = ackInput; });
@@ -663,8 +663,8 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
         const v2No = h('input', { type: 'radio', name: 'mllpv2', checked: !useV2 });
         const ackRow = hexRow('Commit ACK Bytes:', ackInput, ackAbbrev);
         const nackRow = hexRow('Commit NACK Bytes:', nackInput, nackAbbrev);
-        const retryRow = h('div.flex', { style: { alignItems: 'center', gap: '6px', marginBottom: '8px' } },
-            h('label', { style: { minWidth: '160px' } }, 'Max Retry Count:'), retryInput);
+        const retryRow = h('div.flex', { class: 'items-center gap-1.5 mb-2' },
+            h('label', { class: 'min-w-[160px]' }, 'Max Retry Count:'), retryInput);
         const setV2Enabled = (on) => {
             [ackInput, nackInput, retryInput].forEach((el) => { el.disabled = !on; });
             [ackRow, nackRow, retryRow].forEach((r) => { r.style.opacity = on ? '1' : '0.5'; });
@@ -674,8 +674,8 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
         setV2Enabled(useV2);
 
         leftRows.push(
-            h('div.flex', { style: { alignItems: 'center', gap: '6px', marginBottom: '8px' } },
-                h('label', { style: { minWidth: '160px' } }, 'Use MLLPv2:'),
+            h('div.flex', { class: 'items-center gap-1.5 mb-2' },
+                h('label', { class: 'min-w-[160px]' }, 'Use MLLPv2:'),
                 h('label.check', v2Yes, 'Yes'), h('label.check', v2No, 'No')),
             ackRow, nackRow, retryRow);
 
@@ -693,9 +693,9 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     modal({
         title: mllp ? 'MLLP Settings' : 'Transmission Mode Settings',
         size: 'wide',
-        body: h('div', { style: { display: 'flex', gap: '18px', minWidth: '520px' } },
-            h('div', { style: { flex: '1' } }, leftRows),
-            h('div', h('div', { style: { fontWeight: '650', marginBottom: '8px' } }, 'Byte Abbreviations'), abbrevList)),
+        body: h('div', { class: 'flex gap-[18px] min-w-[520px]' },
+            h('div', { class: 'flex-1' }, leftRows),
+            h('div', h('div', { class: 'font-[650] mb-2' }, 'Byte Abbreviations'), abbrevList)),
         buttons: [
             { label: 'Cancel' },
             {

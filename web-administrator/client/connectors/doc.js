@@ -84,7 +84,7 @@ function pageSizeRow(p, { onChange }) {
   const widthField = h("input", {
     type: "text",
     value: p.pageWidth ?? "",
-    style: { width: "54px" },
+    class: "w-[54px]",
     onInput: (e) => {
       p.pageWidth = e.target.value;
       onChange();
@@ -93,14 +93,14 @@ function pageSizeRow(p, { onChange }) {
   const heightField = h("input", {
     type: "text",
     value: p.pageHeight ?? "",
-    style: { width: "54px" },
+    class: "w-[54px]",
     onInput: (e) => {
       p.pageHeight = e.target.value;
       onChange();
     }
   });
   const unitField = select(PAGE_UNITS, p.pageUnit ?? "INCHES", {
-    style: { width: "90px" },
+    class: "w-[90px]",
     onChange: (e) => {
       p.pageUnit = e.target.value;
       onChange();
@@ -122,7 +122,7 @@ function pageSizeRow(p, { onChange }) {
   });
   return h(
     "div",
-    { style: { display: "flex", alignItems: "center", gap: "6px" } },
+    { class: "flex items-center gap-1.5" },
     widthField,
     h("span", "\xD7"),
     heightField,

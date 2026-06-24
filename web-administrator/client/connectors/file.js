@@ -121,8 +121,8 @@ function hostPathField(onChange) {
       const slash = host.indexOf("/");
       const hostPart = slash === -1 ? host : host.slice(0, slash);
       const pathPart = slash === -1 ? "" : host.slice(slash + 1);
-      const hostInput = textInput(hostPart, { style: { width: "220px" } });
-      const pathInput = textInput(pathPart, { style: { flex: "1", minWidth: "160px" } });
+      const hostInput = textInput(hostPart, { class: "w-[220px]" });
+      const pathInput = textInput(pathPart, { class: "flex-1 min-w-[160px]" });
       const recompose = () => {
         p.host = hostInput.value + "/" + pathInput.value;
         onChange();
@@ -131,8 +131,8 @@ function hostPathField(onChange) {
       pathInput.addEventListener("input", recompose);
       return h(
         "div",
-        { style: { display: "flex", alignItems: "center", gap: "6px" } },
-        h("span", { style: { color: "var(--muted, #888)", whiteSpace: "nowrap" } }, schemePrefix(p)),
+        { class: "flex items-center gap-[6px]" },
+        h("span", { class: "text-[var(--muted,#888)] whitespace-nowrap" }, schemePrefix(p)),
         hostInput,
         h("span", "/"),
         pathInput
@@ -347,7 +347,7 @@ function schemeSettingsFields() {
       // Swing AdvancedS3SettingsDialog greys these + shows a red warning when
       // the connector is using Anonymous credentials.
       disabled: (p) => asBool(p.anonymous),
-      append: (p) => asBool(p.anonymous) ? h("span", { style: { color: "#c0392b", marginLeft: "12px", fontWeight: "500" } }, "Anonymous credentials are currently in use") : null,
+      append: (p) => asBool(p.anonymous) ? h("span", { class: "text-[#c0392b] ml-3 font-[500]" }, "Anonymous credentials are currently in use") : null,
       tooltip: "When No, the Username/Password above are used as the AWS access key ID / secret access key"
     },
     { key: "schemeProperties.useTemporaryCredentials", label: "Use Temporary Credentials", type: "radio", options: YES_NO, refresh: true, visible: s3 },
@@ -393,7 +393,7 @@ function afterProcessingBlock(properties, onChange) {
     full: true,
     render: (p) => {
       let lastInput = null;
-      const grid = h("div", { style: { display: "grid", gridTemplateColumns: "max-content 1fr max-content", gap: "6px 12px", alignItems: "center" } });
+      const grid = h("div", { class: "grid grid-cols-[max-content_1fr_max-content] gap-y-[6px] gap-x-3 items-center" });
       const insertVar = (v) => {
         const input = lastInput;
         if (!input || input.disabled) return;
@@ -488,23 +488,14 @@ function afterProcessingBlock(properties, onChange) {
           lab.style.gridColumn = "1";
           lab.style.gridRow = String(i + 1);
           grid.appendChild(lab);
-          grid.appendChild(h("div.cform-control", { style: { gridColumn: "2", gridRow: String(i + 1) } }, ctrl));
+          grid.appendChild(h("div.cform-control", { class: "col-[2]", style: { gridRow: String(i + 1) } }, ctrl));
         });
         const listBox = h("div", {
-          style: {
-            gridColumn: "3",
-            gridRow: `1 / ${rows.length + 1}`,
-            alignSelf: "stretch",
-            border: "1px solid var(--line)",
-            borderRadius: "4px",
-            padding: "4px 0",
-            minWidth: "150px",
-            background: "var(--bg1)",
-            overflow: "auto"
-          }
+          class: "col-[3] self-stretch border border-line rounded-[4px] py-1 px-0 min-w-[150px] bg-bg1 overflow-auto",
+          style: { gridRow: `1 / ${rows.length + 1}` }
         }, FILE_NAME_VARS.map((v) => {
           const item = h("div", {
-            style: { padding: "3px 12px", cursor: "grab", fontFamily: "var(--font-mono)", fontSize: "12px", userSelect: "none" },
+            class: "py-[3px] px-3 cursor-grab font-mono text-[12px] select-none",
             title: `Drag into a Move-to / Error field, or click to insert into the last-focused one`,
             onClick: () => insertVar(v)
           }, v);

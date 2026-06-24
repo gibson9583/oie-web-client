@@ -30,7 +30,7 @@ function generateWriterConnectionString(p) {
 function insertUrlTemplateButton(properties, platform, onChange) {
   return h("button.btn", {
     type: "button",
-    style: { marginLeft: "6px" },
+    class: "ml-1.5",
     onClick: async () => {
       const drivers = await loadDrivers(platform).catch(() => []);
       const d = drivers.find((x) => x && String(x.className) === String(properties.driver));
@@ -50,11 +50,11 @@ function insertUrlTemplateButton(properties, platform, onChange) {
   }, "Insert URL Template");
 }
 function driverControlNode(properties, platform, onChange) {
-  const wrap = h("div", { style: { display: "flex", alignItems: "center", gap: "6px" } });
+  const wrap = h("div", { class: "flex items-center gap-1.5" });
   const wrench = h("button.icon-btn", {
     type: "button",
     title: "View and manage the list of database JDBC drivers",
-    style: { marginLeft: "6px" },
+    class: "ml-1.5",
     onClick: () => openDriversModal(() => {
       driversPromise = null;
       refresh();
@@ -130,7 +130,7 @@ async function openDriversModal(onSaved) {
       inp.addEventListener("input", () => {
         d[key] = inp.value;
       });
-      return h("td", { style: { padding: "2px 4px" } }, inp);
+      return h("td", { class: "py-0.5 px-1" }, inp);
     };
     return h(
       "tr",
@@ -141,7 +141,7 @@ async function openDriversModal(onSaved) {
       cell("alt", "legacy.Driver, ...", "160px"),
       h(
         "td",
-        { style: { padding: "2px 4px" } },
+        { class: "py-0.5 px-1" },
         h("button.icon-btn", { type: "button", title: "Remove", onClick: () => {
           model.splice(model.indexOf(d), 1);
           renderRows();
@@ -151,7 +151,7 @@ async function openDriversModal(onSaved) {
   }
   function renderRows() {
     clear(tbody);
-    if (!model.length) tbody.appendChild(h("tr", h("td", { colSpan: 6, class: "faint", style: { padding: "12px" } }, "No drivers \u2014 click Add.")));
+    if (!model.length) tbody.appendChild(h("tr", h("td", { colSpan: 6, class: "faint p-3" }, "No drivers \u2014 click Add.")));
     else model.forEach((d) => tbody.appendChild(rowEl(d)));
   }
   renderRows();
@@ -173,9 +173,9 @@ async function openDriversModal(onSaved) {
     size: "xwide",
     body: h(
       "div",
-      { style: { display: "flex", flexDirection: "column", gap: "10px" } },
+      { class: "flex flex-col gap-2.5" },
       h("div", addBtn),
-      h("div", { style: { maxHeight: "55vh", overflow: "auto" } }, table)
+      h("div", { class: "max-h-[55vh] overflow-auto" }, table)
     ),
     buttons: [
       { label: "Close" },
