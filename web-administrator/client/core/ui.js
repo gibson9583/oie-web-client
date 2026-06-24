@@ -203,7 +203,7 @@ export function closeContextMenu() {
 export function tabs(defs, { onChange, active = 0 } = {}) {
     const bar = h('div.tabs');
     const body = h('div.tab-body');
-    const root = h('div', { style: { display: 'flex', flexDirection: 'column', flex: '1', overflow: 'hidden', minHeight: '0' } }, bar, body);
+    const root = h('div', { class: 'flex flex-col flex-1 overflow-hidden min-h-0' }, bar, body);
     let current = -1;
 
     const buttons = defs.map((def, i) =>
@@ -466,7 +466,7 @@ export async function saveFile(suggestedName, type, getContent) {
 
 export function pickFile(accept) {
     return new Promise(resolve => {
-        const input = h('input', { type: 'file', accept, style: { display: 'none' } });
+        const input = h('input', { type: 'file', accept, class: 'hidden' });
         input.addEventListener('change', () => {
             const file = input.files[0];
             input.remove();
