@@ -5,6 +5,52 @@
    Typography: Archivo (UI) + IBM Plex Mono (data/code).
    ========================================================================== */
 
+/* ── Tailwind CSS v4 ─────────────────────────────────────────────────────────
+   We import only Tailwind's theme + utilities layers, and intentionally OMIT
+   Preflight: this app ships its own reset (below) and Preflight would restyle
+   un-styled elements (list bullets, buttons, images, …) that views and plugins
+   rely on. The design tokens are mapped from the existing CSS variables via
+   `@theme inline`, so utilities like `bg-bg2`, `text-accent`, `border-line`,
+   `font-mono` resolve to the SAME vars and stay light/dark-aware automatically
+   (no `dark:` variants needed). `@source` adds files outside Vite's module graph
+   — the raw-served connectors/core and the separately-built first-party plugins.
+   The existing hand-written CSS below is unchanged. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+    --color-bg0: var(--bg0);
+    --color-bg1: var(--bg1);
+    --color-bg2: var(--bg2);
+    --color-bg3: var(--bg3);
+    --color-line: var(--line);
+    --color-line-strong: var(--line-strong);
+    --color-text: var(--text);
+    --color-text-dim: var(--text-dim);
+    --color-text-faint: var(--text-faint);
+    --color-accent: var(--accent);
+    --color-accent-press: var(--accent-press);
+    --color-accent-ink: var(--accent-ink);
+    --color-accent-glow: var(--accent-glow);
+    --color-ok: var(--ok);
+    --color-warn: var(--warn);
+    --color-err: var(--err);
+    --color-idle: var(--idle);
+    --color-busy: var(--busy);
+    --color-amber: var(--amber);
+    --color-red: var(--red);
+    --color-blue: var(--blue);
+    --color-violet: var(--violet);
+    --font-sans: var(--font-ui);
+    --font-mono: var(--font-mono);
+    --radius-DEFAULT: var(--radius);
+}
+
+@source "../**/*.{js,jsx}";
+@source "../../plugins/**/web/**/*.{js,jsx}";
+@source not "../dist/**";
+
 :root {
     --font-ui: 'Archivo', 'Avenir Next', 'Segoe UI', sans-serif;
     --font-mono: 'IBM Plex Mono', 'SF Mono', 'Consolas', monospace;

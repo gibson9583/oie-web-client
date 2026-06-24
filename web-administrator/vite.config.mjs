@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 
 const clientDir = path.join(import.meta.dirname, 'client');
@@ -37,10 +38,12 @@ function externalFramework() {
 
 export default defineConfig({
     root: 'client',
-    // react() transforms JSX (and Fast Refresh in dev). externalFramework keeps
-    // core/connectors imports as shared /core/*.js URLs so the app bundle and
-    // runtime plugins share one framework instance.
-    plugins: [react(), externalFramework()],
+    // react() transforms JSX (and Fast Refresh in dev). tailwindcss() processes
+    // the @import "tailwindcss" + @theme/@source in client/css/app.css (the design
+    // tokens + utilities). externalFramework keeps core/connectors imports as
+    // shared /core/*.js URLs so the app bundle and runtime plugins share one
+    // framework instance.
+    plugins: [react(), tailwindcss(), externalFramework()],
     // The @oie/web-* packages resolve to the canonical framework source (single
     // source of truth). At runtime, the import map in index.html maps the same
     // specifiers to the served /core/*.js modules — so the shell bundle and
