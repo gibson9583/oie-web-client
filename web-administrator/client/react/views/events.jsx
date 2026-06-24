@@ -136,7 +136,7 @@ function Field({ label, children }) {
 function EventDetail({ event, username }) {
     if (!event) return <div className="dt-empty">Select an event to view its details.</div>;
     const kv = (label, value) => (
-        <span className="flex" style={{ gap: 5 }}>
+        <span className="flex items-center" style={{ gap: 5 }}>
             <span className="faint" style={{ fontSize: '10.5px', fontWeight: 640, letterSpacing: '0.1em', textTransform: 'uppercase' }}>{label}</span>
             <span className="mono" style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{value}</span>
         </span>
@@ -146,7 +146,7 @@ function EventDetail({ event, username }) {
     const valueStyle = { whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono)', fontSize: '11.5px' };
     return (
         <>
-            <div className="flex flex-wrap" style={{ gap: 18, padding: '8px 14px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
+            <div className="flex flex-wrap items-center" style={{ gap: 18, padding: '8px 14px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
                 {kv('Id', displayValue(event.id))}
                 {kv('Level', displayValue(event.level))}
                 {kv('Outcome', displayValue(event.outcome))}
@@ -323,7 +323,7 @@ function EventsView() {
                         <Field label="End Time"><input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
                         <Field label="Name"><input type="text" placeholder="Event name contains…" style={{ width: 190 }} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
                         <Field label="Level">
-                            <div className="flex">
+                            <div className="flex items-center gap-2">
                                 {LEVELS.map((l) => (
                                     <label key={l} className="check">
                                         <input type="checkbox" checked={levels[l]} onChange={(e) => setLevels((p) => ({ ...p, [l]: e.target.checked }))} />
@@ -356,7 +356,7 @@ function EventsView() {
                         </div>
                     )}
                 </div>
-                <div className="grow" style={{ overflow: 'auto', minHeight: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div className="flex-1" style={{ overflow: 'auto', minHeight: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <DataTableHost columns={COLUMNS} options={options} onReady={(t) => { tableRef.current = t; }} />
                 </div>
                 <div className="filterbar">

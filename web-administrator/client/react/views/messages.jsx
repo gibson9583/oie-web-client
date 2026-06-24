@@ -864,7 +864,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     const expandedIds = new Set();
     let allExpanded = false;
 
-    const tableHost = h('div.grow', { style: { minHeight: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' } });
+    const tableHost = h('div.flex-1', { style: { minHeight: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' } });
     const selKey = () => selectedRow ? `${selectedRow.messageId}:${selectedMetaDataId}` : null;
 
     function openColumnMenu(e) {

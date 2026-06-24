@@ -284,7 +284,7 @@ function register(platform2) {
       /* @__PURE__ */ React.createElement("option", { value: "INTERVAL" }, "Interval"),
       /* @__PURE__ */ React.createElement("option", { value: "TIME" }, "Time"),
       /* @__PURE__ */ React.createElement("option", { value: "CRON" }, "Cron")
-    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, showFreq && /* @__PURE__ */ React.createElement("label", null, "Frequency"), showFreq && /* @__PURE__ */ React.createElement("div", { className: "flex" }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, showFreq && /* @__PURE__ */ React.createElement("label", null, "Frequency"), showFreq && /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",

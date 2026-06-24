@@ -292,7 +292,7 @@ function renderServerTab({ setTasks, markClean, setSave }) {
             h('div.panel-header', 'Email'),
             h('div.panel-body', h('div.form-grid',
                 h('div.field', h('label', 'SMTP Host'),
-                    h('div.flex', smtpHost,
+                    h('div.flex.items-center.gap-2', smtpHost,
                         h('button.btn.nowrap', { onClick: sendTestEmail }, icon('mail'), 'Send Test Email'))),
                 field('SMTP Port', smtpPort),
                 field('Send Timeout (ms)', smtpTimeout),
@@ -757,7 +757,7 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
             h('div.panel-header', 'Channels'),
             h('div.panel-body',
                 h('div.hint.mb', 'Channel selections will be applied to the currently selected tag.'),
-                h('div.flex.mb', filterInput,
+                h('div.flex.items-center.gap-2.mb', filterInput,
                     h('button.btn', { onClick: () => bulkSelect(true) }, 'Select All'),
                     h('button.btn', { onClick: () => bulkSelect(false) }, 'Deselect All')),
                 channelListHost)));
@@ -908,7 +908,7 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
                 });
             }
             clear(host);
-            host.appendChild(h('div.flex.mb', showValues.el));
+            host.appendChild(h('div.flex.items-center.gap-2.mb', showValues.el));
             host.appendChild(h('div.panel',
                 h('div.panel-header', 'Configuration Map',
                     h('div.panel-tools', h('button.btn', {

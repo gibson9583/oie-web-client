@@ -373,7 +373,7 @@ export function register(platform) {
                                 <div className="field">
                                     {showFreq && <label>Frequency</label>}
                                     {showFreq && (
-                                        <div className="flex">
+                                        <div className="flex items-center gap-2">
                                             <input type="number" min="0" step="any" style={{ maxWidth: '120px' }}
                                                 value={freqValue}
                                                 onInput={(e) => { setFreqValue(e.target.value); setScheduleDirty(true); }}

@@ -1108,7 +1108,7 @@ function DashboardView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush" style={{ display: 'flex', flexDirection: 'column' }}>
-                <div className="grow" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, 1fr)' }}
+                <div className="flex-1" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateRows: 'minmax(0, 1fr)' }}
                     onClick={onEmptyClick}
                     onContextMenu={(e) => { if (!e.target.closest('tr') && !e.target.closest('thead')) onEmptyContextMenu(e); }}>
                     <TreeTable

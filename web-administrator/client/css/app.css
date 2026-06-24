@@ -1179,9 +1179,11 @@ input.grid-name::placeholder { color: var(--text-faint); }
 /* display:block + negative margins cancel the td's 6px 12px padding so the
    highlight fills the whole cell (not just the text), matching Swing. */
 .cell-flag { display: block; margin: -6px -12px; padding: 6px 12px; background: #f0e68c; color: #1f2c38; font-weight: 600; }
-.flex { display: flex; align-items: center; gap: 8px; }
+/* `.flex` and `.grow` were retired in favour of Tailwind's `flex` / `flex-1`
+   utilities (their old align-items:center + gap:8px is now applied explicitly via
+   `items-center gap-2` where it was relied on). `.flex-wrap` is kept — it matches
+   Tailwind's utility of the same name and doesn't conflict. */
 .flex-wrap { flex-wrap: wrap; }
-.grow { flex: 1; }
 .right { margin-left: auto; }
 .mt { margin-top: 14px; }
 .mb { margin-bottom: 14px; }
