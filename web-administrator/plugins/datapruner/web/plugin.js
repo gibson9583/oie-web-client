@@ -63,7 +63,7 @@ function register(platform2) {
   }
   function YesNo({ value, onChange, disabled }) {
     const name = React.useMemo(() => "datapruner-rg-" + Math.random().toString(36).slice(2), []);
-    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline" }, /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "radio",

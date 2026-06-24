@@ -193,7 +193,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         case 'radio': {
             const name = `cform-radio-${++cformUid}`;
             control = (
-                <div className="radio-group inline" style={f.width ? { width: f.width } : undefined}>
+                <div className="radio-group inline-row" style={f.width ? { width: f.width } : undefined}>
                     {(f.options || []).map((opt, i) => {
                         const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
                         return (

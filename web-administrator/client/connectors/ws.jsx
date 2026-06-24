@@ -78,7 +78,7 @@ const wsListener = {
                         const isDefault = wsIsDefaultClassName(p);
                         const mk = (label, checked, onSelect) => h('label.check',
                             h('input', { type: 'radio', name, checked, onChange: onSelect }), label);
-                        return h('div.radio-group.inline',
+                        return h('div.radio-group.inline-row',
                             mk('Default service', isDefault, () => { p.className = WS_DEFAULT_CLASSNAME; onChange(); ctx.repaint(); }),
                             mk('Custom service', !isDefault, () => { if (wsIsDefaultClassName(p)) { p.className = ''; } onChange(); ctx.repaint(); }));
                     }

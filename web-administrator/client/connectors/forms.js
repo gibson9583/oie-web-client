@@ -224,7 +224,7 @@ function renderRow(grid, properties, f, onChange, repaint, displays) {
             break;
         case 'radio': {
             const name = `cform-radio-${++cformUid}`;
-            control = h('div.radio-group.inline',
+            control = h('div.radio-group.inline-row',
                 (f.options || []).map(opt => {
                     const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
                     return h('label.check',

@@ -100,7 +100,7 @@ function radioGroup(options, value, onChange) {
         onChange: () => onChange && onChange(o.value)
     }));
     return {
-        el: h('div.radio-group.inline', options.map((o, i) => h('label', inputs[i], o.label))),
+        el: h('div.radio-group.inline-row', options.map((o, i) => h('label', inputs[i], o.label))),
         get value() {
             const i = inputs.findIndex(x => x.checked);
             return i >= 0 ? options[i].value : value;
@@ -286,7 +286,7 @@ function renderServerTab({ setTasks, markClean, setSave }) {
                 h('div.field', h('label', 'Clear global map on redeploy'), clearMap.el),
                 field('Default Queue Buffer Size', queueBuffer),
                 h('div.field', h('label', 'Default Metadata Columns'),
-                    h('div.radio-group.inline', metaSource.el, metaType.el, metaVersion.el))))));
+                    h('div.radio-group.inline-row', metaSource.el, metaType.el, metaVersion.el))))));
 
         host.appendChild(h('div.panel',
             h('div.panel-header', 'Email'),

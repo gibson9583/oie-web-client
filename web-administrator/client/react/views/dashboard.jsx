@@ -955,7 +955,7 @@ function DashboardView() {
                 viewToggle,
                 h('span', { class: 'inline-flex items-center gap-[5px]' },
                     h('span', { class: 'text-text-faint text-[11px]' }, 'Tags:'), tagToggle)),
-            h('div.radio-group.inline', { class: 'ml-0' },
+            h('div.radio-group.inline-row', { class: 'ml-0' },
                 h('label', h('input', { type: 'radio', name: radioName, checked: true, onChange: () => { lifetimeRef.current = false; renderTable(); forceRender(); } }), 'Current Statistics'),
                 h('label', h('input', { type: 'radio', name: radioName, onChange: () => { lifetimeRef.current = true; renderTable(); forceRender(); } }), 'Lifetime Statistics')));
         filterbarHost.appendChild(filterbar);

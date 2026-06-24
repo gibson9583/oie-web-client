@@ -94,11 +94,11 @@ export function register(platform) {
 
     /* ---- small inline UI atoms (JSX equivalents of the ui.js builders) ---- */
 
-    // Yes/No inline radio group (matches yesNo()/.radio-group.inline markup).
+    // Yes/No inline radio group (matches yesNo()/.radio-group.inline-row markup).
     function YesNo({ value, onChange, disabled }) {
         const name = React.useMemo(() => 'datapruner-rg-' + Math.random().toString(36).slice(2), []);
         return (
-            <div className="radio-group inline">
+            <div className="radio-group inline-row">
                 <label>
                     <input type="radio" name={name} value="yes" checked={value === true}
                         disabled={disabled} onChange={() => onChange(true)} /> Yes

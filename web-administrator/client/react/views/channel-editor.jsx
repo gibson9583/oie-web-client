@@ -2274,7 +2274,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 type: 'radio', name, checked: checked === val,
                 onChange: () => onChange(val)
             }), label);
-            return h('div.radio-group.inline', radio(true, 'Yes'), radio(false, 'No'));
+            return h('div.radio-group.inline-row', radio(true, 'Yes'), radio(false, 'No'));
         }
 
         function renderDestinationSettings(dcp) {
@@ -2298,7 +2298,7 @@ function buildBody(params, query, onTasksChange, returning) {
             return h('div.panel',
                 h('div.panel-header', 'Destination Settings'),
                 h('div.panel-body', h('div.form-grid',
-                    field('Queue Messages', h('div.radio-group.inline',
+                    field('Queue Messages', h('div.radio-group.inline-row',
                         queueRadio('never', 'Never'),
                         queueRadio('failure', 'On Failure'),
                         queueRadio('always', 'Always'))),
@@ -2339,7 +2339,7 @@ function buildBody(params, query, onTasksChange, returning) {
                     inputs.push(input);
                     return h('label.check', input, label);
                 };
-                const el = h('div.radio-group.inline', radio(true, 'Yes'), radio(false, 'No'));
+                const el = h('div.radio-group.inline-row', radio(true, 'Yes'), radio(false, 'No'));
                 return { el, setEnabled(on) { inputs.forEach(i => { i.disabled = !on; }); } };
             }
 

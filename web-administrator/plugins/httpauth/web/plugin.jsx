@@ -227,7 +227,7 @@ export function register(platform) {
             onChange();
         };
         return (
-            <div className="radio-group inline">
+            <div className="radio-group inline-row">
                 {options.map(opt => (
                     <label className="check" key={opt.value}>
                         <input type="checkbox" checked={selected.includes(opt.value)}
@@ -267,7 +267,7 @@ export function register(platform) {
         return (
             <React.Fragment>
                 <CformRow label="Use Credentials">
-                    <div className="radio-group inline">
+                    <div className="radio-group inline-row">
                         <label className="check">
                             <input type="radio" name={name} checked={!useVar} onChange={() => setUse(false)} /> Table
                         </label>

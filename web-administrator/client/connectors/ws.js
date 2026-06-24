@@ -61,7 +61,7 @@ const wsListener = {
             label
           );
           return h(
-            "div.radio-group.inline",
+            "div.radio-group.inline-row",
             mk("Default service", isDefault, () => {
               p.className = WS_DEFAULT_CLASSNAME;
               onChange();

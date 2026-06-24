@@ -51,7 +51,7 @@ function fileExistsField() {
     refresh: true,
     render: (p, { onChange, repaint }) => {
       const current = fileExistsValue(p);
-      const group = h("div.radio-group.inline");
+      const group = h("div.radio-group.inline-row");
       const opts = [
         { value: "append", label: "Append" },
         { value: "overwrite", label: "Overwrite" },
@@ -201,7 +201,7 @@ function sftpAuthField() {
     render: (p, { onChange, repaint }) => {
       const sp = p.schemeProperties || {};
       const current = sftpAuthValue(sp);
-      const group = h("div.radio-group.inline");
+      const group = h("div.radio-group.inline-row");
       const opts = [
         { value: "password", label: "Password" },
         { value: "key", label: "Public Key" },
@@ -415,7 +415,7 @@ function afterProcessingBlock(properties, onChange) {
         const errDis = p.errorReadingAction !== "MOVE" && p.errorResponseAction !== "MOVE";
         const labelCell = (text, dim) => h("label.cform-label", { style: dim ? { opacity: "0.5" } : null }, `${text}:`);
         const radioCell = (key, opts) => {
-          const grp = h("div.radio-group.inline");
+          const grp = h("div.radio-group.inline-row");
           opts.forEach((o) => {
             const inp = h("input", { type: "radio", name: `apb-${key}`, checked: String(p[key]) === String(o.value) });
             inp.addEventListener("change", () => {
