@@ -208,7 +208,12 @@ code, pre, .mono { font-family: var(--font-mono); }
     grid-template-areas: "rail topbar" "rail content" "status status";
     height: 100vh;
     animation: shell-in 0.35s ease-out;
+    transition: grid-template-columns 0.22s ease;
 }
+
+/* Collapsed via the topbar hamburger: close the rail's column so the content
+   spans full width (the rail clips horizontally as it closes). */
+.shell.rail-collapsed { grid-template-columns: 0 1fr; }
 
 @keyframes shell-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -221,6 +226,7 @@ code, pre, .mono { font-family: var(--font-mono); }
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .rail-brand {

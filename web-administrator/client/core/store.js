@@ -47,3 +47,16 @@ export function initTheme() {
     document.documentElement.dataset.theme = theme;
     state.theme = theme;
 }
+
+/* ---- left nav (rail) collapse ---- */
+
+export function setRailCollapsed(collapsed) {
+    try { localStorage.setItem('oie-rail-collapsed', collapsed ? '1' : '0'); } catch { /* private mode */ }
+    setState('railCollapsed', !!collapsed);
+}
+
+export function initRailCollapsed() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem('oie-rail-collapsed') === '1'; } catch { /* private mode */ }
+    state.railCollapsed = collapsed;
+}

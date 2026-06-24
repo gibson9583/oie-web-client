@@ -182,8 +182,14 @@ function TopBar({ user, onLogout, serverInfo }) {
     const { theme, toggle } = useTheme();
     const tz = useTimezone();
     const tzLabel = tz.mode.charAt(0).toUpperCase() + tz.mode.slice(1);
+    const railCollapsed = useStoreKey('railCollapsed');
     return (
         <header className="topbar">
+            <button className="icon-btn rail-toggle"
+                title={railCollapsed ? 'Show navigation' : 'Hide navigation'}
+                onClick={() => store.setRailCollapsed(!railCollapsed)}>
+                <Icon name="menu" />
+            </button>
             <div className="view-title">{title}</div>
             <div className="topbar-spacer" />
             <ServerChip info={serverInfo} />
@@ -279,9 +285,10 @@ function AppShell({ user, onLogout }) {
     }, []);
 
     const railVersion = serverInfo && !serverInfo.error ? `engine v${serverInfo.version}` : '';
+    const railCollapsed = useStoreKey('railCollapsed');
 
     return (
-        <div className="shell">
+        <div className={'shell' + (railCollapsed ? ' rail-collapsed' : '')}>
             <aside className="rail">
                 <div className="rail-brand">
                     <img src="assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine"
@@ -338,6 +345,7 @@ export function App() {
 
     useEffect(() => {
         store.initTheme();
+        store.initRailCollapsed();
         initSplitters();
         let alive = true;
         (async () => {
