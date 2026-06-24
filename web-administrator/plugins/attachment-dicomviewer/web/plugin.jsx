@@ -99,15 +99,15 @@ export function register(platform) {
 
         if (state.status === 'loading') {
             return (
-                <div className="mt">
-                    <div className="faint text-[11px] mb-1">Loading DICOM…</div>
+                <div className="mt-[14px]">
+                    <div className="text-text-faint text-[11px] mb-1">Loading DICOM…</div>
                 </div>
             );
         }
         if (state.status === 'error') {
             return (
-                <div className="mt">
-                    <div className="faint">{`Could not load DICOM: ${state.message}`}</div>
+                <div className="mt-[14px]">
+                    <div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div>
                 </div>
             );
         }
@@ -127,17 +127,17 @@ export function register(platform) {
             () => new Blob([bytes], { type: 'application/dicom' }));
 
         return (
-            <div className="mt">
+            <div className="mt-[14px]">
                 <div className="font-semibold mb-1">
                     {`DICOM object — ${bytes.length.toLocaleString()} bytes`}
                 </div>
                 {rows.length
                     ? <table className="dt"><tbody>{rows}</tbody></table>
-                    : <div className="faint">No readable header tags (non explicit-VR transfer syntax).</div>}
-                <div className="mt">
+                    : <div className="text-text-faint">No readable header tags (non explicit-VR transfer syntax).</div>}
+                <div className="mt-[14px]">
                     <button className="btn" onClick={saveDicom}>Save DICOM</button>
                 </div>
-                <div className="faint text-[11px] mt-1.5">
+                <div className="text-text-faint text-[11px] mt-1.5">
                     Inline image rendering requires a DICOM toolkit; save the object to view it in a DICOM viewer.
                 </div>
             </div>

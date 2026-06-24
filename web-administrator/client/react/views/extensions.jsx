@@ -61,7 +61,7 @@ function metaColumns() {
             sortValue: (r) => r.enabled ? 0 : 1,
             render: (r) => r.enabled
                 ? h('span.status-cell', h('span.pip.ok'), 'Enabled')
-                : h('span.status-cell', h('span.pip'), h('span.muted', 'Disabled'))
+                : h('span.status-cell', h('span.pip'), h('span.text-text-dim', 'Disabled'))
         }
     ];
 }
@@ -72,7 +72,7 @@ function statusTag(p) {
     if (p.status === 'loaded') return h('span.tag.accent', 'Loaded');
     if (p.status === 'error') {
         return h('span', h('span.tag.red', 'Error'),
-            p.error ? h('span.err-text', { style: { marginLeft: '8px', fontSize: '11px' } }, String(p.error)) : null);
+            p.error ? h('span.text-err', { style: { marginLeft: '8px', fontSize: '11px' } }, String(p.error)) : null);
     }
     return h('span.tag', 'No client');
 }
@@ -175,7 +175,7 @@ function ExtensionsView() {
                 size: 'wide',
                 body: pairs.length
                     ? h('dl.kv', pairs.map(([k, v]) => [h('dt', k), h('dd', v)]))
-                    : h('div.faint', 'No properties'),
+                    : h('div.text-text-faint', 'No properties'),
                 buttons: [{ label: 'Close', primary: true }]
             });
         } catch (e) {
@@ -277,7 +277,7 @@ function ExtensionsView() {
             if (ch) clear(ch).appendChild(h('div.dt-empty',
                 h('div.empty-icon', icon('warning', 30)),
                 h('div', 'Failed to load'),
-                h('div.faint.mt', String(e.message || e))));
+                h('div.text-text-faint.mt-[14px]', String(e.message || e))));
             if (ph) clear(ph);
         }
     }

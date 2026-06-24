@@ -108,8 +108,8 @@ async function showAbout() {
     modal({
         title: 'About Open Integration Engine',
         body: h('div',
-            h('div.flex.items-center.gap-2.mb', h('img', { src: 'assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
-            entries.length ? kv : h('div.muted', `Web Administrator v${(store.getState('webadminConfig') || {}).version || ''} — engine v${store.getState('serverVersion') || '?'}`)),
+            h('div.flex.items-center.gap-2.mb-[14px]', h('img', { src: 'assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
+            entries.length ? kv : h('div.text-text-dim', `Web Administrator v${(store.getState('webadminConfig') || {}).version || ''} — engine v${store.getState('serverVersion') || '?'}`)),
         buttons: [{ label: 'Close', primary: true }]
     });
 }
@@ -222,7 +222,7 @@ function StatusBar({ user, serverInfo }) {
     } else if (serverInfo && serverInfo.error) {
         left = `Engine unreachable at ${config.engineUrl || '/api'}`;
     }
-    return <footer className="statusbar"><span>{left}</span><span className="right">{clock}</span></footer>;
+    return <footer className="statusbar"><span>{left}</span><span className="ml-auto">{clock}</span></footer>;
 }
 
 /* ---- restart banner ---- */

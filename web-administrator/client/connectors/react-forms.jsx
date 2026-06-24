@@ -549,7 +549,7 @@ export function TransmissionModePanel({ properties, onChange }) {
                             </div>
                         </div>
                         <label className="cform-label">Sample Frame:</label>
-                        <div className="cform-control"><span className="mono faint text-[12px]">{sample}</span></div>
+                        <div className="cform-control"><span className="mono text-text-faint text-[12px]">{sample}</span></div>
                     </div>
                 </div>
             </div>

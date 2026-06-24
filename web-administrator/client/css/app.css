@@ -1169,26 +1169,20 @@ input.grid-name::placeholder { color: var(--text-faint); }
 
 /* ---- Utility ------------------------------------------------------------------------------------------------------------------- */
 
-.muted { color: var(--text-dim); }
-.faint { color: var(--text-faint); }
-.accent-text { color: var(--accent); }
-.err-text { color: var(--err); }
-.warn-text { color: var(--warn); }
+/* The bespoke text-color helpers (.muted/.faint/.accent-text/.err-text/.warn-text)
+   were retired in favour of Tailwind utilities (text-text-dim / text-text-faint /
+   text-accent / text-err / text-warn). */
 /* Filled amber cell flag — draws the eye to a "needs attention" cell (out-of-sync
    Rev Δ, the one-time just-deployed cue) far more than colored text alone. */
 /* display:block + negative margins cancel the td's 6px 12px padding so the
    highlight fills the whole cell (not just the text), matching Swing. */
 .cell-flag { display: block; margin: -6px -12px; padding: 6px 12px; background: #f0e68c; color: #1f2c38; font-weight: 600; }
-/* `.flex` and `.grow` were retired in favour of Tailwind's `flex` / `flex-1`
-   utilities (their old align-items:center + gap:8px is now applied explicitly via
-   `items-center gap-2` where it was relied on). `.flex-wrap` is kept — it matches
-   Tailwind's utility of the same name and doesn't conflict. */
+/* Retired in favour of Tailwind utilities: .flex/.grow (-> flex / flex-1),
+   .right (-> ml-auto), .mt/.mb (-> mt-[14px]/mb-[14px]), .nowrap (-> whitespace-nowrap),
+   .ellipsis (-> truncate). `.flex-wrap` is kept — it matches Tailwind's utility of the
+   same name and doesn't conflict; `.hidden` keeps its !important (needed to beat the
+   `.ctx-tasks` display:contents override, which a plain utility can't). */
 .flex-wrap { flex-wrap: wrap; }
-.right { margin-left: auto; }
-.mt { margin-top: 14px; }
-.mb { margin-bottom: 14px; }
-.nowrap { white-space: nowrap; }
-.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hidden { display: none !important; }
 
 .spinner {
@@ -1351,7 +1345,6 @@ input.grid-name::placeholder { color: var(--text-faint); }
     white-space: nowrap;
     overflow: hidden;
 }
-.statusbar .right { margin-left: auto; }
 
 /* ---- Engine restart pending banner ------------------------------------------------- */
 

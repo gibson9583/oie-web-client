@@ -55,10 +55,10 @@ export function register(platform) {
             return <div className="loading-block"><div className="spinner" />Loading libraries…</div>;
         }
         if (state.phase === 'error') {
-            return <div className="faint">Library list unavailable</div>;
+            return <div className="text-text-faint">Library list unavailable</div>;
         }
         if (!state.libs.length) {
-            return <div className="faint">No libraries loaded</div>;
+            return <div className="text-text-faint">No libraries loaded</div>;
         }
         return (
             <ul className="m-0 pl-[18px] max-h-[180px] overflow-auto font-mono text-[12px]">

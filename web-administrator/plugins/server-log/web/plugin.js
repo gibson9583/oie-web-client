@@ -68,7 +68,7 @@ function showDetail(item) {
         "div",
         { class: "flex gap-[14px] items-center flex-wrap" },
         levelTagDom(item.level),
-        h("span.mono.faint", formatLogDate(item.date)),
+        h("span.mono.text-text-faint", formatLogDate(item.date)),
         h("span.mono", scopeLabel(item))
       ),
       h("div", { class: "font-semibold" }, "Message"),
@@ -95,7 +95,7 @@ function LogRow({ item }) {
       title: "Double-click for the full entry",
       onDoubleClick: () => showDetail(item)
     },
-    /* @__PURE__ */ React.createElement("td", { className: "max-w-0 truncate text-[12px]" }, /* @__PURE__ */ React.createElement("span", { className: "mono faint mr-2" }, "[", formatLogDate(item.date), "]"), /* @__PURE__ */ React.createElement(LevelTag, { level: item.level, style: { verticalAlign: "middle", marginRight: "8px" } }), rest)
+    /* @__PURE__ */ React.createElement("td", { className: "max-w-0 truncate text-[12px]" }, /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint mr-2" }, "[", formatLogDate(item.date), "]"), /* @__PURE__ */ React.createElement(LevelTag, { level: item.level, style: { verticalAlign: "middle", marginRight: "8px" } }), rest)
   );
 }
 function ServerLogTab() {
@@ -169,7 +169,7 @@ function ServerLogTab() {
     setItems((prev) => prev.length > n ? prev.slice(0, n) : prev);
   }
   const btnClass = "py-[1px] px-1.5 h-[22px] leading-none";
-  return /* @__PURE__ */ React.createElement("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden" }, /* @__PURE__ */ React.createElement("table", { className: "dt server-log w-full" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-center sticky top-0 z-[1] bg-bg1" }, "Log Information"))), /* @__PURE__ */ React.createElement("tbody", null, error && !items.length ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { className: "faint p-3" }, `Server Log unavailable: ${error}`)) : !items.length ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { className: "faint p-3" }, "No server log entries yet.")) : items.map((item) => /* @__PURE__ */ React.createElement(LogRow, { key: item.id, item }))))), /* @__PURE__ */ React.createElement("div", { className: "taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[12px] z-[2] bg-bg1 border-t border-[var(--bg3)]" }, /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Pause or resume the live log", onClick: togglePause }, /* @__PURE__ */ React.createElement("span", { className: "text-[13px] leading-none" }, paused ? "\u23F5" : "\u23F8")), /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Clear the displayed log", onClick: clearLog }, /* @__PURE__ */ React.createElement("span", { className: "text-err font-bold" }, "\u2715")), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), /* @__PURE__ */ React.createElement("label", { className: "faint mr-0.5" }, "Log Size:"), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden" }, /* @__PURE__ */ React.createElement("table", { className: "dt server-log w-full" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "text-center sticky top-0 z-[1] bg-bg1" }, "Log Information"))), /* @__PURE__ */ React.createElement("tbody", null, error && !items.length ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { className: "text-text-faint p-3" }, `Server Log unavailable: ${error}`)) : !items.length ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { className: "text-text-faint p-3" }, "No server log entries yet.")) : items.map((item) => /* @__PURE__ */ React.createElement(LogRow, { key: item.id, item }))))), /* @__PURE__ */ React.createElement("div", { className: "taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[12px] z-[2] bg-bg1 border-t border-[var(--bg3)]" }, /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Pause or resume the live log", onClick: togglePause }, /* @__PURE__ */ React.createElement("span", { className: "text-[13px] leading-none" }, paused ? "\u23F5" : "\u23F8")), /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Clear the displayed log", onClick: clearLog }, /* @__PURE__ */ React.createElement("span", { className: "text-err font-bold" }, "\u2715")), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), /* @__PURE__ */ React.createElement("label", { className: "text-text-faint mr-0.5" }, "Log Size:"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",

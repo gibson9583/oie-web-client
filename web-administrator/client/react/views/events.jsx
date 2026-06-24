@@ -133,7 +133,7 @@ function EventDetail({ event, username }) {
     if (!event) return <div className="dt-empty">Select an event to view its details.</div>;
     const kv = (label, value) => (
         <span className="flex items-center gap-[5px]">
-            <span className="faint text-[10.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
+            <span className="text-text-faint text-[10.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
             <span className="mono font-mono text-[12px]">{value}</span>
         </span>
     );
@@ -159,7 +159,7 @@ function EventDetail({ event, username }) {
                         </tr>
                     ))}</tbody>
                 </table>
-                : <div className="faint py-3 px-3.5">This event has no attributes.</div>}
+                : <div className="text-text-faint py-3 px-3.5">This event has no attributes.</div>}
         </>
     );
 }
@@ -262,7 +262,7 @@ function EventsView() {
         { key: 'level', label: 'Level', width: '120px', render: (e) => levelTag(e.level) },
         { key: 'eventTime', label: 'Date & Time', width: '160px', className: 'mono', sortValue: (e) => fmtDate(e.eventTime), render: (e) => fmtDate(e.eventTime) },
         { key: 'name', label: 'Name' },
-        { key: 'serverId', label: 'Server ID', width: '150px', className: 'mono faint', render: (e) => displayValue(e.serverId) },
+        { key: 'serverId', label: 'Server ID', width: '150px', className: 'mono text-text-faint', render: (e) => displayValue(e.serverId) },
         { key: 'userId', label: 'User', width: '110px', sortValue: (e) => username(e.userId), render: (e) => username(e.userId) },
         { key: 'outcome', label: 'Outcome', width: '110px', render: (e) => outcomeTag(e.outcome) },
         { key: 'ipAddress', label: 'IP Address', className: 'mono', width: '130px' },

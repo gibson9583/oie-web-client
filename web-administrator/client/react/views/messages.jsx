@@ -255,7 +255,7 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
             },
             title: 'Open a binary file into the editor above. The file will be encoded and displayed as Base64.'
         }, 'Open Binary File…'),
-        h('span.faint', { class: 'self-center' },
+        h('span.text-text-faint', { class: 'self-center' },
             'Binary files are Base64-encoded into the editor.'));
 
     /* ---- destinations table -------------------------------------------------- */
@@ -332,9 +332,9 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
             editor.el,
             fileButtons,
             destRows.length ? h('div',
-                h('div.mt', 'Send to the following destination(s):'),
+                h('div.mt-[14px]', 'Send to the following destination(s):'),
                 h('div', { class: 'mt-1.5' }, destTable)) : null,
-            h('div.mt', 'Include the following source map variables:'),
+            h('div.mt-[14px]', 'Include the following source map variables:'),
             h('div', { class: 'mt-1.5' }, mapTable),
             mapButtons),
         buttons: [
@@ -407,7 +407,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         type: 'button',
         class: 'justify-between min-w-[132px] font-normal',
         onClick: (e) => { e.stopPropagation(); toggleStatusMenu(); }
-    }, statusBtnLabel, h('span.faint', { class: 'ml-2' }, '▾'));
+    }, statusBtnLabel, h('span.text-text-faint', { class: 'ml-2' }, '▾'));
     function refreshStatusBtn() {
         statusBtnLabel.textContent = statusSelected.size === 0 ? 'Any'
             : statusSelected.size === 1 ? [...statusSelected][0]
@@ -450,7 +450,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     const connectorSel = select([{ value: '', label: 'Any' }], '');
     const pageSizeSel = select([20, 50, 100], limit);
 
-    const searchSummary = h('div.faint', { class: 'mt-1.5' }, 'Current Search: (none — press Search)');
+    const searchSummary = h('div.text-text-faint', { class: 'mt-1.5' }, 'Current Search: (none — press Search)');
 
     /* The Advanced… button carries a dot whenever any advanced criterion is
        staged, so an applied advanced filter is visible without reopening the
@@ -629,7 +629,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const connBlock = h('div',
             h('div', { class: 'flex justify-end gap-2.5 mb-1.5' },
                 h('a', { class: 'link-btn', onClick: () => setAllConn(true) }, 'Select All'),
-                h('span.faint', '|'),
+                h('span.text-text-faint', '|'),
                 h('a', { class: 'link-btn', onClick: () => setAllConn(false) }, 'Deselect All')),
             h('div.dt-wrap', { class: 'max-h-[150px] overflow-auto' },
                 h('table.dt',
@@ -647,7 +647,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         };
         const lbl = (text) => h('label', { class: 'w-[110px] flex-none text-right text-text-dim' }, text);
         const rangeRow = (label, a, b) => h('div', { class: 'flex items-center gap-2 mb-2' },
-            lbl(label), a, h('span.faint', '–'), b);
+            lbl(label), a, h('span.text-text-faint', '–'), b);
         const singleRow = (label, el) => h('div', { class: 'flex items-center gap-2 mb-2' },
             lbl(label), el);
 
@@ -734,7 +734,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     rangeRow('Send Attempts:', inputs.minSendAttempts, inputs.maxSendAttempts)),
                 h('div', { class: 'flex gap-6 mt-1' },
                     attachmentCheck.el, errorCheck.el),
-                h('div.mt', regexCheck.el),
+                h('div.mt-[14px]', regexCheck.el),
                 sectionLabel('Content Searches'),
                 cs.el(() => addContentSearchRow().text.focus()),
                 sectionLabel('Custom Metadata Searches'),
@@ -927,10 +927,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId);
                 m.__attachments = attachments;
                 clear(host);
-                if (!attachments.length) { host.appendChild(h('div.faint', 'No attachments')); return; }
+                if (!attachments.length) { host.appendChild(h('div.text-text-faint', 'No attachments')); return; }
                 for (const a of attachments) host.appendChild(attachmentBlock(m, a, modalRoots));
                 if (closed) sweep(); // closed mid-load — tear down the roots we just mounted
-            } catch (e) { clear(host).appendChild(h('div.faint', `Failed to load attachments: ${e.message}`)); }
+            } catch (e) { clear(host).appendChild(h('div.text-text-faint', `Failed to load attachments: ${e.message}`)); }
         })();
     }
 
@@ -1118,7 +1118,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         if (detailExpanded) detailHeight = detailPane.style.height || detailHeight;
         detailExpanded = false;
         detailPane.style.height = '36px';
-        clear(detailPane).appendChild(h('div.faint', {
+        clear(detailPane).appendChild(h('div.text-text-faint', {
             class: 'flex-none py-[9px] px-3.5'
         }, 'Select a message to view its contents.'));
     }
@@ -1157,7 +1157,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         if (!cms.length) {
             clear(detailPane);
             detailPane.appendChild(h('div.panel-header', { class: 'flex-none' }, `Message ${message.messageId}`));
-            detailPane.appendChild(h('div.faint', { class: 'py-3 px-3.5' }, 'No connector messages'));
+            detailPane.appendChild(h('div.text-text-faint', { class: 'py-3 px-3.5' }, 'No connector messages'));
             return;
         }
 
@@ -1235,7 +1235,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
         const banner = env
             ? h('div.content-banner', statusTag(env.status),
-                env.statusMessage ? h('span.faint', env.statusMessage) : null)
+                env.statusMessage ? h('span.text-text-faint', env.statusMessage) : null)
             : null;
 
         return h('div', { class: 'flex flex-col min-h-0 h-full' },
@@ -1276,7 +1276,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 label: 'Errors',
                 render: () => h('div', { class: 'p-2.5 overflow-auto' },
                     errorDefs.map(([label, content]) => [
-                        h('div.faint.mt', label),
+                        h('div.text-text-faint.mt-[14px]', label),
                         h('pre.content-pre', content)
                     ]))
             });
@@ -1335,7 +1335,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             }
         }
         if (!any) {
-            return h('div', { class: 'p-3.5' }, h('div.faint', 'There are no mappings present.'));
+            return h('div', { class: 'p-3.5' }, h('div.text-text-faint', 'There are no mappings present.'));
         }
         return h('div.dt-wrap', { class: 'overflow-auto' },
             h('table.dt',
@@ -1353,7 +1353,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     ?? await api.messages.attachments(channelId, message.messageId);
                 clear(host);
                 if (!attachments.length) {
-                    host.appendChild(h('div.faint', 'No attachments'));
+                    host.appendChild(h('div.text-text-faint', 'No attachments'));
                     return;
                 }
                 for (const attachment of attachments) {
@@ -1361,7 +1361,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 }
             } catch (e) {
                 clear(host);
-                host.appendChild(h('div.faint', `Failed to load attachments: ${e.message}`));
+                host.appendChild(h('div.text-text-faint', `Failed to load attachments: ${e.message}`));
             }
         })();
         return host;
@@ -1375,17 +1375,17 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             // Host the viewer's React component inside this imperative block. The
             // caller passes its own teardown sink (detail pane vs. modal) so the
             // two lifecycles never unmount each other's roots.
-            const body = h('div.mt');
+            const body = h('div.mt-[14px]');
             roots.push(mountReact(body, <PluginSlot def={viewer} ctx={{ attachment, channelId, messageId: message.messageId, platform }} />));
             return body;
         }
 
         const contentHost = h('div');
-        return h('div.mt',
+        return h('div.mt-[14px]',
             h('dl.kv',
                 h('dt', 'Id'), h('dd', displayValue(attachment.id)),
                 h('dt', 'Type'), h('dd', displayValue(attachment.type))),
-            h('div.mt', { class: 'flex gap-2' },
+            h('div.mt-[14px]', { class: 'flex gap-2' },
                 taskButton('Fetch Content', 'eye', async () => {
                     try {
                         const full = await api.messages.attachment(channelId, message.messageId, attachment.id);
@@ -1393,7 +1393,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                         if (typeof content === 'string') {
                             try { content = atob(content); } catch { /* keep base64 */ }
                         }
-                        clear(contentHost).appendChild(h('pre.content-pre.mt', displayValue(content)));
+                        clear(contentHost).appendChild(h('pre.content-pre.mt-[14px]', displayValue(content)));
                     } catch (e) {
                         toast(`Failed to fetch attachment: ${e.message}`, 'error');
                     }
@@ -1464,7 +1464,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const destTable = destRows.length ? h('div',
             h('div', { class: 'flex justify-end gap-2.5 my-1 mx-0' },
                 h('a', { class: 'link-btn', onClick: () => setAll(true) }, 'Select All'),
-                h('span.faint', '|'),
+                h('span.text-text-faint', '|'),
                 h('a', { class: 'link-btn', onClick: () => setAll(false) }, 'Deselect All')),
             h('div.dt-wrap', { class: 'max-h-[160px] overflow-auto' },
                 h('table.dt',
@@ -1481,7 +1481,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     class: 'text-err mb-2.5 text-[12.5px]'
                 }, h('b', 'Warning: '), `This will reprocess all ${fmtNumber(total)} result(s) for the current search criteria, including those not listed on the current page.`) : null,
                 overwrite.el,
-                destRows.length ? h('div.mt', 'Reprocess through the following destinations:') : null,
+                destRows.length ? h('div.mt-[14px]', 'Reprocess through the following destinations:') : null,
                 destTable),
             buttons: [
                 { label: 'Cancel' },
@@ -1741,7 +1741,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 onDragstart: (e) => { e.dataTransfer.setData('text/plain', token); e.dataTransfer.effectAllowed = 'copy'; }
             }, label)));
 
-        const status = h('div.faint', `${fmtNumber(total)} message(s) match the current search.`);
+        const status = h('div.text-text-faint', `${fmtNumber(total)} message(s) match the current search.`);
         const fill = h('div.progress-fill', { class: 'w-[0%]' });
         const barWrap = h('div.progress', { style: { display: 'none' } }, fill);
 
@@ -1771,7 +1771,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             lbl('Password Protect:'), cell(radioLabel(pwYes, 'Yes'), radioLabel(pwNo, 'No'), algoSel),
             lbl('Password:'), cell(pwInput),
             lbl('Export To:'), cell(radioLabel(toServer, 'Server'), radioLabel(toComputer, 'My Computer')),
-            lbl('Root Path:'), cell(rootInput, h('span.faint', { class: 'whitespace-nowrap' }, '/[timestamp].zip')),
+            lbl('Root Path:'), cell(rootInput, h('span.text-text-faint', { class: 'whitespace-nowrap' }, '/[timestamp].zip')),
             lbl('File Pattern:'), cell(patternInput));
 
         const dlg = modal({

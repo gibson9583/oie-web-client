@@ -43,7 +43,7 @@ function register(platform2) {
         h(
           "div",
           { class: "flex gap-[14px] flex-wrap text-[12px]" },
-          h("span.mono.faint", `Server ${row.serverId}`),
+          h("span.mono.text-text-faint", `Server ${row.serverId}`),
           h("span.mono", row.channel),
           h("span.mono", { class: "font-[650]" }, row.key)
         ),
@@ -108,9 +108,9 @@ function register(platform2) {
     const filtered = rows.filter((r) => r.channelId === null || !selectedIds.size || selectedIds.has(String(r.channelId)));
     let body;
     if (error) {
-      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "faint p-3" }, `Global maps unavailable: ${error}`));
+      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, `Global maps unavailable: ${error}`));
     } else if (!filtered.length) {
-      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "faint p-3" }, "No global map variables are set."));
+      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, "No global map variables are set."));
     } else {
       body = filtered.map((r, i) => {
         const value = r.value.replace(/\s+/g, " ").trim();
@@ -122,7 +122,7 @@ function register(platform2) {
             title: "Double-click for the full value",
             onDoubleClick: () => showValue(r)
           },
-          /* @__PURE__ */ React.createElement("td", { className: "mono faint" }, r.serverId),
+          /* @__PURE__ */ React.createElement("td", { className: "mono text-text-faint" }, r.serverId),
           /* @__PURE__ */ React.createElement("td", null, r.channel),
           /* @__PURE__ */ React.createElement("td", { className: "mono font-semibold" }, r.key),
           /* @__PURE__ */ React.createElement("td", { className: "mono text-[12px]" }, value)

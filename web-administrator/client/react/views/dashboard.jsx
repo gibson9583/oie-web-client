@@ -220,10 +220,10 @@ function DashboardView() {
         modal({
             title: 'Clear Statistics',
             body: h('div',
-                h('div.mb', `Clear the selected statistics for ${ids.length} channel(s)? This cannot be undone.`),
+                h('div.mb-[14px]', `Clear the selected statistics for ${ids.length} channel(s)? This cannot be undone.`),
                 h('div', { class: 'flex flex-col gap-1.5' },
                     received.el, filtered.el, sent.el, errored.el),
-                h('div.hint.mt', 'Queued statistics cannot be cleared.')),
+                h('div.hint.mt-[14px]', 'Queued statistics cannot be cleared.')),
             buttons: [
                 { label: 'Cancel' },
                 {
@@ -384,8 +384,8 @@ function DashboardView() {
        `td.num` (right-aligned, monospace tabular). */
     const statCellContent = (value, warnLevel) => {
         const text = fmtNumber(value);
-        if (value && warnLevel === 'err') return <span className="err-text">{text}</span>;
-        if (value && warnLevel === 'warn') return <span className="warn-text">{text}</span>;
+        if (value && warnLevel === 'err') return <span className="text-err">{text}</span>;
+        if (value && warnLevel === 'warn') return <span className="text-warn">{text}</span>;
         return text;
     };
 
@@ -394,9 +394,9 @@ function DashboardView() {
         sortValue: (st) => statsOf(st, lifetimeRef.current)[statKey] || 0,
         renderChannel: (st, stats) => statCellContent(stats[statKey], warnLevel),
         renderGroupAggregate: (totals) => statKey === 'ERROR'
-            ? (totals.ERROR ? <span className="err-text">{fmtNumber(totals.ERROR)}</span> : '0')
+            ? (totals.ERROR ? <span className="text-err">{fmtNumber(totals.ERROR)}</span> : '0')
             : fmtNumber(totals[statKey]),
-        renderConnector: (child, stats) => <span className="muted">{fmtNumber(stats[statKey])}</span>
+        renderConnector: (child, stats) => <span className="text-text-dim">{fmtNumber(stats[statKey])}</span>
     });
 
     /* Column-definition model: each column knows how to render its CELL CONTENT
@@ -427,21 +427,21 @@ function DashboardView() {
             sortValue: (st) => String(st.name || '').toLowerCase(),
             renderChannel: (st) => <NameCell st={st} />,
             renderGroupAggregate: (totals, ctx) => `[${ctx.group.name}]`,
-            renderConnector: (child) => <span className="muted">{String(child.name ?? '')}</span>
+            renderConnector: (child) => <span className="text-text-dim">{String(child.name ?? '')}</span>
         },
         {
             key: 'type', label: 'Type',
             sortValue: (st) => String(connectorTypesRef.current.get(st.channelId)?.get(0) || ''),
             renderChannel: (st) => connectorTypesRef.current.get(st.channelId)?.get(0) || '',
             renderGroupAggregate: () => '',
-            renderConnector: (child) => <span className="muted">{connectorTypesRef.current.get(child.channelId)?.get(Number(child.metaDataId)) || ''}</span>
+            renderConnector: (child) => <span className="text-text-dim">{connectorTypesRef.current.get(child.channelId)?.get(Number(child.metaDataId)) || ''}</span>
         },
         {
             key: 'port', label: 'Port', mono: true,
             sortValue: (st) => Number(sourcePortsRef.current.get(st.channelId)) || 0,
             renderChannel: (st) => sourcePortsRef.current.get(st.channelId) || '',
             renderGroupAggregate: () => '',
-            renderConnector: (child) => <span className="muted">{Number(child.metaDataId) === 0 ? (sourcePortsRef.current.get(child.channelId) || '') : ''}</span>
+            renderConnector: (child) => <span className="text-text-dim">{Number(child.metaDataId) === 0 ? (sourcePortsRef.current.get(child.channelId) || '') : ''}</span>
         },
         {
             key: 'rev', label: 'Rev Δ', align: 'right', mono: true,
@@ -1084,7 +1084,7 @@ function DashboardView() {
             <div className="dt-empty">
                 <div className="empty-icon"><Icon name="dashboard" size={30} /></div>
                 <div>No deployed channels</div>
-                <div className="faint mt">Deploy a channel from the Channels view to see it here.</div>
+                <div className="text-text-faint mt-[14px]">Deploy a channel from the Channels view to see it here.</div>
             </div>
         )
         : 'Contacting engine…';

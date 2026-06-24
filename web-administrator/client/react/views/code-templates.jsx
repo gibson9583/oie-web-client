@@ -316,7 +316,7 @@ function CodeTemplatesView() {
             clear(channelHost);
             const term = channelFilter.value.trim().toLowerCase();
             const rows = allRows.filter(r => !term || r.name.toLowerCase().includes(term));
-            if (!rows.length) { channelHost.appendChild(h('div.faint', allRows.length ? 'No matches' : 'No channels')); return; }
+            if (!rows.length) { channelHost.appendChild(h('div.text-text-faint', allRows.length ? 'No matches' : 'No channels')); return; }
             for (const row of rows) {
                 const cb = checkbox(row.name, channelChecked(row.id), { onChange: (e) => setChannel(row.id, e.target.checked) });
                 channelHost.appendChild(h('div', cb.el));
@@ -347,7 +347,7 @@ function CodeTemplatesView() {
             }).sort((a, b) => a.name.localeCompare(b.name));
             paintChannels();
         }).catch(e => {
-            clear(channelHost).appendChild(h('div.faint', `Channels unavailable: ${e.message}`));
+            clear(channelHost).appendChild(h('div.text-text-faint', `Channels unavailable: ${e.message}`));
         });
 
         return h('div', { class: 'flex flex-col flex-1 min-h-0' },

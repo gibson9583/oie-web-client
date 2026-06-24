@@ -45,20 +45,20 @@ export function register(platform) {
 
         if (state.status === 'loading') {
             return (
-                <div className="mt">
-                    <div className="faint text-[11px] mb-1">Loading image…</div>
+                <div className="mt-[14px]">
+                    <div className="text-text-faint text-[11px] mb-1">Loading image…</div>
                 </div>
             );
         }
         if (state.status === 'error') {
             return (
-                <div className="mt">
-                    <div className="faint">{`Could not load image: ${state.message}`}</div>
+                <div className="mt-[14px]">
+                    <div className="text-text-faint">{`Could not load image: ${state.message}`}</div>
                 </div>
             );
         }
         return (
-            <div className="mt">
+            <div className="mt-[14px]">
                 <img
                     src={state.src}
                     className="max-w-full max-h-[600px] border border-[var(--bg3)] rounded-[4px]"

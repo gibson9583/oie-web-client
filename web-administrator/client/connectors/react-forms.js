@@ -538,7 +538,7 @@ function TransmissionModePanel({ properties, onChange }) {
       onClick: openSettings
     },
     /* @__PURE__ */ React.createElement(Icon, { name: "settings" })
-  ))), /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Sample Frame:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("span", { className: "mono faint text-[12px]" }, sample))))));
+  ))), /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Sample Frame:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint text-[12px]" }, sample))))));
 }
 export {
   ConnectorForm,

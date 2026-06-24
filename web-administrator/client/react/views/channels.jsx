@@ -391,7 +391,7 @@ function ChannelsView() {
         if (isInvalid(channel)) return <span className="status-cell"><span className="pip err" />Invalid</span>;
         return isEnabled(channel)
             ? <span className="status-cell"><span className="pip ok" />Enabled</span>
-            : <span className="status-cell"><span className="pip" /><span className="muted">Disabled</span></span>;
+            : <span className="status-cell"><span className="pip" /><span className="text-text-dim">Disabled</span></span>;
     }
 
     // Channel name + tag chips. The depth indent + twisty are supplied by the
@@ -454,7 +454,7 @@ function ChannelsView() {
                         ? <span className="text-text-faint">{n.group.id === DEFAULT_GROUP_ID ? 'Default Group' : (n.group.id || '--')}</span>
                         : <span className="text-text-faint">{n.channel.id || ''}</span>;
                     case 'description': return isGroup
-                        ? <span className="muted">{descriptionCell(n.group.description)}</span>
+                        ? <span className="text-text-dim">{descriptionCell(n.group.description)}</span>
                         : descriptionCell(n.channel.description);
                     case 'revDelta': return isGroup ? '--' : revDeltaCell(n.channel);
                     case 'lastDeployed': return isGroup ? '--'
@@ -1157,7 +1157,7 @@ function ChannelsView() {
                             <>
                                 <div className="empty-icon"><Icon name="channels" size={30} /></div>
                                 <div>No channels</div>
-                                <div className="faint mt">Create a channel with &quot;New Channel&quot; in the Channels Tasks pane.</div>
+                                <div className="text-text-faint mt-[14px]">Create a channel with &quot;New Channel&quot; in the Channels Tasks pane.</div>
                             </>
                         )} />
                 </div>

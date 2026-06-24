@@ -590,7 +590,7 @@ function buildBody(params, query, onTasksChange, returning) {
                         onClick: () => { rows.splice(rows.indexOf(row), 1); commit(); renderRows(); }
                     }, 'Delete'));
                 }
-                if (!rows.length) grid.appendChild(h('div.faint', { class: 'col-[1/-1]' }, 'No entries'));
+                if (!rows.length) grid.appendChild(h('div.text-text-faint', { class: 'col-[1/-1]' }, 'No entries'));
                 host.appendChild(grid);
             }
             renderRows();
@@ -700,7 +700,7 @@ function buildBody(params, query, onTasksChange, returning) {
             if (ap.type === 'Entire Message') return { body: renderIdentityEditor() };
             if (ap.type && ap.type !== 'None' && ap.type !== 'DICOM' &&
                 !ATTACHMENT_TYPES.some(t => t.value === ap.type)) return { body: renderCustomEditor() };
-            return { body: h('div.faint', 'This attachment handler has no configurable properties.') };
+            return { body: h('div.text-text-faint', 'This attachment handler has no configurable properties.') };
         }
 
         // A plugin-contributed type already on the channel stays selectable.
@@ -793,7 +793,7 @@ function buildBody(params, query, onTasksChange, returning) {
         }
         // Only render the field once tags have loaded, so a tag added during the
         // load window can't be lost when ensureTags() populates tagState.
-        tagsHost.appendChild(h('span.faint', { class: 'text-[11.5px]' }, 'Loading tags…'));
+        tagsHost.appendChild(h('span.text-text-faint', { class: 'text-[11.5px]' }, 'Loading tags…'));
         ensureTags().then(renderTags);
 
         const nameInput = textInput(channel.name ?? '', {
@@ -940,8 +940,8 @@ function buildBody(params, query, onTasksChange, returning) {
                     tbody.appendChild(h('tr',
                         h('td', { class: 'w-[36px]' }, cb.el),
                         h('td', row.label),
-                        h('td.faint', dtLabelOf(row.draft.inboundDataType)),
-                        h('td.faint', dtLabelOf(row.draft.outboundDataType))));
+                        h('td.text-text-faint', dtLabelOf(row.draft.inboundDataType)),
+                        h('td.text-text-faint', dtLabelOf(row.draft.outboundDataType))));
                 } else {
                     const tr = h('tr', { class: row === selected ? 'selected cursor-pointer' : 'cursor-pointer' },
                         h('td', row.label),
@@ -1024,7 +1024,7 @@ function buildBody(params, query, onTasksChange, returning) {
                     }
                 }, 'Apply to Selected Connectors');
                 panelsHost.appendChild(h('div', { class: 'col-[1/-1] flex gap-4 items-center' },
-                    h('span.faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Apply:'),
+                    h('span.text-text-faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Apply:'),
                     sideToggle('inbound', 'Inbound'), sideToggle('outbound', 'Outbound'), applyBtn));
                 panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties', bulkRow));
                 panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties', bulkRow));
@@ -1041,7 +1041,7 @@ function buildBody(params, query, onTasksChange, returning) {
             return h('label.check', input, label);
         }
         const modeBar = h('div', { class: 'flex gap-[18px] items-center mb-2.5' },
-            h('span.faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Editing:'),
+            h('span.text-text-faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Editing:'),
             modeRadio('Single Edit', false),
             modeRadio('Bulk Edit', true));
 
@@ -1109,7 +1109,7 @@ function buildBody(params, query, onTasksChange, returning) {
             a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
             return a;
         };
-        const linkSep = () => h('span.faint', { class: 'text-[12px]' }, '|');
+        const linkSep = () => h('span.text-text-faint', { class: 'text-[12px]' }, '|');
         const treeBox = () => h('div', { class: 'flex-1 min-h-[110px] overflow-auto border border-line rounded-[4px] bg-bg1' });
         const SEL_BG = 'color-mix(in srgb, var(--accent) 16%, transparent)';
 
@@ -1128,7 +1128,7 @@ function buildBody(params, query, onTasksChange, returning) {
             setDesc('');
             function draw() {
                 clear(tree);
-                if (!libraries.length) { tree.appendChild(h('div.faint', { class: 'p-2.5' }, 'No code template libraries')); return; }
+                if (!libraries.length) { tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'No code template libraries')); return; }
                 for (const lib of libraries) {
                     const templates = api.asList(lib.codeTemplates, 'codeTemplate').filter(t => t && typeof t === 'object');
                     const open = libExpanded.has(lib.id);
@@ -1208,7 +1208,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 const isRoot = selectedKey === 'channel';
                 const enabled = isCtxKey(selectedKey);
                 resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-1 px-2 font-semibold text-[11px] border-b border-line sticky top-0 bg-bg1' }, h('span'), h('span', 'Name'), h('span', 'Type')));
-                if (!resources.length) { resTable.appendChild(h('div.faint', { class: 'p-2.5' }, 'No library resources')); return; }
+                if (!resources.length) { resTable.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'No library resources')); return; }
                 for (const r of resources) {
                     const box = h('input', { type: 'checkbox', disabled: !enabled });
                     if (isRoot) { const st = aggState(r.id); box.checked = st === true; box.indeterminate = st === null; }
@@ -1218,7 +1218,7 @@ function buildBody(params, query, onTasksChange, returning) {
                         if (isRoot) resourceTargets.forEach(t => apply(t.key)); else apply(selectedKey);
                         drawTable();
                     });
-                    resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-[3px] px-2 items-center' }, box, h('span.ellipsis', r.name), h('span.faint', { class: 'text-[11px]' }, r.type)));
+                    resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-[3px] px-2 items-center' }, box, h('span.truncate', r.name), h('span.text-text-faint', { class: 'text-[11px]' }, r.type)));
                 }
             }
             function drawTree() {
@@ -1271,7 +1271,7 @@ function buildBody(params, query, onTasksChange, returning) {
             const listEl = h('div', { class: 'max-h-[220px] overflow-auto border border-line rounded-[4px] py-1.5 px-2' });
             function drawList() {
                 clear(listEl);
-                if (!allowed.length) { listEl.appendChild(h('div.faint', 'No channels available')); return; }
+                if (!allowed.length) { listEl.appendChild(h('div.text-text-faint', 'No channels available')); return; }
                 for (const c of allowed) {
                     const box = h('input', { type: 'checkbox' }); box.checked = !!checks.get(c.id);
                     box.addEventListener('change', () => checks.set(c.id, box.checked));
@@ -1328,7 +1328,7 @@ function buildBody(params, query, onTasksChange, returning) {
             function draw() {
                 clear(tree);
                 const top = childrenOf(channel.id).slice().sort((a, b) => channelNameOf(a).localeCompare(channelNameOf(b)));
-                if (!top.length) tree.appendChild(h('div.faint', { class: 'p-2.5' }, 'None'));
+                if (!top.length) tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'None'));
                 else for (const id of top) drawNode(id, 0, '>');
                 if (!top.includes(selected)) selected = null;
                 removeBtn.disabled = !selected;
@@ -1563,7 +1563,7 @@ function buildBody(params, query, onTasksChange, returning) {
         function renderRows() {
             clear(host);
             if (!columns.length) {
-                host.appendChild(h('div.faint', 'No custom metadata columns'));
+                host.appendChild(h('div.text-text-faint', 'No custom metadata columns'));
                 return;
             }
             const grid = h('div', { class: 'grid grid-cols-[minmax(160px,1fr)_130px_minmax(160px,1fr)_70px] gap-y-1 gap-x-1.5 items-center max-w-[760px]' },
@@ -1663,7 +1663,7 @@ function buildBody(params, query, onTasksChange, returning) {
                     metaDays.disabled = false;
                     markDirty(); refreshPrune();
                 }, 'Prune metadata older than'),
-                metaDays, h('span.muted', 'days')));
+                metaDays, h('span.text-text-dim', 'days')));
 
         const contentGroup = h('div.radio-group',
             radio('prune-content', pruning.pruneContentDays == null, () => {
@@ -1679,7 +1679,7 @@ function buildBody(params, query, onTasksChange, returning) {
                     contentDays.disabled = false;
                     markDirty(); refreshPrune();
                 }, 'Prune content older than'),
-                contentDays, h('span.muted', 'days')));
+                contentDays, h('span.text-text-dim', 'days')));
 
         refreshPrune();
         return h('div.panel',
@@ -2021,7 +2021,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 sortValue: (d) => d.enabled !== false ? 0 : 1,
                 render: (d) => d.enabled !== false
                     ? h('span.status-cell', h('span.pip.ok'), 'Enabled')
-                    : h('span.status-cell', h('span.pip'), h('span.muted', 'Disabled'))
+                    : h('span.status-cell', h('span.pip'), h('span.text-text-dim', 'Disabled'))
             },
             {
                 key: 'name', label: 'Name',
@@ -2092,7 +2092,7 @@ function buildBody(params, query, onTasksChange, returning) {
             }
         });
 
-        const editorHost = h('div.mt', { class: 'flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]' });
+        const editorHost = h('div.mt-[14px]', { class: 'flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]' });
 
         const dests = () => oie.destinationsOf(channel);
         const selectedDest = () => dests().find(d => String(d.metaDataId) === String(selectedId));
@@ -2235,7 +2235,7 @@ function buildBody(params, query, onTasksChange, returning) {
             clear(editorHost);
             const dest = selectedDest();
             if (!dest) {
-                editorHost.appendChild(h('div.faint', { class: 'py-2.5 px-0.5' },
+                editorHost.appendChild(h('div.text-text-faint', { class: 'py-2.5 px-0.5' },
                     'Select a destination to edit its settings'));
                 return;
             }
@@ -2278,7 +2278,7 @@ function buildBody(params, query, onTasksChange, returning) {
         }
 
         function renderDestinationSettings(dcp) {
-            const advSummary = h('span.faint', advancedQueueSummary(dcp));
+            const advSummary = h('span.text-text-faint', advancedQueueSummary(dcp));
 
             // Classic Swing mapping (DestinationSettingsPanel.fillProperties):
             //   Never      → queueEnabled=false, sendFirst=false
@@ -2590,7 +2590,7 @@ function buildBody(params, query, onTasksChange, returning) {
         const applyScriptScope = () => setActiveScope(channel.id, [current.context]);
         applyScriptScope();
 
-        const hint = h('span.faint', current.hint);
+        const hint = h('span.text-text-faint', current.hint);
         const editor = createCodeEditor({
             value: channel[current.key] ?? '',
             language: 'javascript',

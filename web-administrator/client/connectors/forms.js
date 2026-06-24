@@ -635,12 +635,12 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     }, `<${abbr}>`)));
 
     const hexRow = (label, input, abbrevEl) => h('div.flex', { class: 'items-center gap-1.5 mb-2' },
-        h('label', { class: 'min-w-[160px]' }, label), h('span.mono.faint', '0x'), input, abbrevEl || null);
+        h('label', { class: 'min-w-[160px]' }, label), h('span.mono.text-text-faint', '0x'), input, abbrevEl || null);
 
     const leftRows = [
         h('div', { class: 'font-[650] mb-2' }, mllp ? 'MLLP Settings' : 'Basic Settings'),
-        hexRow('Start of Message Bytes:', startInput, h('span.mono.faint', abbrevFor(tm.startOfMessageBytes))),
-        hexRow('End of Message Bytes:', endInput, h('span.mono.faint', abbrevFor(tm.endOfMessageBytes)))
+        hexRow('Start of Message Bytes:', startInput, h('span.mono.text-text-faint', abbrevFor(tm.startOfMessageBytes))),
+        hexRow('End of Message Bytes:', endInput, h('span.mono.text-text-faint', abbrevFor(tm.endOfMessageBytes)))
     ];
 
     // MLLP adds Use MLLPv2 + Commit ACK/NACK bytes + Max Retry Count, with the
@@ -651,8 +651,8 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
         const ackInput = hexInput(tm.ackBytes != null ? tm.ackBytes : '06');
         const nackInput = hexInput(tm.nackBytes != null ? tm.nackBytes : '15');
         const retryInput = textInput(String(tm.maxRetries != null ? tm.maxRetries : '2'), { class: 'w-[80px]' });
-        const ackAbbrev = h('span.mono.faint', abbrevFor(ackInput.value));
-        const nackAbbrev = h('span.mono.faint', abbrevFor(nackInput.value));
+        const ackAbbrev = h('span.mono.text-text-faint', abbrevFor(ackInput.value));
+        const nackAbbrev = h('span.mono.text-text-faint', abbrevFor(nackInput.value));
         ackInput.addEventListener('focus', () => { lastFocused = ackInput; });
         nackInput.addEventListener('focus', () => { lastFocused = nackInput; });
         ackInput.oninput = () => { ackAbbrev.textContent = abbrevFor(ackInput.value); };

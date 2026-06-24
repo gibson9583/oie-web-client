@@ -126,7 +126,7 @@ function loadFailed(host, e) {
     host.appendChild(h('div.dt-empty',
         h('div.empty-icon', icon('warning', 30)),
         h('div', 'Failed to load'),
-        h('div.faint.mt', String(e.message || e))));
+        h('div.text-text-faint.mt-[14px]', String(e.message || e))));
 }
 
 function tabHost() {
@@ -293,7 +293,7 @@ function renderServerTab({ setTasks, markClean, setSave }) {
             h('div.panel-body', h('div.form-grid',
                 h('div.field', h('label', 'SMTP Host'),
                     h('div.flex.items-center.gap-2', smtpHost,
-                        h('button.btn.nowrap', { onClick: sendTestEmail }, icon('mail'), 'Send Test Email'))),
+                        h('button.btn.whitespace-nowrap', { onClick: sendTestEmail }, icon('mail'), 'Send Test Email'))),
                 field('SMTP Port', smtpPort),
                 field('Send Timeout (ms)', smtpTimeout),
                 field('Default From Address', smtpFrom),
@@ -436,7 +436,7 @@ function renderServerTab({ setTasks, markClean, setSave }) {
         modal({
             title: 'Restore Server Configuration',
             body: h('div',
-                h('div.mb',
+                h('div.mb-[14px]',
                     `Import configuration from ${source}? WARNING: This will overwrite all current channels, ` +
                     'alerts, server properties, and plugin properties.'),
                 deployCheck.el,
@@ -699,13 +699,13 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
     function renderChannelList() {
         clear(channelListHost);
         if (!currentTag) {
-            channelListHost.appendChild(h('div.faint', 'Select a tag above to edit its channel assignments'));
+            channelListHost.appendChild(h('div.text-text-faint', 'Select a tag above to edit its channel assignments'));
             return;
         }
         const ids = new Set(tagChannelIds(currentTag));
         const visible = visibleChannels();
         if (!visible.length) {
-            channelListHost.appendChild(h('div.faint', 'No channels match the filter'));
+            channelListHost.appendChild(h('div.text-text-faint', 'No channels match the filter'));
             return;
         }
         for (const ch of visible) {
@@ -753,8 +753,8 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
         host.appendChild(h('div.panel',
             h('div.panel-header', 'Channels'),
             h('div.panel-body',
-                h('div.hint.mb', 'Channel selections will be applied to the currently selected tag.'),
-                h('div.flex.items-center.gap-2.mb', filterInput,
+                h('div.hint.mb-[14px]', 'Channel selections will be applied to the currently selected tag.'),
+                h('div.flex.items-center.gap-2.mb-[14px]', filterInput,
                     h('button.btn', { onClick: () => bulkSelect(true) }, 'Select All'),
                     h('button.btn', { onClick: () => bulkSelect(false) }, 'Deselect All')),
                 channelListHost)));
@@ -875,7 +875,7 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
                 }, icon('trash')))));
         });
         if (!rows.length) {
-            tbody.appendChild(h('tr', h('td', { colspan: 4 }, h('span.faint', 'No configuration map entries'))));
+            tbody.appendChild(h('tr', h('td', { colspan: 4 }, h('span.text-text-faint', 'No configuration map entries'))));
         }
         tableHost.appendChild(h('table.dt',
             h('thead', h('tr', h('th', 'Key'), h('th', 'Value'), h('th', 'Comment'), h('th', { class: 'w-10' }, ''))),
@@ -905,7 +905,7 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
                 });
             }
             clear(host);
-            host.appendChild(h('div.flex.items-center.gap-2.mb', showValues.el));
+            host.appendChild(h('div.flex.items-center.gap-2.mb-[14px]', showValues.el));
             host.appendChild(h('div.panel',
                 h('div.panel-header', 'Configuration Map',
                     h('div.panel-tools', h('button.btn', {
@@ -1246,7 +1246,7 @@ function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
         if (detailRoot) { detailRoot(); detailRoot = null; }
         clear(detailHost);
         if (!entry) {
-            detailHost.appendChild(h('div.faint', 'Select a resource above to edit its settings'));
+            detailHost.appendChild(h('div.text-text-faint', 'Select a resource above to edit its settings'));
             return;
         }
         const types = platform.resourceTypes();
@@ -1257,7 +1257,7 @@ function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
                 refreshTable: () => table.setRows(entries)
             }} />);
         } else {
-            detailHost.appendChild(h('div.faint', `No editor registered for resource type "${entry.obj.type || '?'}"`));
+            detailHost.appendChild(h('div.text-text-faint', `No editor registered for resource type "${entry.obj.type || '?'}"`));
         }
     }
 

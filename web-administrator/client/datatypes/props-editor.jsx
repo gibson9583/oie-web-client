@@ -151,7 +151,7 @@ export function DataTypePropertiesEditor({ typeName, props, version, direction =
     if (!def) return <RawProperties typeName={typeName} props={props} onReplace={onReplace || (() => {})} />;
 
     const specs = groupSpecsFor(def, direction, connectorType);
-    if (!specs.length) return <div className="faint py-2 px-0">This data type has no properties.</div>;
+    if (!specs.length) return <div className="text-text-faint py-2 px-0">This data type has no properties.</div>;
 
     const defaults = def.defaults(version);
     const byKey = new Map(def.groups.map((g) => [g.key, g]));

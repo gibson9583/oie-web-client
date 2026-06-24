@@ -183,7 +183,7 @@ async function openDriversModal(onSaved) {
     }
     function renderRows() {
         clear(tbody);
-        if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'faint p-3' }, 'No drivers — click Add.')));
+        if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'text-text-faint p-3' }, 'No drivers — click Add.')));
         else model.forEach((d) => tbody.appendChild(rowEl(d)));
     }
     renderRows();

@@ -103,7 +103,7 @@ function showDetail(item) {
         body: h('div', { class: 'flex flex-col gap-2 min-w-[620px]' },
             h('div', { class: 'flex gap-[14px] items-center flex-wrap' },
                 levelTagDom(item.level),
-                h('span.mono.faint', formatLogDate(item.date)),
+                h('span.mono.text-text-faint', formatLogDate(item.date)),
                 h('span.mono', scopeLabel(item))),
             h('div', { class: 'font-semibold' }, 'Message'),
             h('pre', { class: preClass + ' max-h-[30vh]' }, String(item.message ?? '')),
@@ -126,7 +126,7 @@ function LogRow({ item }) {
         <tr className="cursor-pointer" title="Double-click for the full entry"
             onDoubleClick={() => showDetail(item)}>
             <td className="max-w-0 truncate text-[12px]">
-                <span className="mono faint mr-2">[{formatLogDate(item.date)}]</span>
+                <span className="mono text-text-faint mr-2">[{formatLogDate(item.date)}]</span>
                 <LevelTag level={item.level} style={{ verticalAlign: 'middle', marginRight: '8px' }} />
                 {rest}
             </td>
@@ -228,9 +228,9 @@ function ServerLogTab() {
                     </thead>
                     <tbody>
                         {error && !items.length ? (
-                            <tr><td className="faint p-3">{`Server Log unavailable: ${error}`}</td></tr>
+                            <tr><td className="text-text-faint p-3">{`Server Log unavailable: ${error}`}</td></tr>
                         ) : !items.length ? (
-                            <tr><td className="faint p-3">No server log entries yet.</td></tr>
+                            <tr><td className="text-text-faint p-3">No server log entries yet.</td></tr>
                         ) : (
                             items.map(item => <LogRow key={item.id} item={item} />)
                         )}
@@ -246,7 +246,7 @@ function ServerLogTab() {
                     <span className="text-err font-bold">✕</span>
                 </button>
                 <span className="flex-1" />
-                <label className="faint mr-0.5">Log Size:</label>
+                <label className="text-text-faint mr-0.5">Log Size:</label>
                 <input type="number" min="1" max="99999" value={sizeText}
                     className="w-[60px] h-[22px] py-0 px-1 text-[12px]"
                     onChange={(e) => setSizeText(e.target.value)}

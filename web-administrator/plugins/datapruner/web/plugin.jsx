@@ -324,7 +324,7 @@ export function register(platform) {
                         </svg>
                     </div>
                     <div>Failed to load</div>
-                    <div className="faint mt">{errorMessage}</div>
+                    <div className="text-text-faint mt-[14px]">{errorMessage}</div>
                 </div>
             );
         }
@@ -339,7 +339,7 @@ export function register(platform) {
                     <div className="panel-header">Status</div>
                     <div className="panel-body">
                         {statusState.phase === 'loading' && <Loading text="Loading status…" />}
-                        {statusState.phase === 'error' && <div className="faint">{statusState.message}</div>}
+                        {statusState.phase === 'error' && <div className="text-text-faint">{statusState.message}</div>}
                         {statusState.phase === 'ready' && (
                             statusState.pairs.length
                                 ? <dl className="kv">{statusState.pairs.map(([k, v], i) => (
@@ -348,7 +348,7 @@ export function register(platform) {
                                         <dd>{v}</dd>
                                     </React.Fragment>
                                 ))}</dl>
-                                : <div className="faint">No status reported</div>
+                                : <div className="text-text-faint">No status reported</div>
                         )}
                     </div>
                 </div>

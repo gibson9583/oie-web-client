@@ -564,7 +564,7 @@ function buildBody(params, kindName, onTasksChange) {
         const items = h('div.step-list');
         const m = modal({
             title: `Add ${kind.noun}`,
-            body: entries.length ? items : h('div.faint', 'No element types registered'),
+            body: entries.length ? items : h('div.text-text-faint', 'No element types registered'),
             buttons: [{ label: 'Cancel' }]
         });
         for (const [type, def] of entries) {
@@ -926,7 +926,7 @@ function buildBody(params, kindName, onTasksChange) {
                 onDragend: () => { draggingAccessor = null; }
             },
                 h('div', { class: 'flex-1 min-w-0' },
-                    h('div.ellipsis', name || '(unnamed)'),
+                    h('div.truncate', name || '(unnamed)'),
                     subtitle ? h('div.step-type', subtitle) : null));
         }
 
@@ -938,7 +938,7 @@ function buildBody(params, kindName, onTasksChange) {
                 (!category || en.category === category) &&
                 (!query || `${en.name} ${cleanDesc(en.description)}`.toLowerCase().includes(query)));
             if (!visible.length) {
-                listEl.appendChild(h('div.faint', { class: 'p-2.5 text-center' }, 'No matches'));
+                listEl.appendChild(h('div.text-text-faint', { class: 'p-2.5 text-center' }, 'No matches'));
                 return;
             }
             for (const en of visible) {
@@ -991,7 +991,7 @@ function buildBody(params, kindName, onTasksChange) {
             class: 'border border-line rounded overflow-auto max-h-[140px]'
         });
         if (!availableVars.length) {
-            varsEl.appendChild(h('div.faint', { class: 'py-2 px-2.5 text-[11px]' },
+            varsEl.appendChild(h('div.text-text-faint', { class: 'py-2 px-2.5 text-[11px]' },
                 '(no variables defined by steps yet)'));
         } else {
             for (const v of availableVars) varsEl.appendChild(makeRow(v, null, v));
@@ -1475,7 +1475,7 @@ function buildBody(params, kindName, onTasksChange) {
             twisty,
             h('span.mono', { class: 'text-[11.5px] text-accent' }, node.label),
             node.value !== null && node.value !== ''
-                ? h('span.faint.ellipsis', { class: 'text-[11.5px] min-w-0' }, node.value)
+                ? h('span.text-text-faint.truncate', { class: 'text-[11.5px] min-w-0' }, node.value)
                 : null);
         wrap.appendChild(row);
         if (hasKids) {
@@ -1507,16 +1507,16 @@ function buildBody(params, kindName, onTasksChange) {
         const dataType = target[`${side}DataType`] || 'RAW';
         const props = target[`${side}Properties`] || {};
         const serProps = props.serializationProperties || {};
-        const sourceBadge = h('span.faint', { class: 'text-[10px] ml-1.5' });
+        const sourceBadge = h('span.text-text-faint', { class: 'text-[10px] ml-1.5' });
 
         const dtLabel = () => (dataTypeDef(dataType) || { label: dataType }).label;
 
         if (template == null || String(template).trim() === '') {
-            body.appendChild(h('div.faint', { class: 'py-1 px-3 text-[12px]' },
+            body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' },
                 '(no template — set one on the Message Templates tab)'));
         } else {
             const tmpl = String(template);
-            body.appendChild(h('div.faint', { class: 'py-1 px-3 text-[12px]' }, 'Parsing…'));
+            body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' }, 'Parsing…'));
             // Prefer the engine serializer bridge (byte-exact, all data types,
             // strict + non-strict); fall back to built-in JS parsing offline.
             (async () => {
@@ -1534,7 +1534,7 @@ function buildBody(params, kindName, onTasksChange) {
                         sourceBadge.textContent = ser === null ? '· approximate (offline)' : '';
                     } catch {
                         clear(body);
-                        body.appendChild(h('div.faint', { class: 'py-1 px-3 text-[12px]' },
+                        body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' },
                             `Template could not be parsed as ${dtLabel()}`));
                         return;
                     }
@@ -1559,7 +1559,7 @@ function buildBody(params, kindName, onTasksChange) {
         return h('div', { class: 'py-2 px-1 overflow-auto' },
             buildTreeSection('Inbound Message Template', 'inbound', 'msg', true),
             buildTreeSection('Outbound Message Template', 'outbound', 'tmp', false),
-            h('div.faint', { class: 'py-2 px-3 text-[11px]' },
+            h('div.text-text-faint', { class: 'py-2 px-3 text-[11px]' },
                 'Drag a node into a script editor or template field to insert its accessor at the drop point.'));
     }
 

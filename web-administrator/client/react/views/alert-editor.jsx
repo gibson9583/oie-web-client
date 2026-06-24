@@ -482,7 +482,7 @@ export function AlertEditor({ params, query = {} }) {
         function renderActions() {
             clear(actionsHost);
             if (!actionRows.length) {
-                actionsHost.appendChild(h('div.muted', { class: 'py-1.5 px-0' }, 'No actions defined'));
+                actionsHost.appendChild(h('div.text-text-dim', { class: 'py-1.5 px-0' }, 'No actions defined'));
                 return;
             }
             const tbody = h('tbody');
@@ -510,7 +510,7 @@ export function AlertEditor({ params, query = {} }) {
 
         const actionsBody = h('div.panel-body', { class: 'flex-1 flex flex-col min-h-0' },
             h('div', { class: 'flex-1 overflow-auto min-h-0' }, actionsHost),
-            h('div.mt', taskButton('Add', 'plus', addAction)));
+            h('div.mt-[14px]', taskButton('Add', 'plus', addAction)));
 
         /* ---- bottom column 2: subject + template ---- */
 
@@ -844,7 +844,7 @@ export function AlertEditor({ params, query = {} }) {
                                                         columnsKey="alert-channels"
                                                         pinnedKeys={['name']}
                                                         emptyText="No matching channels" />
-                                                    : <div className="muted py-1.5 px-2.5">
+                                                    : <div className="text-text-dim py-1.5 px-2.5">
                                                         {treeData().length
                                                             ? `${state.channelNodes.length} channel${state.channelNodes.length === 1 ? '' : 's'} — click to configure connector enablement`
                                                             : 'No channels'}

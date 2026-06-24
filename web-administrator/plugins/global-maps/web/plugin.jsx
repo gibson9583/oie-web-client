@@ -67,7 +67,7 @@ export function register(platform) {
             size: 'wide',
             body: h('div', { class: 'flex flex-col gap-2 min-w-[620px]' },
                 h('div', { class: 'flex gap-[14px] flex-wrap text-[12px]' },
-                    h('span.mono.faint', `Server ${row.serverId}`),
+                    h('span.mono.text-text-faint', `Server ${row.serverId}`),
                     h('span.mono', row.channel),
                     h('span.mono', { class: 'font-[650]' }, row.key)),
                 h('pre', {
@@ -144,13 +144,13 @@ export function register(platform) {
         let body;
         if (error) {
             body = (
-                <tr><td colSpan={4} className="faint p-3">
+                <tr><td colSpan={4} className="text-text-faint p-3">
                     {`Global maps unavailable: ${error}`}
                 </td></tr>
             );
         } else if (!filtered.length) {
             body = (
-                <tr><td colSpan={4} className="faint p-3">
+                <tr><td colSpan={4} className="text-text-faint p-3">
                     No global map variables are set.
                 </td></tr>
             );
@@ -161,7 +161,7 @@ export function register(platform) {
                     <tr key={`${r.serverId}|${r.channelId}|${r.key}|${i}`}
                         className="cursor-pointer" title="Double-click for the full value"
                         onDoubleClick={() => showValue(r)}>
-                        <td className="mono faint">{r.serverId}</td>
+                        <td className="mono text-text-faint">{r.serverId}</td>
                         <td>{r.channel}</td>
                         <td className="mono font-semibold">{r.key}</td>
                         <td className="mono text-[12px]">{value}</td>
