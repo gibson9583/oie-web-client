@@ -208,27 +208,27 @@ function ChannelEditorView({ params, query }) {
     return (
         <div className="view flex flex-col flex-1 min-h-0">
             <ViewTasks>
-                <RailPane title="Channel Tasks" paneKey="tasks:Channel Tasks">
+                <RailPane title="Channel Tasks" paneKey="tasks:Channel Tasks" group="channelEdit">
                     <div className="taskbar" data-pane-title="Channel Tasks">
-                        {t && ts.dirty && <TaskButton label="Save Changes" icon="save" primary onClick={t.save} />}
-                        {t && <TaskButton label="Deploy Channel" icon="deploy" onClick={t.deploy} />}
-                        {t && <TaskButton label="Debug Channel" icon="deploy" onClick={t.openDebugDeployModal} />}
-                        {t && <TaskButton label="Export Channel" icon="export" onClick={t.exportChannel} />}
+                        {t && ts.dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveChannel" onClick={t.save} />}
+                        {t && <TaskButton label="Deploy Channel" icon="deploy" task="doDeployFromChannelView" onClick={t.deploy} />}
+                        {t && <TaskButton label="Debug Channel" icon="deploy" task="doDebugDeployFromChannelView" onClick={t.openDebugDeployModal} />}
+                        {t && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={t.exportChannel} />}
                         {t && <TaskButton label="Back to Channels" icon="channels" onClick={t.backToChannels} />}
 
                         {/* Contextual connector tasks (Swing ctx-tasks), gated by active tab. */}
                         {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Filter', t.sourceStepCount('filter'))} icon="filter" onClick={() => t.gotoElements('filter', 0)} />}
                         {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Transformer', t.sourceStepCount('transformer'))} icon="transform" onClick={() => t.gotoElements('transformer', 0)} />}
 
-                        {t && ts.tab === 'Destinations' && <TaskButton label="New Destination" icon="plus" onClick={t.destNew} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Delete Destination" icon="trash" danger onClick={t.destDelete} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Up" icon="arrowUp" onClick={() => t.destMove(-1)} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Down" icon="arrowDown" onClick={() => t.destMove(1)} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label="New Destination" icon="plus" task="doNewDestination" onClick={t.destNew} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label="Delete Destination" icon="trash" danger task="doDeleteDestination" onClick={t.destDelete} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Up" icon="arrowUp" task="doMoveDestinationUp" onClick={() => t.destMove(-1)} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Down" icon="arrowDown" task="doMoveDestinationDown" onClick={() => t.destMove(1)} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Filter', t.destStepCount('filter'))} icon="filter" onClick={() => t.destEdit('filter')} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Transformer', t.destStepCount('transformer'))} icon="transform" onClick={() => t.destEdit('transformer')} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Response', t.destStepCount('responseTransformer'))} icon="transform" onClick={() => t.destEdit('response')} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Import Connector" icon="import" onClick={t.destImport} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Export Connector" icon="export" onClick={t.destExport} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label="Import Connector" icon="import" task="doImportConnector" onClick={t.destImport} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label="Export Connector" icon="export" task="doExportConnector" onClick={t.destExport} />}
                     </div>
                 </RailPane>
             </ViewTasks>
@@ -2064,30 +2064,30 @@ function buildBody(params, query, onTasksChange, returning) {
                 onTasksChange();
                 // Full Swing channelEditPopupMenu set, plus Edit Filter/Transformer/Response.
                 contextMenu(e.clientX, e.clientY, [
-                    { label: 'Save Changes', icon: 'save', onClick: () => save() },
-                    { label: 'Validate Connector', icon: 'check', onClick: () => validateConnector() },
+                    { label: 'Save Changes', icon: 'save', task: 'doSaveChannel', group: 'channelEdit', onClick: () => save() },
+                    { label: 'Validate Connector', icon: 'check', task: 'doValidate', group: 'channelEdit', onClick: () => validateConnector() },
                     '-',
-                    { label: 'New Destination', icon: 'plus', onClick: () => destTasks.newDestination() },
-                    { label: 'Delete Destination', icon: 'trash', danger: true, onClick: () => destTasks.deleteDestination() },
-                    { label: 'Clone Destination', icon: 'copy', onClick: () => destTasks.cloneDestination() },
+                    { label: 'New Destination', icon: 'plus', task: 'doNewDestination', group: 'channelEdit', onClick: () => destTasks.newDestination() },
+                    { label: 'Delete Destination', icon: 'trash', danger: true, task: 'doDeleteDestination', group: 'channelEdit', onClick: () => destTasks.deleteDestination() },
+                    { label: 'Clone Destination', icon: 'copy', task: 'doCloneDestination', group: 'channelEdit', onClick: () => destTasks.cloneDestination() },
                     d.enabled !== false
-                        ? { label: 'Disable Destination', icon: 'x', onClick: () => destTasks.setEnabled(false) }
-                        : { label: 'Enable Destination', icon: 'check', onClick: () => destTasks.setEnabled(true) },
+                        ? { label: 'Disable Destination', icon: 'x', task: 'doDisableDestination', group: 'channelEdit', onClick: () => destTasks.setEnabled(false) }
+                        : { label: 'Enable Destination', icon: 'check', task: 'doEnableDestination', group: 'channelEdit', onClick: () => destTasks.setEnabled(true) },
                     '-',
-                    { label: 'Move Dest. Up', icon: 'arrowUp', onClick: () => destTasks.move(-1) },
-                    { label: 'Move Dest. Down', icon: 'arrowDown', onClick: () => destTasks.move(1) },
+                    { label: 'Move Dest. Up', icon: 'arrowUp', task: 'doMoveDestinationUp', group: 'channelEdit', onClick: () => destTasks.move(-1) },
+                    { label: 'Move Dest. Down', icon: 'arrowDown', task: 'doMoveDestinationDown', group: 'channelEdit', onClick: () => destTasks.move(1) },
                     '-',
                     { label: 'Edit Filter', icon: 'filter', onClick: () => destTasks.editElements('filter') },
                     { label: 'Edit Transformer', icon: 'transform', onClick: () => destTasks.editElements('transformer') },
                     { label: 'Edit Response', icon: 'transform', onClick: () => destTasks.editElements('response') },
                     '-',
-                    { label: 'Import Connector', icon: 'import', onClick: () => destTasks.importConnector() },
-                    { label: 'Export Connector', icon: 'export', onClick: () => destTasks.exportConnector() },
-                    { label: 'Export Channel', icon: 'export', onClick: () => saveFile(`${channel.name || channel.id}.json`, 'application/json', () => JSON.stringify({ channel }, null, 2)) },
-                    { label: 'Validate Script', icon: 'check', onClick: () => validateChannelScripts() },
+                    { label: 'Import Connector', icon: 'import', task: 'doImportConnector', group: 'channelEdit', onClick: () => destTasks.importConnector() },
+                    { label: 'Export Connector', icon: 'export', task: 'doExportConnector', group: 'channelEdit', onClick: () => destTasks.exportConnector() },
+                    { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channelEdit', onClick: () => saveFile(`${channel.name || channel.id}.json`, 'application/json', () => JSON.stringify({ channel }, null, 2)) },
+                    { label: 'Validate Script', icon: 'check', task: 'doValidateChannelScripts', group: 'channelEdit', onClick: () => validateChannelScripts() },
                     '-',
-                    { label: 'Debug Channel', icon: 'deploy', onClick: () => openDebugDeployModal() },
-                    { label: 'Deploy Channel', icon: 'deploy', onClick: () => deploy() }
+                    { label: 'Debug Channel', icon: 'deploy', task: 'doDebugDeployFromChannelView', group: 'channelEdit', onClick: () => openDebugDeployModal() },
+                    { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployFromChannelView', group: 'channelEdit', onClick: () => deploy() }
                 ]);
             }
         });

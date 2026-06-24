@@ -780,10 +780,10 @@ export function AlertEditor({ params, query = {} }) {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Alert Edit Tasks" paneKey="tasks:Alert Edit Tasks">
+                <RailPane title="Alert Edit Tasks" paneKey="tasks:Alert Edit Tasks" group="alertEdit">
                     <div className="taskbar" data-pane-title="Alert Edit Tasks">
-                        <TaskButton label="Save Alert" icon="save" primary onClick={save} />
-                        <TaskButton label="Export Alert" icon="export" onClick={exportTask} />
+                        <TaskButton label="Save Alert" icon="save" primary task="doSaveAlerts" onClick={save} />
+                        <TaskButton label="Export Alert" icon="export" task="doExportAlert" onClick={exportTask} />
                         <span className="sep" />
                         <TaskButton label="Back to Alerts" icon="logout" onClick={() => router.navigate('/alerts')} />
                     </div>

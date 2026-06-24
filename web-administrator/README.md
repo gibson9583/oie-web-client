@@ -149,6 +149,10 @@ Plugins register through the platform extension points and build against the
 third-party example that ships engine + Swing + web UI in one extension zip, see
 the SQS connector repository.
 
+For **role-based access control** — a plugin hiding nav items, task buttons, and
+right-click menu items per the user's permissions (the Swing `AuthorizationController`
+hook) — see [RBAC.md](RBAC.md), which lists every permission identifier.
+
 ## Development
 
 The frontend is ES modules under `client/`. In development, `npm run dev` (from

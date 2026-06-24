@@ -237,14 +237,14 @@ function CodeTemplatesView() {
         if (e.target.closest('tr')) return;   // row menus are handled per-row
         e.preventDefault();
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => load() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', onClick: () => newTemplate() },
-            { label: 'New Library', icon: 'folder', onClick: () => newLibrary() },
+            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate() },
+            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', onClick: () => importCodeTemplates() },
-            { label: 'Import Libraries', icon: 'import', onClick: () => importLibraries() },
-            { label: 'Export All Libraries', icon: 'export', onClick: () => exportLibraries() }
+            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates() },
+            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
+            { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() }
         ]);
     }
 
@@ -255,21 +255,21 @@ function CodeTemplatesView() {
         const isTpl = sel.kind === 'template';
         const isLib = sel.kind === 'library';
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => load() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', onClick: () => newTemplate() },
-            { label: 'New Library', icon: 'folder', onClick: () => newLibrary() },
+            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate() },
+            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', onClick: () => importCodeTemplates() },
-            { label: 'Import Libraries', icon: 'import', onClick: () => importLibraries() },
-            { label: 'Export Code Template', icon: 'export', hidden: !isTpl, onClick: () => exportTemplate() },
-            { label: 'Export Library', icon: 'export', hidden: !isLib, onClick: () => exportLibrary() },
-            { label: 'Export All Libraries', icon: 'export', onClick: () => exportLibraries() },
+            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates() },
+            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
+            { label: 'Export Code Template', icon: 'export', hidden: !isTpl, task: 'doExportCodeTemplate', group: 'codeTemplate', onClick: () => exportTemplate() },
+            { label: 'Export Library', icon: 'export', hidden: !isLib, task: 'doExportLibrary', group: 'codeTemplate', onClick: () => exportLibrary() },
+            { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() },
             '-',
-            { label: 'Validate Script', icon: 'check', hidden: !isTpl, onClick: () => validateScriptTask() },
-            { label: 'Delete', icon: 'trash', danger: true, onClick: () => deleteSelected() },
+            { label: 'Validate Script', icon: 'check', hidden: !isTpl, task: 'doValidateCodeTemplate', group: 'codeTemplate', onClick: () => validateScriptTask() },
+            { label: 'Delete', icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', onClick: () => deleteSelected() },
             '-',
-            { label: 'Save All', icon: 'save', onClick: () => saveAll() }
+            { label: 'Save All', icon: 'save', task: 'doSaveCodeTemplates', group: 'codeTemplate', onClick: () => saveAll() }
         ]);
     }
 
@@ -766,19 +766,19 @@ function CodeTemplatesView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Code Template Tasks" paneKey="tasks:Code Template Tasks">
+                <RailPane title="Code Template Tasks" paneKey="tasks:Code Template Tasks" group="codeTemplate">
                     <div className="taskbar" data-pane-title="Code Template Tasks">
-                        <TaskButton label="Refresh" icon="refresh" onClick={refreshTask} />
-                        {dirty && <TaskButton label="Save Changes" icon="save" primary onClick={saveAll} />}
-                        {found && <TaskButton label="New Code Template" icon="plus" onClick={newTemplate} />}
-                        <TaskButton label="New Library" icon="folder" onClick={newLibrary} />
-                        <TaskButton label="Import Code Templates" icon="import" onClick={importCodeTemplates} />
-                        <TaskButton label="Import Libraries" icon="import" onClick={importLibraries} />
-                        {isTemplate && <TaskButton label="Export Code Template" icon="export" onClick={exportTemplate} />}
-                        {isLibrary && <TaskButton label="Export Library" icon="export" onClick={exportLibrary} />}
-                        {isTemplate && <TaskButton label="Delete Code Template" icon="trash" danger onClick={deleteSelected} />}
-                        {isLibrary && <TaskButton label="Delete Library" icon="trash" danger onClick={deleteSelected} />}
-                        {isTemplate && <TaskButton label="Validate Script" icon="check" onClick={validateScriptTask} />}
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshCodeTemplates" onClick={refreshTask} />
+                        {dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveCodeTemplates" onClick={saveAll} />}
+                        {found && <TaskButton label="New Code Template" icon="plus" task="doNewCodeTemplate" onClick={newTemplate} />}
+                        <TaskButton label="New Library" icon="folder" task="doNewLibrary" onClick={newLibrary} />
+                        <TaskButton label="Import Code Templates" icon="import" task="doImportCodeTemplates" onClick={importCodeTemplates} />
+                        <TaskButton label="Import Libraries" icon="import" task="doImportLibraries" onClick={importLibraries} />
+                        {isTemplate && <TaskButton label="Export Code Template" icon="export" task="doExportCodeTemplate" onClick={exportTemplate} />}
+                        {isLibrary && <TaskButton label="Export Library" icon="export" task="doExportLibrary" onClick={exportLibrary} />}
+                        {isTemplate && <TaskButton label="Delete Code Template" icon="trash" danger task="doDeleteCodeTemplate" onClick={deleteSelected} />}
+                        {isLibrary && <TaskButton label="Delete Library" icon="trash" danger task="doDeleteLibrary" onClick={deleteSelected} />}
+                        {isTemplate && <TaskButton label="Validate Script" icon="check" task="doValidateCodeTemplate" onClick={validateScriptTask} />}
                     </div>
                 </RailPane>
             </ViewTasks>

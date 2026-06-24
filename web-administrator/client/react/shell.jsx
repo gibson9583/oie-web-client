@@ -125,6 +125,8 @@ function Nav({ only, exclude }) {
         const section = item.section || 'Plugins';
         if (only && section !== only) continue;
         if (exclude && section === exclude) continue;
+        // RBAC: hide a view the user isn't authorized for (Swing's "view" task pane).
+        if (item.task && !platform.checkTask('view', item.task)) continue;
         if (!sections.has(section)) sections.set(section, []);
         sections.get(section).push(item);
     }
@@ -153,15 +155,18 @@ function Nav({ only, exclude }) {
 }
 
 function OtherPane({ onLogout }) {
+    // RBAC: each "other" task can be hidden (Swing's otherPane). checkTask returns
+    // true unless an authorization plugin denies the (group, task).
+    const can = (task) => platform.checkTask('other', task);
     return (
-        <RailPane title="Other" paneKey="Other">
+        <RailPane title="Other" paneKey="Other" group="other">
             <div className="taskbar">
-                <button className="btn" onClick={openApiDocs}><Icon name="file" />View REST API</button>
-                <button className="btn" onClick={showAbout}><Icon name="info" />About</button>
-                <button className="btn" onClick={() => window.open(HOMEPAGE_URL, '_blank')}><Icon name="globe" />Visit homepage</button>
-                <button className="btn" onClick={() => window.open(ISSUES_URL, '_blank')}><Icon name="warning" />Report issue</button>
+                {can('goToUserAPI') && <button className="btn" onClick={openApiDocs}><Icon name="file" />View REST API</button>}
+                {can('goToAbout') && <button className="btn" onClick={showAbout}><Icon name="info" />About</button>}
+                {can('goToMirth') && <button className="btn" onClick={() => window.open(HOMEPAGE_URL, '_blank')}><Icon name="globe" />Visit homepage</button>}
+                {can('doReportIssue') && <button className="btn" onClick={() => window.open(ISSUES_URL, '_blank')}><Icon name="warning" />Report issue</button>}
                 <span className="sep" />
-                <button className="btn" onClick={onLogout}><Icon name="logout" />Logout</button>
+                {can('doLogout') && <button className="btn" onClick={onLogout}><Icon name="logout" />Logout</button>}
             </div>
         </RailPane>
     );

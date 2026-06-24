@@ -134,7 +134,7 @@ ones are built.
 | `DataTypeClientPlugin` | `datatypes/*` (HL7 v2, XML, …) | each ships as a web plugin (`plugins/datatype-*`) calling `registerDataType`; `client/datatypes/index.js` is just the registry read-side (`dataTypeDef` / `dataTypeList`), and `props-editor.jsx` renders any registered type |
 | `TransmissionModePlugin` | `mllpmode` (MLLP framing) | `registerTransmissionMode` — Basic is built in; `mllpmode` ships as a plugin. TCP's Transmission Mode dropdown + ⚙ settings dialog + Sample Frame are driven by the registry |
 | `ResourceClientPlugin` | `directoryresource` (Directory resource type) | `registerResourceType` — the Settings → Resources panel is generic; `directoryresource` ships as a plugin providing the Directory type editor |
-| `ChannelColumnPlugin` / `ChannelPanelPlugin` / `ChannelWizardPlugin` / `TaskPlugin` / `MultiFactorAuthenticationClientPlugin` | various | not yet — ask if you need one |
+| `AuthorizationController` (RBAC menu-hiding) | commercial "Role-Based Access Control" plugin | `setAuthorizationController({ checkTask(taskGroup, taskName) })` — hides nav items, task buttons, and right-click items the user isn't authorized for. Identifiers mirror Swing's `TaskConstants`. **See [`RBAC.md`](RBAC.md)** for the hook, a worked example, and the full permission catalog |
 
 ### Bundled web plugins
 
@@ -416,6 +416,16 @@ platform.registerResourceType('Directory', {
     create({ version, containerIsArray }) { return { /* new resource object */ }; },
     component: ({ entry, locked, platform, refreshTable }) => <div>…</div>   // detail editor
 });
+
+// RBAC menu-hiding (AuthorizationController). Register a controller; checkTask
+// returning false hides the matching nav item / task button / right-click item.
+// Identifiers are Swing's TaskConstants (group, task) — see RBAC.md for the catalog.
+platform.setAuthorizationController({
+    checkTask(taskGroup, taskName) {
+        // e.g. return permitted.has(`${taskGroup}:${taskName}`);
+        return true;   // allow all (the default with no RBAC plugin installed)
+    }
+});
 ```
 
 ### Platform services
@@ -426,6 +436,7 @@ platform.registerResourceType('Directory', {
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
 | `platform.ui` | DOM toolkit: `h()`, `DataTable`, `tabs()`, `modal()`, `confirmDialog`, `promptDialog`, `toast`, `contextMenu`, form helpers, `downloadFile`, `pickFile`, `fmtDate`, `icon(name)`. `fmtDate` renders every timestamp in the user's chosen time zone (the topbar Server/Local/UTC toggle, `core/timezone.js`) — use it for all displayed dates. |
+| `platform.setAuthorizationController(ctrl)` / `platform.checkTask(group, task)` | RBAC menu-hiding (Swing `AuthorizationController`). A plugin registers `{ checkTask(taskGroup, taskName) }` to hide nav/task/right-click items; `checkTask` is what the menu builders consult. Default allows all. **See [`RBAC.md`](RBAC.md).** |
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
 | `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. (Data types are no longer here — they come from the registry via `dataTypeDef`/`dataTypeList` in `/datatypes/index.js`.) |
 | `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` | Read the registered data types / transmission modes / resource types (each populated by a plugin). |

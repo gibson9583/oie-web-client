@@ -40,6 +40,7 @@ oie-web-client/
     ├── server/               Node/Express server, /api reverse proxy, serializer bridge
     ├── plugins/              bundled web plugins (server + browser extensions)
     ├── PLUGINS.md            plugin development guide (worked examples)
+    ├── RBAC.md               role-based access control hooks + permission catalog
     ├── docs/                 parity / feedback notes
     ├── config.example.json   copy to config.json and edit
     └── package.json

@@ -7,17 +7,23 @@
  * directly from React handlers; no rewrite needed.
  */
 
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle, createContext, useContext } from 'react';
 import { Icon } from './bridges.jsx';
 import { DataTable } from '@oie/web-ui';
 import { createCodeEditor } from '../core/codeeditor.js';
+import { checkTask } from '../core/authorization.js';
 
 // Rail-pane collapse state, shared across the shell's nav panes and view task
 // panes; persists for the session.
 const paneCollapsed = new Map();
 
-/* Collapsible rail pane (shared by the shell nav and React view task panes). */
-export function RailPane({ title, paneKey, className, children }) {
+// RBAC task group (Swing pane key, e.g. "channel"). A task pane sets it once via
+// RailPane group=...; its TaskButtons read it so each only needs its `task` id.
+const TaskGroupContext = createContext(null);
+
+/* Collapsible rail pane (shared by the shell nav and React view task panes).
+   `group` (optional) is the RBAC task-pane key, provided to child TaskButtons. */
+export function RailPane({ title, paneKey, group, className, children }) {
     const k = paneKey || title;
     const [collapsed, setCollapsed] = useState(() => paneCollapsed.get(k) || false);
     const toggle = () => { const next = !collapsed; setCollapsed(next); paneCollapsed.set(k, next); };
@@ -27,13 +33,19 @@ export function RailPane({ title, paneKey, className, children }) {
                 <span className="pane-title">{title}</span>
                 <span className="pane-chevron">▲</span>
             </div>
-            <div className="rail-pane-body">{children}</div>
+            <div className="rail-pane-body">
+                {group ? <TaskGroupContext.Provider value={group}>{children}</TaskGroupContext.Provider> : children}
+            </div>
         </div>
     );
 }
 
-/* Task-pane button (parity with core/ui.js taskButton). */
-export function TaskButton({ label, icon, onClick, primary, danger }) {
+/* Task-pane button (parity with core/ui.js taskButton). `task` (the Swing action
+   constant, e.g. "doNewChannel") + the pane's group gate visibility via RBAC: an
+   unauthorized task renders nothing, exactly like Swing hiding the task. */
+export function TaskButton({ label, icon, onClick, primary, danger, task, group }) {
+    const ctxGroup = useContext(TaskGroupContext);
+    if (task && !checkTask(group || ctxGroup, task)) return null;
     const cls = 'btn' + (primary ? ' btn-primary' : '') + (danger ? ' btn-danger' : '');
     return <button className={cls} onClick={onClick}>{icon ? <Icon name={icon} /> : null}{label}</button>;
 }

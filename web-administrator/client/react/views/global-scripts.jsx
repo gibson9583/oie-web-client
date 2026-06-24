@@ -150,12 +150,12 @@ function GlobalScriptsView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Script Tasks" paneKey="tasks:Script Tasks">
+                <RailPane title="Script Tasks" paneKey="tasks:Script Tasks" group="script">
                     <div className="taskbar" data-pane-title="Script Tasks">
-                        {dirty && <TaskButton label="Save Scripts" icon="save" primary onClick={save} />}
-                        <TaskButton label="Validate Script" icon="check" onClick={validateActive} />
-                        <TaskButton label="Import Scripts" icon="import" onClick={importScripts} />
-                        <TaskButton label="Export Scripts" icon="export" onClick={exportScripts} />
+                        {dirty && <TaskButton label="Save Scripts" icon="save" primary task="doSaveGlobalScripts" onClick={save} />}
+                        <TaskButton label="Validate Script" icon="check" task="doValidateCurrentGlobalScript" onClick={validateActive} />
+                        <TaskButton label="Import Scripts" icon="import" task="doImportGlobalScripts" onClick={importScripts} />
+                        <TaskButton label="Export Scripts" icon="export" task="doExportGlobalScripts" onClick={exportScripts} />
                     </div>
                 </RailPane>
             </ViewTasks>
