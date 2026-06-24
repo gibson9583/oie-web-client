@@ -146,12 +146,15 @@ const DARK_SURFACE_TOKENS = {
 };
 
 /* Recolor each dark surface to the env color's hue, KEEPING its lightness (so text
-   contrast is unchanged) and scaling the tint by the env color's own saturation
-   (so a near-gray pick stays neutral / blue). */
-function darkSurfaceTint(colorObj) {
+   contrast is unchanged) and scaling the tint by the env color's own saturation.
+   The tint ramps in by chroma so a near-gray pick stays neutral (the default dark
+   palette). Returns null (no tint) for an invalid or low-chroma color. Exported so
+   the settings preview can show the same tinted surface the live app uses. */
+export function darkSurfaceTint(colorObj) {
+    if (!colorObj || typeof colorObj !== 'object' || colorObj.red === undefined) return null;
     const [h, s] = rgbToHsl(Number(colorObj.red) || 0, Number(colorObj.green) || 0, Number(colorObj.blue) || 0);
-    const strength = Math.min(1, s / 0.4);
-    if (strength <= 0.01) return null;   // gray pick: leave the default dark palette
+    const strength = Math.max(0, Math.min(1, (s - 0.06) / 0.34));   // 0 below ~0.06 sat, full by 0.40
+    if (strength <= 0) return null;
     const out = {};
     for (const tok in DARK_SURFACE_TOKENS) {
         const [, ts, tl] = hexHsl(DARK_SURFACE_TOKENS[tok]);

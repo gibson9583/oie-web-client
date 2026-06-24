@@ -27,7 +27,7 @@ import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
 import { setTheme, getState, setState } from '../../core/store.js';
 import { reactView, ViewTasks, mountReact } from '../mount.jsx';
-import { applyEnvironmentColor, environmentColorVars, parseColorPref, serializeColorPref } from '../bridges.jsx';
+import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane } from '../ui.jsx';
 
@@ -200,6 +200,10 @@ function renderServerTab({ setTasks, markClean, setSave }) {
         const bgPreview = h('div', { class: 'flex gap-3.5 flex-wrap' });
         function miniPreview(colorObj, dark) {
             const v = environmentColorVars(colorObj, dark);
+            // Dark mode also recolors the main surfaces toward the chosen hue — show
+            // it here so the preview matches the live app (use the --bg1 tone).
+            const surf = dark ? darkSurfaceTint(colorObj) : null;
+            const paneBg = surf ? surf['--bg1'] : (dark ? '#111922' : '#f4f7fa');
             return h('div', { class: 'w-[190px]' },
                 h('div', { class: 'text-[10px] text-text-faint mb-[3px] uppercase tracking-[0.1em]' }, dark ? 'Dark mode' : 'Light mode'),
                 h('div', { class: 'border border-line rounded overflow-hidden' },
@@ -210,7 +214,7 @@ function renderServerTab({ setTasks, markClean, setSave }) {
                             h('div', { style: { color: v.fg } }, 'Channels'),
                             h('div', { style: { color: v.fgDim } }, 'Messages'),
                             h('div', { style: { color: v.fgDim } }, 'Settings')),
-                        h('div', { class: 'flex-1 p-2 text-[11px]', style: { color: dark ? '#c8d4e0' : '#33414f', background: dark ? '#111922' : '#f4f7fa' } }, 'Sample Text'))));
+                        h('div', { class: 'flex-1 p-2 text-[11px]', style: { color: dark ? '#c8d4e0' : '#33414f', background: paneBg } }, 'Sample Text'))));
         }
         function paintBgPreview() {
             clear(bgPreview);
