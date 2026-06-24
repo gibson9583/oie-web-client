@@ -5,6 +5,7 @@
  */
 
 import { h } from './ui.js';
+import { icon } from './icons.js';
 
 export class CodeEditor {
     /**
@@ -93,9 +94,42 @@ export class CodeEditor {
     dispose() {}
 }
 
+/* Optional maximize toggle (opts.maximizable): a top-right button that expands the
+ * editor to a fixed overlay over the shell content area (the nav rail + top bar
+ * stay visible). Esc restores. Used where the editor IS the panel — connector code
+ * fields (incl. JavaScript Writer) and the channel Scripts tab. Views that must
+ * keep a side panel beside the editor (transformer/filter, code templates) instead
+ * grow it via the .is-editor-max layout toggle, not this overlay.
+ *
+ * The button is a child of editor.el; mountMonaco re-appends it after wiping the
+ * shell for the Monaco host, so it survives the in-place upgrade. */
+function attachMaximize(editor) {
+    const el = editor.el;
+    const btn = h('button.ce-max-btn', { type: 'button', title: 'Maximize editor' }, icon('maximize'));
+    let max = false;
+    const onKey = (e) => { if (e.key === 'Escape' && max) { e.preventDefault(); e.stopPropagation(); set(false); } };
+    function set(next) {
+        if (next === max) return;
+        max = next;
+        el.classList.toggle('ce-maximized', max);
+        btn.replaceChildren(icon(max ? 'minimize' : 'maximize'));
+        btn.title = max ? 'Restore editor (Esc)' : 'Maximize editor';
+        if (max) document.addEventListener('keydown', onKey, true);
+        else document.removeEventListener('keydown', onKey, true);
+        if (editor.monaco) editor.monaco.layout();   // automaticLayout also catches it
+    }
+    btn.addEventListener('click', () => set(!max));
+    el.appendChild(btn);
+    editor.__maxCleanup = () => document.removeEventListener('keydown', onKey, true);
+    // Cover the air-gapped (no-Monaco) path; the Monaco path cleans up in its own
+    // dispose record (which replaces editor.dispose on upgrade).
+    const baseDispose = editor.dispose.bind(editor);
+    editor.dispose = () => { editor.__maxCleanup(); baseDispose(); };
+}
+
 /**
  * Factory used across the app. The default creates the dependency-free
- * editor immediately and upgrades it in place to Monaco (CDN-loaded, with
+ * editor immediately and upgrades it in place to Monaco (locally served, with
  * Rhino-aware highlighting) when available — air-gapped installs simply keep
  * the baseline editor. Plugins may replace the factory entirely via
  * platform.setCodeEditorFactory().
@@ -104,6 +138,7 @@ import { ensureMonaco, mountMonaco } from './monaco.js';
 
 let factory = (opts = {}) => {
     const editor = new CodeEditor(opts);
+    if (opts.maximizable) attachMaximize(editor);
     ensureMonaco().then((monaco) => {
         if (!monaco) return;
         try { mountMonaco(monaco, editor, opts); }

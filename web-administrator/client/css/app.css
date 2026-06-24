@@ -860,6 +860,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 
 .ce {
     display: flex;
+    position: relative;   /* positioning context for the maximize toggle */
     border: 1px solid var(--line-strong);
     border-radius: var(--radius);
     background: var(--bg0);
@@ -907,6 +908,67 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .ce.ce-monaco { position: relative; display: block; min-height: 160px; }
 .ce.ce-monaco .monaco-host { position: absolute; inset: 0; }
 .ce.ce-monaco:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+/* ---- code editor maximize ---------------------------------------------------------------------- */
+
+/* (A) "Fill content area" overlay — used where the editor IS the panel (connector
+   code fields incl. JavaScript Writer; the channel Scripts tab). Anchored to the
+   shell content grid, so the nav rail + top bar + status bar stay visible. */
+.ce.ce-maximized {
+    position: fixed;
+    left: var(--rail-w);
+    top: var(--topbar-h);
+    right: 0;
+    bottom: 27px;                /* .shell grid status row */
+    z-index: 50;                 /* above content (<=5), below modal(100)/menu(150)/toast(200) */
+    margin: 0;
+    min-height: 0 !important;    /* beat any inline minHeight from opts */
+    border-radius: 0;
+}
+
+/* When the editor lives in a maximize "stage" — a container that has a right-hand
+   context panel to preserve (e.g. the destination connector area beside the
+   Destination Mappings rail) — fill that stage instead of the whole viewport, so
+   the panel stays visible. The stage is the nearest positioned ancestor. */
+.editor-max-host { position: relative; }
+.editor-max-host .ce.ce-maximized {
+    position: absolute;
+    inset: 0;
+    left: 0; top: 0; right: 0; bottom: 0;
+    z-index: 20;
+}
+
+/* Maximize / restore toggle, top-right of the editor; revealed on hover/focus. */
+.ce-max-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 6;                  /* above the editor surface / scrollbar */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--bg2) 88%, transparent);
+    color: var(--text-dim);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s, color 0.12s, background 0.12s, border-color 0.12s;
+}
+.ce:hover > .ce-max-btn,
+.ce:focus-within > .ce-max-btn,
+.ce.ce-maximized > .ce-max-btn { opacity: 1; }
+.ce-max-btn:hover { color: var(--text); background: var(--bg3); border-color: var(--line-strong); }
+.ce-max-btn svg { width: 15px; height: 15px; }
+
+/* (B) "Collapse the top pane" — used where a right-hand context panel must stay
+   (transformer/filter Reference panel; code-templates Context panel). The view
+   tags the pane(s) to overtake; toggling .is-editor-max on the editor region hides
+   them so the editor grows while the side panel stays put. */
+.is-editor-max [data-editor-overtake] { display: none !important; }
 
 /* ---- Split layout ----------------------------------------------------------------------------------------------- */
 

@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useReducer, useState } from 'react';
-import { h, clear, field, textInput, select, tabs, modal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, clear, field, textInput, select, tabs, modal, toast, loading, saveFile, pickFile, contextMenu, icon } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
@@ -1578,13 +1578,19 @@ function buildBody(params, kindName, onTasksChange) {
     renderAll();
 
     // The task pane is React; the body is just the split layout (no .taskbar here).
+    // The editor column (steps grid on top, the Step/Generated-Script tabs below);
+    // its top pane is tagged `data-editor-overtake` so Maximize can hide it and let
+    // the editor fill the column while the right reference panel stays put.
+    const editorColumn = h('div.split-a.split.vertical', { class: 'flex-1 min-w-0' },
+        h('div.split-a', { class: 'h-[40%] flex-none', 'data-editor-overtake': '' }, tableHost),
+        h('div.split-handle', { 'data-editor-overtake': '' }),
+        h('div.split-b', { class: 'flex flex-col min-h-0' },
+            bottomTabs.el));
+    const maxCleanup = addEditorMaximize(bottomTabs.el, editorColumn);
+
     const el = h('div.view-body.flush', { class: 'flex flex-1 min-h-0' },
         h('div.split', { class: 'flex-1 min-w-0' },
-            h('div.split-a.split.vertical', { class: 'flex-1 min-w-0' },
-                h('div.split-a', { class: 'h-[40%] flex-none' }, tableHost),
-                h('div.split-handle'),
-                h('div.split-b', { class: 'flex flex-col min-h-0' },
-                    bottomTabs.el)),
+            editorColumn,
             h('div.split-handle', { 'data-orient': 'h', 'data-resize': 'next' }),
             // Wide enough to show the full tab bar (Reference / Message
             // Templates / Message Trees) without horizontal scrolling.
@@ -1604,6 +1610,29 @@ function buildBody(params, kindName, onTasksChange) {
         },
         // Teardown persists the working copy but must not mark dirty (see persist()),
         // then clears the editor's code-template scope so it can't leak to the next view.
-        teardown: () => { if (elementEditorRoot) elementEditorRoot(); generatedEditor.dispose && generatedEditor.dispose(); persist(); store.setState('navGuard', null); clearActiveScope(); }
+        teardown: () => { if (elementEditorRoot) elementEditorRoot(); generatedEditor.dispose && generatedEditor.dispose(); maxCleanup(); persist(); store.setState('navGuard', null); clearActiveScope(); }
     };
+}
+
+/* Maximize toggle for the editor column: a button on the Step/Generated-Script tab
+   bar that grows the editor over the steps grid (which is tagged
+   data-editor-overtake) while the right Reference / Message Trees panel stays
+   visible. Esc restores. Returns a cleanup that detaches the Esc listener. */
+function addEditorMaximize(tabsEl, regionEl) {
+    const bar = tabsEl.querySelector('.tabs');
+    if (!bar) return () => {};
+    const btn = h('button.icon-btn', { type: 'button', class: 'ml-auto self-center', title: 'Maximize editor' }, icon('maximize'));
+    let max = false;
+    const onKey = (e) => { if (e.key === 'Escape' && max) { e.preventDefault(); set(false); } };
+    function set(next) {
+        max = next;
+        regionEl.classList.toggle('is-editor-max', max);
+        btn.replaceChildren(icon(max ? 'minimize' : 'maximize'));
+        btn.title = max ? 'Restore editor (Esc)' : 'Maximize editor';
+        if (max) document.addEventListener('keydown', onKey, true);
+        else document.removeEventListener('keydown', onKey, true);
+    }
+    btn.addEventListener('click', () => set(!max));
+    bar.appendChild(btn);
+    return () => document.removeEventListener('keydown', onKey, true);
 }

@@ -42,6 +42,8 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
       minHeight: minHeight || "240px",
       placeholder,
       readOnly: !!disabled,
+      maximizable: true,
+      // connector code fields (incl. JavaScript Writer) can go full-screen
       onChange: (v) => onChangeRef.current && onChangeRef.current(v)
     });
     edRef.current = editor;

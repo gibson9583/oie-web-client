@@ -2554,7 +2554,10 @@ function buildBody(params, query, onTasksChange, returning) {
         }
 
         refresh();
-        const main = h('div', { class: 'flex-auto min-w-0 flex flex-col min-h-0' },
+        // `editor-max-host` makes a maximized connector code field (e.g. JavaScript
+        // Writer) fill THIS area instead of the whole viewport, so the Destination
+        // Mappings rail beside it stays visible (the drag source for the script).
+        const main = h('div', { class: 'editor-max-host flex-auto min-w-0 flex flex-col min-h-0' },
             h('div.panel', { class: 'flex-none' }, h('div.panel-body.flush', table.el)),
             editorHost);
         main.addEventListener('focusin', trackFocus);
@@ -2595,6 +2598,7 @@ function buildBody(params, query, onTasksChange, returning) {
             value: channel[current.key] ?? '',
             language: 'javascript',
             minHeight: '260px',
+            maximizable: true,   // channel scripts (Deploy/Undeploy/Pre/Postprocessor) can go full-screen
             onChange: (value) => {
                 if (switching) return;
                 channel[current.key] = value;

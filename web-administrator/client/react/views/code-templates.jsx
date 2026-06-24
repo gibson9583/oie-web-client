@@ -21,7 +21,7 @@
  * refetch the new scope.
  */
 
-import { useEffect, useRef, useReducer } from 'react';
+import { useEffect, useRef, useReducer, useState } from 'react';
 import { h, clear, toast, confirmDialog, field, textInput, checkbox, select, loading, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
@@ -148,6 +148,15 @@ function ImperativeMount({ build, deps = [], style }) {
 
 function CodeTemplatesView() {
     const [, forceRender] = useReducer((x) => x + 1, 0);
+    // Maximize: grow the Code editor over the library list (top) and the
+    // Name/Library/Type form, keeping the right-hand Context panel. Esc restores.
+    const [editorMax, setEditorMax] = useState(false);
+    useEffect(() => {
+        if (!editorMax) return;
+        const onKey = (e) => { if (e.key === 'Escape') setEditorMax(false); };
+        document.addEventListener('keydown', onKey, true);
+        return () => document.removeEventListener('keydown', onKey, true);
+    }, [editorMax]);
 
     // Working state read by callbacks captured at mount — kept in refs.
     const librariesRef = useRef([]);     // [{ library, templates: [...] }] working copies
@@ -774,9 +783,11 @@ function CodeTemplatesView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex">
-                {/* Top: libraries/templates tree-table + filter bar; bottom: editor. */}
-                <div className="split vertical flex-1 min-w-0">
-                    <div className="split-a h-[320px] flex-none flex flex-col min-h-0">
+                {/* Top: libraries/templates tree-table + filter bar; bottom: editor.
+                    When maximized, the top pane (data-editor-overtake) is hidden so the
+                    editor fills the column; the right Context panel stays. */}
+                <div className={'split vertical flex-1 min-w-0' + (editorMax ? ' is-editor-max' : '')}>
+                    <div className="split-a h-[320px] flex-none flex flex-col min-h-0" data-editor-overtake>
                         <div className="flex-1 min-h-0 overflow-auto">
                             <TreeTable
                                 data={treeData}
@@ -806,14 +817,16 @@ function CodeTemplatesView() {
                             </span>
                         </div>
                     </div>
-                    <div className="split-handle" data-orient="v" data-resize="prev" />
+                    <div className="split-handle" data-orient="v" data-resize="prev" data-editor-overtake />
                     <div className="split-b flex flex-col min-h-0">
                         <div className="flex flex-col flex-1 min-h-0 py-3.5 px-4 overflow-auto">
                             <EditorPane found={found} kind={selected && selected.kind}
                                 buildLibraryEditor={buildLibraryEditor}
                                 buildTemplateForm={buildTemplateForm}
                                 buildContextPanel={buildContextPanel}
-                                markDirty={markDirty} />
+                                markDirty={markDirty}
+                                maximized={editorMax}
+                                onToggleMax={() => setEditorMax((m) => !m)} />
                         </div>
                     </div>
                 </div>
@@ -826,7 +839,7 @@ function CodeTemplatesView() {
    template's Name/Library/Type form + Context checkbox tree are heavy legacy DOM
    reused verbatim via <ImperativeMount>; the template's code uses the React
    <CodeEditor> island. Keyed on the selected id so it rebuilds per selection. */
-function EditorPane({ found, kind, buildLibraryEditor, buildTemplateForm, buildContextPanel, markDirty }) {
+function EditorPane({ found, kind, buildLibraryEditor, buildTemplateForm, buildContextPanel, markDirty, maximized, onToggleMax }) {
     if (!found) {
         return (
             <div className="dt-empty">
@@ -839,16 +852,29 @@ function EditorPane({ found, kind, buildLibraryEditor, buildTemplateForm, buildC
         return <ImperativeMount key={'lib:' + found.entry.library.id} build={() => buildLibraryEditor(found.entry)} />;
     }
     return <TemplateEditor key={'tpl:' + found.template.id} entry={found.entry} template={found.template}
-        buildTemplateForm={buildTemplateForm} buildContextPanel={buildContextPanel} markDirty={markDirty} />;
+        buildTemplateForm={buildTemplateForm} buildContextPanel={buildContextPanel} markDirty={markDirty}
+        maximized={maximized} onToggleMax={onToggleMax} />;
 }
 
-function TemplateEditor({ entry, template, buildTemplateForm, buildContextPanel, markDirty }) {
+function TemplateEditor({ entry, template, buildTemplateForm, buildContextPanel, markDirty, maximized, onToggleMax }) {
+    // Maximize (state lifted to the view so it can also hide the library list above)
+    // grows the Code editor over the Name/Library/Type form, which is tagged
+    // data-editor-overtake, while the right-hand Context panel stays visible.
     return (
         <div className="flex flex-col flex-1 min-h-0">
-            <ImperativeMount build={() => buildTemplateForm(entry, template)} style={{ flex: 'none' }} />
+            <div data-editor-overtake style={{ flex: 'none' }}>
+                <ImperativeMount build={() => buildTemplateForm(entry, template)} />
+            </div>
             <div className="flex flex-1 min-h-0">
                 <div className="flex flex-col flex-1 min-h-0 mr-3.5">
-                    <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5">Code</label>
+                    <div className="flex items-center mb-1.5">
+                        <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Code</label>
+                        <button type="button" className="icon-btn ml-auto"
+                            title={maximized ? 'Restore editor (Esc)' : 'Maximize editor'}
+                            onClick={onToggleMax}>
+                            <Icon name={maximized ? 'minimize' : 'maximize'} size={15} />
+                        </button>
+                    </div>
                     <CodeEditor language="javascript"
                         defaultValue={template.properties.code || ''}
                         onChange={(v) => { template.properties.code = v; markDirty(); }}

@@ -57,7 +57,9 @@ const P = {
     puzzle: 'M9 3h6v4h4v6h-4l1 4-4 4-4-4 1-4H5V7h4z',
     globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.5 2.5 4 5.6 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.6-4-9s1.5-6.5 4-9z',
     key: 'M14 11a5 5 0 1 0-4 4.9V18h2v2h2v2h3v-3l-5-5',
-    mail: 'M3 5h18v14H3zM3 6l9 7 9-7'
+    mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
+    maximize: 'M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3',
+    minimize: 'M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3'
 };
 
 export function icon(name, size = 16) {
