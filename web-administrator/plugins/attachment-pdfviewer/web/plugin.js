@@ -26,7 +26,7 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id]);
     if (state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint", style: { fontSize: "11px", marginBottom: "4px" } }, "Loading PDF\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint text-[11px] mb-1" }, "Loading PDF\u2026"));
     }
     if (state.status === "error") {
       return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint" }, `Could not load PDF: ${state.message}`));
@@ -36,7 +36,7 @@ function register(platform2) {
       {
         sandbox: "",
         src: state.src,
-        style: { width: "100%", height: "640px", border: "1px solid var(--bg3)", borderRadius: "4px" }
+        className: "w-full h-[640px] border border-[var(--bg3)] rounded-[4px]"
       }
     ));
   }

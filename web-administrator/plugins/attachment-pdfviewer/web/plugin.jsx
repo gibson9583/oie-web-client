@@ -42,7 +42,7 @@ export function register(platform) {
         if (state.status === 'loading') {
             return (
                 <div className="mt">
-                    <div className="faint" style={{ fontSize: '11px', marginBottom: '4px' }}>Loading PDF…</div>
+                    <div className="faint text-[11px] mb-1">Loading PDF…</div>
                 </div>
             );
         }
@@ -60,7 +60,7 @@ export function register(platform) {
                 <iframe
                     sandbox=""
                     src={state.src}
-                    style={{ width: '100%', height: '640px', border: '1px solid var(--bg3)', borderRadius: '4px' }}
+                    className="w-full h-[640px] border border-[var(--bg3)] rounded-[4px]"
                 />
             </div>
         );

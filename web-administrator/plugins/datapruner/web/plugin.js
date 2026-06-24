@@ -290,7 +290,7 @@ function register(platform2) {
         type: "number",
         min: "0",
         step: "any",
-        style: { maxWidth: "120px" },
+        className: "max-w-[120px]",
         value: freqValue,
         onInput: (e) => {
           setFreqValue(e.target.value);
@@ -304,7 +304,7 @@ function register(platform2) {
     ), /* @__PURE__ */ React.createElement(
       "select",
       {
-        style: { maxWidth: "120px" },
+        className: "max-w-[120px]",
         value: freqUnit,
         onChange: (e) => {
           setFreqUnit(e.target.value);

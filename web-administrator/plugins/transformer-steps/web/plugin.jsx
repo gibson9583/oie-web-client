@@ -249,7 +249,7 @@ function makeIteratorEditor(isRule) {
 
                 {/* Children are managed in the main element list (nested under this
                     Iterator), matching the Swing tree-table — not edited here. */}
-                <div className="faint" style={{ padding: '10px 0 0', fontSize: '11px' }}>
+                <div className="faint pt-2.5 px-0 pb-0 text-[11px]">
                     {`Child ${childNoun}s appear nested under this Iterator in the ${childNoun} list. `
                         + `Add a ${childNoun} while a child is selected, or right-click a ${childNoun} and choose "Assign To Iterator".`}
                 </div>

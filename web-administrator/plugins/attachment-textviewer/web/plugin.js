@@ -36,7 +36,7 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id]);
     if (state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint", style: { fontSize: "11px", marginBottom: "4px" } }, "Loading text\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint text-[11px] mb-1" }, "Loading text\u2026"));
     }
     if (state.status === "error") {
       return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint" }, `Could not load text: ${state.message}`));
@@ -44,20 +44,7 @@ function register(platform2) {
     return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement(
       "pre",
       {
-        style: {
-          margin: "0",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-          maxHeight: "600px",
-          overflowX: "hidden",
-          overflowY: "auto",
-          fontSize: "12px",
-          background: "var(--bg0)",
-          color: "var(--text)",
-          border: "1px solid var(--bg3)",
-          padding: "8px",
-          borderRadius: "4px"
-        }
+        className: "m-0 whitespace-pre-wrap [word-break:break-word] max-h-[600px] overflow-x-hidden overflow-y-auto text-[12px] bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]"
       },
       state.text
     ));

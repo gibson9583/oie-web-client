@@ -46,7 +46,7 @@ export function register(platform) {
         if (state.status === 'loading') {
             return (
                 <div className="mt">
-                    <div className="faint" style={{ fontSize: '11px', marginBottom: '4px' }}>Loading image…</div>
+                    <div className="faint text-[11px] mb-1">Loading image…</div>
                 </div>
             );
         }
@@ -61,7 +61,7 @@ export function register(platform) {
             <div className="mt">
                 <img
                     src={state.src}
-                    style={{ maxWidth: '100%', maxHeight: '600px', border: '1px solid var(--bg3)', borderRadius: '4px' }}
+                    className="max-w-full max-h-[600px] border border-[var(--bg3)] rounded-[4px]"
                 />
             </div>
         );

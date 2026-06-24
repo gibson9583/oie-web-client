@@ -29,7 +29,7 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id]);
     if (state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint", style: { fontSize: "11px", marginBottom: "4px" } }, "Loading image\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint text-[11px] mb-1" }, "Loading image\u2026"));
     }
     if (state.status === "error") {
       return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint" }, `Could not load image: ${state.message}`));
@@ -38,7 +38,7 @@ function register(platform2) {
       "img",
       {
         src: state.src,
-        style: { maxWidth: "100%", maxHeight: "600px", border: "1px solid var(--bg3)", borderRadius: "4px" }
+        className: "max-w-full max-h-[600px] border border-[var(--bg3)] rounded-[4px]"
       }
     ));
   }

@@ -52,14 +52,14 @@ function levelColor(level) {
 function LevelTag({ level, style }) {
     const lvl = String(level || '').toUpperCase();
     const color = levelColor(level);
-    return <span className="tag" style={{ color, borderColor: color, fontWeight: '650', ...style }}>{lvl || '—'}</span>;
+    return <span className="tag font-[650]" style={{ color, borderColor: color, ...style }}>{lvl || '—'}</span>;
 }
 
 /* DOM severity pill (used inside the imperative detail modal via platform.ui.h). */
 function levelTagDom(level) {
     const lvl = String(level || '').toUpperCase();
     const color = levelColor(level);
-    return h('span.tag', { style: { color, borderColor: color, fontWeight: '650' } }, lvl || '—');
+    return h('span.tag', { class: 'font-[650]', style: { color, borderColor: color } }, lvl || '—');
 }
 
 /* (category) or (category:lineNumber) — Swing ServerLogItem.toString. */
@@ -96,23 +96,19 @@ function copyText(text) {
 function showDetail(item) {
     const stack = item.throwableInformation && String(item.throwableInformation).trim();
     // Theme tokens (not hardcoded colors) so the modal works in dark mode.
-    const preStyle = {
-        margin: '0', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-        overflowX: 'hidden', overflowY: 'auto', background: 'var(--bg0)',
-        color: 'var(--text)', border: '1px solid var(--bg3)', padding: '8px', borderRadius: '4px'
-    };
+    const preClass = 'm-0 whitespace-pre-wrap [word-break:break-word] overflow-x-hidden overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]';
     modal({
         title: 'Server Log Entry',
         size: 'wide',
-        body: h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '620px' } },
-            h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center', flexWrap: 'wrap' } },
+        body: h('div', { class: 'flex flex-col gap-2 min-w-[620px]' },
+            h('div', { class: 'flex gap-[14px] items-center flex-wrap' },
                 levelTagDom(item.level),
                 h('span.mono.faint', formatLogDate(item.date)),
                 h('span.mono', scopeLabel(item))),
-            h('div', { style: { fontWeight: '600' } }, 'Message'),
-            h('pre', { style: { ...preStyle, maxHeight: '30vh' } }, String(item.message ?? '')),
-            stack ? h('div', { style: { fontWeight: '600' } }, 'Stack Trace') : null,
-            stack ? h('pre', { style: { ...preStyle, maxHeight: '60vh', fontSize: '12px' } }, String(item.throwableInformation)) : null),
+            h('div', { class: 'font-semibold' }, 'Message'),
+            h('pre', { class: preClass + ' max-h-[30vh]' }, String(item.message ?? '')),
+            stack ? h('div', { class: 'font-semibold' }, 'Stack Trace') : null,
+            stack ? h('pre', { class: preClass + ' max-h-[60vh] text-[12px]' }, String(item.throwableInformation)) : null),
         buttons: [
             { label: 'Copy', onClick: () => { copyText(fullText(item)); return false; } },
             { label: 'Close', primary: true }
@@ -127,10 +123,10 @@ function LogRow({ item }) {
     const rest = (`${scopeLabel(item)}: ${item.message ?? ''}`
         + (stack ? '  ' + stack : '')).replace(/\s+/g, ' ').trim();
     return (
-        <tr style={{ cursor: 'pointer' }} title="Double-click for the full entry"
+        <tr className="cursor-pointer" title="Double-click for the full entry"
             onDoubleClick={() => showDetail(item)}>
-            <td style={{ maxWidth: '0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '12px' }}>
-                <span className="mono faint" style={{ marginRight: '8px' }}>[{formatLogDate(item.date)}]</span>
+            <td className="max-w-0 truncate text-[12px]">
+                <span className="mono faint mr-2">[{formatLogDate(item.date)}]</span>
                 <LevelTag level={item.level} style={{ verticalAlign: 'middle', marginRight: '8px' }} />
                 {rest}
             </td>
@@ -216,25 +212,25 @@ function ServerLogTab() {
         setItems(prev => prev.length > n ? prev.slice(0, n) : prev);
     }
 
-    const btnStyle = { padding: '1px 6px', height: '22px', lineHeight: '1' };
+    const btnClass = 'py-[1px] px-1.5 h-[22px] leading-none';
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0' }}>
+        <div className="flex flex-col h-full min-h-0">
             {/* scrollable log table */}
-            <div style={{ flex: '1', minHeight: '0', overflowY: 'auto', overflowX: 'hidden' }}>
-                <table className="dt server-log" style={{ width: '100%' }}>
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                <table className="dt server-log w-full">
                     <thead>
                         <tr>
-                            <th style={{ textAlign: 'center', position: 'sticky', top: '0', zIndex: '1', background: 'var(--bg1)' }}>
+                            <th className="text-center sticky top-0 z-[1] bg-bg1">
                                 Log Information
                             </th>
                         </tr>
                     </thead>
                     <tbody>
                         {error && !items.length ? (
-                            <tr><td className="faint" style={{ padding: '12px' }}>{`Server Log unavailable: ${error}`}</td></tr>
+                            <tr><td className="faint p-3">{`Server Log unavailable: ${error}`}</td></tr>
                         ) : !items.length ? (
-                            <tr><td className="faint" style={{ padding: '12px' }}>No server log entries yet.</td></tr>
+                            <tr><td className="faint p-3">No server log entries yet.</td></tr>
                         ) : (
                             items.map(item => <LogRow key={item.id} item={item} />)
                         )}
@@ -242,26 +238,22 @@ function ServerLogTab() {
                 </table>
             </div>
             {/* thin sticky bottom toolbar: pause | clear | … | Log Size */}
-            <div className="taskbar" style={{
-                display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 8px',
-                flex: 'none', fontSize: '12px', zIndex: '2',
-                background: 'var(--bg1)', borderTop: '1px solid var(--bg3)'
-            }}>
-                <button className="icon-btn" title="Pause or resume the live log" style={btnStyle} onClick={togglePause}>
-                    <span style={{ fontSize: '13px', lineHeight: '1' }}>{paused ? '⏵' : '⏸'}</span>
+            <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[12px] z-[2] bg-bg1 border-t border-[var(--bg3)]">
+                <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={togglePause}>
+                    <span className="text-[13px] leading-none">{paused ? '⏵' : '⏸'}</span>
                 </button>
-                <button className="icon-btn" title="Clear the displayed log" style={btnStyle} onClick={clearLog}>
-                    <span style={{ color: 'var(--err)', fontWeight: '700' }}>✕</span>
+                <button className={"icon-btn " + btnClass} title="Clear the displayed log" onClick={clearLog}>
+                    <span className="text-err font-bold">✕</span>
                 </button>
-                <span style={{ flex: '1' }} />
-                <label className="faint" style={{ marginRight: '2px' }}>Log Size:</label>
+                <span className="flex-1" />
+                <label className="faint mr-0.5">Log Size:</label>
                 <input type="number" min="1" max="99999" value={sizeText}
-                    style={{ width: '60px', height: '22px', padding: '0 4px', fontSize: '12px' }}
+                    className="w-[60px] h-[22px] py-0 px-1 text-[12px]"
                     onChange={(e) => setSizeText(e.target.value)}
                     onBlur={applySize}
                     onKeyDown={(e) => { if (e.key === 'Enter') applySize(); }} />
-                <button className="icon-btn" title="Apply log size" style={btnStyle} onClick={applySize}>
-                    <span style={{ color: 'var(--ok)', fontWeight: '700' }}>✓</span>
+                <button className={"icon-btn " + btnClass} title="Apply log size" onClick={applySize}>
+                    <span className="text-ok font-bold">✓</span>
                 </button>
             </div>
         </div>

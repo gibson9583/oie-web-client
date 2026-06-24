@@ -374,11 +374,11 @@ export function register(platform) {
                                     {showFreq && <label>Frequency</label>}
                                     {showFreq && (
                                         <div className="flex items-center gap-2">
-                                            <input type="number" min="0" step="any" style={{ maxWidth: '120px' }}
+                                            <input type="number" min="0" step="any" className="max-w-[120px]"
                                                 value={freqValue}
                                                 onInput={(e) => { setFreqValue(e.target.value); setScheduleDirty(true); }}
                                                 onChange={(e) => { setFreqValue(e.target.value); setScheduleDirty(true); }} />
-                                            <select style={{ maxWidth: '120px' }} value={freqUnit}
+                                            <select className="max-w-[120px]" value={freqUnit}
                                                 onChange={(e) => { setFreqUnit(e.target.value); setScheduleDirty(true); }}>
                                                 <option value="minutes">minutes</option>
                                                 <option value="hours">hours</option>

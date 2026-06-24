@@ -65,18 +65,13 @@ export function register(platform) {
         modal({
             title: 'Global Map Value',
             size: 'wide',
-            body: h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '620px' } },
-                h('div', { style: { display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '12px' } },
+            body: h('div', { class: 'flex flex-col gap-2 min-w-[620px]' },
+                h('div', { class: 'flex gap-[14px] flex-wrap text-[12px]' },
                     h('span.mono.faint', `Server ${row.serverId}`),
                     h('span.mono', row.channel),
-                    h('span.mono', { style: { fontWeight: '650' } }, row.key)),
+                    h('span.mono', { class: 'font-[650]' }, row.key)),
                 h('pre', {
-                    style: {
-                        margin: '0', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                        maxHeight: '60vh', overflowX: 'hidden', overflowY: 'auto',
-                        background: 'var(--bg0)', color: 'var(--text)', border: '1px solid var(--bg3)',
-                        padding: '8px', borderRadius: '4px'
-                    }
+                    class: 'm-0 whitespace-pre-wrap [word-break:break-word] max-h-[60vh] overflow-x-hidden overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]'
                 }, row.value)),
             buttons: [{ label: 'Close', primary: true }]
         });
@@ -149,13 +144,13 @@ export function register(platform) {
         let body;
         if (error) {
             body = (
-                <tr><td colSpan={4} className="faint" style={{ padding: '12px' }}>
+                <tr><td colSpan={4} className="faint p-3">
                     {`Global maps unavailable: ${error}`}
                 </td></tr>
             );
         } else if (!filtered.length) {
             body = (
-                <tr><td colSpan={4} className="faint" style={{ padding: '12px' }}>
+                <tr><td colSpan={4} className="faint p-3">
                     No global map variables are set.
                 </td></tr>
             );
@@ -164,19 +159,19 @@ export function register(platform) {
                 const value = r.value.replace(/\s+/g, ' ').trim();
                 return (
                     <tr key={`${r.serverId}|${r.channelId}|${r.key}|${i}`}
-                        style={{ cursor: 'pointer' }} title="Double-click for the full value"
+                        className="cursor-pointer" title="Double-click for the full value"
                         onDoubleClick={() => showValue(r)}>
                         <td className="mono faint">{r.serverId}</td>
                         <td>{r.channel}</td>
-                        <td className="mono" style={{ fontWeight: '600' }}>{r.key}</td>
-                        <td className="mono" style={{ fontSize: '12px' }}>{value}</td>
+                        <td className="mono font-semibold">{r.key}</td>
+                        <td className="mono text-[12px]">{value}</td>
                     </tr>
                 );
             });
         }
 
         return (
-            <div className="dt-wrap" style={{ minHeight: '0' }}>
+            <div className="dt-wrap min-h-0">
                 <table className="dt global-maps">
                     <thead>
                         <tr>

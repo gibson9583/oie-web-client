@@ -33,14 +33,7 @@ function register(platform2) {
     if (!state.libs.length) {
       return /* @__PURE__ */ React.createElement("div", { className: "faint" }, "No libraries loaded");
     }
-    return /* @__PURE__ */ React.createElement("ul", { style: {
-      margin: "0",
-      paddingLeft: "18px",
-      maxHeight: "180px",
-      overflow: "auto",
-      fontFamily: "var(--font-mono)",
-      fontSize: "12px"
-    } }, state.libs.map((l, i) => /* @__PURE__ */ React.createElement("li", { key: `${i}-${l}` }, l)));
+    return /* @__PURE__ */ React.createElement("ul", { className: "m-0 pl-[18px] max-h-[180px] overflow-auto font-mono text-[12px]" }, state.libs.map((l, i) => /* @__PURE__ */ React.createElement("li", { key: `${i}-${l}` }, l)));
   }
   function DirectoryDetail({ entry, locked, platform: platform3, refreshTable }) {
     const obj = entry.obj;
