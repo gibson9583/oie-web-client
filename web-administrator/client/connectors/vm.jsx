@@ -59,8 +59,9 @@ function loadChannelNames(platform) {
 }
 
 /* Synthetic combo labels Swing surfaces when the text field holds a value that
-   isn't a known channel id. They only ever appear in the dropdown (never written
-   to channelId) — they exist solely to describe the free-text field's state. */
+   isn't a known channel id. They are never standing picker options and never
+   written to channelId — they describe the field's current state, shown as the
+   combo's selected value only while that state holds (see syncCombo). */
 const NONE_LABEL = '<None>';
 const MAP_VARIABLE_LABEL = '<Map Variable>';
 const NOT_FOUND_LABEL = '<Channel Not Found>';
@@ -73,8 +74,9 @@ const NOT_FOUND_LABEL = '<Channel Not Found>';
        'none' when the field is blank, so a blank field clears channelId to 'none'.
      - The combo is keyed by channel NAME and resolves to an id; '<None>' clears
        the field. Selecting an entry writes its id into the field (updateField in
-       reverse). The combo also shows synthetic labels (<None> / <Map Variable> /
-       <Channel Not Found>) describing whatever the field currently holds.
+       reverse). The combo's options are only <None> + channel names; a synthetic
+       label (<Map Variable> / <Channel Not Found>) appears as the selected value
+       only when the field holds a map variable or an unknown id — never as an option.
    Combo option order matches Swing: '<None>' first, then channels sorted
    alpha-numerically by NAME (Collections.sort on channelNameArray). */
 function channelControlNode(properties, platform, onChange) {
@@ -105,6 +107,19 @@ function channelControlNode(properties, platform, onChange) {
             if (match) selection = match[0];
             else if (text.includes('$')) selection = MAP_VARIABLE_LABEL;
             else selection = NOT_FOUND_LABEL;
+        }
+        // <Map Variable>/<Channel Not Found> describe the field's current value; they
+        // are never standing picker options (matching Swing, whose combo model holds
+        // only <None> + channel names while setSelectedItem can still *display* one of
+        // these labels). Carry it as a hidden option only while it's the selection, so
+        // the closed control shows it but the open dropdown lists only <None> + names.
+        for (const opt of Array.from(combo.options)) {
+            if (opt.value === MAP_VARIABLE_LABEL || opt.value === NOT_FOUND_LABEL) opt.remove();
+        }
+        if (selection === MAP_VARIABLE_LABEL || selection === NOT_FOUND_LABEL) {
+            const opt = h('option', { value: selection }, selection);
+            opt.hidden = true;
+            combo.appendChild(opt);
         }
         combo.value = selection;
     }
@@ -145,13 +160,11 @@ function channelControlNode(properties, platform, onChange) {
             .map(([id, name]) => [name, id])
             .sort((a, b) => a[0].localeCompare(b[0]));
         clear(combo);
-        // '<None>' first, then sorted channel names, plus the synthetic labels so
-        // the combo can describe a raw id / map variable the field may hold.
+        // '<None>' first, then sorted channel names. No synthetic <Map Variable>/
+        // <Channel Not Found> options — syncCombo adds one transiently (hidden) only
+        // while it describes the field's current value.
         combo.appendChild(h('option', { value: NONE_LABEL }, NONE_LABEL));
         for (const [name] of channelList) combo.appendChild(h('option', { value: name }, name));
-        for (const label of [MAP_VARIABLE_LABEL, NOT_FOUND_LABEL]) {
-            combo.appendChild(h('option', { value: label }, label));
-        }
         syncCombo();
     }).catch(() => { /* keep the static <None> option */ });
 

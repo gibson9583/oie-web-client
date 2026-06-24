@@ -79,10 +79,13 @@ function staticResourcesTable(properties, onChange) {
         const body = h('tbody');
         rows.forEach((row, i) => {
             body.appendChild(h('tr',
-                h('td', textInput(row.contextPath, { class: 'w-full', onInput: (e) => { row.contextPath = e.target.value; commit(); } })),
+                // Commit (and thus repaint, which rebuilds this island) on blur, not
+                // per keystroke — committing on every keystroke replaces the focused
+                // input and drops focus. onInput keeps the row model live in between.
+                h('td', textInput(row.contextPath, { class: 'w-full', onInput: (e) => { row.contextPath = e.target.value; }, onChange: (e) => { row.contextPath = e.target.value; commit(); } })),
                 h('td', select(RESOURCE_TYPES, row.resourceType, { onChange: (e) => { row.resourceType = e.target.value; commit(); } })),
-                h('td', textInput(row.value, { class: 'w-full', onInput: (e) => { row.value = e.target.value; commit(); } })),
-                h('td', textInput(row.contentType, { class: 'w-full', onInput: (e) => { row.contentType = e.target.value; commit(); } })),
+                h('td', textInput(row.value, { class: 'w-full', onInput: (e) => { row.value = e.target.value; }, onChange: (e) => { row.value = e.target.value; commit(); } })),
+                h('td', textInput(row.contentType, { class: 'w-full', onInput: (e) => { row.contentType = e.target.value; }, onChange: (e) => { row.contentType = e.target.value; commit(); } })),
                 h('td', h('button.icon-btn', { type: 'button', title: 'Delete', onClick: () => { rows.splice(i, 1); commit(); paint(); } }, icon('x')))));
         });
         table.appendChild(body);

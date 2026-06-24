@@ -60,6 +60,14 @@ function channelControlNode(properties, platform, onChange) {
       else if (text.includes("$")) selection = MAP_VARIABLE_LABEL;
       else selection = NOT_FOUND_LABEL;
     }
+    for (const opt of Array.from(combo.options)) {
+      if (opt.value === MAP_VARIABLE_LABEL || opt.value === NOT_FOUND_LABEL) opt.remove();
+    }
+    if (selection === MAP_VARIABLE_LABEL || selection === NOT_FOUND_LABEL) {
+      const opt = h("option", { value: selection }, selection);
+      opt.hidden = true;
+      combo.appendChild(opt);
+    }
     combo.value = selection;
   }
   field.addEventListener("input", () => {
@@ -90,9 +98,6 @@ function channelControlNode(properties, platform, onChange) {
     clear(combo);
     combo.appendChild(h("option", { value: NONE_LABEL }, NONE_LABEL));
     for (const [name] of channelList) combo.appendChild(h("option", { value: name }, name));
-    for (const label of [MAP_VARIABLE_LABEL, NOT_FOUND_LABEL]) {
-      combo.appendChild(h("option", { value: label }, label));
-    }
     syncCombo();
   }).catch(() => {
   });
