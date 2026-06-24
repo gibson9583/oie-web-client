@@ -85,8 +85,9 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
 - **Script editors** — Monaco-based JavaScript tuned for Rhino: User API
   (`userutil`) IntelliSense, in-scope code-template function completions,
   reserved-variable highlighting, and engine-backed validation + Format Document
-  (through the serializer bridge below). Falls back to a plain editor when the
-  Monaco CDN is unreachable.
+  (through the serializer bridge below). Monaco is bundled and served locally, so
+  it works fully air-gapped (no CDN); it falls back to a plain editor only if it
+  ever fails to load.
 - **Message browser** — search (date, status, text, connector), pagination,
   full content tabs (raw → response), errors, mappings, attachments,
   send/reprocess/remove/export.

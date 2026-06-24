@@ -53,7 +53,7 @@ oie-web-client/
 | **npm** | **9+** (ships with Node 18+) | This is an npm-**workspaces** monorepo (npm 7+ required). Yarn/pnpm are not used. |
 | **OIE / Mirth Connect engine** | any version exposing the REST API | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. |
 | **JDK 21+** | _optional_ | Only for the exact serializer bridge (`OIE_HOME`, see [Configuration](#configuration)). Without it the app uses built-in JS parsing. |
-| **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor loads from a CDN, with a plain-editor fallback when offline. |
+| **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
 
 Contributors running the end-to-end tests also install Playwright's browser once:
 `npx playwright install chromium`.

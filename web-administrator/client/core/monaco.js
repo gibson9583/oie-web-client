@@ -1,10 +1,12 @@
 /*
- * Monaco editor integration (lazy, CDN-loaded, optional).
+ * Monaco editor integration (lazy, locally served, optional).
  *
- * The built-in textarea editor (codeeditor.js) is the guaranteed baseline —
- * it works air-gapped. When the Monaco CDN is reachable, every code editor
- * upgrades in place to a full Monaco instance with syntax highlighting tuned
- * for the engine's Rhino JavaScript:
+ * Monaco is bundled with the web administrator (the server serves the installed
+ * monaco-editor package's min/vs build at /vendor/monaco — see server/index.js),
+ * so it works fully air-gapped with no CDN. The built-in textarea editor
+ * (codeeditor.js) remains the guaranteed baseline if Monaco ever fails to load.
+ * When it loads, every code editor upgrades in place to a full Monaco instance
+ * with syntax highlighting tuned for the engine's Rhino JavaScript:
  *   - syntax-only validation (Rhino/E4X idioms like importPackage() would
  *     trip semantic checks)
  *   - completion entries for the Mirth/OIE scope variables (msg, tmp,
@@ -17,7 +19,8 @@ import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
 import { getActiveCompletions } from './script-completions.js';
 
-const BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
+// Local path the server mounts the monaco-editor min/vs build at (no CDN).
+const BASE = '/vendor/monaco';
 const LOAD_TIMEOUT_MS = 10000;
 
 let loadPromise = null;
@@ -32,7 +35,9 @@ export function ensureMonaco() {
         script.onload = () => {
             try {
                 window.require.config({ paths: { vs: `${BASE}/vs` } });
-                // Cross-origin worker shim (standard Monaco CDN pattern).
+                // Blob worker shim: a worker spawned from a blob: URL has an
+                // opaque origin, so it loads Monaco's worker via importScripts
+                // from the absolute (same-origin) /vendor/monaco path.
                 window.MonacoEnvironment = {
                     getWorkerUrl: () => URL.createObjectURL(new Blob([
                         `self.MonacoEnvironment={baseUrl:'${BASE}/'};importScripts('${BASE}/vs/base/worker/workerMain.js');`

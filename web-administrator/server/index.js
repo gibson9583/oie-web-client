@@ -29,20 +29,22 @@ const DEV = process.env.WEBADMIN_DEV === '1';
 app.disable('x-powered-by');
 
 // --- Content-Security-Policy -------------------------------------------------
-// Same-origin by default. Allows the two CDNs the SPA actually uses — Google
-// Fonts (fonts.googleapis.com / fonts.gstatic.com) and Monaco (cdn.jsdelivr.net,
-// incl. its blob: worker) — plus data: images/frames for the attachment viewers.
-// 'unsafe-inline' (the importmap + pervasive inline styles) and 'unsafe-eval'
-// (Monaco's worker + the datatype script validator) are required by the current
-// client. Dev (Vite HMR) additionally needs a WebSocket.
+// Same-origin by default. Monaco is now served locally (/vendor/monaco, see
+// below) so it needs no CDN — the only external origin left is Google Fonts
+// (fonts.googleapis.com / fonts.gstatic.com), which degrades gracefully to the
+// system font fallbacks when unreachable (air-gapped). data: covers the
+// attachment viewers' inline images/frames. 'unsafe-inline' (the importmap +
+// pervasive inline styles) and 'unsafe-eval' (Monaco's worker + the datatype
+// script validator) are required by the current client. Dev (Vite HMR) also
+// needs a WebSocket.
 const CSP = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
-    "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data:",
     "worker-src 'self' blob:",
-    `connect-src 'self' https://cdn.jsdelivr.net${DEV ? ' ws: wss:' : ''}`,
+    `connect-src 'self'${DEV ? ' ws: wss:' : ''}`,
     "frame-src 'self' data:",
     "object-src 'none'",
     "base-uri 'self'",
@@ -66,6 +68,22 @@ app.get('/webadmin/config.json', (req, res) => {
         codeTemplateCompletions: config.codeTemplateCompletions !== false
     });
 });
+
+// --- Vendored Monaco editor (bundled for air-gapped installs) ----------------
+// Code editors upgrade to Monaco from this local path instead of a CDN, so
+// syntax highlighting/completion work with no internet access. Served straight
+// from the installed monaco-editor package's prebuilt AMD bundle (min/vs); the
+// loader in client/core/monaco.js requests /vendor/monaco/vs/loader.js etc.
+// Registered here (before the Vite/static frontend) so it wins in dev and prod.
+// If the package isn't installed, editors fall back to the plain textarea.
+try {
+    const monacoMin = path.join(path.dirname(require.resolve('monaco-editor/package.json')), 'min');
+    // maxAge (not immutable): the min/vs filenames aren't content-hashed, so a
+    // Monaco version bump reuses the same URLs — let the browser revalidate.
+    app.use('/vendor/monaco', express.static(monacoMin, { maxAge: '1d', dotfiles: 'deny' }));
+} catch {
+    console.warn('  [monaco] monaco-editor not installed — code editors will use the basic textarea. Run "npm install".');
+}
 
 // --- Serializer bridge (optional, exact datatype serialization) --------------
 const serializerBridge = installSerialize(app, config);
