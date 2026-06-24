@@ -8,9 +8,8 @@ anything a core view can.
 
 > **Plugins are React.** Every plugin's UI is authored in React against the
 > host's own React instance (`platform.React`), and registries hold a
-> **`component`** (a React component), not the old imperative `render(host)`
-> function. See [Writing plugins in React](#writing-plugins-in-react) for the
-> contract and the one-line rule for porting older `render(host, ctx)` panels.
+> **`component`** (a React component). See
+> [Writing plugins in React](#writing-plugins-in-react) for the contract.
 
 ## Adding a web UI: three starting points
 
@@ -260,18 +259,29 @@ const React = platform.React;          // the host's React — NOT an `import 'r
   breaks hooks/context and registers into a dead tree. (`platform.React` is set by
   the shell at boot, before any plugin loads.) Once `React` is in scope you write
   ordinary JSX and use `React.useState`/`useEffect`/`useRef`/etc.
-- **Registries hold a `component`, not a `render(host)`.** Each extension point
-  below takes a React component (or, for per-row dashboard columns, `cell`
-  functions that *return* JSX). The host renders it in-tree; you never touch a
-  `host` DOM node or `appendChild`.
-- **The one-line port rule** (from the old imperative contract): an extension's
-  **`render(host, ctx)` becomes `component(ctx)`** — a React function component
-  that receives the **same `ctx` as props** and **returns JSX** instead of
-  appending to `host`. Everything else on the descriptor (`defaults`, `create`,
-  `canHandle`, `isSupported`, `propertiesClass`, transmission `apply`/`sampleFrame`)
-  is plain data/logic and is **unchanged**. Imperative helpers are still fine to
-  *call* from handlers — `platform.ui.modal/confirmDialog/toast`, `platform.api.*`.
-- Style with `client/css/app.css` classes/variables so you match both themes.
+- **Registries hold a `component`.** Each extension point below takes a React
+  component (or, for per-row dashboard columns, `cell` functions that *return*
+  JSX). The host renders it in-tree — you never touch a DOM node or `appendChild`.
+- **The descriptor is mostly plain data.** `component(ctx)` is a React function
+  component that receives `ctx` as **props** and **returns JSX**; everything else
+  on the descriptor (`defaults`, `create`, `canHandle`, `isSupported`,
+  `propertiesClass`, transmission `apply`/`sampleFrame`) is plain data/logic.
+  Imperative helpers are fine to *call* from handlers —
+  `platform.ui.modal/confirmDialog/toast`, `platform.api.*`.
+- **Styling.** Use **Tailwind v4 utilities** (`bg-bg2`, `text-text-dim`,
+  `text-accent`, `border-line`, `flex`, `gap-2`, `mt-[14px]`, …) — generated from
+  the design-token CSS variables, so light/dark theming is automatic, no `dark:`
+  variants — plus the app's **component classes** (`.btn`/`.btn-primary`,
+  `.panel`/`.panel-header`/`.panel-body`, `.dt`, `.field`, `.tag`, `.pip`,
+  `.modal`, `.toast`, `.view`, `.mono`, `.hint`, …). For a horizontal radio group
+  use `.radio-group.inline-row`.
+  > **Separately-built plugins** (compiled in their own repo) can use the
+  > component classes and the *common* utilities the host already emits, but the
+  > host's Tailwind build only generates utilities it sees in **host** source —
+  > so for arbitrary/uncommon ones (e.g. `w-[420px]`) use inline `style` or ship
+  > your own Tailwind-generated CSS (scan your source, map the design tokens via
+  > `@theme inline`). In-tree plugins (`plugins/**`) are scanned by the host
+  > build, so any utility works.
 
 The bundled plugins are the reference implementations — read
 `plugins/connection-status/web/plugin.jsx` (a dashboard tab component + column
@@ -481,8 +491,10 @@ Notes:
    to the engine model or to server-side plugins.
 2. Engine lists may arrive as a bare object when they have one element — use
    `platform.api.asList(value, key)`.
-3. Style with the design system (`client/css/app.css` classes and CSS
-   variables) so plugins match both themes.
+3. Style with Tailwind utilities + the app's component classes (see *Writing
+   plugins in React* above) so plugins match both themes — noting the
+   separately-built-plugin caveat (only host-emitted utilities are available
+   unless the plugin ships its own CSS).
 
 ## Server side
 

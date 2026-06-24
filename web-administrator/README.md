@@ -159,8 +159,10 @@ start` serves when present (otherwise it serves the source directly).
 
 Plugins build against the `@oie/*` packages; `npm run lint` at the repo root
 enforces that they use only the public API (and flags unused code). The visual
-design system lives in `client/css/app.css` (dark/light themes via CSS
-variables).
+design system lives in `client/css/app.css`: **Tailwind CSS v4** utilities are
+generated from the design-token CSS variables (so light/dark theming is
+automatic, no `dark:` variants), alongside the app's component classes (`.btn`,
+`.panel`, `.dt`, `.tag`, …). See [PLUGINS.md](PLUGINS.md) for plugin styling.
 
 Tests: `npm test` here runs the `client/core/*.test.js` unit tests; the
 Playwright end-to-end suite and the `@oie/*` type checks run from the repo root
