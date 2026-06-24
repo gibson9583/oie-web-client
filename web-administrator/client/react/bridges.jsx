@@ -107,19 +107,84 @@ export function environmentColorVars(colorObj, dark) {
     };
 }
 
+/* sRGB <-> HSL + hex helpers for the dark-surface tint below. */
+function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d) {
+        if (max === r) h = ((g - b) / d) % 6;
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        h = (h * 60 + 360) % 360;
+    }
+    const l = (max + min) / 2;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    return [h, s, l];
+}
+function hslToHex(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    const [r, g, b] =
+        h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] :
+        h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+    const hx = (v) => Math.max(0, Math.min(255, Math.round((v + m) * 255))).toString(16).padStart(2, '0');
+    return `#${hx(r)}${hx(g)}${hx(b)}`;
+}
+function hexHsl(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
+}
+
+/* The dark theme's neutral surfaces (mirrors the :root dark tokens in app.css).
+   In dark mode these get recolored to the chosen environment HUE so the main area
+   harmonizes with the tinted rail/topbar instead of staying steel-blue. */
+const DARK_SURFACE_TOKENS = {
+    '--bg0': '#0c1116', '--bg1': '#111922', '--bg2': '#16212c', '--bg3': '#1c2a38',
+    '--line': '#233140', '--line-strong': '#2f4254', '--pane-bg': '#16212c', '--statusbar-bg': '#111922'
+};
+
+/* Recolor each dark surface to the env color's hue, KEEPING its lightness (so text
+   contrast is unchanged) and scaling the tint by the env color's own saturation
+   (so a near-gray pick stays neutral / blue). */
+function darkSurfaceTint(colorObj) {
+    const [h, s] = rgbToHsl(Number(colorObj.red) || 0, Number(colorObj.green) || 0, Number(colorObj.blue) || 0);
+    const strength = Math.min(1, s / 0.4);
+    if (strength <= 0.01) return null;   // gray pick: leave the default dark palette
+    const out = {};
+    for (const tok in DARK_SURFACE_TOKENS) {
+        const [, ts, tl] = hexHsl(DARK_SURFACE_TOKENS[tok]);
+        out[tok] = hslToHex(h, ts * strength, tl);
+    }
+    return out;
+}
+
 export function applyEnvironmentColor(colorObj) {
     lastEnvColor = (colorObj && typeof colorObj === 'object' && colorObj.red !== undefined) ? colorObj : null;
     const root = document.documentElement;
-    const v = lastEnvColor && environmentColorVars(lastEnvColor, (root.dataset.theme || 'light') === 'dark');
+    const dark = (root.dataset.theme || 'light') === 'dark';
+    const v = lastEnvColor && environmentColorVars(lastEnvColor, dark);
+
+    // Rail / topbar chrome.
     if (!v) {
         ENV_COLOR_VARS.forEach((p) => root.style.removeProperty(p));
-        return;
+    } else {
+        root.style.setProperty('--rail-bg', v.railBg);
+        root.style.setProperty('--topbar-bg', v.topbarBg);
+        root.style.setProperty('--rail-fg', v.fg);
+        root.style.setProperty('--rail-fg-dim', v.fgDim);
+        root.style.setProperty('--topbar-fg', v.fg);
     }
-    root.style.setProperty('--rail-bg', v.railBg);
-    root.style.setProperty('--topbar-bg', v.topbarBg);
-    root.style.setProperty('--rail-fg', v.fg);
-    root.style.setProperty('--rail-fg-dim', v.fgDim);
-    root.style.setProperty('--topbar-fg', v.fg);
+
+    // Main surfaces: tint the neutral dark palette toward the env hue (dark mode
+    // only; light mode and the no-color case keep the default tokens).
+    const surf = lastEnvColor && dark ? darkSurfaceTint(lastEnvColor) : null;
+    if (surf) {
+        for (const tok in surf) root.style.setProperty(tok, surf[tok]);
+    } else {
+        Object.keys(DARK_SURFACE_TOKENS).forEach((p) => root.style.removeProperty(p));
+    }
 }
 
 // Re-tint when the user toggles light/dark so the dimming tracks the theme.
