@@ -211,7 +211,7 @@ function defaultAdvancedCriteria() {
    chunked into 76-char lines like the Swing client's Base64.encodeBase64Chunked. */
 function pickBinaryFile() {
     return new Promise(resolve => {
-        const input = h('input', { type: 'file', style: { display: 'none' } });
+        const input = h('input', { type: 'file', class: 'hidden' });
         input.addEventListener('change', () => {
             const file = input.files[0];
             input.remove();
@@ -241,7 +241,7 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
 
     /* ---- file open buttons -------------------------------------------------- */
 
-    const fileButtons = h('div', { style: { display: 'flex', gap: '8px', marginTop: '8px' } },
+    const fileButtons = h('div', { class: 'flex gap-2 mt-2' },
         h('button.btn', {
             onClick: async () => {
                 const file = await pickFile();
@@ -255,7 +255,7 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
             },
             title: 'Open a binary file into the editor above. The file will be encoded and displayed as Base64.'
         }, 'Open Binary File…'),
-        h('span.faint', { style: { alignSelf: 'center' } },
+        h('span.text-text-faint', { class: 'self-center' },
             'Binary files are Base64-encoded into the editor.'));
 
     /* ---- destinations table -------------------------------------------------- */
@@ -265,14 +265,14 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
         // Default all checked = send to all destinations, like the Swing client.
         input: h('input', { type: 'checkbox', checked: true })
     }));
-    const destTable = h('div.dt-wrap', { style: { maxHeight: '140px', overflow: 'auto' } },
+    const destTable = h('div.dt-wrap', { class: 'max-h-[140px] overflow-auto' },
         h('table.dt',
-            h('thead', h('tr', h('th', 'Destination'), h('th', { style: { width: '90px' } }, 'Included'))),
+            h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[90px]' }, 'Included'))),
             h('tbody', destRows.map(d => {
                 const c = connectors.find(x => x.metaDataId === d.metaDataId);
                 return h('tr',
                     h('td', `${c.name}`),
-                    h('td', { style: { textAlign: 'center' } }, d.input));
+                    h('td', { class: 'text-center' }, d.input));
             }))));
 
     /* ---- source map variables table ------------------------------------------ */
@@ -295,8 +295,8 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
 
     function addMapRow(key = '', value = '') {
         const row = {
-            key: h('input', { type: 'text', value: key, style: { width: '100%' } }),
-            value: h('input', { type: 'text', value: value, style: { width: '100%' } })
+            key: h('input', { type: 'text', value: key, class: 'w-full' }),
+            value: h('input', { type: 'text', value: value, class: 'w-full' })
         };
         row.tr = h('tr', { onMousedown: () => selectMapRow(row) },
             h('td', row.key), h('td', row.value));
@@ -306,11 +306,11 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
         return row;
     }
 
-    const mapTable = h('div.dt-wrap', { style: { maxHeight: '140px', overflow: 'auto' } },
+    const mapTable = h('div.dt-wrap', { class: 'max-h-[140px] overflow-auto' },
         h('table.dt',
-            h('thead', h('tr', h('th', { style: { width: '40%' } }, 'Variable'), h('th', 'Value'))),
+            h('thead', h('tr', h('th', { class: 'w-[40%]' }, 'Variable'), h('th', 'Value'))),
             mapTbody));
-    const mapButtons = h('div', { style: { display: 'flex', gap: '8px', marginTop: '6px' } },
+    const mapButtons = h('div', { class: 'flex gap-2 mt-1.5' },
         h('button.btn', { onClick: () => { addMapRow(newMapKey()).key.focus(); } }, 'New'),
         h('button.btn', {
             onClick: () => {
@@ -332,10 +332,10 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
             editor.el,
             fileButtons,
             destRows.length ? h('div',
-                h('div.mt', 'Send to the following destination(s):'),
-                h('div', { style: { marginTop: '6px' } }, destTable)) : null,
-            h('div.mt', 'Include the following source map variables:'),
-            h('div', { style: { marginTop: '6px' } }, mapTable),
+                h('div.mt-[14px]', 'Send to the following destination(s):'),
+                h('div', { class: 'mt-1.5' }, destTable)) : null,
+            h('div.mt-[14px]', 'Include the following source map variables:'),
+            h('div', { class: 'mt-1.5' }, mapTable),
             mapButtons),
         buttons: [
             {
@@ -402,12 +402,12 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
        emits one `status=` query param per selected status. */
     const STATUS_FILTER_ORDER = ['RECEIVED', 'TRANSFORMED', 'FILTERED', 'QUEUED', 'SENT', 'ERROR', 'PENDING'];
     const statusSelected = new Set();
-    const statusBtnLabel = h('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, 'Any');
+    const statusBtnLabel = h('span', { class: 'truncate' }, 'Any');
     const statusBtn = h('button.btn', {
         type: 'button',
-        style: { justifyContent: 'space-between', minWidth: '132px', fontWeight: 'normal' },
+        class: 'justify-between min-w-[132px] font-normal',
         onClick: (e) => { e.stopPropagation(); toggleStatusMenu(); }
-    }, statusBtnLabel, h('span.faint', { style: { marginLeft: '8px' } }, '▾'));
+    }, statusBtnLabel, h('span.text-text-faint', { class: 'ml-2' }, '▾'));
     function refreshStatusBtn() {
         statusBtnLabel.textContent = statusSelected.size === 0 ? 'Any'
             : statusSelected.size === 1 ? [...statusSelected][0]
@@ -422,7 +422,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     }
     function toggleStatusMenu() {
         if (statusMenu) { closeStatusMenu(); return; }
-        const menu = h('div.ctx-menu', { style: { minWidth: '160px' } });
+        const menu = h('div.ctx-menu', { class: 'min-w-[160px]' });
         for (const s of STATUS_FILTER_ORDER) {
             const cb = checkbox(s, statusSelected.has(s), {
                 onChange: (e) => { e.target.checked ? statusSelected.add(s) : statusSelected.delete(s); refreshStatusBtn(); }
@@ -444,23 +444,20 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     }
     const textSearchInput = h('input', {
         type: 'text', placeholder: 'Search message content…',
-        style: { width: '220px' },
+        class: 'w-[220px]',
         onKeydown: (e) => { if (e.key === 'Enter') search(true); }
     });
     const connectorSel = select([{ value: '', label: 'Any' }], '');
     const pageSizeSel = select([20, 50, 100], limit);
 
-    const searchSummary = h('div.faint', { style: { marginTop: '6px' } }, 'Current Search: (none — press Search)');
+    const searchSummary = h('div.text-text-faint', { class: 'mt-1.5' }, 'Current Search: (none — press Search)');
 
     /* The Advanced… button carries a dot whenever any advanced criterion is
        staged, so an applied advanced filter is visible without reopening the
        dialog. Applying advanced criteria does NOT auto-search — the user runs it
        with Search (parity with the Swing browser). */
     const advBtn = taskButton('Advanced…', 'filter', () => openAdvancedSearch());
-    const advDot = h('span', { style: {
-        display: 'inline-block', width: '7px', height: '7px', marginLeft: '7px',
-        borderRadius: '50%', background: 'var(--accent)'
-    } });
+    const advDot = h('span', { class: 'inline-block w-[7px] h-[7px] ml-[7px] rounded-full bg-accent' });
     function advIsActive() {
         const ranges = ['minMessageId', 'maxMessageId', 'minOriginalId', 'maxOriginalId',
             'minImportId', 'maxImportId', 'minSendAttempts', 'maxSendAttempts'];
@@ -503,10 +500,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             advBtn),
         searchSummary);
 
-    const criteriaChevron = h('span', { style: { cursor: 'pointer' } }, '▾');
+    const criteriaChevron = h('span', { class: 'cursor-pointer' }, '▾');
     const criteriaPanel = h('div.panel',
-        { style: { flex: 'none', border: '0', borderBottom: '1px solid var(--line)', borderRadius: '0' } },
-        h('div.panel-header', { style: { cursor: 'pointer' }, onClick: () => {
+        { class: 'flex-none border-0 border-b border-line rounded-none' },
+        h('div.panel-header', { class: 'cursor-pointer', onClick: () => {
             const hidden = criteriaBody.style.display === 'none';
             criteriaBody.style.display = hidden ? '' : 'none';
             criteriaChevron.textContent = hidden ? '▾' : '▸';
@@ -624,34 +621,34 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             const input = h('input', { type: 'checkbox', checked: isConnChecked(c.metaDataId) });
             connRows.push({ key: c.metaDataId, input });
             connTbody.appendChild(h('tr',
-                h('td', { style: { width: '50px' } }, c.metaDataId === null ? '--' : String(c.metaDataId)),
+                h('td', { class: 'w-[50px]' }, c.metaDataId === null ? '--' : String(c.metaDataId)),
                 h('td', c.name),
-                h('td', { style: { textAlign: 'center', width: '90px' } }, input)));
+                h('td', { class: 'text-center w-[90px]' }, input)));
         }
         const setAllConn = (v) => connRows.forEach(r => { r.input.checked = v; });
         const connBlock = h('div',
-            h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '10px', marginBottom: '6px' } },
+            h('div', { class: 'flex justify-end gap-2.5 mb-1.5' },
                 h('a', { class: 'link-btn', onClick: () => setAllConn(true) }, 'Select All'),
-                h('span.faint', '|'),
+                h('span.text-text-faint', '|'),
                 h('a', { class: 'link-btn', onClick: () => setAllConn(false) }, 'Deselect All')),
-            h('div.dt-wrap', { style: { maxHeight: '150px', overflow: 'auto' } },
+            h('div.dt-wrap', { class: 'max-h-[150px] overflow-auto' },
                 h('table.dt',
                     h('thead', h('tr', h('th', 'Id'), h('th', 'Current Connector Name'), h('th', 'Included'))),
                     connTbody)));
 
         /* ---- id / numeric ranges (stacked "label: min – max" rows) ---- */
-        const num = (value) => h('input', { type: 'number', value, style: { width: '150px' } });
+        const num = (value) => h('input', { type: 'number', value, class: 'w-[150px]' });
         const inputs = {
             minMessageId: num(adv.minMessageId), maxMessageId: num(adv.maxMessageId),
             minOriginalId: num(adv.minOriginalId), maxOriginalId: num(adv.maxOriginalId),
             minImportId: num(adv.minImportId), maxImportId: num(adv.maxImportId),
             minSendAttempts: num(adv.minSendAttempts), maxSendAttempts: num(adv.maxSendAttempts),
-            serverId: h('input', { type: 'text', value: adv.serverId, style: { flex: '1' } })
+            serverId: h('input', { type: 'text', value: adv.serverId, class: 'flex-1' })
         };
-        const lbl = (text) => h('label', { style: { width: '110px', flex: 'none', textAlign: 'right', color: 'var(--text-dim)' } }, text);
-        const rangeRow = (label, a, b) => h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' } },
-            lbl(label), a, h('span.faint', '–'), b);
-        const singleRow = (label, el) => h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' } },
+        const lbl = (text) => h('label', { class: 'w-[110px] flex-none text-right text-text-dim' }, text);
+        const rangeRow = (label, a, b) => h('div', { class: 'flex items-center gap-2 mb-2' },
+            lbl(label), a, h('span.text-text-faint', '–'), b);
+        const singleRow = (label, el) => h('div', { class: 'flex items-center gap-2 mb-2' },
             lbl(label), el);
 
         const attachmentCheck = checkbox('Has Attachment', adv.attachment);
@@ -677,10 +674,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 rows.splice(i, 1);
                 sel(rows[Math.min(i, rows.length - 1)] ?? null);
             });
-            const el = (onNew) => h('div', { style: { display: 'flex', gap: '8px', alignItems: 'flex-start' } },
-                h('div.dt-wrap', { style: { flex: '1', maxHeight: '150px', overflow: 'auto' } },
+            const el = (onNew) => h('div', { class: 'flex gap-2 items-start' },
+                h('div.dt-wrap', { class: 'flex-1 max-h-[150px] overflow-auto' },
                     h('table.dt', h('thead', h('tr', head.map(l => h('th', l)))), tbody)),
-                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                h('div', { class: 'flex flex-col gap-1.5' },
                     h('button.btn', { onClick: onNew }, 'New'), delBtn));
             delBtn.textContent = 'Delete';
             return { tbody, rows, sel, el };
@@ -691,7 +688,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         function addContentSearchRow(type = 'rawContentSearch', text = '') {
             const row = {
                 type: select(CONTENT_SEARCH_TYPES, type),
-                text: h('input', { type: 'text', value: text, style: { width: '100%' } })
+                text: h('input', { type: 'text', value: text, class: 'w-full' })
             };
             row.tr = h('tr', { onMousedown: () => cs.sel(row) }, h('td', row.type), h('td', row.text));
             cs.rows.push(row);
@@ -709,12 +706,12 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     ? select(metaDataColumns.map(c => c.name), column ?? metaDataColumns[0].name)
                     : h('input', { type: 'text', value: column ?? '', placeholder: 'COLUMN_NAME' }),
                 operator: select(META_SEARCH_OPERATORS, operator),
-                value: h('input', { type: 'text', value, style: { width: '100%' } }),
+                value: h('input', { type: 'text', value, class: 'w-full' }),
                 ignoreCase: h('input', { type: 'checkbox', checked: ignoreCase, title: 'Ignore case' })
             };
             row.tr = h('tr', { onMousedown: () => ms.sel(row) },
                 h('td', row.column), h('td', row.operator), h('td', row.value),
-                h('td', { style: { textAlign: 'center', width: '90px' } }, row.ignoreCase));
+                h('td', { class: 'text-center w-[90px]' }, row.ignoreCase));
             ms.rows.push(row);
             ms.tbody.appendChild(row.tr);
             ms.sel(row);
@@ -722,22 +719,22 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         }
         adv.metaDataSearches.forEach(m => addMetaSearchRow(m.column, m.operator, m.value, m.ignoreCase));
 
-        const sectionLabel = (text) => h('div', { style: { fontWeight: '600', margin: '14px 0 6px' } }, text);
+        const sectionLabel = (text) => h('div', { class: 'font-semibold mt-3.5 mx-0 mb-1.5' }, text);
 
         modal({
             title: 'Advanced Search Filter',
             size: 'wide',
             body: h('div',
                 connBlock,
-                h('div', { style: { marginTop: '14px' } },
+                h('div', { class: 'mt-3.5' },
                     rangeRow('Message Id:', inputs.minMessageId, inputs.maxMessageId),
                     rangeRow('Original Id:', inputs.minOriginalId, inputs.maxOriginalId),
                     rangeRow('Import Id:', inputs.minImportId, inputs.maxImportId),
                     singleRow('Server Id:', inputs.serverId),
                     rangeRow('Send Attempts:', inputs.minSendAttempts, inputs.maxSendAttempts)),
-                h('div', { style: { display: 'flex', gap: '24px', marginTop: '4px' } },
+                h('div', { class: 'flex gap-6 mt-1' },
                     attachmentCheck.el, errorCheck.el),
-                h('div.mt', regexCheck.el),
+                h('div.mt-[14px]', regexCheck.el),
                 sectionLabel('Content Searches'),
                 cs.el(() => addContentSearchRow().text.focus()),
                 sectionLabel('Custom Metadata Searches'),
@@ -819,7 +816,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         if (String(cm && cm.status) === 'ERROR') return 'Yes';
         return '';
     }
-    const errBadge = (label) => label ? h('span', { style: { color: 'var(--err)' } }, label) : '';
+    const errBadge = (label) => label ? h('span', { class: 'text-err' }, label) : '';
 
     /* Full built-in column set (mirrors the Swing MessageBrowser); `def` marks
        default-visible. parent() renders the source row, child() a destination. */
@@ -864,7 +861,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     const expandedIds = new Set();
     let allExpanded = false;
 
-    const tableHost = h('div.grow', { style: { minHeight: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' } });
+    const tableHost = h('div.flex-1', { class: 'min-h-0 flex flex-col overflow-hidden' });
     const selKey = () => selectedRow ? `${selectedRow.messageId}:${selectedMetaDataId}` : null;
 
     function openColumnMenu(e) {
@@ -915,7 +912,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     // View Attachment (Swing MESSAGE_VIEW_IMAGE) — modal listing the message's
     // attachments, each with the existing Fetch Content + Export controls.
     function viewAttachmentsModal(m) {
-        const host = h('div', { style: { minWidth: '480px', maxHeight: '60vh', overflow: 'auto' } }, loading('Loading attachments…'));
+        const host = h('div', { class: 'min-w-[480px] max-h-[60vh] overflow-auto' }, loading('Loading attachments…'));
         // The modal owns its attachment-viewer roots and tears them down on close,
         // independent of the detail pane's roots.
         const modalRoots = [];
@@ -930,10 +927,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId);
                 m.__attachments = attachments;
                 clear(host);
-                if (!attachments.length) { host.appendChild(h('div.faint', 'No attachments')); return; }
+                if (!attachments.length) { host.appendChild(h('div.text-text-faint', 'No attachments')); return; }
                 for (const a of attachments) host.appendChild(attachmentBlock(m, a, modalRoots));
                 if (closed) sweep(); // closed mid-load — tear down the roots we just mounted
-            } catch (e) { clear(host).appendChild(h('div.faint', `Failed to load attachments: ${e.message}`)); }
+            } catch (e) { clear(host).appendChild(h('div.text-text-faint', `Failed to load attachments: ${e.message}`)); }
         })();
     }
 
@@ -976,7 +973,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const cols = allColumns().filter(isVisible);
         const headTwisty = h('span.msg-twisty', { title: allExpanded ? 'Collapse all' : 'Expand all' }, allExpanded ? '▾' : '▸');
         headTwisty.addEventListener('click', toggleAll);
-        const headTh = h('th', { style: { width: '24px' }, onContextMenu: openColumnMenu }, headTwisty);
+        const headTh = h('th', { class: 'w-6', onContextMenu: openColumnMenu }, headTwisty);
         const thead = h('thead', h('tr', headTh, ...cols.map(c => {
             const th = h('th', { style: c.w ? { width: c.w } : null, onContextMenu: openColumnMenu },
                 c.label, sortKey === c.key ? (sortDir > 0 ? ' ▲' : ' ▼') : '');
@@ -1027,7 +1024,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 tbody.appendChild(ctr);
             }
         }
-        tableHost.appendChild(h('div.dt-wrap', { style: { flex: '1', minHeight: '0', overflow: 'auto' } },
+        tableHost.appendChild(h('div.dt-wrap', { class: 'flex-1 min-h-0 overflow-auto' },
             h('table.msg-table', thead, tbody)));
     }
     renderTable();
@@ -1039,7 +1036,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     const nextBtn = taskButton('Next ›', null, () => { offset += limit; search(false); });
     const lastBtn = taskButton('Last »', null, () => { if (total != null) { offset = Math.max(0, Math.floor(Math.max(0, total - 1) / limit) * limit); search(false); } });
     const countBtn = taskButton('Count', null, () => doCount());
-    const pagerBar = h('div.filterbar', { style: { flex: 'none' } }, firstBtn, prevBtn, nextBtn, lastBtn, pagerLabel, countBtn);
+    const pagerBar = h('div.filterbar', { class: 'flex-none' }, firstBtn, prevBtn, nextBtn, lastBtn, pagerLabel, countBtn);
 
     /* The total match count is resolved lazily (Swing's Count button): a COUNT is
        expensive on large tables, so we don't run one on every search. Resolves on
@@ -1106,10 +1103,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
     const detailHandle = h('div.split-handle', { dataset: { orient: 'v', resize: 'next' } });
     const detailPane = h('div', {
-        style: {
-            flex: 'none', height: '36px', overflow: 'hidden',
-            display: 'flex', flexDirection: 'column', background: 'var(--bg1)'
-        }
+        class: 'flex-none h-[36px] overflow-hidden flex flex-col bg-bg1'
     });
     let detailHeight = '38%'; // last expanded height (preserved across selections)
     let detailExpanded = false;
@@ -1124,8 +1118,8 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         if (detailExpanded) detailHeight = detailPane.style.height || detailHeight;
         detailExpanded = false;
         detailPane.style.height = '36px';
-        clear(detailPane).appendChild(h('div.faint', {
-            style: { flex: 'none', padding: '9px 14px' }
+        clear(detailPane).appendChild(h('div.text-text-faint', {
+            class: 'flex-none py-[9px] px-3.5'
         }, 'Select a message to view its contents.'));
     }
 
@@ -1136,7 +1130,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
     async function showDetail(row, metaDataId = 0) {
         expandDetail();
-        clear(detailPane).appendChild(h('div', { style: { padding: '12px 14px' } }, loading('Loading message…')));
+        clear(detailPane).appendChild(h('div', { class: 'py-3 px-3.5' }, loading('Loading message…')));
         let message = row;
         try {
             const [full, attachments] = await Promise.all([
@@ -1162,13 +1156,13 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const cms = connectorMessagesOf(message);
         if (!cms.length) {
             clear(detailPane);
-            detailPane.appendChild(h('div.panel-header', { style: { flex: 'none' } }, `Message ${message.messageId}`));
-            detailPane.appendChild(h('div.faint', { style: { padding: '12px 14px' } }, 'No connector messages'));
+            detailPane.appendChild(h('div.panel-header', { class: 'flex-none' }, `Message ${message.messageId}`));
+            detailPane.appendChild(h('div.text-text-faint', { class: 'py-3 px-3.5' }, 'No connector messages'));
             return;
         }
 
         const initial = cms.find(c => Number(c.metaDataId) === Number(metaDataId)) || cms[0];
-        const tabsHost = h('div', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column', overflow: 'hidden' } });
+        const tabsHost = h('div', { class: 'flex-1 min-h-0 flex flex-col overflow-hidden' });
 
         function renderConnectorTabs(cm) {
             // Switching connectors discards the current connector tabs, which may
@@ -1183,7 +1177,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         // detail header is just the message label — no status pill or connector
         // dropdown.
         clear(detailPane);
-        detailPane.appendChild(h('div.panel-header', { style: { flex: 'none' } },
+        detailPane.appendChild(h('div.panel-header', { class: 'flex-none' },
             `Message ${message.messageId}`));
         detailPane.appendChild(tabsHost);
         renderConnectorTabs(initial);
@@ -1213,7 +1207,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
         // flex:1 so the box always fills the pane — a stable text area even when
         // the body is empty (e.g. a Response with no payload).
-        const pre = h('pre.content-pre', { style: { flex: '1', minHeight: '120px', maxHeight: 'none', margin: '10px' } });
+        const pre = h('pre.content-pre', { class: 'flex-1 min-h-[120px] max-h-none m-2.5' });
         const kind = detectType(body, dataType);
         // Pretty-print known structured types (XML/JSON) by default — gated on the
         // "Format text in message browser" user preference (Administrator settings).
@@ -1228,7 +1222,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 onChange: (e) => { formatted = e.target.checked; draw(); }
             }).el);
         }
-        tools.appendChild(h('span', { style: { flex: '1' } }));
+        tools.appendChild(h('span', { class: 'flex-1' }));
         tools.appendChild(h('button.btn.btn-sm', { onClick: () => copyText(body) }, icon('copy'), 'Copy'));
 
         // HL7: pull exact field names from the engine and re-render tooltips.
@@ -1241,10 +1235,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
         const banner = env
             ? h('div.content-banner', statusTag(env.status),
-                env.statusMessage ? h('span.faint', env.statusMessage) : null)
+                env.statusMessage ? h('span.text-text-faint', env.statusMessage) : null)
             : null;
 
-        return h('div', { style: { display: 'flex', flexDirection: 'column', minHeight: '0', height: '100%' } },
+        return h('div', { class: 'flex flex-col min-h-0 h-full' },
             tools, banner, pre);
     }
 
@@ -1280,9 +1274,9 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         if (errorDefs.length) {
             defs.push({
                 label: 'Errors',
-                render: () => h('div', { style: { padding: '10px', overflow: 'auto' } },
+                render: () => h('div', { class: 'p-2.5 overflow-auto' },
                     errorDefs.map(([label, content]) => [
-                        h('div.faint.mt', label),
+                        h('div.text-text-faint.mt-[14px]', label),
                         h('pre.content-pre', content)
                     ]))
             });
@@ -1299,8 +1293,8 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
     /* Local tab strip sized to the detail pane: fixed bar, scrolling body. */
     function tabsBlock(defs) {
-        const bar = h('div.tabs', { style: { flex: 'none' } });
-        const body = h('div', { style: { flex: '1', minHeight: '0', overflow: 'auto' } });
+        const bar = h('div.tabs', { class: 'flex-none' });
+        const body = h('div', { class: 'flex-1 min-h-0 overflow-auto' });
         defs.forEach((def, i) => {
             bar.appendChild(h('button.tab', {
                 class: i === 0 ? 'active' : null,
@@ -1315,7 +1309,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             }, def.label));
         });
         if (defs.length) body.appendChild(defs[0].render());
-        return { el: h('div', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } }, bar, body) };
+        return { el: h('div', { class: 'flex-1 min-h-0 flex flex-col' }, bar, body) };
     }
 
     /* Classic mappings table: Scope | Variable | Value rows aggregated across
@@ -1335,22 +1329,22 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             for (const [variable, value] of mappingEntries(mc)) {
                 any = true;
                 tbody.appendChild(h('tr',
-                    h('td', { style: { width: '120px' } }, scope),
-                    h('td.mono', { style: { width: '30%' } }, String(variable)),
-                    h('td.mono', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-all' } }, String(value ?? ''))));
+                    h('td', { class: 'w-[120px]' }, scope),
+                    h('td.mono', { class: 'w-[30%]' }, String(variable)),
+                    h('td.mono', { class: 'whitespace-pre-wrap break-all' }, String(value ?? ''))));
             }
         }
         if (!any) {
-            return h('div', { style: { padding: '14px' } }, h('div.faint', 'There are no mappings present.'));
+            return h('div', { class: 'p-3.5' }, h('div.text-text-faint', 'There are no mappings present.'));
         }
-        return h('div.dt-wrap', { style: { overflow: 'auto' } },
+        return h('div.dt-wrap', { class: 'overflow-auto' },
             h('table.dt',
                 h('thead', h('tr', h('th', 'Scope'), h('th', 'Variable'), h('th', 'Value'))),
                 tbody));
     }
 
     function renderAttachments(message, roots) {
-        const host = h('div', { style: { padding: '10px', overflow: 'auto' } });
+        const host = h('div', { class: 'p-2.5 overflow-auto' });
         host.appendChild(loading('Loading attachments…'));
         (async () => {
             try {
@@ -1359,7 +1353,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     ?? await api.messages.attachments(channelId, message.messageId);
                 clear(host);
                 if (!attachments.length) {
-                    host.appendChild(h('div.faint', 'No attachments'));
+                    host.appendChild(h('div.text-text-faint', 'No attachments'));
                     return;
                 }
                 for (const attachment of attachments) {
@@ -1367,7 +1361,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 }
             } catch (e) {
                 clear(host);
-                host.appendChild(h('div.faint', `Failed to load attachments: ${e.message}`));
+                host.appendChild(h('div.text-text-faint', `Failed to load attachments: ${e.message}`));
             }
         })();
         return host;
@@ -1381,17 +1375,17 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             // Host the viewer's React component inside this imperative block. The
             // caller passes its own teardown sink (detail pane vs. modal) so the
             // two lifecycles never unmount each other's roots.
-            const body = h('div.mt');
+            const body = h('div.mt-[14px]');
             roots.push(mountReact(body, <PluginSlot def={viewer} ctx={{ attachment, channelId, messageId: message.messageId, platform }} />));
             return body;
         }
 
         const contentHost = h('div');
-        return h('div.mt',
+        return h('div.mt-[14px]',
             h('dl.kv',
                 h('dt', 'Id'), h('dd', displayValue(attachment.id)),
                 h('dt', 'Type'), h('dd', displayValue(attachment.type))),
-            h('div.mt', { style: { display: 'flex', gap: '8px' } },
+            h('div.mt-[14px]', { class: 'flex gap-2' },
                 taskButton('Fetch Content', 'eye', async () => {
                     try {
                         const full = await api.messages.attachment(channelId, message.messageId, attachment.id);
@@ -1399,7 +1393,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                         if (typeof content === 'string') {
                             try { content = atob(content); } catch { /* keep base64 */ }
                         }
-                        clear(contentHost).appendChild(h('pre.content-pre.mt', displayValue(content)));
+                        clear(contentHost).appendChild(h('pre.content-pre.mt-[14px]', displayValue(content)));
                     } catch (e) {
                         toast(`Failed to fetch attachment: ${e.message}`, 'error');
                     }
@@ -1468,26 +1462,26 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const setAll = (v) => destRows.forEach(r => { r.input.checked = v; });
 
         const destTable = destRows.length ? h('div',
-            h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '10px', margin: '4px 0' } },
+            h('div', { class: 'flex justify-end gap-2.5 my-1 mx-0' },
                 h('a', { class: 'link-btn', onClick: () => setAll(true) }, 'Select All'),
-                h('span.faint', '|'),
+                h('span.text-text-faint', '|'),
                 h('a', { class: 'link-btn', onClick: () => setAll(false) }, 'Deselect All')),
-            h('div.dt-wrap', { style: { maxHeight: '160px', overflow: 'auto' } },
+            h('div.dt-wrap', { class: 'max-h-[160px] overflow-auto' },
                 h('table.dt',
-                    h('thead', h('tr', h('th', 'Destination'), h('th', { style: { width: '90px' } }, 'Included'))),
+                    h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[90px]' }, 'Included'))),
                     h('tbody', destRows.map(d => h('tr',
                         h('td', d.name || `Destination ${d.metaDataId}`),
-                        h('td', { style: { textAlign: 'center' } }, d.input))))))) : null;
+                        h('td', { class: 'text-center' }, d.input))))))) : null;
 
         modal({
             title: 'Reprocessing Options',
             size: 'wide',
             body: h('div',
                 isResults ? h('div', {
-                    style: { color: 'var(--err)', marginBottom: '10px', fontSize: '12.5px' }
+                    class: 'text-err mb-2.5 text-[12.5px]'
                 }, h('b', 'Warning: '), `This will reprocess all ${fmtNumber(total)} result(s) for the current search criteria, including those not listed on the current page.`) : null,
                 overwrite.el,
-                destRows.length ? h('div.mt', 'Reprocess through the following destinations:') : null,
+                destRows.length ? h('div.mt-[14px]', 'Reprocess through the following destinations:') : null,
                 destTable),
             buttons: [
                 { label: 'Cancel' },
@@ -1723,14 +1717,14 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const compressionSel = select([{ value: 'none', label: 'None' }, { value: 'zip', label: 'Zip' }], 'none', { onChange: updateEnabled });
 
         const radio = (name, checked) => h('input', { type: 'radio', name, checked: checked || null, onChange: updateEnabled });
-        const radioLabel = (input, text) => h('label', { style: { display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' } }, input, text);
+        const radioLabel = (input, text) => h('label', { class: 'inline-flex items-center gap-1 cursor-pointer' }, input, text);
         const pwYes = radio('exp-pw'); const pwNo = radio('exp-pw', true);
         const algoSel = select(ENCRYPTION_ALGORITHMS, 'AES128');
-        const pwInput = h('input', { type: 'password', placeholder: 'Password', style: { width: '100%' } });
+        const pwInput = h('input', { type: 'password', placeholder: 'Password', class: 'w-full' });
         const toServer = radio('exp-to'); const toComputer = radio('exp-to', true);
 
-        const rootInput = h('input', { type: 'text', placeholder: '/path/accessible/by/server', style: { flex: '1' } });
-        const patternInput = h('textarea', { rows: '3', style: { width: '100%', fontFamily: 'var(--mono)', resize: 'vertical' } });
+        const rootInput = h('input', { type: 'text', placeholder: '/path/accessible/by/server', class: 'flex-1' });
+        const patternInput = h('textarea', { rows: '3', class: 'w-full font-[family-name:var(--mono)] resize-y' });
         patternInput.value = DEFAULT_FILE_PATTERN;
 
         const insertToken = (token) => {
@@ -1740,15 +1734,15 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             const p = s + token.length;
             patternInput.focus(); patternInput.setSelectionRange(p, p);
         };
-        const varList = h('div.tree', { style: { maxHeight: '150px', overflow: 'auto', border: '1px solid var(--border)', borderRadius: '4px', padding: '4px' } },
+        const varList = h('div.tree', { class: 'max-h-[150px] overflow-auto border border-[var(--border)] rounded-[4px] p-1' },
             FILE_PATTERN_VARS.map(([label, token]) => h('div.tree-node', {
-                title: `Insert ${token}`, draggable: 'true', style: { cursor: 'grab' },
+                title: `Insert ${token}`, draggable: 'true', class: 'cursor-grab',
                 onClick: () => insertToken(token),
                 onDragstart: (e) => { e.dataTransfer.setData('text/plain', token); e.dataTransfer.effectAllowed = 'copy'; }
             }, label)));
 
-        const status = h('div.faint', `${fmtNumber(total)} message(s) match the current search.`);
-        const fill = h('div.progress-fill', { style: { width: '0%' } });
+        const status = h('div.text-text-faint', `${fmtNumber(total)} message(s) match the current search.`);
+        const fill = h('div.progress-fill', { class: 'w-[0%]' });
         const barWrap = h('div.progress', { style: { display: 'none' } }, fill);
 
         function updateEnabled() {
@@ -1769,24 +1763,24 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
         // Swing MessageExportPanel layout: a right-aligned label column with its
         // controls, and the file-pattern variable list in a side panel.
-        const lbl = (t) => h('div', { style: { textAlign: 'right', whiteSpace: 'nowrap', alignSelf: 'center' } }, t);
-        const cell = (...c) => h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' } }, ...c);
-        const grid = h('div', { style: { display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '10px', rowGap: '8px', alignItems: 'center' } },
+        const lbl = (t) => h('div', { class: 'text-right whitespace-nowrap self-center' }, t);
+        const cell = (...c) => h('div', { class: 'flex items-center gap-2 flex-wrap' }, ...c);
+        const grid = h('div', { class: 'grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-2 items-center' },
             lbl('Content:'), cell(contentSel, encryptCheck.el, attachCheck.el),
             lbl('Compression:'), cell(compressionSel),
             lbl('Password Protect:'), cell(radioLabel(pwYes, 'Yes'), radioLabel(pwNo, 'No'), algoSel),
             lbl('Password:'), cell(pwInput),
             lbl('Export To:'), cell(radioLabel(toServer, 'Server'), radioLabel(toComputer, 'My Computer')),
-            lbl('Root Path:'), cell(rootInput, h('span.faint', { style: { whiteSpace: 'nowrap' } }, '/[timestamp].zip')),
+            lbl('Root Path:'), cell(rootInput, h('span.text-text-faint', { class: 'whitespace-nowrap' }, '/[timestamp].zip')),
             lbl('File Pattern:'), cell(patternInput));
 
         const dlg = modal({
             title: 'Export Results',
             size: 'wide',
-            body: h('div', { style: { display: 'flex', gap: '18px', minWidth: '680px' } },
-                h('div', { style: { flex: '1', display: 'flex', flexDirection: 'column', gap: '8px' } }, grid, status, barWrap),
-                h('div', { style: { width: '200px', display: 'flex', flexDirection: 'column' } },
-                    h('label', { style: { display: 'block', marginBottom: '2px' } }, 'Variables:'),
+            body: h('div', { class: 'flex gap-[18px] min-w-[680px]' },
+                h('div', { class: 'flex-1 flex flex-col gap-2' }, grid, status, barWrap),
+                h('div', { class: 'w-[200px] flex flex-col' },
+                    h('label', { class: 'block mb-0.5' }, 'Variables:'),
                     varList)),
             buttons: [
                 { label: 'Cancel', onClick: () => { aborted = true; } },
@@ -2059,8 +2053,7 @@ function MessagesView({ params, query }) {
                     </div>
                 </RailPane>
             </ViewTasks>
-            <div ref={bodyRef} className="view-body flush"
-                style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }} />
+            <div ref={bodyRef} className="view-body flush flex flex-col h-full min-h-0" />
         </div>
     );
 }

@@ -56,7 +56,7 @@ function writeAttachments(list, rows) {
  * block is dimmed — matching Swing useAttachmentsVariableFieldsEnabled() which
  * setEnabled(false) on the table + New/Delete but keeps it VISIBLE. */
 function attachmentsTable(properties, onChange, disabled) {
-    const wrap = h('div', disabled ? { style: { opacity: 0.6 } } : {});
+    const wrap = h('div', disabled ? { class: 'opacity-60' } : {});
     const rows = attachmentEntries(properties.attachments);
     const commit = () => {
         properties.attachments = writeAttachments(properties.attachments, rows);
@@ -65,10 +65,10 @@ function attachmentsTable(properties, onChange, disabled) {
     function paint() {
         clear(wrap);
         rows.forEach((row, i) => {
-            wrap.appendChild(h('div', { style: { display: 'flex', gap: '6px', marginBottom: '6px' } },
-                textInput(row.name, { placeholder: 'Name', disabled, style: { flex: '1' }, onInput: (e) => { row.name = e.target.value; commit(); } }),
-                textInput(row.content, { placeholder: 'Content', disabled, style: { flex: '2' }, onInput: (e) => { row.content = e.target.value; commit(); } }),
-                textInput(row.mimeType, { placeholder: 'MIME type', disabled, style: { flex: '1' }, onInput: (e) => { row.mimeType = e.target.value; commit(); } }),
+            wrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
+                textInput(row.name, { placeholder: 'Name', disabled, class: 'flex-1', onInput: (e) => { row.name = e.target.value; commit(); } }),
+                textInput(row.content, { placeholder: 'Content', disabled, class: 'flex-[2]', onInput: (e) => { row.content = e.target.value; commit(); } }),
+                textInput(row.mimeType, { placeholder: 'MIME type', disabled, class: 'flex-1', onInput: (e) => { row.mimeType = e.target.value; commit(); } }),
                 h('button.icon-btn', { type: 'button', title: 'Remove', disabled, onClick: disabled ? null : () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
         });
         wrap.appendChild(h('button.btn', { type: 'button', disabled, onClick: disabled ? null : () => { rows.push({ name: '', content: '', mimeType: '' }); paint(); } }, 'New'));

@@ -75,19 +75,19 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id]);
     if (state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint", style: { fontSize: "11px", marginBottom: "4px" } }, "Loading DICOM\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[14px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px] mb-1" }, "Loading DICOM\u2026"));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { className: "faint" }, `Could not load DICOM: ${state.message}`));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[14px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load DICOM: ${state.message}`));
     }
     const { bytes, tags } = state;
-    const rows = Object.entries(WANTED).filter(([tag]) => tags[tag] != null && tags[tag] !== "").map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { style: { fontWeight: "600", paddingRight: "16px" } }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, tags[tag])));
+    const rows = Object.entries(WANTED).filter(([tag]) => tags[tag] != null && tags[tag] !== "").map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { className: "font-semibold pr-4" }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, tags[tag])));
     const saveDicom = () => platform3.ui.saveFile(
       `attachment-${attachment.id}.dcm`,
       "application/dicom",
       () => new Blob([bytes], { type: "application/dicom" })
     );
-    return /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: "600", marginBottom: "4px" } }, `DICOM object \u2014 ${bytes.length.toLocaleString()} bytes`), rows.length ? /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("tbody", null, rows)) : /* @__PURE__ */ React.createElement("div", { className: "faint" }, "No readable header tags (non explicit-VR transfer syntax)."), /* @__PURE__ */ React.createElement("div", { className: "mt" }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, "Save DICOM")), /* @__PURE__ */ React.createElement("div", { className: "faint", style: { fontSize: "11px", marginTop: "6px" } }, "Inline image rendering requires a DICOM toolkit; save the object to view it in a DICOM viewer."));
+    return /* @__PURE__ */ React.createElement("div", { className: "mt-[14px]" }, /* @__PURE__ */ React.createElement("div", { className: "font-semibold mb-1" }, `DICOM object \u2014 ${bytes.length.toLocaleString()} bytes`), rows.length ? /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("tbody", null, rows)) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "No readable header tags (non explicit-VR transfer syntax)."), /* @__PURE__ */ React.createElement("div", { className: "mt-[14px]" }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, "Save DICOM")), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px] mt-1.5" }, "Inline image rendering requires a DICOM toolkit; save the object to view it in a DICOM viewer."));
   }
   platform2.registerAttachmentViewer({
     id: "dicomviewer",

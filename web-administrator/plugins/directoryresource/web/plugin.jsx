@@ -55,16 +55,13 @@ export function register(platform) {
             return <div className="loading-block"><div className="spinner" />Loading libraries…</div>;
         }
         if (state.phase === 'error') {
-            return <div className="faint">Library list unavailable</div>;
+            return <div className="text-text-faint">Library list unavailable</div>;
         }
         if (!state.libs.length) {
-            return <div className="faint">No libraries loaded</div>;
+            return <div className="text-text-faint">No libraries loaded</div>;
         }
         return (
-            <ul style={{
-                margin: '0', paddingLeft: '18px', maxHeight: '180px', overflow: 'auto',
-                fontFamily: 'var(--font-mono)', fontSize: '12px'
-            }}>
+            <ul className="m-0 pl-[18px] max-h-[180px] overflow-auto font-mono text-[12px]">
                 {state.libs.map((l, i) => <li key={`${i}-${l}`}>{l}</li>)}
             </ul>
         );

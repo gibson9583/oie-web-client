@@ -28,19 +28,12 @@ function register(platform2) {
       return /* @__PURE__ */ React.createElement("div", { className: "loading-block" }, /* @__PURE__ */ React.createElement("div", { className: "spinner" }), "Loading libraries\u2026");
     }
     if (state.phase === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "faint" }, "Library list unavailable");
+      return /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "Library list unavailable");
     }
     if (!state.libs.length) {
-      return /* @__PURE__ */ React.createElement("div", { className: "faint" }, "No libraries loaded");
+      return /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "No libraries loaded");
     }
-    return /* @__PURE__ */ React.createElement("ul", { style: {
-      margin: "0",
-      paddingLeft: "18px",
-      maxHeight: "180px",
-      overflow: "auto",
-      fontFamily: "var(--font-mono)",
-      fontSize: "12px"
-    } }, state.libs.map((l, i) => /* @__PURE__ */ React.createElement("li", { key: `${i}-${l}` }, l)));
+    return /* @__PURE__ */ React.createElement("ul", { className: "m-0 pl-[18px] max-h-[180px] overflow-auto font-mono text-[12px]" }, state.libs.map((l, i) => /* @__PURE__ */ React.createElement("li", { key: `${i}-${l}` }, l)));
   }
   function DirectoryDetail({ entry, locked, platform: platform3, refreshTable }) {
     const obj = entry.obj;

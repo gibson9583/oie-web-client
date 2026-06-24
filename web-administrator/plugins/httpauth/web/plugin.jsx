@@ -185,11 +185,11 @@ export function register(platform) {
         return (
             <div>
                 {rows.map((row, i) => (
-                    <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-                        <input type="text" placeholder="Name" style={{ flex: '1' }} value={row[0]}
+                    <div key={i} className="flex gap-1.5 mb-1.5">
+                        <input type="text" placeholder="Name" className="flex-1" value={row[0]}
                             onInput={(e) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }}
                             onChange={(e) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }} />
-                        <input type="text" placeholder="Value" style={{ flex: '2' }} value={row[1]}
+                        <input type="text" placeholder="Value" className="flex-[2]" value={row[1]}
                             onInput={(e) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }}
                             onChange={(e) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }} />
                         <button type="button" className="icon-btn" title="Remove"
@@ -227,7 +227,7 @@ export function register(platform) {
             onChange();
         };
         return (
-            <div className="radio-group inline">
+            <div className="radio-group inline-row">
                 {options.map(opt => (
                     <label className="check" key={opt.value}>
                         <input type="checkbox" checked={selected.includes(opt.value)}
@@ -267,7 +267,7 @@ export function register(platform) {
         return (
             <React.Fragment>
                 <CformRow label="Use Credentials">
-                    <div className="radio-group inline">
+                    <div className="radio-group inline-row">
                         <label className="check">
                             <input type="radio" name={name} checked={!useVar} onChange={() => setUse(false)} /> Table
                         </label>
@@ -342,7 +342,7 @@ export function register(platform) {
                 return (
                     <div className="cform"><div className="cform-section"><div className="cform-grid">
                         <CformRow label="Token Location">
-                            <select style={{ width: '160px' }} value={entry.tokenLocation == null ? '' : String(entry.tokenLocation)}
+                            <select className="w-[160px]" value={entry.tokenLocation == null ? '' : String(entry.tokenLocation)}
                                 onChange={(e) => { entry.tokenLocation = e.target.value; onChange(); }}>
                                 <option value="HEADER">Request Header</option>
                                 <option value="QUERY">Query Parameter</option>
@@ -373,7 +373,7 @@ export function register(platform) {
             <div>
                 <div className="field">
                     <label>Authentication Type</label>
-                    <select style={{ width: '220px' }} value={type}
+                    <select className="w-[220px]" value={type}
                         onChange={(e) => { setAuthType(properties, e.target.value); onChange(); force(); }}>
                         {AUTH_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>

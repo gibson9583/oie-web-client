@@ -108,7 +108,7 @@ function FilterTransformerView({ params, kindName }) {
     const t = ctx && ctx.handlers;
 
     return (
-        <div className="view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <div className="view flex flex-col flex-1 min-h-0">
             <ViewTasks>
                 <RailPane title={`${kind.title} Tasks`} paneKey={`tasks:${kind.title} Tasks`}>
                     <div className="taskbar" data-pane-title={`${kind.title} Tasks`}>
@@ -129,7 +129,7 @@ function FilterTransformerView({ params, kindName }) {
                 ? <div className="view-body"><div className="dt-empty">Loading channel…</div></div>
                 : ready === false
                     ? <div className="view-body"><div className="dt-empty">Channel not loaded</div></div>
-                    : <div ref={bodyHostRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }} />}
+                    : <div ref={bodyHostRef} className="flex flex-col flex-1 min-h-0" />}
         </div>
     );
 }
@@ -323,7 +323,7 @@ function buildBody(params, kindName, onTasksChange) {
                 title: 'Cannot Save Channel',
                 body: h('div',
                     h('p', 'Fix the following before saving — the engine would reject this channel:'),
-                    h('ul', { style: { margin: '8px 0 0', paddingLeft: '18px' } }, problems.map(p => h('li', p)))),
+                    h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
                 buttons: [{ label: 'OK' }]
             });
             return;
@@ -384,7 +384,7 @@ function buildBody(params, kindName, onTasksChange) {
 
     // Fills the pane so right-clicking anywhere in the step area (not just on a
     // row) opens the context menu.
-    const tableHost = h('div', { style: { minHeight: '100%' } });
+    const tableHost = h('div', { class: 'min-h-full' });
 
     function typeDef(type) {
         return isFilter ? platform.ruleType(type) : platform.stepType(type);
@@ -396,7 +396,7 @@ function buildBody(params, kindName, onTasksChange) {
 
     function operatorSelect(el) {
         const sel = select(['AND', 'OR'], el.operator === 'OR' ? 'OR' : 'AND', {
-            style: { width: '70px' },
+            class: 'w-[70px]',
             onChange: (e) => { el.operator = e.target.value; commit(); }
         });
         sel.addEventListener('click', (e) => e.stopPropagation());
@@ -421,11 +421,11 @@ function buildBody(params, kindName, onTasksChange) {
             return;
         }
         const thead = h('thead', h('tr',
-            h('th', { style: { width: '64px' } }, 'Enabled'),
-            h('th', { style: { width: '36px' } }, '#'),
-            isFilter ? h('th', { style: { width: '90px' } }, 'Operator') : null,
+            h('th', { class: 'w-[64px]' }, 'Enabled'),
+            h('th', { class: 'w-[36px]' }, '#'),
+            isFilter ? h('th', { class: 'w-[90px]' }, 'Operator') : null,
             h('th', 'Name'),
-            h('th', { style: { width: '180px' } }, 'Type')));
+            h('th', { class: 'w-[180px]' }, 'Type')));
         const baseTypeOptions = availableTypeEntries().map(([type, def]) => ({ value: type, label: def.label || oie.elementTypeLabel(type) }));
         const tbody = h('tbody');
         for (const { el, path, depth } of flattenRows(elements, [], 0, [])) {
@@ -452,15 +452,15 @@ function buildBody(params, kindName, onTasksChange) {
                 ? baseTypeOptions
                 : [{ value: el.__type, label: oie.elementTypeLabel(el.__type) }, ...baseTypeOptions];
             const typeSel = select(typeOptions, el.__type, {
-                style: { width: '100%' },
+                class: 'w-full',
                 onChange: (e) => changeElementType(path, e.target.value)
             });
             ['click', 'mousedown'].forEach(ev => typeSel.addEventListener(ev, (e) => e.stopPropagation()));
-            const tr = h('tr', {
+            const tr = h('tr.cursor-pointer', {
                 class: pathEquals(path, selectedPath) ? 'selected' : null,
-                'data-path': path.join('.'), style: { cursor: 'pointer' }
+                'data-path': path.join('.')
             },
-                h('td', { style: { textAlign: 'center' } }, enabledBox),
+                h('td', { class: 'text-center' }, enabledBox),
                 h('td.num', String(idx + 1)),
                 isFilter ? h('td', idx === 0 ? '' : operatorSelect(el)) : null,
                 h('td', nameField),
@@ -481,9 +481,9 @@ function buildBody(params, kindName, onTasksChange) {
 
     /* ---- element editor + generated script (bottom tabs) ------------------------ */
 
-    const editorHost = h('div.step-editor-fill', { style: { padding: '12px 14px' } });
+    const editorHost = h('div.step-editor-fill', { class: 'py-3 px-3.5' });
     let elementEditorRoot = null;   // teardown for the mounted step/rule React editor
-    const generatedHost = h('div', { style: { padding: '12px 14px' } });
+    const generatedHost = h('div', { class: 'py-3 px-3.5' });
     const generatedEditor = createCodeEditor({ value: '', readOnly: true, minHeight: '200px' });
     generatedHost.appendChild(generatedEditor.el);
 
@@ -564,12 +564,12 @@ function buildBody(params, kindName, onTasksChange) {
         const items = h('div.step-list');
         const m = modal({
             title: `Add ${kind.noun}`,
-            body: entries.length ? items : h('div.faint', 'No element types registered'),
+            body: entries.length ? items : h('div.text-text-faint', 'No element types registered'),
             buttons: [{ label: 'Cancel' }]
         });
         for (const [type, def] of entries) {
             const item = h('div.step-item',
-                h('div', { style: { flex: '1' } },
+                h('div', { class: 'flex-1' },
                     h('div', def.label || oie.elementTypeLabel(type))));
             item.addEventListener('click', () => {
                 m.close();
@@ -741,7 +741,7 @@ function buildBody(params, kindName, onTasksChange) {
         const list = h('div.step-list');
         const m = modal({ title: 'Assign To Iterator', body: list, buttons: [{ label: 'Cancel' }] });
         targets.forEach((it, i) => {
-            const row = h('div.step-item', h('div', { style: { flex: '1' } }, it.name || `Iterator ${i + 1}`));
+            const row = h('div.step-item', h('div', { class: 'flex-1' }, it.name || `Iterator ${i + 1}`));
             row.addEventListener('click', () => { m.close(); moveIntoIterator(el, it); });
             list.appendChild(row);
         });
@@ -897,10 +897,7 @@ function buildBody(params, kindName, onTasksChange) {
         const filterInput = textInput('', { placeholder: 'Filter…' });
         filterInput.addEventListener('input', () => renderItems());
         const listEl = h('div', {
-            style: {
-                border: '1px solid var(--line)', borderRadius: 'var(--radius)',
-                overflow: 'auto', flex: '1', minHeight: '120px'
-            }
+            class: 'border border-line rounded overflow-auto flex-1 min-h-[120px]'
         }, loading('Loading…'));
         let entries = builtin.slice();        // built-ins + user code templates
         const userCategories = [];
@@ -918,9 +915,8 @@ function buildBody(params, kindName, onTasksChange) {
         // panel — reuses the tree's accessor drop handler. `dropText` is the
         // exact text inserted on drop (already type-resolved).
         function makeRow(name, subtitle, dropText) {
-            return h('div.step-item', {
+            return h('div.step-item.cursor-grab', {
                 draggable: 'true',
-                style: { cursor: 'grab' },
                 onDragstart: (e) => {
                     draggingAccessor = dropText;
                     e.dataTransfer.effectAllowed = 'copy';
@@ -929,8 +925,8 @@ function buildBody(params, kindName, onTasksChange) {
                 },
                 onDragend: () => { draggingAccessor = null; }
             },
-                h('div', { style: { flex: '1', minWidth: '0' } },
-                    h('div.ellipsis', name || '(unnamed)'),
+                h('div', { class: 'flex-1 min-w-0' },
+                    h('div.truncate', name || '(unnamed)'),
                     subtitle ? h('div.step-type', subtitle) : null));
         }
 
@@ -942,7 +938,7 @@ function buildBody(params, kindName, onTasksChange) {
                 (!category || en.category === category) &&
                 (!query || `${en.name} ${cleanDesc(en.description)}`.toLowerCase().includes(query)));
             if (!visible.length) {
-                listEl.appendChild(h('div.faint', { style: { padding: '10px', textAlign: 'center' } }, 'No matches'));
+                listEl.appendChild(h('div.text-text-faint', { class: 'p-2.5 text-center' }, 'No matches'));
                 return;
             }
             for (const en of visible) {
@@ -992,20 +988,20 @@ function buildBody(params, kindName, onTasksChange) {
         // Available Variables box (the bottom panel in the Swing reference tab):
         // variables defined by this transformer's steps. Empty when there are none.
         const varsEl = h('div', {
-            style: { border: '1px solid var(--line)', borderRadius: 'var(--radius)', overflow: 'auto', maxHeight: '140px' }
+            class: 'border border-line rounded overflow-auto max-h-[140px]'
         });
         if (!availableVars.length) {
-            varsEl.appendChild(h('div.faint', { style: { padding: '8px 10px', fontSize: '11px' } },
+            varsEl.appendChild(h('div.text-text-faint', { class: 'py-2 px-2.5 text-[11px]' },
                 '(no variables defined by steps yet)'));
         } else {
             for (const v of availableVars) varsEl.appendChild(makeRow(v, null, v));
         }
 
-        return h('div', { style: { padding: '12px', display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0' } },
+        return h('div', { class: 'p-3 flex flex-col h-full min-h-0' },
             h('div.field', h('label', 'Category'), categorySelect),
             h('div.field', filterInput),
             listEl,
-            h('div', { style: { fontWeight: '600', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '12px 0 4px' } }, 'Available Variables'),
+            h('div', { class: 'font-semibold text-[11px] uppercase tracking-[0.04em] mt-3 mx-0 mb-1' }, 'Available Variables'),
             varsEl);
     }
 
@@ -1077,7 +1073,7 @@ function buildBody(params, kindName, onTasksChange) {
                 const typeName = target[`${side}DataType`] || 'RAW';
                 ensureProps(side);
                 host.appendChild(field(`${title} Data Type`,
-                    h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
+                    h('div', { class: 'flex gap-2 items-center' },
                         select(dtOptions, typeName, {
                             onChange: (e) => {
                                 const value = e.target.value;
@@ -1111,9 +1107,9 @@ function buildBody(params, kindName, onTasksChange) {
             return host;
         }
 
-        return h('div', { style: { padding: '12px' } },
+        return h('div', { class: 'p-3' },
             sideSection('inbound', 'Inbound', 'inboundTemplate'),
-            h('div', { style: { height: '14px' } }),
+            h('div', { class: 'h-3.5' }),
             sideSection('outbound', 'Outbound', 'outboundTemplate'));
     }
 
@@ -1459,10 +1455,9 @@ function buildBody(params, kindName, onTasksChange) {
             for (const w of childWraps) if (w._expandAll) w._expandAll(state);
         }
         wrap._expandAll = expandAll;
-        const row = h('div.tree-node', {
+        const row = h('div.tree-node.cursor-grab', {
             draggable: 'true',
             title: `Drag into a script editor: ${node.accessor}`,
-            style: { cursor: 'grab' },
             onDragstart: (e) => {
                 draggingAccessor = node.accessor;
                 e.dataTransfer.effectAllowed = 'copy';
@@ -1478,9 +1473,9 @@ function buildBody(params, kindName, onTasksChange) {
             }
         },
             twisty,
-            h('span.mono', { style: { fontSize: '11.5px', color: 'var(--accent)' } }, node.label),
+            h('span.mono', { class: 'text-[11.5px] text-accent' }, node.label),
             node.value !== null && node.value !== ''
-                ? h('span.faint.ellipsis', { style: { fontSize: '11.5px', minWidth: '0' } }, node.value)
+                ? h('span.text-text-faint.truncate', { class: 'text-[11.5px] min-w-0' }, node.value)
                 : null);
         wrap.appendChild(row);
         if (hasKids) {
@@ -1507,21 +1502,21 @@ function buildBody(params, kindName, onTasksChange) {
     }
 
     function buildTreeSection(title, side, varName, openByDefault) {
-        const body = h('div.tree', { style: { padding: '4px 0' } });
+        const body = h('div.tree', { class: 'py-1 px-0' });
         const template = target[`${side}Template`];
         const dataType = target[`${side}DataType`] || 'RAW';
         const props = target[`${side}Properties`] || {};
         const serProps = props.serializationProperties || {};
-        const sourceBadge = h('span.faint', { style: { fontSize: '10px', marginLeft: '6px' } });
+        const sourceBadge = h('span.text-text-faint', { class: 'text-[10px] ml-1.5' });
 
         const dtLabel = () => (dataTypeDef(dataType) || { label: dataType }).label;
 
         if (template == null || String(template).trim() === '') {
-            body.appendChild(h('div.faint', { style: { padding: '4px 12px', fontSize: '12px' } },
+            body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' },
                 '(no template — set one on the Message Templates tab)'));
         } else {
             const tmpl = String(template);
-            body.appendChild(h('div.faint', { style: { padding: '4px 12px', fontSize: '12px' } }, 'Parsing…'));
+            body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' }, 'Parsing…'));
             // Prefer the engine serializer bridge (byte-exact, all data types,
             // strict + non-strict); fall back to built-in JS parsing offline.
             (async () => {
@@ -1539,7 +1534,7 @@ function buildBody(params, kindName, onTasksChange) {
                         sourceBadge.textContent = ser === null ? '· approximate (offline)' : '';
                     } catch {
                         clear(body);
-                        body.appendChild(h('div.faint', { style: { padding: '4px 12px', fontSize: '12px' } },
+                        body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' },
                             `Template could not be parsed as ${dtLabel()}`));
                         return;
                     }
@@ -1550,8 +1545,7 @@ function buildBody(params, kindName, onTasksChange) {
         body.style.display = openByDefault ? '' : 'none';
         const twisty = h('span.twisty' + (openByDefault ? '.open' : ''), '▸');
         let open = openByDefault;
-        const header = h('div.tree-node', {
-            style: { fontWeight: '600' },
+        const header = h('div.tree-node.font-semibold', {
             onClick: () => {
                 open = !open;
                 twisty.classList.toggle('open', open);
@@ -1562,10 +1556,10 @@ function buildBody(params, kindName, onTasksChange) {
     }
 
     function buildTreesTab() {
-        return h('div', { style: { padding: '8px 4px', overflow: 'auto' } },
+        return h('div', { class: 'py-2 px-1 overflow-auto' },
             buildTreeSection('Inbound Message Template', 'inbound', 'msg', true),
             buildTreeSection('Outbound Message Template', 'outbound', 'tmp', false),
-            h('div.faint', { style: { padding: '8px 12px', fontSize: '11px' } },
+            h('div.text-text-faint', { class: 'py-2 px-3 text-[11px]' },
                 'Drag a node into a script editor or template field to insert its accessor at the drop point.'));
     }
 
@@ -1584,22 +1578,18 @@ function buildBody(params, kindName, onTasksChange) {
     renderAll();
 
     // The task pane is React; the body is just the split layout (no .taskbar here).
-    const el = h('div.view-body.flush', { style: { display: 'flex', flex: '1', minHeight: '0' } },
-        h('div.split', { style: { flex: '1', minWidth: '0' } },
-            h('div.split-a.split.vertical', { style: { flex: '1', minWidth: '0' } },
-                h('div.split-a', { style: { height: '40%', flex: 'none' } }, tableHost),
+    const el = h('div.view-body.flush', { class: 'flex flex-1 min-h-0' },
+        h('div.split', { class: 'flex-1 min-w-0' },
+            h('div.split-a.split.vertical', { class: 'flex-1 min-w-0' },
+                h('div.split-a', { class: 'h-[40%] flex-none' }, tableHost),
                 h('div.split-handle'),
-                h('div.split-b', { style: { display: 'flex', flexDirection: 'column', minHeight: '0' } },
+                h('div.split-b', { class: 'flex flex-col min-h-0' },
                     bottomTabs.el)),
             h('div.split-handle', { 'data-orient': 'h', 'data-resize': 'next' }),
+            // Wide enough to show the full tab bar (Reference / Message
+            // Templates / Message Trees) without horizontal scrolling.
             h('div.split-b', {
-                style: {
-                    // Wide enough to show the full tab bar (Reference / Message
-                    // Templates / Message Trees) without horizontal scrolling.
-                    flex: 'none', width: '460px',
-                    display: 'flex', flexDirection: 'column', minHeight: '0',
-                    borderLeft: '1px solid var(--line)'
-                }
+                class: 'flex-none w-[460px] flex flex-col min-h-0 border-l border-line'
             }, sideTabs.el)));
 
     return {

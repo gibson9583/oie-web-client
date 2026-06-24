@@ -78,7 +78,7 @@ const wsListener = {
                         const isDefault = wsIsDefaultClassName(p);
                         const mk = (label, checked, onSelect) => h('label.check',
                             h('input', { type: 'radio', name, checked, onChange: onSelect }), label);
-                        return h('div.radio-group.inline',
+                        return h('div.radio-group.inline-row',
                             mk('Default service', isDefault, () => { p.className = WS_DEFAULT_CLASSNAME; onChange(); ctx.repaint(); }),
                             mk('Custom service', !isDefault, () => { if (wsIsDefaultClassName(p)) { p.className = ''; } onChange(); ctx.repaint(); }));
                     }
@@ -237,10 +237,10 @@ function attachmentsTable(properties, onChange, disabled) {
     function paint() {
         clear(wrap);
         rows.forEach((row, i) => {
-            wrap.appendChild(h('div', { style: { display: 'flex', gap: '6px', marginBottom: '6px' } },
-                textInput(row[0], { placeholder: 'ID', disabled, style: { flex: '1' }, onInput: (e) => { row[0] = e.target.value; commit(); } }),
-                textInput(row[1], { placeholder: 'Content', disabled, style: { flex: '2' }, onInput: (e) => { row[1] = e.target.value; commit(); } }),
-                textInput(row[2], { placeholder: 'MIME Type', disabled, style: { flex: '1' }, onInput: (e) => { row[2] = e.target.value; commit(); } }),
+            wrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
+                textInput(row[0], { placeholder: 'ID', disabled, class: 'flex-1', onInput: (e) => { row[0] = e.target.value; commit(); } }),
+                textInput(row[1], { placeholder: 'Content', disabled, class: 'flex-[2]', onInput: (e) => { row[1] = e.target.value; commit(); } }),
+                textInput(row[2], { placeholder: 'MIME Type', disabled, class: 'flex-1', onInput: (e) => { row[2] = e.target.value; commit(); } }),
                 h('button.icon-btn', { type: 'button', title: 'Remove', disabled, onClick: () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
         });
         wrap.appendChild(h('button.btn', { type: 'button', disabled, onClick: () => { rows.push(['', '', '']); paint(); } }, 'Add'));
@@ -393,14 +393,14 @@ const wsSender = {
                     type: 'custom', label: 'WSDL URL', span: true,
                     render: (p, ctx) => {
                         const input = textInput(p.wsdlUrl ?? '', {
-                            style: { flex: '1' },
+                            class: 'flex-1',
                             onInput: (e) => { p.wsdlUrl = e.target.value; onChange(); }
                         });
                         const getOpsBtn = taskButton('Get Operations', 'refresh', () => getOperations(getOpsBtn, ctx.repaint));
                         // Swing testConnectionButtonActionPerformed(true): blanks locationURI
                         // on a copy so only the WSDL URL is tested.
                         const testBtn = wsTestConnectionButton(p, channel, true);
-                        return h('div', { style: { display: 'flex', gap: '6px' } }, input, getOpsBtn, testBtn);
+                        return h('div', { class: 'flex gap-1.5' }, input, getOpsBtn, testBtn);
                     }
                 },
                 {
@@ -437,7 +437,7 @@ const wsSender = {
                         });
                         combo.style.flex = '1';
                         const testBtn = wsTestConnectionButton(p, channel, false);
-                        return h('div', { style: { display: 'flex', gap: '6px' } }, combo, testBtn);
+                        return h('div', { class: 'flex gap-1.5' }, combo, testBtn);
                     }
                 },
                 { key: 'socketTimeout', label: 'Socket Timeout (ms)', type: 'number', width: '120px', tooltip: '0 = no timeout' },
@@ -465,7 +465,7 @@ const wsSender = {
                         const current = String(p.operation ?? '');
                         if (!ops.includes(current)) ops.unshift(current || WS_DEFAULT_OPERATION);
                         const combo = select(ops.map((o) => ({ value: o, label: o })), current, {
-                            style: { width: '320px' },
+                            class: 'w-[320px]',
                             onChange: (e) => {
                                 p.operation = e.target.value;
                                 const index = info ? info.operations.indexOf(e.target.value) : -1;
@@ -478,7 +478,7 @@ const wsSender = {
                             title: 'Regenerates the SOAP Envelope from the cached WSDL schema and populates the SOAP Action, if available'
                         });
                         if (!current || current === WS_DEFAULT_OPERATION) btn.disabled = true;
-                        return h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, combo, btn);
+                        return h('div', { class: 'flex gap-1.5 items-center' }, combo, btn);
                     }
                 },
                 { key: 'soapAction', label: 'SOAP Action', type: 'text', width: '320px' },

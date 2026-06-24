@@ -63,7 +63,7 @@ function register(platform2) {
   }
   function YesNo({ value, onChange, disabled }) {
     const name = React.useMemo(() => "datapruner-rg-" + Math.random().toString(36).slice(2), []);
-    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline" }, /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", null, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "radio",
@@ -267,12 +267,12 @@ function register(platform2) {
           strokeLinejoin: "round"
         },
         /* @__PURE__ */ React.createElement("path", { d: "M12 3l9 16H3zM12 10v4M12 17.5v.5" })
-      )), /* @__PURE__ */ React.createElement("div", null, "Failed to load"), /* @__PURE__ */ React.createElement("div", { className: "faint mt" }, errorMessage));
+      )), /* @__PURE__ */ React.createElement("div", null, "Failed to load"), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint mt-[14px]" }, errorMessage));
     }
     const schedule = scheduleRef.current;
     const showFreq = hasSchedule && scheduleType === "INTERVAL" && schedule && schedule.freqEl;
     const showFreqHint = hasSchedule && scheduleType !== "INTERVAL";
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Status"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, statusState.phase === "loading" && /* @__PURE__ */ React.createElement(Loading, { text: "Loading status\u2026" }), statusState.phase === "error" && /* @__PURE__ */ React.createElement("div", { className: "faint" }, statusState.message), statusState.phase === "ready" && (statusState.pairs.length ? /* @__PURE__ */ React.createElement("dl", { className: "kv" }, statusState.pairs.map(([k, v], i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: `${k}-${i}` }, /* @__PURE__ */ React.createElement("dt", null, labelCase(k)), /* @__PURE__ */ React.createElement("dd", null, v)))) : /* @__PURE__ */ React.createElement("div", { className: "faint" }, "No status reported")))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Schedule"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Enable"), /* @__PURE__ */ React.createElement(YesNo, { value: enabled, onChange: setEnabled })), hasSchedule ? /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Schedule Type" }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Status"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, statusState.phase === "loading" && /* @__PURE__ */ React.createElement(Loading, { text: "Loading status\u2026" }), statusState.phase === "error" && /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, statusState.message), statusState.phase === "ready" && (statusState.pairs.length ? /* @__PURE__ */ React.createElement("dl", { className: "kv" }, statusState.pairs.map(([k, v], i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: `${k}-${i}` }, /* @__PURE__ */ React.createElement("dt", null, labelCase(k)), /* @__PURE__ */ React.createElement("dd", null, v)))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "No status reported")))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Schedule"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Enable"), /* @__PURE__ */ React.createElement(YesNo, { value: enabled, onChange: setEnabled })), hasSchedule ? /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Schedule Type" }, /* @__PURE__ */ React.createElement(
       "select",
       {
         value: scheduleType,
@@ -284,13 +284,13 @@ function register(platform2) {
       /* @__PURE__ */ React.createElement("option", { value: "INTERVAL" }, "Interval"),
       /* @__PURE__ */ React.createElement("option", { value: "TIME" }, "Time"),
       /* @__PURE__ */ React.createElement("option", { value: "CRON" }, "Cron")
-    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, showFreq && /* @__PURE__ */ React.createElement("label", null, "Frequency"), showFreq && /* @__PURE__ */ React.createElement("div", { className: "flex" }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, showFreq && /* @__PURE__ */ React.createElement("label", null, "Frequency"), showFreq && /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
         min: "0",
         step: "any",
-        style: { maxWidth: "120px" },
+        className: "max-w-[120px]",
         value: freqValue,
         onInput: (e) => {
           setFreqValue(e.target.value);
@@ -304,7 +304,7 @@ function register(platform2) {
     ), /* @__PURE__ */ React.createElement(
       "select",
       {
-        style: { maxWidth: "120px" },
+        className: "max-w-[120px]",
         value: freqUnit,
         onChange: (e) => {
           setFreqUnit(e.target.value);

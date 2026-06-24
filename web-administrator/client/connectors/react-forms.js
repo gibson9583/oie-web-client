@@ -19,7 +19,7 @@ function Icon({ name }) {
     const el = ref.current;
     if (el) el.replaceChildren(icon(name));
   }, [name]);
-  return /* @__PURE__ */ React.createElement("span", { ref, style: { display: "inline-flex" } });
+  return /* @__PURE__ */ React.createElement("span", { ref, className: "inline-flex" });
 }
 export * from "./forms.js";
 const DEFAULT_WIDTHS = {
@@ -77,7 +77,7 @@ function DomNode({ node }) {
       if (host) host.replaceChildren();
     };
   }, [node]);
-  return /* @__PURE__ */ React.createElement("span", { ref, style: { display: "contents" } });
+  return /* @__PURE__ */ React.createElement("span", { ref, className: "[display:contents]" });
 }
 function KeyValueEditor({ properties, field, onChange, disabled }) {
   const [, tick] = useReducer((n) => n + 1, 0);
@@ -95,13 +95,13 @@ function KeyValueEditor({ properties, field, onChange, disabled }) {
     lastMapRef.current = written;
     onChange();
   };
-  return /* @__PURE__ */ React.createElement("div", { style: disabled ? { opacity: 0.6 } : void 0 }, rows.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: "6px", marginBottom: "6px" } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { style: disabled ? { opacity: 0.6 } : void 0 }, rows.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "flex gap-1.5 mb-1.5" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
       value: row[0],
       placeholder: "Name",
-      style: { flex: "1" },
+      className: "flex-1",
       disabled,
       onChange: (e) => {
         row[0] = e.target.value;
@@ -115,7 +115,7 @@ function KeyValueEditor({ properties, field, onChange, disabled }) {
       type: "text",
       value: row[1],
       placeholder: "Value",
-      style: { flex: "2" },
+      className: "flex-[2]",
       disabled,
       onChange: (e) => {
         row[1] = e.target.value;
@@ -166,7 +166,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
       break;
     case "radio": {
       const name = `cform-radio-${++cformUid}`;
-      control = /* @__PURE__ */ React.createElement("div", { className: "radio-group inline", style: f.width ? { width: f.width } : void 0 }, (f.options || []).map((opt, i) => {
+      control = /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row", style: f.width ? { width: f.width } : void 0 }, (f.options || []).map((opt, i) => {
         const o = typeof opt === "object" ? opt : { value: opt, label: String(opt) };
         return /* @__PURE__ */ React.createElement("label", { className: "check", key: i }, /* @__PURE__ */ React.createElement(
           "input",
@@ -268,7 +268,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
   const appendNode = f.append ? f.append(properties, { onChange, repaint: repaint || (() => {
   }) }) : null;
   if (f.full) {
-    return /* @__PURE__ */ React.createElement("div", { className: "cform-control", style: { gridColumn: "1 / -1" } }, control, appendNode ? /* @__PURE__ */ React.createElement(DomNode, { node: appendNode }) : null);
+    return /* @__PURE__ */ React.createElement("div", { className: "cform-control col-span-full" }, control, appendNode ? /* @__PURE__ */ React.createElement(DomNode, { node: appendNode }) : null);
   }
   return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
     "label",
@@ -345,7 +345,7 @@ function PortsInUseButton() {
       if (host) host.replaceChildren();
     };
   }, []);
-  return /* @__PURE__ */ React.createElement("span", { ref, style: { display: "contents" } });
+  return /* @__PURE__ */ React.createElement("span", { ref, className: "[display:contents]" });
 }
 function ConnectorTestButton({ label = "Test Connection", icon: iconName = "link", path, channel, properties }) {
   const ref = useRef(null);
@@ -373,10 +373,10 @@ function ConnectorTestButton({ label = "Test Connection", icon: iconName = "link
       if (host) host.replaceChildren();
     };
   }, []);
-  return /* @__PURE__ */ React.createElement("span", { ref, style: { display: "contents" } });
+  return /* @__PURE__ */ React.createElement("span", { ref, className: "[display:contents]" });
 }
 function PollSection({ properties, onChange }) {
-  return /* @__PURE__ */ React.createElement("div", { className: "cform-section", style: { marginTop: "16px" } }, /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, "Polling Settings"), /* @__PURE__ */ React.createElement(PollSettings, { properties, onChange }));
+  return /* @__PURE__ */ React.createElement("div", { className: "cform-section mt-4" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, "Polling Settings"), /* @__PURE__ */ React.createElement(PollSettings, { properties, onChange }));
 }
 function PollSettings({ properties, onChange }) {
   const [, tick] = useReducer((n) => n + 1, 0);
@@ -435,13 +435,13 @@ function PollSettings({ properties, onChange }) {
         onChange();
       }
     }
-  ))), p.pollingType === "CRON" && /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Cron Jobs"), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, cron.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: "6px", marginBottom: "6px" } }, /* @__PURE__ */ React.createElement(
+  ))), p.pollingType === "CRON" && /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Cron Jobs"), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, cron.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "flex gap-1.5 mb-1.5" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
       value: row.expression,
       placeholder: "Cron expression (e.g. 0 */5 * ? * *)",
-      style: { flex: "2" },
+      className: "flex-[2]",
       onChange: (e) => {
         row.expression = e.target.value;
         tick();
@@ -454,7 +454,7 @@ function PollSettings({ properties, onChange }) {
       type: "text",
       value: row.description,
       placeholder: "Description",
-      style: { flex: "1" },
+      className: "flex-1",
       onChange: (e) => {
         row.description = e.target.value;
         tick();
@@ -477,7 +477,7 @@ function PollSettings({ properties, onChange }) {
   ))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => {
     cron.push({ expression: "", description: "" });
     tick();
-  } }, "Add Cron Job"))), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "\xA0"), /* @__PURE__ */ React.createElement("div", { style: { minHeight: "34px", display: "flex", alignItems: "center" } }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+  } }, "Add Cron Job"))), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "\xA0"), /* @__PURE__ */ React.createElement("div", { className: "min-h-[34px] flex items-center" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "checkbox",
@@ -515,11 +515,11 @@ function TransmissionModePanel({ properties, onChange }) {
       tick();
     });
   };
-  return /* @__PURE__ */ React.createElement("div", { style: { marginBottom: "16px" } }, /* @__PURE__ */ React.createElement("div", { className: "cform" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, "Transmission Mode"), /* @__PURE__ */ React.createElement("div", { className: "cform-grid" }, /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Transmission Mode:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("div", { className: "flex", style: { gap: "6px", alignItems: "center" } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "mb-4" }, /* @__PURE__ */ React.createElement("div", { className: "cform" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, "Transmission Mode"), /* @__PURE__ */ React.createElement("div", { className: "cform-grid" }, /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Transmission Mode:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-1.5 items-center" }, /* @__PURE__ */ React.createElement(
     "select",
     {
       value: tm.pluginPointName,
-      style: { width: "180px" },
+      className: "w-[180px]",
       onChange: (e) => {
         tm.pluginPointName = e.target.value;
         const m = modeOf();
@@ -538,7 +538,7 @@ function TransmissionModePanel({ properties, onChange }) {
       onClick: openSettings
     },
     /* @__PURE__ */ React.createElement(Icon, { name: "settings" })
-  ))), /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Sample Frame:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("span", { className: "mono faint", style: { fontSize: "12px" } }, sample))))));
+  ))), /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Sample Frame:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint text-[12px]" }, sample))))));
 }
 export {
   ConnectorForm,

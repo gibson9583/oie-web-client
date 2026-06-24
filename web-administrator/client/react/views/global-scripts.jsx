@@ -139,7 +139,7 @@ function GlobalScriptsView() {
     const tabs = SCRIPTS.map((def) => ({
         label: def.label,
         content: (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: '12px 16px' }}>
+            <div className="flex flex-col flex-1 min-h-0 py-3 px-4">
                 <CodeEditor ref={(h) => { editors.current[def.key] = h; }}
                     language="javascript" defaultValue={def.defaultValue}
                     onChange={markDirty} style={{ flex: 1 }} />
@@ -159,7 +159,7 @@ function GlobalScriptsView() {
                     </div>
                 </RailPane>
             </ViewTasks>
-            <div className="view-body flush" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="view-body flush flex flex-col">
                 <Tabs tabs={tabs} active={active} onActiveChange={setActive} />
             </div>
         </div>

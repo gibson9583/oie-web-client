@@ -134,12 +134,12 @@ function register(platform2) {
       setRows(next);
       onChange();
     };
-    return /* @__PURE__ */ React.createElement("div", null, rows.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", gap: "6px", marginBottom: "6px" } }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", null, rows.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "flex gap-1.5 mb-1.5" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "text",
         placeholder: "Name",
-        style: { flex: "1" },
+        className: "flex-1",
         value: row[0],
         onInput: (e) => {
           const next = rows.slice();
@@ -157,7 +157,7 @@ function register(platform2) {
       {
         type: "text",
         placeholder: "Value",
-        style: { flex: "2" },
+        className: "flex-[2]",
         value: row[1],
         onInput: (e) => {
           const next = rows.slice();
@@ -223,7 +223,7 @@ function register(platform2) {
       setSelected(ordered);
       onChange();
     };
-    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline" }, options.map((opt) => /* @__PURE__ */ React.createElement("label", { className: "check", key: opt.value }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, options.map((opt) => /* @__PURE__ */ React.createElement("label", { className: "check", key: opt.value }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "checkbox",
@@ -262,7 +262,7 @@ function register(platform2) {
       setUseVar(v);
       onChange();
     };
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CformRow, { label: "Use Credentials" }, /* @__PURE__ */ React.createElement("div", { className: "radio-group inline" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: !useVar, onChange: () => setUse(false) }), " Table"), /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: useVar, onChange: () => setUse(true) }), " Variable"))), !useVar && /* @__PURE__ */ React.createElement(CformRow, { label: "Credentials (user / password)", top: true }, /* @__PURE__ */ React.createElement(KeyValueField, { entry, fieldKey: "credentials", onChange })), useVar && /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CformRow, { label: "Use Credentials" }, /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: !useVar, onChange: () => setUse(false) }), " Table"), /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: useVar, onChange: () => setUse(true) }), " Variable"))), !useVar && /* @__PURE__ */ React.createElement(CformRow, { label: "Credentials (user / password)", top: true }, /* @__PURE__ */ React.createElement(KeyValueField, { entry, fieldKey: "credentials", onChange })), useVar && /* @__PURE__ */ React.createElement(
       TextRow,
       {
         label: "Credentials Variable",
@@ -326,7 +326,7 @@ function register(platform2) {
         return /* @__PURE__ */ React.createElement("div", { className: "cform" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section" }, /* @__PURE__ */ React.createElement("div", { className: "cform-grid" }, /* @__PURE__ */ React.createElement(CformRow, { label: "Token Location" }, /* @__PURE__ */ React.createElement(
           "select",
           {
-            style: { width: "160px" },
+            className: "w-[160px]",
             value: entry.tokenLocation == null ? "" : String(entry.tokenLocation),
             onChange: (e) => {
               entry.tokenLocation = e.target.value;
@@ -349,7 +349,7 @@ function register(platform2) {
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Authentication Type"), /* @__PURE__ */ React.createElement(
       "select",
       {
-        style: { width: "220px" },
+        className: "w-[220px]",
         value: type,
         onChange: (e) => {
           setAuthType(properties, e.target.value);

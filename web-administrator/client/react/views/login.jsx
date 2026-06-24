@@ -65,8 +65,8 @@ export function LoginForm({ onSuccess }) {
                 }}>
                 <div className="login-brand">
                     <span>
-                        <img className="logo-on-light" src="assets/oie_logo_bottom_text.svg" alt="Open Integration Engine" style={{ width: 120, display: 'block' }} />
-                        <img className="logo-on-dark" src="assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine" style={{ width: 188, display: 'block' }} />
+                        <img className="logo-on-light block w-[120px]" src="assets/oie_logo_bottom_text.svg" alt="Open Integration Engine" />
+                        <img className="logo-on-dark block w-[188px]" src="assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine" />
                     </span>
                     <div className="brand-sub">WEB ADMINISTRATOR</div>
                 </div>
@@ -81,8 +81,7 @@ export function LoginForm({ onSuccess }) {
                     <input type="password" autoComplete="current-password" placeholder="••••••••" required
                         value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
-                <button className="btn btn-primary" type="submit" disabled={submitting}
-                    style={{ width: '100%', justifyContent: 'center', padding: '9px' }}>
+                <button className="btn btn-primary w-full justify-center p-[9px]" type="submit" disabled={submitting}>
                     {submitting ? 'Signing in…' : 'Sign in'}
                 </button>
                 <div className="login-foot">authenticated session · engine REST API</div>

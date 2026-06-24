@@ -79,7 +79,7 @@ function generateWriterConnectionString(p) {
    URL is already present (matching insertURLTemplateButtonActionPerformed). */
 function insertUrlTemplateButton(properties, platform, onChange) {
     return h('button.btn', {
-        type: 'button', style: { marginLeft: '6px' },
+        type: 'button', class: 'ml-1.5',
         onClick: async () => {
             const drivers = await loadDrivers(platform).catch(() => []);
             const d = drivers.find((x) => x && String(x.className) === String(properties.driver));
@@ -97,10 +97,10 @@ function insertUrlTemplateButton(properties, platform, onChange) {
    list (falling back to a free-text input on error). Mirrors the imperative
    driverSelectField; the wrench append opens the drivers modal. */
 function driverControlNode(properties, platform, onChange) {
-    const wrap = h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } });
+    const wrap = h('div', { class: 'flex items-center gap-1.5' });
     const wrench = h('button.icon-btn', {
         type: 'button', title: 'View and manage the list of database JDBC drivers',
-        style: { marginLeft: '6px' },
+        class: 'ml-1.5',
         onClick: () => openDriversModal(() => { driversPromise = null; refresh(); })
     }, icon('settings'));
 
@@ -170,7 +170,7 @@ async function openDriversModal(onSaved) {
         const cell = (key, ph, w) => {
             const inp = textInput(d[key], { placeholder: ph, style: { width: w, minWidth: w } });
             inp.addEventListener('input', () => { d[key] = inp.value; });
-            return h('td', { style: { padding: '2px 4px' } }, inp);
+            return h('td', { class: 'py-0.5 px-1' }, inp);
         };
         return h('tr',
             cell('name', 'Name', '120px'),
@@ -178,12 +178,12 @@ async function openDriversModal(onSaved) {
             cell('template', 'jdbc:db://host:port/name', '220px'),
             cell('selectLimit', 'SELECT * FROM ? LIMIT 1', '180px'),
             cell('alt', 'legacy.Driver, ...', '160px'),
-            h('td', { style: { padding: '2px 4px' } },
+            h('td', { class: 'py-0.5 px-1' },
                 h('button.icon-btn', { type: 'button', title: 'Remove', onClick: () => { model.splice(model.indexOf(d), 1); renderRows(); } }, icon('x'))));
     }
     function renderRows() {
         clear(tbody);
-        if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'faint', style: { padding: '12px' } }, 'No drivers — click Add.')));
+        if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'text-text-faint p-3' }, 'No drivers — click Add.')));
         else model.forEach((d) => tbody.appendChild(rowEl(d)));
     }
     renderRows();
@@ -197,9 +197,9 @@ async function openDriversModal(onSaved) {
     modal({
         title: 'Database Drivers',
         size: 'xwide',
-        body: h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+        body: h('div', { class: 'flex flex-col gap-2.5' },
             h('div', addBtn),
-            h('div', { style: { maxHeight: '55vh', overflow: 'auto' } }, table)),
+            h('div', { class: 'max-h-[55vh] overflow-auto' }, table)),
         buttons: [
             { label: 'Close' },
             {

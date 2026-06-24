@@ -39,28 +39,16 @@ function register(platform2) {
       size: "wide",
       body: h(
         "div",
-        { style: { display: "flex", flexDirection: "column", gap: "8px", minWidth: "620px" } },
+        { class: "flex flex-col gap-2 min-w-[620px]" },
         h(
           "div",
-          { style: { display: "flex", gap: "14px", flexWrap: "wrap", fontSize: "12px" } },
-          h("span.mono.faint", `Server ${row.serverId}`),
+          { class: "flex gap-[14px] flex-wrap text-[12px]" },
+          h("span.mono.text-text-faint", `Server ${row.serverId}`),
           h("span.mono", row.channel),
-          h("span.mono", { style: { fontWeight: "650" } }, row.key)
+          h("span.mono", { class: "font-[650]" }, row.key)
         ),
         h("pre", {
-          style: {
-            margin: "0",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-            maxHeight: "60vh",
-            overflowX: "hidden",
-            overflowY: "auto",
-            background: "var(--bg0)",
-            color: "var(--text)",
-            border: "1px solid var(--bg3)",
-            padding: "8px",
-            borderRadius: "4px"
-          }
+          class: "m-0 whitespace-pre-wrap [word-break:break-word] max-h-[60vh] overflow-x-hidden overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]"
         }, row.value)
       ),
       buttons: [{ label: "Close", primary: true }]
@@ -120,9 +108,9 @@ function register(platform2) {
     const filtered = rows.filter((r) => r.channelId === null || !selectedIds.size || selectedIds.has(String(r.channelId)));
     let body;
     if (error) {
-      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "faint", style: { padding: "12px" } }, `Global maps unavailable: ${error}`));
+      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, `Global maps unavailable: ${error}`));
     } else if (!filtered.length) {
-      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "faint", style: { padding: "12px" } }, "No global map variables are set."));
+      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, "No global map variables are set."));
     } else {
       body = filtered.map((r, i) => {
         const value = r.value.replace(/\s+/g, " ").trim();
@@ -130,18 +118,18 @@ function register(platform2) {
           "tr",
           {
             key: `${r.serverId}|${r.channelId}|${r.key}|${i}`,
-            style: { cursor: "pointer" },
+            className: "cursor-pointer",
             title: "Double-click for the full value",
             onDoubleClick: () => showValue(r)
           },
-          /* @__PURE__ */ React.createElement("td", { className: "mono faint" }, r.serverId),
+          /* @__PURE__ */ React.createElement("td", { className: "mono text-text-faint" }, r.serverId),
           /* @__PURE__ */ React.createElement("td", null, r.channel),
-          /* @__PURE__ */ React.createElement("td", { className: "mono", style: { fontWeight: "600" } }, r.key),
-          /* @__PURE__ */ React.createElement("td", { className: "mono", style: { fontSize: "12px" } }, value)
+          /* @__PURE__ */ React.createElement("td", { className: "mono font-semibold" }, r.key),
+          /* @__PURE__ */ React.createElement("td", { className: "mono text-[12px]" }, value)
         );
       });
     }
-    return /* @__PURE__ */ React.createElement("div", { className: "dt-wrap", style: { minHeight: "0" } }, /* @__PURE__ */ React.createElement("table", { className: "dt global-maps" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Server Id"), /* @__PURE__ */ React.createElement("th", null, "Channel"), /* @__PURE__ */ React.createElement("th", null, "Key"), /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, body)));
+    return /* @__PURE__ */ React.createElement("div", { className: "dt-wrap min-h-0" }, /* @__PURE__ */ React.createElement("table", { className: "dt global-maps" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Server Id"), /* @__PURE__ */ React.createElement("th", null, "Channel"), /* @__PURE__ */ React.createElement("th", null, "Key"), /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, body)));
   }
   platform2.registerDashboardTab({
     id: "global-maps",

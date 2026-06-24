@@ -99,15 +99,15 @@ export function register(platform) {
 
         if (state.status === 'loading') {
             return (
-                <div className="mt">
-                    <div className="faint" style={{ fontSize: '11px', marginBottom: '4px' }}>Loading DICOM…</div>
+                <div className="mt-[14px]">
+                    <div className="text-text-faint text-[11px] mb-1">Loading DICOM…</div>
                 </div>
             );
         }
         if (state.status === 'error') {
             return (
-                <div className="mt">
-                    <div className="faint">{`Could not load DICOM: ${state.message}`}</div>
+                <div className="mt-[14px]">
+                    <div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div>
                 </div>
             );
         }
@@ -117,7 +117,7 @@ export function register(platform) {
             .filter(([tag]) => tags[tag] != null && tags[tag] !== '')
             .map(([tag, label]) => (
                 <tr key={tag}>
-                    <td style={{ fontWeight: '600', paddingRight: '16px' }}>{label}</td>
+                    <td className="font-semibold pr-4">{label}</td>
                     <td className="mono">{tags[tag]}</td>
                 </tr>
             ));
@@ -127,17 +127,17 @@ export function register(platform) {
             () => new Blob([bytes], { type: 'application/dicom' }));
 
         return (
-            <div className="mt">
-                <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+            <div className="mt-[14px]">
+                <div className="font-semibold mb-1">
                     {`DICOM object — ${bytes.length.toLocaleString()} bytes`}
                 </div>
                 {rows.length
                     ? <table className="dt"><tbody>{rows}</tbody></table>
-                    : <div className="faint">No readable header tags (non explicit-VR transfer syntax).</div>}
-                <div className="mt">
+                    : <div className="text-text-faint">No readable header tags (non explicit-VR transfer syntax).</div>}
+                <div className="mt-[14px]">
                     <button className="btn" onClick={saveDicom}>Save DICOM</button>
                 </div>
-                <div className="faint" style={{ fontSize: '11px', marginTop: '6px' }}>
+                <div className="text-text-faint text-[11px] mt-1.5">
                     Inline image rendering requires a DICOM toolkit; save the object to view it in a DICOM viewer.
                 </div>
             </div>

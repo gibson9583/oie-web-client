@@ -74,7 +74,7 @@ export function register(platform) {
     const StateCell = (state) => state
         ? (
             <span className="status-cell">
-                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: dotColor(state), display: 'inline-block' }} />
+                <span className="w-[7px] h-[7px] rounded-full inline-block" style={{ background: dotColor(state) }} />
                 {state}
             </span>
         )
@@ -138,7 +138,7 @@ export function register(platform) {
         }, [channelId, metaDataId]);
 
         return (
-            <div className="dt-wrap" style={{ maxHeight: '260px' }}>
+            <div className="dt-wrap max-h-[260px]">
                 <table className="dt">
                     <thead>
                         <tr>
@@ -163,7 +163,7 @@ export function register(platform) {
                         ))}
                     </tbody>
                     {!items.length && (
-                        <caption style={{ captionSide: 'bottom', padding: '14px', color: 'var(--text-faint)' }}>
+                        <caption className="[caption-side:bottom] p-3.5 text-text-faint">
                             {error
                                 ? `Connection log unavailable: ${error}`
                                 : (lastError ? `Connection log unavailable: ${lastError}` : 'No connection events yet.')}

@@ -5,6 +5,52 @@
    Typography: Archivo (UI) + IBM Plex Mono (data/code).
    ========================================================================== */
 
+/* ── Tailwind CSS v4 ─────────────────────────────────────────────────────────
+   We import only Tailwind's theme + utilities layers, and intentionally OMIT
+   Preflight: this app ships its own reset (below) and Preflight would restyle
+   un-styled elements (list bullets, buttons, images, …) that views and plugins
+   rely on. The design tokens are mapped from the existing CSS variables via
+   `@theme inline`, so utilities like `bg-bg2`, `text-accent`, `border-line`,
+   `font-mono` resolve to the SAME vars and stay light/dark-aware automatically
+   (no `dark:` variants needed). `@source` adds files outside Vite's module graph
+   — the raw-served connectors/core and the separately-built first-party plugins.
+   The existing hand-written CSS below is unchanged. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+    --color-bg0: var(--bg0);
+    --color-bg1: var(--bg1);
+    --color-bg2: var(--bg2);
+    --color-bg3: var(--bg3);
+    --color-line: var(--line);
+    --color-line-strong: var(--line-strong);
+    --color-text: var(--text);
+    --color-text-dim: var(--text-dim);
+    --color-text-faint: var(--text-faint);
+    --color-accent: var(--accent);
+    --color-accent-press: var(--accent-press);
+    --color-accent-ink: var(--accent-ink);
+    --color-accent-glow: var(--accent-glow);
+    --color-ok: var(--ok);
+    --color-warn: var(--warn);
+    --color-err: var(--err);
+    --color-idle: var(--idle);
+    --color-busy: var(--busy);
+    --color-amber: var(--amber);
+    --color-red: var(--red);
+    --color-blue: var(--blue);
+    --color-violet: var(--violet);
+    --font-sans: var(--font-ui);
+    --font-mono: var(--font-mono);
+    --radius-DEFAULT: var(--radius);
+}
+
+@source "../**/*.{js,jsx}";
+@source "../../plugins/**/web/**/*.{js,jsx}";
+@source not "../dist/**";
+
 :root {
     --font-ui: 'Archivo', 'Avenir Next', 'Segoe UI', sans-serif;
     --font-mono: 'IBM Plex Mono', 'SF Mono', 'Consolas', monospace;
@@ -84,6 +130,14 @@
     --shadow: 0 8px 28px rgba(29, 41, 53, 0.18);
     --grid-dot: rgba(29, 41, 53, 0.045);
 }
+
+/* Everything below lives in Tailwind's `components` layer (declared above), one
+   level under `utilities`. This keeps the existing cascade intact (same
+   specificity + source order within the layer, so .btn → .btn-primary etc. still
+   resolve as before) while letting an explicitly-applied Tailwind utility win —
+   the basis for the incremental utility conversion. The design tokens (:root /
+   [data-theme]) stay unlayered above so var() resolves everywhere. */
+@layer components {
 
 /* ---- Reset ---------------------------------------------------------------- */
 
@@ -675,7 +729,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .check input { width: auto; accent-color: var(--accent); }
 
 .radio-group { display: flex; flex-direction: column; gap: 6px; }
-.radio-group.inline { flex-direction: row; gap: 16px; flex-wrap: wrap; }
+.radio-group.inline-row { flex-direction: row; gap: 16px; flex-wrap: wrap; }
 
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 22px; }
 .form-grid .span-2 { grid-column: 1 / -1; }
@@ -1115,24 +1169,20 @@ input.grid-name::placeholder { color: var(--text-faint); }
 
 /* ---- Utility ------------------------------------------------------------------------------------------------------------------- */
 
-.muted { color: var(--text-dim); }
-.faint { color: var(--text-faint); }
-.accent-text { color: var(--accent); }
-.err-text { color: var(--err); }
-.warn-text { color: var(--warn); }
+/* The bespoke text-color helpers (.muted/.faint/.accent-text/.err-text/.warn-text)
+   were retired in favour of Tailwind utilities (text-text-dim / text-text-faint /
+   text-accent / text-err / text-warn). */
 /* Filled amber cell flag — draws the eye to a "needs attention" cell (out-of-sync
    Rev Δ, the one-time just-deployed cue) far more than colored text alone. */
 /* display:block + negative margins cancel the td's 6px 12px padding so the
    highlight fills the whole cell (not just the text), matching Swing. */
 .cell-flag { display: block; margin: -6px -12px; padding: 6px 12px; background: #f0e68c; color: #1f2c38; font-weight: 600; }
-.flex { display: flex; align-items: center; gap: 8px; }
+/* Retired in favour of Tailwind utilities: .flex/.grow (-> flex / flex-1),
+   .right (-> ml-auto), .mt/.mb (-> mt-[14px]/mb-[14px]), .nowrap (-> whitespace-nowrap),
+   .ellipsis (-> truncate). `.flex-wrap` is kept — it matches Tailwind's utility of the
+   same name and doesn't conflict; `.hidden` keeps its !important (needed to beat the
+   `.ctx-tasks` display:contents override, which a plain utility can't). */
 .flex-wrap { flex-wrap: wrap; }
-.grow { flex: 1; }
-.right { margin-left: auto; }
-.mt { margin-top: 14px; }
-.mb { margin-bottom: 14px; }
-.nowrap { white-space: nowrap; }
-.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hidden { display: none !important; }
 
 .spinner {
@@ -1295,7 +1345,6 @@ input.grid-name::placeholder { color: var(--text-faint); }
     white-space: nowrap;
     overflow: hidden;
 }
-.statusbar .right { margin-left: auto; }
 
 /* ---- Engine restart pending banner ------------------------------------------------- */
 
@@ -1457,7 +1506,7 @@ table.dt td .twisty.twisty-lg { padding: 5px 8px; margin: -5px -8px; }
 
 .cform-control.wide { display: block; }
 .cform-control .hint { flex-basis: 100%; font-size: 11px; color: var(--text-faint); }
-.cform-control .radio-group.inline { min-height: 30px; align-items: center; gap: 14px; }
+.cform-control .radio-group.inline-row { min-height: 30px; align-items: center; gap: 14px; }
 
 .cform-display {
     font-family: var(--font-mono);
@@ -1465,3 +1514,5 @@ table.dt td .twisty.twisty-lg { padding: 5px 8px; margin: -5px -8px; }
     color: var(--text);
     word-break: break-all;
 }
+
+} /* end @layer components */

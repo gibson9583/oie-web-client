@@ -347,13 +347,13 @@ export function AlertEditor({ params, query = {} }) {
 
         /* ---- top row: name + enabled ---- */
 
-        const nameInput = textInput(model.name || '', { style: { flex: '1', maxWidth: '560px' } });
+        const nameInput = textInput(model.name || '', { class: 'flex-1 max-w-[560px]' });
         const enabledCheck = checkbox('Enabled', model.enabled === true);
         // New alert: focus the empty Name field so the user can type immediately.
         if (isNew) setTimeout(() => { nameInput.focus(); nameInput.select(); }, 0);
 
-        const topRow = h('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px' } },
-            h('label', { style: { fontSize: '11px', fontWeight: '650', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-dim)' } }, 'Alert Name:'),
+        const topRow = h('div', { class: 'flex items-center gap-3 mb-3.5' },
+            h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim' }, 'Alert Name:'),
             nameInput,
             enabledCheck.el);
 
@@ -365,17 +365,17 @@ export function AlertEditor({ params, query = {} }) {
             return { type, cb };
         });
 
-        const errorsBody = h('div.panel-body', { style: { flex: '1', display: 'flex', flexDirection: 'column', gap: '2px', overflow: 'auto' } },
+        const errorsBody = h('div.panel-body', { class: 'flex-1 flex flex-col gap-0.5 overflow-auto' },
             typeChecks.map(t => t.cb.el));
 
         /* ---- column 2: regex ---- */
 
         const regexInput = h('textarea', {
             placeholder: 'Only trigger when the error matches this regular expression (leave blank to match any error)',
-            style: { flex: '1', resize: 'none', minHeight: '180px', fontFamily: 'var(--font-mono)' }
+            class: 'flex-1 resize-none min-h-[180px] font-mono'
         }, trigger.regex ?? '');
 
-        const regexBody = h('div.panel-body', { style: { flex: '1', display: 'flex', minHeight: '0' } }, regexInput);
+        const regexBody = h('div.panel-body', { class: 'flex-1 flex min-h-0' }, regexInput);
 
         /* ---- column 3: channels tree (connector-level granularity, classic pane) ---- */
 
@@ -482,7 +482,7 @@ export function AlertEditor({ params, query = {} }) {
         function renderActions() {
             clear(actionsHost);
             if (!actionRows.length) {
-                actionsHost.appendChild(h('div.muted', { style: { padding: '6px 0' } }, 'No actions defined'));
+                actionsHost.appendChild(h('div.text-text-dim', { class: 'py-1.5 px-0' }, 'No actions defined'));
                 return;
             }
             const tbody = h('tbody');
@@ -494,9 +494,9 @@ export function AlertEditor({ params, query = {} }) {
                     renderActions();
                 } });
                 tbody.appendChild(h('tr',
-                    h('td', { style: { width: '120px' } }, protocolSel),
+                    h('td', { class: 'w-[120px]' }, protocolSel),
                     h('td', recipientControl(row)),
-                    h('td', { style: { width: '40px', textAlign: 'right' } },
+                    h('td', { class: 'w-[40px] text-right' },
                         h('button.icon-btn', {
                             title: 'Remove action',
                             onClick: () => removeAction(row)
@@ -508,23 +508,23 @@ export function AlertEditor({ params, query = {} }) {
         }
         renderActions();
 
-        const actionsBody = h('div.panel-body', { style: { flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' } },
-            h('div', { style: { flex: '1', overflow: 'auto', minHeight: '0' } }, actionsHost),
-            h('div.mt', taskButton('Add', 'plus', addAction)));
+        const actionsBody = h('div.panel-body', { class: 'flex-1 flex flex-col min-h-0' },
+            h('div', { class: 'flex-1 overflow-auto min-h-0' }, actionsHost),
+            h('div.mt-[14px]', taskButton('Add', 'plus', addAction)));
 
         /* ---- bottom column 2: subject + template ---- */
 
         const subjectInput = textInput(group.subject ?? '');
-        const templateInput = h('textarea', { rows: 8, style: { flex: '1', resize: 'none', minHeight: '140px' } }, group.template ?? '');
+        const templateInput = h('textarea', { rows: 8, class: 'flex-1 resize-none min-h-[140px]' }, group.template ?? '');
 
         // Variables insert into whichever of subject/template was last focused.
         let lastFocused = null;
         subjectInput.addEventListener('focus', () => { lastFocused = subjectInput; });
         templateInput.addEventListener('focus', () => { lastFocused = templateInput; });
 
-        const messageBody = h('div.panel-body', { style: { flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' } },
+        const messageBody = h('div.panel-body', { class: 'flex-1 flex flex-col min-h-0' },
             field('Subject (only used for email messages)', subjectInput),
-            h('div.field', { style: { flex: '1', display: 'flex', minHeight: '0', marginBottom: '0' } },
+            h('div.field', { class: 'flex-1 flex min-h-0 mb-0' },
                 h('label', 'Template'),
                 templateInput));
 
@@ -542,12 +542,12 @@ export function AlertEditor({ params, query = {} }) {
             target.setSelectionRange(pos, pos);
         }
 
-        const variablesBody = h('div.panel-body.flush', { style: { flex: '1', overflow: 'auto', minHeight: '0', padding: '6px' } },
+        const variablesBody = h('div.panel-body.flush', { class: 'flex-1 overflow-auto min-h-0 p-1.5' },
             h('div.tree', ALERT_VARIABLES.map(name =>
                 h('div.tree-node', {
                     title: 'Insert ${' + name + '} (drag onto the subject/template or click)',
                     draggable: 'true',
-                    style: { cursor: 'grab' },
+                    class: 'cursor-grab',
                     onClick: () => insertVariable(name),
                     onDragstart: (e) => {
                         e.dataTransfer.setData('text/plain', '${' + name + '}');
@@ -740,9 +740,8 @@ export function AlertEditor({ params, query = {} }) {
 
     function pip(stateClass, onToggle) {
         return (
-            <span className={'pip' + (stateClass ? ' ' + stateClass : '')}
+            <span className={'pip cursor-pointer flex-none' + (stateClass ? ' ' + stateClass : '')}
                 title="Toggle enabled"
-                style={{ cursor: 'pointer', flex: 'none' }}
                 onClick={(e) => { e.stopPropagation(); onToggle(); }} />
         );
     }
@@ -752,7 +751,7 @@ export function AlertEditor({ params, query = {} }) {
         render: (n) => {
             if (n.kind === 'connector') {
                 return (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                    <span className="inline-flex items-center gap-[7px]">
                         {pip(n.c.enabled ? 'ok' : 'err', () => { n.c.enabled = !n.c.enabled; forceRender(); })}
                         <span>{n.c.name}</span>
                     </span>
@@ -761,7 +760,7 @@ export function AlertEditor({ params, query = {} }) {
             // Channel pip: green all-on, red all-off, amber mixed; clicking it
             // toggles the whole channel (mixed -> fully enabled).
             return (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                <span className="inline-flex items-center gap-[7px]">
                     {pip(channelPipState(n.node), () => { setChannelNode(n.node, channelPipState(n.node) !== 'ok'); forceRender(); })}
                     <span>{n.node.name}</span>
                 </span>
@@ -801,20 +800,20 @@ export function AlertEditor({ params, query = {} }) {
                         : (
                             <>
                                 <ImperativeMount build={panels.topRow} />
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.4fr', gap: '14px', alignItems: 'stretch' }}>
-                                    <div className="panel" style={{ margin: '0', display: 'flex', flexDirection: 'column', minHeight: '0' }}>
+                                <div className="grid grid-cols-[1fr_1.2fr_1.4fr] gap-3.5 items-stretch">
+                                    <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Errors (select all that apply)</div>
-                                        <ImperativeMount build={panels.errorsBody} style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }} />
+                                        <ImperativeMount build={panels.errorsBody} className="flex flex-col flex-1 min-h-0" />
                                     </div>
-                                    <div className="panel" style={{ margin: '0', display: 'flex', flexDirection: 'column', minHeight: '0' }}>
+                                    <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Regex (optional)</div>
-                                        <ImperativeMount build={panels.regexBody} style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }} />
+                                        <ImperativeMount build={panels.regexBody} className="flex flex-col flex-1 min-h-0" />
                                     </div>
-                                    <div className="panel" style={{ margin: '0', display: 'flex', flexDirection: 'column', minHeight: '0' }}>
+                                    <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Channels</div>
-                                        <div className="panel-body" style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '8px', minHeight: '0' }}>
-                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                                <input type="text" placeholder="Filter channels" style={{ flex: '1' }}
+                                        <div className="panel-body flex-1 flex flex-col gap-2 min-h-0">
+                                            <div className="flex gap-1.5 items-center">
+                                                <input type="text" placeholder="Filter channels" className="flex-1"
                                                     defaultValue={channelFilterRef.current}
                                                     onFocus={engageTree}
                                                     onInput={(e) => { channelFilterRef.current = e.target.value; engageTree(); forceRender(); }} />
@@ -822,14 +821,14 @@ export function AlertEditor({ params, query = {} }) {
                                                 <TaskButton label="Disable" icon="x" onClick={() => { engageTree(); setSelectedNode(false); }} />
                                             </div>
                                             {state.includeConnectors
-                                                ? <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                                                    <span title="Expand all nodes below." style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
+                                                ? <div className="flex gap-2.5 justify-end">
+                                                    <span title="Expand all nodes below." className="text-accent cursor-pointer underline text-[12px]"
                                                         onClick={() => { engageTree(); setAllExpanded(true); }}>Expand All</span>
-                                                    <span title="Collapse all nodes below." style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline', fontSize: '12px' }}
+                                                    <span title="Collapse all nodes below." className="text-accent cursor-pointer underline text-[12px]"
                                                         onClick={() => { engageTree(); setAllExpanded(false); }}>Collapse All</span>
                                                 </div>
                                                 : null}
-                                            <div className="tree" style={{ flex: '1', minHeight: '0', maxHeight: '320px', overflow: 'auto' }}
+                                            <div className="tree flex-1 min-h-0 max-h-[320px] overflow-auto"
                                                 onPointerDown={engageTree}>
                                                 {treeEngagedRef.current
                                                     ? <TreeTable
@@ -845,7 +844,7 @@ export function AlertEditor({ params, query = {} }) {
                                                         columnsKey="alert-channels"
                                                         pinnedKeys={['name']}
                                                         emptyText="No matching channels" />
-                                                    : <div className="muted" style={{ padding: '6px 10px' }}>
+                                                    : <div className="text-text-dim py-1.5 px-2.5">
                                                         {treeData().length
                                                             ? `${state.channelNodes.length} channel${state.channelNodes.length === 1 ? '' : 's'} — click to configure connector enablement`
                                                             : 'No channels'}
@@ -854,18 +853,18 @@ export function AlertEditor({ params, query = {} }) {
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 240px', gap: '14px', marginTop: '14px', alignItems: 'stretch' }}>
-                                    <div className="panel" style={{ margin: '0', display: 'flex', flexDirection: 'column', minHeight: '0' }}>
+                                <div className="grid grid-cols-[1fr_2fr_240px] gap-3.5 mt-3.5 items-stretch">
+                                    <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Actions</div>
-                                        <ImperativeMount build={panels.actionsBody} style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }} />
+                                        <ImperativeMount build={panels.actionsBody} className="flex flex-col flex-1 min-h-0" />
                                     </div>
-                                    <div className="panel" style={{ margin: '0', display: 'flex', flexDirection: 'column', minHeight: '0' }}>
+                                    <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Template</div>
-                                        <ImperativeMount build={panels.messageBody} style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }} />
+                                        <ImperativeMount build={panels.messageBody} className="flex flex-col flex-1 min-h-0" />
                                     </div>
-                                    <div className="panel" style={{ margin: '0', display: 'flex', flexDirection: 'column', minHeight: '0' }}>
+                                    <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Alert Variables</div>
-                                        <ImperativeMount build={panels.variablesBody} style={{ display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' }} />
+                                        <ImperativeMount build={panels.variablesBody} className="flex flex-col flex-1 min-h-0" />
                                     </div>
                                 </div>
                             </>

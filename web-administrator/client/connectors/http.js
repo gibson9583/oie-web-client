@@ -70,7 +70,7 @@ function staticResourcesTable(properties, onChange) {
     rows.forEach((row, i) => {
       body.appendChild(h(
         "tr",
-        h("td", textInput(row.contextPath, { style: { width: "100%" }, onInput: (e) => {
+        h("td", textInput(row.contextPath, { class: "w-full", onInput: (e) => {
           row.contextPath = e.target.value;
           commit();
         } })),
@@ -78,11 +78,11 @@ function staticResourcesTable(properties, onChange) {
           row.resourceType = e.target.value;
           commit();
         } })),
-        h("td", textInput(row.value, { style: { width: "100%" }, onInput: (e) => {
+        h("td", textInput(row.value, { class: "w-full", onInput: (e) => {
           row.value = e.target.value;
           commit();
         } })),
-        h("td", textInput(row.contentType, { style: { width: "100%" }, onInput: (e) => {
+        h("td", textInput(row.contentType, { class: "w-full", onInput: (e) => {
           row.contentType = e.target.value;
           commit();
         } })),

@@ -36,7 +36,7 @@ import {
 function Icon({ name }) {
     const ref = useRef(null);
     useEffect(() => { const el = ref.current; if (el) el.replaceChildren(icon(name)); }, [name]);
-    return <span ref={ref} style={{ display: 'inline-flex' }} />;
+    return <span ref={ref} className="inline-flex" />;
 }
 
 /* Re-export the pure data helpers + transmission-mode dialog so connector
@@ -107,7 +107,7 @@ function DomNode({ node }) {
         if (node) host.appendChild(node);
         return () => { if (host) host.replaceChildren(); };
     }, [node]);
-    return <span ref={ref} style={{ display: 'contents' }} />;
+    return <span ref={ref} className="[display:contents]" />;
 }
 
 /* ---- key/value (XStream linked-hash-map) editor ----------------------------- */
@@ -135,10 +135,10 @@ function KeyValueEditor({ properties, field, onChange, disabled }) {
     return (
         <div style={disabled ? { opacity: 0.6 } : undefined}>
             {rows.map((row, i) => (
-                <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-                    <input type="text" value={row[0]} placeholder="Name" style={{ flex: '1' }} disabled={disabled}
+                <div key={i} className="flex gap-1.5 mb-1.5">
+                    <input type="text" value={row[0]} placeholder="Name" className="flex-1" disabled={disabled}
                         onChange={(e) => { row[0] = e.target.value; tick(); commit(); }} />
-                    <input type="text" value={row[1]} placeholder="Value" style={{ flex: '2' }} disabled={disabled}
+                    <input type="text" value={row[1]} placeholder="Value" className="flex-[2]" disabled={disabled}
                         onChange={(e) => { row[1] = e.target.value; tick(); commit(); }} />
                     <button type="button" className="icon-btn" title="Remove" disabled={disabled}
                         onClick={() => { rows.splice(i, 1); commit(); tick(); }}><Icon name="x" /></button>
@@ -193,7 +193,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         case 'radio': {
             const name = `cform-radio-${++cformUid}`;
             control = (
-                <div className="radio-group inline" style={f.width ? { width: f.width } : undefined}>
+                <div className="radio-group inline-row" style={f.width ? { width: f.width } : undefined}>
                     {(f.options || []).map((opt, i) => {
                         const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
                         return (
@@ -266,7 +266,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
     // self-laid-out custom blocks that bring their own label column.
     if (f.full) {
         return (
-            <div className="cform-control" style={{ gridColumn: '1 / -1' }}>
+            <div className="cform-control col-span-full">
                 {control}
                 {appendNode ? <DomNode node={appendNode} /> : null}
             </div>
@@ -359,7 +359,7 @@ export function PortsInUseButton() {
         host.appendChild(btn);
         return () => { if (host) host.replaceChildren(); };
     }, []);
-    return <span ref={ref} style={{ display: 'contents' }} />;
+    return <span ref={ref} className="[display:contents]" />;
 }
 
 /* ---- 'Test Connection' style button ----------------------------------------- */
@@ -390,14 +390,14 @@ export function ConnectorTestButton({ label = 'Test Connection', icon: iconName 
         host.appendChild(btn);
         return () => { if (host) host.replaceChildren(); };
     }, []);
-    return <span ref={ref} style={{ display: 'contents' }} />;
+    return <span ref={ref} className="[display:contents]" />;
 }
 
 /* ---- polling schedule (PollConnectorProperties), React port ----------------- */
 
 export function PollSection({ properties, onChange }) {
     return (
-        <div className="cform-section" style={{ marginTop: '16px' }}>
+        <div className="cform-section mt-4">
             <div className="cform-section-title">Polling Settings</div>
             <PollSettings properties={properties} onChange={onChange} />
         </div>
@@ -464,10 +464,10 @@ function PollSettings({ properties, onChange }) {
                     <label>Cron Jobs</label>
                     <div className="span-2">
                         {cron.map((row, i) => (
-                            <div key={i} style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
-                                <input type="text" value={row.expression} placeholder="Cron expression (e.g. 0 */5 * ? * *)" style={{ flex: '2' }}
+                            <div key={i} className="flex gap-1.5 mb-1.5">
+                                <input type="text" value={row.expression} placeholder="Cron expression (e.g. 0 */5 * ? * *)" className="flex-[2]"
                                     onChange={(e) => { row.expression = e.target.value; tick(); commitCron(); }} />
-                                <input type="text" value={row.description} placeholder="Description" style={{ flex: '1' }}
+                                <input type="text" value={row.description} placeholder="Description" className="flex-1"
                                     onChange={(e) => { row.description = e.target.value; tick(); commitCron(); }} />
                                 <button type="button" className="icon-btn" title="Remove"
                                     onClick={() => { cron.splice(i, 1); commitCron(); tick(); }}><Icon name="x" /></button>
@@ -482,7 +482,7 @@ function PollSettings({ properties, onChange }) {
                 {/* Empty label spacer so the checkbox drops to the control row,
                     aligning with the Schedule Type / Frequency inputs alongside. */}
                 <label>&nbsp;</label>
-                <div style={{ minHeight: '34px', display: 'flex', alignItems: 'center' }}>
+                <div className="min-h-[34px] flex items-center">
                     <label className="check">
                         <input type="checkbox" checked={asBool(p.pollOnStart)}
                             onChange={(e) => { p.pollOnStart = e.target.checked; onChange(); }} />
@@ -524,15 +524,15 @@ export function TransmissionModePanel({ properties, onChange }) {
     };
 
     return (
-        <div style={{ marginBottom: '16px' }}>
+        <div className="mb-4">
             <div className="cform">
                 <div className="cform-section">
                     <div className="cform-section-title">Transmission Mode</div>
                     <div className="cform-grid">
                         <label className="cform-label">Transmission Mode:</label>
                         <div className="cform-control">
-                            <div className="flex" style={{ gap: '6px', alignItems: 'center' }}>
-                                <select value={tm.pluginPointName} style={{ width: '180px' }}
+                            <div className="flex gap-1.5 items-center">
+                                <select value={tm.pluginPointName} className="w-[180px]"
                                     onChange={(e) => {
                                         tm.pluginPointName = e.target.value;
                                         const m = modeOf();
@@ -549,7 +549,7 @@ export function TransmissionModePanel({ properties, onChange }) {
                             </div>
                         </div>
                         <label className="cform-label">Sample Frame:</label>
-                        <div className="cform-control"><span className="mono faint" style={{ fontSize: '12px' }}>{sample}</span></div>
+                        <div className="cform-control"><span className="mono text-text-faint text-[12px]">{sample}</span></div>
                     </div>
                 </div>
             </div>

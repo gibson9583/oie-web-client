@@ -206,7 +206,7 @@ function ChannelEditorView({ params, query }) {
     const t = ctx && ctx.handlers;
 
     return (
-        <div className="view" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <div className="view flex flex-col flex-1 min-h-0">
             <ViewTasks>
                 <RailPane title="Channel Tasks" paneKey="tasks:Channel Tasks">
                     <div className="taskbar" data-pane-title="Channel Tasks">
@@ -236,7 +236,7 @@ function ChannelEditorView({ params, query }) {
                 ? <div className="view-body"><div className="dt-empty">Loading channel…</div></div>
                 : ready === false
                     ? <div className="view-body"><div className="dt-empty">Channel not loaded</div></div>
-                    : <div ref={bodyHostRef} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }} />}
+                    : <div ref={bodyHostRef} className="flex flex-col flex-1 min-h-0" />}
         </div>
     );
 }
@@ -391,7 +391,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 title: 'Cannot Save Channel',
                 body: h('div',
                     h('p', 'Fix the following before saving — the engine would reject this channel:'),
-                    h('ul', { style: { margin: '8px 0 0', paddingLeft: '18px' } }, problems.map(p => h('li', p)))),
+                    h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
                 buttons: [{ label: 'OK' }]
             });
             return false;
@@ -448,7 +448,7 @@ function buildBody(params, query, onTasksChange, returning) {
             title: 'Validation Errors',
             body: h('div',
                 h('p', 'The engine would reject this channel:'),
-                h('ul', { style: { margin: '8px 0 0', paddingLeft: '18px' } }, problems.map(p => h('li', p)))),
+                h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
             buttons: [{ label: 'OK' }]
         });
     }
@@ -498,9 +498,9 @@ function buildBody(params, query, onTasksChange, returning) {
         modal({
             title: 'Debug Channel Deploy Options',
             body: h('div',
-                h('div.hint', { style: { marginBottom: '10px' } },
+                h('div.hint', { class: 'mb-2.5' },
                     'Select the scripts to debug. The channel is saved, then deployed in debug mode with these options.'),
-                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                h('div', { class: 'flex flex-col gap-1.5' },
                     options.map((opt, i) => checkbox(opt.label, false, {
                         onChange: (e) => { state[i] = e.target.checked; }
                     }).el))),
@@ -548,10 +548,10 @@ function buildBody(params, query, onTasksChange, returning) {
         channel.exportData = channel.exportData || {};
         const metadata = channel.exportData.metadata = channel.exportData.metadata || { enabled: true };
 
-        const root = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },
+        const root = h('div', { class: 'flex flex-col gap-3.5' },
             renderChannelProperties(props, metadata),
             // Storage and pruning side by side; wraps to one column when narrow.
-            h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '14px', alignItems: 'start' } },
+            h('div', { class: 'grid grid-cols-[repeat(auto-fit,minmax(380px,1fr))] gap-3.5 items-start' },
                 renderMessageStorage(props),
                 renderPruning(metadata)),
             renderMetaDataColumns(props),
@@ -574,7 +574,7 @@ function buildBody(params, query, onTasksChange, returning) {
             const host = h('div');
             function renderRows() {
                 clear(host);
-                const grid = h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(160px, 2fr) minmax(120px, 1fr) 70px', gap: '4px 6px', alignItems: 'center' } },
+                const grid = h('div', { class: 'grid grid-cols-[minmax(160px,2fr)_minmax(120px,1fr)_70px] gap-y-1 gap-x-1.5 items-center' },
                     h('label', colA), h('label', colB), h('span'));
                 for (const row of rows) {
                     grid.appendChild(textInput(row.a, {
@@ -590,7 +590,7 @@ function buildBody(params, query, onTasksChange, returning) {
                         onClick: () => { rows.splice(rows.indexOf(row), 1); commit(); renderRows(); }
                     }, 'Delete'));
                 }
-                if (!rows.length) grid.appendChild(h('div.faint', { style: { gridColumn: '1 / -1' } }, 'No entries'));
+                if (!rows.length) grid.appendChild(h('div.text-text-faint', { class: 'col-[1/-1]' }, 'No entries'));
                 host.appendChild(grid);
             }
             renderRows();
@@ -598,8 +598,8 @@ function buildBody(params, query, onTasksChange, returning) {
                 onClick: () => { rows.push({ a: '', b: '' }); commit(); renderRows(); }
             }, 'New');
             return h('div.field',
-                h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' } },
-                    h('label', { style: { margin: '0' } }, title), addBtn),
+                h('div', { class: 'flex items-center justify-between gap-2.5' },
+                    h('label', { class: 'm-0' }, title), addBtn),
                 host,
                 hint ? h('div.hint', hint) : null);
         }
@@ -654,7 +654,7 @@ function buildBody(params, query, onTasksChange, returning) {
         function renderIdentityEditor() {
             const map = entriesToObj(ap.properties);
             return field('Attachment MIME Type', textInput(String(map['identity.mimetype'] ?? ''), {
-                style: { maxWidth: '260px' },
+                class: 'max-w-[260px]',
                 placeholder: 'text/plain',
                 onInput: (e) => {
                     map['identity.mimetype'] = e.target.value;
@@ -700,7 +700,7 @@ function buildBody(params, query, onTasksChange, returning) {
             if (ap.type === 'Entire Message') return { body: renderIdentityEditor() };
             if (ap.type && ap.type !== 'None' && ap.type !== 'DICOM' &&
                 !ATTACHMENT_TYPES.some(t => t.value === ap.type)) return { body: renderCustomEditor() };
-            return { body: h('div.faint', 'This attachment handler has no configurable properties.') };
+            return { body: h('div.text-text-faint', 'This attachment handler has no configurable properties.') };
         }
 
         // A plugin-contributed type already on the channel stays selectable.
@@ -710,7 +710,7 @@ function buildBody(params, query, onTasksChange, returning) {
         }
 
         const typeSelect = select(typeOptions, ap.type || 'None', {
-            style: { width: '180px' },
+            class: 'w-[180px]',
             onChange: (e) => {
                 const def = typeOptions.find(t => t.value === e.target.value);
                 ap.type = def.value;
@@ -744,7 +744,7 @@ function buildBody(params, query, onTasksChange, returning) {
             });
         });
         propsBtn.classList.add('btn-sm');
-        const attachWarn = h('div', { style: { color: '#d00', fontSize: '11px', margin: '2px 0 0' } });
+        const attachWarn = h('div', { class: 'text-[#d00] text-[11px] mt-0.5 mx-0 mb-0' });
         const storeBox = checkbox('Store Attachments', !!props.storeAttachments, {
             onChange: (e) => { props.storeAttachments = e.target.checked; markDirty(); updateAttachmentUI(); }
         });
@@ -760,18 +760,19 @@ function buildBody(params, query, onTasksChange, returning) {
         const dlId = 'channel-tags-list';
         function renderTags() {
             clear(tagsHost);
-            const row = h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center' } });
+            const row = h('div', { class: 'flex flex-wrap gap-[5px] items-center' });
             for (const name of [...tagState.assigned].sort((a, b) => a.localeCompare(b))) {
                 const tag = tagState.all.find(t => t.name === name);
                 row.appendChild(h('span', {
-                    style: { display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '1px 6px', borderRadius: '10px', background: tagChipBg(tag && tag.backgroundColor), border: '1px solid var(--line)', fontSize: '11.5px' }
+                    class: 'inline-flex items-center gap-1 py-px px-1.5 rounded-[10px] border border-line text-[11.5px]',
+                    style: { background: tagChipBg(tag && tag.backgroundColor) }
                 }, name, h('span', {
-                    style: { cursor: 'pointer', color: 'var(--text-dim)' },
+                    class: 'cursor-pointer text-text-dim',
                     title: 'Remove tag',
                     onClick: () => { tagState.assigned.delete(name); applyTagsToChannel(); markDirty(); renderTags(); }
                 }, '✕')));
             }
-            const input = h('input', { list: dlId, placeholder: 'Add tag…', style: { width: '130px' } });
+            const input = h('input', { list: dlId, placeholder: 'Add tag…', class: 'w-[130px]' });
             const dl = h('datalist', { id: dlId },
                 tagState.all.filter(t => !tagState.assigned.has(t.name)).map(t => h('option', { value: t.name })));
             // Mirror ChannelTag.fixName: strip disallowed chars, cap at 24.
@@ -792,11 +793,11 @@ function buildBody(params, query, onTasksChange, returning) {
         }
         // Only render the field once tags have loaded, so a tag added during the
         // load window can't be lost when ensureTags() populates tagState.
-        tagsHost.appendChild(h('span.faint', { style: { fontSize: '11.5px' } }, 'Loading tags…'));
+        tagsHost.appendChild(h('span.text-text-faint', { class: 'text-[11.5px]' }, 'Loading tags…'));
         ensureTags().then(renderTags);
 
         const nameInput = textInput(channel.name ?? '', {
-            style: { maxWidth: '360px' },
+            class: 'max-w-[360px]',
             onInput: (e) => { channel.name = e.target.value; markDirty(); }
         });
         // New channel: focus the empty Name field so the user can type immediately.
@@ -804,16 +805,16 @@ function buildBody(params, query, onTasksChange, returning) {
 
         const left = h('div',
             field('Name', nameInput),
-            h('div.form-row', { style: { marginBottom: '12px' } },
+            h('div.form-row', { class: 'mb-3' },
                 field('Initial State', select(
                     INITIAL_STATES.map(s => ({ value: s, label: s.charAt(0) + s.slice(1).toLowerCase() })),
                     props.initialState || 'STARTED', {
-                    style: { width: '170px' },
+                    class: 'w-[170px]',
                     onChange: (e) => { props.initialState = e.target.value; markDirty(); }
                 })),
-                field('Attachment', h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } }, typeSelect, propsBtn))),
+                field('Attachment', h('div', { class: 'flex gap-1.5 items-center' }, typeSelect, propsBtn))),
             field('Tags', tagsHost),
-            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px 18px', margin: '0 0 4px' } },
+            h('div', { class: 'flex flex-wrap gap-y-1.5 gap-x-[18px] mt-0 mx-0 mb-1' },
                 checkbox('Enabled', metadata.enabled !== false, {
                     onChange: (e) => { metadata.enabled = e.target.checked; markDirty(); }
                 }).el,
@@ -822,7 +823,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 }).el,
                 storeBox.el),
             attachWarn,
-            h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' } },
+            h('div', { class: 'flex flex-wrap gap-2 mt-3' },
                 taskButton('Set Data Types', 'transform', openDataTypesModal),
                 taskButton('Set Dependencies', 'link', openDependenciesModal)));
 
@@ -837,7 +838,7 @@ function buildBody(params, query, onTasksChange, returning) {
         return h('div.panel',
             h('div.panel-header', 'Channel Properties'),
             h('div.panel-body', h('div', {
-                style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '0 28px', alignItems: 'start' }
+                class: 'grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-y-0 gap-x-7 items-start'
             }, left, right)));
     }
 
@@ -892,7 +893,7 @@ function buildBody(params, query, onTasksChange, returning) {
 
         const tableHost = h('div');
         const panelsHost = h('div', {
-            style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '14px', marginTop: '14px', alignItems: 'start' }
+            class: 'grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-3.5 mt-3.5 items-start'
         });
         // Teardowns for the mounted <DataTypePropertiesEditor> React roots;
         // unmounted on each rebuild (renderPanels) and on dialog close.
@@ -937,12 +938,12 @@ function buildBody(params, query, onTasksChange, returning) {
                         onChange: (e) => { e.target.checked ? bulkSel.add(row) : bulkSel.delete(row); }
                     });
                     tbody.appendChild(h('tr',
-                        h('td', { style: { width: '36px' } }, cb.el),
+                        h('td', { class: 'w-[36px]' }, cb.el),
                         h('td', row.label),
-                        h('td.faint', dtLabelOf(row.draft.inboundDataType)),
-                        h('td.faint', dtLabelOf(row.draft.outboundDataType))));
+                        h('td.text-text-faint', dtLabelOf(row.draft.inboundDataType)),
+                        h('td.text-text-faint', dtLabelOf(row.draft.outboundDataType))));
                 } else {
-                    const tr = h('tr', { class: row === selected ? 'selected' : null, style: { cursor: 'pointer' } },
+                    const tr = h('tr', { class: row === selected ? 'selected cursor-pointer' : 'cursor-pointer' },
                         h('td', row.label),
                         h('td', typeCell(row, 'inbound')),
                         h('td', typeCell(row, 'outbound')));
@@ -953,7 +954,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 }
             }
             const headCells = [
-                h('th', { style: { width: '40%' } }, 'Connector'),
+                h('th', { class: 'w-[40%]' }, 'Connector'),
                 h('th', 'Inbound'), h('th', 'Outbound')
             ];
             if (bulkMode) headCells.unshift(h('th', ''));
@@ -976,11 +977,11 @@ function buildBody(params, query, onTasksChange, returning) {
                 }
             }, 'Restore Defaults');
 
-            const head = h('div', { style: { display: 'flex', alignItems: 'flex-end', gap: '10px', marginBottom: '4px' } },
+            const head = h('div', { class: 'flex items-end gap-2.5 mb-1' },
                 field('Data Type', select(dtOptions, typeName, {
                     onChange: (e) => setType(row, side, e.target.value)
                 })),
-                h('div', { style: { paddingBottom: '12px' } }, restoreBtn));
+                h('div', { class: 'pb-3' }, restoreBtn));
 
             const editorHost = h('div');
             dtEditorRoots.push(mountReact(editorHost, <DataTypePropertiesEditor
@@ -990,7 +991,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 direction={side}
                 connectorType={row.label === 'Source Connector' ? 'SOURCE' : 'DESTINATION'}
                 onReplace={(obj) => { row.draft[`${side}Properties`] = obj; }} />));
-            return h('div.panel', { style: { marginTop: '0' } },
+            return h('div.panel', { class: 'mt-0' },
                 h('div.panel-header', `${title} — ${row.label}`),
                 h('div.panel-body', head, editorHost));
         }
@@ -1022,8 +1023,8 @@ function buildBody(params, query, onTasksChange, returning) {
                         renderAll();
                     }
                 }, 'Apply to Selected Connectors');
-                panelsHost.appendChild(h('div', { style: { gridColumn: '1 / -1', display: 'flex', gap: '16px', alignItems: 'center' } },
-                    h('span.faint', { style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em' } }, 'Apply:'),
+                panelsHost.appendChild(h('div', { class: 'col-[1/-1] flex gap-4 items-center' },
+                    h('span.text-text-faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Apply:'),
                     sideToggle('inbound', 'Inbound'), sideToggle('outbound', 'Outbound'), applyBtn));
                 panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties', bulkRow));
                 panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties', bulkRow));
@@ -1039,8 +1040,8 @@ function buildBody(params, query, onTasksChange, returning) {
                 onChange: () => { if (input.checked) { bulkMode = isBulk; renderAll(); } } });
             return h('label.check', input, label);
         }
-        const modeBar = h('div', { style: { display: 'flex', gap: '18px', alignItems: 'center', marginBottom: '10px' } },
-            h('span.faint', { style: { fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em' } }, 'Editing:'),
+        const modeBar = h('div', { class: 'flex gap-[18px] items-center mb-2.5' },
+            h('span.text-text-faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Editing:'),
             modeRadio('Single Edit', false),
             modeRadio('Bulk Edit', true));
 
@@ -1053,9 +1054,9 @@ function buildBody(params, query, onTasksChange, returning) {
             onClose: clearDtEditors,
             body: h('div',
                 modeBar,
-                h('div.panel', { style: { marginTop: '0' } }, h('div.panel-body.flush', tableHost)),
+                h('div.panel', { class: 'mt-0' }, h('div.panel-body.flush', tableHost)),
                 panelsHost,
-                h('div.hint', { style: { marginTop: '10px' } },
+                h('div.hint', { class: 'mt-2.5' },
                     'All property groups are shown for each data type; the engine ignores groups that do not apply to a side (e.g. response generation on an outbound type).')),
             buttons: [
                 { label: 'Cancel' },
@@ -1104,12 +1105,12 @@ function buildBody(params, query, onTasksChange, returning) {
         /* ---- shared link/tree helpers ---- */
 
         const link = (label, onClick) => {
-            const a = h('a', { href: '#', style: { color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' } }, label);
+            const a = h('a', { href: '#', class: 'text-accent underline cursor-pointer text-[12px] whitespace-nowrap' }, label);
             a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
             return a;
         };
-        const linkSep = () => h('span.faint', { style: { fontSize: '12px' } }, '|');
-        const treeBox = () => h('div', { style: { flex: '1', minHeight: '110px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '4px', background: 'var(--bg1)' } });
+        const linkSep = () => h('span.text-text-faint', { class: 'text-[12px]' }, '|');
+        const treeBox = () => h('div', { class: 'flex-1 min-h-[110px] overflow-auto border border-line rounded-[4px] bg-bg1' });
         const SEL_BG = 'color-mix(in srgb, var(--accent) 16%, transparent)';
 
         /* ===== Tab 1: Code Template Libraries (CodeTemplateLibrariesPanel) ===== */
@@ -1122,39 +1123,39 @@ function buildBody(params, query, onTasksChange, returning) {
 
         function renderLibrariesTab() {
             const tree = treeBox();
-            const desc = h('div', { style: { height: '88px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '4px', padding: '6px 8px', fontSize: '11.5px', color: 'var(--text-dim)', background: 'var(--bg1)' } });
-            const setDesc = (t) => { clear(desc); desc.appendChild(h('span', { style: { fontStyle: 'italic' } }, t && String(t).trim() ? String(t) : 'No description.')); };
+            const desc = h('div', { class: 'h-[88px] overflow-auto border border-line rounded-[4px] py-1.5 px-2 text-[11.5px] text-text-dim bg-bg1' });
+            const setDesc = (t) => { clear(desc); desc.appendChild(h('span', { class: 'italic' }, t && String(t).trim() ? String(t) : 'No description.')); };
             setDesc('');
             function draw() {
                 clear(tree);
-                if (!libraries.length) { tree.appendChild(h('div.faint', { style: { padding: '10px' } }, 'No code template libraries')); return; }
+                if (!libraries.length) { tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'No code template libraries')); return; }
                 for (const lib of libraries) {
                     const templates = api.asList(lib.codeTemplates, 'codeTemplate').filter(t => t && typeof t === 'object');
                     const open = libExpanded.has(lib.id);
-                    const tw = h('span', { style: { width: '14px', textAlign: 'center', cursor: templates.length ? 'pointer' : 'default', color: 'var(--text-dim)', userSelect: 'none' } }, templates.length ? (open ? '▾' : '▸') : '');
+                    const tw = h('span', { class: 'w-[14px] text-center text-text-dim select-none', style: { cursor: templates.length ? 'pointer' : 'default' } }, templates.length ? (open ? '▾' : '▸') : '');
                     if (templates.length) tw.addEventListener('click', () => { open ? libExpanded.delete(lib.id) : libExpanded.add(lib.id); draw(); });
                     const box = h('input', { type: 'checkbox' });
                     box.checked = !!libChecked.get(lib.id);
                     box.addEventListener('change', () => libChecked.set(lib.id, box.checked));
-                    const name = h('span', { style: { cursor: 'pointer' } }, lib.name || '(unnamed library)');
+                    const name = h('span', { class: 'cursor-pointer' }, lib.name || '(unnamed library)');
                     name.addEventListener('click', () => setDesc(lib.description));
-                    tree.appendChild(h('div', { style: { display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 8px' } }, tw, box, name));
+                    tree.appendChild(h('div', { class: 'flex items-center gap-1 py-0.5 px-2' }, tw, box, name));
                     if (open) for (const t of templates) {
-                        const row = h('div', { style: { padding: '2px 8px 2px 44px', cursor: 'pointer', fontSize: '12px' } }, t.name || '(unnamed)');
+                        const row = h('div', { class: 'pt-0.5 pr-2 pb-0.5 pl-[44px] cursor-pointer text-[12px]' }, t.name || '(unnamed)');
                         row.addEventListener('click', () => setDesc((t.properties && t.properties.description) || t.description));
                         tree.appendChild(row);
                     }
                 }
             }
             draw();
-            const bar = h('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '6px' } },
-                h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
+            const bar = h('div', { class: 'flex justify-between mb-1.5' },
+                h('div', { class: 'flex gap-1.5 items-center' },
                     link('Select All', () => { libraries.forEach(l => libChecked.set(l.id, true)); draw(); }), linkSep(),
                     link('Deselect All', () => { libraries.forEach(l => libChecked.set(l.id, false)); draw(); })),
-                h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
+                h('div', { class: 'flex gap-1.5 items-center' },
                     link('Expand All', () => { libraries.forEach(l => libExpanded.add(l.id)); draw(); }), linkSep(),
                     link('Collapse All', () => { libExpanded.clear(); draw(); })));
-            return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } }, bar, tree, h('div', { style: { height: '6px' } }), desc);
+            return h('div', { class: 'flex flex-col h-full' }, bar, tree, h('div', { class: 'h-1.5' }), desc);
         }
 
         /* ===== Tab 2: Library Resources (LibraryResourcesPanel) ===== */
@@ -1195,7 +1196,7 @@ function buildBody(params, query, onTasksChange, returning) {
             let selectedKey = 'channel';   // 'channel' root = aggregate; or a context key; or a leaf key
             const ctxExpanded = new Set();
             const ctxTree = treeBox();
-            const resTable = h('div', { style: { flex: '1', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '4px', background: 'var(--bg1)' } });
+            const resTable = h('div', { class: 'flex-1 overflow-auto border border-line rounded-[4px] bg-bg1' });
             const isCtxKey = (k) => k === 'channel' || resourceTargets.some(t => t.key === k);
             const aggState = (id) => {
                 let all = true, none = true;
@@ -1206,8 +1207,8 @@ function buildBody(params, query, onTasksChange, returning) {
                 clear(resTable);
                 const isRoot = selectedKey === 'channel';
                 const enabled = isCtxKey(selectedKey);
-                resTable.appendChild(h('div', { style: { display: 'grid', gridTemplateColumns: '24px 1fr 120px', gap: '4px', padding: '4px 8px', fontWeight: '600', fontSize: '11px', borderBottom: '1px solid var(--line)', position: 'sticky', top: '0', background: 'var(--bg1)' } }, h('span'), h('span', 'Name'), h('span', 'Type')));
-                if (!resources.length) { resTable.appendChild(h('div.faint', { style: { padding: '10px' } }, 'No library resources')); return; }
+                resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-1 px-2 font-semibold text-[11px] border-b border-line sticky top-0 bg-bg1' }, h('span'), h('span', 'Name'), h('span', 'Type')));
+                if (!resources.length) { resTable.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'No library resources')); return; }
                 for (const r of resources) {
                     const box = h('input', { type: 'checkbox', disabled: !enabled });
                     if (isRoot) { const st = aggState(r.id); box.checked = st === true; box.indeterminate = st === null; }
@@ -1217,20 +1218,20 @@ function buildBody(params, query, onTasksChange, returning) {
                         if (isRoot) resourceTargets.forEach(t => apply(t.key)); else apply(selectedKey);
                         drawTable();
                     });
-                    resTable.appendChild(h('div', { style: { display: 'grid', gridTemplateColumns: '24px 1fr 120px', gap: '4px', padding: '3px 8px', alignItems: 'center' } }, box, h('span.ellipsis', r.name), h('span.faint', { style: { fontSize: '11px' } }, r.type)));
+                    resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-[3px] px-2 items-center' }, box, h('span.truncate', r.name), h('span.text-text-faint', { class: 'text-[11px]' }, r.type)));
                 }
             }
             function drawTree() {
                 clear(ctxTree);
                 const node = (label, key, depth, opts = {}) => {
-                    const row = h('div', { style: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', padding: `3px 8px 3px ${8 + depth * 16}px`, cursor: 'pointer', color: opts.grey ? 'var(--text-dim)' : 'inherit', background: key === selectedKey ? SEL_BG : 'transparent' } }, opts.twisty || h('span', { style: { width: '12px' } }), h('span', label));
+                    const row = h('div', { class: 'flex items-center gap-1 text-[12px] cursor-pointer', style: { padding: `3px 8px 3px ${8 + depth * 16}px`, color: opts.grey ? 'var(--text-dim)' : 'inherit', background: key === selectedKey ? SEL_BG : 'transparent' } }, opts.twisty || h('span', { class: 'w-[12px]' }), h('span', label));
                     row.addEventListener('click', () => { selectedKey = key; drawTree(); drawTable(); });
                     ctxTree.appendChild(row);
                 };
                 node('Channel', 'channel', 0);
                 for (const t of resourceTargets) {
                     const open = ctxExpanded.has(t.key);
-                    const tw = h('span', { style: { width: '12px', cursor: 'pointer', color: 'var(--text-dim)', userSelect: 'none' } }, t.leaves.length ? (open ? '▾' : '▸') : '');
+                    const tw = h('span', { class: 'w-[12px] cursor-pointer text-text-dim select-none' }, t.leaves.length ? (open ? '▾' : '▸') : '');
                     tw.addEventListener('click', (e) => { e.stopPropagation(); open ? ctxExpanded.delete(t.key) : ctxExpanded.add(t.key); drawTree(); });
                     node(t.label, t.key, 1, { twisty: tw });
                     if (open) for (const leaf of t.leaves) node(leaf, `${t.key}::${leaf}`, 2, { grey: true });
@@ -1238,9 +1239,9 @@ function buildBody(params, query, onTasksChange, returning) {
             }
             drawTree();
             drawTable();
-            return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', gap: '6px' } },
-                h('div', { style: { flex: '1.1', display: 'flex', flexDirection: 'column', minHeight: '0' } }, ctxTree),
-                h('div', { style: { flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' } }, resTable));
+            return h('div', { class: 'flex flex-col h-full gap-1.5' },
+                h('div', { class: 'flex-[1.1] flex flex-col min-h-0' }, ctxTree),
+                h('div', { class: 'flex-1 flex flex-col min-h-0' }, resTable));
         }
 
         /* ===== Tab 3: Deploy/Start Dependencies (ChannelDependenciesPanel) ===== */
@@ -1267,22 +1268,22 @@ function buildBody(params, query, onTasksChange, returning) {
 
         function openAddDialog(kind, allowed, onAdd) {
             const checks = new Map();
-            const listEl = h('div', { style: { maxHeight: '220px', overflow: 'auto', border: '1px solid var(--line)', borderRadius: '4px', padding: '6px 8px' } });
+            const listEl = h('div', { class: 'max-h-[220px] overflow-auto border border-line rounded-[4px] py-1.5 px-2' });
             function drawList() {
                 clear(listEl);
-                if (!allowed.length) { listEl.appendChild(h('div.faint', 'No channels available')); return; }
+                if (!allowed.length) { listEl.appendChild(h('div.text-text-faint', 'No channels available')); return; }
                 for (const c of allowed) {
                     const box = h('input', { type: 'checkbox' }); box.checked = !!checks.get(c.id);
                     box.addEventListener('change', () => checks.set(c.id, box.checked));
-                    listEl.appendChild(h('label.check', { style: { display: 'flex', gap: '6px', padding: '2px 0', alignItems: 'center' } }, box, c.name));
+                    listEl.appendChild(h('label.check', { class: 'flex gap-1.5 py-0.5 px-0 items-center' }, box, c.name));
                 }
             }
             drawList();
             modal({
                 title: kind === 'dependency' ? 'Add Dependency' : 'Add Dependent',
                 body: h('div',
-                    h('div', { style: { marginBottom: '6px' } }, kind === 'dependency' ? 'Select the dependency channel(s) to add.' : 'Select the dependent channel(s) to add.'),
-                    h('div', { style: { display: 'flex', gap: '6px', justifyContent: 'flex-end', marginBottom: '4px' } },
+                    h('div', { class: 'mb-1.5' }, kind === 'dependency' ? 'Select the dependency channel(s) to add.' : 'Select the dependent channel(s) to add.'),
+                    h('div', { class: 'flex gap-1.5 justify-end mb-1' },
                         link('Select All', () => { allowed.forEach(c => checks.set(c.id, true)); drawList(); }), linkSep(),
                         link('Deselect All', () => { checks.clear(); drawList(); })),
                     listEl),
@@ -1317,9 +1318,9 @@ function buildBody(params, query, onTasksChange, returning) {
                 const key = path + id;
                 const isTop = depth === 0;
                 const open = expanded.has(key);
-                const tw = h('span', { style: { width: '12px', cursor: kids.length ? 'pointer' : 'default', color: 'var(--text-dim)', userSelect: 'none' } }, kids.length ? (open ? '▾' : '▸') : '');
+                const tw = h('span', { class: 'w-[12px] text-text-dim select-none', style: { cursor: kids.length ? 'pointer' : 'default' } }, kids.length ? (open ? '▾' : '▸') : '');
                 if (kids.length) tw.addEventListener('click', (e) => { e.stopPropagation(); open ? expanded.delete(key) : expanded.add(key); draw(); });
-                const row = h('div', { style: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', padding: `3px 8px 3px ${8 + depth * 16}px`, cursor: isTop ? 'pointer' : 'default', color: isTop ? 'inherit' : 'var(--text-dim)', background: (isTop && selected === id) ? SEL_BG : 'transparent' } }, tw, h('span', channelNameOf(id)));
+                const row = h('div', { class: 'flex items-center gap-1 text-[12px]', style: { padding: `3px 8px 3px ${8 + depth * 16}px`, cursor: isTop ? 'pointer' : 'default', color: isTop ? 'inherit' : 'var(--text-dim)', background: (isTop && selected === id) ? SEL_BG : 'transparent' } }, tw, h('span', channelNameOf(id)));
                 if (isTop) row.addEventListener('click', () => { selected = id; draw(); });
                 tree.appendChild(row);
                 if (open && !path.includes('>' + id + '>')) for (const k of kids) drawNode(k, depth + 1, key + '>');
@@ -1327,7 +1328,7 @@ function buildBody(params, query, onTasksChange, returning) {
             function draw() {
                 clear(tree);
                 const top = childrenOf(channel.id).slice().sort((a, b) => channelNameOf(a).localeCompare(channelNameOf(b)));
-                if (!top.length) tree.appendChild(h('div.faint', { style: { padding: '10px' } }, 'None'));
+                if (!top.length) tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'None'));
                 else for (const id of top) drawNode(id, 0, '>');
                 if (!top.includes(selected)) selected = null;
                 removeBtn.disabled = !selected;
@@ -1347,18 +1348,18 @@ function buildBody(params, query, onTasksChange, returning) {
                 return out;
             }
             draw();
-            return h('div', { style: { display: 'flex', flexDirection: 'column', minHeight: '0', flex: '1' } },
-                h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' } },
-                    h('label', { style: { fontWeight: '600', fontSize: '12px' } }, title),
-                    h('div', { style: { display: 'flex', gap: '6px', alignItems: 'center' } },
+            return h('div', { class: 'flex flex-col min-h-0 flex-1' },
+                h('div', { class: 'flex justify-between items-center mb-1' },
+                    h('label', { class: 'font-semibold text-[12px]' }, title),
+                    h('div', { class: 'flex gap-1.5 items-center' },
                         link('Expand All', () => { collectPaths().forEach(p => expanded.add(p)); draw(); }), linkSep(),
                         link('Collapse All', () => { expanded.clear(); draw(); }))),
-                h('div', { style: { display: 'flex', gap: '6px', minHeight: '0', flex: '1' } },
-                    tree, h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px' } }, addBtn, removeBtn)));
+                h('div', { class: 'flex gap-1.5 min-h-0 flex-1' },
+                    tree, h('div', { class: 'flex flex-col gap-1' }, addBtn, removeBtn)));
         }
 
         function renderDependenciesTab() {
-            return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', height: '100%' } },
+            return h('div', { class: 'flex flex-col gap-3 h-full' },
                 depSection('This channel depends upon:', 'dependency'),
                 depSection('This channel is depended upon by:', 'dependent'));
         }
@@ -1478,13 +1479,13 @@ function buildBody(params, query, onTasksChange, returning) {
     function renderMessageStorage(props) {
         let mode = props.messageStorageMode || 'DEVELOPMENT';
 
-        const modeLabel = h('div', { style: { fontWeight: '700', fontSize: '14px' } });
-        const contentLabel = h('div', { style: { fontSize: '12px' } });
-        const metaLabel = h('div', { style: { fontSize: '12px' } });
-        const durableVal = h('span', { style: { fontWeight: '600' } });
-        const meterBar = h('div', { style: { height: '100%', background: 'var(--accent)', opacity: '0.75', transition: 'width 0.2s ease' } });
-        const meter = h('div', { style: { height: '8px', width: '180px', background: 'var(--bg3)', border: '1px solid var(--line)', borderRadius: '3px', overflow: 'hidden' } }, meterBar);
-        const queueWarn = h('div', { style: { color: '#d00', fontSize: '11px', minHeight: '14px' } });
+        const modeLabel = h('div', { class: 'font-bold text-[14px]' });
+        const contentLabel = h('div', { class: 'text-[12px]' });
+        const metaLabel = h('div', { class: 'text-[12px]' });
+        const durableVal = h('span', { class: 'font-semibold' });
+        const meterBar = h('div', { class: 'h-full bg-accent opacity-75 [transition:width_0.2s_ease]' });
+        const meter = h('div', { class: 'h-2 w-[180px] bg-bg3 border border-line rounded-[3px] overflow-hidden' }, meterBar);
+        const queueWarn = h('div', { class: 'text-[#d00] text-[11px] min-h-3.5' });
 
         const cbDefs = [
             { key: 'encryptData', label: 'Encrypt message content' },
@@ -1527,23 +1528,23 @@ function buildBody(params, query, onTasksChange, returning) {
             queueWarn.textContent = queued ? 'Disable destination queueing before using this mode' : '';
         }
 
-        const slider = h('input', { type: 'range', min: '1', max: '5', step: '1', style: { writingMode: 'vertical-lr', direction: 'rtl', height: '150px', width: '22px', padding: '0' } });
+        const slider = h('input', { type: 'range', min: '1', max: '5', step: '1', class: '[writing-mode:vertical-lr] [direction:rtl] h-[150px] w-[22px] p-0' });
         slider.value = String(STORAGE_SLIDER.indexOf(mode) + 1);
         slider.addEventListener('input', () => { mode = STORAGE_SLIDER[Number(slider.value) - 1]; props.messageStorageMode = mode; markDirty(); refresh(); });
-        const ticks = h('div', { style: { display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '150px', fontSize: '11px', color: 'var(--text-dim)' } },
+        const ticks = h('div', { class: 'flex flex-col justify-between h-[150px] text-[11px] text-text-dim' },
             h('div', 'Development'), h('div', 'Production'), h('div', 'Raw'), h('div', 'Metadata'), h('div', 'Disabled'));
 
         refresh();
         return h('div.panel',
             h('div.panel-header', 'Message Storage'),
-            h('div.panel-body', h('div', { style: { display: 'flex', gap: '16px' } },
-                h('div', { style: { display: 'flex', gap: '6px' } }, slider, ticks),
-                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '5px', flex: '1', minWidth: '0' } },
+            h('div.panel-body', h('div', { class: 'flex gap-4' },
+                h('div', { class: 'flex gap-1.5' }, slider, ticks),
+                h('div', { class: 'flex flex-col gap-[5px] flex-1 min-w-0' },
                     modeLabel, contentLabel, metaLabel,
-                    h('div', { style: { fontSize: '12px' } }, 'Durable Message Delivery: ', durableVal),
-                    h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px' } }, h('span', 'Performance:'), meter),
-                    h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '4px 14px', marginTop: '4px' } }, boxEls[0], boxEls[1], boxEls[2]),
-                    h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '4px 14px' } }, boxEls[3], boxEls[4]),
+                    h('div', { class: 'text-[12px]' }, 'Durable Message Delivery: ', durableVal),
+                    h('div', { class: 'flex items-center gap-2 text-[12px]' }, h('span', 'Performance:'), meter),
+                    h('div', { class: 'flex flex-wrap gap-y-1 gap-x-3.5 mt-1' }, boxEls[0], boxEls[1], boxEls[2]),
+                    h('div', { class: 'flex flex-wrap gap-y-1 gap-x-3.5' }, boxEls[3], boxEls[4]),
                     boxEls[5],
                     queueWarn))));
     }
@@ -1562,10 +1563,10 @@ function buildBody(params, query, onTasksChange, returning) {
         function renderRows() {
             clear(host);
             if (!columns.length) {
-                host.appendChild(h('div.faint', 'No custom metadata columns'));
+                host.appendChild(h('div.text-text-faint', 'No custom metadata columns'));
                 return;
             }
-            const grid = h('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(160px, 1fr) 130px minmax(160px, 1fr) 70px', gap: '4px 6px', alignItems: 'center', maxWidth: '760px' } },
+            const grid = h('div', { class: 'grid grid-cols-[minmax(160px,1fr)_130px_minmax(160px,1fr)_70px] gap-y-1 gap-x-1.5 items-center max-w-[760px]' },
                 h('label', 'Column Name'), h('label', 'Type'), h('label', 'Variable Mapping'), h('span'));
             for (const col of columns) {
                 grid.appendChild(textInput(col.name ?? '', {
@@ -1618,7 +1619,7 @@ function buildBody(params, query, onTasksChange, returning) {
         function daysInput(key) {
             return numberInput(pruning[key] ?? '', {
                 min: 1,
-                style: { width: '90px' },
+                class: 'w-[90px]',
                 disabled: pruning[key] == null,
                 onInput: (e) => {
                     pruning[key] = Math.max(1, Number(e.target.value) || 1);
@@ -1636,7 +1637,7 @@ function buildBody(params, query, onTasksChange, returning) {
         const erroredBox = checkbox('Prune Errored Messages', !!pruning.pruneErroredMessages, {
             onChange: (e) => { pruning.pruneErroredMessages = e.target.checked; markDirty(); refreshPrune(); }
         });
-        const warn = h('div.hint', { style: { marginTop: '8px' } });
+        const warn = h('div.hint', { class: 'mt-2' });
 
         // Archiving / prune-errored only apply when something is actually pruned.
         function refreshPrune() {
@@ -1655,14 +1656,14 @@ function buildBody(params, query, onTasksChange, returning) {
                 metaDays.disabled = true;
                 markDirty(); refreshPrune();
             }, 'Store indefinitely'),
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+            h('div', { class: 'flex items-center gap-2' },
                 radio('prune-metadata', pruning.pruneMetaDataDays != null, () => {
                     pruning.pruneMetaDataDays = Number(metaDays.value) || 30;
                     metaDays.value = String(pruning.pruneMetaDataDays);
                     metaDays.disabled = false;
                     markDirty(); refreshPrune();
                 }, 'Prune metadata older than'),
-                metaDays, h('span.muted', 'days')));
+                metaDays, h('span.text-text-dim', 'days')));
 
         const contentGroup = h('div.radio-group',
             radio('prune-content', pruning.pruneContentDays == null, () => {
@@ -1671,14 +1672,14 @@ function buildBody(params, query, onTasksChange, returning) {
                 contentDays.disabled = true;
                 markDirty(); refreshPrune();
             }, 'Prune when message metadata is removed'),
-            h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+            h('div', { class: 'flex items-center gap-2' },
                 radio('prune-content', pruning.pruneContentDays != null, () => {
                     pruning.pruneContentDays = Number(contentDays.value) || 30;
                     contentDays.value = String(pruning.pruneContentDays);
                     contentDays.disabled = false;
                     markDirty(); refreshPrune();
                 }, 'Prune content older than'),
-                contentDays, h('span.muted', 'days')));
+                contentDays, h('span.text-text-dim', 'days')));
 
         refreshPrune();
         return h('div.panel',
@@ -1687,7 +1688,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 h('div.form-grid',
                     h('div.field', h('label', 'Metadata'), metaGroup),
                     h('div.field', h('label', 'Content'), contentGroup)),
-                h('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' } }, archiveBox.el, erroredBox.el),
+                h('div', { class: 'flex flex-col gap-1 mt-1.5' }, archiveBox.el, erroredBox.el),
                 warn));
     }
 
@@ -1850,7 +1851,7 @@ function buildBody(params, query, onTasksChange, returning) {
         // This wrapper sits after the Source/Destination Settings panel; the
         // `.panel + .panel` spacing rule can't bridge across the wrapper, so add
         // the same 14px gap here. Panels inside still self-space via that rule.
-        const root = h('div', { style: { marginTop: '14px' } });
+        const root = h('div', { class: 'mt-3.5' });
 
         // Plugin-contributed sections (web equivalent of Swing's
         // ConnectorPropertiesPlugin, e.g. httpauth / an SSL settings panel).
@@ -2009,7 +2010,7 @@ function buildBody(params, query, onTasksChange, returning) {
      * ====================================================================== */
 
     function renderDestinations() {
-        const root = h('div', { style: { flex: '1', minHeight: '0' } });
+        const root = h('div', { class: 'flex-1 min-h-0' });
         let selectedId = null;
         let destHeaderEl = null;   // detail-panel header, kept in sync with inline name edits
 
@@ -2020,7 +2021,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 sortValue: (d) => d.enabled !== false ? 0 : 1,
                 render: (d) => d.enabled !== false
                     ? h('span.status-cell', h('span.pip.ok'), 'Enabled')
-                    : h('span.status-cell', h('span.pip'), h('span.muted', 'Disabled'))
+                    : h('span.status-cell', h('span.pip'), h('span.text-text-dim', 'Disabled'))
             },
             {
                 key: 'name', label: 'Name',
@@ -2091,7 +2092,7 @@ function buildBody(params, query, onTasksChange, returning) {
             }
         });
 
-        const editorHost = h('div.mt', { style: { flex: '1', minHeight: '0', overflow: 'auto', scrollbarGutter: 'stable' } });
+        const editorHost = h('div.mt-[14px]', { class: 'flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]' });
 
         const dests = () => oie.destinationsOf(channel);
         const selectedDest = () => dests().find(d => String(d.metaDataId) === String(selectedId));
@@ -2234,7 +2235,7 @@ function buildBody(params, query, onTasksChange, returning) {
             clear(editorHost);
             const dest = selectedDest();
             if (!dest) {
-                editorHost.appendChild(h('div.faint', { style: { padding: '10px 2px' } },
+                editorHost.appendChild(h('div.text-text-faint', { class: 'py-2.5 px-0.5' },
                     'Select a destination to edit its settings'));
                 return;
             }
@@ -2250,11 +2251,11 @@ function buildBody(params, query, onTasksChange, returning) {
             typeSelect.style.width = '200px';
             // Static header: connector type + wait-for on ONE compact line (Swing
             // parity) — always visible above the scrollable connector panel below.
-            editorHost.appendChild(h('div.panel', { style: { margin: '0', position: 'sticky', top: '0', zIndex: '1' } },
+            editorHost.appendChild(h('div.panel', { class: 'm-0 sticky top-0 z-[1]' },
                 destHeaderEl,
-                h('div.panel-body', { style: { padding: '6px 12px' } },
-                    h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-                        h('label', { style: { fontWeight: '600', whiteSpace: 'nowrap' } }, 'Connector Type:'),
+                h('div.panel-body', { class: 'py-1.5 px-3' },
+                    h('div', { class: 'flex items-center gap-2' },
+                        h('label', { class: 'font-semibold whitespace-nowrap' }, 'Connector Type:'),
                         typeSelect,
                         waitBox.el))));
 
@@ -2273,11 +2274,11 @@ function buildBody(params, query, onTasksChange, returning) {
                 type: 'radio', name, checked: checked === val,
                 onChange: () => onChange(val)
             }), label);
-            return h('div.radio-group.inline', radio(true, 'Yes'), radio(false, 'No'));
+            return h('div.radio-group.inline-row', radio(true, 'Yes'), radio(false, 'No'));
         }
 
         function renderDestinationSettings(dcp) {
-            const advSummary = h('span.faint', advancedQueueSummary(dcp));
+            const advSummary = h('span.text-text-faint', advancedQueueSummary(dcp));
 
             // Classic Swing mapping (DestinationSettingsPanel.fillProperties):
             //   Never      → queueEnabled=false, sendFirst=false
@@ -2297,11 +2298,11 @@ function buildBody(params, query, onTasksChange, returning) {
             return h('div.panel',
                 h('div.panel-header', 'Destination Settings'),
                 h('div.panel-body', h('div.form-grid',
-                    field('Queue Messages', h('div.radio-group.inline',
+                    field('Queue Messages', h('div.radio-group.inline-row',
                         queueRadio('never', 'Never'),
                         queueRadio('failure', 'On Failure'),
                         queueRadio('always', 'Always'))),
-                    field('Advanced Queue Settings', h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' } },
+                    field('Advanced Queue Settings', h('div', { class: 'flex items-center gap-2.5 flex-wrap' },
                         taskButton('Advanced Queue Settings', null, () =>
                             openAdvancedQueueSettings(dcp, () => { advSummary.textContent = advancedQueueSummary(dcp); })),
                         advSummary)),
@@ -2338,7 +2339,7 @@ function buildBody(params, query, onTasksChange, returning) {
                     inputs.push(input);
                     return h('label.check', input, label);
                 };
-                const el = h('div.radio-group.inline', radio(true, 'Yes'), radio(false, 'No'));
+                const el = h('div.radio-group.inline-row', radio(true, 'Yes'), radio(false, 'No'));
                 return { el, setEnabled(on) { inputs.forEach(i => { i.disabled = !on; }); } };
             }
 
@@ -2527,15 +2528,12 @@ function buildBody(params, query, onTasksChange, returning) {
         }
 
         function buildMappingsPanel() {
-            const list = h('div', { style: { overflow: 'auto', flex: '1', padding: '4px 0' } });
+            const list = h('div', { class: 'overflow-auto flex-1 py-1 px-0' });
             for (const [label, token] of DESTINATION_MAPPINGS) {
                 list.appendChild(h('div', {
                     draggable: 'true',
                     title: token,
-                    style: {
-                        padding: '3px 12px', cursor: 'pointer', fontSize: '12px',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                    },
+                    class: 'py-[3px] px-3 cursor-pointer text-[12px] truncate',
                     onClick: () => insertToken(token),
                     onDragstart: (e) => {
                         draggingMapping = token;
@@ -2549,15 +2547,15 @@ function buildBody(params, query, onTasksChange, returning) {
                 }, label));
             }
             return h('div.panel', {
-                style: { width: '240px', flex: '0 0 240px', display: 'flex', flexDirection: 'column', alignSelf: 'stretch', marginTop: '0' }
+                class: 'w-[240px] flex-[0_0_240px] flex flex-col self-stretch mt-0'
             },
                 h('div.panel-header', 'Destination Mappings'),
                 list);
         }
 
         refresh();
-        const main = h('div', { style: { flex: '1 1 auto', minWidth: '0', display: 'flex', flexDirection: 'column', minHeight: '0' } },
-            h('div.panel', { style: { flex: 'none' } }, h('div.panel-body.flush', table.el)),
+        const main = h('div', { class: 'flex-auto min-w-0 flex flex-col min-h-0' },
+            h('div.panel', { class: 'flex-none' }, h('div.panel-body.flush', table.el)),
             editorHost);
         main.addEventListener('focusin', trackFocus);
         root.addEventListener('dragover', onMappingDragOver);
@@ -2592,7 +2590,7 @@ function buildBody(params, query, onTasksChange, returning) {
         const applyScriptScope = () => setActiveScope(channel.id, [current.context]);
         applyScriptScope();
 
-        const hint = h('span.faint', current.hint);
+        const hint = h('span.text-text-faint', current.hint);
         const editor = createCodeEditor({
             value: channel[current.key] ?? '',
             language: 'javascript',
@@ -2608,7 +2606,7 @@ function buildBody(params, query, onTasksChange, returning) {
         scriptsEditor = editor;
 
         const scriptSelect = select(scripts.map(s => ({ value: s.key, label: s.label })), current.key, {
-            style: { width: '180px' },
+            class: 'w-[180px]',
             onChange: (e) => {
                 channel[current.key] = editor.getValue();
                 current = scripts.find(s => s.key === e.target.value) || current;
@@ -2620,9 +2618,9 @@ function buildBody(params, query, onTasksChange, returning) {
             }
         });
 
-        return h('div', { style: { display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0', gap: '10px' } },
-            h('div.form-row', { style: { alignItems: 'center' } },
-                h('label', { style: { margin: '0' } }, 'Script:'), scriptSelect, hint),
+        return h('div', { class: 'flex flex-col flex-1 min-h-0 gap-2.5' },
+            h('div.form-row', { class: 'items-center' },
+                h('label', { class: 'm-0' }, 'Script:'), scriptSelect, hint),
             editor.el);
     }
 
@@ -2663,9 +2661,9 @@ function buildBody(params, query, onTasksChange, returning) {
         // 'fill' tabs (Scripts) get a flex column the full height of the tab
         // body so their content can stretch; others scroll naturally.
         render: () => h('div', {
-            style: def.fill
-                ? { padding: '14px 0', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: '0' }
-                : { padding: '14px 0', overflow: 'auto' }
+            class: def.fill
+                ? 'py-3.5 px-0 h-full box-border flex flex-col overflow-hidden min-h-0'
+                : 'py-3.5 px-0 overflow-auto'
         }, def.render())
     })), {
         // Keep the React connector-task pane in sync with the active tab.
@@ -2678,7 +2676,7 @@ function buildBody(params, query, onTasksChange, returning) {
     });
 
     // The task panes are React; the body is the tab strip only (no .taskbar here).
-    const el = h('div.view-body', { style: { display: 'flex', flexDirection: 'column', flex: '1', minHeight: '0' } }, tabbed.el);
+    const el = h('div.view-body', { class: 'flex flex-col flex-1 min-h-0' }, tabbed.el);
 
     return {
         el,

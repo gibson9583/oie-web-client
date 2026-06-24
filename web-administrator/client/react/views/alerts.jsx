@@ -27,7 +27,7 @@ const COLUMNS = [
         sortValue: (a) => a.enabled ? 0 : 1,
         render: (a) => a.enabled
             ? h('span.status-cell', h('span.pip.ok'), 'Enabled')
-            : h('span.status-cell', h('span.pip'), h('span.muted', 'Disabled'))
+            : h('span.status-cell', h('span.pip'), h('span.text-text-dim', 'Disabled'))
     },
     { key: 'name', label: 'Name', render: (a) => a.name || '' },
     { key: 'id', label: 'Id', className: 'mono', render: (a) => h('span', { style: { color: 'var(--text-faint)' } }, a.id || '') }
