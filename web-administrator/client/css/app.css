@@ -131,6 +131,14 @@
     --grid-dot: rgba(29, 41, 53, 0.045);
 }
 
+/* Everything below lives in Tailwind's `components` layer (declared above), one
+   level under `utilities`. This keeps the existing cascade intact (same
+   specificity + source order within the layer, so .btn → .btn-primary etc. still
+   resolve as before) while letting an explicitly-applied Tailwind utility win —
+   the basis for the incremental utility conversion. The design tokens (:root /
+   [data-theme]) stay unlayered above so var() resolves everywhere. */
+@layer components {
+
 /* ---- Reset ---------------------------------------------------------------- */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -1511,3 +1519,5 @@ table.dt td .twisty.twisty-lg { padding: 5px 8px; margin: -5px -8px; }
     color: var(--text);
     word-break: break-all;
 }
+
+} /* end @layer components */
