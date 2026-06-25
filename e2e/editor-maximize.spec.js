@@ -86,3 +86,49 @@ test('(A) JavaScript Writer maximizes but keeps the Destination Mappings panel',
     await page.keyboard.press('Escape');
     await expect(page.locator('.ce.ce-maximized')).toHaveCount(0);
 });
+
+test('(A) channel scripts maximize fills flush-left when the nav rail is collapsed (regression)', async ({ page }) => {
+    const id = 'max-scripts';
+    const channel = makeChannel(id);
+    await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
+
+    await page.goto(`/#/channels/${id}/edit`);
+    // Collapse the rail via the topbar hamburger — the content grid becomes "0 1fr",
+    // so the fixed maximize overlay must start at x=0 (not the old rail width).
+    await page.getByRole('button', { name: 'Hide navigation' }).click();
+    await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
+
+    await page.getByRole('button', { name: 'Scripts', exact: true }).click();
+    const editor = page.locator('.ce').first();
+    await editor.hover();
+    await editor.getByRole('button', { name: 'Maximize editor' }).click();
+
+    const overlay = page.locator('.ce.ce-maximized');
+    await expect(overlay).toHaveCount(1);
+    const box = await overlay.boundingBox();
+    const vp = page.viewportSize();
+    expect(box.x).toBeLessThan(4);                          // flush to the viewport edge
+    expect(box.width).toBeGreaterThan(vp.width * 0.8);      // spans the full content width
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.ce.ce-maximized')).toHaveCount(0);
+});
+
+test('(A) channel scripts maximize clears the nav rail when it is expanded', async ({ page }) => {
+    const id = 'max-scripts-exp';
+    const channel = makeChannel(id);
+    await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
+
+    await page.goto(`/#/channels/${id}/edit`);
+    await page.getByRole('button', { name: 'Scripts', exact: true }).click();
+    const editor = page.locator('.ce').first();
+    await editor.hover();
+    await editor.getByRole('button', { name: 'Maximize editor' }).click();
+
+    const overlay = page.locator('.ce.ce-maximized');
+    await expect(overlay).toHaveCount(1);
+    const box = await overlay.boundingBox();
+    expect(box.x).toBeGreaterThan(4);     // anchored to the right of the expanded rail
+
+    await page.keyboard.press('Escape');
+});

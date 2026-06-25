@@ -932,6 +932,12 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
     border-radius: 0;
 }
 
+/* When the rail is collapsed the content grid starts at x=0
+   (.shell.rail-collapsed → grid-template-columns: 0 1fr), so this fixed overlay
+   must start there too — otherwise it leaves a rail-width gap on the left where
+   the view's own content shows through. */
+.shell.rail-collapsed .ce.ce-maximized { left: 0; }
+
 /* When the editor lives in a maximize "stage" — a container that has a right-hand
    context panel to preserve (e.g. the destination connector area beside the
    Destination Mappings rail) — fill that stage instead of the whole viewport, so
