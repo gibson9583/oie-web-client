@@ -13,7 +13,7 @@ import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 
 export function register(platform) {
-    platform.registerNavItem({ id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2 });
+    platform.registerNavItem({ id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2, task: 'doShowUsers' });
     platform.registerView('/users', reactView(UsersView), { title: 'Users' });
 }
 
@@ -216,13 +216,13 @@ function UsersView() {
     const openMenu = (u, e) => {
         setSel(tableRef.current ? tableRef.current.selectedRows() : [u]);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
-            { label: 'New User', icon: 'plus', onClick: () => newTask() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshUser', group: 'user', onClick: () => refresh() },
+            { label: 'New User', icon: 'plus', task: 'doNewUser', group: 'user', onClick: () => newTask() },
             '-',
-            { label: 'Edit User', icon: 'edit', onClick: () => editTask(u) },
+            { label: 'Edit User', icon: 'edit', task: 'doEditUser', group: 'user', onClick: () => editTask(u) },
             { label: 'Change Password', icon: 'key', onClick: () => passwordTask(u) },
             '-',
-            { label: 'Delete User', icon: 'trash', danger: true, onClick: () => deleteTask(u) }
+            { label: 'Delete User', icon: 'trash', danger: true, task: 'doDeleteUser', group: 'user', onClick: () => deleteTask(u) }
         ]);
     };
 
@@ -242,12 +242,12 @@ function UsersView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="User Tasks" paneKey="tasks:User Tasks">
+                <RailPane title="User Tasks" paneKey="tasks:User Tasks" group="user">
                     <div className="taskbar" data-pane-title="User Tasks">
-                        <TaskButton label="Refresh" icon="refresh" onClick={refresh} />
-                        <TaskButton label="New User" icon="plus" primary onClick={() => newTask()} />
-                        {hasSel && <TaskButton label="Edit User" icon="edit" onClick={() => editTask()} />}
-                        {hasSel && <TaskButton label="Delete User" icon="trash" danger onClick={() => deleteTask()} />}
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshUser" onClick={refresh} />
+                        <TaskButton label="New User" icon="plus" primary task="doNewUser" onClick={() => newTask()} />
+                        {hasSel && <TaskButton label="Edit User" icon="edit" task="doEditUser" onClick={() => editTask()} />}
+                        {hasSel && <TaskButton label="Delete User" icon="trash" danger task="doDeleteUser" onClick={() => deleteTask()} />}
                     </div>
                 </RailPane>
             </ViewTasks>

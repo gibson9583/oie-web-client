@@ -30,6 +30,7 @@ import * as ui from './ui.js';
 import * as oie from './oie.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
+import { setAuthorizationController, checkTask } from './authorization.js';
 
 const registries = {
     navItems: [],
@@ -69,6 +70,13 @@ export const platform = {
     events: { on: store.on, emit: store.emit },
     createCodeEditor,
     setCodeEditorFactory,
+
+    /* RBAC hook (Swing AuthorizationController): a Role-Based Access Control plugin
+       calls setAuthorizationController({ checkTask(taskGroup, taskName) }) to hide
+       nav items / task buttons / right-click items. checkTask is consulted by the
+       menu builders. Default = allow all. */
+    setAuthorizationController,
+    checkTask,
 
     /* ---- extension points ---- */
 

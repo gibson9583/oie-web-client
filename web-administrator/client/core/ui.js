@@ -8,6 +8,7 @@
 
 import { icon } from './icons.js';
 import { formatInZone } from './timezone.js';
+import { checkTask } from './authorization.js';
 
 /* ---- element builder -------------------------------------------------------- */
 
@@ -170,12 +171,15 @@ export function promptDialog(title, label, initial = '') {
 
 let openMenu = null;
 
-export function contextMenu(x, y, items) {
+export function contextMenu(x, y, items, group) {
     closeContextMenu();
     const menu = h('div.ctx-menu');
     for (const item of items) {
         if (item === '-') { menu.appendChild(h('div.ctx-sep')); continue; }
         if (item.hidden) continue;
+        // RBAC: hide an item the user isn't authorized for (Swing's paired popup
+        // task). `group` (the task-pane key) may be set per item or for the menu.
+        if (item.task && !checkTask(item.group || group, item.task)) continue;
         menu.appendChild(h(`button.ctx-item${item.danger ? '.danger' : ''}`, {
             disabled: item.disabled,
             onClick: () => { closeContextMenu(); item.onClick && item.onClick(); }
@@ -415,6 +419,9 @@ export function checkbox(label, checked = false, attrs = {}) {
 }
 
 export function taskButton(label, iconName, onClick, opts = {}) {
+    // RBAC: opts.task + opts.group hide an unauthorized task (Swing parity). Returns
+    // null, which the rail's taskbar host skips.
+    if (opts.task && !checkTask(opts.group, opts.task)) return null;
     return h(`button.btn${opts.primary ? '.btn-primary' : ''}${opts.danger ? '.btn-danger' : ''}`,
         { onClick, disabled: opts.disabled, title: opts.title || null },
         iconName ? icon(iconName) : null, label);

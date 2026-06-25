@@ -18,7 +18,7 @@ import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { useStoreKey } from '../bridges.jsx';
 
 export function register(platform) {
-    platform.registerNavItem({ id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Engine', order: 6 });
+    platform.registerNavItem({ id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Engine', order: 6, task: 'doShowExtensions' });
     platform.registerView('/extensions', reactView(ExtensionsView), { title: 'Extensions' });
 }
 
@@ -291,15 +291,15 @@ function ExtensionsView() {
         chooseFrom(rows, otherRef);
         const row = rows[0];
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => load() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshExtensions', group: 'extensions', onClick: () => load() },
             '-',
             // Swing shows only the applicable action for the row's current state.
-            { label: 'Enable Extension', icon: 'check', hidden: !!row.enabled, onClick: () => setEnabled(true) },
-            { label: 'Disable Extension', icon: 'x', hidden: !row.enabled, onClick: () => setEnabled(false) },
+            { label: 'Enable Extension', icon: 'check', task: 'doEnableExtension', group: 'extensions', hidden: !!row.enabled, onClick: () => setEnabled(true) },
+            { label: 'Disable Extension', icon: 'x', task: 'doDisableExtension', group: 'extensions', hidden: !row.enabled, onClick: () => setEnabled(false) },
             '-',
-            { label: 'Show Properties', icon: 'eye', onClick: () => showProperties() },
+            { label: 'Show Properties', icon: 'eye', task: 'doShowExtensionProperties', group: 'extensions', onClick: () => showProperties() },
             '-',
-            { label: 'Uninstall Extension', icon: 'trash', danger: true, onClick: () => uninstallExtension() }
+            { label: 'Uninstall Extension', icon: 'trash', task: 'doUninstallExtension', group: 'extensions', danger: true, onClick: () => uninstallExtension() }
         ]);
     }
 
@@ -329,9 +329,9 @@ function ExtensionsView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Extension Tasks" paneKey="tasks:Extension Tasks">
+                <RailPane title="Extension Tasks" paneKey="tasks:Extension Tasks" group="extensions">
                     <div className="taskbar" data-pane-title="Extension Tasks">
-                        <TaskButton label="Refresh" icon="refresh" onClick={load} />
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshExtensions" onClick={load} />
                         <TaskButton label="Install Extension" icon="import" onClick={installExtension} />
                         {sel && !sel.enabled && <TaskButton label="Enable" icon="check" onClick={() => setEnabled(true)} />}
                         {sel && sel.enabled && <TaskButton label="Disable" icon="x" onClick={() => setEnabled(false)} />}

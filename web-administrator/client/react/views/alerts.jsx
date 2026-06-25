@@ -16,7 +16,7 @@ import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { newAlert, AlertEditor } from './alert-editor.jsx';
 
 export function register(platform) {
-    platform.registerNavItem({ id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Engine', order: 4 });
+    platform.registerNavItem({ id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Engine', order: 4, task: 'doShowAlerts' });
     platform.registerView('/alerts', reactView(AlertsList), { title: 'Alerts' });
     platform.registerView('/alerts/:alertId/edit', reactView(AlertEditor), { title: 'Edit Alert' });
 }
@@ -148,16 +148,16 @@ function AlertsList() {
         setSel(rows);
         const one = rows.length === 1 ? rows[0] : null;
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
-            { label: 'New Alert', icon: 'plus', onClick: () => newTask() },
-            { label: 'Import Alert', icon: 'import', onClick: () => importTask() },
-            { label: 'Export All Alerts', icon: 'export', onClick: () => exportAllTask() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshAlerts', group: 'alert', onClick: () => refresh() },
+            { label: 'New Alert', icon: 'plus', task: 'doNewAlert', group: 'alert', onClick: () => newTask() },
+            { label: 'Import Alert', icon: 'import', task: 'doImportAlert', group: 'alert', onClick: () => importTask() },
+            { label: 'Export All Alerts', icon: 'export', task: 'doExportAlerts', group: 'alert', onClick: () => exportAllTask() },
             '-',
-            { label: 'Export Alert', icon: 'export', hidden: !one, onClick: () => exportTask() },
-            { label: 'Delete Alert', icon: 'trash', danger: true, onClick: () => deleteTask() },
-            { label: 'Edit Alert', icon: 'edit', hidden: !one, onClick: () => editTask() },
-            { label: 'Enable Alert', icon: 'check', hidden: !one || one.enabled, onClick: () => setEnabledTask(true) },
-            { label: 'Disable Alert', icon: 'x', hidden: !one || !one.enabled, onClick: () => setEnabledTask(false) }
+            { label: 'Export Alert', icon: 'export', task: 'doExportAlert', group: 'alert', hidden: !one, onClick: () => exportTask() },
+            { label: 'Delete Alert', icon: 'trash', task: 'doDeleteAlert', group: 'alert', danger: true, onClick: () => deleteTask() },
+            { label: 'Edit Alert', icon: 'edit', task: 'doEditAlert', group: 'alert', hidden: !one, onClick: () => editTask() },
+            { label: 'Enable Alert', icon: 'check', task: 'doEnableAlert', group: 'alert', hidden: !one || one.enabled, onClick: () => setEnabledTask(true) },
+            { label: 'Disable Alert', icon: 'x', task: 'doDisableAlert', group: 'alert', hidden: !one || !one.enabled, onClick: () => setEnabledTask(false) }
         ]);
     };
 
@@ -184,17 +184,17 @@ function AlertsList() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Alert Tasks" paneKey="tasks:Alert Tasks">
+                <RailPane title="Alert Tasks" paneKey="tasks:Alert Tasks" group="alert">
                     <div className="taskbar" data-pane-title="Alert Tasks">
-                        <TaskButton label="Refresh" icon="refresh" onClick={refresh} />
-                        <TaskButton label="New Alert" icon="plus" primary onClick={newTask} />
-                        <TaskButton label="Import Alert" icon="import" onClick={importTask} />
-                        <TaskButton label="Export All Alerts" icon="export" onClick={exportAllTask} />
-                        {showExport && <TaskButton label="Export Alert" icon="export" onClick={exportTask} />}
-                        {showDelete && <TaskButton label="Delete Alert" icon="trash" danger onClick={deleteTask} />}
-                        {showEdit && <TaskButton label="Edit Alert" icon="edit" onClick={editTask} />}
-                        {showEnable && <TaskButton label="Enable Alert" icon="check" onClick={() => setEnabledTask(true)} />}
-                        {showDisable && <TaskButton label="Disable Alert" icon="x" onClick={() => setEnabledTask(false)} />}
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshAlerts" onClick={refresh} />
+                        <TaskButton label="New Alert" icon="plus" primary task="doNewAlert" onClick={newTask} />
+                        <TaskButton label="Import Alert" icon="import" task="doImportAlert" onClick={importTask} />
+                        <TaskButton label="Export All Alerts" icon="export" task="doExportAlerts" onClick={exportAllTask} />
+                        {showExport && <TaskButton label="Export Alert" icon="export" task="doExportAlert" onClick={exportTask} />}
+                        {showDelete && <TaskButton label="Delete Alert" icon="trash" danger task="doDeleteAlert" onClick={deleteTask} />}
+                        {showEdit && <TaskButton label="Edit Alert" icon="edit" task="doEditAlert" onClick={editTask} />}
+                        {showEnable && <TaskButton label="Enable Alert" icon="check" task="doEnableAlert" onClick={() => setEnabledTask(true)} />}
+                        {showDisable && <TaskButton label="Disable Alert" icon="x" task="doDisableAlert" onClick={() => setEnabledTask(false)} />}
                     </div>
                 </RailPane>
             </ViewTasks>

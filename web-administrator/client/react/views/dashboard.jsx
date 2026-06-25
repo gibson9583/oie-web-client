@@ -31,7 +31,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import { iconPath } from '../../core/icons.js';
 
 export function register(platform) {
-    platform.registerNavItem({ id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Engine', order: 0 });
+    platform.registerNavItem({ id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Engine', order: 0, task: 'doShowDashboard' });
     platform.registerView('/dashboard', reactView(DashboardView), { title: 'Dashboard' });
 }
 
@@ -676,19 +676,19 @@ function DashboardView() {
         const first = members[0];
         const anyState = (fn) => members.some(fn);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Send Message', icon: 'send', onClick: () => openSendMessageDialog(platform, first.channelId, () => refresh()) },
-            { label: 'View Messages', icon: 'messages', onClick: () => router.navigate(`/messages/${first.channelId}`) },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, onClick: () => removeAllTask() },
-            { label: 'Clear Statistics', icon: 'clear', hidden: lifetimeRef.current, onClick: () => clearStatsTask() },
+            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => openSendMessageDialog(platform, first.channelId, () => refresh()) },
+            { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${first.channelId}`) },
+            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask() },
+            { label: 'Clear Statistics', icon: 'clear', hidden: lifetimeRef.current, task: 'doClearStats', onClick: () => clearStatsTask() },
             '-',
-            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), onClick: () => controlSelected('start', 'Start') },
-            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), onClick: () => controlSelected('pause', 'Pause') },
-            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), onClick: () => controlSelected('stop', 'Stop') },
-            { label: 'Halt', icon: 'halt', hidden: !(members.length === 1 && isHaltable(members[0].state)), onClick: () => haltTask() },
-            { label: 'Undeploy Channels', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), onClick: () => undeployTask() }
-        ]);
+            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlSelected('start', 'Start') },
+            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), task: 'doPause', onClick: () => controlSelected('pause', 'Pause') },
+            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlSelected('stop', 'Stop') },
+            { label: 'Halt', icon: 'halt', hidden: !(members.length === 1 && isHaltable(members[0].state)), task: 'doHalt', onClick: () => haltTask() },
+            { label: 'Undeploy Channels', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask() }
+        ], 'dashboard');
     }
 
     function tagsFor(channelId) {
@@ -733,23 +733,23 @@ function DashboardView() {
         const sel = statusesRef.current.filter(x => selectedRef.current.has(x.channelId));
         const anyState = (fn) => sel.some(fn);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Send Message', icon: 'send', onClick: () => openSendMessageDialog(platform, st.channelId, () => refresh()) },
-            { label: 'View Messages', icon: 'messages', onClick: () => router.navigate(`/messages/${st.channelId}`) },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, onClick: () => removeAllTask() },
-            { label: 'Clear Statistics', icon: 'clear', hidden: lifetimeRef.current, onClick: () => clearStatsTask() },
+            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => openSendMessageDialog(platform, st.channelId, () => refresh()) },
+            { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${st.channelId}`) },
+            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask() },
+            { label: 'Clear Statistics', icon: 'clear', hidden: lifetimeRef.current, task: 'doClearStats', onClick: () => clearStatsTask() },
             '-',
-            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), onClick: () => controlSelected('start', 'Start') },
-            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), onClick: () => controlSelected('pause', 'Pause') },
-            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), onClick: () => controlSelected('stop', 'Stop') },
-            { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), onClick: () => haltTask() },
-            { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err) { toast(err.message, 'error'); } refresh(); } },
+            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlSelected('start', 'Start') },
+            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), task: 'doPause', onClick: () => controlSelected('pause', 'Pause') },
+            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlSelected('stop', 'Stop') },
+            { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), task: 'doHalt', onClick: () => haltTask() },
+            { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err) { toast(err.message, 'error'); } refresh(); } },
             '-',
-            { label: 'Edit Channel', icon: 'edit', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
+            { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
             { label: 'Edit Filter', icon: 'filter', onClick: () => router.navigate(`/channels/${st.channelId}/filter/0`) },
             { label: 'Edit Transformer', icon: 'transform', onClick: () => router.navigate(`/channels/${st.channelId}/transformer/0`) }
-        ]);
+        ], 'dashboard');
     }
 
     // Right-click a source/destination connector row to start/stop just that
@@ -762,11 +762,11 @@ function DashboardView() {
             refresh();
         };
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Start Connector', icon: 'play', hidden: !(child.state === 'STOPPED' || child.state === 'PAUSED'), onClick: runConnector('startConnector') },
-            { label: 'Stop Connector', icon: 'stop', hidden: !(child.state === 'STARTED' || child.state === 'PAUSED'), onClick: runConnector('stopConnector') }
-        ]);
+            { label: 'Start Connector', icon: 'play', hidden: !(child.state === 'STOPPED' || child.state === 'PAUSED'), task: 'doStartConnector', onClick: runConnector('startConnector') },
+            { label: 'Stop Connector', icon: 'stop', hidden: !(child.state === 'STARTED' || child.state === 'PAUSED'), task: 'doStopConnector', onClick: runConnector('stopConnector') }
+        ], 'dashboard');
     }
 
     // Updates the counts label inside the imperative filter bar (kept verbatim).
@@ -1020,7 +1020,7 @@ function DashboardView() {
             forceRender();
             emitSelection();
         }
-        contextMenu(e.clientX, e.clientY, [{ label: 'Refresh', icon: 'refresh', onClick: () => refresh() }]);
+        contextMenu(e.clientX, e.clientY, [{ label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() }], 'dashboard');
     }
 
     /* ---- mount: build the filter bar once, then poll ---- */
@@ -1092,18 +1092,18 @@ function DashboardView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Dashboard Tasks" paneKey="tasks:Dashboard Tasks">
+                <RailPane title="Dashboard Tasks" paneKey="tasks:Dashboard Tasks" group="dashboard">
                     <div className="taskbar" data-pane-title="Dashboard Tasks">
-                        <TaskButton label="Refresh" icon="refresh" onClick={() => refresh(true)} />
-                        {hasSel && <TaskButton label="Send Message" icon="send" onClick={sendMessageTask} />}
-                        {hasSel && <TaskButton label="View Messages" icon="messages" onClick={viewMessagesTask} />}
-                        {hasSel && <TaskButton label="Remove All Messages" icon="trash" danger onClick={removeAllTask} />}
-                        {showClearStats && <TaskButton label="Clear Statistics" icon="clear" onClick={clearStatsTask} />}
-                        {showStart && <TaskButton label="Start" icon="play" onClick={startTask} />}
-                        {showPause && <TaskButton label="Pause" icon="pause" onClick={pauseTask} />}
-                        {showStop && <TaskButton label="Stop" icon="stop" onClick={stopTask} />}
-                        {showHalt && <TaskButton label="Halt" icon="halt" onClick={haltTask} />}
-                        {showUndeploy && <TaskButton label="Undeploy Channel" icon="undeploy" onClick={undeployTask} />}
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshStatuses" onClick={() => refresh(true)} />
+                        {hasSel && <TaskButton label="Send Message" icon="send" task="doSendMessage" onClick={sendMessageTask} />}
+                        {hasSel && <TaskButton label="View Messages" icon="messages" task="doShowMessages" onClick={viewMessagesTask} />}
+                        {hasSel && <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={removeAllTask} />}
+                        {showClearStats && <TaskButton label="Clear Statistics" icon="clear" task="doClearStats" onClick={clearStatsTask} />}
+                        {showStart && <TaskButton label="Start" icon="play" task="doStart" onClick={startTask} />}
+                        {showPause && <TaskButton label="Pause" icon="pause" task="doPause" onClick={pauseTask} />}
+                        {showStop && <TaskButton label="Stop" icon="stop" task="doStop" onClick={stopTask} />}
+                        {showHalt && <TaskButton label="Halt" icon="halt" task="doHalt" onClick={haltTask} />}
+                        {showUndeploy && <TaskButton label="Undeploy Channel" icon="undeploy" task="doUndeployChannel" onClick={undeployTask} />}
                     </div>
                 </RailPane>
             </ViewTasks>

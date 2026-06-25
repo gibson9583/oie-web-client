@@ -950,21 +950,21 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         e.preventDefault();
         selectMessage(m, metaDataId);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => search(true) },
-            { label: 'Send Message', icon: 'send', onClick: () => sendMessageTask() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshMessages', group: 'message', onClick: () => search(true) },
+            { label: 'Send Message', icon: 'send', task: 'doSendMessage', group: 'message', onClick: () => sendMessageTask() },
             '-',
-            { label: 'Import Messages', icon: 'import', onClick: () => importMessagesTask() },
-            { label: 'Export Results', icon: 'export', onClick: () => exportResultsTask() },
+            { label: 'Import Messages', icon: 'import', task: 'doImportMessages', group: 'message', onClick: () => importMessagesTask() },
+            { label: 'Export Results', icon: 'export', task: 'doExportMessages', group: 'message', onClick: () => exportResultsTask() },
             '-',
-            { label: 'Reprocess Results', icon: 'transform', onClick: () => reprocessResultsTask() },
-            { label: 'Reprocess Message', icon: 'transform', onClick: () => reprocessTask() },
+            { label: 'Reprocess Results', icon: 'transform', task: 'doReprocessFilteredMessages', group: 'message', onClick: () => reprocessResultsTask() },
+            { label: 'Reprocess Message', icon: 'transform', task: 'doReprocessMessage', group: 'message', onClick: () => reprocessTask() },
             '-',
-            { label: 'View Attachment', icon: 'eye', onClick: () => viewAttachmentsModal(m) },
-            { label: 'Export Attachment', icon: 'export', onClick: () => exportAttachmentTask(m) },
+            { label: 'View Attachment', icon: 'eye', task: 'viewImage', group: 'message', onClick: () => viewAttachmentsModal(m) },
+            { label: 'Export Attachment', icon: 'export', task: 'doExportAttachment', group: 'message', onClick: () => exportAttachmentTask(m) },
             '-',
-            { label: 'Remove Message', icon: 'trash', danger: true, onClick: () => removeMessageTask() },
-            { label: 'Remove Results', icon: 'trash', danger: true, onClick: () => removeResultsTask() },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, onClick: () => removeAllTask() }
+            { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask() },
+            { label: 'Remove Results', icon: 'trash', danger: true, task: 'doRemoveFilteredMessages', group: 'message', onClick: () => removeResultsTask() },
+            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', group: 'message', onClick: () => removeAllTask() }
         ]);
     }
 
@@ -2039,17 +2039,17 @@ function MessagesView({ params, query }) {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Message Tasks" paneKey="tasks:Message Tasks">
+                <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
                     <div className="taskbar" data-pane-title="Message Tasks">
-                        <TaskButton label="Refresh" icon="refresh" onClick={t('refresh')} />
-                        <TaskButton label="Send Message" icon="send" primary onClick={t('sendMessageTask')} />
-                        <TaskButton label="Import Messages" icon="import" onClick={t('importMessagesTask')} />
-                        <TaskButton label="Export Results" icon="export" onClick={t('exportResultsTask')} />
-                        <TaskButton label="Remove All Messages" icon="trash" danger onClick={t('removeAllTask')} />
-                        <TaskButton label="Remove Results" icon="trash" danger onClick={t('removeResultsTask')} />
-                        {hasSel && <TaskButton label="Remove Message" icon="trash" danger onClick={t('removeMessageTask')} />}
-                        <TaskButton label="Reprocess Results" icon="transform" onClick={t('reprocessResultsTask')} />
-                        {hasSel && <TaskButton label="Reprocess Message" icon="transform" onClick={t('reprocessTask')} />}
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={t('refresh')} />
+                        <TaskButton label="Send Message" icon="send" primary task="doSendMessage" onClick={t('sendMessageTask')} />
+                        <TaskButton label="Import Messages" icon="import" task="doImportMessages" onClick={t('importMessagesTask')} />
+                        <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={t('exportResultsTask')} />
+                        <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={t('removeAllTask')} />
+                        <TaskButton label="Remove Results" icon="trash" danger task="doRemoveFilteredMessages" onClick={t('removeResultsTask')} />
+                        {hasSel && <TaskButton label="Remove Message" icon="trash" danger task="doRemoveMessage" onClick={t('removeMessageTask')} />}
+                        <TaskButton label="Reprocess Results" icon="transform" task="doReprocessFilteredMessages" onClick={t('reprocessResultsTask')} />
+                        {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={t('reprocessTask')} />}
                     </div>
                 </RailPane>
             </ViewTasks>

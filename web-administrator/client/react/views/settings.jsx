@@ -35,7 +35,7 @@ const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.Di
 const CONFIGURATION_PROPERTY_CLASS = 'com.mirth.connect.util.ConfigurationProperty';
 
 export function register(platform) {
-    platform.registerNavItem({ id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Engine', order: 3 });
+    platform.registerNavItem({ id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Engine', order: 3, task: 'doShowSettings' });
     platform.registerView('/settings', reactView(SettingsView), { title: 'Settings' });
 }
 
@@ -484,12 +484,12 @@ function renderServerTab({ setTasks, markClean, setSave }) {
     }
 
     setTasks('Server Tasks', [
-        taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'save', save, { primary: true }),
+        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Server' }),
+        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Server' }),
         '-',
-        taskButton('Backup Config', 'export', backupConfig),
-        taskButton('Restore Config', 'import', restoreConfig),
-        taskButton('Clear All Statistics', 'clear', clearAllStatistics, { danger: true })
+        taskButton('Backup Config', 'export', backupConfig, { task: 'doBackup', group: 'settings_Server' }),
+        taskButton('Restore Config', 'import', restoreConfig, { task: 'doRestore', group: 'settings_Server' }),
+        taskButton('Clear All Statistics', 'clear', clearAllStatistics, { danger: true, task: 'doClearAllStats', group: 'settings_Server' })
     ]);
 
     load();
@@ -637,9 +637,9 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
         setSave(save);
 
         setTasks('Administrator Tasks', [
-            taskButton('Refresh', 'refresh', build),
-            taskButton('Save', 'save', save, { primary: true }),
-            taskButton('Restore Defaults', 'refresh', () => { resetPrefs(); build(); toast('Preferences reset to defaults'); })
+            taskButton('Refresh', 'refresh', build, { task: 'doRefresh', group: 'settings_Administrator' }),
+            taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Administrator' }),
+            taskButton('Restore Defaults', 'refresh', () => { resetPrefs(); build(); toast('Preferences reset to defaults'); }, { task: 'doSetAdminDefaults', group: 'settings_Administrator' })
         ]);
     }
 
@@ -829,8 +829,8 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
     setSave(save);
 
     setTasks('Tag Tasks', [
-        taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'save', save, { primary: true }),
+        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Tags' }),
+        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Tags' }),
         taskButton('Add Tag', 'plus', addTag),
         ctxTasks
     ]);
@@ -990,10 +990,10 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
     }
 
     setTasks('Configuration Map Tasks', [
-        taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'save', save, { primary: true }),
-        taskButton('Import Map', 'import', importMap),
-        taskButton('Export Map', 'export', exportMap)
+        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Configuration Map' }),
+        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Configuration Map' }),
+        taskButton('Import Map', 'import', importMap, { task: 'doImportMap', group: 'settings_Configuration Map' }),
+        taskButton('Export Map', 'export', exportMap, { task: 'doExportMap', group: 'settings_Configuration Map' })
     ]);
 
     load();
@@ -1037,23 +1037,24 @@ function renderDatabaseTasksTab({ setTasks }) {
             table.selected = new Set([row.id]);
             updateTaskVisibility();
             contextMenu(e.clientX, e.clientY, [
-                { label: 'Run Task', icon: 'play', hidden: anyRunning(), onClick: () => runTask() },
-                { label: 'Cancel Task', icon: 'stop', danger: true, hidden: !isRunning(row), onClick: () => cancelTask() }
+                { label: 'Run Task', icon: 'play', hidden: anyRunning(), task: 'doRunDatabaseTask', group: 'settings_Database Tasks', onClick: () => runTask() },
+                { label: 'Cancel Task', icon: 'stop', danger: true, hidden: !isRunning(row), task: 'doCancelDatabaseTask', group: 'settings_Database Tasks', onClick: () => cancelTask() }
             ]);
         }
     });
 
     // Selection-dependent tasks only show when a task row is selected.
-    const runBtn = taskButton('Run Task', 'play', runTask);
-    const cancelBtn = taskButton('Cancel Task', 'stop', cancelTask, { danger: true });
+    const runBtn = taskButton('Run Task', 'play', runTask, { task: 'doRunDatabaseTask', group: 'settings_Database Tasks' });
+    const cancelBtn = taskButton('Cancel Task', 'stop', cancelTask, { danger: true, task: 'doCancelDatabaseTask', group: 'settings_Database Tasks' });
     const ctxTasks = h('div.ctx-tasks.hidden', runBtn, cancelBtn);
 
     function updateTaskVisibility() {
         const sel = table.selectedRows();
         ctxTasks.classList.toggle('hidden', sel.length === 0);
         // Run when nothing is running; Cancel only for the running selection.
-        runBtn.classList.toggle('hidden', sel.length === 0 || anyRunning());
-        cancelBtn.classList.toggle('hidden', sel.length === 0 || !isRunning(sel[0]));
+        // (Buttons may be null if RBAC hid the task.)
+        if (runBtn) runBtn.classList.toggle('hidden', sel.length === 0 || anyRunning());
+        if (cancelBtn) cancelBtn.classList.toggle('hidden', sel.length === 0 || !isRunning(sel[0]));
     }
 
     function normalize(raw) {
@@ -1126,7 +1127,7 @@ function renderDatabaseTasksTab({ setTasks }) {
     }
 
     setTasks('Database Task Tasks', [
-        taskButton('Refresh', 'refresh', load),
+        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Database Tasks' }),
         ctxTasks
     ]);
 
@@ -1187,24 +1188,25 @@ function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
             renderDetail(row);
             updateTaskVisibility();
             contextMenu(e.clientX, e.clientY, [
-                { label: 'Add Resource', icon: 'plus', onClick: () => addResource() },
-                { label: 'Remove Resource', icon: 'trash', danger: true, hidden: isDefault(row), onClick: () => removeResource() },
-                { label: 'Reload Resource', icon: 'refresh', onClick: () => reloadResource() }
+                { label: 'Add Resource', icon: 'plus', task: 'doAddResource', group: 'settings_Resources', onClick: () => addResource() },
+                { label: 'Remove Resource', icon: 'trash', danger: true, hidden: isDefault(row), task: 'doRemoveResource', group: 'settings_Resources', onClick: () => removeResource() },
+                { label: 'Reload Resource', icon: 'refresh', task: 'doReloadResource', group: 'settings_Resources', onClick: () => reloadResource() }
             ]);
         }
     });
 
     // Selection-dependent tasks only show when a resource is selected.
-    const removeBtn = taskButton('Remove Resource', 'trash', removeResource, { danger: true });
+    const removeBtn = taskButton('Remove Resource', 'trash', removeResource, { danger: true, task: 'doRemoveResource', group: 'settings_Resources' });
     const ctxTasks = h('div.ctx-tasks.hidden',
         removeBtn,
-        taskButton('Reload Resource', 'refresh', reloadResource));
+        taskButton('Reload Resource', 'refresh', reloadResource, { task: 'doReloadResource', group: 'settings_Resources' }));
 
     function updateTaskVisibility() {
         const sel = table.selectedRows();
         ctxTasks.classList.toggle('hidden', sel.length === 0);
         // The Default Resource cannot be removed (Swing hides Remove for it).
-        removeBtn.classList.toggle('hidden', sel.length === 0 || isDefault(sel[0]));
+        // (removeBtn may be null if RBAC hid the task.)
+        if (removeBtn) removeBtn.classList.toggle('hidden', sel.length === 0 || isDefault(sel[0]));
     }
 
     const detailHost = h('div');
@@ -1335,9 +1337,9 @@ function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
     setSave(save);
 
     setTasks('Resource Tasks', [
-        taskButton('Refresh', 'refresh', load),
-        taskButton('Save', 'save', save, { primary: true }),
-        taskButton('Add Resource', 'plus', addResource),
+        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Resources' }),
+        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Resources' }),
+        taskButton('Add Resource', 'plus', addResource, { task: 'doAddResource', group: 'settings_Resources' }),
         ctxTasks
     ]);
 

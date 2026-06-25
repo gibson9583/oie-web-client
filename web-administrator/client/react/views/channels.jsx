@@ -28,7 +28,7 @@ import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 
 export function register(platform) {
-    platform.registerNavItem({ id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Engine', order: 1 });
+    platform.registerNavItem({ id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Engine', order: 1, task: 'doShowChannel' });
     platform.registerView('/channels', reactView(ChannelsView), { title: 'Channels' });
 }
 
@@ -517,17 +517,17 @@ function ChannelsView() {
             selectGroup(node.group);
             const isRealGroup = node.group.id !== DEFAULT_GROUP_ID;
             contextMenu(e.clientX, e.clientY, [
-                { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
+                { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
                 '-',
-                { label: 'New Group', icon: 'plus', onClick: () => newGroupTask() },
-                { label: 'Edit Group Details', icon: 'edit', hidden: !isRealGroup, onClick: () => editGroupTask() },
-                { label: 'Delete Group', icon: 'trash', danger: true, hidden: !isRealGroup, onClick: () => deleteGroupTask() },
+                { label: 'New Group', icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
+                { label: 'Edit Group Details', icon: 'edit', task: 'doEditGroupDetails', group: 'channelGroup', hidden: !isRealGroup, onClick: () => editGroupTask() },
+                { label: 'Delete Group', icon: 'trash', danger: true, task: 'doDeleteGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => deleteGroupTask() },
                 '-',
-                { label: 'Import Group', icon: 'import', onClick: () => importGroupTask() },
-                { label: 'Export Group', icon: 'export', hidden: !isRealGroup, onClick: () => exportGroupTask() },
-                { label: 'Export All Groups', icon: 'export', onClick: () => exportGroupsTask() },
+                { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
+                { label: 'Export Group', icon: 'export', task: 'doExportGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => exportGroupTask() },
+                { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() },
                 '-',
-                { label: 'New Channel', icon: 'plus', onClick: () => newTask() }
+                { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() }
             ]);
             return;
         }
@@ -540,28 +540,28 @@ function ChannelsView() {
         }
         // Full Swing channelPopupMenu (ChannelPanel) — the whole Channel Tasks list.
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', onClick: () => refresh() },
-            { label: 'Redeploy All', icon: 'deploy', onClick: () => redeployAllTask() },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
+            { label: 'Redeploy All', icon: 'deploy', task: 'doRedeployAll', group: 'channel', onClick: () => redeployAllTask() },
             '-',
-            { label: 'Edit Global Scripts', icon: 'scripts', onClick: () => router.navigate('/global-scripts') },
-            { label: 'Edit Code Templates', icon: 'code', onClick: () => router.navigate('/code-templates') },
+            { label: 'Edit Global Scripts', icon: 'scripts', task: 'doEditGlobalScripts', group: 'channel', onClick: () => router.navigate('/global-scripts') },
+            { label: 'Edit Code Templates', icon: 'code', task: 'doEditCodeTemplates', group: 'channel', onClick: () => router.navigate('/code-templates') },
             '-',
-            { label: 'New Channel', icon: 'plus', onClick: () => newTask() },
-            { label: 'Import Channel', icon: 'import', onClick: () => importTask() },
-            { label: 'Export All Channels', icon: 'export', onClick: () => exportAllTask() },
+            { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
+            { label: 'Import Channel', icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
+            { label: 'Export All Channels', icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
             '-',
-            { label: 'Edit Channel', icon: 'edit', onClick: () => router.navigate(`/channels/${channel.id}/edit`) },
-            { label: 'View Messages', icon: 'messages', onClick: () => messagesTask() },
+            { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${channel.id}/edit`) },
+            { label: 'View Messages', icon: 'messages', task: 'doViewMessages', group: 'channel', onClick: () => messagesTask() },
             '-',
-            { label: 'Deploy Channel', icon: 'deploy', onClick: () => deployTask() },
-            { label: 'Enable Channel', icon: 'check', onClick: () => setEnabledTask(true) },
-            { label: 'Disable Channel', icon: 'x', onClick: () => setEnabledTask(false) },
+            { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployChannel', group: 'channel', onClick: () => deployTask() },
+            { label: 'Enable Channel', icon: 'check', task: 'doEnableChannel', group: 'channel', onClick: () => setEnabledTask(true) },
+            { label: 'Disable Channel', icon: 'x', task: 'doDisableChannel', group: 'channel', onClick: () => setEnabledTask(false) },
             '-',
-            { label: 'Clone Channel', icon: 'copy', onClick: () => cloneTask() },
-            { label: 'Export Channel', icon: 'export', onClick: () => exportTask() },
-            { label: 'Move to Group…', icon: 'folder', onClick: () => moveToGroupTask() },
+            { label: 'Clone Channel', icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask() },
+            { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask() },
+            { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', onClick: () => moveToGroupTask() },
             '-',
-            { label: 'Delete Channel', icon: 'trash', danger: true, onClick: () => deleteTask() }
+            { label: 'Delete Channel', icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask() }
         ]);
     }
 
@@ -1092,33 +1092,33 @@ function ChannelsView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Channel Tasks" paneKey="tasks:Channel Tasks">
+                <RailPane title="Channel Tasks" paneKey="tasks:Channel Tasks" group="channel">
                     <div className="taskbar" data-pane-title="Channel Tasks">
-                        <TaskButton label="Refresh" icon="refresh" onClick={() => refresh()} />
-                        <TaskButton label="Redeploy All" icon="deploy" onClick={redeployAllTask} />
-                        {showDeploy && <TaskButton label="Deploy Channel" icon="deploy" onClick={deployTask} />}
-                        <TaskButton label="Edit Global Scripts" icon="scripts" onClick={() => router.navigate('/global-scripts')} />
-                        <TaskButton label="Edit Code Templates" icon="code" onClick={() => router.navigate('/code-templates')} />
-                        <TaskButton label="New Channel" icon="plus" primary onClick={newTask} />
-                        <TaskButton label="Import Channel" icon="import" onClick={importTask} />
-                        {showExport && <TaskButton label="Export Channel" icon="export" onClick={exportTask} />}
-                        {showDelete && <TaskButton label="Delete Channel" icon="trash" danger onClick={deleteTask} />}
-                        {showClone && <TaskButton label="Clone Channel" icon="copy" onClick={cloneTask} />}
-                        {showEdit && <TaskButton label="Edit Channel" icon="edit" onClick={() => { const c = single(); if (c) router.navigate(`/channels/${c.id}/edit`); }} />}
-                        {showEnable && <TaskButton label="Enable Channel" icon="check" onClick={() => setEnabledTask(true)} />}
-                        {showDisable && <TaskButton label="Disable Channel" icon="x" onClick={() => setEnabledTask(false)} />}
-                        {showMessages && <TaskButton label="View Messages" icon="messages" onClick={messagesTask} />}
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshChannels" onClick={() => refresh()} />
+                        <TaskButton label="Redeploy All" icon="deploy" task="doRedeployAll" onClick={redeployAllTask} />
+                        {showDeploy && <TaskButton label="Deploy Channel" icon="deploy" task="doDeployChannel" onClick={deployTask} />}
+                        <TaskButton label="Edit Global Scripts" icon="scripts" task="doEditGlobalScripts" onClick={() => router.navigate('/global-scripts')} />
+                        <TaskButton label="Edit Code Templates" icon="code" task="doEditCodeTemplates" onClick={() => router.navigate('/code-templates')} />
+                        <TaskButton label="New Channel" icon="plus" primary task="doNewChannel" onClick={newTask} />
+                        <TaskButton label="Import Channel" icon="import" task="doImportChannel" onClick={importTask} />
+                        {showExport && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={exportTask} />}
+                        {showDelete && <TaskButton label="Delete Channel" icon="trash" danger task="doDeleteChannel" onClick={deleteTask} />}
+                        {showClone && <TaskButton label="Clone Channel" icon="copy" task="doCloneChannel" onClick={cloneTask} />}
+                        {showEdit && <TaskButton label="Edit Channel" icon="edit" task="doEditChannel" onClick={() => { const c = single(); if (c) router.navigate(`/channels/${c.id}/edit`); }} />}
+                        {showEnable && <TaskButton label="Enable Channel" icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true)} />}
+                        {showDisable && <TaskButton label="Disable Channel" icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false)} />}
+                        {showMessages && <TaskButton label="View Messages" icon="messages" task="doViewMessages" onClick={messagesTask} />}
                     </div>
                 </RailPane>
-                <RailPane title="Group Tasks" paneKey="tasks:Group Tasks">
+                <RailPane title="Group Tasks" paneKey="tasks:Group Tasks" group="channelGroup">
                     <div className="taskbar" data-pane-title="Group Tasks">
-                        {showAssign && <TaskButton label="Assign To Group" icon="folder" onClick={moveToGroupTask} />}
-                        <TaskButton label="New Group" icon="plus" onClick={newGroupTask} />
-                        {showGroupEdit && <TaskButton label="Edit Group Details" icon="edit" onClick={editGroupTask} />}
-                        <TaskButton label="Import Group" icon="import" onClick={importGroupTask} />
-                        <TaskButton label="Export All Groups" icon="export" onClick={exportGroupsTask} />
-                        {showGroupExport && <TaskButton label="Export Group" icon="export" onClick={exportGroupTask} />}
-                        {showGroupDelete && <TaskButton label="Delete Group" icon="trash" danger onClick={deleteGroupTask} />}
+                        {showAssign && <TaskButton label="Assign To Group" icon="folder" task="doAssignChannelToGroup" onClick={moveToGroupTask} />}
+                        <TaskButton label="New Group" icon="plus" task="doNewGroup" onClick={newGroupTask} />
+                        {showGroupEdit && <TaskButton label="Edit Group Details" icon="edit" task="doEditGroupDetails" onClick={editGroupTask} />}
+                        <TaskButton label="Import Group" icon="import" task="doImportGroup" onClick={importGroupTask} />
+                        <TaskButton label="Export All Groups" icon="export" task="doExportAllGroups" onClick={exportGroupsTask} />
+                        {showGroupExport && <TaskButton label="Export Group" icon="export" task="doExportGroup" onClick={exportGroupTask} />}
+                        {showGroupDelete && <TaskButton label="Delete Group" icon="trash" danger task="doDeleteGroup" onClick={deleteGroupTask} />}
                     </div>
                 </RailPane>
             </ViewTasks>

@@ -19,7 +19,7 @@ const LEVELS = ['INFORMATION', 'WARNING', 'ERROR'];
 const OUTCOMES = ['SUCCESS', 'FAILURE'];
 
 export function register(platform) {
-    platform.registerNavItem({ id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Engine', order: 5 });
+    platform.registerNavItem({ id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Engine', order: 5, task: 'doShowEvents' });
     platform.registerView('/events', reactView(EventsView), { title: 'Events' });
 }
 
@@ -281,8 +281,8 @@ function EventsView() {
         onContextMenu: (row, ev) => {
             setSelected(row);
             contextMenu(ev.clientX, ev.clientY, [
-                { label: 'Refresh', icon: 'refresh', onClick: () => searchRef.current(true) },
-                { label: 'Export All Events', icon: 'export', onClick: () => exportAllEvents() }
+                { label: 'Refresh', icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current(true) },
+                { label: 'Export All Events', icon: 'export', task: 'doExportAllEvents', group: 'event', onClick: () => exportAllEvents() }
             ]);
         }
     }).current;
@@ -305,10 +305,10 @@ function EventsView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Event Tasks" paneKey="tasks:Event Tasks">
+                <RailPane title="Event Tasks" paneKey="tasks:Event Tasks" group="event">
                     <div className="taskbar" data-pane-title="Event Tasks">
                         <TaskButton label="Search" icon="refresh" onClick={() => search(true)} />
-                        <TaskButton label="Export All Events" icon="export" onClick={exportAllEvents} />
+                        <TaskButton label="Export All Events" icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
                     </div>
                 </RailPane>
             </ViewTasks>
