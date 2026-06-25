@@ -41,6 +41,9 @@ export const DEFAULT_FIXTURES = {
     'GET /users/current': { user: SAMPLE_USER },
     'POST /users/_login': { status: 'SUCCESS', message: 'ok' },
     'POST /users/_logout': '',
+    // Established admin has completed first-login, so the welcome wizard stays
+    // hidden by default; the welcome spec overrides this to simulate a new user.
+    'GET /users/*/preferences/firstlogin': 'false',
 
     // Server identity (status bar / shell).
     'GET /server/version': '4.5.0',

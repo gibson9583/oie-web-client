@@ -21,6 +21,7 @@ import { h, icon, modal, toast } from '@oie/web-ui';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm } from './views/login.jsx';
+import { maybeShowWelcome } from './welcome.js';
 
 import { register as registerDashboard } from './views/dashboard.jsx';
 import { register as registerChannels } from './views/channels.jsx';
@@ -398,6 +399,10 @@ export function App() {
         } catch { /* public settings unavailable — don't block login */ }
         resetSessionExpired();
         store.setState('navGuard', null);
+        // First-login wizard (Swing FirstLoginDialog): prompt for a password +
+        // profile when the engine's "firstlogin" user preference is set. Fails
+        // open internally, but guard here too so it can never block sign-in.
+        try { await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
         store.setState('user', u);
     };
 
