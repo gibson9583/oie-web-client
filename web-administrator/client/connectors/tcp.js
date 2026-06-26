@@ -5,6 +5,7 @@ import {
   TransmissionModePanel,
   connectorTestButton,
   portsInUseButton,
+  listenerAddressField,
   asBool,
   YES_NO,
   defaultSourceProperties,
@@ -51,49 +52,58 @@ const tcpListener = {
   },
   component({ properties, onChange }) {
     const serverMode = (p) => p.serverMode !== false;
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(TransmissionModePanel, { properties, onChange }), /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
-      { section: "Listener Settings" },
-      { key: "serverMode", label: "Mode", type: "radio", refresh: true, options: [
-        { value: true, label: "Server" },
-        { value: false, label: "Client" }
-      ] },
-      { key: "remoteAddress", label: "Remote Address", type: "text", width: "200px", disabled: serverMode },
-      { key: "remotePort", label: "Remote Port", type: "number", width: "90px", disabled: serverMode },
-      { key: "overrideLocalBinding", label: "Override Local Binding", type: "radio", options: YES_NO, disabled: serverMode },
-      { key: "reconnectInterval", label: "Reconnect Interval (ms)", type: "number", width: "90px", disabled: serverMode },
-      { key: "maxConnections", label: "Max Connections", type: "number", width: "90px", disabled: (p) => p.serverMode === false },
-      { key: "receiveTimeout", label: "Receive Timeout (ms)", type: "number", width: "90px", tooltip: "0 = never time out" },
-      { key: "bufferSize", label: "Buffer Size (bytes)", type: "number", width: "90px" },
-      { key: "keepConnectionOpen", label: "Keep Connection Open", type: "radio", options: YES_NO },
-      {
-        key: "dataTypeBinary",
-        label: "Data Type",
-        type: "radio",
-        refresh: true,
-        // Binary disables Encoding and forces it back to the default (Swing setSelectedIndex(0)).
-        onSet: (p) => {
-          if (asBool(p.dataTypeBinary)) p.charsetEncoding = "DEFAULT_ENCODING";
+    return (
+      // Match the inter-section spacing a single ConnectorForm gives
+      // (.cform gap), since this panel stacks two forms + the transmission
+      // mode block.
+      /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-4" }, /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
+        { section: "Listener Settings" },
+        listenerAddressField("listenerConnectorProperties.host", "Local Address"),
+        { key: "listenerConnectorProperties.port", label: "Local Port", type: "number", width: "90px", append: () => portsInUseButton() }
+      ] }), /* @__PURE__ */ React.createElement(TransmissionModePanel, { properties, onChange }), /* @__PURE__ */ React.createElement(ConnectorForm, { properties, onChange, fields: [
+        { section: "TCP Listener Settings" },
+        { key: "serverMode", label: "Mode", type: "radio", refresh: true, options: [
+          { value: true, label: "Server" },
+          { value: false, label: "Client" }
+        ] },
+        { key: "remoteAddress", label: "Remote Address", type: "text", width: "200px", disabled: serverMode },
+        { key: "remotePort", label: "Remote Port", type: "number", width: "90px", disabled: serverMode },
+        { key: "overrideLocalBinding", label: "Override Local Binding", type: "radio", options: YES_NO, disabled: serverMode },
+        { key: "reconnectInterval", label: "Reconnect Interval (ms)", type: "number", width: "90px", disabled: serverMode },
+        { key: "maxConnections", label: "Max Connections", type: "number", width: "90px", disabled: (p) => p.serverMode === false },
+        { key: "receiveTimeout", label: "Receive Timeout (ms)", type: "number", width: "90px", tooltip: "0 = never time out" },
+        { key: "bufferSize", label: "Buffer Size (bytes)", type: "number", width: "90px" },
+        { key: "keepConnectionOpen", label: "Keep Connection Open", type: "radio", options: YES_NO },
+        {
+          key: "dataTypeBinary",
+          label: "Data Type",
+          type: "radio",
+          refresh: true,
+          // Binary disables Encoding and forces it back to the default (Swing setSelectedIndex(0)).
+          onSet: (p) => {
+            if (asBool(p.dataTypeBinary)) p.charsetEncoding = "DEFAULT_ENCODING";
+          },
+          options: [
+            { value: true, label: "Binary" },
+            { value: false, label: "Text" }
+          ]
         },
-        options: [
-          { value: true, label: "Binary" },
-          { value: false, label: "Text" }
-        ]
-      },
-      { key: "charsetEncoding", label: "Encoding", type: "select", options: CHARSETS, width: "160px", disabled: (p) => asBool(p.dataTypeBinary) },
-      {
-        key: "respondOnNewConnection",
-        label: "Respond on New Connection",
-        type: "radio",
-        refresh: true,
-        options: [
-          { value: 1, label: "Yes" },
-          { value: 0, label: "No" },
-          { value: 2, label: "Message Recovery" }
-        ]
-      },
-      { key: "responseAddress", label: "Response Address", type: "text", width: "200px", disabled: (p) => Number(p.respondOnNewConnection) === 0 },
-      { key: "responsePort", label: "Response Port", type: "number", width: "90px", disabled: (p) => Number(p.respondOnNewConnection) === 0 }
-    ] }));
+        { key: "charsetEncoding", label: "Encoding", type: "select", options: CHARSETS, width: "160px", disabled: (p) => asBool(p.dataTypeBinary) },
+        {
+          key: "respondOnNewConnection",
+          label: "Respond on New Connection",
+          type: "radio",
+          refresh: true,
+          options: [
+            { value: 1, label: "Yes" },
+            { value: 0, label: "No" },
+            { value: 2, label: "Message Recovery" }
+          ]
+        },
+        { key: "responseAddress", label: "Response Address", type: "text", width: "200px", disabled: (p) => Number(p.respondOnNewConnection) === 0 },
+        { key: "responsePort", label: "Response Port", type: "number", width: "90px", disabled: (p) => Number(p.respondOnNewConnection) === 0 }
+      ] }))
+    );
   }
 };
 const tcpSender = {

@@ -10,7 +10,7 @@
 import { React } from './react-platform.js';
 import { checkbox } from '@oie/web-ui';
 import {
-    ConnectorForm, TransmissionModePanel, connectorTestButton, portsInUseButton, asBool, YES_NO,
+    ConnectorForm, TransmissionModePanel, connectorTestButton, portsInUseButton, listenerAddressField, asBool, YES_NO,
     defaultSourceProperties, defaultDestinationProperties, defaultListenerProperties, CHARSETS
 } from './react-forms.js';
 
@@ -58,10 +58,21 @@ const tcpListener = {
         // mode-specific fields visible but toggle their enabled state.
         const serverMode = (p) => p.serverMode !== false;
         return (
-            <div>
-                <TransmissionModePanel properties={properties} onChange={onChange} />
+            // Match the inter-section spacing a single ConnectorForm gives
+            // (.cform gap), since this panel stacks two forms + the transmission
+            // mode block.
+            <div className="flex flex-col gap-4">
+                {/* Local bind (listenerConnectorProperties) — the listening
+                    address/port, shown at the top like every other listener
+                    (HTTP/WS/DICOM) and the Swing TCP Listener. */}
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
                     { section: 'Listener Settings' },
+                    listenerAddressField('listenerConnectorProperties.host', 'Local Address'),
+                    { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', width: '90px', append: () => portsInUseButton() }
+                ]} />
+                <TransmissionModePanel properties={properties} onChange={onChange} />
+                <ConnectorForm properties={properties} onChange={onChange} fields={[
+                    { section: 'TCP Listener Settings' },
                     { key: 'serverMode', label: 'Mode', type: 'radio', refresh: true, options: [
                         { value: true, label: 'Server' },
                         { value: false, label: 'Client' }

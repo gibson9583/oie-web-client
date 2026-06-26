@@ -221,7 +221,7 @@ export const CASES = [
     { name: 'Channel Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.vm.VmDispatcherProperties', properties: vmDispatcher },
     { name: 'HTTP Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.http.HttpReceiverProperties', properties: httpReceiver, edit: { key: 'contextPath', value: '/edited' } },
     { name: 'HTTP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.http.HttpDispatcherProperties', properties: httpDispatcher, edit: { key: 'host', value: 'http://edited.example' } },
-    { name: 'TCP Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.tcp.TcpReceiverProperties', properties: tcpReceiver, edit: { key: 'bufferSize', value: '99999' } },
+    { name: 'TCP Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.tcp.TcpReceiverProperties', properties: tcpReceiver, edit: { key: 'listenerConnectorProperties.port', value: '7777' } },
     { name: 'TCP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.tcp.TcpDispatcherProperties', properties: tcpDispatcher, edit: { key: 'remoteAddress', value: '10.0.0.9' } },
     { name: 'File Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.file.FileReceiverProperties', properties: fileReceiver, edit: { key: 'fileFilter', value: '*.edited' } },
     { name: 'File Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.file.FileDispatcherProperties', properties: fileDispatcher, edit: { key: 'outputPattern', value: 'edited.txt' } },
