@@ -118,3 +118,14 @@ test('expands connector child rows and double-click opens the filtered message b
     await page.locator('tr', { hasText: 'Destination 1' }).first().dblclick();
     await expect(page).toHaveURL(/\/messages\/c-conn\?metaDataId=1$/);
 });
+
+test('double-clicking the channel name text opens the message browser', async ({ page }) => {
+    await mockEngine(page, { 'GET /channels/statuses': STATUSES_WITH_CONNECTORS });
+    await page.goto('/dashboard');
+
+    // Double-click the channel NAME directly on a not-yet-selected row. The first
+    // click selects + re-renders the row, which used to break the native dblclick;
+    // the whole row (minus the twisty) must still activate on the first attempt.
+    await page.getByText('Conn Channel', { exact: true }).dblclick();
+    await expect(page).toHaveURL(/\/messages\/c-conn$/);
+});

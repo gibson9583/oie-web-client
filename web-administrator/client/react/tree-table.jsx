@@ -45,6 +45,13 @@ export function TreeTable({
     const mgrRef = useRef(null);
     if (!mgrRef.current) mgrRef.current = createColumnManager(columnsKey, columnWidths, defaultHidden);
     const mgr = mgrRef.current;
+    // Manual double-click: selecting a row re-renders and replaces its cell
+    // content, which breaks the native `dblclick` (its two clicks land on
+    // different nodes). Detect it on the row's onClick — bound to the stable
+    // <tr> — so activating a not-yet-selected row works on the first
+    // double-click, anywhere on the row (the twisty stops propagation, so it's
+    // excluded).
+    const lastActivateRef = useRef({ key: null, t: 0 });
     // Collapse is controlled when onToggleCollapse is supplied (lets a view expand
     // a node programmatically); otherwise internal (default expanded).
     const internalCollapsed = useRef(new Set());
@@ -199,8 +206,18 @@ export function TreeTable({
                                 onDragStart={drag ? (e) => { e.dataTransfer.setData('text/plain', key); e.dataTransfer.effectAllowed = 'move'; } : undefined}
                                 onDragOver={onRowDrop ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } : undefined}
                                 onDrop={onRowDrop ? (e) => { e.preventDefault(); onRowDrop(e.dataTransfer.getData('text/plain'), node); } : undefined}
-                                onClick={(e) => onSelect && onSelect(node, e)}
-                                onDoubleClick={() => onActivate && onActivate(node)}
+                                onClick={(e) => {
+                                    onSelect && onSelect(node, e);
+                                    if (!onActivate) return;
+                                    const now = Date.now();
+                                    const last = lastActivateRef.current;
+                                    if (last.key === key && now - last.t < 400) {
+                                        lastActivateRef.current = { key: null, t: 0 };
+                                        onActivate(node);
+                                    } else {
+                                        lastActivateRef.current = { key, t: now };
+                                    }
+                                }}
                                 onContextMenu={(e) => onRowContextMenu && onRowContextMenu(node, e)}>
                                 {visibleCols.map((c) => {
                                     const content = c.render ? c.render(node) : '';
