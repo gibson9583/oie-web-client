@@ -19,7 +19,7 @@ export function register(p: Platform) {
         label: 'Demo Settings',
         component: ({ platform: plat, setSave, markDirty }) => { void plat; void setSave; void markDirty; return null; },
     });
-    // Channel tabs accept a React component (preferred) or imperative render.
+    // Channel tabs are a React component, rendered as <Component {...ctx}/>.
     p.registerChannelTab({
         id: 'demo-tab', label: 'Demo Tab',
         component: ({ channel, onChange }) => { void channel; void onChange; return null; },
@@ -40,6 +40,8 @@ function badUsage() {
     platform.ui.buildForm;
     // @ts-expect-error renamed away from platform.mirth to platform.oie
     platform.mirth;
+    // @ts-expect-error a channel tab requires `component` (the legacy imperative render path was removed)
+    platform.registerChannelTab({ id: 'x', label: 'X' });
 }
 
 void libraries;

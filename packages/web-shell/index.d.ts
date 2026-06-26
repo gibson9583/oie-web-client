@@ -100,10 +100,8 @@ export interface ChannelTab {
     id: string;
     label: string;
     order?: number;
-    /** React tab body (preferred) — rendered as `<Component {...ctx}/>`. Provide this OR `render`. */
-    component?: PluginComponent<{ channel: OieObject; platform: Platform; onChange(): void }>;
-    /** Imperative alternative — build into `host` (or return a Node). Provide this OR `component`. */
-    render?(host: HTMLElement, ctx: { channel: OieObject; platform: Platform; onChange(): void }): Node | void;
+    /** React tab body — rendered as `<Component {...ctx}/>`, authored against `platform.React`. */
+    component: PluginComponent<{ channel: OieObject; platform: Platform; onChange(): void }>;
     [key: string]: any;
 }
 export interface SettingsPanel {

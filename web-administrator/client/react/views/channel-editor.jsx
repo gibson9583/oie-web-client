@@ -2644,16 +2644,12 @@ function buildBody(params, query, onTasksChange, returning) {
             label: def.label,
             render: () => {
                 const host = h('div');
-                const ctx = { channel, platform, onChange: markDirty };
+                // Channel tabs are React components, mounted like every other
+                // plugin slot. Drop the prior root first — tabs() cleared the old
+                // body DOM.
                 if (typeof def.component === 'function') {
-                    // React tab (preferred): mount it like every other plugin slot.
-                    // Drop the prior root first — tabs() cleared the old body DOM.
                     clearChannelTabRoots();
-                    channelTabRoots.push(mountReact(host, <PluginSlot def={def} ctx={ctx} />));
-                } else if (typeof def.render === 'function') {
-                    // Imperative fallback: build into the host (or return a Node).
-                    const result = def.render(host, ctx);
-                    if (result instanceof Node) host.appendChild(result);
+                    channelTabRoots.push(mountReact(host, <PluginSlot def={def} ctx={{ channel, platform, onChange: markDirty }} />));
                 }
                 return host;
             }
