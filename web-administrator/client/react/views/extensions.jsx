@@ -201,8 +201,14 @@ function ExtensionsView() {
                 const form = new FormData();
                 form.append('file', file, file.name);
                 const result = (await api.post('/_webadmin/plugins/_install', form)) || {};
-                const web = result.webInstalled ? ' Web UI installed — refresh to load it.' : '';
-                toast(`"${file.name}" installed — restart the engine to load it.${web}`);
+                // Always state the web-UI outcome: a package with no webadmin/ half
+                // installs successfully with webInstalled=false, which previously
+                // read as a plain "installed" with no hint that nothing web-side
+                // landed (the confusing case for a web-capable plugin like TLS).
+                const webNote = result.webInstalled
+                    ? ' Its web UI was added — refresh this page to load it.'
+                    : ' No web UI was found in this package (engine side only).';
+                toast(`"${file.name}" installed — restart the engine to load it.${webNote}`);
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e) {
                 toast(`Install failed: ${e.message}`, 'error');

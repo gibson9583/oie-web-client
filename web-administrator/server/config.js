@@ -45,7 +45,12 @@ const defaults = {
         // Engines ship with self-signed certificates; verification is opt-in.
         verifyTls: false
     },
-    pluginDir: path.join(ROOT, 'plugins'),
+    // Install target for Extensions → Install: a plugin's web half is written
+    // here. Kept SEPARATE from the bundled first-party plugins (./plugins, which
+    // is committed, hardcoded, and ALWAYS scanned in load()), so user installs
+    // never mix with shipped plugins and live in a gitignored dir. Override via
+    // config.json "pluginDir" / WEBADMIN_PLUGIN_DIR.
+    pluginDir: path.join(ROOT, 'custom-plugins'),
     // Filesystem path to the engine install (the directory containing
     // client-lib/, server-lib/, extensions/). When set and a JVM is available,
     // the message-tree serializer bridge runs the engine's OWN datatype

@@ -103,7 +103,8 @@ machine-specific paths), with environment-variable overrides. Start from
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
 | `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIR` | `./plugins` | Extra plugin directories (e.g. the engine's `extensions/`) |
+| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./custom-plugins` | Where extension installs write the web half (gitignored); the bundled plugins in `./plugins` are always loaded (hardcoded, not configurable) |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **read-only** discovery dirs (e.g. the engine's `extensions/`); scanned but never written to by installs |
 | `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 

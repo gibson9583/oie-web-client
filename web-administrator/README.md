@@ -37,8 +37,8 @@ OIE_URL=https://localhost:8443 npm start
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
 | `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
-| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./plugins` | Primary web admin plugin directory |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional plugin directories (e.g. the engine's `extensions/`); `:`-separated in the env var |
+| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./custom-plugins` | Where **Install Extension** writes a plugin's web half (gitignored). The bundled first-party plugins in `./plugins` are always loaded regardless — that path is hardcoded, not configurable. Set this only to relocate installs. |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **read-only discovery** directories (e.g. the engine's `extensions/`); scanned for plugins to load but never written to by installs. `:`-separated in the env var |
 | `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge (below) |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 

@@ -174,9 +174,14 @@ async function handleInstall(req, res, config) {
         if (zipBytes && zipBytes.length) pluginId = await extractWebadmin(zipBytes, config.pluginDir);
     } catch (e) {
         // Log the detail server-side only; the client gets a generic message so we
-        // don't disclose pluginDir / server paths (matches the proxy's posture).
+        // don't disclose pluginDir / server paths (matches the proxy's posture). A
+        // common-errno hint (no path) is safe to surface and saves a log dive.
         console.error('[plugin-install] web-half extract failed:', e.message);
-        return res.status(500).json({ engineInstalled: true, webInstalled: false, error: 'WEB_EXTRACT_FAILED', message: 'The engine extension installed, but its web UI could not be unpacked. Check the web administrator logs.' });
+        const hint = (e.code === 'EACCES' || e.code === 'EPERM') ? ' (the web admin cannot write to its plugin directory — check its permissions)'
+            : e.code === 'ENOSPC' ? ' (no space left on the device)'
+            : e.code === 'EROFS' ? ' (its plugin directory is on a read-only filesystem)'
+            : '';
+        return res.status(500).json({ engineInstalled: true, webInstalled: false, error: 'WEB_EXTRACT_FAILED', message: `The engine extension installed, but its web UI could not be unpacked${hint}. Check the web administrator logs.` });
     }
     res.json({ engineInstalled: true, webInstalled: !!pluginId, pluginId, restartEngine: true, refresh: !!pluginId });
 }
