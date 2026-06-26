@@ -1391,8 +1391,13 @@ input.grid-name::placeholder { color: var(--text-faint); }
     border: 0;
     box-shadow: none;
 }
-.rail-pane-body .taskbar .btn-primary { color: var(--rail-fg); font-weight: 650; }
-.rail-pane-body .taskbar .btn-danger { color: color-mix(in srgb, var(--err) 55%, var(--rail-fg)); border: 0; }
+/* In the rail every task option reads uniformly (same weight/color as the nav
+   items) — the primary/danger emphasis is dropped here: a tinted rail washes the
+   danger red into a muddy blur and the bold primary breaks the even list. The
+   action's intent still reads from its label, and danger actions keep their
+   confirmation dialog. */
+.rail-pane-body .taskbar .btn-primary,
+.rail-pane-body .taskbar .btn-danger { color: var(--rail-fg-dim); font-weight: 500; border: 0; }
 .rail-pane-body .taskbar .btn:disabled { opacity: 0.4; }
 .rail-pane-body .taskbar .sep { width: auto; height: 1px; margin: 4px 8px; background: color-mix(in srgb, var(--rail-fg) 14%, transparent); }
 .rail-pane-body .taskbar .taskbar-spacer { display: none; }
