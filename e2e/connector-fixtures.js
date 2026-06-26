@@ -211,27 +211,32 @@ const docDispatcher = () => ({
 
 /* The table the spec iterates. `properties` is a factory. `name` is the connector's
    transportName (what registerConnectorPanel keys on); `class` is the expected @class. */
+// `edit` (optional) drives the write-path test (connector-roundtrip.spec.js): a
+// top-level, always-enabled text/number field to change in the panel, asserting
+// the new value lands in the saved properties. VM (special channel-picker panel)
+// and JavaScript (code-only) connectors have no simple field, so they keep just
+// the read-path round-trip.
 export const CASES = [
     { name: 'Channel Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.vm.VmReceiverProperties', properties: vmReceiver },
     { name: 'Channel Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.vm.VmDispatcherProperties', properties: vmDispatcher },
-    { name: 'HTTP Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.http.HttpReceiverProperties', properties: httpReceiver },
-    { name: 'HTTP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.http.HttpDispatcherProperties', properties: httpDispatcher },
-    { name: 'TCP Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.tcp.TcpReceiverProperties', properties: tcpReceiver },
-    { name: 'TCP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.tcp.TcpDispatcherProperties', properties: tcpDispatcher },
-    { name: 'File Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.file.FileReceiverProperties', properties: fileReceiver },
-    { name: 'File Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.file.FileDispatcherProperties', properties: fileDispatcher },
-    { name: 'Database Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties', properties: dbReceiver },
-    { name: 'Database Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties', properties: dbDispatcher },
-    { name: 'JMS Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.jms.JmsReceiverProperties', properties: jmsReceiver },
-    { name: 'JMS Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.jms.JmsDispatcherProperties', properties: jmsDispatcher },
+    { name: 'HTTP Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.http.HttpReceiverProperties', properties: httpReceiver, edit: { key: 'contextPath', value: '/edited' } },
+    { name: 'HTTP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.http.HttpDispatcherProperties', properties: httpDispatcher, edit: { key: 'host', value: 'http://edited.example' } },
+    { name: 'TCP Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.tcp.TcpReceiverProperties', properties: tcpReceiver, edit: { key: 'bufferSize', value: '99999' } },
+    { name: 'TCP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.tcp.TcpDispatcherProperties', properties: tcpDispatcher, edit: { key: 'remoteAddress', value: '10.0.0.9' } },
+    { name: 'File Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.file.FileReceiverProperties', properties: fileReceiver, edit: { key: 'fileFilter', value: '*.edited' } },
+    { name: 'File Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.file.FileDispatcherProperties', properties: fileDispatcher, edit: { key: 'outputPattern', value: 'edited.txt' } },
+    { name: 'Database Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties', properties: dbReceiver, edit: { key: 'url', value: 'jdbc:edited' } },
+    { name: 'Database Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties', properties: dbDispatcher, edit: { key: 'url', value: 'jdbc:edited' } },
+    { name: 'JMS Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.jms.JmsReceiverProperties', properties: jmsReceiver, edit: { key: 'destinationName', value: 'editedQueue' } },
+    { name: 'JMS Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.jms.JmsDispatcherProperties', properties: jmsDispatcher, edit: { key: 'destinationName', value: 'editedQueue' } },
     { name: 'JavaScript Reader', mode: 'SOURCE', class: 'com.mirth.connect.connectors.js.JavaScriptReceiverProperties', properties: jsReceiver },
     { name: 'JavaScript Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties', properties: jsDispatcher },
-    { name: 'Web Service Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.ws.WebServiceReceiverProperties', properties: wsReceiver },
-    { name: 'Web Service Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.ws.WebServiceDispatcherProperties', properties: wsDispatcher },
-    { name: 'DICOM Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.dimse.DICOMReceiverProperties', properties: dicomReceiver },
-    { name: 'DICOM Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.dimse.DICOMDispatcherProperties', properties: dicomDispatcher },
-    { name: 'SMTP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.smtp.SmtpDispatcherProperties', properties: smtpDispatcher },
-    { name: 'Document Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.doc.DocumentDispatcherProperties', properties: docDispatcher },
+    { name: 'Web Service Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.ws.WebServiceReceiverProperties', properties: wsReceiver, edit: { key: 'serviceName', value: 'EditedSvc' } },
+    { name: 'Web Service Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.ws.WebServiceDispatcherProperties', properties: wsDispatcher, edit: { key: 'socketTimeout', value: '12345' } },
+    { name: 'DICOM Listener', mode: 'SOURCE', class: 'com.mirth.connect.connectors.dimse.DICOMReceiverProperties', properties: dicomReceiver, edit: { key: 'applicationEntity', value: 'EDITAE' } },
+    { name: 'DICOM Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.dimse.DICOMDispatcherProperties', properties: dicomDispatcher, edit: { key: 'host', value: '10.0.0.5' } },
+    { name: 'SMTP Sender', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.smtp.SmtpDispatcherProperties', properties: smtpDispatcher, edit: { key: 'smtpHost', value: 'mail.edited' } },
+    { name: 'Document Writer', mode: 'DESTINATION', class: 'com.mirth.connect.connectors.doc.DocumentDispatcherProperties', properties: docDispatcher, edit: { key: 'outputPattern', value: 'edited.pdf' } },
 ];
 
 /* Build a channel with `conn` ({ transportName, properties }) plugged in as the

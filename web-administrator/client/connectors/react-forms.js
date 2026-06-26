@@ -193,6 +193,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         "input",
         {
           type: "number",
+          "data-fkey": f.key,
           value: value ?? "",
           placeholder: f.placeholder,
           style: inputStyle,
@@ -206,6 +207,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         "select",
         {
           value: value ?? "",
+          "data-fkey": f.key,
           style: inputStyle,
           disabled,
           onChange: (e) => set(f.numeric ? parseInt(e.target.value, 10) : e.target.value)
@@ -221,6 +223,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         "textarea",
         {
           rows: f.rows || 5,
+          "data-fkey": f.key,
           placeholder: f.placeholder,
           disabled,
           value: value === null || value === void 0 ? "" : String(value),
@@ -259,6 +262,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         "input",
         {
           type: f.type === "password" ? "password" : "text",
+          "data-fkey": f.key,
           value: value ?? "",
           disabled,
           placeholder: f.placeholder,

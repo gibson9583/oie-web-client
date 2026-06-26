@@ -68,3 +68,53 @@ for (const c of CASES) {
         expect(props).toEqual(expected);          // the real net: no field mutated on load
     });
 }
+
+/* Write path: the read-path loop above proves a panel doesn't corrupt properties
+ * on load; this proves it WRITES an edit back. For each connector with an `edit`
+ * descriptor we change one panel field and assert the saved properties equal the
+ * fixture with exactly that one field updated — so a panel that drops an edit, or
+ * writes it to the wrong/extra key, fails here. */
+function setAt(obj, key, val) {
+    const ks = key.split('.');
+    const last = ks.pop();
+    ks.reduce((o, k) => o[k], obj)[last] = val;
+}
+
+for (const c of CASES.filter((x) => x.edit)) {
+    test(`${c.name} (${c.mode}) round-trips an edited panel field`, async ({ page }) => {
+        const id = `wt-${c.name.toLowerCase().replace(/\s+/g, '-')}-${c.mode.toLowerCase()}`;
+        const channel = c.mode === 'SOURCE'
+            ? makeChannel(id, { source: { transportName: c.name, properties: c.properties() } })
+            : makeChannel(id, { destination: { transportName: c.name, properties: c.properties() } });
+
+        await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
+
+        let putBody = null;
+        await page.route((url) => url.pathname === `/api/channels/${id}`, async (route) => {
+            const req = route.request();
+            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+            return route.fallback();
+        });
+
+        await page.goto(`/channels/${id}/edit`);
+        const tab = c.mode === 'SOURCE' ? 'Source' : 'Destinations';
+        await page.getByRole('button', { name: tab, exact: true }).click();
+        if (c.mode === 'DESTINATION') await page.getByRole('cell', { name: c.name, exact: true }).first().click();
+        await expect(page.locator('.cform-section').first()).toBeVisible();
+
+        // Edit the field in the panel (targeted by its property key), then Save.
+        const input = page.locator(`[data-fkey="${c.edit.key}"]`).first();
+        await expect(input).toBeVisible();
+        await input.fill(String(c.edit.value));
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
+
+        const expected = c.properties();
+        setAt(expected, c.edit.key, c.edit.value);   // the one field the panel should have changed
+        const sent = JSON.parse(putBody).channel;
+        const props = c.mode === 'SOURCE'
+            ? sent.sourceConnector.properties
+            : asArray(sent.destinationConnectors.connector)[0].properties;
+        expect(props).toEqual(expected);
+    });
+}

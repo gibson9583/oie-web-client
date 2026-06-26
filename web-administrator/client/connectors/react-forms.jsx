@@ -217,12 +217,12 @@ function FieldRow({ properties, field, onChange, repaint }) {
             break;
         }
         case 'number':
-            control = <input type="number" value={value ?? ''} placeholder={f.placeholder} style={inputStyle} disabled={disabled}
+            control = <input type="number" data-fkey={f.key} value={value ?? ''} placeholder={f.placeholder} style={inputStyle} disabled={disabled}
                 onChange={(e) => set(f.numeric ? (parseInt(e.target.value, 10) || 0) : e.target.value)} />;
             break;
         case 'select':
             control = (
-                <select value={value ?? ''} style={inputStyle} disabled={disabled}
+                <select value={value ?? ''} data-fkey={f.key} style={inputStyle} disabled={disabled}
                     onChange={(e) => set(f.numeric ? parseInt(e.target.value, 10) : e.target.value)}>
                     {(f.options || []).map((opt, i) => {
                         const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
@@ -232,7 +232,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
             );
             break;
         case 'textarea':
-            control = <textarea rows={f.rows || 5} placeholder={f.placeholder} disabled={disabled}
+            control = <textarea rows={f.rows || 5} data-fkey={f.key} placeholder={f.placeholder} disabled={disabled}
                 value={value === null || value === undefined ? '' : String(value)}
                 onChange={(e) => set(e.target.value)} />;
             wide = true;
@@ -257,7 +257,8 @@ function FieldRow({ properties, field, onChange, repaint }) {
         default:
             // 'text' and 'password' (and any unknown type) render as a plain
             // input — password just swaps the input type, matching forms.js.
-            control = <input type={f.type === 'password' ? 'password' : 'text'} value={value ?? ''} disabled={disabled}
+            // data-fkey exposes the field's property key for e2e targeting.
+            control = <input type={f.type === 'password' ? 'password' : 'text'} data-fkey={f.key} value={value ?? ''} disabled={disabled}
                 placeholder={f.placeholder} style={inputStyle} onChange={(e) => set(e.target.value)} />;
     }
 
