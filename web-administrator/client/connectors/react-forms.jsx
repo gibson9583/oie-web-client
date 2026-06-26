@@ -193,9 +193,13 @@ function FieldRow({ properties, field, onChange, repaint }) {
             break;
         case 'radio': {
             const name = `cform-radio-${++cformUid}`;
+            // options may be a function of the live properties — Swing relabels
+            // some radios per state (e.g. the DB post-process options under
+            // Aggregate Results). data-fkey exposes the group for e2e targeting.
+            const radioOpts = typeof f.options === 'function' ? (f.options(properties) || []) : (f.options || []);
             control = (
-                <div className="radio-group inline-row" style={f.width ? { width: f.width } : undefined}>
-                    {(f.options || []).map((opt, i) => {
+                <div className="radio-group inline-row" data-fkey={f.key} style={f.width ? { width: f.width } : undefined}>
+                    {radioOpts.map((opt, i) => {
                         const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
                         return (
                             <label className="check" key={i}>

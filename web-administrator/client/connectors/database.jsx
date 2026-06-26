@@ -308,11 +308,11 @@ const databaseReader = {
                         // Swing option labels (UPDATE_NEVER=1, UPDATE_EACH=3, UPDATE_ONCE=2);
                         // runPostProcessSQLLabel flips 'SQL'<->'Script' on Use JavaScript.
                         key: 'updateMode', label: (p) => asBool(p.useScript) ? 'Run Post-Process Script' : 'Run Post-Process SQL', type: 'radio', refresh: true,
-                        options: [
-                            { value: 1, label: 'Never' },
-                            { value: 3, label: 'After each message' },
-                            { value: 2, label: 'Once after all messages' }
-                        ]
+                        // Swing aggregateResultsActionPerformed relabels the per-message
+                        // options to per-row when Aggregate Results = Yes.
+                        options: (p) => asBool(p.aggregateResults)
+                            ? [{ value: 1, label: 'Never' }, { value: 3, label: 'For each row' }, { value: 2, label: 'Once for all rows' }]
+                            : [{ value: 1, label: 'Never' }, { value: 3, label: 'After each message' }, { value: 2, label: 'Once after all messages' }]
                     },
                     {
                         // Swing updateNeverActionPerformed keeps this editor VISIBLE but disabled at Never.

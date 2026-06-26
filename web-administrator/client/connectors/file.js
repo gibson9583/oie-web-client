@@ -350,7 +350,7 @@ function schemeSettingsFields() {
       append: (p) => asBool(p.anonymous) ? h("span", { class: "text-[#c0392b] ml-3 font-[500]" }, "Anonymous credentials are currently in use") : null,
       tooltip: "When No, the Username/Password above are used as the AWS access key ID / secret access key"
     },
-    { key: "schemeProperties.useTemporaryCredentials", label: "Use Temporary Credentials", type: "radio", options: YES_NO, refresh: true, visible: s3 },
+    { key: "schemeProperties.useTemporaryCredentials", label: "Use Temporary Credentials", type: "radio", options: YES_NO, refresh: true, visible: s3, disabled: (p) => asBool(p.anonymous) },
     { key: "schemeProperties.duration", label: "Duration (seconds)", type: "number", numeric: true, width: "110px", visible: (p) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p) => asBool(p.anonymous) },
     {
       key: "schemeProperties.region",

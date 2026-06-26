@@ -322,7 +322,11 @@ const httpSender = {
                         { value: false, label: 'Text' }
                     ]
                 },
-                { key: 'charset', label: 'Charset Encoding', type: 'select', options: HTTP_CHARSETS, width: '160px', disabled: (p) => !httpHasBody(p) || httpFormUrlEncoded(p) || asBool(p.dataTypeBinary) },
+                // Charset applies to the form-urlencoded body too (HttpDispatcher
+                // builds the UrlEncodedFormEntity with it), so keep it settable for
+                // form-urlencoded — only disable with no body or Binary data type
+                // (matching Swing's dataTypeTextRadioActionPerformed re-enable).
+                { key: 'charset', label: 'Charset Encoding', type: 'select', options: HTTP_CHARSETS, width: '160px', disabled: (p) => !httpHasBody(p) || asBool(p.dataTypeBinary) },
                 { key: 'content', label: 'Content', type: 'textarea', rows: 8, placeholder: '${message.encodedData}', disabled: (p) => !httpHasBody(p) || httpFormUrlEncoded(p) }
             ]} />
         );

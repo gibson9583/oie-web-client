@@ -394,7 +394,7 @@ function schemeSettingsFields() {
                 : null,
             tooltip: 'When No, the Username/Password above are used as the AWS access key ID / secret access key'
         },
-        { key: 'schemeProperties.useTemporaryCredentials', label: 'Use Temporary Credentials', type: 'radio', options: YES_NO, refresh: true, visible: s3 },
+        { key: 'schemeProperties.useTemporaryCredentials', label: 'Use Temporary Credentials', type: 'radio', options: YES_NO, refresh: true, visible: s3, disabled: (p) => asBool(p.anonymous) },
         { key: 'schemeProperties.duration', label: 'Duration (seconds)', type: 'number', numeric: true, width: '110px', visible: (p) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p) => asBool(p.anonymous) },
         {
             key: 'schemeProperties.region', label: 'Region', type: 'text', width: '160px', visible: s3, placeholder: 'us-east-1', refresh: true,

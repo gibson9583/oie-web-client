@@ -38,6 +38,9 @@ function docTestWriteButton(properties, channel) {
             btn.disabled = false;
         }
     });
+    // Swing updateFileEnabled() greys Test Write when Output = Attachment (no file
+    // is written). The append re-runs on the output radio's refresh.
+    btn.disabled = !writesFile(properties);
     return btn;
 }
 

@@ -22,6 +22,7 @@ function docTestWriteButton(properties, channel) {
       btn.disabled = false;
     }
   });
+  btn.disabled = !writesFile(properties);
   return btn;
 }
 const PAGE_UNITS = [

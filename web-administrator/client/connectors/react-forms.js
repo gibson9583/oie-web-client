@@ -168,7 +168,8 @@ function FieldRow({ properties, field, onChange, repaint }) {
       break;
     case "radio": {
       const name = `cform-radio-${++cformUid}`;
-      control = /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row", style: f.width ? { width: f.width } : void 0 }, (f.options || []).map((opt, i) => {
+      const radioOpts = typeof f.options === "function" ? f.options(properties) || [] : f.options || [];
+      control = /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row", "data-fkey": f.key, style: f.width ? { width: f.width } : void 0 }, radioOpts.map((opt, i) => {
         const o = typeof opt === "object" ? opt : { value: opt, label: String(opt) };
         return /* @__PURE__ */ React.createElement("label", { className: "check", key: i }, /* @__PURE__ */ React.createElement(
           "input",
