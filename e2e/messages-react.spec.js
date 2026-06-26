@@ -31,7 +31,13 @@ const MESSAGE = {
                     connectorName: 'Source',
                     status: 'RECEIVED',
                     receivedDate: { time: 1700000000000 },
-                    raw: { content: 'MSH|^~\\&|SENDER|FAC|RECV|FAC|20231101||ADT^A01|MSG00001|P|2.3' }
+                    raw: { content: 'MSH|^~\\&|SENDER|FAC|RECV|FAC|20231101||ADT^A01|MSG00001|P|2.3' },
+                    // Source map (intentionally unsorted) to exercise the Mappings tab's sort.
+                    sourceMapContent: { content: { map: { entry: [
+                        { string: ['zebra', 'val-z'] },
+                        { string: ['alpha', 'val-a'] },
+                        { string: ['mango', 'val-m'] }
+                    ] } } }
                 }
             },
             {
@@ -108,6 +114,35 @@ test('selection gates Remove/Reprocess Message', async ({ page }) => {
     // Detail pane loaded the message content tabs (Raw is the first content tab).
     await expect(page.getByRole('button', { name: 'Raw', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Mappings', exact: true })).toBeVisible();
+});
+
+test('Mappings tab is a sortable table with a sticky header banner', async ({ page }) => {
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+    await page.getByText('12345', { exact: true }).click();
+    await page.getByRole('button', { name: 'Mappings', exact: true }).click();
+
+    // Scope to the mappings table (its Scope/Variable/Value header is unique).
+    const mappings = page.locator('table.dt').filter({
+        has: page.getByRole('columnheader', { name: 'Scope', exact: true })
+    });
+    const variables = mappings.locator('tbody tr td:nth-child(2)');
+
+    // Rows render in source-map (unsorted) order to start.
+    await expect(variables).toHaveText(['zebra', 'alpha', 'mango']);
+
+    // The header is a sticky, sortable banner; clicking Variable sorts ascending.
+    const variableHeader = mappings.getByRole('columnheader', { name: /Variable/ });
+    await expect(variableHeader).toHaveClass(/sortable/);
+    await expect(variableHeader).toHaveCSS('position', 'sticky');
+    await variableHeader.click();
+    await expect(variables).toHaveText(['alpha', 'mango', 'zebra']);
+    await expect(variableHeader.locator('.sort-arrow')).toHaveText('▲');
+
+    // Clicking again reverses the sort.
+    await variableHeader.click();
+    await expect(variables).toHaveText(['zebra', 'mango', 'alpha']);
+    await expect(variableHeader.locator('.sort-arrow')).toHaveText('▼');
 });
 
 test('status filter dropdown opens with the Swing statuses', async ({ page }) => {

@@ -1312,8 +1312,10 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         return { el: h('div', { class: 'flex-1 min-h-0 flex flex-col' }, bar, body) };
     }
 
-    /* Classic mappings table: Scope | Variable | Value rows aggregated across
-       the connector message's maps. */
+    /* Classic mappings table: Scope | Variable | Value rows aggregated across the
+       connector message's maps. The header is a sortable, sticky banner — it
+       stays put (table.dt th is position:sticky) while the rows scroll in the tab
+       body, and clicking a column sorts by it (toggling asc/desc). */
     function renderMappings(cm) {
         // Scope, deserialized map content. Matches the Swing browser exactly:
         // Source / Connector / Channel / Response only — no Custom Metadata.
@@ -1323,24 +1325,52 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             ['Channel', cm.channelMapContent],
             ['Response', cm.responseMapContent]
         ];
-        const tbody = h('tbody');
-        let any = false;
+        const rows = [];
         for (const [scope, mc] of groups) {
             for (const [variable, value] of mappingEntries(mc)) {
-                any = true;
-                tbody.appendChild(h('tr',
-                    h('td', { class: 'w-[120px]' }, scope),
-                    h('td.mono', { class: 'w-[30%]' }, String(variable)),
-                    h('td.mono', { class: 'whitespace-pre-wrap break-all' }, String(value ?? ''))));
+                rows.push({ scope, variable: String(variable), value: String(value ?? '') });
             }
         }
-        if (!any) {
+        if (!rows.length) {
             return h('div', { class: 'p-3.5' }, h('div.text-text-faint', 'There are no mappings present.'));
         }
-        return h('div.dt-wrap', { class: 'overflow-auto' },
-            h('table.dt',
-                h('thead', h('tr', h('th', 'Scope'), h('th', 'Variable'), h('th', 'Value'))),
-                tbody));
+
+        const cols = [{ key: 'scope', label: 'Scope' }, { key: 'variable', label: 'Variable' }, { key: 'value', label: 'Value' }];
+        let sortKey = null, sortDir = 1;   // null = original Source→Response order
+
+        const tbody = h('tbody');
+        const fillBody = () => {
+            const view = sortKey
+                ? [...rows].sort((a, b) => String(a[sortKey]).localeCompare(String(b[sortKey]), undefined, { numeric: true }) * sortDir)
+                : rows;
+            clear(tbody);
+            for (const r of view) {
+                tbody.appendChild(h('tr',
+                    h('td', { class: 'w-[120px]' }, r.scope),
+                    h('td.mono', { class: 'w-[30%]' }, r.variable),
+                    h('td.mono', { class: 'whitespace-pre-wrap break-all' }, r.value)));
+            }
+        };
+
+        const ths = cols.map((col) => h('th.sortable', {
+            onClick: () => {
+                if (sortKey === col.key) sortDir = -sortDir;
+                else { sortKey = col.key; sortDir = 1; }
+                fillBody();
+                ths.forEach((th, i) => {
+                    const arrow = th.querySelector('.sort-arrow');
+                    if (arrow) arrow.remove();
+                    if (sortKey === cols[i].key) th.appendChild(h('span.sort-arrow', sortDir > 0 ? '▲' : '▼'));
+                });
+            }
+        }, col.label));
+
+        fillBody();
+        // No inner overflow wrapper: the table scrolls in the tab body
+        // (flex-1 min-h-0 overflow-auto), so the sticky header sticks to the pane
+        // top and reads as a static banner instead of scrolling away with a nested
+        // scroll container.
+        return h('table.dt', h('thead', h('tr', ths)), tbody);
     }
 
     function renderAttachments(message, roots) {
