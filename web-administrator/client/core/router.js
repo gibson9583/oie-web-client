@@ -1,8 +1,12 @@
 /*
- * Hash router. Routes are registered as patterns like:
+ * History-API router. Routes are registered as patterns like:
  *   '/dashboard', '/channels/:channelId/edit', '/messages/:channelId?'
  * A route handler receives ({ params, query }) and returns a DOM node (or
  * renders into the outlet itself and returns null).
+ *
+ * Navigation uses the History API (history.pushState + popstate) for clean URLs
+ * with no '#'. The Node server serves index.html for unknown deep paths (SPA
+ * fallback), so a refresh/bookmark of /channels/x/edit boots straight into it.
  */
 
 const routes = [];
@@ -10,8 +14,8 @@ let outlet = null;
 let notFound = null;
 let beforeEach = null;
 let currentTeardown = null;
-let acceptedHash = null;     // last hash the guard allowed
-let suppressNext = false;    // ignore the hashchange caused by a guard rollback
+let acceptedPath = null;     // last path the guard allowed (target for rollback)
+let started = false;         // popstate listener attached once, across re-mounts
 
 export function register(pattern, handler, meta = {}) {
     const names = [];
@@ -27,12 +31,14 @@ export function setNotFound(handler) { notFound = handler; }
 export function setGuard(fn) { beforeEach = fn; }
 
 export function navigate(path) {
-    if (('#' + path) === location.hash) handleChange();
-    else location.hash = path;
+    const target = path.startsWith('/') ? path : '/' + path;
+    if (target === currentPath()) { handleChange(); return; }   // re-render in place
+    history.pushState(null, '', target);
+    handleChange();
 }
 
 export function currentPath() {
-    return location.hash.replace(/^#/, '') || '/';
+    return (location.pathname + location.search) || '/';
 }
 
 function parseQuery(qsStr) {
@@ -42,7 +48,6 @@ function parseQuery(qsStr) {
 }
 
 async function handleChange() {
-    if (suppressNext) { suppressNext = false; return; }
     let path = currentPath();
     let query = {};
     const qIndex = path.indexOf('?');
@@ -63,17 +68,18 @@ async function handleChange() {
         if (beforeEach) {
             const verdict = await beforeEach({ path, params, query, meta: route.meta });
             if (verdict === false) {
-                // The hash already changed (hash routing) — roll it back so the
-                // address bar matches the view that stayed on screen.
-                if (acceptedHash !== null && location.hash !== acceptedHash) {
-                    suppressNext = true;
-                    location.hash = acceptedHash;
+                // The URL may already have moved (a programmatic nav pushed it, or
+                // the user pressed Back/Forward) — restore it to the view that
+                // stayed on screen. pushState does not re-fire popstate, so this
+                // does not re-enter handleChange.
+                if (acceptedPath !== null && currentPath() !== acceptedPath) {
+                    history.pushState(null, '', acceptedPath);
                 }
                 return;
             }
             if (typeof verdict === 'string') { navigate(verdict); return; }
         }
-        acceptedHash = location.hash;
+        acceptedPath = currentPath();
 
         if (currentTeardown) { try { currentTeardown(); } catch { /* view cleanup */ } currentTeardown = null; }
 
@@ -100,6 +106,6 @@ function renderInto(node) {
 }
 
 export function start() {
-    window.addEventListener('hashchange', handleChange);
+    if (!started) { window.addEventListener('popstate', handleChange); started = true; }
     handleChange();
 }

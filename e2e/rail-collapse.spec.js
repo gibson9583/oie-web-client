@@ -7,7 +7,7 @@ import { mockEngine } from './mock.js';
  */
 test('hamburger collapses and restores the left nav rail, and the choice persists', async ({ page }) => {
     await mockEngine(page);
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
 
     const rail = page.locator('.rail');
     const shell = page.locator('.shell');

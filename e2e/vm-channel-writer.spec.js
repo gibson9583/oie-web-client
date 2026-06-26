@@ -38,7 +38,7 @@ async function openChannelWriter(page, channelId) {
         [`GET /channels/${id}`]: { channel },
         'GET /channels/idsAndNames': IDS_AND_NAMES,
     });
-    await page.goto(`/#/channels/${id}/edit`);
+    await page.goto(`/channels/${id}/edit`);
     await page.getByRole('button', { name: 'Destinations', exact: true }).click();
     await page.getByRole('cell', { name: 'Channel Writer', exact: true }).first().click();
     await expect(page.locator('.cform-section').first()).toBeVisible();

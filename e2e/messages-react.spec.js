@@ -75,7 +75,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('renders results and the Message Tasks pane', async ({ page }) => {
-    await page.goto(`/#/messages/${CID}`);
+    await page.goto(`/messages/${CID}`);
 
     // Auto-search populated the grid with the source row's message id.
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
@@ -93,7 +93,7 @@ test('renders results and the Message Tasks pane', async ({ page }) => {
 });
 
 test('selection gates Remove/Reprocess Message', async ({ page }) => {
-    await page.goto(`/#/messages/${CID}`);
+    await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
 
     // Hidden until a message is selected.
@@ -111,7 +111,7 @@ test('selection gates Remove/Reprocess Message', async ({ page }) => {
 });
 
 test('status filter dropdown opens with the Swing statuses', async ({ page }) => {
-    await page.goto(`/#/messages/${CID}`);
+    await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
 
     // The compact status trigger reads "Any" (plus a ▾ caret) until a status is
@@ -127,7 +127,7 @@ test('status filter dropdown opens with the Swing statuses', async ({ page }) =>
 });
 
 test('Send Message opens the editor dialog', async ({ page }) => {
-    await page.goto(`/#/messages/${CID}`);
+    await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Send Message', exact: true }).click();
@@ -137,7 +137,7 @@ test('Send Message opens the editor dialog', async ({ page }) => {
 });
 
 test('sets the channel-name banner title', async ({ page }) => {
-    await page.goto(`/#/messages/${CID}`);
+    await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
     // webadmin:set-title fires 'Channel Messages - Demo Started' once the name loads.
     await expect(page.getByText('Channel Messages - Demo Started')).toBeVisible();

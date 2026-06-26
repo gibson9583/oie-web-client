@@ -18,7 +18,7 @@ test('Monaco TS worker answers member completions (IntelliSense)', async ({ page
     page.on('pageerror', (e) => { if (/importScripts|web worker/i.test(e.message)) workerErrors.push(e.message); });
 
     await mockEngine(page);
-    await page.goto('/#/global-scripts');
+    await page.goto('/global-scripts');
     // Monaco must upgrade from the baseline textarea first.
     await page.waitForSelector('.monaco-editor', { timeout: 15000 });
 

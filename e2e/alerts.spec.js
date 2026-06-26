@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 test('Alerts lists alerts and gates task actions on selection/status', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Alerts', exact: true }).click();
-    await expect(page).toHaveURL(/#\/alerts/);
+    await expect(page).toHaveURL(/\/alerts/);
 
     await expect(page.getByText('Error Alert')).toBeVisible();
     await expect(page.getByText('Deploy Alert')).toBeVisible();
@@ -34,7 +34,7 @@ test('alert editor adds an action via right-click', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Alerts', exact: true }).click();
     await page.getByRole('button', { name: 'New Alert' }).click();
-    await expect(page).toHaveURL(/#\/alerts\/.*\/edit/);
+    await expect(page).toHaveURL(/\/alerts\/.*\/edit/);
 
     await expect(page.getByText('No actions defined')).toBeVisible();
     await page.getByText('No actions defined').click({ button: 'right' });

@@ -35,7 +35,7 @@ const GROUPS_FIXTURE = {
 async function gotoChannels(page) {
     await page.goto('/');
     await page.getByRole('button', { name: 'Channels', exact: true }).click();
-    await expect(page).toHaveURL(/#\/channels/);
+    await expect(page).toHaveURL(/\/channels/);
 }
 
 test.describe('Channels React view', () => {

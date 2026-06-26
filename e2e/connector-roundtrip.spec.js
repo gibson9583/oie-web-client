@@ -35,7 +35,7 @@ for (const c of CASES) {
             return route.fallback();
         });
 
-        await page.goto(`/#/channels/${id}/edit`);
+        await page.goto(`/channels/${id}/edit`);
         await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
 
         // Mount the connector panel — the step the existing round-trip test skips.

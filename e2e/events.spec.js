@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 test('Events lists results and shows detail on selection', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Events', exact: true }).click();
-    await expect(page).toHaveURL(/#\/events/);
+    await expect(page).toHaveURL(/\/events/);
 
     // Criteria bar + task pane.
     await expect(page.getByRole('button', { name: 'Export All Events' })).toBeVisible();

@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 test('Users view lists users and gates task actions on selection', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Users', exact: true }).click();
-    await expect(page).toHaveURL(/#\/users/);
+    await expect(page).toHaveURL(/\/users/);
 
     // Rows render through the React-hosted DataTable.
     await expect(page.getByRole('cell', { name: 'operator', exact: true })).toBeVisible();

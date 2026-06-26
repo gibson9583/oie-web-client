@@ -31,7 +31,7 @@ test('Export Results builds a downloadable ZIP (My Computer)', async ({ page }) 
         delete window.showDirectoryPicker;
     });
 
-    await page.goto(`/#/messages/${CID}`);
+    await page.goto(`/messages/${CID}`);
     // Auto-search populated the results grid.
     await expect(page.getByText('987654321')).toBeVisible();
 

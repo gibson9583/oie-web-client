@@ -170,7 +170,7 @@ test.describe('Channel editor', () => {
     });
 
     test('renders the channel editor with all four setup tabs', async ({ page }) => {
-        await page.goto(`/#/channels/${CHANNEL_ID}/edit`);
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
 
         // The four classic setup tabs are present.
         await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
@@ -186,7 +186,7 @@ test.describe('Channel editor', () => {
     });
 
     test('switching to Destinations shows the destination row', async ({ page }) => {
-        await page.goto(`/#/channels/${CHANNEL_ID}/edit`);
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
 
         await page.getByRole('button', { name: 'Destinations', exact: true }).click();
 
@@ -202,7 +202,7 @@ test.describe('Channel editor', () => {
         // Deep-link straight to the source (metaDataId 0) transformer sub-editor;
         // it loads the channel from GET /channels/{id} (no store seed) and lists
         // the connector's transformer steps.
-        await page.goto(`/#/channels/${CHANNEL_ID}/transformer/0`);
+        await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
 
         // The transformer step grid renders the one Mapper step by name (inline
         // editable Name cell; value lives on the DOM property).

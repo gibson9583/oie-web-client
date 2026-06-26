@@ -9,7 +9,7 @@ test('navigates to Channels and lists channels', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Channels' }).click();
 
-    await expect(page).toHaveURL(/#\/channels/);
+    await expect(page).toHaveURL(/\/channels/);
     await expect(page.getByText('Demo Started')).toBeVisible();
     await expect(page.getByText('Demo Stopped')).toBeVisible();
     // The Channels task pane offers New Channel.
@@ -19,7 +19,7 @@ test('navigates to Channels and lists channels', async ({ page }) => {
 test('column menu hides, persists, and restores a column', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Channels' }).click();
-    await expect(page).toHaveURL(/#\/channels/);
+    await expect(page).toHaveURL(/\/channels/);
 
     const description = () => page.getByRole('columnheader', { name: 'Description', exact: true });
     // Right-click any column header opens the show/hide-columns menu.

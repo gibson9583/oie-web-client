@@ -11,10 +11,10 @@ test.beforeEach(async ({ page }) => {
 test('New Alert opens the React editor', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Alerts', exact: true }).click();
-    await expect(page).toHaveURL(/#\/alerts/);
+    await expect(page).toHaveURL(/\/alerts/);
 
     await page.getByRole('button', { name: 'New Alert' }).click();
-    await expect(page).toHaveURL(/#\/alerts\/.*\/edit/);
+    await expect(page).toHaveURL(/\/alerts\/.*\/edit/);
 
     // Editor panels render (scope to the editor's panel headers — "Channels"
     // also appears as a nav item, so match the header element specifically).
@@ -32,7 +32,7 @@ test('alert editor adds an action via the Add button and via right-click', async
     await page.goto('/');
     await page.getByRole('button', { name: 'Alerts', exact: true }).click();
     await page.getByRole('button', { name: 'New Alert' }).click();
-    await expect(page).toHaveURL(/#\/alerts\/.*\/edit/);
+    await expect(page).toHaveURL(/\/alerts\/.*\/edit/);
 
     // Starts with no actions.
     await expect(page.getByText('No actions defined')).toBeVisible();

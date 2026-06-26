@@ -54,7 +54,7 @@ test.beforeEach(async ({ page }) => {
 test('Settings opens on the Server tab with its task pane and loaded fields', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await expect(page).toHaveURL(/#\/settings/);
+    await expect(page).toHaveURL(/\/settings/);
 
     // The Server tab is active by default and populates from /server/settings.
     await expect(page.getByRole('button', { name: 'Server', exact: true })).toHaveClass(/active/);
@@ -70,7 +70,7 @@ test('Settings opens on the Server tab with its task pane and loaded fields', as
 });
 
 test('switching tabs swaps the task pane without a route change', async ({ page }) => {
-    await page.goto('/#/settings');
+    await page.goto('/settings');
     await expect(page.getByRole('button', { name: 'Clear All Statistics', exact: true })).toBeVisible();
 
     // Administrator tab — localStorage-only prefs; Save + Restore Defaults, no Backup.
@@ -78,7 +78,7 @@ test('switching tabs swaps the task pane without a route change', async ({ page 
     await expect(page.getByRole('button', { name: 'Restore Defaults', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Backup Config', exact: true })).toHaveCount(0);
-    await expect(page).toHaveURL(/#\/settings/);   // no navigation
+    await expect(page).toHaveURL(/\/settings/);   // no navigation
 
     // Configuration Map tab — Save + Import Map / Export Map; its row loads.
     await page.getByRole('button', { name: 'Configuration Map', exact: true }).click();
@@ -95,7 +95,7 @@ test('switching tabs swaps the task pane without a route change', async ({ page 
 });
 
 test('Tags tab gates the Remove Tag task on selection', async ({ page }) => {
-    await page.goto('/#/settings');
+    await page.goto('/settings');
     await page.getByRole('button', { name: 'Tags', exact: true }).click();
 
     // The loaded tag renders; the always-on Tag tasks are present.

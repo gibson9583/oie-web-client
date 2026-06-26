@@ -34,7 +34,7 @@ const STATUSES_WITH_CONNECTORS = {
 
 test('renders the status board with the Dashboard Tasks pane', async ({ page }) => {
     await mockEngine(page);
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
     await expect(page.locator('.shell')).toBeVisible();
 
     // Channel rows from SAMPLE_STATUSES.
@@ -52,7 +52,7 @@ test('renders the status board with the Dashboard Tasks pane', async ({ page }) 
 
 test('selecting a stopped channel reveals Start and POSTs _start', async ({ page }) => {
     await mockEngine(page);
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
     await expect(page.getByText('Demo Stopped', { exact: true })).toBeVisible();
 
     await page.locator('tr', { hasText: 'Demo Stopped' }).first().click();
@@ -66,7 +66,7 @@ test('selecting a stopped channel reveals Start and POSTs _start', async ({ page
 
 test('selecting a started channel reveals Pause and Stop (not Start)', async ({ page }) => {
     await mockEngine(page);
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
     await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
 
     await page.locator('tr', { hasText: 'Demo Started' }).first().click();
@@ -81,7 +81,7 @@ test('selecting a started channel reveals Pause and Stop (not Start)', async ({ 
 
 test('re-emits dashboard:selection on channel selection', async ({ page }) => {
     await mockEngine(page);
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
     await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
 
     // Subscribe to the shared store bus the way a dashboard tab/plugin would.
@@ -100,7 +100,7 @@ test('re-emits dashboard:selection on channel selection', async ({ page }) => {
 
 test('expands connector child rows and double-click opens the filtered message browser', async ({ page }) => {
     await mockEngine(page, { 'GET /channels/statuses': STATUSES_WITH_CONNECTORS });
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
     await expect(page.getByText('Conn Channel', { exact: true })).toBeVisible();
 
     // Connector rows are hidden until the channel's twisty is expanded.
@@ -116,5 +116,5 @@ test('expands connector child rows and double-click opens the filtered message b
     // browser scoped to that connector (channelId + metaDataId).
     await page.locator('tr', { hasText: 'Destination 1' }).first().click();
     await page.locator('tr', { hasText: 'Destination 1' }).first().dblclick();
-    await expect(page).toHaveURL(/#\/messages\/c-conn\?metaDataId=1$/);
+    await expect(page).toHaveURL(/\/messages\/c-conn\?metaDataId=1$/);
 });

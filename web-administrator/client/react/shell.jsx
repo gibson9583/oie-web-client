@@ -109,7 +109,7 @@ async function showAbout() {
     modal({
         title: 'About Open Integration Engine',
         body: h('div',
-            h('div.flex.items-center.gap-2.mb-[14px]', h('img', { src: 'assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
+            h('div.flex.items-center.gap-2.mb-[14px]', h('img', { src: '/assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
             entries.length ? kv : h('div.text-text-dim', `Web Administrator v${(store.getState('webadminConfig') || {}).version || ''} — engine v${store.getState('serverVersion') || '?'}`)),
         buttons: [{ label: 'Close', primary: true }]
     });
@@ -279,7 +279,9 @@ function AppShell({ user, onLogout }) {
             await startEngine();
             if (cancelled) return;
             router.setOutlet(outletRef.current);
-            if (!location.hash || location.hash === '#' || location.hash === '#/') location.hash = '/dashboard';
+            // Land on the dashboard for a bare root URL; a deep link (refresh /
+            // bookmark of /channels/x/edit) is left intact for the router to match.
+            if (router.currentPath() === '/') history.replaceState(null, '', '/dashboard');
             router.start();
             // Restamp current view once the engine timezone resolves (skip if a
             // view holds unsaved state behind a nav guard).
@@ -297,7 +299,7 @@ function AppShell({ user, onLogout }) {
         <div className={'shell' + (railCollapsed ? ' rail-collapsed' : '')}>
             <aside className="rail">
                 <div className="rail-brand">
-                    <img src="assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine"
+                    <img src="/assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine"
                         style={{ width: 172, height: 'auto', display: 'block' }} />
                 </div>
                 <div className="rail-panes">
@@ -377,7 +379,7 @@ export function App() {
         store.setState('user', null);
         store.setState('navGuard', null);
         resetSessionExpired();
-        location.hash = '';
+        history.replaceState(null, '', '/');
     };
 
     const onLoginSuccess = async (u) => {

@@ -44,7 +44,7 @@ test.beforeEach(async ({ page }) => {
 test('Extensions lists connectors and plugins and gates the task pane on selection', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Extensions', exact: true }).click();
-    await expect(page).toHaveURL(/#\/extensions/);
+    await expect(page).toHaveURL(/\/extensions/);
 
     // Each metadata grid renders its row in its own panel.
     await expect(panel(page, 'Connectors').getByRole('cell', { name: 'File Reader', exact: true })).toBeVisible();
@@ -68,7 +68,7 @@ test('Extensions lists connectors and plugins and gates the task pane on selecti
 });
 
 test('Extensions shows Disable for an enabled extension and the two grids share one selection', async ({ page }) => {
-    await page.goto('/#/extensions');
+    await page.goto('/extensions');
 
     // The enabled plugin offers Disable, not Enable.
     await panel(page, 'Plugins').locator('tr', { hasText: 'Data Pruner' }).first().click();
@@ -83,7 +83,7 @@ test('Extensions shows Disable for an enabled extension and the two grids share 
 });
 
 test('Extensions Properties opens a modal for the selected extension', async ({ page }) => {
-    await page.goto('/#/extensions');
+    await page.goto('/extensions');
 
     await panel(page, 'Connectors').locator('tr', { hasText: 'File Reader' }).first().click();
     await page.getByRole('button', { name: 'Properties', exact: true }).click();

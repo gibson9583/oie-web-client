@@ -19,7 +19,7 @@ test('(B) transformer Maximize overtakes the steps grid but keeps the reference 
     const channel = channelWithSourceElement(id, 'transformer', 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', element);
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
-    await page.goto(`/#/channels/${id}/edit`);
+    await page.goto(`/channels/${id}/edit`);
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.getByRole('button', { name: /^Edit Transformer/ }).click();
 
@@ -38,7 +38,7 @@ test('(B) transformer Maximize overtakes the steps grid but keeps the reference 
 
 test('(B) code template Maximize overtakes the library list, keeps the Context panel', async ({ page }) => {
     await mockEngine(page);
-    await page.goto('/#/code-templates');
+    await page.goto('/code-templates');
     await page.getByText('Trim Whitespace', { exact: true }).click();
 
     const libraryList = page.locator('[data-editor-overtake]').first();   // top tree-table pane
@@ -61,7 +61,7 @@ test('(A) JavaScript Writer maximizes but keeps the Destination Mappings panel',
     const channel = makeChannel(id, { destination: { transportName: 'JavaScript Writer', properties: js.properties() } });
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
-    await page.goto(`/#/channels/${id}/edit`);
+    await page.goto(`/channels/${id}/edit`);
     await page.getByRole('button', { name: 'Destinations', exact: true }).click();
     await page.getByRole('cell', { name: 'JavaScript Writer', exact: true }).first().click();
     await expect(page.locator('.cform-section').first()).toBeVisible();
@@ -92,7 +92,7 @@ test('(A) channel scripts maximize fills flush-left when the nav rail is collaps
     const channel = makeChannel(id);
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
-    await page.goto(`/#/channels/${id}/edit`);
+    await page.goto(`/channels/${id}/edit`);
     // Collapse the rail via the topbar hamburger — the content grid becomes "0 1fr",
     // so the fixed maximize overlay must start at x=0 (not the old rail width).
     await page.getByRole('button', { name: 'Hide navigation' }).click();
@@ -119,7 +119,7 @@ test('(A) channel scripts maximize clears the nav rail when it is expanded', asy
     const channel = makeChannel(id);
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
-    await page.goto(`/#/channels/${id}/edit`);
+    await page.goto(`/channels/${id}/edit`);
     await page.getByRole('button', { name: 'Scripts', exact: true }).click();
     const editor = page.locator('.ce').first();
     await editor.hover();

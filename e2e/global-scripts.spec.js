@@ -7,8 +7,8 @@ test.beforeEach(async ({ page }) => {
 
 // Global Scripts exercises the React <CodeEditor> island + keep-mounted <Tabs>.
 test('Global Scripts shows the four script tabs, editor, and task pane', async ({ page }) => {
-    await page.goto('/#/global-scripts');
-    await expect(page).toHaveURL(/#\/global-scripts/);
+    await page.goto('/global-scripts');
+    await expect(page).toHaveURL(/\/global-scripts/);
 
     // One tab per script.
     for (const t of ['Deploy', 'Undeploy', 'Preprocessor', 'Postprocessor']) {

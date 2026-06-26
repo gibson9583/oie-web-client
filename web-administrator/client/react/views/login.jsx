@@ -65,8 +65,8 @@ export function LoginForm({ onSuccess }) {
                 }}>
                 <div className="login-brand">
                     <span>
-                        <img className="logo-on-light block w-[120px]" src="assets/oie_logo_bottom_text.svg" alt="Open Integration Engine" />
-                        <img className="logo-on-dark block w-[188px]" src="assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine" />
+                        <img className="logo-on-light block w-[120px]" src="/assets/oie_logo_bottom_text.svg" alt="Open Integration Engine" />
+                        <img className="logo-on-dark block w-[188px]" src="/assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine" />
                     </span>
                     <div className="brand-sub">WEB ADMINISTRATOR</div>
                 </div>

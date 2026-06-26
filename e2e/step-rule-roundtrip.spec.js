@@ -32,7 +32,7 @@ for (const c of CASES) {
             return route.fallback();
         });
 
-        await page.goto(`/#/channels/${id}/edit`);
+        await page.goto(`/channels/${id}/edit`);
         await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
 
         // Source tab → Edit Transformer / Edit Filter → the filter/transformer view.

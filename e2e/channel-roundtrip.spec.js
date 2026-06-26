@@ -54,7 +54,7 @@ test('channel save round-trips the full channel (serialization preserved)', asyn
         return route.fallback();
     });
 
-    await page.goto(`/#/channels/${CHANNEL_ID}/edit`);
+    await page.goto(`/channels/${CHANNEL_ID}/edit`);
     await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
 
     // One edit (Name) to dirty the channel so Save Changes appears.

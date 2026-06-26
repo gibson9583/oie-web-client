@@ -8,8 +8,8 @@ test.beforeEach(async ({ page }) => {
 // Code Templates exercises the imperative library/template tree-table (kept
 // mounted) + the React <CodeEditor> island + selection-gated Code Template Tasks.
 test('Code Templates lists libraries/templates, gates tasks on selection, and edits dirty the Save button', async ({ page }) => {
-    await page.goto('/#/code-templates');
-    await expect(page).toHaveURL(/#\/code-templates/);
+    await page.goto('/code-templates');
+    await expect(page).toHaveURL(/\/code-templates/);
 
     // Library + its code template render in the tree-table.
     await expect(page.getByText('Demo Library', { exact: true })).toBeVisible();

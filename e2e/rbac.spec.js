@@ -26,7 +26,7 @@ async function installRbacPlugin(page, denyExpr) {
 test('an RBAC controller hides a denied nav item and task button', async ({ page }) => {
     await installRbacPlugin(page, "(g==='view'&&t==='doShowDashboard')||(g==='dashboard'&&t==='doRefreshStatuses')");
     await mockEngine(page);
-    await page.goto('/#/channels');
+    await page.goto('/channels');
 
     // The Channels nav (untagged or allowed) is present; the denied Dashboard nav is gone.
     await expect(page.getByRole('button', { name: 'Channels', exact: true })).toBeVisible();
@@ -34,7 +34,7 @@ test('an RBAC controller hides a denied nav item and task button', async ({ page
 
     // Navigate to the dashboard directly: its denied "Refresh" task is hidden, but the
     // view + an allowed task still render.
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
     const tasks = page.locator('.rail-pane', { hasText: 'Dashboard Tasks' });
     await expect(tasks).toBeVisible();
     await expect(tasks.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
@@ -42,7 +42,7 @@ test('an RBAC controller hides a denied nav item and task button', async ({ page
 
 test('with no RBAC controller, the Dashboard nav and Refresh task are visible', async ({ page }) => {
     await mockEngine(page);
-    await page.goto('/#/dashboard');
+    await page.goto('/dashboard');
     await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
     const tasks = page.locator('.rail-pane', { hasText: 'Dashboard Tasks' });
     await expect(tasks.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();

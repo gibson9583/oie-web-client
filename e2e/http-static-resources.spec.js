@@ -20,7 +20,7 @@ test('HTTP Listener Static Resources cell keeps focus while typing', async ({ pa
     const channel = makeChannel(id, { source: { transportName: httpCase.name, properties: httpCase.properties() } });
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
-    await page.goto(`/#/channels/${id}/edit`);
+    await page.goto(`/channels/${id}/edit`);
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await expect(page.locator('.cform-section').first()).toBeVisible();
 
