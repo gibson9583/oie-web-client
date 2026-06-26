@@ -234,7 +234,9 @@ code, pre, .mono { font-family: var(--font-mono); }
     align-items: center;
     gap: 10px;
     padding: 0 16px;
-    border-bottom: 1px solid var(--line);
+    /* Rail-aware hairline (matches the pane separators) — a fixed gray --line
+       reads as an odd seam across a tinted environment-color rail. */
+    border-bottom: 1px solid color-mix(in srgb, var(--rail-fg) 14%, transparent);
     height: var(--topbar-h);
     flex: none;
     box-sizing: border-box;
@@ -244,7 +246,9 @@ code, pre, .mono { font-family: var(--font-mono); }
     width: 26px; height: 26px;
     flex: none;
     color: var(--rail-fg);
-    filter: drop-shadow(0 0 6px var(--accent-glow));
+    /* Glow in the rail's own foreground, not the fixed blue --accent-glow, so it
+       doesn't clash with a tinted rail. */
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--rail-fg) 30%, transparent));
 }
 
 .rail-brand .brand-name {
@@ -1339,6 +1343,9 @@ input.grid-name::placeholder { color: var(--text-faint); }
     padding: 5px 10px;
     border-left: 0;
     font-size: 12.5px;
+    /* Medium weight: regular-weight light text vibrates / thins out on a
+       saturated environment-color rail; 500 keeps it crisp without looking bold. */
+    font-weight: 500;
     border-radius: 6px;
     margin: 1px 0;
     color: var(--rail-fg-dim);

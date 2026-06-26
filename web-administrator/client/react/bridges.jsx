@@ -102,8 +102,12 @@ export function environmentColorVars(colorObj, dark) {
     return {
         railBg: `linear-gradient(180deg, ${shift(12)} 0%, ${shift(-14)} 100%)`,
         topbarBg: `linear-gradient(90deg, ${shift(-6)} 0%, ${shift(10)} 100%)`,
+        // Dim foreground sits higher than a typical secondary text alpha: on a
+        // saturated mid-luminance env color (bright red/green/blue) a 0.6 alpha
+        // washes into the background, so the nav items + section labels were hard
+        // to read. 0.75 / 0.64 keeps them legible while still reading as "dim".
         fg: darkBg ? 'rgba(255, 255, 255, 0.92)' : 'rgba(0, 0, 0, 0.85)',
-        fgDim: darkBg ? 'rgba(255, 255, 255, 0.60)' : 'rgba(0, 0, 0, 0.55)'
+        fgDim: darkBg ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.64)'
     };
 }
 
