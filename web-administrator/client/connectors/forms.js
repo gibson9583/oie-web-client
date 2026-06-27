@@ -312,7 +312,7 @@ function renderRow(grid, properties, f, onChange, repaint, displays) {
 
 /* 'Ports in Use' button shared by the TCP/HTTP/WS listener panels: fetches
    /channels/portsInUse and lists port → channel name in a modal. */
-export function portsInUseButton() {
+export function portsInUseButton({ disabled = false } = {}) {
     const btn = taskButton('Ports in Use', 'search', async () => {
         btn.disabled = true;
         try {
@@ -333,6 +333,10 @@ export function portsInUseButton() {
             btn.disabled = false;
         }
     });
+    // State-reactive: the connector panel re-runs the `append` on its gating
+    // field's refresh, so this reflects the current mode/binding (Swing greys
+    // these buttons the same way, e.g. Test Connection off in server mode).
+    if (disabled) btn.disabled = true;
     return btn;
 }
 
@@ -539,7 +543,7 @@ export function postConnectorProperties(path, properties, channel, params) {
 
 /* 'Test Connection' style button: POSTs the connector properties to a
    /connectors/* test endpoint and toasts the ConnectionTestResponse. */
-export function connectorTestButton({ label = 'Test Connection', icon: iconName = 'link', path, channel, properties }) {
+export function connectorTestButton({ label = 'Test Connection', icon: iconName = 'link', path, channel, properties, disabled = false }) {
     const btn = taskButton(label, iconName, async () => {
         btn.disabled = true;
         try {
@@ -557,6 +561,10 @@ export function connectorTestButton({ label = 'Test Connection', icon: iconName 
             btn.disabled = false;
         }
     });
+    // State-reactive: the connector panel re-runs the `append` on its gating
+    // field's refresh, so this reflects the current mode/binding (Swing greys
+    // these buttons the same way, e.g. Test Connection off in server mode).
+    if (disabled) btn.disabled = true;
     return btn;
 }
 

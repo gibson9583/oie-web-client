@@ -151,12 +151,14 @@ const tcpSender = {
         type: "text",
         width: "200px",
         disabled: serverMode,
-        append: () => connectorTestButton({ path: "/connectors/tcp/_testConnection", channel, properties })
+        // Test Connection greys in Server mode (TcpSender.modeServerRadioActionPerformed).
+        append: (p) => connectorTestButton({ path: "/connectors/tcp/_testConnection", channel, properties, disabled: serverMode(p) })
       },
       { key: "remotePort", label: "Remote Port", type: "number", width: "90px", disabled: serverMode },
       { key: "overrideLocalBinding", label: "Override Local Binding", type: "radio", options: YES_NO, refresh: true, disabled: serverMode },
       { key: "localAddress", label: "Local Address", type: "text", width: "200px", disabled: localBindingDisabled },
-      { key: "localPort", label: "Local Port", type: "number", width: "90px", append: () => portsInUseButton(), disabled: localBindingDisabled },
+      // Ports in Use follows the Local Port field: on in Server mode or Client+Override.
+      { key: "localPort", label: "Local Port", type: "number", width: "90px", append: (p) => portsInUseButton({ disabled: localBindingDisabled(p) }), disabled: localBindingDisabled },
       { key: "maxConnections", label: "Max Connections", type: "number", width: "90px", disabled: (p) => p.serverMode !== true },
       { key: "keepConnectionOpen", label: "Keep Connection Open", type: "radio", options: YES_NO, refresh: true, disabled: serverMode },
       { key: "checkRemoteHost", label: "Check Remote Host", type: "radio", options: YES_NO, disabled: sendDisabled },

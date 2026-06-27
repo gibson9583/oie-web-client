@@ -51,3 +51,14 @@ test('Document Writer: "Test Write" is disabled when Output is Attachment', asyn
     await page.locator('[data-fkey="output"]').getByRole('radio', { name: 'Attachment' }).check();
     await expect(page.getByRole('button', { name: 'Test Write', exact: true })).toBeDisabled();
 });
+
+test('TCP Sender: Test Connection / Ports in Use grey by mode + local binding', async ({ page }) => {
+    await openPanel(page, 'TCP Sender', 'DESTINATION');
+    // Default is Client mode with no override: Test Connection on, Ports in Use off.
+    await expect(page.getByRole('button', { name: 'Test Connection', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Ports in Use', exact: true })).toBeDisabled();
+    // Server mode: Test Connection off (no remote to test), Ports in Use on (local bind).
+    await page.locator('[data-fkey="serverMode"]').getByRole('radio', { name: 'Server', exact: true }).check();
+    await expect(page.getByRole('button', { name: 'Test Connection', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Ports in Use', exact: true })).toBeEnabled();
+});
