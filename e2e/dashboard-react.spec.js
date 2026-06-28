@@ -119,6 +119,62 @@ test('expands connector child rows and double-click opens the filtered message b
     await expect(page).toHaveURL(/\/messages\/c-conn\?metaDataId=1$/);
 });
 
+// A started channel whose destination has queueing toggled per-test.
+const channelWithDest = (queueEnabled) => ({
+    list: {
+        dashboardStatus: [
+            {
+                channelId: 'c-conn', name: 'Conn Channel', state: 'STARTED', statistics: {},
+                childStatuses: {
+                    dashboardStatus: [
+                        { channelId: 'c-conn', metaDataId: 0, name: 'Source', state: 'STARTED', statistics: {} },
+                        { channelId: 'c-conn', metaDataId: 1, name: 'Destination 1', state: 'STARTED', statistics: {}, queueEnabled },
+                    ],
+                },
+            },
+        ],
+    },
+});
+
+test('stopping a non-queued destination connector warns instead of silently doing nothing', async ({ page }) => {
+    await mockEngine(page, { 'GET /channels/statuses': channelWithDest(false) });
+
+    // Track whether the per-connector stop was POSTed — it must NOT be.
+    let stopCalled = false;
+    page.on('request', (r) => {
+        if (/\/api\/channels\/c-conn\/connector\/1\/_stop$/.test(r.url())) stopCalled = true;
+    });
+
+    await page.goto('/dashboard');
+    await page.locator('tr', { hasText: 'Conn Channel' }).first().locator('.twisty').click();
+    await expect(page.getByText('Destination 1', { exact: true })).toBeVisible();
+
+    // Right-click the destination connector row → Stop Connector.
+    await page.locator('tr', { hasText: 'Destination 1' }).first().click({ button: 'right' });
+    await page.locator('.ctx-menu').getByText('Stop Connector', { exact: true }).click();
+
+    // Swing-parity warning; the connector is left running (no _stop POST).
+    await expect(page.getByText(/queueing is not enabled/i)).toBeVisible();
+    await expect(page.getByText(/Queueing must be enabled for a destination connector/i)).toBeVisible();
+    expect(stopCalled).toBe(false);
+});
+
+test('stopping a queued destination connector stops it with no warning', async ({ page }) => {
+    await mockEngine(page, { 'GET /channels/statuses': channelWithDest(true) });
+    await page.goto('/dashboard');
+    await page.locator('tr', { hasText: 'Conn Channel' }).first().locator('.twisty').click();
+    await expect(page.getByText('Destination 1', { exact: true })).toBeVisible();
+
+    const stopReq = page.waitForRequest(
+        (r) => /\/api\/channels\/c-conn\/connector\/1\/_stop$/.test(r.url()) && r.method() === 'POST'
+    );
+    await page.locator('tr', { hasText: 'Destination 1' }).first().click({ button: 'right' });
+    await page.locator('.ctx-menu').getByText('Stop Connector', { exact: true }).click();
+
+    await stopReq;   // the connector WAS stopped
+    await expect(page.getByText(/queueing is not enabled/i)).toHaveCount(0);
+});
+
 test('double-clicking the channel name text opens the message browser', async ({ page }) => {
     await mockEngine(page, { 'GET /channels/statuses': STATUSES_WITH_CONNECTORS });
     await page.goto('/dashboard');

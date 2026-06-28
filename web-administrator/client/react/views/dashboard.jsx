@@ -761,11 +761,31 @@ function DashboardView() {
             catch (err) { toast(err.message, 'error'); }
             refresh();
         };
+        // Swing Frame.doStopConnector: a destination connector (metaDataId != 0)
+        // can only be stopped individually when queueing is enabled; otherwise the
+        // engine leaves it running, so warn instead of silently doing nothing
+        // (queueEnabled is a boolean on the connector's DashboardStatus, which the
+        // server may serialize as the string "true"/"false").
+        const queueEnabled = child.queueEnabled === true || child.queueEnabled === 'true';
+        const stopConnector = async () => {
+            if (Number(child.metaDataId) !== 0 && !queueEnabled) {
+                modal({
+                    title: 'Connector not stopped',
+                    body: h('div',
+                        'This destination connector was not stopped because queueing is not enabled.',
+                        h('br'), h('br'),
+                        'Queueing must be enabled for a destination connector to be stopped individually.'),
+                    buttons: [{ label: 'OK', primary: true }]
+                });
+                return;
+            }
+            await runConnector('stopConnector')();
+        };
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
             { label: 'Start Connector', icon: 'play', hidden: !(child.state === 'STOPPED' || child.state === 'PAUSED'), task: 'doStartConnector', onClick: runConnector('startConnector') },
-            { label: 'Stop Connector', icon: 'stop', hidden: !(child.state === 'STARTED' || child.state === 'PAUSED'), task: 'doStopConnector', onClick: runConnector('stopConnector') }
+            { label: 'Stop Connector', icon: 'stop', hidden: !(child.state === 'STARTED' || child.state === 'PAUSED'), task: 'doStopConnector', onClick: stopConnector }
         ], 'dashboard');
     }
 
