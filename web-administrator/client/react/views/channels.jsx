@@ -398,13 +398,14 @@ function ChannelsView() {
     // TreeTable tree column, so (unlike the legacy) no manual paddingLeft here.
     function nameCell(channel) {
         const chips = channelTags(channel);
-        // Single line, never wrapping: the name always shows in full; if there are
-        // more tags than fit, they clip horizontally rather than growing the row.
+        // Single line, never wrapping: the name always shows in full; extra tags
+        // run out to the edge of the (fixed-layout) Name column and clip there via
+        // the cell's own overflow:hidden — no premature inner width cap.
         return (
             <span className="inline-flex items-center gap-1.5 flex-nowrap align-middle">
                 <span className="shrink-0">{channel.name || ''}</span>
                 {chips.length
-                    ? <span className="inline-flex gap-1.5 flex-nowrap overflow-hidden max-w-[260px]">
+                    ? <span className="inline-flex gap-1.5 flex-nowrap">
                         {chips.map((tag) => {
                             const color = tagColor(tag);
                             return <span key={tag.name} className="tag shrink-0" style={color ? { background: color } : {}}>{tag.name}</span>;
