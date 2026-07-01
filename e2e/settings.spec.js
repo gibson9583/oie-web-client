@@ -111,3 +111,31 @@ test('Tags tab gates the Remove Tag task on selection', async ({ page }) => {
     // Selecting a tag reveals its channel-assignment list (mutate-in-place editing).
     await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
 });
+
+test('custom background color saves via the single-key preference endpoint (issue #10)', async ({ page }) => {
+    const puts = [];
+    page.on('request', (r) => {
+        if (r.method() === 'PUT') puts.push({ path: new URL(r.url()).pathname, body: r.postData() });
+    });
+
+    // Deep-link straight to the Administrator (user prefs) tab.
+    await page.goto('/settings?tab=administrator');
+    await expect(page.getByRole('button', { name: 'Administrator', exact: true })).toHaveClass(/active/);
+
+    // Switch the Background color override to Custom and pick a color.
+    await page.locator('select', { hasText: 'Server Default' }).selectOption('custom');
+    const picker = page.locator('input[type=color]');
+    await expect(picker).toBeEnabled();
+    await picker.fill('#ff8800');
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('Preferences saved')).toBeVisible();
+
+    // Swing writes this one key: PUT /users/{id}/preferences/backgroundColor with a
+    // text/plain <awt-color> body. The whole-map PUT /users/{id}/preferences
+    // deserializes to a Java Properties server-side and 500s on that value.
+    const single = puts.find((p) => /\/users\/1\/preferences\/backgroundColor$/.test(p.path));
+    expect(single).toBeTruthy();
+    expect(single.body).toContain('<awt-color>');
+    expect(puts.some((p) => /\/users\/1\/preferences$/.test(p.path))).toBe(false);
+});

@@ -255,7 +255,10 @@ export const users = {
     checkPassword: (plainPassword) => post('/users/_checkPassword', plainPassword, { contentType: 'text/plain' }),
     isLoggedIn: (userId) => get(`/users/${enc(userId)}/loggedIn`),
     getPreferences: (userId) => get(`/users/${enc(userId)}/preferences`),
-    getPreference: (userId, name) => get(`/users/${enc(userId)}/preferences/${enc(name)}`),
+    // opts may pass { raw: true } to get the untouched text — needed for values
+    // that are themselves XML (e.g. backgroundColor's <awt-color>), which parseBody
+    // would otherwise turn into an object.
+    getPreference: (userId, name, opts) => get(`/users/${enc(userId)}/preferences/${enc(name)}`, undefined, opts),
     setPreferences: (userId, props) => put(`/users/${enc(userId)}/preferences`, props, { wrapKey: 'properties' }),
     setPreference: (userId, name, value) => put(`/users/${enc(userId)}/preferences/${enc(name)}`, value, { contentType: 'text/plain' }),
     acknowledgeNotification: (userId) => post(`/users/${enc(userId)}/notificationAcknowledged`)

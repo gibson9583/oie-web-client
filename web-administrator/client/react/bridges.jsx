@@ -226,13 +226,18 @@ export function useServerIdentity() {
         Promise.all([
             api.server.version(),
             api.server.settings().catch(() => null),
-            userId != null ? api.users.getPreferences(userId).catch(() => null) : Promise.resolve(null)
+            // Single-key RAW read, mirroring Swing's getUserPreference(id,
+            // "backgroundColor"). The bulk getPreferences runs through api.js
+            // unwrap() (collapses a one-entry Properties map to a scalar) and
+            // parseBody would turn the <awt-color> XML into an object — both drop
+            // the value. The raw per-key read returns the string verbatim.
+            userId != null ? api.users.getPreference(userId, 'backgroundColor', { raw: true }).catch(() => null) : Promise.resolve(null)
         ])
-            .then(([version, settings, prefs]) => {
+            .then(([version, settings, bgPref]) => {
                 if (!alive) return;
                 store.setState('serverVersion', version);
                 // The user's personal override wins over the server default.
-                const override = prefs && parseColorPref(prefs.backgroundColor);
+                const override = parseColorPref(bgPref);
                 applyEnvironmentColor(override || (settings && settings.defaultAdministratorBackgroundColor));
                 setInfo({ version, settings });
             })

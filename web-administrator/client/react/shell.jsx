@@ -378,6 +378,17 @@ function loginNotificationDialog(message) {
     });
 }
 
+/* Scope the local settings (system prefs, theme, rail state) to the connected
+   engine's server id AND the signed-in user, so a different engine — or a different
+   user on the same browser — keeps them separate. Runs before the authed shell
+   (and its views) render. */
+async function establishPrefScope(user) {
+    let id = null;
+    try { id = await api.server.id(); } catch { /* fall back to the un-scoped key */ }
+    store.setPrefScope(id, user && user.id);
+    store.reapplyScopedSettings();
+}
+
 export function App() {
     const user = useStoreKey('user');
     const [authChecked, setAuthChecked] = useState(false);
@@ -390,7 +401,10 @@ export function App() {
         (async () => {
             try {
                 const u = await api.auth.current();
-                if (u && u.username && alive) store.setState('user', u);
+                if (u && u.username && alive) {
+                    await establishPrefScope(u);   // scope prefs/theme to server+user before views render
+                    if (alive) store.setState('user', u);
+                }
             } catch { /* not signed in */ }
             finally { if (alive) setAuthChecked(true); }
         })();
@@ -409,6 +423,7 @@ export function App() {
         try { await api.auth.logout(); } catch { /* session may already be gone */ }
         store.setState('user', null);
         store.setState('navGuard', null);
+        store.setPrefScope(null, null);   // next sign-in re-scopes to that user
         resetSessionExpired();
         history.replaceState(null, '', '/');
     };
@@ -436,6 +451,7 @@ export function App() {
         // profile when the engine's "firstlogin" user preference is set. Fails
         // open internally, but guard here too so it can never block sign-in.
         try { await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
+        await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
         store.setState('user', u);
     };
 

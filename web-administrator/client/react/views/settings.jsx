@@ -565,12 +565,14 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
         const bgOverride = h('div', { class: 'flex items-center' }, bgMode, bgPicker);
         (async () => {
             try {
-                const [srv, prefs] = await Promise.all([
+                const [srv, bgPref] = await Promise.all([
                     api.server.settings().catch(() => null),
-                    userId != null ? api.users.getPreferences(userId).catch(() => null) : Promise.resolve(null)
+                    // Single-key RAW read (see bridges.jsx / welcome.js): the bulk
+                    // getPreferences collapses/mangles the <awt-color> value.
+                    userId != null ? api.users.getPreference(userId, 'backgroundColor', { raw: true }).catch(() => null) : Promise.resolve(null)
                 ]);
                 serverDefaultColor = srv && srv.defaultAdministratorBackgroundColor;
-                const override = prefs && parseColorPref(prefs.backgroundColor);
+                const override = parseColorPref(bgPref);
                 if (override) { bgMode.value = 'custom'; bgPicker.disabled = false; bgPicker.value = colorToHex(override, '#2a75b2'); }
             } catch { /* ignore */ }
         })();
@@ -611,20 +613,29 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
             });
             setTheme(themeSel.value);
             // Persist the per-user color override (or clear it) and re-tint live.
+            // Swing (SettingsPanelAdministrator.doSave) writes this as a single
+            // preference: setUserPreference(id, "backgroundColor", <awt-color xml>).
+            // The whole-map PUT deserializes to a Java Properties server-side and
+            // 500s on the <awt-color> value (issue #10), so mirror Swing exactly
+            // and set just the one key (stored verbatim, no server-side parsing).
             if (userId != null) {
                 try {
-                    const current = await api.users.getPreferences(userId).catch(() => ({}));
-                    const props = (current && typeof current === 'object') ? { ...current } : {};
-                    let effective;
+                    let effective, value;
                     if (bgMode.value === 'custom') {
                         const c = hexToColor(bgPicker.value, 255);
-                        props.backgroundColor = serializeColorPref(c);   // <awt-color> XML (Swing-compatible)
+                        value = serializeColorPref(c);   // <awt-color> XML (Swing-compatible)
                         effective = c;
                     } else {
-                        props.backgroundColor = '';   // blank = no override (Swing reads it as server default)
+                        // Swing clears the override by writing ObjectXMLSerializer
+                        // .serialize(null) === "<null/>" (NOT an empty string). Match
+                        // it: both tools read a non-<awt-color> value as server
+                        // default, and a non-empty value avoids an Oracle edge case
+                        // where '' -> NULL breaks the insert/update existence check
+                        // and can duplicate the preference row.
+                        value = '<null/>';
                         effective = serverDefaultColor;
                     }
-                    await api.users.setPreferences(userId, props);
+                    await api.users.setPreference(userId, 'backgroundColor', value);
                     applyEnvironmentColor(effective);
                 } catch (e) {
                     toast(`Could not save background color: ${e.message}`, 'error');

@@ -47,6 +47,7 @@ export const DEFAULT_FIXTURES = {
 
     // Server identity (status bar / shell).
     'GET /server/version': '4.5.0',
+    'GET /server/id': 'e2e-server-1',
     'GET /server/timezone': 'EST (UTC -5)',
     'GET /server/settings': { serverSettings: { serverName: 'E2E Engine', environmentName: 'test' } },
     'GET /server/about': '',

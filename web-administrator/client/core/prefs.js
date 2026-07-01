@@ -3,10 +3,14 @@
  * Administrator settings panel). These are per-browser, stored in localStorage —
  * only the settings that actually map to web-admin behavior are kept; the
  * Swing panel's RSyntaxTextArea/editor shortcut settings do not apply (Monaco
- * manages its own).
+ * manages its own). Namespaced per engine AND per user (scopedKey) so a different
+ * engine, or a different user on the same browser, keeps separate settings.
  */
 
-const KEY = 'webadmin-prefs';
+import { scopedKey } from './store.js';
+
+const BASE_KEY = 'webadmin-prefs';
+const storageKey = () => scopedKey(BASE_KEY);
 
 export const PREF_DEFAULTS = {
     // System Preferences
@@ -21,11 +25,14 @@ export const PREF_DEFAULTS = {
 };
 
 let cache = null;
+let cacheKey = null;   // storageKey the cache belongs to; re-reads when the server namespace changes
 
 function all() {
-    if (cache) return cache;
-    try { cache = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
+    const key = storageKey();
+    if (cache && cacheKey === key) return cache;
+    try { cache = { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(key) || '{}') }; }
     catch { cache = { ...PREF_DEFAULTS }; }
+    cacheKey = key;
     return cache;
 }
 
@@ -38,11 +45,13 @@ export function getPref(key) {
 /** Merge and persist a set of preferences. */
 export function setPrefs(obj) {
     cache = { ...all(), ...obj };
-    try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch { /* private mode */ }
+    cacheKey = storageKey();
+    try { localStorage.setItem(storageKey(), JSON.stringify(cache)); } catch { /* private mode */ }
 }
 
 /** Reset all preferences to their defaults. */
 export function resetPrefs() {
     cache = { ...PREF_DEFAULTS };
-    try { localStorage.removeItem(KEY); } catch { /* private mode */ }
+    cacheKey = storageKey();
+    try { localStorage.removeItem(storageKey()); } catch { /* private mode */ }
 }
