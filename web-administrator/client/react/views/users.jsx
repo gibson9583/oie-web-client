@@ -6,37 +6,19 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { h, toast, confirmDialog, contextMenu, modal, field, textInput, fmtDate } from '@oie/web-ui';
+import { h, toast, confirmDialog, contextMenu, modal, fmtDate } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
-import { passwordRequirementHints } from '../../core/passwords.js';
+import {
+    USER_FIELDS, userForm, passwordFields, passwordViolations,
+    openEditUserModal, openChangePasswordModal
+} from './user-modals.js';
 
 export function register(platform) {
     platform.registerNavItem({ id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2, task: 'doShowUsers' });
     platform.registerView('/users', reactView(UsersView), { title: 'Users' });
-}
-
-/* Fields editable in the web UI; everything else on the User object is
-   preserved on round-trip. */
-const USER_FIELDS = [
-    { key: 'username', label: 'Username' },
-    { key: 'firstName', label: 'First Name' },
-    { key: 'lastName', label: 'Last Name' },
-    { key: 'organization', label: 'Organization' },
-    { key: 'email', label: 'Email' },
-    { key: 'phoneNumber', label: 'Phone' }
-];
-
-function passwordViolations(result) {
-    return api.asList(result, 'string').map(String).filter(s => s.trim());
-}
-
-/* A label with a red required-asterisk — Swing's mandatory-field marker
-   (UserEditPanel asterisk labels). */
-function req(label) {
-    return h('span', label + ' ', h('span', { style: { color: 'var(--err, #d9534f)' } }, '*'));
 }
 
 const COLUMNS = [
@@ -55,41 +37,6 @@ const COLUMNS = [
         render: (u) => fmtDate(u.lastLogin)
     }
 ];
-
-/* ---- imperative form helpers (reused verbatim) ---- */
-
-function userForm(user = {}) {
-    const inputs = {};
-    const grid = h('div.form-grid');
-    for (const def of USER_FIELDS) {
-        inputs[def.key] = textInput(user[def.key] ?? '');
-        // Username is the only always-required profile field (Swing UserEditPanel).
-        grid.appendChild(field(def.key === 'username' ? req(def.label) : def.label, inputs[def.key]));
-    }
-    return { grid, inputs };
-}
-
-function passwordFields() {
-    const password = h('input', { type: 'password' });
-    const confirm = h('input', { type: 'password' });
-    // Show the configured policy up front (the engine still enforces on submit).
-    const hint = h('div.hint', { class: 'mt-1.5' });
-    api.server.passwordRequirements()
-        .then((reqs) => { const hs = passwordRequirementHints(reqs); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
-        .catch(() => { /* requirements unavailable */ });
-    return {
-        password, confirm,
-        // Password + Confirm are required when setting a password (Swing New User).
-        grid: h('div',
-            h('div.form-grid', field(req('Password'), password), field(req('Confirm Password'), confirm)),
-            hint),
-        validate() {
-            if (!password.value) { toast('Password is required', 'warn'); return false; }
-            if (password.value !== confirm.value) { toast('Passwords do not match', 'warn'); return false; }
-            return true;
-        }
-    };
-}
 
 function UsersView() {
     const [users, setUsers] = useState([]);
@@ -156,60 +103,13 @@ function UsersView() {
     function editTask(selected) {
         const user = selected || single();
         if (!user) { toast('Select a user first', 'warn'); return; }
-        const form = userForm(user);
-        modal({
-            title: `Edit User — ${user.username}`,
-            size: 'wide',
-            body: form.grid,
-            buttons: [
-                { label: 'Cancel' },
-                {
-                    label: 'Save', primary: true,
-                    onClick: async () => {
-                        const username = form.inputs.username.value.trim();
-                        if (!username) { toast('Username is required', 'warn'); return false; }
-                        try {
-                            for (const def of USER_FIELDS) user[def.key] = form.inputs[def.key].value.trim();
-                            await api.users.update(user.id, user);
-                            toast(`User "${username}" saved`);
-                            refresh();
-                            return true;
-                        } catch (e) {
-                            toast(e.message, 'error');
-                            return false;
-                        }
-                    }
-                }
-            ]
-        });
+        openEditUserModal(user, { onSaved: refresh });
     }
 
     function passwordTask(selected) {
         const user = selected || single();
         if (!user) { toast('Select a user first', 'warn'); return; }
-        const pw = passwordFields();
-        modal({
-            title: `Change Password — ${user.username}`,
-            body: pw.grid,
-            buttons: [
-                { label: 'Cancel' },
-                {
-                    label: 'Change Password', primary: true,
-                    onClick: async () => {
-                        if (!pw.validate()) return false;
-                        try {
-                            const violations = passwordViolations(await api.users.updatePassword(user.id, pw.password.value));
-                            if (violations.length) { toast(violations.join('; '), 'warn'); return false; }
-                            toast(`Password updated for "${user.username}"`);
-                            return true;
-                        } catch (e) {
-                            toast(e.message, 'error');
-                            return false;
-                        }
-                    }
-                }
-            ]
-        });
+        openChangePasswordModal(user);
     }
 
     async function deleteTask(selected) {

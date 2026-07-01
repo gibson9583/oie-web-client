@@ -17,10 +17,11 @@ import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
-import { h, icon, modal, toast } from '@oie/web-ui';
+import { h, icon, modal, toast, contextMenu } from '@oie/web-ui';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm } from './views/login.jsx';
+import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
 
 import { register as registerDashboard } from './views/dashboard.jsx';
@@ -207,10 +208,40 @@ function TopBar({ user, onLogout, serverInfo }) {
             <button className="icon-btn" title="Toggle light/dark mode" onClick={toggle}>
                 <Icon name={theme === 'light' ? 'moon' : 'sun'} />
             </button>
-            <div className="user-chip" onClick={onLogout} title="Sign out">
-                <Icon name="users" /><span>{user?.username || 'user'}</span>
-            </div>
+            <UserMenu user={user} onLogout={onLogout} />
         </header>
+    );
+}
+
+/* Top-right account menu (replaces the old logout-only chip, which read as a
+   "go to profile" button — issue #8). The chip shows who's signed in; clicking
+   opens an account menu with self-service Edit Account / Change Password, a
+   jump to Administrator Settings, and Sign out. */
+function UserMenu({ user, onLogout }) {
+    const btnRef = useRef(null);
+    const openMenu = () => {
+        const me = store.getState('user') || user;
+        const fullName = [me?.firstName, me?.lastName].filter(Boolean).join(' ');
+        const r = btnRef.current.getBoundingClientRect();
+        // Re-read the current user after a self-edit so the chip/status bar update.
+        const refreshMe = async () => {
+            try { const u = await api.auth.current(); if (u && u.username) store.setState('user', u); }
+            catch { /* keep current */ }
+        };
+        contextMenu(r.right, r.bottom + 4, [
+            { header: true, label: me?.username || 'user', sub: fullName || null },
+            '-',
+            { label: 'Edit Account', icon: 'edit', onClick: () => openEditUserModal(store.getState('user') || me, { onSaved: refreshMe }) },
+            { label: 'Change Password', icon: 'key', onClick: () => openChangePasswordModal(store.getState('user') || me) },
+            { label: 'Settings', icon: 'settings', task: 'doShowSettings', group: 'view', onClick: () => router.navigate('/settings?tab=administrator') },
+            '-',
+            { label: 'Sign out', icon: 'logout', task: 'doLogout', group: 'other', onClick: onLogout }
+        ], 'view');
+    };
+    return (
+        <button className="user-chip" ref={btnRef} onClick={openMenu} aria-haspopup="menu" title="Account">
+            <Icon name="users" /><span>{user?.username || 'user'}</span><Icon name="chevD" size={14} />
+        </button>
     );
 }
 

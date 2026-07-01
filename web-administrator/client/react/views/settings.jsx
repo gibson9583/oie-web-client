@@ -1464,19 +1464,25 @@ function TasksPane({ title, items }) {
     );
 }
 
-function SettingsView() {
-    const [active, setActive] = useState(0);
+function SettingsView({ query }) {
+    // Tab defs (built-ins + plugin panels) are stable for the view's lifetime.
+    const defsRef = useRef(null);
+    if (!defsRef.current) defsRef.current = buildTabDefs(platform);
+    const defs = defsRef.current;
+
+    // Deep-link: /settings?tab=<label> opens that tab (e.g. the account menu's
+    // "Settings" → Administrator preferences). Unknown/absent → Server (0).
+    const [active, setActive] = useState(() => {
+        const want = String(query?.tab || '').trim().toLowerCase();
+        const i = want ? defs.findIndex((d) => d.label.toLowerCase() === want) : -1;
+        return i >= 0 ? i : 0;
+    });
     const [dirty, setDirtyState] = useState(false);   // drives the unsaved-tab indicator
     const [, force] = useReducer((x) => x + 1, 0);
     // The active tab's declared task pane (title + legacy DOM items).
     const tasksRef = useRef({ title: 'Server Tasks', items: [] });
     const dirtyRef = useRef(false);
     const saveRef = useRef(null);   // the active tab's save(), if it supports saving
-
-    // Tab defs (built-ins + plugin panels) are stable for the view's lifetime.
-    const defsRef = useRef(null);
-    if (!defsRef.current) defsRef.current = buildTabDefs(platform);
-    const defs = defsRef.current;
 
     // setTasks is what each legacy builder calls; it captures the task spec and
     // forces a re-render of the portaled pane. ctx mirrors the vanilla shell ctx,

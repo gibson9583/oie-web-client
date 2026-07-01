@@ -349,13 +349,17 @@ code, pre, .mono { font-family: var(--font-mono); }
     display: flex;
     align-items: center;
     gap: 8px;
+    border: 0;
+    background: none;
     color: color-mix(in srgb, var(--topbar-fg) 85%, transparent);
+    font: inherit;
     font-size: 12px;
     cursor: pointer;
     padding: 5px 8px;
     border-radius: var(--radius);
 }
 .user-chip:hover { background: color-mix(in srgb, var(--topbar-fg) 12%, transparent); color: var(--topbar-fg); }
+.user-chip svg:last-child { opacity: 0.6; }   /* the dropdown caret */
 .topbar .icon-btn { color: color-mix(in srgb, var(--topbar-fg) 80%, transparent); }
 .topbar .icon-btn:hover { background: color-mix(in srgb, var(--topbar-fg) 12%, transparent); color: var(--topbar-fg); }
 
@@ -865,6 +869,9 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .ctx-menu .ctx-item:hover { background: var(--bg3); }
 .ctx-menu .ctx-item.danger { color: var(--err); }
 .ctx-menu .ctx-sep { height: 1px; background: var(--line); margin: 5px 4px; }
+.ctx-menu .ctx-head { padding: 4px 10px 7px; cursor: default; }
+.ctx-menu .ctx-head-name { font-weight: 600; color: var(--text); font-size: 12.5px; }
+.ctx-menu .ctx-head-sub { color: var(--text-dim); font-size: 11px; margin-top: 1px; }
 
 /* ---- Code editor --------------------------------------------------------------------------------------------- */
 

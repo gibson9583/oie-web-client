@@ -177,6 +177,13 @@ export function contextMenu(x, y, items, group) {
     for (const item of items) {
         if (item === '-') { menu.appendChild(h('div.ctx-sep')); continue; }
         if (item.hidden) continue;
+        // Non-interactive heading row (e.g. the account menu's "signed in as").
+        if (item.header) {
+            menu.appendChild(h('div.ctx-head',
+                h('div.ctx-head-name', item.label),
+                item.sub ? h('div.ctx-head-sub', item.sub) : null));
+            continue;
+        }
         // RBAC: hide an item the user isn't authorized for (Swing's paired popup
         // task). `group` (the task-pane key) may be set per item or for the menu.
         if (item.task && !checkTask(item.group || group, item.task)) continue;
