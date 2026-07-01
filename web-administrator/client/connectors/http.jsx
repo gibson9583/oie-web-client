@@ -340,7 +340,7 @@ const httpSender = {
                 // form-urlencoded — only disable with no body or Binary data type
                 // (matching Swing's dataTypeTextRadioActionPerformed re-enable).
                 { key: 'charset', label: 'Charset Encoding', type: 'select', options: HTTP_CHARSETS, width: '160px', disabled: (p) => !httpHasBody(p) || asBool(p.dataTypeBinary) },
-                { key: 'content', label: 'Content', type: 'textarea', rows: 8, placeholder: '${message.encodedData}', disabled: (p) => !httpHasBody(p) || httpFormUrlEncoded(p) }
+                { key: 'content', label: 'Content', type: 'textarea', rows: 8, tooltip: 'The HTTP message body.', disabled: (p) => !httpHasBody(p) || httpFormUrlEncoded(p) }
             ]} />
         );
     },
