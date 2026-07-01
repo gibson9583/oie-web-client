@@ -11,6 +11,7 @@
  */
 import { h, modal, field, textInput, select, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
+import { passwordRequirementHints } from '../core/passwords.js';
 
 const DEFAULT_OPTION = '--Select an option--';
 
@@ -300,6 +301,10 @@ function showWelcomeDialog(user) {
         const usernameInput = textInput(user.username || '', { disabled: true });
         const pwInput = h('input', { type: 'password', autocomplete: 'new-password' });
         const confirmInput = h('input', { type: 'password', autocomplete: 'new-password' });
+        const pwHint = h('div.hint.span-2');
+        api.server.passwordRequirements()
+            .then((req) => { const hs = passwordRequirementHints(req); if (hs.length) pwHint.textContent = `Password must include ${hs.join(', ')}.`; })
+            .catch(() => { /* requirements unavailable */ });
         const firstName = textInput(user.firstName || '');
         const lastName = textInput(user.lastName || '');
         const email = textInput(user.email || '');
@@ -328,6 +333,7 @@ function showWelcomeDialog(user) {
                 field('Username', usernameInput),
                 field(req('New Password'), pwInput),
                 field(req('Confirm New Password'), confirmInput),
+                pwHint,
                 field('First Name', firstName),
                 field('Last Name', lastName),
                 field('Email', email),

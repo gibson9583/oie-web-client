@@ -24,3 +24,40 @@ test('Users view lists users and gates task actions on selection', async ({ page
     await expect(page.getByRole('button', { name: 'Edit User' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Delete User' })).toBeVisible();
 });
+
+async function openNewUser(page) {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Users', exact: true }).click();
+    await page.getByRole('button', { name: 'New User' }).click();
+}
+
+test('New User is blocked (and not created) when the password violates the policy', async ({ page }) => {
+    let createPosted = false;
+    await mockEngine(page, {
+        // The engine's check-only endpoint returns policy violations.
+        'POST /users/_checkPassword': { string: ['Password is too short. Minimum length is 8 characters'] },
+    });
+    page.on('request', (r) => {
+        if (r.method() === 'POST' && new URL(r.url()).pathname === '/api/users') createPosted = true;
+    });
+
+    await openNewUser(page);
+    await page.locator('.modal input[type=text]').first().fill('newguy');
+    const pw = page.locator('.modal input[type=password]');
+    await pw.nth(0).fill('weak');
+    await pw.nth(1).fill('weak');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+
+    // Blocked: the violation is surfaced, the user is NOT created, modal stays open.
+    await expect(page.getByText(/Password rejected/i)).toBeVisible();
+    expect(createPosted).toBe(false);
+    await expect(page.getByRole('button', { name: 'Create', exact: true })).toBeVisible();
+});
+
+test('New User dialog shows the configured password requirements', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /server/passwordRequirements': { minLength: 8, minUpper: 1, minLower: 0, minNumeric: 1, minSpecial: 0 },
+    });
+    await openNewUser(page);
+    await expect(page.getByText(/at least 8 characters, 1 uppercase letter, 1 number/i)).toBeVisible();
+});

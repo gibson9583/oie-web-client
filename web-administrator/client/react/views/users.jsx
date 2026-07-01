@@ -11,6 +11,7 @@ import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
+import { passwordRequirementHints } from '../../core/passwords.js';
 
 export function register(platform) {
     platform.registerNavItem({ id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2, task: 'doShowUsers' });
@@ -64,11 +65,16 @@ function userForm(user = {}) {
 function passwordFields() {
     const password = h('input', { type: 'password' });
     const confirm = h('input', { type: 'password' });
+    // Show the configured policy up front (the engine still enforces on submit).
+    const hint = h('div.hint', { class: 'mt-1.5' });
+    api.server.passwordRequirements()
+        .then((req) => { const hs = passwordRequirementHints(req); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
+        .catch(() => { /* requirements unavailable */ });
     return {
         password, confirm,
-        grid: h('div.form-grid',
-            field('Password', password),
-            field('Confirm Password', confirm)),
+        grid: h('div',
+            h('div.form-grid', field('Password', password), field('Confirm Password', confirm)),
+            hint),
         validate() {
             if (!password.value) { toast('Password is required', 'warn'); return false; }
             if (password.value !== confirm.value) { toast('Passwords do not match', 'warn'); return false; }
@@ -111,6 +117,13 @@ function UsersView() {
                         if (!username) { toast('Username is required', 'warn'); return false; }
                         if (!pw.validate()) return false;
                         try {
+                            // Enforce the password policy BEFORE creating the user
+                            // (Swing checks first) — otherwise a rejected password
+                            // leaves a passwordless user behind and the requirement
+                            // is effectively ignored.
+                            const violations = passwordViolations(await api.users.checkPassword(pw.password.value));
+                            if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
+
                             const user = {};
                             for (const def of USER_FIELDS) user[def.key] = form.inputs[def.key].value.trim();
                             user.username = username;
@@ -118,12 +131,8 @@ function UsersView() {
                             const list = await api.users.list();
                             const created = list.find(u => u.username === username);
                             if (!created) throw new Error('User was created but could not be found to set the password');
-                            const violations = passwordViolations(await api.users.updatePassword(created.id, pw.password.value));
-                            if (violations.length) {
-                                toast(`User created, but the password was rejected: ${violations.join('; ')}. Use Change Password to set one.`, 'warn');
-                            } else {
-                                toast(`User "${username}" created`);
-                            }
+                            await api.users.updatePassword(created.id, pw.password.value);
+                            toast(`User "${username}" created`);
                             refresh();
                             return true;
                         } catch (e) {
