@@ -61,3 +61,15 @@ test('New User dialog shows the configured password requirements', async ({ page
     await openNewUser(page);
     await expect(page.getByText(/at least 8 characters, 1 uppercase letter, 1 number/i)).toBeVisible();
 });
+
+test('New User dialog marks the mandatory fields (Username, Password, Confirm) like Swing', async ({ page }) => {
+    await mockEngine(page);
+    await openNewUser(page);
+    const modal = page.locator('.modal');
+    // Exactly three required-asterisk markers: Username, Password, Confirm Password
+    // (the optional profile fields — First/Last Name, Email, Organization, Phone —
+    // carry none, matching Swing's allRequired=false for the New User dialog).
+    await expect(modal.getByText('*', { exact: true })).toHaveCount(3);
+    // Username specifically is marked (it's the only always-required profile field).
+    await expect(modal.locator('.field', { hasText: 'Username' }).getByText('*', { exact: true })).toBeVisible();
+});

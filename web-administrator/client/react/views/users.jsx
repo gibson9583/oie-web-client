@@ -33,6 +33,12 @@ function passwordViolations(result) {
     return api.asList(result, 'string').map(String).filter(s => s.trim());
 }
 
+/* A label with a red required-asterisk — Swing's mandatory-field marker
+   (UserEditPanel asterisk labels). */
+function req(label) {
+    return h('span', label + ' ', h('span', { style: { color: 'var(--err, #d9534f)' } }, '*'));
+}
+
 const COLUMNS = [
     { key: 'username', label: 'Username', render: (u) => u.username || '' },
     { key: 'firstName', label: 'First Name', render: (u) => u.firstName || '' },
@@ -57,7 +63,8 @@ function userForm(user = {}) {
     const grid = h('div.form-grid');
     for (const def of USER_FIELDS) {
         inputs[def.key] = textInput(user[def.key] ?? '');
-        grid.appendChild(field(def.label, inputs[def.key]));
+        // Username is the only always-required profile field (Swing UserEditPanel).
+        grid.appendChild(field(def.key === 'username' ? req(def.label) : def.label, inputs[def.key]));
     }
     return { grid, inputs };
 }
@@ -68,12 +75,13 @@ function passwordFields() {
     // Show the configured policy up front (the engine still enforces on submit).
     const hint = h('div.hint', { class: 'mt-1.5' });
     api.server.passwordRequirements()
-        .then((req) => { const hs = passwordRequirementHints(req); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
+        .then((reqs) => { const hs = passwordRequirementHints(reqs); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
         .catch(() => { /* requirements unavailable */ });
     return {
         password, confirm,
+        // Password + Confirm are required when setting a password (Swing New User).
         grid: h('div',
-            h('div.form-grid', field('Password', password), field('Confirm Password', confirm)),
+            h('div.form-grid', field(req('Password'), password), field(req('Confirm Password'), confirm)),
             hint),
         validate() {
             if (!password.value) { toast('Password is required', 'warn'); return false; }
