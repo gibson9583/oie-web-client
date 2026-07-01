@@ -1,6 +1,6 @@
 import { React } from "./react-platform.js";
 import { h, modal, textInput, select, icon, toast, clear, confirmDialog } from "@oie/web-ui";
-import { ConnectorForm, PollSection, asBool, YES_NO, defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, CHARSETS } from "./react-forms.js";
+import { ConnectorForm, PollSection, asBool, YES_NO, defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, CHARSETS, requireFields } from "./react-forms.js";
 import api from "../core/api.js";
 const DRIVER_DEFAULT = "Please Select One";
 let driversPromise = null;
@@ -311,6 +311,17 @@ const databaseReader = {
         disabled: (p) => Number(p.updateMode) === 1
       }
     ] }));
+  },
+  // Swing DatabaseReader.checkProperties: URL required unless Use JavaScript; the
+  // SQL/JavaScript select is always required; the post-process SQL/script is
+  // required unless Run Post-Process = Never (UPDATE_NEVER = 1); Driver required.
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "url", label: "URL", when: (p) => !asBool(p.useScript) },
+      { key: "select", label: "SQL" },
+      { key: "update", label: "Post-Process SQL", when: (p) => Number(p.updateMode) !== 1 },
+      { key: "driver", label: "Driver" }
+    ]);
   }
 };
 const databaseWriter = {
@@ -359,6 +370,15 @@ const databaseWriter = {
         language: (p) => asBool(p.useScript) ? "javascript" : "sql"
       }
     ] });
+  },
+  // Swing DatabaseWriter.checkProperties: URL required unless Use JavaScript; the
+  // SQL/JavaScript query is always required; Driver required (must not be blank).
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "url", label: "URL", when: (p) => !asBool(p.useScript) },
+      { key: "query", label: "SQL" },
+      { key: "driver", label: "Driver" }
+    ]);
   }
 };
 function register(platform) {

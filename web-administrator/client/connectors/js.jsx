@@ -8,7 +8,7 @@
 import { React } from './react-platform.js';
 import {
     ConnectorForm, PollSection,
-    defaultSourceProperties, defaultDestinationProperties, defaultPollProperties
+    defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, requireFields
 } from './react-forms.js';
 
 const javascriptReader = {
@@ -35,6 +35,12 @@ const javascriptReader = {
                 ]} />
             </div>
         );
+    },
+    // Swing JavaScriptReader.checkProperties: script must not be empty.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'script', label: 'JavaScript' }
+        ]);
     }
 };
 
@@ -58,6 +64,12 @@ const javascriptWriter = {
                 }
             ]} />
         );
+    },
+    // Swing JavaScriptWriter.checkProperties: script must not be empty.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'script', label: 'JavaScript' }
+        ]);
     }
 };
 

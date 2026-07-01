@@ -11,7 +11,7 @@ import { React } from './react-platform.js';
 import { checkbox, h, clear, textInput, select, icon } from '@oie/web-ui';
 import {
     ConnectorForm, connectorTestButton, portsInUseButton, listenerAddressField, asBool, YES_NO,
-    defaultSourceProperties, defaultDestinationProperties, defaultListenerProperties, CHARSETS
+    defaultSourceProperties, defaultDestinationProperties, defaultListenerProperties, CHARSETS, requireFields
 } from './react-forms.js';
 
 // Swing charset combos always include "default" (index 0 -> DEFAULT_ENCODING);
@@ -194,6 +194,19 @@ const httpListener = {
                 { type: 'custom', label: 'Static Resources', span: true, render: (p, ctx) => staticResourcesTable(p, ctx.onChange) }
             ]} />
         );
+    },
+    // Swing ListenerSettingsPanel.checkProperties: Local Address + Local Port always required.
+    // HttpListener.checkProperties: Receive Timeout always required; Response Content Type
+    // required unless the source Response variable is "None"; the response-headers Map
+    // Variable required when Use Map is selected (isUseHeadersVariable + blank variable).
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'listenerConnectorProperties.host', label: 'Local Address' },
+            { key: 'listenerConnectorProperties.port', label: 'Local Port' },
+            { key: 'timeout', label: 'Receive Timeout' },
+            { key: 'responseContentType', label: 'Response Content Type', when: (p) => String((p.sourceConnectorProperties || {}).responseVariable || '').toLowerCase() !== 'none' },
+            { key: 'responseHeadersVariable', label: 'Response Headers Map Variable', when: (p) => asBool(p.useResponseHeadersVariable) }
+        ]);
     }
 };
 
@@ -330,6 +343,16 @@ const httpSender = {
                 { key: 'content', label: 'Content', type: 'textarea', rows: 8, placeholder: '${message.encodedData}', disabled: (p) => !httpHasBody(p) || httpFormUrlEncoded(p) }
             ]} />
         );
+    },
+    // Swing HttpSender.checkProperties: URL + Send Timeout always required; proxy
+    // address/port required when Use Proxy Server is on.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'host', label: 'URL' },
+            { key: 'socketTimeout', label: 'Send Timeout' },
+            { key: 'proxyAddress', label: 'Proxy Address', when: (p) => asBool(p.useProxyServer) },
+            { key: 'proxyPort', label: 'Proxy Port', when: (p) => asBool(p.useProxyServer) }
+        ]);
     }
 };
 

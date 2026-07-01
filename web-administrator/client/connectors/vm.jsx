@@ -47,7 +47,9 @@ const channelReader = {
                 </div>
             </div>
         );
-    }
+    },
+    // Swing ChannelReader.checkProperties() has no required-field checks (returns true).
+    validate() { return []; }
 };
 
 /* Channel id→name map is fetched once and cached for the editor's lifetime so a
@@ -245,7 +247,9 @@ const channelWriter = {
                 { key: 'channelTemplate', label: 'Template', type: 'code', minHeight: '340px' }
             ]} />
         );
-    }
+    },
+    // Swing ChannelWriter.checkProperties() has no required-field checks (returns true).
+    validate() { return []; }
 };
 
 export function register(platform) {

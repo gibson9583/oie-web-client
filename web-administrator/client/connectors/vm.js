@@ -27,6 +27,10 @@ const channelReader = {
   },
   component() {
     return /* @__PURE__ */ React.createElement("div", { className: "cform-section" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, "Channel Reader Settings"), /* @__PURE__ */ React.createElement("div", { className: "hint py-0.5 px-0" }, "Channel Reader listens for messages routed from other channels on this server. It has no connector-specific settings."));
+  },
+  // Swing ChannelReader.checkProperties() has no required-field checks (returns true).
+  validate() {
+    return [];
   }
 };
 let channelNamesPromise = null;
@@ -186,6 +190,10 @@ const channelWriter = {
       },
       { key: "channelTemplate", label: "Template", type: "code", minHeight: "340px" }
     ] });
+  },
+  // Swing ChannelWriter.checkProperties() has no required-field checks (returns true).
+  validate() {
+    return [];
   }
 };
 function register(platform) {

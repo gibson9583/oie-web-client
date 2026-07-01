@@ -36,6 +36,26 @@ export function setPath(obj, path, value) {
     return obj;
 }
 
+/* Required-field validation for a connector, mirroring Swing's per-panel
+   checkProperties(): each spec is { key, label, when? } where `key` is a
+   (possibly dotted) property path and `when(properties)` gates a conditional
+   requirement (e.g. Proxy Address only when Use Proxy is on). Returns an array
+   of { key, label } for every blank required field. Connectors expose this as
+   their def.validate(properties); the channel editor runs it on Save and on the
+   Validate Connector task — blocking on any error and red-highlighting the field
+   (via its key) on the current screen, like Swing's checkProperties(highlight). */
+export function requireFields(properties, specs) {
+    const errors = [];
+    for (const spec of specs) {
+        if (typeof spec.when === 'function' && !spec.when(properties)) continue;
+        const v = getPath(properties, spec.key);
+        if (v === undefined || v === null || String(v).trim() === '') {
+            errors.push({ key: spec.key, label: spec.label });
+        }
+    }
+    return errors;
+}
+
 /* Listener address picker (shared Swing ListenerSettingsPanel): "All interfaces"
    (host 0.0.0.0, address field disabled) vs "Specific interface:" (free-text
    address). Returns a custom-field def for the connector form; pass the dotted

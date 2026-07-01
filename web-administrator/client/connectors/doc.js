@@ -1,6 +1,6 @@
 import { React } from "./react-platform.js";
 import { h, select, taskButton, toast } from "@oie/web-ui";
-import { ConnectorForm, asBool, YES_NO, defaultDestinationProperties, successToast, apiErrorMessage } from "./react-forms.js";
+import { ConnectorForm, asBool, YES_NO, defaultDestinationProperties, successToast, apiErrorMessage, requireFields } from "./react-forms.js";
 import { post } from "../core/api.js";
 const writesFile = (p) => String(p.output ?? "FILE").toUpperCase() !== "ATTACHMENT";
 const isRtf = (p) => String(p.documentType ?? "pdf").toLowerCase() === "rtf";
@@ -188,6 +188,19 @@ const documentWriter = {
       { label: "Page Size", type: "custom", render: pageSizeRow },
       { key: "template", label: "HTML Template", type: "code", language: "html", minHeight: "180px" }
     ] });
+  },
+  // Swing DocumentWriter.checkProperties: Directory/File Name required unless Output =
+  // Attachment (writesFile); HTML Template always required; Password required when
+  // Encrypted = Yes; Page Width/Height must not be blank (numeric/range check skipped).
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "host", label: "Directory", when: writesFile },
+      { key: "outputPattern", label: "File Name", when: writesFile },
+      { key: "template", label: "HTML Template" },
+      { key: "password", label: "Password", when: (p) => asBool(p.encrypt) },
+      { key: "pageWidth", label: "Page Width" },
+      { key: "pageHeight", label: "Page Height" }
+    ]);
   }
 };
 function register(platform) {

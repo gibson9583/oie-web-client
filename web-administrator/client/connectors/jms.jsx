@@ -12,7 +12,7 @@ import { h, clear, select, icon, checkbox, toast, confirmDialog, promptDialog } 
 import * as api from '../core/api.js';
 import {
     ConnectorForm, asBool, YES_NO, writeMapEntries, apiErrorMessage,
-    defaultSourceProperties, defaultDestinationProperties
+    defaultSourceProperties, defaultDestinationProperties, requireFields
 } from './react-forms.js';
 
 /* JmsConnectorProperties constructor defaults (shared by listener/sender). */
@@ -209,6 +209,20 @@ const jmsListener = {
                 { key: 'selector', label: 'Selector', type: 'text', width: '320px' }
             ]} />
         );
+    },
+    // Swing JmsConnectorPanel.checkProperties (shared, connectorType == TYPE_LISTENER):
+    // when JNDI -> provider URL / initial context factory / connection factory name required;
+    // when not JNDI -> connection factory class required, plus client ID required only when the
+    // destination is a durable Topic; destination name always required.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'jndiProviderUrl', label: 'Provider URL', when: usingJndi },
+            { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', when: usingJndi },
+            { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', when: usingJndi },
+            { key: 'connectionFactoryClass', label: 'Connection Factory Class', when: (p) => !usingJndi(p) },
+            { key: 'clientId', label: 'Client ID', when: (p) => !usingJndi(p) && asBool(p.topic) && asBool(p.durableTopic) },
+            { key: 'destinationName', label: 'Destination Name' }
+        ]);
     }
 };
 
@@ -237,6 +251,19 @@ const jmsSender = {
                 { key: 'template', label: 'Template', type: 'code', minHeight: '140px' }
             ]} />
         );
+    },
+    // Swing JmsConnectorPanel.checkProperties (shared, connectorType == TYPE_SENDER):
+    // when JNDI -> provider URL / initial context factory / connection factory name required;
+    // when not JNDI -> connection factory class required; destination name always required.
+    // (The durable-topic client ID requirement is listener-only.)
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'jndiProviderUrl', label: 'Provider URL', when: usingJndi },
+            { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', when: usingJndi },
+            { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', when: usingJndi },
+            { key: 'connectionFactoryClass', label: 'Connection Factory Class', when: (p) => !usingJndi(p) },
+            { key: 'destinationName', label: 'Destination Name' }
+        ]);
     }
 };
 

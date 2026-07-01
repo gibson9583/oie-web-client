@@ -11,7 +11,7 @@ import { React } from './react-platform.js';
 import { checkbox } from '@oie/web-ui';
 import {
     ConnectorForm, TransmissionModePanel, connectorTestButton, portsInUseButton, listenerAddressField, asBool, YES_NO,
-    defaultSourceProperties, defaultDestinationProperties, defaultListenerProperties, CHARSETS
+    defaultSourceProperties, defaultDestinationProperties, defaultListenerProperties, CHARSETS, requireFields
 } from './react-forms.js';
 
 function defaultFrameMode() {
@@ -108,6 +108,25 @@ const tcpListener = {
                 ]} />
             </div>
         );
+    },
+    // Shared ListenerSettingsPanel.checkProperties: Local Address + Local Port always
+    // required. TcpListener.checkProperties: Remote Address/Port + Reconnect Interval
+    // required in Client mode (!serverMode); Receive Timeout, Buffer Size and Max
+    // Connections always required; Response Address/Port required unless Respond on
+    // New Connection is No (0). Numeric/range checks (e.g. maxConnections > 0) skipped.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'listenerConnectorProperties.host', label: 'Local Address' },
+            { key: 'listenerConnectorProperties.port', label: 'Local Port' },
+            { key: 'remoteAddress', label: 'Remote Address', when: (p) => !asBool(p.serverMode) },
+            { key: 'remotePort', label: 'Remote Port', when: (p) => !asBool(p.serverMode) },
+            { key: 'reconnectInterval', label: 'Reconnect Interval (ms)', when: (p) => !asBool(p.serverMode) },
+            { key: 'receiveTimeout', label: 'Receive Timeout (ms)' },
+            { key: 'bufferSize', label: 'Buffer Size (bytes)' },
+            { key: 'maxConnections', label: 'Max Connections' },
+            { key: 'responseAddress', label: 'Response Address', when: (p) => Number(p.respondOnNewConnection) !== 0 },
+            { key: 'responsePort', label: 'Response Port', when: (p) => Number(p.respondOnNewConnection) !== 0 }
+        ]);
     }
 };
 
@@ -196,6 +215,24 @@ const tcpSender = {
                 ]} />
             </div>
         );
+    },
+    // Swing TcpSender.checkProperties: Remote Address/Port required in Client mode
+    // (!serverMode); Local Address/Port required in Server mode or when Override Local
+    // Binding is on; Max Connections required in Server mode; Send Timeout required in
+    // Client mode with Keep Connection Open; Buffer Size, Response Timeout and Template
+    // always required. Numeric/range checks (e.g. maxConnections > 0) skipped.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'remoteAddress', label: 'Remote Address', when: (p) => !asBool(p.serverMode) },
+            { key: 'remotePort', label: 'Remote Port', when: (p) => !asBool(p.serverMode) },
+            { key: 'localAddress', label: 'Local Address', when: (p) => asBool(p.serverMode) || asBool(p.overrideLocalBinding) },
+            { key: 'localPort', label: 'Local Port', when: (p) => asBool(p.serverMode) || asBool(p.overrideLocalBinding) },
+            { key: 'maxConnections', label: 'Max Connections', when: (p) => asBool(p.serverMode) },
+            { key: 'sendTimeout', label: 'Send Timeout (ms)', when: (p) => !asBool(p.serverMode) && asBool(p.keepConnectionOpen) },
+            { key: 'bufferSize', label: 'Buffer Size (bytes)' },
+            { key: 'responseTimeout', label: 'Response Timeout (ms)' },
+            { key: 'template', label: 'Template' }
+        ]);
     }
 };
 

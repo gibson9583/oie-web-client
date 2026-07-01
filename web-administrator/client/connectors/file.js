@@ -9,7 +9,8 @@ import {
   defaultSourceProperties,
   defaultDestinationProperties,
   defaultPollProperties,
-  CHARSETS
+  CHARSETS,
+  requireFields
 } from "./react-forms.js";
 const SCHEMES = [
   { value: "FILE", label: "File" },
@@ -25,6 +26,8 @@ const secureEnabled = (p) => p.scheme === "WEBDAV";
 const passiveEnabled = (p) => p.scheme === "FTP";
 const validateEnabled = (p) => p.scheme === "FTP";
 const credentialsDisabled = (p) => p.scheme === "FILE" || anonymousEnabled(p) && asBool(p.anonymous);
+const credentialsRequired = (p) => !asBool(p.anonymous) && (p.scheme !== "S3" || !asBool(p.schemeProperties && p.schemeProperties.useDefaultCredentialProviderChain));
+const passwordRequired = (p) => credentialsRequired(p) && !(p.scheme === "SFTP" && !asBool(p.schemeProperties && p.schemeProperties.passwordAuth));
 function applyAnonymous(p) {
   if (p.scheme === "S3" || asBool(p.anonymous)) {
     p.username = "";
@@ -632,6 +635,24 @@ const fileReader = {
       },
       { key: "charsetEncoding", label: "Encoding", type: "select", options: CHARSETS, width: "160px", disabled: (p) => asBool(p.binary) }
     ] }));
+  },
+  // FileReader.checkProperties / setDirHostPath: Directory (FILE) or Host
+  // (non-FILE) and Filename Filter Pattern always required; Username/Password
+  // per the shared credential rules; Timeout required for FTP/SFTP/SMB; File
+  // Age required when Check File Age=Yes; File Size minimum always required and
+  // maximum required unless Ignore Maximum is set.
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "host", label: "Directory", when: (p) => p.scheme === "FILE" },
+      { key: "host", label: "Host", when: (p) => p.scheme !== "FILE" },
+      { key: "fileFilter", label: "Filename Filter Pattern" },
+      { key: "username", label: "Username", when: credentialsRequired },
+      { key: "password", label: "Password", when: passwordRequired },
+      { key: "timeout", label: "Timeout", when: (p) => ["FTP", "SFTP", "SMB"].includes(p.scheme) },
+      { key: "fileAge", label: "File Age", when: (p) => asBool(p.checkFileAge) },
+      { key: "fileSizeMinimum", label: "File Size (bytes)" },
+      { key: "fileSizeMaximum", label: "File Size Maximum", when: (p) => !asBool(p.ignoreFileSizeMaximum) }
+    ]);
   }
 };
 const fileWriter = {
@@ -711,6 +732,22 @@ const fileWriter = {
       { section: "Template" },
       { key: "template", label: "Template", type: "code", minHeight: "140px", placeholder: "${message.encodedData}" }
     ] }));
+  },
+  // FileWriter.checkProperties / setDirHostPath: Directory (FILE) or Host
+  // (non-FILE), File Name and Template always required; Username/Password per
+  // the shared credential rules; Timeout required for FTP/SFTP/SMB. (Max Idle
+  // Time's `NumberUtils.toInt(...) < 0` check is numeric/range, not a blank
+  // check, so it is intentionally skipped here.)
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "host", label: "Directory", when: (p) => p.scheme === "FILE" },
+      { key: "host", label: "Host", when: (p) => p.scheme !== "FILE" },
+      { key: "outputPattern", label: "File Name" },
+      { key: "template", label: "Template" },
+      { key: "username", label: "Username", when: credentialsRequired },
+      { key: "password", label: "Password", when: passwordRequired },
+      { key: "timeout", label: "Timeout", when: (p) => ["FTP", "SFTP", "SMB"].includes(p.scheme) }
+    ]);
   }
 };
 function register(platform) {

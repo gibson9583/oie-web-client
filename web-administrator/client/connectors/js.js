@@ -4,7 +4,8 @@ import {
   PollSection,
   defaultSourceProperties,
   defaultDestinationProperties,
-  defaultPollProperties
+  defaultPollProperties,
+  requireFields
 } from "./react-forms.js";
 const javascriptReader = {
   defaults(version) {
@@ -29,6 +30,12 @@ const javascriptReader = {
         placeholder: "// Return one or more messages to be processed"
       }
     ] }));
+  },
+  // Swing JavaScriptReader.checkProperties: script must not be empty.
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "script", label: "JavaScript" }
+    ]);
   }
 };
 const javascriptWriter = {
@@ -53,6 +60,12 @@ const javascriptWriter = {
         placeholder: "// Write your script here. Return a Response or a status to set the message status."
       }
     ] });
+  },
+  // Swing JavaScriptWriter.checkProperties: script must not be empty.
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "script", label: "JavaScript" }
+    ]);
   }
 };
 function register(platform) {

@@ -211,6 +211,10 @@ function ChannelEditorView({ params, query }) {
                 <RailPane title="Channel Tasks" paneKey="tasks:Channel Tasks" group="channelEdit">
                     <div className="taskbar" data-pane-title="Channel Tasks">
                         {t && ts.dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveChannel" onClick={t.save} />}
+                        {/* Validate Connector (Swing CHANNEL_EDIT_VALIDATE, idx 1) — shown
+                            whenever a connector is visible (Source/Destinations tab), not
+                            gated on changes. The same check also auto-runs in save(). */}
+                        {t && (ts.tab === 'Source' || ts.tab === 'Destinations') && <TaskButton label="Validate Connector" icon="check" task="doValidate" onClick={t.validateConnector} />}
                         {t && <TaskButton label="Deploy Channel" icon="deploy" task="doDeployFromChannelView" onClick={t.deploy} />}
                         {t && <TaskButton label="Debug Channel" icon="deploy" task="doDebugDeployFromChannelView" onClick={t.openDebugDeployModal} />}
                         {t && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={t.exportChannel} />}
@@ -385,15 +389,24 @@ function buildBody(params, query, onTasksChange, returning) {
     }
 
     async function save() {
-        const problems = oie.validateChannel(channel);
+        const problems = [...oie.validateChannel(channel), ...validateConnectors(channel)];
         if (problems.length) {
+            highlightInvalidFields();
             modal({
                 title: 'Cannot Save Channel',
                 body: h('div',
-                    h('p', 'Fix the following before saving — the engine would reject this channel:'),
+                    h('p', 'Please fix the following before saving:'),
                     h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
                 buttons: [{ label: 'OK' }]
             });
+            return false;
+        }
+        // Swing parity (Frame.checkChannelName, run from saveChanges): block the
+        // save on a too-long / illegal / duplicate channel name, with the same
+        // warnings — otherwise the engine silently accepts a duplicate name.
+        const nameError = await checkChannelName();
+        if (nameError) {
+            modal({ title: 'Cannot Save Channel', body: h('div', nameError), buttons: [{ label: 'OK' }] });
             return false;
         }
         try {
@@ -439,15 +452,84 @@ function buildBody(params, query, onTasksChange, returning) {
         }
     }
 
+    // Swing Frame.checkChannelName: name length (≤40), allowed characters
+    // (alphanumeric + hyphen/underscore/space), and case-insensitive uniqueness
+    // against every OTHER channel. Returns a warning string, or null when valid.
+    // (Empty names are already caught by oie.validateChannel.)
+    async function checkChannelName() {
+        const name = String(channel.name ?? '');
+        if (name.length > 40) return 'Channel name cannot be longer than 40 characters.';
+        if (!/^[A-Za-z0-9_\s-]*$/.test(name)) {
+            return 'Channel name cannot have special characters besides hyphen, underscore, and space.';
+        }
+        try {
+            const res = await api.channels.idsAndNames();
+            for (const en of api.asList(res && res.entry)) {
+                const pair = api.asList(en && en.string);   // [id, name]
+                if (pair.length >= 2 && String(pair[0]) !== channel.id
+                    && String(pair[1]).toLowerCase() === name.toLowerCase()) {
+                    return `Channel "${name}" already exists.`;
+                }
+            }
+        } catch { /* names unavailable — don't block the save on a lookup failure */ }
+        return null;
+    }
+
+    // Per-connector required-field validation (Swing's per-panel checkProperties):
+    // look up each connector's registered def and run its validate(properties),
+    // prefixing each message with the connector so the user knows which one. The
+    // source and every ENABLED destination are checked (matching checkAllForms).
+    function validateConnectors(channel) {
+        const out = [];
+        const run = (connector, mode, label) => {
+            if (!connector || !connector.transportName) return;
+            const def = platform.connectorPanel(connector.transportName, mode);
+            if (!def || typeof def.validate !== 'function') return;
+            for (const err of (def.validate(connector.properties) || [])) out.push(`${label}: ${err.label} is required.`);
+        };
+        run(channel.sourceConnector, 'SOURCE', `Source (${channel.sourceConnector?.transportName || 'Source'})`);
+        for (const d of oie.destinationsOf(channel)) {
+            if (d && (d.enabled === false || d.enabled === 'false')) continue;
+            const label = d.name ? `${d.name} (${d.transportName})` : (d.transportName || 'Destination');
+            run(d, 'DESTINATION', label);
+        }
+        return out;
+    }
+
+    function clearFieldHighlights() {
+        for (const el of document.querySelectorAll('.cform-invalid')) el.classList.remove('cform-invalid');
+    }
+
+    // Swing checkProperties(highlight=true): red-fill the blank required fields of
+    // the connector currently ON SCREEN — the source on the Source tab, the
+    // selected destination on the Destinations tab. Off-screen connectors still
+    // appear in the dialog but aren't highlighted (matching Swing). Only the active
+    // tab's connector panel is mounted, so a document query hits the visible one;
+    // each control carries data-fkey === its property key.
+    function highlightInvalidFields() {
+        clearFieldHighlights();
+        let connector = null, mode = null;
+        if (activeTab === 'Source') { connector = channel.sourceConnector; mode = 'SOURCE'; }
+        else if (activeTab === 'Destinations') { connector = destTasks.selected && destTasks.selected(); mode = 'DESTINATION'; }
+        if (!connector || !connector.transportName) return;
+        const def = platform.connectorPanel(connector.transportName, mode);
+        if (!def || typeof def.validate !== 'function') return;
+        const esc = (window.CSS && CSS.escape) ? (s) => CSS.escape(s) : (s) => String(s).replace(/["\\]/g, '\\$&');
+        for (const err of (def.validate(connector.properties) || [])) {
+            for (const el of document.querySelectorAll(`[data-fkey="${esc(err.key)}"]`)) el.classList.add('cform-invalid');
+        }
+    }
+
     // Validate Connector (Swing channelEditPopupMenu) — structural well-formedness
-    // of the channel/connectors (same check applied on save).
+    // plus each connector's required-field checks (same checks applied on save).
     function validateConnector() {
-        const problems = oie.validateChannel(channel);
-        if (!problems.length) { toast('Connector configuration is valid'); return; }
+        const problems = [...oie.validateChannel(channel), ...validateConnectors(channel)];
+        if (!problems.length) { clearFieldHighlights(); toast('Connector configuration is valid'); return; }
+        highlightInvalidFields();
         modal({
             title: 'Validation Errors',
             body: h('div',
-                h('p', 'The engine would reject this channel:'),
+                h('p', 'Please fix the following:'),
                 h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
             buttons: [{ label: 'OK' }]
         });
@@ -2687,7 +2769,7 @@ function buildBody(params, query, onTasksChange, returning) {
             destSelected: !!(destTasks.selected && destTasks.selected())
         }),
         handlers: {
-            save, deploy, openDebugDeployModal, exportChannel, backToChannels,
+            save, validateConnector, deploy, openDebugDeployModal, exportChannel, backToChannels,
             gotoElements, withCount,
             sourceStepCount: (key) => stepCount(channel.sourceConnector, key),
             destStepCount: (key) => (destTasks.stepCountOf ? destTasks.stepCountOf(key) : 0),

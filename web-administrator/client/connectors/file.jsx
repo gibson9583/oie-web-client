@@ -16,7 +16,7 @@ import { h, clear, checkbox, select, textInput } from '@oie/web-ui';
 // (rendered as custom DOM / append, matching http.jsx idioms).
 import {
     ConnectorForm, PollSection, connectorTestButton, asBool, YES_NO,
-    defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, CHARSETS
+    defaultSourceProperties, defaultDestinationProperties, defaultPollProperties, CHARSETS, requireFields
 } from './react-forms.js';
 
 const SCHEMES = [
@@ -39,6 +39,15 @@ const validateEnabled = (p) => p.scheme === 'FTP';
 /* Username/Password follow the Anonymous radios (anonymousYes/NoActionPerformed):
    disabled when scheme==FILE (no credentials) or Anonymous=Yes. */
 const credentialsDisabled = (p) => p.scheme === 'FILE' || (anonymousEnabled(p) && asBool(p.anonymous));
+
+/* Swing FileReader/FileWriter.checkProperties credential requirements (shared):
+   with Anonymous=No, Username is required unless S3 is using the default
+   credential provider chain. Password is additionally required unless SFTP is
+   using key-only auth (ignorePassword = SFTP && !passwordAuth). */
+const credentialsRequired = (p) => !asBool(p.anonymous)
+    && (p.scheme !== 'S3' || !asBool(p.schemeProperties && p.schemeProperties.useDefaultCredentialProviderChain));
+const passwordRequired = (p) => credentialsRequired(p)
+    && !(p.scheme === 'SFTP' && !asBool(p.schemeProperties && p.schemeProperties.passwordAuth));
 
 /* anonymousYesActionPerformed / anonymousNoActionPerformed forced text:
    Anonymous=Yes -> 'anonymous'/'anonymous' (''/'' for S3); S3+No clears both. */
@@ -652,6 +661,24 @@ const fileReader = {
                 ]} />
             </div>
         );
+    },
+    // FileReader.checkProperties / setDirHostPath: Directory (FILE) or Host
+    // (non-FILE) and Filename Filter Pattern always required; Username/Password
+    // per the shared credential rules; Timeout required for FTP/SFTP/SMB; File
+    // Age required when Check File Age=Yes; File Size minimum always required and
+    // maximum required unless Ignore Maximum is set.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'host', label: 'Directory', when: (p) => p.scheme === 'FILE' },
+            { key: 'host', label: 'Host', when: (p) => p.scheme !== 'FILE' },
+            { key: 'fileFilter', label: 'Filename Filter Pattern' },
+            { key: 'username', label: 'Username', when: credentialsRequired },
+            { key: 'password', label: 'Password', when: passwordRequired },
+            { key: 'timeout', label: 'Timeout', when: (p) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) },
+            { key: 'fileAge', label: 'File Age', when: (p) => asBool(p.checkFileAge) },
+            { key: 'fileSizeMinimum', label: 'File Size (bytes)' },
+            { key: 'fileSizeMaximum', label: 'File Size Maximum', when: (p) => !asBool(p.ignoreFileSizeMaximum) }
+        ]);
     }
 };
 
@@ -724,6 +751,22 @@ const fileWriter = {
                 ]} />
             </div>
         );
+    },
+    // FileWriter.checkProperties / setDirHostPath: Directory (FILE) or Host
+    // (non-FILE), File Name and Template always required; Username/Password per
+    // the shared credential rules; Timeout required for FTP/SFTP/SMB. (Max Idle
+    // Time's `NumberUtils.toInt(...) < 0` check is numeric/range, not a blank
+    // check, so it is intentionally skipped here.)
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'host', label: 'Directory', when: (p) => p.scheme === 'FILE' },
+            { key: 'host', label: 'Host', when: (p) => p.scheme !== 'FILE' },
+            { key: 'outputPattern', label: 'File Name' },
+            { key: 'template', label: 'Template' },
+            { key: 'username', label: 'Username', when: credentialsRequired },
+            { key: 'password', label: 'Password', when: passwordRequired },
+            { key: 'timeout', label: 'Timeout', when: (p) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) }
+        ]);
     }
 };
 

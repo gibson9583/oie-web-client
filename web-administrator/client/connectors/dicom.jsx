@@ -14,7 +14,7 @@
 import { React } from './react-platform.js';
 import {
     ConnectorForm, portsInUseButton, listenerAddressField, asBool, YES_NO,
-    defaultSourceProperties, defaultDestinationProperties, defaultListenerProperties
+    defaultSourceProperties, defaultDestinationProperties, defaultListenerProperties, requireFields
 } from './react-forms.js';
 
 const TLS_OPTIONS = [
@@ -139,6 +139,14 @@ const dicomListener = {
                 ...tlsFields()
             ]} />
         );
+    },
+    // DICOMListener.checkProperties has no required fields; the shared
+    // ListenerSettingsPanel.checkProperties requires Listener Address + Listener Port.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'listenerConnectorProperties.host', label: 'Listener Address' },
+            { key: 'listenerConnectorProperties.port', label: 'Listener Port' }
+        ]);
     }
 };
 
@@ -228,6 +236,15 @@ const dicomSender = {
                 { key: 'template', label: 'Template', type: 'code', minHeight: '120px' }
             ]} />
         );
+    },
+    // DICOMSender.checkProperties: Remote Host, Remote Port, and Template are required
+    // (host also enforces a minimum length, skipped here as a numeric/format check).
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'host', label: 'Remote Host' },
+            { key: 'port', label: 'Remote Port' },
+            { key: 'template', label: 'Template' }
+        ]);
     }
 };
 

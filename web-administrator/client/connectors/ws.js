@@ -11,7 +11,9 @@ import {
   YES_NO,
   defaultSourceProperties,
   defaultDestinationProperties,
-  defaultListenerProperties
+  defaultListenerProperties,
+  asBool,
+  requireFields
 } from "./react-forms.js";
 const WS_DEFAULT_CLASSNAME = "com.mirth.connect.connectors.ws.DefaultAcceptMessage";
 const wsIsDefaultClassName = (p) => String(p.className ?? "") === WS_DEFAULT_CLASSNAME;
@@ -92,6 +94,16 @@ const wsListener = {
         compute: (p) => wsIsDefaultClassName(p) ? "String acceptMessage(String message)" : "<Custom Web Service Methods>"
       }
     ] });
+  },
+  // Swing ListenerSettingsPanel.checkProperties: Local Address + Local Port always
+  // required. WebServiceListener.checkProperties: Service Class Name + Service Name.
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "listenerConnectorProperties.host", label: "Local Address" },
+      { key: "listenerConnectorProperties.port", label: "Local Port" },
+      { key: "className", label: "Service Class Name" },
+      { key: "serviceName", label: "Service Name" }
+    ]);
   }
 };
 const WS_DEFAULT_OPERATION = "Press Get Operations";
@@ -528,6 +540,22 @@ const wsSender = {
         render: (p) => attachmentsTable(p, onChange, !(isTrue(p.useMtom) && !isTrue(p.isUseAttachmentsVariable)))
       }
     ] });
+  },
+  // Swing WebServiceSender.checkProperties: WSDL URL, Service, Port/Endpoint, Socket
+  // Timeout and SOAP Envelope always required; Headers Map Variable required when
+  // "Use Map" is selected; Attachments List Variable required when MTOM + "Use List".
+  // (DestinationSettingsPanel.checkProperties returns true — no destination-level
+  // required fields.)
+  validate(properties) {
+    return requireFields(properties, [
+      { key: "wsdlUrl", label: "WSDL URL" },
+      { key: "service", label: "Service" },
+      { key: "port", label: "Port / Endpoint" },
+      { key: "socketTimeout", label: "Socket Timeout (ms)" },
+      { key: "envelope", label: "SOAP Envelope" },
+      { key: "headersVariable", label: "Headers Map Variable", when: (p) => asBool(p.isUseHeadersVariable) },
+      { key: "attachmentsVariable", label: "Attachments List Variable", when: (p) => asBool(p.useMtom) && asBool(p.isUseAttachmentsVariable) }
+    ]);
   }
 };
 function register(platform) {

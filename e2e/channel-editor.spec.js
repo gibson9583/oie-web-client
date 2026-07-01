@@ -198,6 +198,102 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('cell', { name: 'Channel Writer', exact: true })).toBeVisible();
     });
 
+    test('Validate Connector task shows on connector tabs and validates the channel', async ({ page }) => {
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
+
+        const validate = page.getByRole('button', { name: 'Validate Connector', exact: true });
+
+        // Not a Summary-tab task — Swing shows it only when a connector is visible.
+        await expect(validate).toHaveCount(0);
+
+        // Appears on the Source and Destinations tabs, regardless of unsaved changes.
+        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await expect(validate).toBeVisible();
+        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+        await expect(validate).toBeVisible();
+
+        // Clicking runs the same structural check save() uses; the demo channel is
+        // well-formed, so it reports success.
+        await validate.click();
+        await expect(page.getByText('Connector configuration is valid')).toBeVisible();
+    });
+
+    test('saving a channel with a duplicate name is blocked with a warning', async ({ page }) => {
+        // Another channel already owns "Taken Name" (Swing Frame.checkChannelName).
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES,
+            'GET /channels/idsAndNames': { map: { entry: [
+                { string: [CHANNEL_ID, 'Round Trip Channel'] },
+                { string: ['other-1', 'Taken Name'] },
+            ] } },
+        });
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+
+        const nameField = page.locator('.panel input[type=text]').first();
+        await expect(nameField).toHaveValue('Round Trip Channel');
+        await nameField.fill('Taken Name');
+
+        // Editing makes it dirty → Save appears; saving warns and is blocked.
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await expect(page.getByText('Channel "Taken Name" already exists.')).toBeVisible();
+        // The PUT must NOT have fired (save aborted).
+    });
+
+    test('saving is blocked when a connector required field is empty (issue #13)', async ({ page }) => {
+        // Swap the destination to an HTTP Sender with an empty URL (host).
+        const channel = structuredClone(FULL_CHANNEL);
+        const dest = channel.destinationConnectors.connector[0];
+        dest.name = 'HTTP Out';
+        dest.transportName = 'HTTP Sender';
+        dest.properties = {
+            '@class': 'com.mirth.connect.connectors.http.HttpDispatcherProperties',
+            host: '',            // the required field, left blank (the reported bug)
+            socketTimeout: '30000',
+            useProxyServer: false,
+            destinationConnectorProperties: dest.properties.destinationConnectorProperties,
+        };
+        let putCalled = false;
+        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
+        page.on('request', (r) => {
+            if (r.method() === 'PUT' && new URL(r.url()).pathname === `/api/channels/${CHANNEL_ID}`) putCalled = true;
+        });
+
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        // Dirty the channel (edit the name) so Save appears.
+        await page.locator('.panel input[type=text]').first().fill('Round Trip Channel Edited');
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+
+        // Blocked with the required-field message (name + connector type); not saved.
+        await expect(page.getByText(/HTTP Out \(HTTP Sender\): URL is required/i)).toBeVisible();
+        expect(putCalled).toBe(false);
+    });
+
+    test('validation red-highlights the empty field on the current connector screen', async ({ page }) => {
+        const channel = structuredClone(FULL_CHANNEL);
+        const dest = channel.destinationConnectors.connector[0];
+        dest.name = 'HTTP Out';
+        dest.transportName = 'HTTP Sender';
+        dest.properties = {
+            '@class': 'com.mirth.connect.connectors.http.HttpDispatcherProperties',
+            host: '', socketTimeout: '30000', useProxyServer: false,
+            destinationConnectorProperties: dest.properties.destinationConnectorProperties,
+        };
+        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+
+        // The HTTP Sender panel renders for the (auto-selected) destination; the URL
+        // field carries data-fkey="host" and starts un-highlighted.
+        const url = page.locator('[data-fkey="host"]');
+        await expect(url).toBeVisible();
+        await expect(url).not.toHaveClass(/cform-invalid/);
+
+        // Validate Connector on this screen red-highlights the empty URL (Swing INVALID_COLOR).
+        await page.getByRole('button', { name: 'Validate Connector', exact: true }).click();
+        await expect(url).toHaveClass(/cform-invalid/);
+    });
+
     test('opening the Source transformer route shows the step list', async ({ page }) => {
         // Deep-link straight to the source (metaDataId 0) transformer sub-editor;
         // it loads the channel from GET /channels/{id} (no store seed) and lists

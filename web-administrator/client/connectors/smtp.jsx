@@ -16,7 +16,7 @@
 
 import { React } from './react-platform.js';
 import { h, clear, textInput, icon } from '@oie/web-ui';
-import { ConnectorForm, connectorTestButton, asBool, YES_NO, defaultDestinationProperties, CHARSETS } from './react-forms.js';
+import { ConnectorForm, connectorTestButton, asBool, YES_NO, defaultDestinationProperties, CHARSETS, requireFields } from './react-forms.js';
 
 const usingAuth = (p) => asBool(p.authentication);
 const usingLocalBinding = (p) => asBool(p.overrideLocalBinding);
@@ -158,6 +158,23 @@ const smtpSender = {
                 ]} />
             </div>
         );
+    },
+    // Swing SmtpSender.checkProperties: SMTP Host, SMTP Port, Send Timeout, To and
+    // From are always required. Local Address (Swing checks length() <= 3) and
+    // Local Port are required when Override Local Binding is on. The headers/
+    // attachments variable is required when the matching Use Map/Use List mode is on.
+    validate(properties) {
+        return requireFields(properties, [
+            { key: 'smtpHost', label: 'SMTP Host' },
+            { key: 'smtpPort', label: 'SMTP Port' },
+            { key: 'localAddress', label: 'Local Address', when: usingLocalBinding },
+            { key: 'localPort', label: 'Local Port', when: usingLocalBinding },
+            { key: 'timeout', label: 'Send Timeout' },
+            { key: 'to', label: 'To' },
+            { key: 'from', label: 'From' },
+            { key: 'headersVariable', label: 'Headers Map Variable', when: (p) => asBool(p.isUseHeadersVariable) },
+            { key: 'attachmentsVariable', label: 'Attachments List Variable', when: (p) => asBool(p.isUseAttachmentsVariable) }
+        ]);
     }
 };
 
