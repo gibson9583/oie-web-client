@@ -27,6 +27,19 @@ function setCookie(name, value) {
 function clearCookie(name) {
     document.cookie = `${name}=; path=/; max-age=0`;
 }
+function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+// Preselect the engine last used (persisted in the oie-engine cookie) so the
+// picker remembers your choice instead of always snapping back to the first.
+function initialSelection(engines, devMode) {
+    const c = getCookie('oie-engine');
+    if (c === 'custom' && devMode) return 'custom';
+    if (/^\d+$/.test(c) && Number(c) < engines.length) return c;
+    return '0';
+}
 
 export function LoginForm({ onSuccess }) {
     const [username, setUsername] = useState('');
@@ -40,8 +53,8 @@ export function LoginForm({ onSuccess }) {
     const engines = Array.isArray(cfg.engines) ? cfg.engines : [];
     const devMode = !!cfg.devMode;
     const showPicker = engines.length > 1 || devMode;
-    const [sel, setSel] = useState('0');
-    const [customUrl, setCustomUrl] = useState('');
+    const [sel, setSel] = useState(() => initialSelection(engines, devMode));
+    const [customUrl, setCustomUrl] = useState(() => getCookie('oie-engine-url'));
 
     const userRef = useRef(null);
     const busyRef = useRef(false);   // re-entry guard (state is async)
