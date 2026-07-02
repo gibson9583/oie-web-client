@@ -185,13 +185,12 @@ function ExtensionsView() {
         }
     }
 
-    /* Engine-gated install (one upload, fanned out server-side): the zip is
-       forwarded to the engine's own installer — which enforces EXTENSIONS_MANAGE —
-       and ONLY if the engine accepts is the webadmin/ half extracted into the web
-       admin's pluginDir. Same single Install Extension action for the user; the
-       server does the routing. multipart/form-data, "file" part (the engine's
-       @FormDataParam contract); api.post passes FormData through untouched and
-       headers() adds X-Requested-With (the CSRF + cookie the server forwards). */
+    /* Engine-gated install: the zip is forwarded to the engine's own installer,
+       which enforces EXTENSIONS_MANAGE, installs the extension, and serves any
+       webadmin/ UI it carries (via /api/webplugins) — the web admin keeps no local
+       copy. multipart/form-data, "file" part (the engine's @FormDataParam
+       contract); api.post passes FormData through untouched and headers() adds
+       X-Requested-With (the CSRF + cookie the server forwards). */
     function installExtension() {
         const input = h('input', { type: 'file', accept: '.zip', style: { display: 'none' } });
         input.addEventListener('change', async () => {
@@ -354,11 +353,6 @@ function ExtensionsView() {
                     <div className="panel-header">Web Administrator Plugins</div>
                     <div className="panel-body flush">
                         <DataTableHost columns={WEB_COLUMNS} options={WEB_OPTIONS} rows={webPlugins} />
-                    </div>
-                    <div className="panel-body">
-                        <div className="hint">
-                            Web administrator plugins are folders under the web administrator&apos;s plugins/ directory — see PLUGINS.md.
-                        </div>
                     </div>
                 </div>
             </div>
