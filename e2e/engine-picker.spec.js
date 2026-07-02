@@ -38,6 +38,18 @@ test.describe('engine picker', () => {
         await expect(page.getByText('Custom URL…')).toHaveCount(0);
     });
 
+    test('picker remembers the last selected engine', async ({ page, baseURL }) => {
+        // The prior choice persists in the oie-engine cookie; the picker preselects it
+        // instead of snapping back to the first engine.
+        await page.context().addCookies([{ name: 'oie-engine', value: '1', url: baseURL }]);
+        await routeConfig(page, TWO_ENGINES);
+        await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+
+        await page.goto('/');
+        await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+        await expect(page.locator('.login-card select')).toHaveValue('1');
+    });
+
     test('single engine hides the picker (just user/password)', async ({ page }) => {
         await routeConfig(page, { engines: [{ name: 'Only', url: 'https://only:8443' }], devMode: false });
         await mockEngine(page, { 'GET /users/current': { __status: 401 } });
