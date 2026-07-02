@@ -1200,119 +1200,6 @@ function buildBody(params, kindName, onTasksChange) {
         return String(key).replace(/\\/g, '\\\\').replace(/'/g, '\\\'');
     }
 
-    function looksLikeEr7(text) {
-        return /^[A-Z][A-Z0-9]{2}([|\r\n]|$)/.test(text);
-    }
-
-    /*
-     * Faithful ER7 → tree, mirroring the engine's ER7Reader/XMLEncodedHL7Handler
-     * so node labels and accessors match the serialized XML the runtime `msg`
-     * is built from:
-     *   - element names are dotted (SEG, SEG.n, SEG.n.m, SEG.n.m.s)
-     *   - a field WITH a component separator nests SEG.n.1, SEG.n.2, …
-     *     (a field WITHOUT one keeps its value directly on SEG.n — no .1 wrap)
-     *   - subcomponents ('&') nest one level deeper (default handleSubcomponents)
-     *   - repetitions ('~') are sibling field elements indexed [0], [1], …
-     *   - empty fields are preserved positionally
-     *   - MSH.1 is the field separator, MSH.2 the encoding characters
-     */
-
-    // One component (SEG.n.m): splits subcomponents on '&' when present.
-    function hl7CompNode(compDot, compAcc, comp) {
-        if (comp.indexOf('&') > -1) {
-            const subs = comp.split('&');
-            return {
-                label: compDot, value: null, accessor: `${compAcc}.toString()`,
-                children: subs.map((sub, si) => {
-                    const subDot = `${compDot}.${si + 1}`;
-                    return { label: subDot, value: sub, accessor: `${compAcc}['${subDot}'].toString()`, children: [] };
-                })
-            };
-        }
-        return { label: compDot, value: comp, accessor: `${compAcc}.toString()`, children: [] };
-    }
-
-    // One field instance (a single repetition). dotName e.g. "PID.5"; acc the
-    // accessor for this instance (already carrying any repetition index).
-    function hl7ValueNode(dotName, acc, raw, labelSuffix) {
-        const label = dotName + (labelSuffix || '');
-        if (raw.indexOf('^') > -1) {
-            const comps = raw.split('^');
-            return {
-                label, value: null, accessor: `${acc}.toString()`,
-                children: comps.map((comp, ci) => {
-                    const compDot = `${dotName}.${ci + 1}`;
-                    return hl7CompNode(compDot, `${acc}['${compDot}']`, comp);
-                })
-            };
-        }
-        if (raw.indexOf('&') > -1) {
-            // Subcomponents without components → a single implicit component .1.
-            const compDot = `${dotName}.1`;
-            return {
-                label, value: null, accessor: `${acc}.toString()`,
-                children: [hl7CompNode(compDot, `${acc}['${compDot}']`, raw)]
-            };
-        }
-        // A non-empty field is serialized down to a single .1 component
-        // (matches the engine: <PID.7><PID.7.1>…); empty fields stay bare.
-        if (raw !== '') {
-            const compDot = `${dotName}.1`;
-            return {
-                label, value: null, accessor: `${acc}.toString()`,
-                children: [{ label: compDot, value: raw, accessor: `${acc}['${compDot}'].toString()`, children: [] }]
-            };
-        }
-        return { label, value: raw, accessor: `${acc}.toString()`, children: [] };
-    }
-
-    // A field → one node, or several sibling nodes for '~' repetitions.
-    function hl7FieldNodes(dotName, fieldAcc, raw) {
-        const reps = raw.split('~');
-        if (reps.length > 1) {
-            return reps.map((rep, r) => hl7ValueNode(dotName, `${fieldAcc}[${r}]`, rep, ` [${r}]`));
-        }
-        return [hl7ValueNode(dotName, fieldAcc, raw)];
-    }
-
-    function hl7Tree(text, varName) {
-        const lines = text.split(/\r\n|\r|\n/).map(s => s.trim()).filter(Boolean);
-        if (!lines.length || !looksLikeEr7(lines[0])) throw new Error('not ER7');
-        const counts = {};
-        for (const line of lines) {
-            const id = line.split('|')[0];
-            counts[id] = (counts[id] || 0) + 1;
-        }
-        const seen = {};
-        return lines.map(line => {
-            const fields = line.split('|');
-            const segName = fields[0];
-            const index = seen[segName] || 0;
-            seen[segName] = index + 1;
-            // Repeated segments (e.g. multiple OBX) are indexed siblings.
-            let segAcc = `${varName}['${segName}']`;
-            if (counts[segName] > 1) segAcc += `[${index}]`;
-            const children = [];
-            if (segName === 'MSH') {
-                children.push({ label: 'MSH.1', value: '|', accessor: `${segAcc}['MSH.1'].toString()`, children: [] });
-                if (fields.length > 1) {
-                    children.push({ label: 'MSH.2', value: fields[1], accessor: `${segAcc}['MSH.2'].toString()`, children: [] });
-                }
-                // After the encoding-chars field, MSH.(i+1) maps to fields[i].
-                for (let i = 2; i < fields.length; i++) {
-                    const dot = `MSH.${i + 1}`;
-                    children.push(...hl7FieldNodes(dot, `${segAcc}['${dot}']`, fields[i]));
-                }
-            } else {
-                for (let i = 1; i < fields.length; i++) {
-                    const dot = `${segName}.${i}`;
-                    children.push(...hl7FieldNodes(dot, `${segAcc}['${dot}']`, fields[i]));
-                }
-            }
-            return { label: segName, value: null, accessor: `${segAcc}.toString()`, children };
-        });
-    }
-
     function xmlElementNode(element, accessor, descriptions) {
         const children = [];
         for (const attr of element.attributes) {
@@ -1371,21 +1258,6 @@ function buildBody(params, kindName, onTasksChange) {
 
     function jsonTree(text, varName) {
         return [jsonValueNode(varName, JSON.parse(text), varName)];
-    }
-
-    function parseTemplateTree(text, dataType, varName) {
-        const trimmed = text.trim();
-        if (dataType === 'HL7V2') {
-            if (looksLikeEr7(trimmed)) return hl7Tree(trimmed, varName);
-            return xmlTree(trimmed, varName);   // HL7 v2 in its XML representation
-        }
-        if (dataType === 'XML' || dataType === 'HL7V3') return xmlTree(trimmed, varName);
-        if (dataType === 'JSON') return jsonTree(trimmed, varName);
-        // RAW and other types: best-effort detection.
-        if (trimmed.startsWith('<')) return xmlTree(trimmed, varName);
-        if (trimmed.startsWith('{') || trimmed.startsWith('[')) return jsonTree(trimmed, varName);
-        if (looksLikeEr7(trimmed)) return hl7Tree(trimmed, varName);
-        throw new Error('unrecognized');
     }
 
     /* Steps created from a tree node's accessor — the Swing TreePanel popup
@@ -1507,7 +1379,6 @@ function buildBody(params, kindName, onTasksChange) {
         const dataType = target[`${side}DataType`] || 'RAW';
         const props = target[`${side}Properties`] || {};
         const serProps = props.serializationProperties || {};
-        const sourceBadge = h('span.text-text-faint', { class: 'text-[10px] ml-1.5' });
 
         const dtLabel = () => (dataTypeDef(dataType) || { label: dataType }).label;
 
@@ -1517,27 +1388,22 @@ function buildBody(params, kindName, onTasksChange) {
         } else {
             const tmpl = String(template);
             body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' }, 'Parsing…'));
-            // Prefer the engine serializer bridge (byte-exact, all data types,
-            // strict + non-strict); fall back to built-in JS parsing offline.
+            // The engine serializes the template through its own datatype serializers
+            // (byte-exact, all data types, strict + non-strict); the tree is built from
+            // that output. No local parsing — this depends on the connected engine.
             (async () => {
                 let nodes = null;
                 const ser = await serializeTemplate(dataType, serProps, tmpl).catch(() => null);
                 if (ser && ser.text != null) {
                     try {
                         nodes = ser.format === 'json' ? jsonTree(ser.text, varName) : xmlTree(ser.text, varName, ser.meta);
-                        sourceBadge.textContent = '· exact (engine)';
                     } catch { nodes = null; }
                 }
                 if (!nodes) {
-                    try {
-                        nodes = parseTemplateTree(tmpl, dataType, varName);
-                        sourceBadge.textContent = ser === null ? '· approximate (offline)' : '';
-                    } catch {
-                        clear(body);
-                        body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' },
-                            `Template could not be parsed as ${dtLabel()}`));
-                        return;
-                    }
+                    clear(body);
+                    body.appendChild(h('div.text-text-faint', { class: 'py-1 px-3 text-[12px]' },
+                        `Could not build the message tree — the engine could not serialize this ${dtLabel()} template.`));
+                    return;
                 }
                 renderNodes(body, nodes, side);
             })();
@@ -1551,7 +1417,7 @@ function buildBody(params, kindName, onTasksChange) {
                 twisty.classList.toggle('open', open);
                 body.style.display = open ? '' : 'none';
             }
-        }, twisty, `${title} (${varName})`, sourceBadge);
+        }, twisty, `${title} (${varName})`);
         return h('div', header, body);
     }
 

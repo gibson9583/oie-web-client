@@ -32,6 +32,37 @@ import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
 
+/* ---- @oie/* plugin API contract version --------------------------------------
+ * The version of the framework surface (the `platform` registries + the @oie/web-*
+ * exports) that this web admin implements. Tracks the OIE engine release line it
+ * ships with (major.minor; the patch is ignored for compatibility): bump the MINOR
+ * as the surface grows, the MAJOR on any breaking change (removed/renamed export,
+ * changed registry signature).
+ *
+ * Plugins declare the MINIMUM they were built against in plugin.json
+ * (`"oie": { "apiMin": "4.6" }`). We accept a plugin when it needs no newer than
+ * what we implement AND no breaking change has happened since — i.e. same major
+ * and our minor >= its required minor. This is forward-compatible by design: a
+ * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
+ * within a major); it's rejected only when THIS web admin is too old (its apiMin
+ * is newer than us) or a major bump dropped what it relies on. */
+export const OIE_API_VERSION = '4.6.0';
+
+function parseApiVersion(v) {
+    const [major, minor] = String(v == null ? '' : v).split('.');
+    return { major: parseInt(major, 10) || 0, minor: parseInt(minor, 10) || 0 };
+}
+
+// Does `provided` satisfy a plugin's required minimum? Undeclared min => always
+// compatible (opt-in check: bundled/framework plugins move in lockstep and don't
+// declare one). Same major (no breaking change) and provided minor >= required.
+export function apiCompatible(provided, requiredMin) {
+    if (requiredMin == null || requiredMin === '') return true;
+    const p = parseApiVersion(provided);
+    const r = parseApiVersion(requiredMin);
+    return p.major === r.major && p.minor >= r.minor;
+}
+
 const registries = {
     navItems: [],
     dashboardTabs: [],
@@ -53,6 +84,9 @@ function sorted(list) {
 }
 
 export const platform = {
+    /* The @oie/* API contract version this web admin implements (see OIE_API_VERSION).
+       Plugins can read platform.apiVersion to feature-detect at runtime. */
+    apiVersion: OIE_API_VERSION,
     /* core libraries, handed to plugins so they share the app's toolkit */
     api: apiModule.default,
     ui,
@@ -131,6 +165,54 @@ export const platform = {
 
 /* ---- plugin bootstrap ----------------------------------------------------------- */
 
+// Engine-served plugins: the connected engine exposes the browser half of its
+// installed extensions (their webadmin/ folders) under /api/webplugins — a
+// discovery list of extension paths, then each path's plugin.json + assets. We
+// fetch that set and turn it into manifests whose `entry` is an /api/webplugins
+// URL, so the existing import/register path loads them like any other plugin.
+// Because /api is same-origin (through the proxy), these modules resolve @oie/*
+// via the page import map to the SAME framework instance as bundled plugins.
+//
+// This is what makes plugins per-ENGINE rather than per-web-admin-install: a
+// plugin's UI is served by whichever engine has it installed, so it appears only
+// when connected to that engine (and stays version-matched to it). Engines older
+// than this feature simply have no /api/webplugins endpoint, so this no-ops.
+async function fetchEngineManifests() {
+    let paths;
+    try {
+        paths = apiModule.asList(await apiModule.get('/webplugins'), 'string').map(String).filter(Boolean);
+    } catch {
+        return []; // endpoint absent (older engine) or unreachable — nothing to add
+    }
+
+    const results = await Promise.all(paths.map(async (path) => {
+        const base = `/api/webplugins/${encodeURIComponent(path)}`;
+        try {
+            // Served raw by the engine (not XStream-wrapped), so read it as plain JSON.
+            const res = await fetch(`${base}/plugin.json`, { credentials: 'same-origin' });
+            if (!res.ok) return null;
+            const m = await res.json();
+            if (!m || !m.id) return null;
+            const entry = m.client && m.client.entry ? `${base}/${m.client.entry}` : null;
+            return {
+                id: m.id,
+                name: m.name || m.id,
+                version: m.version || '0.0.0',
+                author: m.author || '',
+                description: m.description || '',
+                // Minimum @oie API version the plugin was built against (compat gate).
+                apiMin: m.oie && m.oie.apiMin ? String(m.oie.apiMin) : null,
+                entry,
+                source: 'engine'
+            };
+        } catch (e) {
+            console.warn(`[plugins] engine plugin "${path}" manifest failed:`, e);
+            return null;
+        }
+    }));
+    return results.filter(Boolean);
+}
+
 export async function loadPlugins() {
     let manifests = [];
     try {
@@ -139,6 +221,31 @@ export async function loadPlugins() {
     } catch (e) {
         console.warn('[plugins] manifest fetch failed:', e);
     }
+
+    // Merge in the connected engine's own web plugins. Installs are forward-only —
+    // the engine owns and serves an extension's web half — so the ENGINE copy is
+    // authoritative for its id and supersedes any local manifest with the same id.
+    // In practice the two sets are disjoint: /webadmin/plugins.json is the bundled
+    // framework plugins (connectors, data types, viewers, …) that ship with the web
+    // admin, and /api/webplugins is whatever the connected engine has installed.
+    const engineManifests = await fetchEngineManifests();
+    const engineIds = new Set(engineManifests.map((m) => m.id).filter(Boolean));
+    manifests = manifests.filter((m) => !engineIds.has(m.id)).concat(engineManifests);
+
+    // Compatibility gate: a plugin that declares an @oie apiMin newer than what we
+    // implement (or from a different major) would call APIs that aren't here and
+    // crash on import/register. Skip those BEFORE importing — never run incompatible
+    // code — and surface them so the mismatch is visible (Extensions → web plugins)
+    // instead of a silent failure. Plugins with no apiMin (bundled/framework, and
+    // any built before this contract) are unaffected.
+    const incompatible = [];
+    manifests = manifests.filter((m) => {
+        if (apiCompatible(OIE_API_VERSION, m.apiMin)) return true;
+        const message = `requires @oie API ${m.apiMin}, but this web administrator provides ${OIE_API_VERSION}`;
+        console.warn(`[plugins] ${m.id} skipped — ${message}`);
+        incompatible.push({ ...m, status: 'incompatible', error: message });
+        return false;
+    });
 
     // Import every plugin entry module IN PARALLEL — a serial `await import()`
     // per plugin cost a round-trip each (34 plugins ≈ 34 RTs; at 100ms that's
@@ -173,6 +280,7 @@ export async function loadPlugins() {
             loaded.push({ ...manifest, status: 'error', error: 'entry module has no register(platform) export' });
         }
     }
-    store.setState('webPlugins', loaded);
+    // Include the version-skipped plugins so the mismatch is visible in the UI.
+    store.setState('webPlugins', [...loaded, ...incompatible]);
     return loaded;
 }

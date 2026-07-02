@@ -69,26 +69,17 @@ test('Extensions lists connectors and plugins and gates the task pane on selecti
 
 const STUB_ZIP = { name: 'ext.zip', mimeType: 'application/zip', buffer: Buffer.from('PK stub') };
 
-test('installing a package with no web UI says so (not a silent success)', async ({ page }) => {
-    await mockEngine(page, { ...FIXTURES, 'POST /_webadmin/plugins/_install': { engineInstalled: true, webInstalled: false } });
+test('installing an extension forwards to the engine and prompts a restart', async ({ page }) => {
+    // The web admin just forwards the upload to the engine (which installs it and
+    // serves any web UI); the extension loads after the engine restarts.
+    await mockEngine(page, { ...FIXTURES, 'POST /_webadmin/plugins/_install': { engineInstalled: true, restartEngine: true } });
     await page.goto('/extensions');
 
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Install Extension', exact: true }).click();
     await (await chooser).setFiles(STUB_ZIP);
 
-    await expect(page.getByText('No web UI was found in this package')).toBeVisible();
-});
-
-test('installing a package with a web UI reports it was added', async ({ page }) => {
-    await mockEngine(page, { ...FIXTURES, 'POST /_webadmin/plugins/_install': { engineInstalled: true, webInstalled: true, pluginId: 'demo' } });
-    await page.goto('/extensions');
-
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', { name: 'Install Extension', exact: true }).click();
-    await (await chooser).setFiles(STUB_ZIP);
-
-    await expect(page.getByText('Its web UI was added')).toBeVisible();
+    await expect(page.getByText('installed — restart the engine to load it')).toBeVisible();
 });
 
 test('Extensions shows Disable for an enabled extension and the two grids share one selection', async ({ page }) => {

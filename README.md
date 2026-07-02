@@ -37,7 +37,7 @@ oie-web-client/
 │   └── eslint-config/        shared lint config enforcing the @oie/* boundary
 └── web-administrator/        ← the application
     ├── client/               browser SPA (ES modules; Vite build, source served in dev)
-    ├── server/               Node/Express server, /api reverse proxy, serializer bridge
+    ├── server/               Node/Express server, /api reverse proxy, plugin install
     ├── plugins/              bundled web plugins (server + browser extensions)
     ├── PLUGINS.md            plugin development guide (worked examples)
     ├── RBAC.md               role-based access control hooks + permission catalog
@@ -52,8 +52,7 @@ oie-web-client/
 |---|---|---|
 | **Node.js** | **20 LTS or newer** (18.18+ minimum) | Runs the server, the Vite build, and the tests; bundles a compatible npm. Check with `node -v`. |
 | **npm** | **9+** (ships with Node 18+) | This is an npm-**workspaces** monorepo (npm 7+ required). Yarn/pnpm are not used. |
-| **OIE / Mirth Connect engine** | any version exposing the REST API | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. |
-| **JDK 21+** | _optional_ | Only for the exact serializer bridge (`OIE_HOME`, see [Configuration](#configuration)). Without it the app uses built-in JS parsing. |
+| **OIE / Mirth Connect engine** | any version exposing the REST API | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. Exact message-tree serialization + JS validation/format use the engine's own REST endpoints (no local JVM). |
 | **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
 
 Contributors running the end-to-end tests also install Playwright's browser once:
@@ -103,9 +102,7 @@ machine-specific paths), with environment-variable overrides. Start from
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
 | `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
-| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./custom-plugins` | Where extension installs write the web half (gitignored); the bundled plugins in `./plugins` are always loaded (hardcoded, not configurable) |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **read-only** discovery dirs (e.g. the engine's `extensions/`); scanned but never written to by installs |
-| `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine (`/api/webplugins`), not stored here. `:`-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 
 > **Authentication** is the engine's own: the login form posts to
@@ -113,11 +110,11 @@ machine-specific paths), with environment-variable overrides. Start from
 > The Node server stores no credentials; it is a streaming reverse proxy. For
 > production, terminate TLS in front of this app.
 
-Setting `engineHome` (a path to an OIE install with a **JDK 21+** available) lets
-the server run a warm Java sidecar on the engine's own jars, so message-tree
-serialization and JavaScript validation are byte-identical to the runtime. The
-sidecar uses `JAVA_HOME` if set, otherwise `java` on the `PATH`. Without it, the
-app falls back to built-in JS parsing.
+Byte-exact message-tree serialization and JavaScript validation/formatting come
+from the **connected engine's own REST endpoints** (`/api/datatypes/_serialize`,
+`/api/javascript/_validate` and `/_prettyPrint`) — no local JVM or engine install
+to configure. This web administrator targets an OIE engine release that exposes
+those endpoints.
 
 ## Troubleshooting setup
 
@@ -128,7 +125,7 @@ app falls back to built-in JS parsing.
 | TLS / certificate errors reaching the engine | Keep `engine.verifyTls` = `false` for a self-signed engine (the default). |
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
 | Vite or syntax errors on `npm run dev` / `npm start` | Use Node 20 LTS+ (`node -v`); Node < 18.18 can't run Vite 5 and the test tooling. |
-| Message trees or **Format Code** look approximate | Expected without the serializer bridge — set `OIE_HOME` to an engine install and ensure a **JDK 21+** is on `PATH` (or `JAVA_HOME`). |
+| Message trees or **Format Code** don't work | The connected engine is older than the release this web administrator targets (missing `/api/datatypes/_serialize`, `/api/javascript/_prettyPrint`). Point it at a current engine. |
 
 ## Framework packages (`@oie/*`)
 

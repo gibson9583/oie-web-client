@@ -37,9 +37,7 @@ OIE_URL=https://localhost:8443 npm start
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
 | `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
-| `pluginDir` | `WEBADMIN_PLUGIN_DIR` | `./custom-plugins` | Where **Install Extension** writes a plugin's web half (gitignored). The bundled first-party plugins in `./plugins` are always loaded regardless — that path is hardcoded, not configurable. Set this only to relocate installs. |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **read-only discovery** directories (e.g. the engine's `extensions/`); scanned for plugins to load but never written to by installs. `:`-separated in the env var |
-| `engineHome` | `OIE_HOME` | _(unset)_ | Path to the engine install; enables the exact serializer bridge (below) |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). `:`-separated in the env var. Extensions installed on the engine are served by the engine (`/api/webplugins`), not stored here. |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 
 Example `config.json`:
@@ -85,7 +83,7 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
 - **Script editors** — Monaco-based JavaScript tuned for Rhino: User API
   (`userutil`) IntelliSense, in-scope code-template function completions,
   reserved-variable highlighting, and engine-backed validation + Format Document
-  (through the serializer bridge below). Monaco is bundled and served locally, so
+  (via the engine's REST API — see below). Monaco is bundled and served locally, so
   it works fully air-gapped (no CDN); it falls back to a plain editor only if it
   ever fails to load.
 - **Message browser** — search (date, status, text, connector), pagination,
@@ -114,20 +112,18 @@ extensions) fall back to a JSON property editor, so nothing is a dead end.
 
 The transformer/filter **Message Trees** turn a template into a draggable tree
 of accessors (`msg['PID']['PID.5']['PID.5.1']`). To match the engine exactly —
-including **strict** HL7 (HAPI) and every data type — set `OIE_HOME` to the
-engine install directory. The Node server then runs a warm Java sidecar
-(`server/bridge/Serializer.java`) on the engine's **own** jars (no bundled
-HAPI) and serializes templates through the engine's real datatype serializers,
-so the tree is byte-identical to the runtime `msg`/`tmp`.
+including **strict** HL7 (HAPI) and every data type — the web admin asks the
+**connected engine** to serialize the template through its own datatype
+serializers (`POST /api/datatypes/_serialize`), so the tree is byte-identical to
+the runtime `msg`/`tmp`. JavaScript validation and Format Document work the same
+way (`POST /api/javascript/_validate` / `_prettyPrint`, the engine's own Rhino
+compiler/formatter). There is no local JVM or engine install to configure —
+serialization follows whichever engine the session is connected to. Drag a tree
+node into a script editor to insert its accessor at the drop point.
 
-```bash
-OIE_HOME=/path/to/oie OIE_URL=https://localhost:8443 npm start
-```
-
-Requires a JVM on the web-admin host. Without `OIE_HOME` (or a JVM), the app
-falls back to built-in JS parsing — exact for XML/JSON and the non-strict HL7
-default, approximate for opt-in strict mode. Drag a tree node into a script
-editor to insert its accessor at the drop point.
+> This web administrator targets an OIE engine release that exposes these
+> endpoints (`/api/datatypes/_serialize`, `/api/javascript/_validate` and
+> `/_prettyPrint`).
 
 ## Plugins
 

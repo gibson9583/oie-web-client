@@ -1,45 +1,49 @@
 /*
- * Client side of the serializer bridge. Asks the Node server (which runs the
- * engine's own datatype serializers) to convert a template to its serialized
- * XML/JSON — byte-identical to the runtime `msg`/`tmp`. Returns null on any
- * failure so callers can fall back to built-in JS parsing.
+ * Message-tree serialization + JavaScript validate/format, served by the ENGINE.
+ *
+ * These call the connected engine's own REST endpoints (through the /api proxy),
+ * which run the engine's real datatype serializers and Rhino compiler/formatter —
+ * so output is byte-identical to the runtime `msg`/`tmp` and matches Swing. There
+ * is no local JVM or engine install: serialization follows whichever engine the
+ * session is on. The web administrator targets an engine release that provides
+ * these endpoints; a transient failure just returns null / { ok: null } so a
+ * caller can leave its input unchanged rather than error.
+ *
+ *   POST /api/datatypes/_serialize?dataType=&props=   (message body)  -> { format, data, meta }
+ *   POST /api/javascript/_validate                    (script body)   -> { error }
+ *   POST /api/javascript/_prettyPrint                 (script body)    -> formatted text
  */
 
-let available = null;   // cached bridge availability (null = unknown)
+import { post } from './api.js';
 
-export async function bridgeAvailable() {
-    if (available !== null) return available;
-    try {
-        const res = await fetch('/webadmin/serialize/status');
-        const status = res.ok ? await res.json() : null;
-        available = !!(status && status.configured);
-    } catch {
-        available = false;
+/* Flatten an engine SerializationProperties object to newline-separated key=value
+   lines (the `props` query param). Only primitive fields are forwarded; the engine
+   coerces by the property's declared type and ignores anything it doesn't know. */
+function flattenProps(props) {
+    if (!props || typeof props !== 'object') return '';
+    const lines = [];
+    for (const [k, v] of Object.entries(props)) {
+        if (k.startsWith('@')) continue;
+        if (v === null || v === undefined) continue;
+        if (typeof v === 'object') continue;   // nested props left at engine defaults
+        lines.push(`${k}=${v}`);
     }
-    return available;
+    return lines.join('\n');
 }
 
 /**
  * Serialize a template through the engine. Returns { format: 'xml'|'json',
- * text, meta } or null if the bridge is unavailable or errors. `meta` carries
- * the message-tree root label and per-node vocabulary descriptions (may be
- * null/empty for JSON or types without a vocabulary).
+ * text, meta } or null on failure. `meta` carries the message-tree root label
+ * and (when the engine provides them) per-node vocabulary descriptions.
  */
 export async function serializeTemplate(dataType, serializationProperties, message) {
-    if (!(await bridgeAvailable())) return null;
     try {
-        const res = await fetch('/webadmin/serialize', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ dataType, serializationProperties, message })
+        const text = await post('/datatypes/_serialize', String(message ?? ''), {
+            contentType: 'text/plain',
+            params: { dataType, props: flattenProps(serializationProperties) || undefined },
+            raw: true, noAuthHandler: true
         });
-        if (!res.ok) {
-            if (res.status === 503) available = false;   // bridge went away
-            return null;
-        }
-        const j = await res.json();
-        if (!j.ok) return null;
+        const j = JSON.parse(text);
         return { format: j.format, text: j.data, meta: j.meta || null };
     } catch {
         return null;
@@ -47,56 +51,36 @@ export async function serializeTemplate(dataType, serializationProperties, messa
 }
 
 /**
- * Validate a JavaScript snippet through the engine's own Rhino compiler check
- * (JavaScriptSharedUtil.validateScript) — the same one the Swing client uses.
+ * Validate a JavaScript snippet through the engine's own Rhino compiler check.
  * Returns:
  *   { ok: true }            valid
  *   { ok: false, message }  compile error (e.g. "Error on line 3: ...")
- *   { ok: null, message }   bridge unavailable — could not validate
+ *   { ok: null, message }   validation unavailable (engine unreachable)
  */
 export async function validateScript(script) {
-    if (!(await bridgeAvailable())) {
-        return { ok: null, message: 'Live validation requires the engine bridge (set engineHome / OIE_HOME).' };
-    }
     try {
-        const res = await fetch('/webadmin/serialize', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ dataType: '__validate__', message: String(script ?? '') })
+        const text = await post('/javascript/_validate', String(script ?? ''), {
+            contentType: 'text/plain', raw: true, noAuthHandler: true
         });
-        if (!res.ok) {
-            if (res.status === 503) available = false;
-            return { ok: null, message: 'Validation service unavailable.' };
-        }
-        const j = await res.json();
-        if (!j.ok) return { ok: null, message: j.error || 'Validation failed.' };
-        const err = (j.data || '').trim();
+        const err = (JSON.parse(text).error || '').trim();
         return err ? { ok: false, message: err } : { ok: true };
     } catch (e) {
-        return { ok: null, message: e.message };
+        return { ok: null, message: e.message || 'Validation unavailable.' };
     }
 }
 
 /**
- * Pretty-print a JavaScript snippet through the engine's own formatter
- * (JavaScriptSharedUtil.prettyPrint) — the same one Swing's Format Code uses,
- * so E4X XML literals are preserved (Monaco's TS formatter would mangle them).
- * Returns the formatted code, or null when the bridge is unavailable / failed
+ * Pretty-print a JavaScript snippet through the engine's own formatter (the same
+ * one Swing's Format Code uses, so E4X XML literals survive — Monaco's TS
+ * formatter would mangle them). Returns the formatted code, or null on failure
  * (the caller then leaves the text unchanged).
  */
 export async function formatScript(script) {
-    if (!(await bridgeAvailable())) return null;
     try {
-        const res = await fetch('/webadmin/serialize', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ dataType: '__prettyprint__', message: String(script ?? '') })
+        const formatted = await post('/javascript/_prettyPrint', String(script ?? ''), {
+            contentType: 'text/plain', raw: true, noAuthHandler: true
         });
-        if (!res.ok) { if (res.status === 503) available = false; return null; }
-        const j = await res.json();
-        return j.ok && typeof j.data === 'string' ? j.data : null;
+        return typeof formatted === 'string' ? formatted : null;
     } catch {
         return null;
     }

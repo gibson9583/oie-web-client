@@ -12,18 +12,11 @@
  *   OIE_URL              Base URL of the engine, e.g. https://localhost:8443
  *   OIE_VERIFY_TLS       "true" to verify the engine's TLS certificate (default false,
  *                        engines ship with self-signed certs)
- *   WEBADMIN_PLUGIN_DIR  Directory containing web admin plugins (default ./plugins)
- *   WEBADMIN_PLUGIN_DIRS Additional plugin directories (':'-separated). Point one
- *                        at the engine's extensions directory to auto-load web
- *                        plugins shipped inside engine extensions
- *                        (extensions/<name>/webadmin/plugin.json).
+ *   WEBADMIN_PLUGIN_DIRS Additional local plugin directories (':'-separated) scanned
+ *                        alongside the bundled ./plugins (e.g. for local development).
  *   WEBADMIN_CODE_TEMPLATE_COMPLETIONS
  *                        "false" to disable code-template autocompletion in the
  *                        script editors (avoids fetching large catalogs).
- *   WEBADMIN_SERIALIZE_ALLOW_REMOTE
- *                        "true" to allow non-loopback clients to reach the
- *                        unauthenticated serializer bridge endpoints (default
- *                        loopback-only).
  *   WEBADMIN_TRUSTED_PROXIES
  *                        Comma-separated peer IPs trusted to set X-Forwarded-For
  *                        (loopback is always trusted). Default none.
@@ -45,30 +38,11 @@ const defaults = {
         // Engines ship with self-signed certificates; verification is opt-in.
         verifyTls: false
     },
-    // Install target for Extensions → Install: a plugin's web half is written
-    // here. Kept SEPARATE from the bundled first-party plugins (./plugins, which
-    // is committed, hardcoded, and ALWAYS scanned in load()), so user installs
-    // never mix with shipped plugins and live in a gitignored dir. Override via
-    // config.json "pluginDir" / WEBADMIN_PLUGIN_DIR.
-    pluginDir: path.join(ROOT, 'custom-plugins'),
-    // Filesystem path to the engine install (the directory containing
-    // client-lib/, server-lib/, extensions/). When set and a JVM is available,
-    // the message-tree serializer bridge runs the engine's OWN datatype
-    // serializers for byte-exact output (strict + non-strict, all data types).
-    // Without it, the web admin falls back to its built-in JS parsing.
-    // Deployment-specific — set in config.json (or the OIE_HOME env var).
-    engineHome: null,
     // Offer the channel's own Code Template functions as autocompletions in the
     // script editors (scoped to the channel + editor context). This fetches the
     // full code-template library set; on servers with very large catalogs an
     // admin may want to turn it off. Default on.
     codeTemplateCompletions: true,
-    // The serializer bridge endpoints (/webadmin/serialize*) are reachable only
-    // from loopback by default — they are unauthenticated (JSESSIONID is scoped
-    // to /api and never reaches them) and drive the warm JVM. Local browsers and
-    // a same-host reverse proxy work as-is; set this true only if the web admin
-    // is exposed directly to remote browsers AND fronted by your own auth/TLS.
-    serializeAllowRemote: false,
     // Peer IPs trusted to set X-Forwarded-For (a front TLS terminator / reverse
     // proxy). Loopback is always trusted; list a non-loopback front proxy here.
     // Requests from untrusted peers can't spoof the engine's audit-log client IP.
@@ -95,32 +69,20 @@ function load() {
     if (process.env.WEBADMIN_HOST) config.host = process.env.WEBADMIN_HOST;
     if (process.env.OIE_URL) config.engine.url = process.env.OIE_URL;
     if (process.env.OIE_VERIFY_TLS) config.engine.verifyTls = process.env.OIE_VERIFY_TLS === 'true';
-    if (process.env.WEBADMIN_PLUGIN_DIR) config.pluginDir = process.env.WEBADMIN_PLUGIN_DIR;
-    if (process.env.OIE_HOME) config.engineHome = process.env.OIE_HOME;
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
-    if (process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE) config.serializeAllowRemote = process.env.WEBADMIN_SERIALIZE_ALLOW_REMOTE === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES) config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
-    if (config.engineHome) config.engineHome = path.resolve(config.engineHome);
 
-    // The primary plugin dir is the INSTALL TARGET (where the Extensions import
-    // writes a web plugin). Relative paths from config.json / WEBADMIN_PLUGIN_DIR
-    // anchor to the web admin install dir (ROOT), NOT the launch cwd, so they're
-    // predictable however the server is started.
-    config.pluginDir = path.resolve(ROOT, config.pluginDir);
-
-    // Effective SEARCH list: the install target, the shipped first-party plugins
-    // dir (ALWAYS searched — so overriding pluginDir to a custom install dir does
-    // not drop the bundled plugins), then read-only extras from config.json
-    // ("pluginDirs": [...]) or WEBADMIN_PLUGIN_DIRS (also ROOT-anchored). De-duped.
-    // engineHome is NOT searched — it drives only the datatype serializer bridge;
-    // to surface an engine's extensions/<name>/webadmin halves, list that dir
-    // explicitly in pluginDirs.
+    // Plugin SEARCH list: the shipped first-party (bundled framework) plugins in
+    // ./plugins — ALWAYS scanned — plus any extra LOCAL dirs from config.json
+    // ("pluginDirs": [...]) or WEBADMIN_PLUGIN_DIRS (ROOT-anchored). Extensions
+    // installed on the engine are served by the engine itself (GET /api/webplugins),
+    // not stored here. De-duped.
     const extra = []
         .concat(Array.isArray(config.pluginDirs) ? config.pluginDirs : [])
         .concat(process.env.WEBADMIN_PLUGIN_DIRS ? process.env.WEBADMIN_PLUGIN_DIRS.split(path.delimiter) : [])
         .filter(Boolean)
         .map(p => path.resolve(ROOT, p));
-    config.pluginDirs = [...new Set([config.pluginDir, path.join(ROOT, 'plugins'), ...extra])];
+    config.pluginDirs = [...new Set([path.join(ROOT, 'plugins'), ...extra])];
 
     config.root = ROOT;
     return config;

@@ -5,7 +5,5 @@
         "url": "https://localhost:8443",
         "verifyTls": false
     },
-    "engineHome": "/path/to/oie",
-    "pluginDir": "./custom-plugins",
     "codeTemplateCompletions": true
 }

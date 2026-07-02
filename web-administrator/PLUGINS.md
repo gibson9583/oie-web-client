@@ -81,10 +81,17 @@ framework instance instead of bundling its own). See
     "author": "You",
     "description": "What it does",
     "enabled": true,
+    "oie": { "apiMin": "4.6" },
     "client": { "entry": "web/plugin.js" },
     "server": { "entry": "server.js" }
 }
 ```
+
+`oie.apiMin` (optional) is the **minimum `@oie/*` API version your plugin needs** —
+see [API version compatibility](#api-version-compatibility). Omit it and your
+plugin always loads (no gate); set it when you rely on a framework capability
+added in a specific version, so an older web administrator that lacks it skips
+your plugin with a clear message instead of crashing on a missing API.
 
 Drop the folder into `plugins/` (or any configured `pluginDirs` entry) — with a
 built `web/plugin.js` present (see [Building the browser entry](#building-the-browser-entry)) —
@@ -190,6 +197,39 @@ export function register() {
     platform.registerView('/my-plugin', platform.reactView(MyView), { title: 'My Plugin' });
 }
 ```
+
+### API version compatibility
+
+The framework surface — the `platform` registries plus the `@oie/web-*` exports —
+is versioned by an **API contract version**, `platform.apiVersion`, which tracks the
+OIE engine release line the web administrator ships with (e.g. `"4.6.0"`). It follows
+major.minor (the patch is ignored for compatibility): the **minor** bumps when the
+surface *grows* (new registry, new export), the **major** bumps on any *breaking*
+change (a removed/renamed export or a changed signature).
+
+Your plugin declares the minimum it was built against in `plugin.json`:
+
+```json
+"oie": { "apiMin": "4.6" }
+```
+
+At load time the web administrator compares that minimum to the `apiVersion` it
+implements and **only registers your plugin when it's compatible** — same major,
+and its minor ≥ your `apiMin`. This is forward-compatible: a plugin built for `4.6`
+keeps working on `4.7`, `4.9`, … (nothing is removed within a major). It's skipped
+only when the web administrator is **older** than your `apiMin` (it lacks an API you
+use) or a **major** bump dropped something you relied on. A skipped plugin is never
+imported — its code never runs — and it shows as **Incompatible** under
+**Extensions → Web Administrator Plugins** with the reason, rather than crashing.
+
+Guidance:
+- Omit `oie.apiMin` and your plugin always loads (no gate) — fine for plugins built
+  and shipped in lockstep with a known web administrator (e.g. the bundled ones).
+- Set it to the version that introduced the newest capability you use, so an older
+  host degrades gracefully instead of throwing on a missing API.
+- For runtime feature-detection, read `platform.apiVersion` directly (import
+  `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
+  or the comparison helper).
 
 ### Two import styles, one runtime instance
 
@@ -432,6 +472,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — tracks the OIE engine release line (e.g. `"4.6.0"`). Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
@@ -601,25 +642,25 @@ export function register(platform) {
 
 ### Shipping the web UI inside the engine extension
 
-Instead of a separate install, an engine extension carries its web admin plugin
-in a `webadmin/` folder inside the extension zip (`<extension>/webadmin/plugin.json`
-+ assets).
+An engine extension carries its web admin plugin in a `webadmin/` folder inside
+the extension zip (`<extension>/webadmin/plugin.json` + compiled assets).
 
-**Install through the UI** (one action, decoupled): **Extensions → Install
-Extension** uploads the zip to the *web administrator*, which forwards it to the
-engine's installer (the engine enforces `EXTENSIONS_MANAGE`) and, on success,
-extracts the `webadmin/` half into its **own `pluginDir`**. **Restart the engine**
-(for the engine half), then **refresh the browser** (the web half is hot-scanned
-from `pluginDir`). The web admin owns its plugins in `pluginDir` and does **not**
-read the engine's filesystem.
+**Install through the UI** (one action): **Extensions → Install Extension**
+uploads the zip to the *web administrator*, which forwards it to the engine's
+installer (the engine enforces `EXTENSIONS_MANAGE`). The **engine** installs the
+extension *and* serves its `webadmin/` half over REST at
+`/api/webplugins/<extensionPath>/…`. **Restart the engine**; on the next browser
+load the web admin discovers the plugin from the connected engine
+(`GET /api/webplugins`) and loads it. The web admin keeps **no local copy** — a
+plugin's UI follows the engine it's installed on (so it appears only where its
+extension is installed, and stays version-matched to that engine).
 
-The loader checks each search dir for `plugin.json` directly (native layout) or
-under `webadmin/` (engine-extension layout); duplicate ids load first-found. To
-*also* surface the web halves of extensions installed **directly into an engine**
-(not through this UI), add that engine's `extensions/` dir explicitly —
-`config.json` `"pluginDirs": ["/path/to/oie/extensions"]` or
-`WEBADMIN_PLUGIN_DIRS=/path/to/oie/extensions`. (`engineHome` does **not** add it;
-that setting drives only the datatype serializer bridge.)
+Uninstalling the extension (which the engine owns) removes its UI too — nothing
+is stored web-admin-side. The web administrator's own bundled framework plugins
+(under `./plugins`) still load locally; only engine-paired plugins are
+engine-served. Declare the API version your plugin needs with `oie.apiMin` (see
+[API version compatibility](#api-version-compatibility)) so an older web
+administrator skips it cleanly instead of crashing.
 
 **Building the webadmin half in Maven.** Since `web/plugin.js` is now a compiled
 artifact (from `web/plugin.jsx`), build it before packaging. Either commit the
