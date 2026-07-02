@@ -21,7 +21,12 @@ export const PREF_DEFAULTS = {
     confirmReprocessRemove: true, // require the REPROCESSALL / remove confirmations
     // 'yes' | 'no' | 'ask' — bundle/import a channel's code template libraries
     importLibrariesWithChannels: 'ask',
-    exportLibrariesWithChannels: 'ask'
+    exportLibrariesWithChannels: 'ask',
+    // 'ask' | 'classic' | 'guided' — the New Channel builder. 'ask' shows a chooser
+    // each time (classic tabbed editor vs. step-by-step guided wizard); 'classic' or
+    // 'guided' skip the chooser and go straight to that builder. The chooser's
+    // "Remember my choice" sets this to the picked builder so it stops asking.
+    newChannelDefault: 'ask'
 };
 
 let cache = null;

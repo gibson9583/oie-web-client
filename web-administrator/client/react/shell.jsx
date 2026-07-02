@@ -27,6 +27,7 @@ import { maybeShowWelcome } from './welcome.js';
 import { register as registerDashboard } from './views/dashboard.jsx';
 import { register as registerChannels } from './views/channels.jsx';
 import { register as registerChannelEditor } from './views/channel-editor.jsx';
+import { register as registerChannelWizard } from './views/channel-wizard.jsx';
 import { register as registerMessages } from './views/messages.jsx';
 import { register as registerEvents } from './views/events.jsx';
 import { register as registerAlerts } from './views/alerts.jsx';
@@ -65,6 +66,7 @@ function startEngine() {
         registerDashboard(platform);
         registerChannels(platform);
         registerChannelEditor(platform);
+        registerChannelWizard(platform);
         registerMessages(platform);
         registerEvents(platform);
         registerAlerts(platform);
