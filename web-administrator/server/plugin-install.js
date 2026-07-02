@@ -15,7 +15,7 @@
 'use strict';
 
 const express = require('express');
-const { engineRequest } = require('./proxy');
+const { engineRequest, resolveEngine } = require('./proxy');
 
 const MAX_UPLOAD = '64mb';   // express.raw cap (engine zips ~ a few MB)
 
@@ -40,7 +40,7 @@ async function handleInstall(req, res, config) {
     // extension (Java + its webadmin/ half), and serves the web half via /api/webplugins.
     let engineRes;
     try {
-        engineRes = await engineRequest(config, {
+        engineRes = await engineRequest(resolveEngine(config, req), {
             method: 'POST',
             path: '/api/extensions/_install',
             headers: {
@@ -69,7 +69,7 @@ async function handleUninstall(req, res, config) {
     let engineRes;
     try {
         const fwd = Buffer.from(enginePath, 'utf8');
-        engineRes = await engineRequest(config, {
+        engineRes = await engineRequest(resolveEngine(config, req), {
             method: 'POST',
             path: '/api/extensions/_uninstall',
             headers: {

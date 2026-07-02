@@ -2,24 +2,77 @@
  * Reverse proxy for the engine REST API.
  *
  * The browser talks to /api/... on this server; we stream the request through to
- * the engine (default https://localhost:8443/api/...) and stream the response
- * back. This keeps the web administrator a fully standalone install: no CORS,
- * no browser warnings about the engine's self-signed certificate, and the
- * JSESSIONID cookie (Path=/api) round-trips unchanged because the path is
- * preserved.
+ * the selected engine (.../api/...) and stream the response back. This keeps the
+ * web administrator a standalone install: no CORS, no browser warnings about the
+ * engine's self-signed cert, and the JSESSIONID cookie (Path=/api) round-trips
+ * unchanged because the path is preserved.
+ *
+ * Multi-engine: the browser picks an engine at login and sets an `oie-engine`
+ * cookie — the chosen engine's index into config.engines, or `custom` (with an
+ * `oie-engine-url` cookie) when devMode allows a typed URL. resolveEngine() maps
+ * that to a target per request; the client's base path stays /api. Those routing
+ * cookies are stripped before the request is forwarded upstream.
  */
 
 'use strict';
 
 const http = require('http');
 const https = require('https');
-const { URL } = require('url');
 
 // Hop-by-hop headers must not be forwarded (RFC 7230 §6.1).
 const HOP_BY_HOP = new Set([
     'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
     'te', 'trailer', 'transfer-encoding', 'upgrade', 'host'
 ]);
+
+function parseCookies(cookieHeader) {
+    const out = {};
+    for (const part of String(cookieHeader || '').split(';')) {
+        const i = part.indexOf('=');
+        if (i < 0) continue;
+        const k = part.slice(0, i).trim();
+        if (k) out[k] = decodeURIComponent(part.slice(i + 1).trim());
+    }
+    return out;
+}
+
+// Cookie header to forward upstream, minus the web-admin routing cookies (the
+// engine has no use for them, and a typed custom URL shouldn't leak to it).
+function forwardCookie(cookieHeader) {
+    return String(cookieHeader || '').split(';')
+        .map((s) => s.trim())
+        .filter((s) => s && !/^oie-engine(-url)?=/i.test(s))
+        .join('; ');
+}
+
+/*
+ * Resolve which engine a request targets, from the `oie-engine` cookie:
+ *   "<index>"  → config.engines[index]
+ *   "custom"   → the `oie-engine-url` cookie, ONLY when config.devMode is on
+ *   (absent/invalid) → the first configured engine (the default)
+ * Returns { url, verifyTls }. Exported + pure for reuse (plugin-install) and tests.
+ */
+function resolveEngine(config, req) {
+    const engines = Array.isArray(config.engines) && config.engines.length
+        ? config.engines
+        : [{ url: config.engine.url, verifyTls: !!config.engine.verifyTls }];
+    const cookies = parseCookies(req && req.headers && req.headers['cookie']);
+    const sel = cookies['oie-engine'];
+
+    if (sel === 'custom' && config.devMode) {
+        try {
+            const u = new URL(cookies['oie-engine-url']);
+            if (u.protocol === 'http:' || u.protocol === 'https:') {
+                return { url: u.origin + u.pathname.replace(/\/$/, ''), verifyTls: false };
+            }
+        } catch { /* fall through to default */ }
+    }
+    if (sel != null && /^\d+$/.test(sel)) {
+        const idx = parseInt(sel, 10);
+        if (idx >= 0 && idx < engines.length) return engines[idx];
+    }
+    return engines[0];
+}
 
 // Compute the X-Forwarded-For to send upstream. The inbound chain is trusted
 // (and our peer appended) only when the immediate peer is a trusted proxy;
@@ -33,21 +86,42 @@ function resolveForwardedFor(remoteAddress, priorXff, trusted) {
 }
 
 function createApiProxy(config) {
-    const target = new URL(config.engine.url);
-    const isHttps = target.protocol === 'https:';
-    const transport = isHttps ? https : http;
     const trustedProxies = new Set(Array.isArray(config.trustedProxies) ? config.trustedProxies : []);
-
-    const agent = isHttps
-        ? new https.Agent({ keepAlive: true, rejectUnauthorized: config.engine.verifyTls })
-        : new http.Agent({ keepAlive: true });
+    // Keep-alive agents cached per engine (url + verifyTls) so switching engines
+    // doesn't re-create sockets each request.
+    const agents = new Map();
+    function agentFor(engine) {
+        const key = `${engine.url}|${engine.verifyTls}`;
+        let entry = agents.get(key);
+        if (!entry) {
+            const target = new URL(engine.url);
+            const isHttps = target.protocol === 'https:';
+            entry = {
+                target,
+                isHttps,
+                transport: isHttps ? https : http,
+                agent: isHttps
+                    ? new https.Agent({ keepAlive: true, rejectUnauthorized: !!engine.verifyTls })
+                    : new http.Agent({ keepAlive: true })
+            };
+            agents.set(key, entry);
+        }
+        return entry;
+    }
 
     return function apiProxy(req, res) {
+        const engine = resolveEngine(config, req);
+        const { target, isHttps, transport, agent } = agentFor(engine);
+
         const headers = {};
         for (const [name, value] of Object.entries(req.headers)) {
             if (!HOP_BY_HOP.has(name.toLowerCase())) headers[name] = value;
         }
         headers['host'] = target.host;
+        if (req.headers['cookie'] != null) {
+            const fwd = forwardCookie(req.headers['cookie']);
+            if (fwd) headers['cookie'] = fwd; else delete headers['cookie'];
+        }
         // Do NOT synthesize the engine's anti-CSRF header (X-Requested-With):
         // that guard works precisely because a cross-site request can't set a
         // custom header without a preflight the engine rejects. The SPA sets it
@@ -56,8 +130,7 @@ function createApiProxy(config) {
         // Forward the real client IP for the engine's audit log (the engine reads
         // X-Forwarded-For, else the socket address = this proxy's loopback). A
         // client-supplied chain is honored ONLY when the immediate peer is a
-        // trusted proxy (loopback by default, plus config.trustedProxies);
-        // otherwise it's forgeable, so we overwrite with the real socket IP.
+        // trusted proxy (loopback by default, plus config.trustedProxies).
         const xff = resolveForwardedFor(req.socket.remoteAddress, req.headers['x-forwarded-for'], trustedProxies);
         if (xff) headers['x-forwarded-for'] = xff;
 
@@ -82,10 +155,10 @@ function createApiProxy(config) {
             // over HTTP, so leaving it on breaks login on an HTTP deployment — and
             // Secure protects nothing over a connection that's already plaintext.
             if (Array.isArray(resHeaders['set-cookie'])) {
-                const https = req.headers['x-forwarded-proto'] === 'https' || !!req.socket.encrypted;
+                const secure = req.headers['x-forwarded-proto'] === 'https' || !!req.socket.encrypted;
                 resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c) => {
                     if (!/;\s*samesite=/i.test(c)) c += '; SameSite=Lax';
-                    if (https) { if (!/;\s*secure/i.test(c)) c += '; Secure'; }
+                    if (secure) { if (!/;\s*secure/i.test(c)) c += '; Secure'; }
                     else c = c.replace(/;\s*secure\b/ig, '');
                     return c;
                 });
@@ -97,12 +170,12 @@ function createApiProxy(config) {
         upstream.on('error', (err) => {
             // Multi-address connect failures (e.g. ::1 and 127.0.0.1 both tried)
             // arrive as an AggregateError with an empty message — unwrap it.
-            const causes = err.errors ? err.errors.map(e => e.message) : [err.message];
+            const causes = err.errors ? err.errors.map((e) => e.message) : [err.message];
             const detail = `${err.code || ''} ${causes.join('; ')}`.trim();
             // Full diagnostics (engine URL + socket error) go to the server log
             // only; the browser gets a generic message so we don't disclose the
             // internal engine address/port or socket topology to a client.
-            console.error(`[proxy] ${req.method} ${req.originalUrl} -> ${config.engine.url} failed: ${detail}`);
+            console.error(`[proxy] ${req.method} ${req.originalUrl} -> ${engine.url} failed: ${detail}`);
             if (!res.headersSent) {
                 res.writeHead(502, { 'Content-Type': 'application/json' });
             }
@@ -118,16 +191,16 @@ function createApiProxy(config) {
 
 // Server-initiated request to the engine REST API (used by the web-admin plugin
 // install/uninstall endpoints to forward to /api/extensions/_install etc. so the
-// ENGINE makes the EXTENSIONS_MANAGE authorization decision). Same transport +
-// TLS posture as the proxy: honors config.engine.verifyTls, targets the
-// configured engine host, never trusts a user-supplied URL. Buffers the response.
-function engineRequest(config, { method, path: reqPath, headers, body }) {
+// ENGINE makes the EXTENSIONS_MANAGE authorization decision). `engine` is a
+// resolved { url, verifyTls } (see resolveEngine) — same TLS posture as the proxy.
+// Buffers the response.
+function engineRequest(engine, { method, path: reqPath, headers, body }) {
     return new Promise((resolve, reject) => {
-        const target = new URL(config.engine.url);
+        const target = new URL(engine.url);
         const isHttps = target.protocol === 'https:';
         const transport = isHttps ? https : http;
         const agent = isHttps
-            ? new https.Agent({ rejectUnauthorized: config.engine.verifyTls })
+            ? new https.Agent({ rejectUnauthorized: !!engine.verifyTls })
             : new http.Agent();
         const h = {};
         for (const [name, value] of Object.entries(headers || {})) {
@@ -160,4 +233,4 @@ function engineRequest(config, { method, path: reqPath, headers, body }) {
     });
 }
 
-module.exports = { createApiProxy, resolveForwardedFor, engineRequest };
+module.exports = { createApiProxy, resolveForwardedFor, resolveEngine, engineRequest };

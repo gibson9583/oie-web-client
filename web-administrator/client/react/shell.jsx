@@ -83,6 +83,12 @@ function startEngine() {
         });
 
         await loadPlugins();
+        // Record which engine these plugins were discovered against. Plugin views
+        // register into module-level registries that a soft sign-out doesn't clear,
+        // so a later sign-in to a DIFFERENT engine (same page session) would show the
+        // wrong engine's panels. login.jsx compares against this and forces a reload
+        // when the target engine changes (see loadedEngineKey / engineSelectionKey).
+        try { sessionStorage.setItem('oie-loaded-engine', loadedEngineKey()); } catch { /* private mode */ }
     })();
     return engineStarted;
 }
@@ -213,6 +219,51 @@ function TopBar({ user, onLogout, serverInfo }) {
     );
 }
 
+/* ---- engine selection (multi-engine) ---- */
+
+function getCookie(name) {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : '';
+}
+
+// The engine this session is pointed at (from the oie-engine cookie + config),
+// mirroring server/proxy.js resolveEngine — so the status bar / menu are accurate
+// after a reload (the cookie persists), not just right after login. Returns a
+// "name (url)" label so users can confirm their pick (or just the url if the name
+// is the url, e.g. a devMode custom URL).
+function currentEngineLabel(config) {
+    const sel = getCookie('oie-engine');
+    if (sel === 'custom') return getCookie('oie-engine-url') || 'custom engine';
+    const engines = Array.isArray(config.engines) ? config.engines : [];
+    const idx = /^\d+$/.test(sel) ? Number(sel) : 0;
+    const eng = engines[idx] || engines[0];
+    if (!eng) return config.engineUrl || '';
+    return eng.name && eng.name !== eng.url ? `${eng.name} (${eng.url})` : (eng.url || eng.name);
+}
+
+// True when there's more than one engine to choose from (a dropdown or devMode).
+function engineChoiceAvailable(config) {
+    return (Array.isArray(config.engines) && config.engines.length > 1) || !!config.devMode;
+}
+
+// A stable key identifying the selected engine (index, or custom:<url>), derived
+// from the routing cookies. Stored in sessionStorage when plugins load so a later
+// sign-in to a different engine can detect the change and force a reload. login.jsx
+// computes the same key from its picker state — keep the two formats in sync.
+function loadedEngineKey() {
+    const sel = getCookie('oie-engine') || '0';
+    return sel === 'custom' ? `custom:${getCookie('oie-engine-url')}` : sel;
+}
+
+// Switch engine: drop the routing cookies and return to a fresh login (a full
+// reload re-bootstraps the app against the newly-chosen engine).
+async function switchEngine(onLogout) {
+    document.cookie = 'oie-engine=; path=/; max-age=0';
+    document.cookie = 'oie-engine-url=; path=/; max-age=0';
+    try { await onLogout(); } catch { /* ignore */ }
+    location.reload();
+}
+
 /* Top-right account menu (replaces the old logout-only chip, which read as a
    "go to profile" button — issue #8). The chip shows who's signed in; clicking
    opens an account menu with self-service Edit Account / Change Password, a
@@ -221,6 +272,7 @@ function UserMenu({ user, onLogout }) {
     const btnRef = useRef(null);
     const openMenu = () => {
         const me = store.getState('user') || user;
+        const config = store.getState('webadminConfig') || {};
         const fullName = [me?.firstName, me?.lastName].filter(Boolean).join(' ');
         const r = btnRef.current.getBoundingClientRect();
         // Re-read the current user after a self-edit so the chip/status bar update.
@@ -235,6 +287,7 @@ function UserMenu({ user, onLogout }) {
             { label: 'Change Password', icon: 'key', onClick: () => openChangePasswordModal(store.getState('user') || me) },
             { label: 'Settings', icon: 'settings', task: 'doShowSettings', group: 'view', onClick: () => router.navigate('/settings?tab=administrator') },
             '-',
+            { label: 'Switch Engine', icon: 'link', hidden: !engineChoiceAvailable(config), onClick: () => switchEngine(onLogout) },
             { label: 'Sign out', icon: 'logout', task: 'doLogout', group: 'other', onClick: onLogout }
         ], 'view');
     };
@@ -258,12 +311,13 @@ function StatusBar({ user, serverInfo }) {
         const t = setInterval(tick, 30000);
         return () => clearInterval(t);
     }, []);
+    const engine = currentEngineLabel(config) || '/api';
     let left = 'Connecting…';
     if (serverInfo && !serverInfo.error) {
         const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
-        left = `Connected to: ${config.engineUrl || '/api'} as ${user?.username || ''}` + (name ? ` (${name})` : '');
+        left = `Connected to: ${engine} as ${user?.username || ''}` + (name ? ` (${name})` : '');
     } else if (serverInfo && serverInfo.error) {
-        left = `Engine unreachable at ${config.engineUrl || '/api'}`;
+        left = `Engine unreachable at ${engine}`;
     }
     return <footer className="statusbar"><span>{left}</span><span className="ml-auto">{clock}</span></footer>;
 }
@@ -413,6 +467,12 @@ export function App() {
         initSplitters();
         let alive = true;
         (async () => {
+            // Fetch the web-admin config (engine list, devMode) BEFORE the auth check
+            // so the login screen can render the engine picker if there's a choice.
+            try {
+                const res = await fetch('/webadmin/config.json');
+                if (res.ok && alive) store.setState('webadminConfig', await res.json());
+            } catch { /* optional */ }
             try {
                 const u = await api.auth.current();
                 if (u && u.username && alive) {

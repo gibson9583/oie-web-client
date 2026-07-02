@@ -12,6 +12,9 @@
  *   OIE_URL              Base URL of the engine, e.g. https://localhost:8443
  *   OIE_VERIFY_TLS       "true" to verify the engine's TLS certificate (default false,
  *                        engines ship with self-signed certs)
+ *   WEBADMIN_DEV_MODE    "true" to let a user type an arbitrary engine URL at login
+ *                        (a manual URL field). Trusted/dev deployments only — the
+ *                        proxy will forward to whatever host is entered. Default false.
  *   WEBADMIN_PLUGIN_DIRS Additional local plugin directories (':'-separated) scanned
  *                        alongside the bundled ./plugins (e.g. for local development).
  *   WEBADMIN_CODE_TEMPLATE_COMPLETIONS
@@ -33,11 +36,20 @@ const defaults = {
     port: 3030,
     host: '0.0.0.0',
     engine: {
-        // Base URL of the Open Integration Engine REST API host.
+        // Base URL of the Open Integration Engine REST API host — the CURRENT/default
+        // engine (used when the client hasn't selected one).
         url: 'https://127.0.0.1:8443',
         // Engines ship with self-signed certificates; verification is opt-in.
         verifyTls: false
     },
+    // Selectable engines shown as a login dropdown (by `name`). Each entry:
+    // { name, url, verifyTls? }. Empty → single-engine mode (just engine.url, no
+    // picker). verifyTls falls back to engine.verifyTls when omitted.
+    allowedUrls: [],
+    // Let a user type an arbitrary engine URL at login (a manual URL field). The
+    // proxy forwards to whatever is entered, so this is for trusted/dev deployments
+    // only. Default false. (Distinct from WEBADMIN_DEV=1, which is Vite HMR.)
+    devMode: false,
     // Offer the channel's own Code Template functions as autocompletions in the
     // script editors (scoped to the channel + editor context). This fetches the
     // full code-template library set; on servers with very large catalogs an
@@ -69,6 +81,7 @@ function load() {
     if (process.env.WEBADMIN_HOST) config.host = process.env.WEBADMIN_HOST;
     if (process.env.OIE_URL) config.engine.url = process.env.OIE_URL;
     if (process.env.OIE_VERIFY_TLS) config.engine.verifyTls = process.env.OIE_VERIFY_TLS === 'true';
+    if (process.env.WEBADMIN_DEV_MODE) config.devMode = process.env.WEBADMIN_DEV_MODE === 'true';
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES) config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -84,8 +97,48 @@ function load() {
         .map(p => path.resolve(ROOT, p));
     config.pluginDirs = [...new Set([path.join(ROOT, 'plugins'), ...extra])];
 
+    // Normalize the selectable engine list. `allowedUrls` (when set) is the picker;
+    // otherwise the single default engine. Each entry gets a display name (falling
+    // back to the URL host) and a verifyTls (falling back to the default engine's).
+    // Invalid URLs are dropped with a warning. The proxy routes by index into this.
+    config.engines = buildEngines(config);
+
     config.root = ROOT;
     return config;
 }
 
-module.exports = { load };
+// Derive a readable label from a URL, e.g. "https://oie-prod:8443/" -> "oie-prod:8443".
+function engineLabel(url) {
+    try { return new URL(url).host; } catch { return String(url); }
+}
+
+function buildEngines(config) {
+    const raw = Array.isArray(config.allowedUrls) && config.allowedUrls.length
+        ? config.allowedUrls
+        : [{ name: null, url: config.engine.url, verifyTls: config.engine.verifyTls }];
+
+    const engines = [];
+    for (const e of raw) {
+        if (!e || !e.url) continue;
+        let url;
+        try {
+            url = new URL(String(e.url));
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('scheme');
+        } catch {
+            console.error(`[config] ignoring engine with invalid url: ${e && e.url}`);
+            continue;
+        }
+        engines.push({
+            name: (e.name && String(e.name).trim()) || engineLabel(e.url),
+            url: url.origin + url.pathname.replace(/\/$/, ''),
+            verifyTls: e.verifyTls != null ? !!e.verifyTls : !!config.engine.verifyTls
+        });
+    }
+    // Always have at least the default engine so the proxy can route.
+    if (!engines.length) {
+        engines.push({ name: engineLabel(config.engine.url), url: config.engine.url, verifyTls: !!config.engine.verifyTls });
+    }
+    return engines;
+}
+
+module.exports = { load, buildEngines };

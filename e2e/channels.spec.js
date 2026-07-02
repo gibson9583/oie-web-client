@@ -46,3 +46,14 @@ test('column menu hides, persists, and restores a column', async ({ page }) => {
     await openColumnMenu();
     await expect(page.locator('.ctx-menu').getByRole('button', { name: 'Name', exact: true })).toHaveCount(0);
 });
+
+test('right-clicking the empty channel list opens a context menu with New Channel', async ({ page }) => {
+    // Empty list: the background right-click menu must still reach New Channel
+    // (previously the empty area had no context menu).
+    await mockEngine(page, { 'GET /channels': { list: { channel: [] } } });
+    await page.goto('/channels');
+
+    await expect(page.getByText('No channels')).toBeVisible();
+    await page.locator('.dt-empty').click({ button: 'right' });
+    await expect(page.locator('.ctx-menu').getByRole('button', { name: 'New Channel', exact: true })).toBeVisible();
+});
