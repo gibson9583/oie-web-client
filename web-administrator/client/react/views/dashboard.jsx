@@ -903,8 +903,9 @@ function DashboardView() {
         typeahead.classList.remove('hidden');
         // Anchor under the filter input; flip above when the viewport runs out.
         const r = filterInput.getBoundingClientRect();
-        typeahead.style.left = r.left + 'px';
         typeahead.style.minWidth = r.width + 'px';
+        // Keep the panel fully on-screen at narrow widths.
+        typeahead.style.left = Math.max(4, Math.min(r.left, window.innerWidth - typeahead.offsetWidth - 4)) + 'px';
         typeahead.style.top = (r.bottom + 2) + 'px';
         typeahead.style.bottom = 'auto';
         if (typeahead.getBoundingClientRect().bottom > window.innerHeight - 4) {
@@ -931,6 +932,7 @@ function DashboardView() {
 
         const filterInput = h('input', {
             type: 'text', placeholder: 'Enter channel tag or name', autocomplete: 'off',
+            class: 'flex-1 min-w-0',
             onInput: (e) => { filterTextRef.current = e.target.value.trim(); renderTable(); openTypeahead(); },
             onFocus: () => openTypeahead(),
             onBlur: () => setTimeout(closeTypeahead, 150),    // small delay so clicks on the dropdown land
@@ -969,16 +971,41 @@ function DashboardView() {
         ], tagModeRef.current, (value) => { tagModeRef.current = value; lsSet('oie-dash-tagmode', value); renderTable(); });
 
         const radioName = 'dash-stats-' + Math.floor(performance.now());
-        const filterbar = h('div.filterbar',
-            h('label', 'Filter:'), chipHost, filterInput, typeahead, countsLabel,
-            h('span', { class: 'ml-auto inline-flex items-center gap-2.5 flex-none' },
-                viewToggle,
-                h('span', { class: 'inline-flex items-center gap-[5px]' },
-                    h('span', { class: 'text-text-faint text-[11px]' }, 'Tags:'), tagToggle)),
+        // The filter (label+input+counts) always shows and grows.
+        const filterZone = h('span', { class: 'flex items-center gap-2.5 flex-1 min-w-[220px]' },
+            h('label', 'Filter:'), chipHost, filterInput, h('span', { class: 'whitespace-nowrap' }, countsLabel));
+        // View / Tags / Statistics controls. Inline when the bar is wide; when the bar
+        // gets too narrow (container query on .filterbar) they collapse behind the
+        // "Display" button and open as a popover — like the account menu.
+        const controlsPanel = h('div.dash-controls', { class: 'flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto' },
+            viewToggle,
+            h('span', { class: 'inline-flex items-center gap-[5px]' },
+                h('span', { class: 'text-text-faint text-[11px]' }, 'Tags:'), tagToggle),
             h('div.radio-group.inline-row', { class: 'ml-0' },
                 h('label', h('input', { type: 'radio', name: radioName, checked: true, onChange: () => { lifetimeRef.current = false; renderTable(); forceRender(); } }), 'Current Statistics'),
                 h('label', h('input', { type: 'radio', name: radioName, onChange: () => { lifetimeRef.current = true; renderTable(); forceRender(); } }), 'Lifetime Statistics')));
+
+        const displayBtn = h('button.btn.dash-options-btn', {
+            type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false',
+            onClick: () => setDisplayOpen(!displayOpen)
+        }, icon('eye'), h('span', 'View'), icon('chevD'));
+        let displayOpen = false;
+        function onDisplayDocDown(e) {
+            if (!controlsPanel.contains(e.target) && !displayBtn.contains(e.target)) setDisplayOpen(false);
+        }
+        function setDisplayOpen(open) {
+            displayOpen = open;
+            controlsPanel.classList.toggle('open', open);
+            displayBtn.setAttribute('aria-expanded', String(open));
+            if (open) setTimeout(() => document.addEventListener('mousedown', onDisplayDocDown), 0);
+            else document.removeEventListener('mousedown', onDisplayDocDown);
+        }
+
+        const filterbar = h('div.filterbar', filterZone, displayBtn, controlsPanel);
         filterbarHost.appendChild(filterbar);
+        // The typeahead is position:fixed; keep it OUT of the (container-type) filter
+        // bar so its containing block stays the viewport. Removed on unmount (below).
+        document.body.appendChild(typeahead);
     }
 
     /* ---- polling ---- */
@@ -1054,6 +1081,7 @@ function DashboardView() {
         return () => {
             destroyedRef.current = true;
             clearTimeout(timerRef.current);
+            if (typeaheadRef.current) typeaheadRef.current.remove();   // it lives on document.body
             // Leaving the dashboard ends the one-time "just deployed" cue, so it
             // won't reappear when you navigate back.
             for (const st of statusesRef.current) if (isJustDeployed(st)) seenDeploys.add(deployKey(st));
@@ -1155,7 +1183,7 @@ function DashboardView() {
                 {tabDefs.length > 0 && (
                     <>
                         <div className="split-handle" data-orient="v" data-resize="next" />
-                        <div className="flex-none h-[230px] overflow-hidden flex flex-col">
+                        <div className="flex-none h-[clamp(140px,32vh,230px)] overflow-hidden flex flex-col">
                             <div className="tabs flex-none">
                                 {tabDefs.map((def) => (
                                     <button key={def.id || def.label}

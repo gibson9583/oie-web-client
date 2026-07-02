@@ -168,7 +168,7 @@ async function openDriversModal(onSaved) {
     const tbody = h('tbody');
     function rowEl(d) {
         const cell = (key, ph, w) => {
-            const inp = textInput(d[key], { placeholder: ph, style: { width: w, minWidth: w } });
+            const inp = textInput(d[key], { placeholder: ph, style: { width: w, maxWidth: '100%' } });
             inp.addEventListener('input', () => { d[key] = inp.value; });
             return h('td', { class: 'py-0.5 px-1' }, inp);
         };

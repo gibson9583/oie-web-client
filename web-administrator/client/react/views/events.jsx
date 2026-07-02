@@ -180,6 +180,15 @@ function EventsView() {
     const [serverId, setServerId] = useState('');
     const [attrSearch, setAttrSearch] = useState('');
     const [selected, setSelected] = useState(null);
+    // Narrow screens: the criteria collapse behind a "Filters" popover.
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const filterRef = useRef(null);
+    useEffect(() => {
+        if (!filtersOpen) return;
+        const onDown = (e) => { if (filterRef.current && !filterRef.current.contains(e.target)) setFiltersOpen(false); };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [filtersOpen]);
 
     // Search-engine state lives in a ref (mutated imperatively across pages);
     // forceRender refreshes the pager. usernames is best-effort id -> name.
@@ -313,7 +322,12 @@ function EventsView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                <div className="flex-none py-2.5 px-3.5 bg-bg1 border-b border-line">
+                <div ref={filterRef} className="flex-none py-2.5 px-3.5 bg-bg1 border-b border-line filter-collapse">
+                    <button className="btn filter-toggle" type="button" aria-haspopup="true" aria-expanded={filtersOpen}
+                        onClick={() => setFiltersOpen((o) => !o)}>
+                        <Icon name="filter" /><span>Filters</span><Icon name="chevD" size={14} />
+                    </button>
+                    <div className={'filter-popover' + (filtersOpen ? ' open' : '')}>
                     <div className="form-row">
                         <Field label="Start Time"><input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
                         <Field label="End Time"><input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
@@ -339,18 +353,19 @@ function EventsView() {
                                 {[20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
                             </select>
                         </Field>
-                        <button className={'btn' + (advancedOpen ? ' btn-primary' : '')} title="Show advanced search criteria"
+                        <button className={'btn filter-adv-toggle' + (advancedOpen ? ' btn-primary' : '')} title="Show advanced search criteria"
                             onClick={() => setAdvancedOpen((o) => !o)}><Icon name="filter" />Advanced</button>
-                        <TaskButton label="Search" icon="search" primary onClick={() => search(true)} />
+                        <TaskButton label="Search" icon="search" primary onClick={() => { search(true); setFiltersOpen(false); }} />
                     </div>
-                    {advancedOpen && (
-                        <div className="form-row mt-2">
-                            <Field label="User Id"><input type="number" min="0" className="w-[90px]" value={userId} onChange={(e) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                            <Field label="IP Address"><input type="text" className="w-[130px]" value={ip} onChange={(e) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
-                            <Field label="Server Id"><input type="text" className="w-[230px]" value={serverId} onChange={(e) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                            <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[190px]" value={attrSearch} onChange={(e) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        </div>
-                    )}
+                    {/* Always rendered; hidden inline behind the Advanced toggle when wide,
+                        but always shown inside the Filters popover (no menu-in-a-menu). */}
+                    <div className={'form-row mt-2 filter-advanced' + (advancedOpen ? '' : ' adv-hidden')}>
+                        <Field label="User Id"><input type="number" min="0" className="w-[90px]" value={userId} onChange={(e) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="IP Address"><input type="text" className="w-[130px]" value={ip} onChange={(e) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Server Id"><input type="text" className="w-[230px]" value={serverId} onChange={(e) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[190px]" value={attrSearch} onChange={(e) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
+                    </div>
+                    </div>
                 </div>
                 <div className="flex-1 overflow-auto min-h-0 flex flex-col">
                     <DataTableHost columns={COLUMNS} options={options} onReady={(t) => { tableRef.current = t; }} />

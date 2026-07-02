@@ -177,3 +177,22 @@ test('sets the channel-name banner title', async ({ page }) => {
     // webadmin:set-title fires 'Channel Messages - Demo Started' once the name loads.
     await expect(page.getByText('Channel Messages - Demo Started')).toBeVisible();
 });
+
+test('filter criteria collapse into a Filters popover when narrow', async ({ page }) => {
+    await page.setViewportSize({ width: 700, height: 800 });
+    await page.goto(`/messages/${CID}`);
+    const filtersBtn = page.getByRole('button', { name: 'Filters', exact: true });
+    await expect(filtersBtn).toBeVisible();
+    await expect(page.locator('.filter-popover')).toBeHidden();
+    await filtersBtn.click();
+    await expect(page.locator('.filter-popover')).toBeVisible();
+    await expect(page.locator('.filter-popover').getByText('Start Date')).toBeVisible();
+    // The criteria panel is a .panel (overflow:hidden by default) and the popover drops
+    // below it — .filter-collapse must reset overflow or the popover is clipped off-screen.
+    await expect(page.locator('.panel.filter-collapse')).toHaveCSS('overflow-x', 'visible');
+
+    // Opening the Advanced modal from the popover closes the popover (no overlap).
+    await page.locator('.filter-popover').getByRole('button', { name: 'Advanced…' }).click();
+    await expect(page.getByText('Advanced Search Filter')).toBeVisible();
+    await expect(page.locator('.filter-popover')).toBeHidden();
+});

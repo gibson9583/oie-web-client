@@ -721,9 +721,9 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     modal({
         title: mllp ? 'MLLP Settings' : 'Transmission Mode Settings',
         size: 'wide',
-        body: h('div', { class: 'flex gap-[18px] min-w-[520px]' },
-            h('div', { class: 'flex-1' }, leftRows),
-            h('div', h('div', { class: 'font-[650] mb-2' }, 'Byte Abbreviations'), abbrevList)),
+        body: h('div', { class: 'flex flex-wrap gap-[18px]' },
+            h('div', { class: 'flex-1 min-w-[240px]' }, leftRows),
+            h('div', { class: 'min-w-[200px]' }, h('div', { class: 'font-[650] mb-2' }, 'Byte Abbreviations'), abbrevList)),
         buttons: [
             { label: 'Cancel' },
             {

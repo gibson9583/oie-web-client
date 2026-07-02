@@ -800,7 +800,7 @@ export function AlertEditor({ params, query = {} }) {
                         : (
                             <>
                                 <ImperativeMount build={panels.topRow} />
-                                <div className="grid grid-cols-[1fr_1.2fr_1.4fr] gap-3.5 items-stretch">
+                                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(220px,100%),1fr))] gap-3.5 items-stretch">
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Errors (select all that apply)</div>
                                         <ImperativeMount build={panels.errorsBody} className="flex flex-col flex-1 min-h-0" />
@@ -853,7 +853,7 @@ export function AlertEditor({ params, query = {} }) {
                                         </div>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-[1fr_2fr_240px] gap-3.5 mt-3.5 items-stretch">
+                                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-3.5 mt-3.5 items-stretch">
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Actions</div>
                                         <ImperativeMount build={panels.actionsBody} className="flex flex-col flex-1 min-h-0" />

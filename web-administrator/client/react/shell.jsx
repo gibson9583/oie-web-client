@@ -326,6 +326,18 @@ function AppShell({ user, onLogout }) {
     const railVersion = serverInfo && !serverInfo.error ? `engine v${serverInfo.version}` : '';
     const railCollapsed = useStoreKey('railCollapsed');
 
+    // On phone/tablet the rail is an off-canvas drawer — close it after navigating
+    // (transient, so the desktop open/closed preference isn't overwritten).
+    useEffect(() => {
+        const close = () => {
+            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+                store.setState('railCollapsed', true);
+            }
+        };
+        window.addEventListener('route:changed', close);
+        return () => window.removeEventListener('route:changed', close);
+    }, []);
+
     return (
         <div className={'shell' + (railCollapsed ? ' rail-collapsed' : '')}>
             <aside className="rail">
@@ -341,6 +353,8 @@ function AppShell({ user, onLogout }) {
                 </div>
                 <div className="rail-foot"><span id="rail-version">{railVersion}</span></div>
             </aside>
+            {/* Off-canvas drawer backdrop (phone/tablet only via CSS) — tap to close. */}
+            <div className="rail-backdrop" onClick={() => store.setState('railCollapsed', true)} />
             <TopBar user={user} onLogout={onLogout} serverInfo={serverInfo} />
             <div className="content">
                 <RestartBanner />

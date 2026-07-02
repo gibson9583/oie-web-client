@@ -328,6 +328,11 @@ code, pre, .mono { font-family: var(--font-mono); }
     font-size: 15px;
     font-weight: 680;
     letter-spacing: 0.01em;
+    /* Truncate instead of shoving the right-side chips off-screen when narrow. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .topbar-spacer { flex: 1; }
@@ -745,7 +750,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .radio-group { display: flex; flex-direction: column; gap: 6px; }
 .radio-group.inline-row { flex-direction: row; gap: 16px; flex-wrap: wrap; }
 
-.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 22px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 0 22px; }
 .form-grid .span-2 { grid-column: 1 / -1; }
 
 .form-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
@@ -1023,14 +1028,17 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 
 .login-stage {
     height: 100vh;
-    display: grid;
-    place-items: center;
+    display: flex;
+    /* Scroll (don't clip) when the card is taller than a short viewport; the card's
+       margin:auto keeps it centered when there's room and never clips its top. */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 24px 16px;
     background:
         radial-gradient(ellipse 60% 45% at 50% -5%, var(--accent-glow), transparent),
         radial-gradient(var(--grid-dot) 1px, transparent 1px);
     background-size: 100% 100%, 22px 22px;
     position: relative;
-    overflow: hidden;
 }
 
 .login-stage::before {
@@ -1043,6 +1051,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 
 .login-card {
     width: min(380px, calc(100vw - 40px));
+    margin: auto;   /* center in the flex stage; scroll (not clip) when too tall */
+    flex: none;
     background: var(--bg1);
     border: 1px solid var(--line-strong);
     border-radius: 8px;
@@ -1462,7 +1472,9 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .filterbar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;      /* wrap the controls (and the pager) instead of overflowing when narrow */
     gap: 10px;
+    row-gap: 8px;
     padding: 7px 12px;
     background: var(--bg1);
     border-top: 1px solid var(--line);
@@ -1472,7 +1484,96 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .filterbar label { font-size: 11px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
 .filterbar input[type="text"] { max-width: 340px; }
 .filterbar .counts { color: var(--text-faint); font-family: var(--font-mono); font-size: 11px; }
-.filterbar .radio-group { margin-left: auto; }
+
+/* Dashboard filter bar: when the bar itself is too narrow for the view/tags/statistics
+   controls, they collapse behind the "Display" button and open as a popover — like the
+   account menu. Container query reacts to the bar's real width, not the viewport (which
+   the nav rail throws off). container-type makes .filterbar the containing block for the
+   absolute popover; the typeahead is moved to document.body so it stays viewport-fixed. */
+.filterbar { container-type: inline-size; position: relative; }
+.dash-options-btn { display: none; }
+.dash-options-btn svg:first-child { width: 14px; height: 14px; }
+.dash-options-btn svg:last-child { width: 12px; height: 12px; opacity: 0.7; }
+
+/* Collapse to the View menu below ~880px — the inline controls need ~607px and the
+   filter zone another ~240px, so they'd wrap into a second row below roughly there. */
+@container (max-width: 880px) {
+    .dash-options-btn { display: inline-flex !important; align-items: center; gap: 6px; margin-left: auto; }
+    /* !important beats the Tailwind `flex` utility on .dash-controls — utilities
+       outrank this @layer components block in Tailwind v4's layer order. */
+    .dash-controls {
+        display: none !important;
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 8px;
+        z-index: 150;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        min-width: 210px;
+        margin-left: 0;
+        padding: 12px 14px;
+        background: var(--bg2);
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        box-shadow: var(--shadow);
+        animation: fade-in 0.1s ease-out;
+    }
+    .dash-controls.open { display: flex !important; }
+    .dash-controls .radio-group.inline-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+}
+
+/* Very narrow bar (phone): drop the secondary "N Groups, M Deployed Channels"
+   count so the filter input and View button aren't crushed. The count is
+   nowrap (can't shrink) and non-essential — the data is on the rows themselves. */
+@container (max-width: 520px) {
+    .filterbar .counts { display: none; }
+}
+
+/* Filter toolbars (message + event browsers) → "Filters" popover on narrow, matching
+   the dashboard View menu. Filters are primary, so this kicks in only when the bar is
+   genuinely narrow (they wrap to a couple of rows in the medium range). !important beats
+   the Tailwind utilities on the popover content (utilities outrank @layer components). */
+/* overflow:visible so the absolute popover can escape when the toolbar is a .panel
+   (which is overflow:hidden) — e.g. the message browser's criteria panel. */
+.filter-collapse { container-type: inline-size; position: relative; overflow: visible; }
+.filter-toggle { display: none; }
+.filter-toggle svg:first-child { width: 14px; height: 14px; }
+.filter-toggle svg:last-child { width: 12px; height: 12px; opacity: 0.7; }
+/* Advanced criteria: hidden inline behind the Advanced toggle until opened. */
+.filter-advanced.adv-hidden { display: none; }
+/* Wide-mode collapse (message browser's "Search Criteria" heading). */
+.filter-popover.collapsed { display: none; }
+
+@container (max-width: 760px) {
+    .filter-toggle { display: inline-flex !important; align-items: center; gap: 6px; }
+    /* In the popover there's room to just show everything — drop the nested Advanced
+       toggle and always show the advanced fields (no menu-within-a-menu). */
+    .filter-adv-toggle { display: none !important; }
+    .filter-popover .filter-advanced { display: flex !important; }
+    .filter-popover {
+        display: none !important;
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 12px;
+        z-index: 150;
+        width: min(320px, calc(100vw - 24px));
+        max-height: min(70vh, 460px);
+        overflow: auto;
+        padding: 14px;
+        background: var(--bg2);
+        border: 1px solid var(--line-strong);
+        border-radius: 6px;
+        box-shadow: var(--shadow);
+        animation: fade-in 0.1s ease-out;
+    }
+    .filter-popover.open { display: block !important; }
+    /* Stack the form-row fields vertically inside the popover. */
+    .filter-popover .form-row { flex-direction: column; align-items: stretch; gap: 10px; }
+    .filter-popover .form-row + .form-row { margin-top: 10px; }
+    .filter-popover .field { margin-bottom: 0; }
+    .filter-popover .field input, .filter-popover .field select { width: 100%; }
+}
 .filterbar .check, .filterbar .radio-group label { font-size: 12px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 5px; }
 
 .split-handle {
@@ -1506,10 +1607,85 @@ table.dt td .twisty.twisty-lg { padding: 5px 8px; margin: -5px -8px; }
 
 /* ---- Responsive ------------------------------------------------------------------------------------------------------------------------ */
 
-@media (max-width: 860px) {
-    :root { --rail-w: 56px; }
-    .rail-brand .brand-name, .rail-brand .brand-sub, .rail-item span, .rail-section, .rail-foot { display: none; }
-    .rail-item { justify-content: center; padding: 10px 0; }
+/* ---- Responsive: tablet & phone -------------------------------------------------------- */
+
+/* Status bar: ellipsis the connection string instead of shoving the clock off-screen. */
+.statusbar > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.statusbar > .ml-auto { flex: none; }
+
+/* Full-height blocks: prefer dynamic viewport units (mobile browser-toolbar 100vh trap). */
+@supports (height: 100dvh) {
+    .shell, .boot-splash, .login-stage { height: 100dvh; }
+}
+
+.rail-backdrop { display: none; }
+
+@media (max-width: 768px) {
+    /* The rail becomes an off-canvas overlay drawer at its full width (real labels —
+       an icon-only strip gives no labels, and touch has no hover tooltips). Content
+       spans full width; the topbar hamburger and the backdrop open/close it. */
+    .shell { grid-template-columns: 0 1fr; }
+    .rail {
+        position: fixed;
+        top: 0; bottom: 0; left: 0;
+        width: var(--rail-w);
+        z-index: 120;
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+        box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
+    }
+    .shell:not(.rail-collapsed) .rail { transform: none; }
+
+    .rail-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 119;
+        background: rgba(0, 0, 0, 0.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s ease;
+    }
+    .shell:not(.rail-collapsed) .rail-backdrop { opacity: 1; pointer-events: auto; }
+
+    /* Channel editor Destinations: drop the mappings rail below the editor when narrow
+       (the root uses inline display:flex; only flex-direction is overridden here). */
+    .dest-layout { flex-direction: column; }
+    .dest-mappings { width: auto; flex: none; max-height: 220px; }
+
+    /* Filter/transformer sub-editor: the editor column and the fixed 460px reference
+       panel sit side by side, which overflows a narrow viewport. Stack them so each
+       spans the full width (like .dest-layout). The col-resize handle is meaningless
+       stacked, so hide it. !important beats the Tailwind flex-none/w-[460px] utilities
+       on .split-b (utilities outrank this @layer components block). */
+    .split-reflow { flex-direction: column; }
+    .split-reflow > .split-handle[data-orient="h"] { display: none; }
+    /* Give the editor column enough height that the step grid AND the step form
+       below it are both usable once stacked; the reference panel gets its own
+       floor. Each pane scrolls internally and the view-body scrolls past both. */
+    .split-reflow > .split-a { flex: 1 1 auto !important; min-height: 380px; }
+    .split-reflow > .split-b {
+        width: auto !important;
+        flex: 1 1 auto !important;
+        min-height: 300px;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+    }
+    /* Inside the stacked editor column, cap the step grid so the step form keeps
+       room (its desktop 40% share would waste height on a single-row grid). */
+    .split-reflow > .split-a > .split-a[data-editor-overtake] { height: auto !important; flex: 0 0 auto !important; max-height: 140px; }
+}
+
+@media (max-width: 640px) {
+    /* Topbar: collapse the verbose chips to icons — server identity is already in the
+       status bar, and the account menu still shows the username. */
+    .topbar { gap: 8px; padding: 0 10px; }
+    .server-chip { display: none; }
+    .tz-toggle span, .user-chip span { display: none; }
+    .tz-toggle, .user-chip { padding: 5px 8px; }
+    /* NOTE: the connector-form (.cform-grid) + .kv stacking lives after the base
+       .cform-grid definition below — placed here it loses to the later base rule
+       (equal specificity → source order wins), so the form never stacked. */
 }
 
 /* ---- Filter typeahead (dashboard) ---------------------------------------------------------------------------------------------------------
@@ -1616,5 +1792,29 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
     background: color-mix(in srgb, var(--err) 12%, var(--bg2)) !important;
 }
 .radio-group.cform-invalid { outline: 1px solid var(--err); outline-offset: 3px; border-radius: 6px; }
+
+/* Destination connector header row: "Connector Type: [select]  [x] Wait for previous".
+   The checkbox is pushed to the right on a wide row, but once the row is narrow
+   enough to wrap it onto its own line, keep it left-aligned under the select
+   rather than floating off to the right. A container query on the row itself
+   reacts to the real row width (not the viewport, which the editor layout skews). */
+.dest-type-row { container-type: inline-size; }
+.dest-wait-push { margin-left: auto; }
+@container (max-width: 560px) {
+    .dest-wait-push { margin-left: 0; }
+}
+
+/* Connector-form + key/value stacking — MUST come after the base .cform-grid /
+   .cform-label / .cform-control / .kv rules above so it wins on source order
+   (equal specificity, same layer). Stacks the label:control grid to one column
+   so controls stay readable on phones. */
+@media (max-width: 640px) {
+    .cform-grid { grid-template-columns: 1fr; gap: 2px 0; }
+    .cform-label, .cform-label.top { text-align: left; white-space: normal; padding-top: 6px; }
+    .cform-control { margin-bottom: 8px; }
+    .cform-control > input, .cform-control > select, .cform-control > textarea { max-width: 100%; }
+    .kv { grid-template-columns: 1fr; gap: 1px 0; }
+    .kv dt { margin-top: 8px; align-self: start; }
+}
 
 } /* end @layer components */

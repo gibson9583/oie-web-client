@@ -633,7 +633,7 @@ function buildBody(params, query, onTasksChange, returning) {
         const root = h('div', { class: 'flex flex-col gap-3.5' },
             renderChannelProperties(props, metadata),
             // Storage and pruning side by side; wraps to one column when narrow.
-            h('div', { class: 'grid grid-cols-[repeat(auto-fit,minmax(380px,1fr))] gap-3.5 items-start' },
+            h('div', { class: 'grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] gap-3.5 items-start' },
                 renderMessageStorage(props),
                 renderPruning(metadata)),
             renderMetaDataColumns(props),
@@ -920,7 +920,7 @@ function buildBody(params, query, onTasksChange, returning) {
         return h('div.panel',
             h('div.panel-header', 'Channel Properties'),
             h('div.panel-body', h('div', {
-                class: 'grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-y-0 gap-x-7 items-start'
+                class: 'grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-y-0 gap-x-7 items-start'
             }, left, right)));
     }
 
@@ -975,7 +975,7 @@ function buildBody(params, query, onTasksChange, returning) {
 
         const tableHost = h('div');
         const panelsHost = h('div', {
-            class: 'grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-3.5 mt-3.5 items-start'
+            class: 'grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5 mt-3.5 items-start'
         });
         // Teardowns for the mounted <DataTypePropertiesEditor> React roots;
         // unmounted on each rebuild (renderPanels) and on dialog close.
@@ -2328,7 +2328,10 @@ function buildBody(params, query, onTasksChange, returning) {
             const waitBox = checkbox('Wait for previous destination', dest.waitForPrevious !== false, {
                 onChange: (e) => { dest.waitForPrevious = e.target.checked; markDirty(); table.setRows(dests()); }
             });
-            waitBox.el.style.marginLeft = 'auto';
+            // Pushed right on a wide row; when the row is narrow enough to wrap, CSS
+            // (a container query on .dest-type-row) drops the auto margin so the
+            // checkbox left-aligns under the type select instead of floating right.
+            waitBox.el.classList.add('dest-wait-push');
             const typeSelect = connectorTypeSelect(dest, 'DESTINATION', renderDestEditor);
             typeSelect.style.width = '200px';
             // Static header: connector type + wait-for on ONE compact line (Swing
@@ -2336,7 +2339,7 @@ function buildBody(params, query, onTasksChange, returning) {
             editorHost.appendChild(h('div.panel', { class: 'm-0 sticky top-0 z-[1]' },
                 destHeaderEl,
                 h('div.panel-body', { class: 'py-1.5 px-3' },
-                    h('div', { class: 'flex items-center gap-2' },
+                    h('div.dest-type-row', { class: 'flex items-center gap-2 flex-wrap' },
                         h('label', { class: 'font-semibold whitespace-nowrap' }, 'Connector Type:'),
                         typeSelect,
                         waitBox.el))));
@@ -2629,7 +2632,7 @@ function buildBody(params, query, onTasksChange, returning) {
                 }, label));
             }
             return h('div.panel', {
-                class: 'w-[240px] flex-[0_0_240px] flex flex-col self-stretch mt-0'
+                class: 'dest-mappings w-[240px] flex-[0_0_240px] flex flex-col self-stretch mt-0'
             },
                 h('div.panel-header', 'Destination Mappings'),
                 list);
@@ -2648,6 +2651,7 @@ function buildBody(params, query, onTasksChange, returning) {
         root.style.display = 'flex';
         root.style.gap = '14px';
         root.style.alignItems = 'stretch';
+        root.classList.add('dest-layout');   // stacks to a column on narrow (see app.css)
         root.appendChild(main);
         root.appendChild(buildMappingsPanel());
         return root;

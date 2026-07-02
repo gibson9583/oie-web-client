@@ -36,7 +36,7 @@ export function register(platform) {
 // default widths. Order/visibility/widths are persisted by TreeTable's column
 // manager under the same 'channels' key the legacy grid used.
 const CHANNEL_COLUMNS = [
-    { key: 'status', label: 'Status', width: 90 },
+    { key: 'status', label: 'Status', width: 140 },   // tree column: carries the depth indent + twisty spacer + pip, so needs room for "Disabled"/"Invalid"
     { key: 'dataType', label: 'Data Type', width: 95 },
     { key: 'name', label: 'Name', width: 280 },
     { key: 'id', label: 'Id', width: 250 },

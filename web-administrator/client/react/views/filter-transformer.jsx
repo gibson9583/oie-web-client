@@ -1589,7 +1589,9 @@ function buildBody(params, kindName, onTasksChange) {
     const maxCleanup = addEditorMaximize(bottomTabs.el, editorColumn);
 
     const el = h('div.view-body.flush', { class: 'flex flex-1 min-h-0' },
-        h('div.split', { class: 'flex-1 min-w-0' },
+        // split-reflow: below the tablet breakpoint the CSS stacks this outer split
+        // vertically so the fixed-width reference panel doesn't overflow (app.css).
+        h('div.split.split-reflow', { class: 'flex-1 min-w-0' },
             editorColumn,
             h('div.split-handle', { 'data-orient': 'h', 'data-resize': 'next' }),
             // Wide enough to show the full tab bar (Reference / Message

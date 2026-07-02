@@ -105,6 +105,13 @@ export function TreeTable({
         .filter((c) => c && !mgr.isHidden(c.key));
     const lastKey = visibleCols.length ? visibleCols[visibleCols.length - 1].key : null;
 
+    // Floor the table to the sum of its column widths so a narrow viewport scrolls
+    // the .dt-wrap horizontally instead of crushing every column to unreadable
+    // truncation (mirrors core/columns.js syncMinWidth for the imperative tables).
+    // The last column is auto-width, so give it an 80px floor.
+    const minTableWidth = visibleCols.reduce(
+        (sum, c) => sum + (c.key === lastKey ? 80 : mgr.width(c.key)), 0);
+
     const toggle = (key) => {
         if (onToggleCollapse) { onToggleCollapse(key); return; }
         const s = internalCollapsed.current; if (s.has(key)) s.delete(key); else s.add(key); force();
@@ -166,7 +173,7 @@ export function TreeTable({
 
     return (
         <div className="dt-wrap" onContextMenu={(e) => { if (!e.target.closest('tr') && onEmptyContextMenu) onEmptyContextMenu(e); }}>
-            <table className="dt dt-resizable" style={{ tableLayout: 'fixed', width: '100%' }}>
+            <table className="dt dt-resizable" style={{ tableLayout: 'fixed', width: '100%', minWidth: minTableWidth + 'px' }}>
                 <colgroup>
                     {visibleCols.map((c) => (
                         <col key={c.key}

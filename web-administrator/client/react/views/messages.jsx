@@ -456,7 +456,9 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
        staged, so an applied advanced filter is visible without reopening the
        dialog. Applying advanced criteria does NOT auto-search — the user runs it
        with Search (parity with the Swing browser). */
-    const advBtn = taskButton('Advanced…', 'filter', () => openAdvancedSearch());
+    // Close the narrow Filters popover before opening the Advanced modal, so the
+    // popover doesn't float over the modal (setFiltersOpen is hoisted below).
+    const advBtn = taskButton('Advanced…', 'filter', () => { setFiltersOpen(false); openAdvancedSearch(); });
     const advDot = h('span', { class: 'inline-block w-[7px] h-[7px] ml-[7px] rounded-full bg-accent' });
     function advIsActive() {
         const ranges = ['minMessageId', 'maxMessageId', 'minOriginalId', 'maxOriginalId',
@@ -487,7 +489,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         updateAdvIndicator();
     }
 
-    const criteriaBody = h('div.panel-body',
+    const criteriaBody = h('div.panel-body.filter-popover',
         h('div.form-row',
             field('Start Date', startInput),
             field('End Date', endInput),
@@ -500,14 +502,34 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
             advBtn),
         searchSummary);
 
+    // Wide: click the "Search Criteria" heading to collapse the criteria in place.
     const criteriaChevron = h('span', { class: 'cursor-pointer' }, '▾');
-    const criteriaPanel = h('div.panel',
+    const criteriaHeading = h('span.criteria-heading', {
+        class: 'cursor-pointer inline-flex items-center gap-1.5',
+        onClick: () => {
+            const collapsed = criteriaBody.classList.toggle('collapsed');
+            criteriaChevron.textContent = collapsed ? '▸' : '▾';
+        }
+    }, criteriaChevron, 'Search Criteria');
+    // Narrow: the criteria collapse into a "Filters" popover (like the dashboard View).
+    let filtersOpen = false;
+    function onFiltersDocDown(e) {
+        if (!criteriaBody.contains(e.target) && !filtersBtn.contains(e.target)) setFiltersOpen(false);
+    }
+    function setFiltersOpen(open) {
+        filtersOpen = open;
+        criteriaBody.classList.toggle('open', open);
+        filtersBtn.setAttribute('aria-expanded', String(open));
+        if (open) setTimeout(() => document.addEventListener('mousedown', onFiltersDocDown), 0);
+        else document.removeEventListener('mousedown', onFiltersDocDown);
+    }
+    const filtersBtn = h('button.btn.filter-toggle', {
+        type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false',
+        onClick: () => setFiltersOpen(!filtersOpen)
+    }, icon('filter'), h('span', 'Filters'), icon('chevD'));
+    const criteriaPanel = h('div.panel.filter-collapse',
         { class: 'flex-none border-0 border-b border-line rounded-none' },
-        h('div.panel-header', { class: 'cursor-pointer', onClick: () => {
-            const hidden = criteriaBody.style.display === 'none';
-            criteriaBody.style.display = hidden ? '' : 'none';
-            criteriaChevron.textContent = hidden ? '▾' : '▸';
-        } }, criteriaChevron, 'Search Criteria'),
+        h('div.panel-header', { class: 'flex items-center gap-2' }, criteriaHeading, filtersBtn),
         criteriaBody);
 
     function buildParams() {
@@ -637,7 +659,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     connTbody)));
 
         /* ---- id / numeric ranges (stacked "label: min – max" rows) ---- */
-        const num = (value) => h('input', { type: 'number', value, class: 'w-[150px]' });
+        const num = (value) => h('input', { type: 'number', value, class: 'flex-1 min-w-0 max-w-[150px]' });
         const inputs = {
             minMessageId: num(adv.minMessageId), maxMessageId: num(adv.maxMessageId),
             minOriginalId: num(adv.minOriginalId), maxOriginalId: num(adv.maxOriginalId),
@@ -912,7 +934,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     // View Attachment (Swing MESSAGE_VIEW_IMAGE) — modal listing the message's
     // attachments, each with the existing Fetch Content + Export controls.
     function viewAttachmentsModal(m) {
-        const host = h('div', { class: 'min-w-[480px] max-h-[60vh] overflow-auto' }, loading('Loading attachments…'));
+        const host = h('div', { class: 'w-full min-w-0 max-h-[60vh] overflow-auto' }, loading('Loading attachments…'));
         // The modal owns its attachment-viewer roots and tears them down on close,
         // independent of the detail pane's roots.
         const modalRoots = [];
@@ -1807,9 +1829,9 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         const dlg = modal({
             title: 'Export Results',
             size: 'wide',
-            body: h('div', { class: 'flex gap-[18px] min-w-[680px]' },
-                h('div', { class: 'flex-1 flex flex-col gap-2' }, grid, status, barWrap),
-                h('div', { class: 'w-[200px] flex flex-col' },
+            body: h('div', { class: 'flex flex-wrap gap-[18px]' },
+                h('div', { class: 'flex-1 min-w-[260px] flex flex-col gap-2' }, grid, status, barWrap),
+                h('div', { class: 'w-full sm:w-[200px] min-w-0 flex flex-col' },
                     h('label', { class: 'block mb-0.5' }, 'Variables:'),
                     varList)),
             buttons: [

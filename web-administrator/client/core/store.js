@@ -82,6 +82,13 @@ export function initTheme() {
 
 /* ---- left nav (rail) collapse ---- */
 
+// Phone/tablet: the rail is an off-canvas drawer that starts closed (content
+// full-width), independent of the saved desktop open/closed preference.
+function narrowViewport() {
+    return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        && window.matchMedia('(max-width: 768px)').matches;
+}
+
 export function setRailCollapsed(collapsed) {
     try { localStorage.setItem(scopedKey('oie-rail-collapsed'), collapsed ? '1' : '0'); } catch { /* private mode */ }
     setState('railCollapsed', !!collapsed);
@@ -90,6 +97,7 @@ export function setRailCollapsed(collapsed) {
 export function initRailCollapsed() {
     let collapsed = false;
     try { collapsed = localStorage.getItem(scopedKey('oie-rail-collapsed')) === '1'; } catch { /* private mode */ }
+    if (narrowViewport()) collapsed = true;   // drawer starts closed on small screens
     state.railCollapsed = collapsed;
 }
 
@@ -101,8 +109,10 @@ export function reapplyScopedSettings() {
         const t = localStorage.getItem(scopedKey('oie-theme'));
         if (t && t !== state.theme) setTheme(t);
     } catch { /* private mode */ }
-    try {
-        const r = localStorage.getItem(scopedKey('oie-rail-collapsed'));
-        if (r !== null) setRailCollapsed(r === '1');
-    } catch { /* private mode */ }
+    if (!narrowViewport()) {   // on a drawer viewport, leave the rail closed (initRailCollapsed)
+        try {
+            const r = localStorage.getItem(scopedKey('oie-rail-collapsed'));
+            if (r !== null) setRailCollapsed(r === '1');
+        } catch { /* private mode */ }
+    }
 }

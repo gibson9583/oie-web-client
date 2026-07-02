@@ -73,7 +73,9 @@ function staticResourcesTable(properties, onChange) {
     };
     function paint() {
         clear(wrap);
-        const table = h('table.dt');
+        // min-width so the four inputs stay usable; the .dt-wrap below scrolls it
+        // horizontally on a narrow panel instead of overflowing (or crushing).
+        const table = h('table.dt', { style: { minWidth: '520px' } });
         table.appendChild(h('thead', h('tr',
             h('th', 'Context Path'), h('th', 'Resource Type'), h('th', 'Value'), h('th', 'Content Type'), h('th'))));
         const body = h('tbody');
@@ -89,7 +91,7 @@ function staticResourcesTable(properties, onChange) {
                 h('td', h('button.icon-btn', { type: 'button', title: 'Delete', onClick: () => { rows.splice(i, 1); commit(); paint(); } }, icon('x')))));
         });
         table.appendChild(body);
-        wrap.appendChild(table);
+        wrap.appendChild(h('div.dt-wrap', table));
         wrap.appendChild(h('button.btn', { type: 'button', onClick: () => {
             let n = 1;
             const taken = new Set(rows.map((r) => r.contextPath));

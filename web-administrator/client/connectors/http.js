@@ -58,7 +58,7 @@ function staticResourcesTable(properties, onChange) {
   };
   function paint() {
     clear(wrap);
-    const table = h("table.dt");
+    const table = h("table.dt", { style: { minWidth: "520px" } });
     table.appendChild(h("thead", h(
       "tr",
       h("th", "Context Path"),
@@ -104,7 +104,7 @@ function staticResourcesTable(properties, onChange) {
       ));
     });
     table.appendChild(body);
-    wrap.appendChild(table);
+    wrap.appendChild(h("div.dt-wrap", table));
     wrap.appendChild(h("button.btn", { type: "button", onClick: () => {
       let n = 1;
       const taken = new Set(rows.map((r) => r.contextPath));
