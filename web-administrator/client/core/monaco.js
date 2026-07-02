@@ -184,8 +184,8 @@ function setup(monaco) {
     }
 
     // Format Document → the engine's own Rhino/E4X-safe pretty-printer
-    // (JavaScriptSharedUtil.prettyPrint via the serializer bridge), the same one
-    // Swing's Format Code uses. No-op when the bridge (OIE_HOME) isn't configured.
+    // (JavaScriptSharedUtil.prettyPrint, via POST /api/javascript/_prettyPrint), the
+    // same one Swing's Format Code uses. No-op on engines without that endpoint.
     monaco.languages.registerDocumentFormattingEditProvider('javascript', {
         async provideDocumentFormattingEdits(model) {
             const formatted = await formatScript(model.getValue());

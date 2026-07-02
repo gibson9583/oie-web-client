@@ -16,7 +16,6 @@ const { load } = require('./config');
 const { createApiProxy } = require('./proxy');
 const { installPluginRoutes } = require('./plugin-install');
 const plugins = require('./plugins');
-const { installSerialize } = require('./serialize');
 
 const config = load();
 const app = express();
@@ -85,9 +84,6 @@ try {
     console.warn('  [monaco] monaco-editor not installed — code editors will use the basic textarea. Run "npm install".');
 }
 
-// --- Serializer bridge (optional, exact datatype serialization) --------------
-const serializerBridge = installSerialize(app, config);
-
 // --- Plugins -----------------------------------------------------------------
 // Registered BEFORE the frontend so /plugins/* and /webadmin/plugins.json take
 // precedence over Vite/static (plugins are served from disk, unbundled).
@@ -149,12 +145,7 @@ async function start() {
             + (wildcard ? `  (bound to ${config.host} — all interfaces)` : '')
             + (DEV ? '  (dev — Vite HMR)' : ''));
         console.log(`  Engine:  ${config.engine.url} (TLS verify: ${config.engine.verifyTls})`);
-        console.log(`  Plugins: ${loaded.length} loaded from ${config.pluginDir}`);
-        const sb = serializerBridge.status();
-        // sb.status() is coarse ({ configured, ready }) — it omits the engine path
-        // on purpose (that status is also served unauthenticated). Read the path
-        // from config here, which is server-side only.
-        console.log(`  Serializer bridge: ${sb.configured ? `enabled (engine: ${config.engineHome})` : 'disabled — using built-in JS parsing (set OIE_HOME for exact serialization)'}`);
+        console.log(`  Plugins: ${loaded.length} loaded`);
         console.log('');
     });
 }

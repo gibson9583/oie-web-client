@@ -188,13 +188,17 @@ export interface PluginManifest {
     name?: string;
     version?: string;
     entry?: string;
-    status?: 'loaded' | 'error' | 'no-client' | string;
+    status?: 'loaded' | 'error' | 'incompatible' | 'no-client' | string;
     error?: string;
+    /** Minimum @oie API version the plugin declares it needs (plugin.json `oie.apiMin`). */
+    apiMin?: string | null;
     [key: string]: any;
 }
 
 /** The platform handed to every plugin's `register(platform)`. */
 export interface Platform {
+    /** The @oie/* API contract version this web administrator implements — tracks the OIE engine release line (e.g. "4.6.0"). */
+    apiVersion: string;
     /* shared libraries */
     api: Api;
     ui: DomToolkit;
@@ -249,3 +253,12 @@ export interface Platform {
 export const platform: Platform;
 /** Discover, import, and register every plugin; returns each plugin's load status. */
 export function loadPlugins(): Promise<PluginManifest[]>;
+
+/** The @oie/* API contract version this build implements (same value as `platform.apiVersion`). */
+export const OIE_API_VERSION: string;
+/**
+ * True if `provided` satisfies a plugin's required minimum: same major (no breaking
+ * change) and provided minor >= required minor. An empty/undefined `requiredMin` is
+ * always compatible. Use with `OIE_API_VERSION`/`platform.apiVersion`.
+ */
+export function apiCompatible(provided: string, requiredMin?: string | null): boolean;

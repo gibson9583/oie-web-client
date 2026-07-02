@@ -70,8 +70,9 @@ function metaColumns() {
 
 function statusTag(p) {
     if (p.status === 'loaded') return h('span.tag.accent', 'Loaded');
-    if (p.status === 'error') {
-        return h('span', h('span.tag.red', 'Error'),
+    if (p.status === 'error' || p.status === 'incompatible') {
+        const label = p.status === 'incompatible' ? 'Incompatible' : 'Error';
+        return h('span', h('span.tag.red', label),
             p.error ? h('span.text-err', { style: { marginLeft: '8px', fontSize: '11px' } }, String(p.error)) : null);
     }
     return h('span.tag', 'No client');
@@ -200,15 +201,10 @@ function ExtensionsView() {
             try {
                 const form = new FormData();
                 form.append('file', file, file.name);
-                const result = (await api.post('/_webadmin/plugins/_install', form)) || {};
-                // Always state the web-UI outcome: a package with no webadmin/ half
-                // installs successfully with webInstalled=false, which previously
-                // read as a plain "installed" with no hint that nothing web-side
-                // landed (the confusing case for a web-capable plugin like TLS).
-                const webNote = result.webInstalled
-                    ? ' Its web UI was added — refresh this page to load it.'
-                    : ' No web UI was found in this package (engine side only).';
-                toast(`"${file.name}" installed — restart the engine to load it.${webNote}`);
+                // The engine installs the extension and serves any web UI it carries
+                // (via /api/webplugins); both load after the engine restarts.
+                await api.post('/_webadmin/plugins/_install', form);
+                toast(`"${file.name}" installed — restart the engine to load it.`);
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e) {
                 toast(`Install failed: ${e.message}`, 'error');
@@ -219,10 +215,9 @@ function ExtensionsView() {
     }
 
     /* Engine-gated uninstall: the extension's MetaData "path" is forwarded to the
-       engine's _uninstall (which enforces EXTENSIONS_MANAGE and writes its
-       uninstall marker, applied on the next engine restart). On success the web
-       admin removes its own copy of the web half too — correlated to a web plugin
-       by id/name so it's torn down in the same action. */
+       engine's _uninstall (which enforces EXTENSIONS_MANAGE and writes its uninstall
+       marker, applied on the next engine restart). The engine owns the web half too,
+       so removing the extension removes its UI — nothing is stored web-admin-side. */
     async function uninstallExtension() {
         const s = requireSelection();
         if (!s) return;
@@ -237,16 +232,10 @@ function ExtensionsView() {
             `Uninstall "${s.name}"? Its server-side files will be removed on the next engine restart. This cannot be undone.`,
             { danger: true, okLabel: 'Uninstall' })) {
             try {
-                // The server correlates the extension to its installed web plugin
-                // by the marker it wrote at install (exact engine name / folder);
-                // forward both, plus a best-effort pluginId as a legacy fallback.
-                const lower = String(s.name).toLowerCase();
-                const web = webPlugins.find((p) => String(p.id).toLowerCase() === lower || String(p.name).toLowerCase() === lower);
-                const result = (await api.post('/_webadmin/plugins/_uninstall',
-                    JSON.stringify({ path: String(path), name: String(s.name), pluginId: web ? web.id : null }),
-                    { contentType: 'application/json' })) || {};
-                const w = result.webRemoved ? ' Web UI removed.' : '';
-                toast(`${s.name} uninstalled — restart the engine to apply.${w}`);
+                await api.post('/_webadmin/plugins/_uninstall',
+                    JSON.stringify({ path: String(path) }),
+                    { contentType: 'application/json' });
+                toast(`${s.name} uninstalled — restart the engine to apply.`);
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e) {
                 toast(`Uninstall failed: ${e.message}`, 'error');

@@ -1247,12 +1247,13 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
         tools.appendChild(h('span', { class: 'flex-1' }));
         tools.appendChild(h('button.btn.btn-sm', { onClick: () => copyText(body) }, icon('copy'), 'Copy'));
 
-        // HL7: pull exact field names from the engine and re-render tooltips.
+        // HL7: pull exact field names from the engine and re-render tooltips
+        // (enhances the built-in static dictionary; no-op if the engine can't serialize).
         if (kind === 'hl7v2') {
             serializeTemplate('HL7V2', {}, body).then(res => {
                 const d = res && res.meta && res.meta.descriptions;
                 if (d && Object.keys(d).length) { descriptions = d; draw(); }
-            }).catch(() => { /* sidecar offline → static dictionary tooltips */ });
+            }).catch(() => { /* leave the static dictionary tooltips */ });
         }
 
         const banner = env
