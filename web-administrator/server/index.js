@@ -63,6 +63,11 @@ app.use('/api', createApiProxy(config));
 app.get('/webadmin/config.json', (req, res) => {
     res.json({
         engineUrl: config.engine.url,
+        // Selectable engines (login dropdown, by name) + whether a manual URL entry
+        // is allowed. The client sends the chosen engine's index as the oie-engine
+        // cookie; the proxy resolves it (see server/proxy.js).
+        engines: config.engines.map((e) => ({ name: e.name, url: e.url })),
+        devMode: !!config.devMode,
         version: require('../package.json').version,
         codeTemplateCompletions: config.codeTemplateCompletions !== false
     });
@@ -144,7 +149,12 @@ async function start() {
         console.log(`  UI:      http://${wildcard ? 'localhost' : config.host}:${config.port}`
             + (wildcard ? `  (bound to ${config.host} — all interfaces)` : '')
             + (DEV ? '  (dev — Vite HMR)' : ''));
-        console.log(`  Engine:  ${config.engine.url} (TLS verify: ${config.engine.verifyTls})`);
+        if (config.engines.length > 1) {
+            console.log(`  Engines: ${config.engines.map((e) => `${e.name} (${e.url})`).join(', ')}`);
+        } else {
+            console.log(`  Engine:  ${config.engines[0].url} (TLS verify: ${config.engines[0].verifyTls})`);
+        }
+        if (config.devMode) console.log('  devMode: ON — a login-entered engine URL will be proxied (trusted deployments only)');
         console.log(`  Plugins: ${loaded.length} loaded`);
         console.log('');
     });

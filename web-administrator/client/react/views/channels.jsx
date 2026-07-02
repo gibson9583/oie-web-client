@@ -512,6 +512,33 @@ function ChannelsView() {
         }
     }
 
+    // Right-click on blank space (empty list, or below the rows): clear any
+    // selection and offer the channel-panel background actions — the Swing
+    // MirthTree background popup, so New Channel is reachable when the list is empty.
+    function onEmptyMenu(e) {
+        e.preventDefault();
+        if (selectedRef.current.size || lastGroupIdRef.current) {
+            selectedRef.current = new Set();
+            lastClickedRef.current = null;
+            lastGroupIdRef.current = null;
+            refreshTasks();
+        }
+        contextMenu(e.clientX, e.clientY, [
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
+            '-',
+            { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
+            { label: 'Import Channel', icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
+            { label: 'Export All Channels', icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
+            '-',
+            { label: 'New Group', icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
+            { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
+            { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() },
+            '-',
+            { label: 'Edit Global Scripts', icon: 'scripts', task: 'doEditGlobalScripts', group: 'channel', onClick: () => router.navigate('/global-scripts') },
+            { label: 'Edit Code Templates', icon: 'code', task: 'doEditCodeTemplates', group: 'channel', onClick: () => router.navigate('/code-templates') }
+        ]);
+    }
+
     function onRowMenu(node, e) {
         e.preventDefault();
         if (node.kind === 'group') {
@@ -1141,6 +1168,7 @@ function ChannelsView() {
                         onSelect={onRowSelect}
                         onActivate={onRowActivate}
                         onRowContextMenu={onRowMenu}
+                        onEmptyContextMenu={onEmptyMenu}
                         matches={treeMatches}
                         collapsedKeys={collapsedKeys}
                         onToggleCollapse={(key) => {
