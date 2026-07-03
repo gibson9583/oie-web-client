@@ -336,38 +336,44 @@ function CardsView({ onToggleView }) {
                 <StatCard label="Errored" value={fmt(agg.totals.ERROR)} color={agg.totals.ERROR ? 'var(--err)' : undefined} small />
             </div>
 
-            {/* Controls */}
-            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-line">
-                <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-faint"><Icon name="search" size={14} /></span>
-                    <input type="text" className="w-[240px] !pl-7" placeholder="Filter channels & tags…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            {/* Controls — two groups: filters (left) and display controls (right).
+                They sit on one line (spread apart) when there's room; when the row is
+                too narrow the display cluster drops to a left-aligned second line. */}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2.5 border-b border-line">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <div className="relative">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-faint"><Icon name="search" size={14} /></span>
+                        <input type="text" className="w-[220px] max-w-full !pl-7" placeholder="Filter channels & tags…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                    </div>
+                    <label className="flex items-center gap-2 text-[12px] text-text-dim">Group by
+                        <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+                            <option value="none">None</option>
+                            <option value="group">Channel group</option>
+                            <option value="tag">Tag</option>
+                            <option value="state">State</option>
+                        </select>
+                    </label>
+                    {stateFilter && <button className="btn btn-sm btn-ghost" onClick={() => setStateFilter(null)}><Icon name="x" size={12} />{STATE_META[stateFilter] ? STATE_META[stateFilter].label : stateFilter}</button>}
                 </div>
-                <label className="flex items-center gap-2 text-[12px] text-text-dim">Group by
-                    <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
-                        <option value="none">None</option>
-                        <option value="group">Channel group</option>
-                        <option value="tag">Tag</option>
-                        <option value="state">State</option>
-                    </select>
-                </label>
-                {stateFilter && <button className="btn btn-sm btn-ghost" onClick={() => setStateFilter(null)}><Icon name="x" size={12} />{STATE_META[stateFilter] ? STATE_META[stateFilter].label : stateFilter}</button>}
-                {/* Display controls (Current/Lifetime · Live · count) grouped on the right */}
-                <div className="inline-flex flex-none border border-line-strong rounded-md overflow-hidden text-[12px] ml-auto">
-                    {[['Current', false], ['Lifetime', true]].map(([label, val]) => (
-                        <button key={label} type="button" onClick={() => setLifetime(val)}
-                            className="appearance-none border-0 cursor-pointer px-3 py-1 transition-colors"
-                            style={{
-                                background: lifetime === val ? 'var(--accent-glow)' : 'transparent',
-                                color: lifetime === val ? 'var(--accent)' : 'var(--text-dim)'
-                            }}>
-                            {label}
-                        </button>
-                    ))}
+                <div className="flex items-center gap-2">
+                    {/* Current vs. Lifetime statistics */}
+                    <div className="inline-flex flex-none border border-line-strong rounded-md overflow-hidden text-[12px]">
+                        {[['Current', false], ['Lifetime', true]].map(([label, val]) => (
+                            <button key={label} type="button" onClick={() => setLifetime(val)}
+                                className="appearance-none border-0 cursor-pointer px-3 py-1 transition-colors"
+                                style={{
+                                    background: lifetime === val ? 'var(--accent-glow)' : 'transparent',
+                                    color: lifetime === val ? 'var(--accent)' : 'var(--text-dim)'
+                                }}>
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    <button className={`btn btn-ghost btn-sm ${live ? 'text-accent' : ''}`} onClick={() => setLive((v) => !v)} title="Toggle auto-refresh">
+                        <span className={`pip ${live ? 'ok' : ''} mr-1`} />{live ? 'Live' : 'Paused'}
+                    </button>
+                    <span className="text-[12px] text-text-faint whitespace-nowrap">{filtered.length} of {all.length}</span>
                 </div>
-                <button className={`btn btn-ghost btn-sm ${live ? 'text-accent' : ''}`} onClick={() => setLive((v) => !v)} title="Toggle auto-refresh">
-                    <span className={`pip ${live ? 'ok' : ''} mr-1`} />{live ? 'Live' : 'Paused'}
-                </button>
-                <span className="text-[12px] text-text-faint">{filtered.length} of {all.length}</span>
             </div>
 
             {/* Body */}
