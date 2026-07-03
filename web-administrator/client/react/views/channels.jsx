@@ -712,7 +712,8 @@ function ChannelsView() {
     function openNewChannelChooser() {
         let remember = false;
         const card = (mode, iconName, title, desc) => h('button', {
-            class: 'panel !mt-0 text-left p-3 flex gap-3 items-start cursor-pointer w-full hover:border-accent',
+            class: 'panel !mt-0 appearance-none text-[var(--text)] text-left p-3 flex gap-3 items-start cursor-pointer w-full hover:border-accent',
+            style: { font: 'inherit' },
             onClick: () => {
                 if (remember) setPrefs({ newChannelDefault: mode });
                 m.close();
@@ -724,7 +725,7 @@ function ChannelsView() {
             title: 'New Channel',
             body: h('div', { class: 'flex flex-col gap-2.5 min-w-[440px]' },
                 card('classic', 'edit', 'Classic editor', 'The full tabbed editor — every option on one screen.'),
-                card('guided', 'channels', 'Guided setup', 'A step-by-step wizard: basics, source, destinations, filters and transforms.'),
+                card('guided', 'wand', 'Wizard', 'A step-by-step guided builder: dependencies, options, source, destinations, filters and transforms.'),
                 h('label', { class: 'flex items-center gap-2 mt-2 text-text-dim' },
                     h('input', { type: 'checkbox', onChange: (e) => { remember = e.target.checked; } }),
                     'Remember my choice (set as default)')),

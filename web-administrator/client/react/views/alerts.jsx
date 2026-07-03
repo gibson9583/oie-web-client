@@ -7,10 +7,11 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { h, toast, confirmDialog, contextMenu, saveFile, pickFile } from '@oie/web-ui';
+import { h, icon, modal, toast, confirmDialog, contextMenu, saveFile, pickFile } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
+import { getPref, setPrefs } from '../../core/prefs.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { newAlert, AlertEditor } from './alert-editor.jsx';
@@ -65,10 +66,40 @@ function AlertsList() {
         return rows;
     }
 
-    function newTask() {
+    function startClassicAlert() {
         const model = newAlert('', store.getState('serverVersion'));
         store.setState('editingAlert', model);
         router.navigate(`/alerts/${model.id}/edit?new=1`);
+    }
+    const startGuidedAlert = () => router.navigate('/alerts/new/guided');
+
+    // New Alert: honor the saved default (Settings → Administrator), else show a
+    // Classic-vs-Wizard chooser. "Remember" writes the pick to the default.
+    function newTask() {
+        const pref = getPref('newAlertDefault');
+        if (pref === 'classic') return startClassicAlert();
+        if (pref === 'guided') return startGuidedAlert();
+        let remember = false;
+        const card = (mode, iconName, title, desc) => h('button', {
+            class: 'panel !mt-0 appearance-none text-[var(--text)] text-left p-3 flex gap-3 items-start cursor-pointer w-full hover:border-accent',
+            style: { font: 'inherit' },
+            onClick: () => {
+                if (remember) setPrefs({ newAlertDefault: mode });
+                m.close();
+                if (mode === 'guided') startGuidedAlert(); else startClassicAlert();
+            }
+        }, icon(iconName, 20),
+            h('div', h('div', { class: 'font-semibold' }, title), h('div.hint', desc)));
+        const m = modal({
+            title: 'New Alert',
+            body: h('div', { class: 'flex flex-col gap-2.5 min-w-[440px]' },
+                card('classic', 'edit', 'Classic editor', 'The full editor — all options on one screen.'),
+                card('guided', 'wand', 'Wizard', 'A step-by-step guided builder: basics, trigger, channels, actions.'),
+                h('label', { class: 'flex items-center gap-2 mt-2 text-text-dim' },
+                    h('input', { type: 'checkbox', onChange: (e) => { remember = e.target.checked; } }),
+                    'Remember my choice (set as default)')),
+            buttons: [{ label: 'Cancel' }]
+        });
     }
     function editTask() {
         const alert = single();

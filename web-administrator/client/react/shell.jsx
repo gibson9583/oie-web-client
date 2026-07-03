@@ -31,6 +31,7 @@ import { register as registerChannelWizard } from './views/channel-wizard.jsx';
 import { register as registerMessages } from './views/messages.jsx';
 import { register as registerEvents } from './views/events.jsx';
 import { register as registerAlerts } from './views/alerts.jsx';
+import { register as registerAlertWizard } from './views/alert-wizard.jsx';
 import { register as registerUsers } from './views/users.jsx';
 import { register as registerSettings } from './views/settings.jsx';
 import { register as registerCodeTemplates } from './views/code-templates.jsx';
@@ -70,6 +71,7 @@ function startEngine() {
         registerMessages(platform);
         registerEvents(platform);
         registerAlerts(platform);
+        registerAlertWizard(platform);
         registerUsers(platform);
         registerSettings(platform);
         registerCodeTemplates(platform);

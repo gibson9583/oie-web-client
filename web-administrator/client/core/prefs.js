@@ -26,7 +26,20 @@ export const PREF_DEFAULTS = {
     // each time (classic tabbed editor vs. step-by-step guided wizard); 'classic' or
     // 'guided' skip the chooser and go straight to that builder. The chooser's
     // "Remember my choice" sets this to the picked builder so it stops asking.
-    newChannelDefault: 'ask'
+    newChannelDefault: 'ask',
+    // 'ask' | 'classic' | 'guided' — the New Alert builder (same model as newChannelDefault).
+    newAlertDefault: 'ask',
+    // Show the "switch to the other view" task in the channel editor / wizard, so a
+    // user can move a channel (with its unsaved edits) between the classic editor and
+    // the wizard. Turn off if you only ever use one view.
+    showViewSwitch: true,
+    // Dashboard: which of the two interchangeable looks to show ('classic' table
+    // | 'cards' card grid). One nav item; each view's rail toggles + persists this.
+    dashboardView: 'classic',
+    // Card view: remembered "group by" choice ('none' | 'group' | 'tag' | 'state').
+    cardsGroupBy: 'none',
+    // Card view: show Lifetime statistics (true) vs. Current (false).
+    cardsLifetime: false
 };
 
 let cache = null;

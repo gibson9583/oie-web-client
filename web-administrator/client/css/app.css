@@ -731,8 +731,8 @@ table.dt tbody tr.group-row td {
 
 .field .hint { font-size: 11px; color: var(--text-faint); }
 
-input[type="text"], input[type="password"], input[type="number"], input[type="email"],
-input[type="datetime-local"], input[type="date"], select, textarea {
+input:not([type]), input[type="text"], input[type="password"], input[type="number"], input[type="email"],
+input[type="datetime-local"], input[type="date"], input[type="search"], input[type="url"], select, textarea {
     font: inherit;
     font-size: 12.5px;
     color: var(--text);
