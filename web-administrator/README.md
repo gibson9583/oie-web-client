@@ -68,7 +68,12 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
 
 - **Dashboard** — live channel/connector statuses and statistics, start/stop/
   pause/resume/halt, undeploy, remove all messages, clear statistics,
-  expandable connector rows, plugin dashboard tabs (Server Log included).
+  expandable connector rows, plugin dashboard tabs (Server Log included). Two
+  interchangeable looks under one nav item: the classic status **table** and a
+  modern **card view** (group by channel-group/tag/state, Current vs. Lifetime
+  stats, multi-select with a shared task rail + right-click actions, virtualized
+  for large channel counts). Switch with the "Card view" / "Table view" task;
+  the choice is remembered per browser.
 - **Channels** — list with tags/groups, create, import/export (XML and JSON),
   clone, delete, enable/disable, deploy.
 - **Channel editor** — Summary (storage mode, pruning, attachments, custom
@@ -76,6 +81,13 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
   connector (Channel, TCP, HTTP, File, Database, JavaScript, JMS, Web Service,
   DICOM readers/writers plus SMTP and Document Writer), destination ordering and
   queue settings, channel Scripts.
+- **Guided builders (wizards)** — step-by-step **alternates** to the classic
+  channel and alert editors: a chevron stepper (Basics → … → Review), validate-
+  as-you-advance, and the same prompt-to-save-on-leave as the classic editors.
+  New Channel / New Alert show a chooser (Classic editor vs. Wizard, with a
+  rememberable default); either builder can hand its unsaved work to the other
+  via the "Classic editor" / "Open in Wizard" task. Full feature parity with the
+  classic editors (dependencies, channel options, embedded filter/transformer).
 - **Filter / Transformer / Response editors** — JavaScript, Mapper, Message
   Builder, XSLT, Destination Set Filter, External Script, and Iterator steps;
   JavaScript, Rule Builder, External Script, and Iterator filter rules;
@@ -89,7 +101,8 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
 - **Message browser** — search (date, status, text, connector), pagination,
   full content tabs (raw → response), errors, mappings, attachments,
   send/reprocess/remove/export.
-- **Events**, **Alerts** (triggers, channels, actions), **Users** (incl.
+- **Events**, **Alerts** (triggers, channels, actions; classic editor or guided
+  wizard), **Users** (incl.
   password rules), **Settings** (server/SMTP, configuration map, tags,
   database tasks, resources, data pruner), **Code Templates** (libraries +
   editor), **Global Scripts**, **Extensions** (engine connectors/plugins and

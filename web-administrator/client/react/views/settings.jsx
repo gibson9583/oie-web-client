@@ -549,6 +549,13 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
             ['yes', 'no', 'ask'].includes(val) ? val : 'ask');
         const importLibs = yesNoAsk(getPref('importLibrariesWithChannels'));
         const exportLibs = yesNoAsk(getPref('exportLibrariesWithChannels'));
+        const newChannelDefault = select(
+            [{ value: 'ask', label: 'Ask each time' }, { value: 'classic', label: 'Classic editor' }, { value: 'guided', label: 'Wizard' }],
+            ['ask', 'classic', 'guided'].includes(getPref('newChannelDefault')) ? getPref('newChannelDefault') : 'ask');
+        const newAlertDefault = select(
+            [{ value: 'ask', label: 'Ask each time' }, { value: 'classic', label: 'Classic editor' }, { value: 'guided', label: 'Wizard' }],
+            ['ask', 'classic', 'guided'].includes(getPref('newAlertDefault')) ? getPref('newAlertDefault') : 'ask');
+        const showViewSwitch = yesNo(getPref('showViewSwitch') !== false);
         const themeSel = select([{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], themeNow);
 
         // Per-user background-color override (Swing SettingsPanelAdministrator):
@@ -593,7 +600,10 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
                 prefRow('Format text in message browser', formatMsgs.el),
                 prefRow('Reprocess/remove messages confirmation', confirmReprocess.el),
                 prefRow('Import code template libraries with channels', importLibs),
-                prefRow('Export code template libraries with channels', exportLibs))));
+                prefRow('Export code template libraries with channels', exportLibs),
+                prefRow('Default new-channel builder', newChannelDefault),
+                prefRow('Default new-alert builder', newAlertDefault),
+                prefRow('Show "switch view" in the channel/alert editor', showViewSwitch.el))));
 
         host.appendChild(h('div.panel',
             h('div.panel-header', 'User Preferences'),
@@ -609,7 +619,10 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
                 formatMessages: formatMsgs.checked,
                 confirmReprocessRemove: confirmReprocess.checked,
                 importLibrariesWithChannels: importLibs.value,
-                exportLibrariesWithChannels: exportLibs.value
+                exportLibrariesWithChannels: exportLibs.value,
+                newChannelDefault: newChannelDefault.value,
+                newAlertDefault: newAlertDefault.value,
+                showViewSwitch: showViewSwitch.checked
             });
             setTheme(themeSel.value);
             // Persist the per-user color override (or clear it) and re-tint live.

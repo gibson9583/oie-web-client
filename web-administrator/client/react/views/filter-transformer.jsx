@@ -52,6 +52,18 @@ export function register(platform) {
         reactView((props) => <FilterTransformerView {...props} kindName="response" />), { title: 'Response Transformer' });
 }
 
+/* Embed the Filter / Transformer / Response editor body outside its own route
+ * (used by the guided channel wizard) — the full editor: step/rule grid, plugin
+ * step editors (Monaco), data types, message templates & trees, accessor drag-drop,
+ * generated-script preview, import/export/validate. The target channel must already
+ * be in store.editingChannel; `params` = { channelId, metaDataId } (metaDataId 0 =
+ * source). Returns the same { el, teardown, handlers, taskState, onAccessorDragOver,
+ * onAccessorDrop } the routed view mounts. buildBody installs a store navGuard; a
+ * caller that manages its own navigation (the wizard) should clear it after mount. */
+export function createEmbeddedEditor(params, kindName, onTasksChange) {
+    return buildBody(params, kindName, onTasksChange);
+}
+
 function FilterTransformerView({ params, kindName }) {
     const [, forceRender] = useReducer((x) => x + 1, 0);
     // The channel travels through the store (seeded by the channel editor). When a

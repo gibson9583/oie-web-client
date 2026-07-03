@@ -34,6 +34,7 @@ test('alert editor adds an action via right-click', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Alerts', exact: true }).click();
     await page.getByRole('button', { name: 'New Alert' }).click();
+    await page.getByText('Classic editor').click();
     await expect(page).toHaveURL(/\/alerts\/.*\/edit/);
 
     await expect(page.getByText('No actions defined')).toBeVisible();
