@@ -183,9 +183,9 @@ function setup(monaco) {
         document.head.appendChild(style);
     }
 
-    // Format Document → the engine's own Rhino/E4X-safe pretty-printer
-    // (JavaScriptSharedUtil.prettyPrint, via POST /api/javascript/_prettyPrint), the
-    // same one Swing's Format Code uses. No-op on engines without that endpoint.
+    // Format Document → client-side js-beautify (E4X-safe), the same library +
+    // options Swing's Format Code / the engine formatter used. Runs locally, so it
+    // works against any engine and needs no round-trip.
     monaco.languages.registerDocumentFormattingEditProvider('javascript', {
         async provideDocumentFormattingEdits(model) {
             const formatted = await formatScript(model.getValue());
