@@ -44,11 +44,12 @@ import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
+import { getPref } from '../../core/prefs.js';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 
 /* com.mirth.connect.donkey.model.event.ErrorEventType */
-const ERROR_EVENT_TYPES = [
+export const ERROR_EVENT_TYPES = [
     'ANY', 'SOURCE_CONNECTOR', 'DESTINATION_CONNECTOR', 'SERIALIZER', 'FILTER',
     'TRANSFORMER', 'USER_DEFINED_TRANSFORMER', 'RESPONSE_VALIDATION',
     'RESPONSE_TRANSFORMER', 'ATTACHMENT_HANDLER', 'DEPLOY_SCRIPT',
@@ -58,13 +59,13 @@ const ERROR_EVENT_TYPES = [
 const DEFAULT_PROTOCOLS = ['Email', 'Channel', 'User'];
 
 /* Substitution variables available to alert subject/template (classic editor list). */
-const ALERT_VARIABLES = [
+export const ALERT_VARIABLES = [
     'alertId', 'alertName', 'serverId', 'serverName', 'globalMapVariable',
     'date', 'systemTime', 'error', 'errorMessage', 'errorType',
     'channelId', 'channelName', 'connectorName', 'connectorType', 'messageId'
 ];
 
-function eventTypeLabel(type) {
+export function eventTypeLabel(type) {
     return String(type).toLowerCase().split('_')
         .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
@@ -166,7 +167,7 @@ function partialChannelsOf(raw) {
 }
 
 /* /alerts/options is a Map<String, Map<String, String>> keyed by protocol name. */
-function protocolsOf(raw) {
+export function protocolsOf(raw) {
     const names = [];
     for (const entry of api.asList(raw?.entry ?? raw)) {
         const name = api.asList(entry?.string)[0];
@@ -180,7 +181,7 @@ function protocolsOf(raw) {
    takes free-text recipients (e.g. Email). Recipients are stored by id and
    shown by name, mirroring the Swing AlertActionPane combo box
    (getRecipientIdFromName / getRecipientNameFromId). */
-function recipientOptionsOf(raw) {
+export function recipientOptionsOf(raw) {
     const out = {};
     for (const entry of api.asList(raw?.entry ?? raw)) {
         const name = String(api.asList(entry?.string)[0] ?? '');
@@ -784,6 +785,13 @@ export function AlertEditor({ params, query = {} }) {
                     <div className="taskbar" data-pane-title="Alert Edit Tasks">
                         <TaskButton label="Save Alert" icon="save" primary task="doSaveAlerts" onClick={save} />
                         <TaskButton label="Export Alert" icon="export" task="doExportAlert" onClick={exportTask} />
+                        {getPref('showViewSwitch') !== false && <TaskButton label="Open in Wizard" icon="wand" onClick={() => {
+                            const model = modelRef.current;
+                            store.setState('editingAlert', model);
+                            store.setState('editingAlertNew', isNew);
+                            store.setState('navGuard', null);
+                            router.navigate(isNew || !model ? '/alerts/new/guided' : `/alerts/${model.id}/guided`);
+                        }} />}
                         <span className="sep" />
                         <TaskButton label="Back to Alerts" icon="logout" onClick={() => router.navigate('/alerts')} />
                     </div>

@@ -15,13 +15,13 @@
  * 'dashboard:selection' is re-emitted via store.emit on every selection change.
  */
 
-import { useEffect, useRef, useReducer } from 'react';
+import { useEffect, useRef, useReducer, useState } from 'react';
 import { h, clear, icon, toast, confirmDialog, modal, checkbox, contextMenu, fmtNumber, fmtDate } from '@oie/web-ui';
 import api, { statePip, stateLabel } from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
-import { getPref } from '../../core/prefs.js';
+import { getPref, setPrefs } from '../../core/prefs.js';
 import { openSendMessageDialog } from './messages.jsx';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
@@ -29,10 +29,28 @@ import { Icon } from '../bridges.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { iconPath } from '../../core/icons.js';
+import { CardsView } from './cards.jsx';
 
 export function register(platform) {
     platform.registerNavItem({ id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Engine', order: 0, task: 'doShowDashboard' });
-    platform.registerView('/dashboard', reactView(DashboardView), { title: 'Dashboard' });
+    platform.registerView('/dashboard', reactView(DashboardHost), { title: 'Dashboard' });
+}
+
+/* The Dashboard is two interchangeable looks at the same channel-status data:
+   the classic Swing-style table (DashboardView) and the modern card grid
+   (CardsView) — alternates, like the classic vs. guided channel editor. One
+   nav item; the remembered `dashboardView` preference picks which renders, and
+   each view's rail has a toggle (persisted) to switch. */
+function DashboardHost() {
+    const [view, setView] = useState(() => (getPref('dashboardView') === 'cards' ? 'cards' : 'classic'));
+    const toggle = () => setView((v) => {
+        const next = v === 'cards' ? 'classic' : 'cards';
+        setPrefs({ dashboardView: next });
+        return next;
+    });
+    return view === 'cards'
+        ? <CardsView onToggleView={toggle} />
+        : <DashboardView onToggleView={toggle} />;
 }
 
 // Default widths for the dashboard's resizable data columns (after the twisty).
@@ -120,7 +138,7 @@ function segControl(options, current, onChange) {
 }
 
 
-function DashboardView() {
+function DashboardView({ onToggleView }) {
     const [, forceRender] = useReducer((x) => x + 1, 0);
 
     // Working state read by the imperative table/filter callbacks (captured at
@@ -1142,6 +1160,7 @@ function DashboardView() {
             <ViewTasks>
                 <RailPane title="Dashboard Tasks" paneKey="tasks:Dashboard Tasks" group="dashboard">
                     <div className="taskbar" data-pane-title="Dashboard Tasks">
+                        {onToggleView && <TaskButton label="Card view" icon="dashboard" onClick={onToggleView} />}
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshStatuses" onClick={() => refresh(true)} />
                         {hasSel && <TaskButton label="Send Message" icon="send" task="doSendMessage" onClick={sendMessageTask} />}
                         {hasSel && <TaskButton label="View Messages" icon="messages" task="doShowMessages" onClick={viewMessagesTask} />}

@@ -41,7 +41,7 @@ fidelity.
 | `playwright.config.js` (repo root) | `ui` + `live` projects; boots `npm start -w web-administrator` |
 | `fixtures.js` | canned engine responses in the XStream wire shapes the client expects |
 | `mock.js` | `mockEngine(page, overrides)` route interceptor + `login()` helper |
-| `*.spec.js` | mocked workflow tests (login, dashboard, channels) |
+| `*.spec.js` | mocked workflow tests (login, dashboard + `cards` card view, channels, `channel-wizard`/`alert-wizard` guided builders, …) |
 | `live.spec.js` | opt-in real-engine smoke |
 
 ## Adding tests / fixtures

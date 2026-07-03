@@ -431,6 +431,28 @@ code, pre, .mono { font-family: var(--font-mono); }
 
 .view-body.flush { padding: 0; }
 
+/* ---- Guided channel wizard: folded chevron step bar + step slide ------------- */
+.wiz-steps { display: flex; align-items: stretch; }
+.wiz-step {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 7px 20px 7px 30px;
+    margin-left: -13px;                 /* overlap < notch → a thin seam of the bar bg shows between folds */
+    background: var(--bg2);
+    color: var(--text-faint);
+    font-size: 12.5px; font-weight: 600; white-space: nowrap;
+    clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 50%, calc(100% - 15px) 100%, 0 100%, 15px 50%);
+    transition: background-color .25s ease, color .25s ease;
+}
+.wiz-step:first-child { margin-left: 0; padding-left: 16px; clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 50%, calc(100% - 15px) 100%, 0 100%); }
+.wiz-step:last-child { padding-right: 18px; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 15px 50%); }
+.wiz-step.done { background: var(--accent-glow); color: var(--accent); }
+.wiz-step.active { background: var(--accent); color: var(--accent-ink); }
+.wiz-step.clickable { cursor: pointer; }
+.wiz-step:not(.clickable) { cursor: default; }
+
+@keyframes wiz-slide { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }
+.wiz-pane { animation: wiz-slide .24s ease-out; }
+
 /* ---- Task bar (contextual actions, mirrors the Swing task panes) -------------- */
 
 .taskbar {
@@ -709,8 +731,8 @@ table.dt tbody tr.group-row td {
 
 .field .hint { font-size: 11px; color: var(--text-faint); }
 
-input[type="text"], input[type="password"], input[type="number"], input[type="email"],
-input[type="datetime-local"], input[type="date"], select, textarea {
+input:not([type]), input[type="text"], input[type="password"], input[type="number"], input[type="email"],
+input[type="datetime-local"], input[type="date"], input[type="search"], input[type="url"], select, textarea {
     font: inherit;
     font-size: 12.5px;
     color: var(--text);

@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useRef, useReducer } from 'react';
-import { h, toast, confirmDialog, promptDialog, contextMenu, modal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
+import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -689,12 +689,48 @@ function ChannelsView() {
         }
     }
 
-    function newTask() {
-        // No name prompt — go straight to the Summary tab with an empty Name
-        // field focused (the editor focuses it when isNew).
+    // Classic path: seed a blank channel and open the tabbed editor on the Summary
+    // tab with the Name field focused (the editor focuses it when isNew).
+    function startClassicChannel() {
         const channel = newChannel('', store.getState('serverVersion') || '4.6.0');
         store.setState('editingChannel', channel);
         router.navigate(`/channels/${channel.id}/edit?new=1`);
+    }
+
+    const startGuidedChannel = () => router.navigate('/channels/new/guided');
+
+    // New Channel: honor the saved default builder (Settings → Administrator), or
+    // show a chooser when the default is "Ask each time". The chooser's "Remember
+    // my choice" writes the picked builder to that default so it stops asking.
+    function newTask() {
+        const pref = getPref('newChannelDefault');
+        if (pref === 'classic') return startClassicChannel();
+        if (pref === 'guided') return startGuidedChannel();
+        openNewChannelChooser();
+    }
+
+    function openNewChannelChooser() {
+        let remember = false;
+        const card = (mode, iconName, title, desc) => h('button', {
+            class: 'panel !mt-0 appearance-none text-[var(--text)] text-left p-3 flex gap-3 items-start cursor-pointer w-full hover:border-accent',
+            style: { font: 'inherit' },
+            onClick: () => {
+                if (remember) setPrefs({ newChannelDefault: mode });
+                m.close();
+                if (mode === 'guided') startGuidedChannel(); else startClassicChannel();
+            }
+        }, icon(iconName, 20),
+            h('div', h('div', { class: 'font-semibold' }, title), h('div.hint', desc)));
+        const m = modal({
+            title: 'New Channel',
+            body: h('div', { class: 'flex flex-col gap-2.5 min-w-[440px]' },
+                card('classic', 'edit', 'Classic editor', 'The full tabbed editor — every option on one screen.'),
+                card('guided', 'wand', 'Wizard', 'A step-by-step guided builder: dependencies, options, source, destinations, filters and transforms.'),
+                h('label', { class: 'flex items-center gap-2 mt-2 text-text-dim' },
+                    h('input', { type: 'checkbox', onChange: (e) => { remember = e.target.checked; } }),
+                    'Remember my choice (set as default)')),
+            buttons: [{ label: 'Cancel' }]
+        });
     }
 
     async function importTask() {

@@ -34,6 +34,7 @@ import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { validateScript } from '../../core/serialize.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
+import { getPref } from '../../core/prefs.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
@@ -219,6 +220,15 @@ function ChannelEditorView({ params, query }) {
                         {t && <TaskButton label="Debug Channel" icon="deploy" task="doDebugDeployFromChannelView" onClick={t.openDebugDeployModal} />}
                         {t && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={t.exportChannel} />}
                         {t && <TaskButton label="Back to Channels" icon="channels" onClick={t.backToChannels} />}
+                        {/* Switch to the wizard, carrying the (possibly unsaved) channel — the
+                            wizard reads it from the store. Clear the nav guard first so it
+                            neither prompts nor drops the working copy on the way out. */}
+                        {t && getPref('showViewSwitch') !== false && <TaskButton label="Open in Wizard" icon="wand" onClick={() => {
+                            const ch = store.getState('editingChannel');
+                            const wasNew = store.getState('editingChannelNew') === true;
+                            store.setState('navGuard', null);
+                            router.navigate(wasNew || !ch ? '/channels/new/guided' : `/channels/${ch.id}/guided`);
+                        }} />}
 
                         {/* Contextual connector tasks (Swing ctx-tasks), gated by active tab. */}
                         {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Filter', t.sourceStepCount('filter'))} icon="filter" onClick={() => t.gotoElements('filter', 0)} />}
