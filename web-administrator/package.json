@@ -19,6 +19,7 @@
   "dependencies": {
     "@zip.js/zip.js": "^2.8.26",
     "express": "^4.19.2",
+    "js-beautify": "1.15.3",
     "monaco-editor": "^0.52.2"
   },
   "devDependencies": {

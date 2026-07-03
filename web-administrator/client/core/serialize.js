@@ -1,19 +1,23 @@
 /*
- * Message-tree serialization + JavaScript validate/format, served by the ENGINE.
+ * Message-tree serialization + JavaScript validate/format.
  *
- * These call the connected engine's own REST endpoints (through the /api proxy),
- * which run the engine's real datatype serializers and Rhino compiler/formatter —
+ * Serialize + validate call the connected engine's own REST endpoints (through the
+ * /api proxy), which run the engine's real datatype serializers and Rhino compiler —
  * so output is byte-identical to the runtime `msg`/`tmp` and matches Swing. There
  * is no local JVM or engine install: serialization follows whichever engine the
- * session is on. The web administrator targets an engine release that provides
- * these endpoints; a transient failure just returns null / { ok: null } so a
- * caller can leave its input unchanged rather than error.
+ * session is on. A transient failure just returns null / { ok: null } so a caller
+ * can leave its input unchanged rather than error.
  *
  *   POST /api/datatypes/_serialize?dataType=&props=   (message body)  -> { format, data, meta }
  *   POST /api/javascript/_validate                    (script body)   -> { error }
- *   POST /api/javascript/_prettyPrint                 (script body)    -> formatted text
+ *
+ * Pretty-printing (Format Document) runs CLIENT-SIDE with js-beautify 1.15.3 — the
+ * same library and options (`e4x: true, indent_with_tabs: true`) the engine's
+ * JavaScriptSharedUtil.prettyPrint used, so E4X XML literals survive and output
+ * matches Swing's Format Code. No engine round-trip / `_prettyPrint` endpoint needed.
  */
 
+import { js as jsBeautify } from 'js-beautify';
 import { post } from './api.js';
 
 /* Flatten an engine SerializationProperties object to newline-separated key=value
@@ -69,18 +73,27 @@ export async function validateScript(script) {
     }
 }
 
+// js-beautify's e4x mode can mangle an XML prolog into `<< ? xml version="1.0" ? >`;
+// restore it to `<?xml version="1.0"[ encoding="…"]?>` (ported verbatim from the
+// engine's JavaScriptSharedUtil.INVALID_PROLOG_PATTERN handling).
+const PROLOG_RE = /<<\s*\?\s*xml\s+version\s*=\s*"([^"]*)"(?:\s+encoding\s*=\s*"([^"]*)")?\s*\?\s*>/g;
+const BEAUTIFY_OPTS = { e4x: true, indent_with_tabs: true };
+
 /**
- * Pretty-print a JavaScript snippet through the engine's own formatter (the same
- * one Swing's Format Code uses, so E4X XML literals survive — Monaco's TS
- * formatter would mangle them). Returns the formatted code, or null on failure
+ * Pretty-print a JavaScript snippet client-side with js-beautify (E4X-safe, the same
+ * library + options the engine's formatter used, so XML literals survive — Monaco's
+ * TS formatter would mangle them). Returns the formatted code, or null on failure
  * (the caller then leaves the text unchanged).
  */
 export async function formatScript(script) {
     try {
-        const formatted = await post('/javascript/_prettyPrint', String(script ?? ''), {
-            contentType: 'text/plain', raw: true, noAuthHandler: true
-        });
-        return typeof formatted === 'string' ? formatted : null;
+        const src = String(script ?? '');
+        if (!src.trim()) return src;
+        const formatted = jsBeautify(src, BEAUTIFY_OPTS);
+        return typeof formatted === 'string'
+            ? formatted.replace(PROLOG_RE, (_m, version, encoding) =>
+                `<?xml version="${version}"${encoding != null ? ` encoding="${encoding}"` : ''}?>`)
+            : null;
     } catch {
         return null;
     }
