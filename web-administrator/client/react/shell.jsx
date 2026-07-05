@@ -385,10 +385,19 @@ function AppShell({ user, onLogout }) {
     const railCollapsed = useStoreKey('railCollapsed');
 
     // On phone/tablet the rail is an off-canvas drawer — close it after navigating
-    // (transient, so the desktop open/closed preference isn't overwritten).
+    // (transient, so the desktop open/closed preference isn't overwritten). Only a
+    // genuine navigation to a DIFFERENT path closes it: the drawer's start state
+    // comes from initRailCollapsed, so the initial route settle must be ignored
+    // (its route:changed can arrive after a slow boot, once the user has already
+    // opened the drawer), and a same-path re-stamp (timezone-load restamp, tz
+    // toggle) must not slam a just-opened drawer shut.
     useEffect(() => {
-        const close = () => {
-            if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+        let lastPath = null;
+        const close = (e) => {
+            const path = e?.detail?.path ?? null;
+            const navigated = lastPath !== null && path !== lastPath;
+            lastPath = path;
+            if (navigated && window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
                 store.setState('railCollapsed', true);
             }
         };

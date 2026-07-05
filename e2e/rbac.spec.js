@@ -17,7 +17,9 @@ async function installRbacPlugin(page, denyExpr) {
         manifests.push({ id: 'test-rbac', version: '1.0.0', entry: '/plugins/test-rbac/entry.js' });
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(manifests) });
     });
-    await page.route('**/plugins/test-rbac/entry.js', (route) => route.fulfill({
+    // Match an optional query suffix — Vite's dev middleware appends `?import` to
+    // dynamically-imported module URLs, and a bare `entry.js` glob would miss it.
+    await page.route('**/plugins/test-rbac/entry.js*', (route) => route.fulfill({
         status: 200, contentType: 'application/javascript',
         body: `export function register(p){ p.setAuthorizationController({ checkTask:(g,t)=> !(${denyExpr}) }); }`,
     }));
