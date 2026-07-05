@@ -51,11 +51,14 @@ for (const c of CASES) {
         // below could pass vacuously on a panel that never rendered.
         await expect(page.locator('.cform-section').first()).toBeVisible();
 
-        // Dirty the channel via the Summary Name, then Save.
+        // Dirty the channel via the Summary Name, then Save. Use a fixed short name
+        // (not `${channel.name} EDITED`) so the id-derived name + suffix can't exceed
+        // the 40-char channel-name limit — the round-trip below only checks the
+        // connector properties, not the name.
         await page.getByRole('button', { name: 'Summary', exact: true }).click();
         const nameField = page.locator('.panel input[type=text]').first();
         await expect(nameField).toHaveValue(channel.name);
-        await nameField.fill(`${channel.name} EDITED`);
+        await nameField.fill('Edited Channel');
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
 

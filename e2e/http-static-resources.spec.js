@@ -26,7 +26,9 @@ test('HTTP Listener Static Resources cell keeps focus while typing', async ({ pa
 
     // The Static Resources table is the panel's last custom field; add a row.
     const table = page.locator('table.dt').filter({ hasText: 'Context Path' });
-    await table.locator('xpath=following-sibling::button[normalize-space()="New"]').first().click();
+    // The table sits inside a .dt-wrap scroll container; the New button is that
+    // wrapper's sibling (so it never scrolls off), hence ../following-sibling.
+    await table.locator('xpath=../following-sibling::button[normalize-space()="New"]').first().click();
 
     const contextPath = table.locator('tbody tr').first().locator('input[type="text"]').first();
     await contextPath.click();

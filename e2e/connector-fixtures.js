@@ -51,8 +51,8 @@ const frameMode = () => ({
 });
 const jmsConnection = () => ({
     useJndi: false, jndiProviderUrl: '', jndiInitialContextFactory: '', jndiConnectionFactoryName: '',
-    connectionFactoryClass: '', connectionProperties: { '@class': 'linked-hash-map' },
-    username: '', password: '', destinationName: '', topic: false, clientId: ''
+    connectionFactoryClass: 'org.example.CF', connectionProperties: { '@class': 'linked-hash-map' },
+    username: '', password: '', destinationName: 'queue.test', topic: false, clientId: ''
 });
 
 /* ---- per-connector property blocks ---- */
@@ -80,7 +80,7 @@ const httpReceiver = () => ({
 const httpDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.http.HttpDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    host: '', useProxyServer: false, proxyAddress: '', proxyPort: '', method: 'post',
+    host: 'http://example.com', useProxyServer: false, proxyAddress: '', proxyPort: '', method: 'post',
     headers: { '@class': 'linked-hash-map' }, parameters: { '@class': 'linked-hash-map' },
     useHeadersVariable: false, headersVariable: '', useParametersVariable: false, parametersVariable: '',
     responseXmlBody: false, responseParseMultipart: true, responseIncludeMetadata: false,
@@ -112,7 +112,7 @@ const tcpDispatcher = () => ({
 const fileReceiver = () => ({
     '@class': 'com.mirth.connect.connectors.file.FileReceiverProperties', '@version': V, pluginProperties: null,
     pollConnectorProperties: pollProps(), sourceConnectorProperties: sourceConnectorProperties(),
-    scheme: 'FILE', schemeProperties: null, host: '', fileFilter: '*', regex: false, directoryRecursion: false,
+    scheme: 'FILE', schemeProperties: null, host: '/tmp/in', fileFilter: '*', regex: false, directoryRecursion: false,
     ignoreDot: true, anonymous: true, username: '', password: '', timeout: '10000', secure: true, passive: true,
     validateConnection: true, afterProcessingAction: 'NONE', moveToDirectory: '', moveToFileName: '',
     errorReadingAction: 'NONE', errorResponseAction: 'AFTER_PROCESSING', errorMoveToDirectory: '', errorMoveToFileName: '',
@@ -122,22 +122,22 @@ const fileReceiver = () => ({
 const fileDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.file.FileDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    scheme: 'FILE', schemeProperties: null, host: '', outputPattern: '', anonymous: true, username: '', password: '',
+    scheme: 'FILE', schemeProperties: null, host: '/tmp/out', outputPattern: 'out.txt', anonymous: true, username: '', password: '',
     timeout: '10000', keepConnectionOpen: true, maxIdleTime: '0', secure: true, passive: true, validateConnection: true,
-    outputAppend: true, errorOnExists: false, temporary: false, binary: false, charsetEncoding: 'DEFAULT_ENCODING', template: ''
+    outputAppend: true, errorOnExists: false, temporary: false, binary: false, charsetEncoding: 'DEFAULT_ENCODING', template: '${message.encodedData}'
 });
 
 const dbReceiver = () => ({
     '@class': 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties', '@version': V, pluginProperties: null,
     pollConnectorProperties: pollProps(), sourceConnectorProperties: sourceConnectorProperties(),
-    driver: 'Please Select One', url: '', username: '', password: '', select: '', update: '', useScript: false,
+    driver: 'Please Select One', url: 'jdbc:test', username: '', password: '', select: 'SELECT 1', update: '', useScript: false,
     aggregateResults: false, cacheResults: true, keepConnectionOpen: true, updateMode: 1, retryCount: '3',
     retryInterval: '10000', fetchSize: '1000', encoding: 'DEFAULT_ENCODING'
 });
 const dbDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    driver: 'Please Select One', url: '', username: '', password: '', query: '', parameters: null, useScript: false
+    driver: 'Please Select One', url: 'jdbc:test', username: '', password: '', query: 'INSERT 1', parameters: null, useScript: false
 });
 
 const jmsReceiver = () => Object.assign({
@@ -151,11 +151,11 @@ const jmsDispatcher = () => Object.assign({
 
 const jsReceiver = () => ({
     '@class': 'com.mirth.connect.connectors.js.JavaScriptReceiverProperties', '@version': V, pluginProperties: null,
-    pollConnectorProperties: pollProps(), sourceConnectorProperties: sourceConnectorProperties(), script: ''
+    pollConnectorProperties: pollProps(), sourceConnectorProperties: sourceConnectorProperties(), script: 'var x = 1;'
 });
 const jsDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties', '@version': V, pluginProperties: null,
-    destinationConnectorProperties: destinationConnectorProperties(), script: ''
+    destinationConnectorProperties: destinationConnectorProperties(), script: 'var x = 1;'
 });
 
 const wsReceiver = () => ({
@@ -166,8 +166,8 @@ const wsReceiver = () => ({
 const wsDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.ws.WebServiceDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    wsdlUrl: '', service: '', port: '', operation: 'Press Get Operations', locationURI: '', socketTimeout: '30000',
-    useAuthentication: false, username: '', password: '', envelope: '', oneWay: false,
+    wsdlUrl: 'http://example.com/service?wsdl', service: 'ExampleService', port: 'ExamplePort', operation: 'Press Get Operations', locationURI: '', socketTimeout: '30000',
+    useAuthentication: false, username: '', password: '', envelope: '<soap/>', oneWay: false,
     headers: { '@class': 'linked-hash-map' }, headersVariable: '', isUseHeadersVariable: false, useMtom: false,
     attachmentNames: { '@class': 'java.util.ArrayList' }, attachmentContents: { '@class': 'java.util.ArrayList' },
     attachmentTypes: { '@class': 'java.util.ArrayList' }, attachmentsVariable: '', isUseAttachmentsVariable: false,
@@ -195,8 +195,8 @@ const dicomDispatcher = () => ({
 const smtpDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.smtp.SmtpDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    smtpHost: '', smtpPort: '25', overrideLocalBinding: false, localAddress: '0.0.0.0', localPort: '0', timeout: '5000',
-    encryption: 'none', authentication: false, username: '', password: '', to: '', from: '', cc: '', bcc: '', replyTo: '',
+    smtpHost: 'mail.example.com', smtpPort: '25', overrideLocalBinding: false, localAddress: '0.0.0.0', localPort: '0', timeout: '5000',
+    encryption: 'none', authentication: false, username: '', password: '', to: 'to@example.com', from: 'from@example.com', cc: '', bcc: '', replyTo: '',
     headers: { '@class': 'linked-hash-map' }, headersVariable: '', isUseHeadersVariable: false, subject: '',
     charsetEncoding: 'DEFAULT_ENCODING', html: false, body: '', attachments: { '@class': 'java.util.ArrayList' },
     attachmentsVariable: '', isUseAttachmentsVariable: false
@@ -205,8 +205,8 @@ const smtpDispatcher = () => ({
 const docDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.doc.DocumentDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    host: '', outputPattern: '', documentType: 'pdf', encrypt: false, output: 'FILE', password: '',
-    pageWidth: '8.5', pageHeight: '11', pageUnit: 'INCHES', template: ''
+    host: '/tmp/out', outputPattern: 'out.pdf', documentType: 'pdf', encrypt: false, output: 'FILE', password: '',
+    pageWidth: '8.5', pageHeight: '11', pageUnit: 'INCHES', template: '${message.encodedData}'
 });
 
 /* The table the spec iterates. `properties` is a factory. `name` is the connector's
