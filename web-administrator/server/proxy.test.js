@@ -5,7 +5,7 @@
  * resolveForwardedFor (trusted-peer X-Forwarded-For).
  */
 const assert = require('assert');
-const { resolveEngine, resolveForwardedFor } = require('./proxy.js');
+const { resolveEngine, resolveForwardedFor, isTrustedPeer, sanitizeForwardHeaders } = require('./proxy.js');
 
 let failures = 0;
 function test(name, fn) {
@@ -65,6 +65,40 @@ test('resolveForwardedFor: loopback peer appends prior chain', () => {
 
 test('resolveForwardedFor: untrusted peer drops forged chain', () => {
     assert.strictEqual(resolveForwardedFor('8.8.8.8', '1.2.3.4', new Set()), '8.8.8.8');
+});
+
+test('isTrustedPeer: loopback (v4/v6/mapped) and configured proxies trusted; others not', () => {
+    assert.strictEqual(isTrustedPeer('127.0.0.1', new Set()), true);
+    assert.strictEqual(isTrustedPeer('::1', new Set()), true);
+    assert.strictEqual(isTrustedPeer('::ffff:127.0.0.1', new Set()), true);
+    assert.strictEqual(isTrustedPeer('10.0.0.5', new Set(['10.0.0.5'])), true);
+    assert.strictEqual(isTrustedPeer('8.8.8.8', new Set()), false);
+    assert.strictEqual(isTrustedPeer('', new Set()), false);
+});
+
+test('sanitizeForwardHeaders: untrusted client cannot spoof forwarding headers to the engine', () => {
+    const h = {
+        'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https',
+        'x-forwarded-port': '443', 'forwarded': 'for=1.1.1.1;host=evil', 'x-real-ip': '9.9.9.9',
+        cookie: 'JSESSIONID=abc'
+    };
+    sanitizeForwardHeaders(h, '8.8.8.8', '1.2.3.4', new Set());
+    assert.strictEqual(h['x-forwarded-host'], undefined);
+    assert.strictEqual(h['x-forwarded-proto'], undefined);
+    assert.strictEqual(h['x-forwarded-port'], undefined);
+    assert.strictEqual(h['forwarded'], undefined);
+    assert.strictEqual(h['x-real-ip'], undefined);
+    assert.strictEqual(h['x-forwarded-for'], '8.8.8.8');   // real socket IP only, forged chain dropped
+    assert.strictEqual(h['cookie'], 'JSESSIONID=abc');      // non-forwarding headers untouched
+});
+
+test('sanitizeForwardHeaders: trusted fronting proxy keeps the forwarding headers it set', () => {
+    const h = { 'x-forwarded-host': 'app.example', 'x-forwarded-proto': 'https', 'x-real-ip': '203.0.113.7' };
+    sanitizeForwardHeaders(h, '127.0.0.1', '203.0.113.7', new Set());
+    assert.strictEqual(h['x-forwarded-host'], 'app.example');
+    assert.strictEqual(h['x-forwarded-proto'], 'https');
+    assert.strictEqual(h['x-real-ip'], '203.0.113.7');
+    assert.strictEqual(h['x-forwarded-for'], '203.0.113.7, 127.0.0.1');
 });
 
 if (failures) { console.error(`\n${failures} test(s) failed`); process.exit(1); }

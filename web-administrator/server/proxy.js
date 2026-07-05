@@ -74,6 +74,15 @@ function resolveEngine(config, req) {
     return engines[0];
 }
 
+// Is the immediate peer a trusted fronting proxy (loopback by default, plus any
+// configured trustedProxies)? Only then do we believe the forwarding headers it
+// set. Pure + exported for testing.
+function isTrustedPeer(remoteAddress, trusted) {
+    const peer = String(remoteAddress || '').replace(/^::ffff:/, '');
+    if (!peer) return false;
+    return peer === '127.0.0.1' || peer === '::1' || peer.startsWith('127.') || (!!trusted && trusted.has(peer));
+}
+
 // Compute the X-Forwarded-For to send upstream. The inbound chain is trusted
 // (and our peer appended) only when the immediate peer is a trusted proxy;
 // otherwise the peer's claimed chain is forgeable, so we send just the real
@@ -81,8 +90,25 @@ function resolveEngine(config, req) {
 function resolveForwardedFor(remoteAddress, priorXff, trusted) {
     const peer = String(remoteAddress || '').replace(/^::ffff:/, '');
     if (!peer) return priorXff || undefined;
-    const peerTrusted = peer === '127.0.0.1' || peer === '::1' || peer.startsWith('127.') || (trusted && trusted.has(peer));
-    return (priorXff && peerTrusted) ? `${priorXff}, ${peer}` : peer;
+    return (priorXff && isTrustedPeer(remoteAddress, trusted)) ? `${priorXff}, ${peer}` : peer;
+}
+
+// Other proxy-forwarding headers a client could spoof to the engine (host-header
+// injection, forged scheme/port/client-IP). The proxy is the trust boundary, so a
+// direct/untrusted client's values are dropped; a trusted fronting proxy keeps them.
+const PROXY_FWD_HEADERS = ['x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'forwarded', 'x-real-ip'];
+
+// Normalize the forwarding headers on the upstream request (mutates `headers`):
+// set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
+// Forwarded / X-Real-IP headers unless the immediate peer is trusted. Pure +
+// exported for testing.
+function sanitizeForwardHeaders(headers, remoteAddress, priorXff, trusted) {
+    const xff = resolveForwardedFor(remoteAddress, priorXff, trusted);
+    if (xff) headers['x-forwarded-for'] = xff; else delete headers['x-forwarded-for'];
+    if (!isTrustedPeer(remoteAddress, trusted)) {
+        for (const h of PROXY_FWD_HEADERS) delete headers[h];
+    }
+    return headers;
 }
 
 function createApiProxy(config) {
@@ -128,11 +154,11 @@ function createApiProxy(config) {
         // on every request (client/core/api.js), so it passes through here as-is
         // for legitimate calls; forging it server-side would defeat the guard.
         // Forward the real client IP for the engine's audit log (the engine reads
-        // X-Forwarded-For, else the socket address = this proxy's loopback). A
-        // client-supplied chain is honored ONLY when the immediate peer is a
-        // trusted proxy (loopback by default, plus config.trustedProxies).
-        const xff = resolveForwardedFor(req.socket.remoteAddress, req.headers['x-forwarded-for'], trustedProxies);
-        if (xff) headers['x-forwarded-for'] = xff;
+        // X-Forwarded-For, else the socket address = this proxy's loopback), and drop
+        // the other spoofable forwarding headers from a direct client. Both honor a
+        // client-supplied value ONLY when the immediate peer is a trusted proxy
+        // (loopback by default, plus config.trustedProxies).
+        sanitizeForwardHeaders(headers, req.socket.remoteAddress, req.headers['x-forwarded-for'], trustedProxies);
 
         const upstream = transport.request({
             agent,
@@ -155,7 +181,10 @@ function createApiProxy(config) {
             // over HTTP, so leaving it on breaks login on an HTTP deployment — and
             // Secure protects nothing over a connection that's already plaintext.
             if (Array.isArray(resHeaders['set-cookie'])) {
-                const secure = req.headers['x-forwarded-proto'] === 'https' || !!req.socket.encrypted;
+                // Trust the client's X-Forwarded-Proto only from a trusted fronting
+                // proxy; otherwise derive the scheme from the actual connection.
+                const proto = isTrustedPeer(req.socket.remoteAddress, trustedProxies) ? req.headers['x-forwarded-proto'] : undefined;
+                const secure = proto === 'https' || !!req.socket.encrypted;
                 resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c) => {
                     if (!/;\s*samesite=/i.test(c)) c += '; SameSite=Lax';
                     if (secure) { if (!/;\s*secure/i.test(c)) c += '; Secure'; }
@@ -233,4 +262,4 @@ function engineRequest(engine, { method, path: reqPath, headers, body }) {
     });
 }
 
-module.exports = { createApiProxy, resolveForwardedFor, resolveEngine, engineRequest };
+module.exports = { createApiProxy, resolveForwardedFor, isTrustedPeer, sanitizeForwardHeaders, resolveEngine, engineRequest };
