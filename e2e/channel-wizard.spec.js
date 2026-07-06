@@ -244,6 +244,37 @@ test.describe('channel wizard', () => {
         await expect(footer.getByRole('button', { name: 'Exit', exact: true })).toHaveCount(0);
     });
 
+    test('editing an existing channel transformer marks it dirty (regression: embedded edit → Save)', async ({ page }) => {
+        const CH = 'ch-tx-dirty';
+        const dt = (io) => ({ '@version': '4.5.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
+        const existing = {
+            '@version': '4.5.0', id: CH, name: 'Tx Dirty Channel', nextMetaDataId: 2,
+            sourceConnector: {
+                metaDataId: 0, name: 'sourceConnector', transportName: 'Channel Reader', mode: 'SOURCE', enabled: true,
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0', pluginProperties: null, sourceConnectorProperties: {} },
+                transformer: dt('HL7V2'), filter: { '@version': '4.5.0', elements: null }
+            },
+            destinationConnectors: { connector: [{
+                metaDataId: 1, name: 'Destination 1', transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true,
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.5.0', pluginProperties: null, destinationConnectorProperties: {} },
+                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.5.0', elements: null }
+            }] },
+            properties: { '@version': '4.5.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
+            exportData: { metadata: { enabled: true, pruningSettings: {} } }
+        };
+        await mockEngine(page, { [`GET /channels/${CH}`]: { channel: existing } });
+        await page.goto(`/channels/${CH}/guided`);
+
+        // Edit the embedded transformer (open it + add a step). Previously the embedded
+        // editor's onChange never reached the WIZARD, so an existing channel's transformer
+        // edits were silently discarded (no Save shown). Now it marks the wizard dirty →
+        // the "Save Changes" task appears in the rail.
+        await page.locator('.wiz-step', { hasText: 'Source' }).click();
+        await page.getByRole('button', { name: 'Transformer', exact: true }).click();
+        await page.getByRole('button', { name: /Add Step/ }).click();
+        await expect(page.locator('.taskbar').getByText('Save Changes')).toBeVisible();
+    });
+
     test('blocks a duplicate channel name', async ({ page }) => {
         await mockEngine(page, {
             // idsAndNames wire shape: a single 'map' root key the proxy unwraps to

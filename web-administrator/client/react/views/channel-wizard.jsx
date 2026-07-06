@@ -137,21 +137,32 @@ function TransportPicker({ mode, current, onPick }) {
 // preview. Its tasks (add/delete/iterator/import/export/validate) are surfaced as an
 // inline toolbar; Save/Back are omitted (the wizard owns those). The editor reads the
 // channel from the store, so we point store.editingChannel at the wizard's channel.
-function EmbeddedElementEditor({ channel, metaDataId, kind }) {
+function EmbeddedElementEditor({ channel, metaDataId, kind, onChange }) {
     const hostRef = useRef(null);
     const ctxRef = useRef(null);
     const [, forceBar] = useReducer((x) => x + 1, 0);
+    // Latest onChange without re-running the mount effect (bump is a fresh closure each render).
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
     useEffect(() => {
         const host = hostRef.current;
         if (!host) return undefined;
         store.setState('editingChannel', channel);
         store.setState('editingChannelNew', true);
-        const ctx = createEmbeddedEditor({ channelId: channel.id, metaDataId }, kind, () => forceBar());
+        // createEmbeddedEditor (buildBody) installs its OWN nav guard for the classic
+        // editor's benefit — that would clobber the wizard's prompt-on-leave guard and
+        // leave it gone for the rest of the session. Capture the wizard's guard first
+        // and restore it (here and on unmount), so leaving still prompts on unsaved work.
+        const wizardGuard = store.getState('navGuard');
+        // An edit in the embedded filter/transformer/response must mark the WIZARD dirty
+        // (via bump), or an existing channel's Save never shows and the edits are lost.
+        const ctx = createEmbeddedEditor({ channelId: channel.id, metaDataId }, kind,
+            () => { forceBar(); if (onChangeRef.current) onChangeRef.current(); });
         ctxRef.current = ctx;
         host.appendChild(ctx.el);
         if (ctx.onAccessorDragOver) host.addEventListener('dragover', ctx.onAccessorDragOver);
         if (ctx.onAccessorDrop) host.addEventListener('drop', ctx.onAccessorDrop);
-        store.setState('navGuard', null);   // the wizard owns navigation
+        store.setState('navGuard', wizardGuard);
         forceBar();
         return () => {
             if (ctx.onAccessorDragOver) host.removeEventListener('dragover', ctx.onAccessorDragOver);
@@ -159,7 +170,7 @@ function EmbeddedElementEditor({ channel, metaDataId, kind }) {
             ctxRef.current = null;
             try { ctx.teardown && ctx.teardown(); } catch { /* ignore */ }
             host.replaceChildren();
-            store.setState('navGuard', null);
+            store.setState('navGuard', wizardGuard);
         };
     }, [channel, metaDataId, kind]);
 
@@ -229,11 +240,11 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                 </div>
             )}
 
-            {tab === 'Filter' && <EmbeddedElementEditor key={`f-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="filter" />}
+            {tab === 'Filter' && <EmbeddedElementEditor key={`f-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="filter" onChange={onChange} />}
 
-            {tab === 'Transformer' && <EmbeddedElementEditor key={`t-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="transformer" />}
+            {tab === 'Transformer' && <EmbeddedElementEditor key={`t-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="transformer" onChange={onChange} />}
 
-            {isDest && tab === 'Response' && <EmbeddedElementEditor key={`r-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="response" />}
+            {isDest && tab === 'Response' && <EmbeddedElementEditor key={`r-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="response" onChange={onChange} />}
         </div>
     );
 }
@@ -411,7 +422,9 @@ function ChannelWizardInner({ channel, isNew, version }) {
 
     const dirtyRef = useRef(false);   // user changed something since the last save
     const savedRef = useRef(false);   // channel has been created/updated
-    const bump = () => { dirtyRef.current = true; forceRender(); };
+    // Mark dirty for BOTH the wizard (dirtyRef → Save/footer) and the classic editor
+    // (store editingChannelDirty), so a switchToClassic after wizard edits agrees.
+    const bump = () => { dirtyRef.current = true; store.setState('editingChannelDirty', true); forceRender(); };
 
     const [inbound, setInbound] = useState(() => channel.sourceConnector.transformer.inboundDataType || defaultDataType(types));
     const [outbound, setOutbound] = useState(() => channel.sourceConnector.transformer.outboundDataType || defaultDataType(types));
