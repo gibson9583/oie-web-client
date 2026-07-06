@@ -67,13 +67,16 @@ function dtDefaults(name, version) {
     const d = dataTypeDef(name);
     return d && typeof d.defaults === 'function' ? d.defaults(version) : { '@version': version };
 }
+function setTransformerInbound(tx, name, version) { tx.inboundDataType = name; tx.inboundProperties = dtDefaults(name, version); }
+function setTransformerOutbound(tx, name, version) { tx.outboundDataType = name; tx.outboundProperties = dtDefaults(name, version); }
 function setTransformerTypes(tx, inName, outName, version) {
-    tx.inboundDataType = inName;
-    tx.inboundProperties = dtDefaults(inName, version);
-    tx.outboundDataType = outName;
-    tx.outboundProperties = dtDefaults(outName, version);
+    setTransformerInbound(tx, inName, version);
+    setTransformerOutbound(tx, outName, version);
 }
-/** Seed the Basics data types through the source and every destination transformer. */
+/** Seed a brand-new channel's data types uniformly: source and every destination
+ *  get the chosen inbound/outbound. Editing an existing channel uses the precise,
+ *  Swing-faithful handlers (changeInbound/changeOutbound) instead, which never
+ *  overwrite a destination's own outbound data type. */
 function applyDataTypes(channel, inbound, outbound, version) {
     setTransformerTypes(channel.sourceConnector.transformer, inbound, outbound, version);
     for (const d of oie.destinationsOf(channel)) setTransformerTypes(d.transformer, outbound, outbound, version);
@@ -525,8 +528,16 @@ function ChannelWizardInner({ channel, isNew, version }) {
     }
 
     /* ---- data-type + destination actions ---- */
-    const changeInbound = (v) => { setInbound(v); applyDataTypes(channel, v, outbound, version); bump(); };
-    const changeOutbound = (v) => { setOutbound(v); applyDataTypes(channel, inbound, v, version); bump(); };
+    // Match Swing's Set Data Types: changing the source inbound touches only the
+    // source; changing the source outbound also cascades to each destination's
+    // INBOUND (data entering the destination), leaving destination outbound alone.
+    const changeInbound = (v) => { setInbound(v); setTransformerInbound(channel.sourceConnector.transformer, v, version); bump(); };
+    const changeOutbound = (v) => {
+        setOutbound(v);
+        setTransformerOutbound(channel.sourceConnector.transformer, v, version);
+        for (const d of oie.destinationsOf(channel)) setTransformerInbound(d.transformer, v, version);
+        bump();
+    };
 
     const addDestination = () => {
         const dests = oie.destinationsOf(channel);
