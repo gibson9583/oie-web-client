@@ -31,7 +31,11 @@ function parseCookies(cookieHeader) {
         const i = part.indexOf('=');
         if (i < 0) continue;
         const k = part.slice(0, i).trim();
-        if (k) out[k] = decodeURIComponent(part.slice(i + 1).trim());
+        if (!k) continue;
+        // A malformed value (bare `%`, `%ZZ`) must not throw and take down the whole
+        // proxy call — fall back to the raw value (routing only reads oie-engine*).
+        const raw = part.slice(i + 1).trim();
+        try { out[k] = decodeURIComponent(raw); } catch { out[k] = raw; }
     }
     return out;
 }
@@ -96,7 +100,13 @@ function resolveForwardedFor(remoteAddress, priorXff, trusted) {
 // Other proxy-forwarding headers a client could spoof to the engine (host-header
 // injection, forged scheme/port/client-IP). The proxy is the trust boundary, so a
 // direct/untrusted client's values are dropped; a trusted fronting proxy keeps them.
-const PROXY_FWD_HEADERS = ['x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'forwarded', 'x-real-ip'];
+// Covers the full set the engine's Jetty ForwardedRequestCustomizer honors, not just
+// the common three, so the strip is complete.
+const PROXY_FWD_HEADERS = [
+    'x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'x-forwarded-prefix',
+    'x-forwarded-server', 'x-forwarded-scheme', 'x-forwarded-ssl', 'x-forwarded-https',
+    'x-proxied-https', 'forwarded', 'x-real-ip'
+];
 
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
