@@ -21,6 +21,8 @@ import { statsOf } from './dashboard.jsx';
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const CARD_H = 128;     // fixed card height (px) — required for virtualization
 const GAP = 12;
+const SECTION_CAP = 60; // grouped view: max cards rendered per section before "show more"
+                        // (grouped mode isn't virtualized, so this bounds the DOM on big servers)
 
 const STATE_ORDER = ['STARTED', 'PAUSED', 'STOPPED'];   // undeployed channels are excluded
 const STATE_META = {
@@ -144,6 +146,7 @@ function CardsView({ onToggleView }) {
     const setGroupBy = (g) => { setGroupByState(g); setPrefs({ cardsGroupBy: g }); };
     const [stateFilter, setStateFilter] = useState(null);
     const [collapsed, setCollapsed] = useState(() => new Set());
+    const [sectionLimits, setSectionLimits] = useState({});   // grouped view: sectionKey → cards shown
     const [selected, setSelected] = useState(() => new Set());   // selected channelIds (multi-select)
     const [live, setLive] = useState(true);
     const liveRef = useRef(true);
@@ -385,6 +388,11 @@ function CardsView({ onToggleView }) {
                 <div className="view-body" onClick={clearSelection}>
                     {sections.map((sec) => {
                         const open = !collapsed.has(sec.key);
+                        // Grouped mode isn't virtualized, so cap how many cards a section
+                        // renders (bounds the DOM on big servers); "show more" reveals more.
+                        const limit = sectionLimits[sec.key] || SECTION_CAP;
+                        const shown = sec.members.slice(0, limit);
+                        const more = sec.members.length - shown.length;
                         return (
                             <div key={sec.key} className="mb-4">
                                 <div role="button" className="flex items-center gap-2 w-full py-1.5 border-b border-line mb-2 cursor-pointer hover:text-accent select-none"
@@ -394,9 +402,17 @@ function CardsView({ onToggleView }) {
                                     <span className="text-text-faint text-[12px]">{sec.members.length}</span>
                                 </div>
                                 {open && (
-                                    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${CARD_MIN}px, 1fr))` }}>
-                                        {sec.members.map((st) => <div key={st.channelId} style={{ height: CARD_H }}><ChannelCard status={st} tags={tagsFor(st.channelId)} selected={selected.has(st.channelId)} onSelect={selectCard} onOpen={openMessages} onMenu={openMenu} lifetime={lifetime} /></div>)}
-                                    </div>
+                                    <>
+                                        <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${CARD_MIN}px, 1fr))` }}>
+                                            {shown.map((st) => <div key={st.channelId} style={{ height: CARD_H }}><ChannelCard status={st} tags={tagsFor(st.channelId)} selected={selected.has(st.channelId)} onSelect={selectCard} onOpen={openMessages} onMenu={openMenu} lifetime={lifetime} /></div>)}
+                                        </div>
+                                        {more > 0 && (
+                                            <button type="button" className="btn btn-sm btn-ghost mt-2"
+                                                onClick={(e) => { e.stopPropagation(); setSectionLimits((l) => ({ ...l, [sec.key]: (l[sec.key] || SECTION_CAP) + SECTION_CAP })); }}>
+                                                Show {Math.min(more, SECTION_CAP)} more ({more} hidden)
+                                            </button>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         );

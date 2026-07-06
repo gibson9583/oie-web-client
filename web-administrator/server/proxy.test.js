@@ -59,6 +59,13 @@ test('falls back to engine.url when engines list empty', () => {
     assert.strictEqual(e.url, 'https://fallback:8443');
 });
 
+test('a malformed cookie value does not break routing (no decodeURIComponent throw)', () => {
+    // A bare `%`/`%ZZ` in any cookie would throw in parseCookies and 500 the proxy;
+    // routing must still resolve the engine from the valid oie-engine cookie.
+    const e = resolveEngine(cfg(), req('junk=%ZZ; oie-engine=1; bad=100%'));
+    assert.strictEqual(e.name, 'stage');
+});
+
 test('resolveForwardedFor: loopback peer appends prior chain', () => {
     assert.strictEqual(resolveForwardedFor('127.0.0.1', '1.2.3.4', new Set()), '1.2.3.4, 127.0.0.1');
 });
@@ -77,17 +84,14 @@ test('isTrustedPeer: loopback (v4/v6/mapped) and configured proxies trusted; oth
 });
 
 test('sanitizeForwardHeaders: untrusted client cannot spoof forwarding headers to the engine', () => {
-    const h = {
-        'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https',
-        'x-forwarded-port': '443', 'forwarded': 'for=1.1.1.1;host=evil', 'x-real-ip': '9.9.9.9',
-        cookie: 'JSESSIONID=abc'
-    };
+    // Every X-Forwarded-* / Forwarded / X-Real-IP header the engine's Jetty honors.
+    const SPOOFABLE = ['x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'x-forwarded-prefix',
+        'x-forwarded-server', 'x-forwarded-scheme', 'x-forwarded-ssl', 'x-forwarded-https', 'x-proxied-https',
+        'forwarded', 'x-real-ip'];
+    const h = { cookie: 'JSESSIONID=abc' };
+    for (const k of SPOOFABLE) h[k] = 'evil';
     sanitizeForwardHeaders(h, '8.8.8.8', '1.2.3.4', new Set());
-    assert.strictEqual(h['x-forwarded-host'], undefined);
-    assert.strictEqual(h['x-forwarded-proto'], undefined);
-    assert.strictEqual(h['x-forwarded-port'], undefined);
-    assert.strictEqual(h['forwarded'], undefined);
-    assert.strictEqual(h['x-real-ip'], undefined);
+    for (const k of SPOOFABLE) assert.strictEqual(h[k], undefined, `${k} should be stripped`);
     assert.strictEqual(h['x-forwarded-for'], '8.8.8.8');   // real socket IP only, forged chain dropped
     assert.strictEqual(h['cookie'], 'JSESSIONID=abc');      // non-forwarding headers untouched
 });
