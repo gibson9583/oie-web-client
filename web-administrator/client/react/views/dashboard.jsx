@@ -119,9 +119,9 @@ function segControl(options, current, onChange) {
     const wrap = h('span', { class: 'inline-flex flex-none border border-line-strong rounded-[4px] overflow-hidden' });
     const buttons = options.map(opt => h('button', {
         type: 'button', title: opt.title || opt.label || '',
-        class: 'border-none cursor-pointer py-[3px] px-2 text-[11px] inline-flex items-center gap-1',
+        class: 'appearance-none border-none cursor-pointer py-[3px] px-2 text-[11px] inline-flex items-center gap-1',
         style: {
-            background: 'transparent', color: 'var(--text-dim)'
+            background: 'transparent', color: 'var(--text-dim)', fontFamily: 'inherit'
         },
         onClick: () => { paint(opt.value); onChange(opt.value); }
     }, opt.icon ? icon(opt.icon, 13) : null, opt.label || null));
@@ -852,8 +852,8 @@ function DashboardView({ onToggleView }) {
                 icon(isTag ? 'tag' : 'server', 12),
                 h('span', chip.value),
                 h('button', {
-                    title: 'Remove', class: 'border-none cursor-pointer text-inherit text-[14px] leading-none py-0 px-px',
-                    style: { background: 'none' },
+                    title: 'Remove', class: 'appearance-none border-none cursor-pointer text-inherit text-[14px] leading-none py-0 px-px',
+                    style: { background: 'none', fontFamily: 'inherit' },
                     onClick: () => removeChip(chip)
                 }, '×')));
         }
