@@ -1,5 +1,6 @@
 // plugins/httpauth/web/plugin.jsx
 import { platform } from "@oie/web-shell";
+import { DESTINATION_MAPPINGS } from "@oie/web-ui";
 var React = platform.React;
 var AUTH_TYPE_OPTIONS = [
   { value: "NONE", label: "None" },
@@ -116,6 +117,11 @@ function register(platform2) {
         value: value === null || value === void 0 ? "" : String(value),
         language: language || "text",
         minHeight: minHeight || "240px",
+        popoutable: true,
+        // dedicated full-screen code view
+        popoutTitle: "Script",
+        popoutVars: DESTINATION_MAPPINGS,
+        // connector settings context
         onChange: (v) => onChangeRef.current(v)
       });
       editorRef.current = editor;

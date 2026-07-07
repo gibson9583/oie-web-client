@@ -4,16 +4,17 @@ import { channelWithSourceElement } from './step-rule-fixtures.js';
 import { CASES as CONNECTOR_CASES, makeChannel } from './connector-fixtures.js';
 
 /*
- * The code-editor "maximize / full-screen" affordance, in its two shapes:
+ * The code-editor "grow / full-screen" affordances, in their two shapes:
  *   (B) collapse-the-top-pane — transformer/filter and code templates grow the
  *       editor over the steps grid / metadata form (tagged data-editor-overtake)
  *       while the right Reference / Context panel stays put (.is-editor-max).
- *   (A) fill-the-content-area overlay — connector code fields (JavaScript Writer)
- *       and channel scripts pop the editor to a fixed overlay (.ce-maximized) via
- *       a .ce-max-btn, with Esc to restore.
+ *   (A) the code view — connector code fields (JavaScript Writer) and channel
+ *       scripts open a dedicated full-viewport writing surface (.ce-popout-overlay,
+ *       via the .ce-pop-btn corner toggle) with a Back button, a title, and a
+ *       variables reference rail; Esc or Back restores the editor to the form.
  */
 
-test('(B) transformer Maximize overtakes the steps grid but keeps the reference panel', async ({ page }) => {
+test('transformer step editor has ONE grow affordance: the code view (no region maximize)', async ({ page }) => {
     const id = 'max-tx';
     const element = { '@version': '4.5.0', name: 'Original', sequenceNumber: '0', enabled: true, script: '// hi\n' };
     const channel = channelWithSourceElement(id, 'transformer', 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', element);
@@ -22,18 +23,29 @@ test('(B) transformer Maximize overtakes the steps grid but keeps the reference 
     await page.goto(`/channels/${id}/edit`);
     await page.getByRole('button', { name: 'Source', exact: true }).click();
     await page.getByRole('button', { name: /^Edit Transformer/ }).click();
+    await expect(page.locator('[data-editor-overtake]').first()).toBeVisible();
 
-    const stepsGrid = page.locator('[data-editor-overtake]').first();
-    const reference = page.getByRole('button', { name: 'Reference', exact: true });
-    await expect(stepsGrid).toBeVisible();
-    await expect(reference).toBeVisible();
+    // The duplicate region-maximize button on the Step/Generated Script bar is gone…
+    await expect(page.getByRole('button', { name: 'Maximize editor' })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Maximize editor' }).click();
-    await expect(stepsGrid).toBeHidden();      // steps overtaken
-    await expect(reference).toBeVisible();     // reference panel kept
+    // …and the step script's code view is the single way to grow: full viewport,
+    // with the REAL Reference / Message Templates / Message Trees panel moved in.
+    const editor = page.locator('.ce').first();
+    await editor.hover();
+    await editor.locator('.ce-pop-btn').click({ force: true });
+    const overlay = page.locator('.ce-popout-overlay');
+    await expect(overlay).toHaveCount(1);
+    const box = await overlay.boundingBox();
+    const vp = page.viewportSize();
+    expect(box.width).toBeGreaterThan(vp.width - 4);
+    await expect(overlay.getByRole('button', { name: 'Reference', exact: true })).toBeVisible();
+    await expect(overlay.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
 
-    await page.getByRole('button', { name: /Restore editor/ }).click();
-    await expect(stepsGrid).toBeVisible();     // restored
+    // Esc restores both the editor and the side panel to the transformer layout.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.ce-popout-overlay')).toHaveCount(0);
+    await expect(page.locator('[data-editor-overtake]').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reference', exact: true })).toBeVisible();
 });
 
 test('(B) code template Maximize overtakes the library list, keeps the Context panel', async ({ page }) => {
@@ -55,7 +67,7 @@ test('(B) code template Maximize overtakes the library list, keeps the Context p
     await expect(libraryList).toBeVisible();
 });
 
-test('(A) JavaScript Writer maximizes but keeps the Destination Mappings panel', async ({ page }) => {
+test('(A) JavaScript Writer opens the code view with velocity variables', async ({ page }) => {
     const js = CONNECTOR_CASES.find((c) => c.name === 'JavaScript Writer');
     const id = 'max-jsw';
     const channel = makeChannel(id, { destination: { transportName: 'JavaScript Writer', properties: js.properties() } });
@@ -66,69 +78,53 @@ test('(A) JavaScript Writer maximizes but keeps the Destination Mappings panel',
     await page.getByRole('cell', { name: 'JavaScript Writer', exact: true }).first().click();
     await expect(page.locator('.cform-section').first()).toBeVisible();
 
-    const mappings = page.getByText('Destination Mappings', { exact: true });
-    await expect(mappings).toBeVisible();
-
     const editor = page.locator('.ce').first();
     await editor.hover();   // the toggle is opacity:0 until hover
-    await editor.getByRole('button', { name: 'Maximize editor' }).click();
-    const overlay = page.locator('.ce.ce-maximized');
-    await expect(overlay).toHaveCount(1);
+    await editor.locator('.ce-pop-btn').click({ force: true });
 
-    // It fills the connector area (genuinely large) but stops short of the ~240px
-    // Destination Mappings rail, which stays visible as the drag source.
-    await expect(mappings).toBeVisible();
+    const overlay = page.locator('.ce-popout-overlay');
+    await expect(overlay).toHaveCount(1);
+    // A dedicated full-viewport writing surface…
     const box = await overlay.boundingBox();
     const vp = page.viewportSize();
-    expect(box.width).toBeGreaterThan(vp.width * 0.4);
-    expect(box.x + box.width).toBeLessThan(vp.width - 200);    // leaves room for the mappings rail
+    expect(box.width).toBeGreaterThan(vp.width - 4);
+    expect(box.height).toBeGreaterThan(vp.height - 4);
+    // …with a Back button and the velocity variables rail built in.
+    await expect(overlay.getByRole('button', { name: 'Back' })).toBeVisible();
+    await expect(overlay.locator('.ce-popout-var', { hasText: 'Encoded Data' })).toBeVisible();
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('.ce.ce-maximized')).toHaveCount(0);
+    await expect(page.locator('.ce-popout-overlay')).toHaveCount(0);
 });
 
-test('(A) channel scripts maximize fills flush-left when the nav rail is collapsed (regression)', async ({ page }) => {
+test('(A) channel scripts open the code view full-viewport even with the rail collapsed', async ({ page }) => {
     const id = 'max-scripts';
     const channel = makeChannel(id);
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
     await page.goto(`/channels/${id}/edit`);
-    // Collapse the rail via the topbar hamburger — the content grid becomes "0 1fr",
-    // so the fixed maximize overlay must start at x=0 (not the old rail width).
+    // Collapse the rail — the code view covers the whole viewport regardless of
+    // shell layout (it is appended to document.body).
     await page.getByRole('button', { name: 'Hide navigation' }).click();
     await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
 
     await page.getByRole('button', { name: 'Scripts', exact: true }).click();
     const editor = page.locator('.ce').first();
     await editor.hover();
-    await editor.getByRole('button', { name: 'Maximize editor' }).click();
+    await editor.locator('.ce-pop-btn').click({ force: true });
 
-    const overlay = page.locator('.ce.ce-maximized');
+    const overlay = page.locator('.ce-popout-overlay');
     await expect(overlay).toHaveCount(1);
     const box = await overlay.boundingBox();
     const vp = page.viewportSize();
     expect(box.x).toBeLessThan(4);                          // flush to the viewport edge
-    expect(box.width).toBeGreaterThan(vp.width * 0.8);      // spans the full content width
+    expect(box.width).toBeGreaterThan(vp.width - 4);        // spans the full viewport
+    // Script scope variables + the script's name in the header.
+    await expect(overlay.locator('.ce-popout-title')).toHaveText(/script/i);
+    await expect(overlay.locator('.ce-popout-var', { hasText: 'Channel Map' }).first()).toBeVisible();
 
-    await page.keyboard.press('Escape');
-    await expect(page.locator('.ce.ce-maximized')).toHaveCount(0);
-});
-
-test('(A) channel scripts maximize clears the nav rail when it is expanded', async ({ page }) => {
-    const id = 'max-scripts-exp';
-    const channel = makeChannel(id);
-    await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
-
-    await page.goto(`/channels/${id}/edit`);
-    await page.getByRole('button', { name: 'Scripts', exact: true }).click();
-    const editor = page.locator('.ce').first();
-    await editor.hover();
-    await editor.getByRole('button', { name: 'Maximize editor' }).click();
-
-    const overlay = page.locator('.ce.ce-maximized');
-    await expect(overlay).toHaveCount(1);
-    const box = await overlay.boundingBox();
-    expect(box.x).toBeGreaterThan(4);     // anchored to the right of the expanded rail
-
-    await page.keyboard.press('Escape');
+    // Back returns to the Scripts tab with the editor restored in place.
+    await overlay.getByRole('button', { name: 'Back' }).click();
+    await expect(page.locator('.ce-popout-overlay')).toHaveCount(0);
+    await expect(page.locator('.ce').first()).toBeVisible();
 });

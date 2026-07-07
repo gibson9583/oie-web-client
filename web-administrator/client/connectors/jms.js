@@ -248,7 +248,7 @@ const jmsSender = {
       { key: "destinationName", label: "Destination Name", type: "text", width: "320px" },
       { key: "clientId", label: "Client ID", type: "text", width: "220px" },
       { section: "Template" },
-      { key: "template", label: "Template", type: "code", minHeight: "140px" }
+      { key: "template", label: "Template", type: "code", minHeight: "260px" }
     ] });
   },
   // Swing JmsConnectorPanel.checkProperties (shared, connectorType == TYPE_SENDER):

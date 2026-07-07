@@ -233,7 +233,7 @@ const dicomSender = {
                 { key: 'ts1', label: 'Default Presentation Syntax', type: 'radio', options: YES_NO },
                 ...tlsFields(),
                 { section: 'Template' },
-                { key: 'template', label: 'Template', type: 'code', minHeight: '120px' }
+                { key: 'template', label: 'Template', type: 'code', minHeight: '260px' }
             ]} />
         );
     },

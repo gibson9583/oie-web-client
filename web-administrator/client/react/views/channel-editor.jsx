@@ -78,30 +78,10 @@ const META_COLUMN_TYPES = ['STRING', 'NUMBER', 'BOOLEAN', 'TIMESTAMP'];
 
 const DEFAULT_ATTACHMENT_SCRIPT = '// Modify the message variable below to create attachments\nreturn message;';
 
-/* Classic Administrator "Destination Mappings" velocity variables. */
-const DESTINATION_MAPPINGS = [
-    ['Channel ID', '${channelId}'],
-    ['Channel Name', '${channelName}'],
-    ['Message ID', '${message.messageId}'],
-    ['Raw Data', '${message.rawData}'],
-    ['Transformed Data', '${message.transformedData}'],
-    ['Encoded Data', '${message.encodedData}'],
-    ['Message Source', '${message.source}'],
-    ['Message Type', '${message.type}'],
-    ['Message Version', '${message.version}'],
-    ['Date', '${date}'],
-    ['Formatted Date', "${date.get('yyyy-M-d H.m.s')}"],
-    ['Timestamp', '${SYSTIME}'],
-    ['Unique ID', '${UUID}'],
-    ['Original File Name', '${originalFilename}'],
-    ['Count', '${COUNT}'],
-    ['XML Entity Encoder', '${XmlUtil.encode()}'],
-    ['XML Pretty Printer', '${XmlUtil.prettyPrint()}'],
-    ['Escape JSON String', '${JsonUtil.escape()}'],
-    ['JSON Pretty Printer', '${JsonUtil.prettyPrint()}'],
-    ['CDATA Tag', '<![CDATA[]]>'],
-    ['DICOM Message Raw Data', '${DICOMMESSAGE}']
-];
+/* Classic Administrator "Destination Mappings" velocity variables — canonical list
+   lives in core/mappings.js (shared with the wizard rail and the code-view vars). */
+export { DESTINATION_MAPPINGS } from '../../core/mappings.js';
+import { DESTINATION_MAPPINGS, SCRIPT_REFERENCE } from '../../core/mappings.js';
 
 /* Summary text shown next to the Advanced Queue Settings button, replicating
    the Swing DestinationSettingsPanel.updateAdvancedSettingsLabel(). */
@@ -2649,10 +2629,7 @@ function buildBody(params, query, onTasksChange, returning) {
         }
 
         refresh();
-        // `editor-max-host` makes a maximized connector code field (e.g. JavaScript
-        // Writer) fill THIS area instead of the whole viewport, so the Destination
-        // Mappings rail beside it stays visible (the drag source for the script).
-        const main = h('div', { class: 'editor-max-host flex-auto min-w-0 flex flex-col min-h-0' },
+        const main = h('div', { class: 'flex-auto min-w-0 flex flex-col min-h-0' },
             h('div.panel', { class: 'flex-none' }, h('div.panel-body.flush', table.el)),
             editorHost);
         main.addEventListener('focusin', trackFocus);
@@ -2695,6 +2672,8 @@ function buildBody(params, query, onTasksChange, returning) {
             language: 'javascript',
             minHeight: '260px',
             maximizable: true,   // channel scripts (Deploy/Undeploy/Pre/Postprocessor) can go full-screen
+            popoutTitle: `${current.label} script`,
+            popoutVars: SCRIPT_REFERENCE,
             onChange: (value) => {
                 if (switching) return;
                 channel[current.key] = value;

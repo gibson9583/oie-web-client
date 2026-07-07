@@ -1,6 +1,7 @@
 import { React, useReducer, useRef, useEffect, useMemo } from "./react-platform.js";
 import { platform } from "@oie/web-shell";
 import { h, modal, toast, taskButton, icon } from "../core/ui.js";
+import { DESTINATION_MAPPINGS } from "../core/mappings.js";
 import { createCodeEditor } from "../core/codeeditor.js";
 import * as api from "../core/api.js";
 import {
@@ -29,7 +30,7 @@ const DEFAULT_WIDTHS = {
   select: "220px"
 };
 let cformUid = 0;
-function CodeField({ value, language, minHeight, placeholder, onChange, disabled }) {
+function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label }) {
   const hostRef = useRef(null);
   const edRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -39,11 +40,14 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
     const editor = createCodeEditor({
       value: value === null || value === void 0 ? "" : String(value),
       language: language || "text",
-      minHeight: minHeight || "240px",
+      minHeight: minHeight || "300px",
       placeholder,
       readOnly: !!disabled,
       maximizable: true,
       // connector code fields (incl. JavaScript Writer) can go full-screen
+      popoutTitle: label,
+      // full-screen code view: header title + velocity variables rail
+      popoutVars: DESTINATION_MAPPINGS,
       onChange: (v) => onChangeRef.current && onChangeRef.current(v)
     });
     edRef.current = editor;
@@ -238,6 +242,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         CodeField,
         {
           value,
+          label: typeof f.label === "function" ? f.label(properties) : f.label,
           language: typeof f.language === "function" ? f.language(properties) : f.language,
           minHeight: f.minHeight,
           placeholder: f.placeholder,

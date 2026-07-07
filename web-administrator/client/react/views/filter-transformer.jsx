@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useReducer, useState } from 'react';
-import { h, clear, field, textInput, select, tabs, modal, toast, loading, saveFile, pickFile, contextMenu, icon } from '@oie/web-ui';
+import { h, clear, field, textInput, select, tabs, modal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
@@ -496,7 +496,7 @@ function buildBody(params, kindName, onTasksChange) {
     const editorHost = h('div.step-editor-fill', { class: 'py-3 px-3.5' });
     let elementEditorRoot = null;   // teardown for the mounted step/rule React editor
     const generatedHost = h('div', { class: 'py-3 px-3.5' });
-    const generatedEditor = createCodeEditor({ value: '', readOnly: true, minHeight: '200px' });
+    const generatedEditor = createCodeEditor({ value: '', readOnly: true, minHeight: '200px', popoutable: true, popoutTitle: 'Generated Script' });
     generatedHost.appendChild(generatedEditor.el);
 
     function updateGenerated() {
@@ -1464,7 +1464,31 @@ function buildBody(params, kindName, onTasksChange) {
         h('div.split-handle', { 'data-editor-overtake': '' }),
         h('div.split-b', { class: 'flex flex-col min-h-0' },
             bottomTabs.el));
-    const maxCleanup = addEditorMaximize(bottomTabs.el, editorColumn);
+
+    /* ---- code view integration ----------------------------------------------------------
+       When a code view opens for an editor that lives inside THIS filter/transformer
+       editor (a step script or the generated-script preview), move the real
+       Reference / Message Templates / Message Trees panel into the overlay — the
+       full-fidelity reference, in place of the generic variables list — and move it
+       back when the view closes. The panel keeps all its behavior (category filter,
+       Available Variables, tree accessor drag: nodes carry text/plain, which the
+       code view inserts at the drop point). */
+    let sidePlaceholder = null;
+    const onCodeView = (e) => {
+        const d = e.detail || {};
+        if (d.open && d.origin && el.contains(d.origin) && !sidePlaceholder) {
+            const flat = d.body.querySelector('.ce-popout-vars');
+            if (flat) flat.remove();
+            sidePlaceholder = document.createComment('ft-side-panel');
+            sideTabs.el.parentNode.insertBefore(sidePlaceholder, sideTabs.el);
+            d.body.appendChild(h('div.ce-popout-sidepanel', sideTabs.el));
+        } else if (!d.open && sidePlaceholder) {
+            if (sidePlaceholder.parentNode) sidePlaceholder.parentNode.insertBefore(sideTabs.el, sidePlaceholder);
+            sidePlaceholder.remove();
+            sidePlaceholder = null;
+        }
+    };
+    document.addEventListener('oie:code-view', onCodeView);
 
     const el = h('div.view-body.flush', { class: 'flex flex-1 min-h-0' },
         // split-reflow: below the tablet breakpoint the CSS stacks this outer split
@@ -1490,29 +1514,7 @@ function buildBody(params, kindName, onTasksChange) {
         },
         // Teardown persists the working copy but must not mark dirty (see persist()),
         // then clears the editor's code-template scope so it can't leak to the next view.
-        teardown: () => { if (elementEditorRoot) elementEditorRoot(); generatedEditor.dispose && generatedEditor.dispose(); maxCleanup(); persist(); store.setState('navGuard', null); clearActiveScope(); }
+        teardown: () => { document.removeEventListener('oie:code-view', onCodeView); if (elementEditorRoot) elementEditorRoot(); generatedEditor.dispose && generatedEditor.dispose(); persist(); store.setState('navGuard', null); clearActiveScope(); }
     };
 }
 
-/* Maximize toggle for the editor column: a button on the Step/Generated-Script tab
-   bar that grows the editor over the steps grid (which is tagged
-   data-editor-overtake) while the right Reference / Message Trees panel stays
-   visible. Esc restores. Returns a cleanup that detaches the Esc listener. */
-function addEditorMaximize(tabsEl, regionEl) {
-    const bar = tabsEl.querySelector('.tabs');
-    if (!bar) return () => {};
-    const btn = h('button.icon-btn', { type: 'button', class: 'ml-auto self-center', title: 'Maximize editor' }, icon('maximize'));
-    let max = false;
-    const onKey = (e) => { if (e.key === 'Escape' && max) { e.preventDefault(); set(false); } };
-    function set(next) {
-        max = next;
-        regionEl.classList.toggle('is-editor-max', max);
-        btn.replaceChildren(icon(max ? 'minimize' : 'maximize'));
-        btn.title = max ? 'Restore editor (Esc)' : 'Maximize editor';
-        if (max) document.addEventListener('keydown', onKey, true);
-        else document.removeEventListener('keydown', onKey, true);
-    }
-    btn.addEventListener('click', () => set(!max));
-    bar.appendChild(btn);
-    return () => document.removeEventListener('keydown', onKey, true);
-}

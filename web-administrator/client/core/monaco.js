@@ -292,13 +292,13 @@ export function mountMonaco(monaco, editor, opts = {}) {
 
     const host = document.createElement('div');
     host.className = 'monaco-host';
-    // Preserve an optional maximize button across the shell wipe (see attachMaximize
-    // in codeeditor.js) so the in-place upgrade keeps it.
-    const maxBtn = editor.el.querySelector(':scope > .ce-max-btn');
+    // Preserve the optional zoom controls (maximize / pop out — see attachZoomControls
+    // in codeeditor.js) across the shell wipe so the in-place upgrade keeps them.
+    const zoomBtns = [...editor.el.querySelectorAll(':scope > .ce-max-btn')];
     editor.el.classList.add('ce-monaco');
     editor.el.textContent = '';
     editor.el.appendChild(host);
-    if (maxBtn) editor.el.appendChild(maxBtn);
+    for (const b of zoomBtns) editor.el.appendChild(b);
 
     const instance = monaco.editor.create(host, {
         value,

@@ -18,6 +18,7 @@
  * onChange() to mark the channel dirty, matching the imperative version.
  */
 import { platform } from '@oie/web-shell';
+import { DESTINATION_MAPPINGS } from '@oie/web-ui';
 const React = platform.React;
 
 const AUTH_TYPE_OPTIONS = [
@@ -159,6 +160,9 @@ export function register(platform) {
                 value: value === null || value === undefined ? '' : String(value),
                 language: language || 'text',
                 minHeight: minHeight || '240px',
+                popoutable: true,   // dedicated full-screen code view
+                popoutTitle: 'Script',
+                popoutVars: DESTINATION_MAPPINGS,   // connector settings context
                 onChange: (v) => onChangeRef.current(v)
             });
             editorRef.current = editor;

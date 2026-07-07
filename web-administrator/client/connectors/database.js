@@ -285,7 +285,7 @@ const databaseReader = {
         key: "select",
         label: (p) => asBool(p.useScript) ? "JavaScript" : "SQL",
         type: "code",
-        minHeight: "180px",
+        minHeight: "260px",
         language: (p) => asBool(p.useScript) ? "javascript" : "sql",
         tooltip: 'SQL select statement, or a JavaScript script when "Use JavaScript" is Yes'
       },
@@ -306,7 +306,7 @@ const databaseReader = {
         key: "update",
         label: (p) => asBool(p.useScript) ? "JavaScript" : "SQL",
         type: "code",
-        minHeight: "140px",
+        minHeight: "260px",
         language: (p) => asBool(p.useScript) ? "javascript" : "sql",
         disabled: (p) => Number(p.updateMode) === 1
       }
@@ -366,7 +366,7 @@ const databaseWriter = {
         key: "query",
         label: (p) => asBool(p.useScript) ? "JavaScript" : "SQL",
         type: "code",
-        minHeight: "200px",
+        minHeight: "260px",
         language: (p) => asBool(p.useScript) ? "javascript" : "sql"
       }
     ] });

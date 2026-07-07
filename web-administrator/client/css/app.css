@@ -953,40 +953,85 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .ce.ce-monaco .monaco-host { position: absolute; inset: 0; }
 .ce.ce-monaco:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 
-/* ---- code editor maximize ---------------------------------------------------------------------- */
+/* ---- code editor code view ---------------------------------------------------------------------- */
 
-/* (A) "Fill content area" overlay — used where the editor IS the panel (connector
-   code fields incl. JavaScript Writer; the channel Scripts tab). Anchored to the
-   shell content grid, so the nav rail + top bar + status bar stay visible. */
-.ce.ce-maximized {
+
+/* (B) Code view — a dedicated full-screen writing surface appended to
+   document.body: header with a Back button + title, the editor center stage, and
+   an optional variables reference rail on the right. Esc or Back returns to the
+   form (the editor element is reparented back where it came from). */
+.ce-popout-overlay {
     position: fixed;
-    left: var(--rail-w);
-    top: var(--topbar-h);
-    right: 0;
-    bottom: 27px;                /* .shell grid status row */
-    z-index: 50;                 /* above content (<=5), below modal(100)/menu(150)/toast(200) */
-    margin: 0;
-    min-height: 0 !important;    /* beat any inline minHeight from opts */
-    border-radius: 0;
-}
-
-/* When the rail is collapsed the content grid starts at x=0
-   (.shell.rail-collapsed → grid-template-columns: 0 1fr), so this fixed overlay
-   must start there too — otherwise it leaves a rail-width gap on the left where
-   the view's own content shows through. */
-.shell.rail-collapsed .ce.ce-maximized { left: 0; }
-
-/* When the editor lives in a maximize "stage" — a container that has a right-hand
-   context panel to preserve (e.g. the destination connector area beside the
-   Destination Mappings rail) — fill that stage instead of the whole viewport, so
-   the panel stays visible. The stage is the nearest positioned ancestor. */
-.editor-max-host { position: relative; }
-.editor-max-host .ce.ce-maximized {
-    position: absolute;
     inset: 0;
-    left: 0; top: 0; right: 0; bottom: 0;
-    z-index: 20;
+    z-index: 90;                 /* above content, below modal(100)/menu(150)/toast(200) */
+    display: flex;
+    flex-direction: column;
+    background: var(--bg1);
 }
+.ce-popout-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+    flex: none;
+}
+.ce-popout-title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ce-popout-esc { margin-left: auto; color: var(--text-faint); font-size: 12px; }
+.ce-popout-body { flex: 1; display: flex; min-height: 0; }
+.ce-popout-slot { flex: 1; min-width: 0; display: flex; }
+.ce-popout-slot > .ce {
+    flex: 1;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    min-height: 0 !important;    /* beat any inline minHeight from opts */
+}
+.ce.ce-popout > .ce-max-btn { opacity: 1; }
+.ce-popout-vars {
+    width: 240px;
+    flex: 0 0 240px;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.ce-popout-vars-head {
+    padding: 9px 12px;
+    font-size: 11px;
+    font-weight: 640;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--line);
+    flex: none;
+}
+.ce-popout-vars-list { flex: 1; overflow: auto; padding: 4px 0; }
+.ce-popout-var {
+    padding: 4px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ce-popout-var:hover { background: var(--bg3); }
+.ce-popout-vars-hint { padding: 8px 12px; color: var(--text-faint); font-size: 11.5px; border-top: 1px solid var(--line); flex: none; }
+
+/* Host-contributed side panel (the transformer's Reference / Message Templates /
+   Message Trees panel, moved in via the oie:code-view event). */
+.ce-popout-sidepanel {
+    width: 460px;
+    flex: 0 0 460px;
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+}
+.ce-popout-sidepanel > * { flex: 1; min-height: 0; }
+@media (max-width: 900px) { .ce-popout-sidepanel { display: none; } }
+@media (max-width: 760px) { .ce-popout-vars { display: none; } }
 
 /* Maximize / restore toggle, top-right of the editor; revealed on hover/focus. */
 .ce-max-btn {
@@ -1009,8 +1054,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
     transition: opacity 0.12s, color 0.12s, background 0.12s, border-color 0.12s;
 }
 .ce:hover > .ce-max-btn,
-.ce:focus-within > .ce-max-btn,
-.ce.ce-maximized > .ce-max-btn { opacity: 1; }
+.ce:focus-within > .ce-max-btn { opacity: 1; }
 .ce-max-btn:hover { color: var(--text); background: var(--bg3); border-color: var(--line-strong); }
 .ce-max-btn svg { width: 15px; height: 15px; }
 

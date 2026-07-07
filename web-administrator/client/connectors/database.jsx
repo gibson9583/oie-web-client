@@ -300,7 +300,7 @@ const databaseReader = {
                     { section: 'Query' },
                     {
                         // Swing flips selectSQLLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
-                        key: 'select', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '180px',
+                        key: 'select', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
                         language: (p) => asBool(p.useScript) ? 'javascript' : 'sql',
                         tooltip: 'SQL select statement, or a JavaScript script when "Use JavaScript" is Yes'
                     },
@@ -317,7 +317,7 @@ const databaseReader = {
                     {
                         // Swing updateNeverActionPerformed keeps this editor VISIBLE but disabled at Never.
                         // The `code` field now honours `disabled`, so match Swing: grey it out (not hide it).
-                        key: 'update', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '140px',
+                        key: 'update', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
                         language: (p) => asBool(p.useScript) ? 'javascript' : 'sql',
                         disabled: (p) => Number(p.updateMode) === 1
                     }
@@ -372,7 +372,7 @@ const databaseWriter = {
                 },
                 {
                     // Swing flips sqlLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
-                    key: 'query', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '200px',
+                    key: 'query', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
                     language: (p) => asBool(p.useScript) ? 'javascript' : 'sql'
                 }
             ]} />

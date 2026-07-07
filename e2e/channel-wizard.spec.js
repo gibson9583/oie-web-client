@@ -303,6 +303,62 @@ test.describe('channel wizard', () => {
         await expect(page.getByText('Destination 2')).toBeVisible();
     });
 
+    test('connector code fields open a full-screen code view with variables and a Back button', async ({ page }) => {
+        await mockEngine(page);
+        await page.goto('/channels/new/guided');
+        await page.locator('.view-body input').first().fill('Popout Editor');
+        await next(page).click();   // Dependencies
+        await next(page).click();   // Channel Options
+        await next(page).click();   // Source
+        await next(page).click();   // Destinations
+
+        // Channel Writer's Template field carries the zoom controls.
+        const editor = page.locator('.ce').first();
+        await expect(editor).toBeVisible();
+        await editor.locator('.ce-pop-btn').click({ force: true });   // revealed on hover; force past opacity
+
+        const overlay = page.locator('.ce-popout-overlay');
+        await expect(overlay).toHaveCount(1);
+        // Full-viewport writing surface (appended to document.body).
+        const box = await overlay.boundingBox();
+        const viewport = page.viewportSize();
+        expect(box.width).toBeGreaterThan(viewport.width - 4);
+        expect(box.height).toBeGreaterThan(viewport.height - 4);
+        // Header: obvious Back button + the field's title; right rail: velocity variables.
+        await expect(overlay.getByRole('button', { name: 'Back' })).toBeVisible();
+        await expect(overlay.locator('.ce-popout-title')).toHaveText('Template');
+        await expect(overlay.locator('.ce-popout-var', { hasText: 'Encoded Data' })).toBeVisible();
+
+        // Esc closes; the editor returns to the form.
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.ce-popout-overlay')).toHaveCount(0);
+        await expect(page.locator('.panel .ce').first()).toBeVisible();
+
+        // Back button closes too.
+        await editor.locator('.ce-pop-btn').click({ force: true });
+        await expect(page.locator('.ce-popout-overlay')).toHaveCount(1);
+        await page.locator('.ce-popout-overlay').getByRole('button', { name: 'Back' }).click();
+        await expect(page.locator('.ce-popout-overlay')).toHaveCount(0);
+    });
+
+    test('destinations show the Destination Mappings rail; the source does not', async ({ page }) => {
+        await mockEngine(page);
+        await page.goto('/channels/new/guided');
+        await page.locator('.view-body input').first().fill('Mappings Rail');
+        await next(page).click();   // Dependencies
+        await next(page).click();   // Channel Options
+        await next(page).click();   // Source
+
+        await expect(page.getByText('Channel Reader').first()).toBeVisible();
+        await expect(page.getByText('Destination Mappings')).toHaveCount(0);
+
+        await next(page).click();   // Destinations
+        await expect(page.getByText('Destination Mappings')).toBeVisible();
+        // The classic token list renders (click/drag source for velocity variables).
+        await expect(page.getByText('Channel ID', { exact: true })).toBeVisible();
+        await expect(page.getByText('Encoded Data', { exact: true })).toBeVisible();
+    });
+
     test('"wait for previous" appears only from the second destination', async ({ page }) => {
         await mockEngine(page);
         await page.goto('/channels/new/guided');

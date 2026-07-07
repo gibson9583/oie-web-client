@@ -186,7 +186,7 @@ const documentWriter = {
       // encryptedNoActionPerformed and disables the Encrypted radio).
       { key: "password", label: "Password", type: "password", width: "124px", disabled: (p) => isRtf(p) || !asBool(p.encrypt) },
       { label: "Page Size", type: "custom", render: pageSizeRow },
-      { key: "template", label: "HTML Template", type: "code", language: "html", minHeight: "180px" }
+      { key: "template", label: "HTML Template", type: "code", language: "html", minHeight: "260px" }
     ] });
   },
   // Swing DocumentWriter.checkProperties: Directory/File Name required unless Output =

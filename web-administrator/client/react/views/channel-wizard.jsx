@@ -32,6 +32,7 @@ import {
     ConnectorPropertiesPanels, QueueSettings, ChannelScripts, ChannelSettings, DataTypeBar,
     DependenciesStep, persistLibraryAssociations, persistChannelDependencies
 } from './channel-wizard-editors.jsx';
+import { DESTINATION_MAPPINGS } from './channel-editor.jsx';
 
 const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinations', 'Scripts', 'Review'];
 
@@ -199,10 +200,140 @@ function EmbeddedElementEditor({ channel, metaDataId, kind, onChange }) {
 
 /* ---- connector step with Settings / Filter / Transformer / Response tabs ------- */
 
+/* ---- Destination Mappings rail (velocity variable insert / drag) -------------- */
+
+// The classic editor's Destination Mappings tokens, presented like the alert
+// wizard's Variables panel: click inserts into the last-focused field of the
+// connector settings; drag drops into any text field or Monaco editor. Monaco's
+// native drop is bypassed (it snippet-escapes ${...}), so drops insert the token
+// as plain text at the drop point — same approach as the classic editor.
+const MAPPING_FLAVOR = 'application/x-oie-mapping';
+
+function monacoInstanceAt(node) {
+    const me = window.monaco && window.monaco.editor;
+    const editors = me && me.getEditors ? me.getEditors() : [];
+    return editors.find((ed) => { const n = ed.getDomNode && ed.getDomNode(); return n && n.contains(node); }) || null;
+}
+
+function insertableAt(node) {
+    if (!node || !node.closest) return null;
+    if (node.closest('.ce-monaco')) {
+        const inst = monacoInstanceAt(node);
+        if (inst) return { monaco: inst };
+    }
+    const el = node.closest('textarea, input[type=text]');
+    if (el && !el.readOnly && !el.disabled) return { el };
+    return null;
+}
+
+function insertIntoTarget(target, token, position) {
+    if (target.monaco) {
+        const inst = target.monaco;
+        const pos = position || inst.getPosition();
+        const Range = window.monaco.Range;
+        inst.executeEdits('destination-mapping', [{
+            range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+            text: token, forceMoveMarkers: true
+        }]);
+        inst.focus();
+        return true;
+    }
+    const el = target.el;
+    if (!el || !el.isConnected) return false;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    el.value = el.value.slice(0, start) + token + el.value.slice(end);
+    el.selectionStart = el.selectionEnd = start + token.length;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus();
+    return true;
+}
+
+function DestinationMappingsRail({ hostRef }) {
+    const targetRef = useRef(null);   // last focused insertable inside hostRef
+    const dragTokenRef = useRef(null);
+
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host) return undefined;
+        const trackFocus = (e) => {
+            const found = e.target instanceof Element ? insertableAt(e.target) : null;
+            if (found) targetRef.current = found;
+        };
+        const onDragOver = (e) => {
+            const carrying = dragTokenRef.current
+                || (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(MAPPING_FLAVOR));
+            if (!carrying) return;
+            if (insertableAt(e.target)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+        };
+        const onDrop = (e) => {
+            const token = dragTokenRef.current
+                || (e.dataTransfer && (e.dataTransfer.getData(MAPPING_FLAVOR) || e.dataTransfer.getData('text/plain')));
+            dragTokenRef.current = null;
+            const target = token ? insertableAt(e.target) : null;
+            if (!target) return;
+            e.preventDefault();
+            let pos = null;
+            if (target.monaco && target.monaco.getTargetAtClientPoint) {
+                const tgt = target.monaco.getTargetAtClientPoint(e.clientX, e.clientY);
+                if (tgt && tgt.position) pos = tgt.position;
+            }
+            insertIntoTarget(target, token, pos);
+        };
+        host.addEventListener('focusin', trackFocus);
+        host.addEventListener('dragover', onDragOver);
+        host.addEventListener('drop', onDrop);
+        return () => {
+            host.removeEventListener('focusin', trackFocus);
+            host.removeEventListener('dragover', onDragOver);
+            host.removeEventListener('drop', onDrop);
+        };
+    }, [hostRef]);
+
+    const insert = (token) => {
+        const target = targetRef.current;
+        if (target && insertIntoTarget(target, token)) return;
+        // No known target — fall back to the clipboard, like the classic editor.
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(token).then(
+                () => toast(`Copied ${token}`),
+                () => toast('Focus a text field first', 'warn'));
+        } else {
+            toast('Focus a text field first', 'warn');
+        }
+    };
+
+    return (
+        <div className="panel !mt-0 w-full lg:w-[240px] flex-none self-stretch">
+            <div className="panel-header">Destination Mappings</div>
+            <div className="panel-body flex flex-col gap-2">
+                <div className="border border-line rounded overflow-auto max-h-[360px] min-h-[120px]">
+                    {DESTINATION_MAPPINGS.map(([label, token]) => (
+                        <div key={token} role="button" draggable title={token}
+                            onDragStart={(e) => {
+                                dragTokenRef.current = token;
+                                e.dataTransfer.effectAllowed = 'copy';
+                                e.dataTransfer.setData('text/plain', token);
+                                e.dataTransfer.setData(MAPPING_FLAVOR, token);
+                            }}
+                            onDragEnd={() => { dragTokenRef.current = null; }}
+                            onClick={() => insert(token)}
+                            className="step-item cursor-grab">
+                            <div className="flex-1 min-w-0"><div className="truncate">{label}</div></div>
+                        </div>
+                    ))}
+                </div>
+                <div className="hint">Click to insert into the focused field, or drag into a text field.</div>
+            </div>
+        </div>
+    );
+}
+
 function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex }) {
     const isDest = mode === 'DESTINATION';
     const TABS = isDest ? ['Settings', 'Filter', 'Transformer', 'Response'] : ['Settings', 'Filter', 'Transformer'];
     const [tab, setTab] = useState('Settings');
+    const settingsHostRef = useRef(null);   // focus/drop scope for the Destination Mappings rail
     return (
         <div className="flex flex-col gap-4">
             <div className="tabs overflow-x-auto">
@@ -234,11 +365,16 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                     {isDest && <QueueSettings key={`q-${connector.metaDataId}-${connector.transportName}`} connector={connector} onChange={onChange} />}
                     {/* connector-properties (SSL/auth) panels render BEFORE the main panel, matching the classic editor */}
                     <ConnectorPropertiesPanels key={`pp-${connector.transportName}`} channel={channel} connector={connector} mode={mode} />
-                    <div className="panel !mt-0">
-                        <div className="panel-header">{connector.transportName} settings</div>
-                        <div className="panel-body">
-                            <ConnectorPanelMount key={connector.transportName} channel={channel} connector={connector} mode={mode} onChange={onChange} />
+                    {/* Destinations get the classic Destination Mappings rail beside the
+                        connector settings (styled like the alert wizard's Variables panel). */}
+                    <div className="flex flex-col lg:flex-row gap-4 items-stretch">
+                        <div ref={settingsHostRef} className="panel !mt-0 flex-1 min-w-0">
+                            <div className="panel-header">{connector.transportName} settings</div>
+                            <div className="panel-body">
+                                <ConnectorPanelMount key={connector.transportName} channel={channel} connector={connector} mode={mode} onChange={onChange} />
+                            </div>
                         </div>
+                        {isDest && <DestinationMappingsRail hostRef={settingsHostRef} />}
                     </div>
                 </div>
             )}
