@@ -133,6 +133,8 @@ function CodeEditorIsland({ value, minHeight, fill, onChange }) {
         const editor = platform.createCodeEditor({
             value: value ?? '',
             minHeight,
+            popoutable: true,   // full-screen code view; the transformer editor moves its
+            popoutTitle: 'JavaScript',   // Reference/Templates/Trees panel in (oie:code-view)
             onChange
         });
         editorRef.current = editor;

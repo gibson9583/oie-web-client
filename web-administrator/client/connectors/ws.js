@@ -502,7 +502,7 @@ const wsSender = {
         }
       },
       { key: "soapAction", label: "SOAP Action", type: "text", width: "320px" },
-      { key: "envelope", label: "SOAP Envelope", type: "code", language: "xml", minHeight: "220px" },
+      { key: "envelope", label: "SOAP Envelope", type: "code", language: "xml", minHeight: "260px" },
       { section: "Headers" },
       { key: "isUseHeadersVariable", label: "Headers Source", type: "radio", refresh: true, options: [
         { value: false, label: "Use Table" },

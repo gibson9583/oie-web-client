@@ -122,7 +122,7 @@ const smtpSender = {
       { key: "subject", label: "Subject", type: "text" },
       { key: "charsetEncoding", label: "Charset Encoding", type: "select", options: CHARSETS, width: "160px" },
       { key: "html", label: "HTML Body", type: "radio", options: YES_NO },
-      { key: "body", label: "Body", type: "code", minHeight: "180px" },
+      { key: "body", label: "Body", type: "code", minHeight: "260px" },
       { key: "isUseHeadersVariable", label: "Headers", type: "radio", refresh: true, options: [
         { value: false, label: "Use Table" },
         { value: true, label: "Use Map:" }

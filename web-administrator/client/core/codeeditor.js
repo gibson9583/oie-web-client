@@ -94,33 +94,174 @@ export class CodeEditor {
     dispose() {}
 }
 
-/* Optional maximize toggle (opts.maximizable): a top-right button that expands the
- * editor to a fixed overlay over the shell content area (the nav rail + top bar
- * stay visible). Esc restores. Used where the editor IS the panel — connector code
- * fields (incl. JavaScript Writer) and the channel Scripts tab. Views that must
- * keep a side panel beside the editor (transformer/filter, code templates) instead
- * grow it via the .is-editor-max layout toggle, not this overlay.
+/* Insert text into an editor at the cursor — Monaco when upgraded, else the
+ * baseline textarea. Used by the code-view variables rail. */
+function insertAtCursor(editor, text) {
+    if (editor.monaco) {
+        const inst = editor.monaco;
+        const pos = inst.getPosition();
+        const Range = window.monaco.Range;
+        inst.executeEdits('code-view-var', [{
+            range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+            text, forceMoveMarkers: true
+        }]);
+        inst.focus();
+        return;
+    }
+    const area = editor.area;
+    if (!area) return;
+    const start = area.selectionStart ?? area.value.length;
+    const end = area.selectionEnd ?? start;
+    area.value = area.value.slice(0, start) + text + area.value.slice(end);
+    area.selectionStart = area.selectionEnd = start + text.length;
+    area.dispatchEvent(new Event('input', { bubbles: true }));
+    area.focus();
+}
+
+/* Optional code-view toggle (opts.maximizable or opts.popoutable), top-right of
+ * the editor: a dedicated full-screen writing surface appended to document.body.
+ * It covers the whole viewport with a header (obvious "Back" button + title,
+ * opts.popoutTitle) and, when opts.popoutVars ([[label, insertText]]) is provided
+ * and the editor is editable, a variables reference rail on the right — click
+ * inserts at the cursor; drag inserts at the drop point (Monaco's native drop is
+ * bypassed, since it snippet-escapes ${...}). The editor element itself is
+ * REPARENTED into the overlay and restored on close, so Monaco state (undo stack,
+ * cursor, unsaved text) survives. Esc or Back returns to the form.
  *
- * The button is a child of editor.el; mountMonaco re-appends it after wiping the
- * shell for the Monaco host, so it survives the in-place upgrade. */
-function attachMaximize(editor) {
+ * The corner button is a child of editor.el; mountMonaco re-appends it after
+ * wiping the shell for the Monaco host, so it survives the in-place upgrade. */
+function attachCodeView(editor, opts) {
     const el = editor.el;
-    const btn = h('button.ce-max-btn', { type: 'button', title: 'Maximize editor' }, icon('maximize'));
-    let max = false;
-    const onKey = (e) => { if (e.key === 'Escape' && max) { e.preventDefault(); e.stopPropagation(); set(false); } };
+    let open = false;
+    let overlay = null;
+    let placeholder = null;
+    let dragToken = null;
+    const onKey = (e) => { if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); set(false); } };
+
+    const popBtn = h('button.ce-max-btn.ce-pop-btn', { type: 'button', title: 'Open code view' }, icon('popout'));
+
+    function insertAtDrop(e, token) {
+        if (editor.monaco) {
+            const inst = editor.monaco;
+            let pos = inst.getPosition();
+            if (inst.getTargetAtClientPoint) {
+                const tgt = inst.getTargetAtClientPoint(e.clientX, e.clientY);
+                if (tgt && tgt.position) pos = tgt.position;
+            }
+            const Range = window.monaco.Range;
+            inst.executeEdits('code-view-var', [{
+                range: new Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+                text: token, forceMoveMarkers: true
+            }]);
+            inst.focus();
+            return;
+        }
+        insertAtCursor(editor, token);
+    }
+
+    function buildVarsRail() {
+        const vars = opts.popoutVars;
+        if (!Array.isArray(vars) || vars.length === 0 || opts.readOnly) return null;
+        const list = h('div.ce-popout-vars-list');
+        for (const [label, token] of vars) {
+            list.appendChild(h('div.ce-popout-var', {
+                title: token,
+                draggable: 'true',
+                onClick: () => insertAtCursor(editor, token),
+                onDragstart: (e) => {
+                    dragToken = token;
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData('text/plain', token);
+                },
+                onDragend: () => { dragToken = null; }
+            }, label));
+        }
+        return h('div.ce-popout-vars',
+            h('div.ce-popout-vars-head', 'Variables'),
+            list,
+            h('div.ce-popout-vars-hint', 'Click or drag to insert.'));
+    }
+
+    // Drag insertion. Monaco swallows/escapes native text drops, so the overlay
+    // intercepts the drop over the editor and inserts the token itself.
+    function onOverlayDragOver(e) {
+        const carrying = dragToken
+            || (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('text/plain'));
+        if (!carrying) return;
+        if (el.contains(e.target)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
+    }
+    function onOverlayDrop(e) {
+        const token = dragToken || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+        dragToken = null;
+        if (!token || !el.contains(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        insertAtDrop(e, token);
+    }
+
+    function openCodeView() {
+        const origin = el.parentNode;
+        placeholder = document.createComment('ce-code-view');
+        el.parentNode.insertBefore(placeholder, el);
+        const slot = h('div.ce-popout-slot');
+        slot.appendChild(el);
+        el.classList.add('ce-popout');
+        const body = h('div.ce-popout-body', slot);
+        const rail = buildVarsRail();
+        if (rail) body.appendChild(rail);
+        overlay = h('div.ce-popout-overlay',
+            h('div.ce-popout-head',
+                h('button.btn', { type: 'button', onClick: () => set(false) }, icon('chevL'), 'Back'),
+                h('div.ce-popout-title', String(opts.popoutTitle || 'Code editor')),
+                h('div.ce-popout-esc', 'Esc closes')),
+            body);
+        // Capture-phase so the insert wins over Monaco's own dnd handling.
+        overlay.addEventListener('dragover', onOverlayDragOver, true);
+        overlay.addEventListener('drop', onOverlayDrop, true);
+        document.body.appendChild(overlay);
+        // Host views can react (e.g. the transformer editor moves its full
+        // Reference / Message Templates / Message Trees panel into the view).
+        // `origin` is where the editor came from, since el itself has moved.
+        document.dispatchEvent(new CustomEvent('oie:code-view', {
+            detail: { open: true, overlay, body, editorEl: el, origin }
+        }));
+        if (editor.monaco) editor.monaco.layout();
+        editor.focus && editor.focus();
+    }
+
+    function closeCodeView() {
+        document.dispatchEvent(new CustomEvent('oie:code-view', { detail: { open: false, editorEl: el } }));
+        el.classList.remove('ce-popout');
+        if (placeholder && placeholder.parentNode) {
+            placeholder.parentNode.insertBefore(el, placeholder);
+            placeholder.remove();
+        }
+        placeholder = null;
+        if (overlay) overlay.remove();
+        overlay = null;
+        if (editor.monaco) editor.monaco.layout();
+    }
+
     function set(next) {
-        if (next === max) return;
-        max = next;
-        el.classList.toggle('ce-maximized', max);
-        btn.replaceChildren(icon(max ? 'minimize' : 'maximize'));
-        btn.title = max ? 'Restore editor (Esc)' : 'Maximize editor';
-        if (max) document.addEventListener('keydown', onKey, true);
-        else document.removeEventListener('keydown', onKey, true);
+        if (next === open) return;
+        open = next;
+        popBtn.replaceChildren(icon(open ? 'minimize' : 'popout'));
+        popBtn.title = open ? 'Close code view (Esc)' : 'Open code view';
+        if (open) {
+            openCodeView();
+            document.addEventListener('keydown', onKey, true);
+        } else {
+            closeCodeView();
+            document.removeEventListener('keydown', onKey, true);
+        }
         if (editor.monaco) editor.monaco.layout();   // automaticLayout also catches it
     }
-    btn.addEventListener('click', () => set(!max));
-    el.appendChild(btn);
-    editor.__maxCleanup = () => document.removeEventListener('keydown', onKey, true);
+    popBtn.addEventListener('click', () => set(!open));
+    el.appendChild(popBtn);
+    editor.__maxCleanup = () => {
+        document.removeEventListener('keydown', onKey, true);
+        if (open) { open = false; closeCodeView(); }
+    };
     // Cover the air-gapped (no-Monaco) path; the Monaco path cleans up in its own
     // dispose record (which replaces editor.dispose on upgrade).
     const baseDispose = editor.dispose.bind(editor);
@@ -138,7 +279,7 @@ import { ensureMonaco, mountMonaco } from './monaco.js';
 
 let factory = (opts = {}) => {
     const editor = new CodeEditor(opts);
-    if (opts.maximizable) attachMaximize(editor);
+    if (opts.maximizable || opts.popoutable) attachCodeView(editor, opts);
     ensureMonaco().then((monaco) => {
         if (!monaco) return;
         try { mountMonaco(monaco, editor, opts); }

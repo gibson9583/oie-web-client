@@ -747,7 +747,7 @@ const fileWriter = {
                     },
                     { key: 'charsetEncoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px', disabled: (p) => asBool(p.binary) },
                     { section: 'Template' },
-                    { key: 'template', label: 'Template', type: 'code', minHeight: '140px' }
+                    { key: 'template', label: 'Template', type: 'code', minHeight: '260px' }
                 ]} />
             </div>
         );
