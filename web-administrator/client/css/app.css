@@ -532,7 +532,14 @@ code, pre, .mono { font-family: var(--font-mono); }
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 1px 8px;
+    /* line-height 1 sizes the line box to the text (the inherited ~1.5 line box
+       carries descender space this all-caps text never uses, leaving the glyphs
+       optically high); the asymmetric padding offsets Archivo's residual descent,
+       and the resulting 17px pill height lets the cap ink land pixel-symmetric
+       (measured 5px/5px gaps at 1x and 2x — an 17.5/18px pill can only snap to
+       a 1px bias one way or the other). */
+    padding: 3px 8px 1.5px;
+    line-height: 1;
     border-radius: 99px;
     font-size: 10.5px;
     font-weight: 600;
