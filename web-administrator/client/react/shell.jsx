@@ -19,6 +19,7 @@ import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
 import { h, icon, modal, toast, contextMenu } from '@oie/web-ui';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
+import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
 import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
@@ -541,6 +542,19 @@ export function App() {
         await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
         store.setState('user', u);
     };
+
+    // Engine policy: auto logout after N idle minutes (Settings → Server). The same
+    // client-side enforcement as Swing's InactivityListener — the engine publishes
+    // the interval; this client watches its own input events.
+    useEffect(() => {
+        if (!user) return undefined;
+        startIdleLogout(async () => {
+            await onLogout();
+            toast('You were logged out due to inactivity.', 'warn');
+        });
+        return () => stopIdleLogout();
+         
+    }, [user]);
 
     if (!authChecked) return <BootSplash />;
     if (!user) return <LoginForm onSuccess={onLoginSuccess} />;
