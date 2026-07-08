@@ -244,6 +244,10 @@ function ChannelEditorView({ params, query }) {
    present in the store here. `returning` = the channel was already in the store
    at mount (opened with edits / returning from a sub-editor) vs. fetched fresh. */
 function buildBody(params, query, onTasksChange, returning) {
+    // When editing began — the engine compares this against the channel's last-modified
+    // time on save (override=false) to detect edits by someone else, exactly like Swing's
+    // "this channel has been modified since you first opened it" warning.
+    let startEdit = new Date();
     /* ---- load --------------------------------------------------------------- */
 
     const channel = store.getState('editingChannel');
@@ -411,7 +415,18 @@ function buildBody(params, query, onTasksChange, returning) {
                 store.setState('editingChannelNew', false);
             } else {
                 channel.revision = (Number(channel.revision) || 0) + 1;
-                await api.channels.update(channel.id, channel);
+                const ok = await api.channels.update(channel.id, channel, false, startEdit);
+                if (String(ok) === 'false') {
+                    const overwrite = await confirmDialog('Channel Modified',
+                        'This channel has been modified since you first opened it. Are you sure you want to overwrite it?',
+                        { danger: true, okLabel: 'Overwrite' });
+                    if (!overwrite) {
+                        channel.revision = (Number(channel.revision) || 0) - 1;
+                        return false;
+                    }
+                    await api.channels.update(channel.id, channel, true);
+                }
+                startEdit = new Date();   // saved — a fresh edit window starts now
             }
             store.setState('editingChannelDirty', false);
             refreshSaveVisibility();

@@ -45,6 +45,7 @@ import * as router from '../../core/router.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { getPref } from '../../core/prefs.js';
+import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 
@@ -226,6 +227,7 @@ export function AlertEditor({ params, query = {} }) {
     // The model is a mutable object held in a ref (NOT immutable React state):
     // its identity is what saveModel() mutates and api.alerts.update sends.
     const modelRef = useRef(null);
+    const baselineRef = useRef(null);   // server copy at edit start (alert conflict check)
     const saveModelRef = useRef(() => {});
 
     // Channels-tree working state read by the JSX <TreeTable> + saveModel; kept
@@ -260,8 +262,12 @@ export function AlertEditor({ params, query = {} }) {
         try {
             saveModelRef.current();
             if (!String(model.name || '').trim()) { toast('Alert name is required', 'warn'); return; }
-            if (isNew) await api.alerts.create(model);
-            else await api.alerts.update(model.id, model);
+            if (isNew) {
+                await api.alerts.create(model);
+            } else {
+                if (!await confirmIfAlertChanged(model.id, baselineRef.current)) return;
+                await api.alerts.update(model.id, model);
+            }
             store.setState('editingAlert', null);
             store.setState('navGuard', null);   // saved — don't prompt on the redirect
             toast(isNew ? `Alert "${model.name}" created` : `Alert "${model.name}" saved`);
@@ -299,6 +305,7 @@ export function AlertEditor({ params, query = {} }) {
             }
             if (!model || !model.id) throw new Error('Alert not found');
             modelRef.current = model;
+            if (!isNew) alertBaseline(model.id).then((b) => { baselineRef.current = b; });
 
             // route:changed resets the banner to the static route title after this
             // async handler returns; defer past it (rAF runs after that microtask,

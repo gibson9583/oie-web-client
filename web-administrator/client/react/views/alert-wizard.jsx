@@ -11,6 +11,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
+import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
 import { toast, saveFile } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -52,6 +53,11 @@ function AlertWizardView({ params }) {
 }
 
 function AlertWizardInner({ alert, isNew }) {
+    const baselineRef = useRef(null);   // server copy at edit start (alert conflict check)
+    useEffect(() => {
+        if (!isNew && alert.id) alertBaseline(alert.id).then((b) => { baselineRef.current = b; });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const [, forceRender] = useReducer((x) => x + 1, 0);
     const switchingRef = useRef(false);
     const focusedRef = useRef('template');   // which text field a clicked variable inserts into
@@ -167,8 +173,12 @@ function AlertWizardInner({ alert, isNew }) {
         if (probs.length) { const s = firstProblemStep(); if (s >= 0) setStep(s); toast(probs.join('  ·  '), 'warn'); return false; }
         if (enable) alert.enabled = true;
         try {
-            if (isNew) await api.alerts.create(alert);
-            else await api.alerts.update(alert.id, alert);
+            if (isNew) {
+                await api.alerts.create(alert);
+            } else {
+                if (!await confirmIfAlertChanged(alert.id, baselineRef.current)) return false;
+                await api.alerts.update(alert.id, alert);
+            }
             savedRef.current = true;
             dirtyRef.current = false;
             return true;
