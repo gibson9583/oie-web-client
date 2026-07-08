@@ -28,6 +28,7 @@ import * as store from './store.js';
 import * as apiModule from './api.js';
 import * as ui from './ui.js';
 import * as oie from './oie.js';
+import { webSupportBase } from './websupport.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
@@ -179,14 +180,23 @@ export const platform = {
 // than this feature simply have no /api/webplugins endpoint, so this no-ops.
 async function fetchEngineManifests() {
     let paths;
+    let wsBase;
     try {
-        paths = apiModule.asList(await apiModule.get('/webplugins'), 'string').map(String).filter(Boolean);
+        wsBase = await webSupportBase();
+        if (wsBase === null) {
+            // Neither engine-native endpoints nor the websupport plugin: engine-served
+            // plugin UIs (and message trees / validation) are off. Say so once, visibly,
+            // instead of plugin UIs silently not appearing.
+            ui.toast('The Web Support plugin is not installed on this engine — plugin UIs, message trees, and script validation are disabled. Install "websupport" from the Extensions page.', 'warn');
+            return [];
+        }
+        paths = apiModule.asList(await apiModule.get(`${wsBase}/webplugins`), 'string').map(String).filter(Boolean);
     } catch {
-        return []; // endpoint absent (older engine) or unreachable — nothing to add
+        return []; // unreachable / not logged in yet — nothing to add
     }
 
     const results = await Promise.all(paths.map(async (path) => {
-        const base = `/api/webplugins/${encodeURIComponent(path)}`;
+        const base = `/api${wsBase}/webplugins/${encodeURIComponent(path)}`;
         try {
             // Served raw by the engine (not XStream-wrapped), so read it as plain JSON.
             const res = await fetch(`${base}/plugin.json`, { credentials: 'same-origin' });

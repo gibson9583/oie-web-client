@@ -8,8 +8,13 @@
  * session is on. A transient failure just returns null / { ok: null } so a caller
  * can leave its input unchanged rather than error.
  *
- *   POST /api/datatypes/_serialize?dataType=&props=   (message body)  -> { format, data, meta }
- *   POST /api/javascript/_validate                    (script body)   -> { error }
+ *   POST /api<base>/datatypes/_serialize?dataType=&props=   (message body)  -> { format, data, meta }
+ *   POST /api<base>/javascript/_validate                    (script body)   -> { error }
+ *
+ * <base> comes from core/websupport.js: '' on an engine that ships the endpoints
+ * natively, '/extensions/websupport' when the Web Support plugin provides them, and
+ * unavailable (null) otherwise — in which case these helpers degrade to their
+ * transient-failure returns instead of erroring.
  *
  * Pretty-printing (Format Document) runs CLIENT-SIDE with js-beautify 1.15.3 — the
  * same library and options (`e4x: true, indent_with_tabs: true`) the engine's
@@ -19,6 +24,7 @@
 
 import { js as jsBeautify } from 'js-beautify';
 import { post } from './api.js';
+import { webSupportBase } from './websupport.js';
 
 /* Flatten an engine SerializationProperties object to newline-separated key=value
    lines (the `props` query param). Only primitive fields are forwarded; the engine
@@ -42,7 +48,9 @@ function flattenProps(props) {
  */
 export async function serializeTemplate(dataType, serializationProperties, message) {
     try {
-        const text = await post('/datatypes/_serialize', String(message ?? ''), {
+        const base = await webSupportBase();
+        if (base === null) return null;
+        const text = await post(`${base}/datatypes/_serialize`, String(message ?? ''), {
             contentType: 'text/plain',
             params: { dataType, props: flattenProps(serializationProperties) || undefined },
             raw: true, noAuthHandler: true
@@ -63,7 +71,9 @@ export async function serializeTemplate(dataType, serializationProperties, messa
  */
 export async function validateScript(script) {
     try {
-        const text = await post('/javascript/_validate', String(script ?? ''), {
+        const base = await webSupportBase();
+        if (base === null) return { ok: null, message: 'Validation unavailable — the Web Support plugin is not installed on this engine.' };
+        const text = await post(`${base}/javascript/_validate`, String(script ?? ''), {
             contentType: 'text/plain', raw: true, noAuthHandler: true
         });
         const err = (JSON.parse(text).error || '').trim();

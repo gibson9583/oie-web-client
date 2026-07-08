@@ -87,3 +87,39 @@ test('channel save round-trips the full channel (serialization preserved)', asyn
     // Channel properties preserved.
     expect(sent.properties.messageStorageMode).toBe('DEVELOPMENT');
 });
+
+test('a conflicting save prompts "Channel Modified" and Overwrite retries with override=true', async ({ page }) => {
+    await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel: FULL_CHANNEL } });
+
+    // First save attempt goes out with override=false + a startEdit timestamp (the
+    // engine's modified-since-opened check). Answer "false" = conflict; the retry
+    // after Overwrite must carry override=true.
+    const puts = [];
+    await page.route((url) => url.pathname === `/api/channels/${CHANNEL_ID}`, async (route) => {
+        const req = route.request();
+        if (req.method() === 'PUT') {
+            const params = new URL(req.url()).searchParams;
+            puts.push({ override: params.get('override'), startEdit: params.get('startEdit') });
+            const conflict = params.get('override') !== 'true';
+            return route.fulfill({ status: 200, contentType: 'application/json', body: conflict ? 'false' : 'true' });
+        }
+        return route.fallback();
+    });
+
+    await page.goto(`/channels/${CHANNEL_ID}/edit`);
+    const nameField = page.locator('.panel input[type=text]').first();
+    await expect(nameField).toHaveValue('RT Channel');
+    await nameField.fill('RT Channel EDITED');
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+
+    // Swing-parity prompt appears; the conflicting attempt sent override=false + startEdit.
+    await expect(page.getByText('This channel has been modified since you first opened it', { exact: false })).toBeVisible();
+    expect(puts).toHaveLength(1);
+    expect(puts[0].override).toBe('false');
+    expect(puts[0].startEdit).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{4}$/);
+
+    await page.getByRole('button', { name: 'Overwrite', exact: true }).click();
+    await expect.poll(() => puts.length, { timeout: 8000 }).toBe(2);
+    expect(puts[1].override).toBe('true');
+    await expect(page.getByText('Saved RT Channel EDITED')).toBeVisible();
+});
