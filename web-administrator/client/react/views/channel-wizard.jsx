@@ -16,7 +16,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
-import { toast } from '@oie/web-ui';
+import { toast, confirmDialog } from '@oie/web-ui';
 import { platform } from '@oie/web-shell';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -553,6 +553,8 @@ function ChannelWizardView({ params }) {
 }
 
 function ChannelWizardInner({ channel, isNew, version }) {
+    // When editing began — for the engine's modified-since-opened check on save.
+    const startEditRef = useRef(new Date());
     const [, forceRender] = useReducer((x) => x + 1, 0);
     const switchingRef = useRef(false);   // true when switching to the classic editor (keep editingChannel)
     const typesRef = useRef(null);
@@ -715,8 +717,19 @@ function ChannelWizardInner({ channel, isNew, version }) {
             return false;
         }
         try {
-            if (isNew) await api.channels.create(channel);
-            else await api.channels.update(channel.id, channel);
+            if (isNew) {
+                await api.channels.create(channel);
+            } else {
+                const ok = await api.channels.update(channel.id, channel, false, startEditRef.current);
+                if (String(ok) === 'false') {
+                    const overwrite = await confirmDialog('Channel Modified',
+                        'This channel has been modified since you first opened it. Are you sure you want to overwrite it?',
+                        { danger: true, okLabel: 'Overwrite' });
+                    if (!overwrite) return false;
+                    await api.channels.update(channel.id, channel, true);
+                }
+                startEditRef.current = new Date();
+            }
             // Library associations live on the libraries, not the channel — persist them
             // after the channel exists. A failure here shouldn't lose the created channel.
             try { await persistLibraryAssociations(channel, libStateRef, version); }

@@ -129,6 +129,15 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
     return parseBody(text);
 }
 
+// The engine's ChannelServlet parses startEdit with "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+// (RFC-822 zone, e.g. 1985-10-26T09:00:00.000-0700).
+function fmtStartEdit(d) {
+    const p = (n, w = 2) => String(n).padStart(w, '0');
+    const off = -d.getTimezoneOffset();
+    const abs = Math.abs(off);
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}${off >= 0 ? '+' : '-'}${p(Math.floor(abs / 60))}${p(abs % 60)}`;
+}
+
 function qs(params) {
     if (!params) return '';
     const parts = [];
@@ -276,8 +285,14 @@ export const channels = {
     // the in-memory channel keeps plain-text templates. See oie.js.
     get: (channelId) => get(`/channels/${enc(channelId)}`).then(c => oie.decodeChannelTemplates(c)),
     create: (channel) => post('/channels', oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel' }),
-    update: (channelId, channel, override = true) =>
-        put(`/channels/${enc(channelId)}`, oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel', params: { override } }),
+    // override=false enables the engine's Swing-parity conflict check: the save is
+    // rejected (body "false") when the channel changed after `startEdit` (a Date —
+    // when the user opened it for editing). Callers prompt, then retry override=true.
+    update: (channelId, channel, override = true, startEdit) =>
+        put(`/channels/${enc(channelId)}`, oie.encodeChannelTemplates(cloneJson(channel)), {
+            wrapKey: 'channel',
+            params: { override, startEdit: startEdit instanceof Date ? fmtStartEdit(startEdit) : startEdit }
+        }),
     remove: (channelId) => del(`/channels/${enc(channelId)}`),
     idsAndNames: () => get('/channels/idsAndNames'),
     connectorNames: (channelId) => get(`/channels/${enc(channelId)}/connectorNames`),
@@ -473,10 +488,12 @@ export const codeTemplates = {
         get('/codeTemplateLibraries', { includeCodeTemplates }).then(v => asList(v, 'codeTemplateLibrary')),
     list: () => get('/codeTemplates').then(v => asList(v, 'codeTemplate')),
     get: (id) => get(`/codeTemplates/${enc(id)}`),
-    update: (id, codeTemplate) => put(`/codeTemplates/${enc(id)}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override: true } }),
+    // override=false = engine revision check: rejected (body "false") when the sent
+    // revision no longer matches the server's (someone else saved since it was read).
+    update: (id, codeTemplate, override = true) => put(`/codeTemplates/${enc(id)}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override } }),
     remove: (id) => del(`/codeTemplates/${enc(id)}`),
-    updateLibraries: (libraries) =>
-        put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override: true } })
+    updateLibraries: (libraries, override = true) =>
+        put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } })
 };
 
 /* ===========================================================================

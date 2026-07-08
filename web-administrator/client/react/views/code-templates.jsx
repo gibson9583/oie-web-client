@@ -530,7 +530,18 @@ function CodeTemplatesView() {
         toast('Deleted — use Save All to commit library changes');
     }
 
-    async function saveAll() {
+    async function saveAll(overrideConflicts = false) {
+        // Swing-parity conflict handling: save with override=false and the revisions AS
+        // LOADED (the engine bumps them itself; sending a self-bumped revision would read
+        // as a conflict on every save). A "false" response means someone else saved since
+        // this view loaded — prompt once, then retry everything with override=true.
+        const conflict = async () => {
+            const overwrite = await confirmDialog('Code Templates Modified',
+                'One or more code templates or libraries have been modified since you opened them. Are you sure you want to overwrite them with your changes?',
+                { danger: true, okLabel: 'Overwrite' });
+            if (overwrite) return saveAll(true);
+            toast('Save cancelled — Refresh to load the latest code templates', 'warn');
+        };
         try {
             const v = store.getState('serverVersion') || '4.6.0';
             const libraries = librariesRef.current;
@@ -540,22 +551,22 @@ function CodeTemplatesView() {
                     // Defensive: the engine's migrator 500s without '@version'.
                     if (!template['@version']) template['@version'] = v;
                     if (template.properties && !template.properties['@version']) template.properties['@version'] = v;
-                    template.revision = (Number(template.revision) || 0) + 1;
-                    await api.codeTemplates.update(template.id, template);
+                    const ok = await api.codeTemplates.update(template.id, template, overrideConflicts);
+                    if (String(ok) === 'false') return conflict();
                 }
             }
             // 2. PUT the full library set with id-only template references.
             const payload = libraries.map(entry => ({
                 '@version': entry.library['@version'] || v,
                 ...entry.library,
-                revision: (Number(entry.library.revision) || 0) + 1,
                 codeTemplates: entry.templates.length
                     // id-only refs, but '@version' is still required — the
                     // engine migrates every nested model and 500s without it.
                     ? { codeTemplate: entry.templates.map(t => ({ '@version': t['@version'] || v, id: t.id })) }
                     : null
             }));
-            await api.codeTemplates.updateLibraries(payload);
+            const ok = await api.codeTemplates.updateLibraries(payload, overrideConflicts);
+            if (String(ok) === 'false') return conflict();
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast('Code templates saved');
             await load();
