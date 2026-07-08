@@ -37,6 +37,14 @@ export function register(platform) {
     }
 
     async function poll() {
+        // Only hit the engine while the dashboard is on screen. This feeds the
+        // dashboard's Connection column and tab; polling from every view would waste
+        // engine calls and reset the session's inactivity timeout forever (matching
+        // Swing, whose status updater also stops off the dashboard).
+        const path = (platform.router && platform.router.currentPath && platform.router.currentPath()) || '';
+        if (!(path === '/' || path === '/dashboard' || path.startsWith('/dashboard?') || path.startsWith('/dashboard/'))) {
+            return;
+        }
         try {
             const map = await platform.api.get('/extensions/dashboardstatus/connectorStates');
             const next = new Map();

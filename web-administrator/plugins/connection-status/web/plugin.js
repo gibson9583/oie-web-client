@@ -23,6 +23,10 @@ function register(platform2) {
     return flat[flat.length - 1] || "";
   }
   async function poll() {
+    const path = platform2.router && platform2.router.currentPath && platform2.router.currentPath() || "";
+    if (!(path === "/" || path === "/dashboard" || path.startsWith("/dashboard?") || path.startsWith("/dashboard/"))) {
+      return;
+    }
     try {
       const map = await platform2.api.get("/extensions/dashboardstatus/connectorStates");
       const next = /* @__PURE__ */ new Map();
