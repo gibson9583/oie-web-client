@@ -102,19 +102,50 @@ machine-specific paths), with environment-variable overrides. Start from
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
 | `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine (`/api/webplugins`), not stored here. `:`-separated in the env var |
+| `allowedUrls` | — | `[]` | Multi-engine mode: `[{ "name", "url", "verifyTls"? }, …]` becomes an engine picker on the login screen. Empty → single-engine mode (just `engine.url`, no picker) |
+| `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login. The proxy forwards to whatever is typed, so trusted/dev deployments only. (Distinct from `npm run dev`, which is the Vite dev server) |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine, not stored here. `:`-separated in the env var |
+| `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy). Loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
+
+### Deployment modes
+
+- **Single engine** (default): set `engine.url`; every login goes to that engine.
+- **Multiple engines**: list them in `allowedUrls` — the login screen shows a
+  picker and the proxy routes each session to the engine chosen at login:
+
+  ```json
+  {
+      "allowedUrls": [
+          { "name": "Production", "url": "https://oie-prod:8443", "verifyTls": true },
+          { "name": "Test", "url": "https://oie-test:8443" }
+      ]
+  }
+  ```
+
+- **Open engine URL** (`devMode: true`): the login screen accepts any engine URL
+  typed by the user. The proxy will forward to whatever host is entered — use
+  only on trusted networks / developer machines.
+
+How `engine` and `allowedUrls` relate: a non-empty `allowedUrls` **replaces**
+the engine list — `engine.url` is not added to the picker automatically, so
+include it as an entry if it should be selectable. `engine.verifyTls` remains
+the fallback for any entry that omits its own `verifyTls`. The `OIE_URL` /
+`OIE_VERIFY_TLS` env vars override only `engine`, never `allowedUrls`.
 
 > **Authentication** is the engine's own: the login form posts to
 > `/api/users/_login` and the engine's `JSESSIONID` cookie carries the session.
 > The Node server stores no credentials; it is a streaming reverse proxy. For
 > production, terminate TLS in front of this app.
 
-Byte-exact message-tree serialization and JavaScript validation/formatting come
-from the **connected engine's own REST endpoints** (`/api/datatypes/_serialize`,
-`/api/javascript/_validate` and `/_prettyPrint`) — no local JVM or engine install
-to configure. This web administrator targets an OIE engine release that exposes
-those endpoints.
+Byte-exact message-tree serialization and JavaScript validation come from the
+**connected engine** (`/datatypes/_serialize`, `/javascript/_validate`) — no
+local JVM or engine install to configure. The client probes for these on each
+session: engine-native endpoints first, then the **Web Support plugin**
+([oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)),
+which provides them on a stock engine with no engine changes. With neither,
+the app still works — message trees, server-side validation, and engine-served
+plugin UIs are disabled with a notice. Format Document runs entirely client-side.
 
 ## Troubleshooting setup
 
@@ -125,7 +156,7 @@ those endpoints.
 | TLS / certificate errors reaching the engine | Keep `engine.verifyTls` = `false` for a self-signed engine (the default). |
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
 | Vite or syntax errors on `npm run dev` / `npm start` | Use Node 20 LTS+ (`node -v`); Node < 18.18 can't run Vite 5 and the test tooling. |
-| Message trees or **Format Code** don't work | The connected engine is older than the release this web administrator targets (missing `/api/datatypes/_serialize`, `/api/javascript/_prettyPrint`). Point it at a current engine. |
+| Message trees, Validate Script, or plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install `websupport-<version>.zip` from the Extensions page and restart the engine. |
 
 ## Framework packages (`@oie/*`)
 

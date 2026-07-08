@@ -37,7 +37,10 @@ OIE_URL=https://localhost:8443 npm start
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
 | `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). `:`-separated in the env var. Extensions installed on the engine are served by the engine (`/api/webplugins`), not stored here. |
+| `allowedUrls` | — | `[]` | Multi-engine mode: `[{ "name", "url", "verifyTls"? }, …]` becomes an engine picker on the login screen. Empty → single-engine mode |
+| `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login (the proxy forwards to whatever is typed — trusted/dev deployments only) |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). `:`-separated in the env var. Extensions installed on the engine are served by the engine, not stored here. |
+| `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy); loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 
 Example `config.json`:
@@ -127,16 +130,19 @@ The transformer/filter **Message Trees** turn a template into a draggable tree
 of accessors (`msg['PID']['PID.5']['PID.5.1']`). To match the engine exactly —
 including **strict** HL7 (HAPI) and every data type — the web admin asks the
 **connected engine** to serialize the template through its own datatype
-serializers (`POST /api/datatypes/_serialize`), so the tree is byte-identical to
-the runtime `msg`/`tmp`. JavaScript validation and Format Document work the same
-way (`POST /api/javascript/_validate` / `_prettyPrint`, the engine's own Rhino
-compiler/formatter). There is no local JVM or engine install to configure —
-serialization follows whichever engine the session is connected to. Drag a tree
-node into a script editor to insert its accessor at the drop point.
+serializers (`/datatypes/_serialize`), so the tree is byte-identical to the
+runtime `msg`/`tmp`. JavaScript validation works the same way
+(`/javascript/_validate`, the engine's own Rhino compiler); Format Document
+runs entirely client-side (js-beautify, E4X-safe). There is no local JVM or
+engine install to configure — serialization follows whichever engine the
+session is connected to. Drag a tree node into a script editor to insert its
+accessor at the drop point.
 
-> This web administrator targets an OIE engine release that exposes these
-> endpoints (`/api/datatypes/_serialize`, `/api/javascript/_validate` and
-> `/_prettyPrint`).
+> These endpoints are probed per session: engine-native first, then the
+> [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin)
+> (`/api/extensions/websupport/...`), which provides them on a stock engine
+> with no engine changes. With neither, message trees, server-side validation,
+> and engine-served plugin UIs are disabled with a notice.
 
 ## Plugins
 

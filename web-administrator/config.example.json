@@ -5,5 +5,9 @@
         "url": "https://localhost:8443",
         "verifyTls": false
     },
+    "allowedUrls": [],
+    "devMode": false,
+    "pluginDirs": [],
+    "trustedProxies": [],
     "codeTemplateCompletions": true
 }
