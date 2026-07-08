@@ -163,6 +163,18 @@ function createApiProxy(config) {
         // custom header without a preflight the engine rejects. The SPA sets it
         // on every request (client/core/api.js), so it passes through here as-is
         // for legitimate calls; forging it server-side would defeat the guard.
+        //
+        // One narrow, deliberate exception: plugin UI modules are loaded with
+        // <script>/import(), which cannot attach custom headers. Those are GETs
+        // of static assets under the websupport plugin's webplugins path — no
+        // state changes — so the header is synthesized for exactly that shape,
+        // mirroring the scoped filter exemption an engine with native web-support
+        // endpoints applies itself. Every other request keeps the real guard.
+        if ((req.method === 'GET' || req.method === 'HEAD')
+                && req.headers['x-requested-with'] == null
+                && req.originalUrl.startsWith('/api/extensions/websupport/webplugins/')) {
+            headers['x-requested-with'] = 'OpenIntegrationEngine';
+        }
         // Forward the real client IP for the engine's audit log (the engine reads
         // X-Forwarded-For, else the socket address = this proxy's loopback), and drop
         // the other spoofable forwarding headers from a direct client. Both honor a
