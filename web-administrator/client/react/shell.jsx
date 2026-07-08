@@ -173,10 +173,10 @@ function OtherPane({ onLogout }) {
     return (
         <RailPane title="Other" paneKey="Other" group="other">
             <div className="taskbar">
-                {can('goToUserAPI') && <button className="btn" onClick={openApiDocs}><Icon name="file" />View REST API</button>}
+                {can('goToUserAPI') && <button className="btn" onClick={openApiDocs}><Icon name="code" />View REST API</button>}
                 {can('goToAbout') && <button className="btn" onClick={showAbout}><Icon name="info" />About</button>}
                 {can('goToMirth') && <button className="btn" onClick={() => window.open(HOMEPAGE_URL, '_blank')}><Icon name="globe" />Visit homepage</button>}
-                {can('doReportIssue') && <button className="btn" onClick={() => window.open(ISSUES_URL, '_blank')}><Icon name="warning" />Report issue</button>}
+                {can('doReportIssue') && <button className="btn" onClick={() => window.open(ISSUES_URL, '_blank')}><Icon name="bug" />Report issue</button>}
                 <span className="sep" />
                 {can('doLogout') && <button className="btn" onClick={onLogout}><Icon name="logout" />Logout</button>}
             </div>
