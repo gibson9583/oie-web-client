@@ -129,13 +129,15 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
     return parseBody(text);
 }
 
-// The engine's ChannelServlet parses startEdit with "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
-// (RFC-822 zone, e.g. 1985-10-26T09:00:00.000-0700).
+// The engine's ChannelServlet parses startEdit with "yyyy-MM-dd'T'HH:mm:ssZ"
+// (RFC-822 zone, NO milliseconds, e.g. 1985-10-26T09:00:00-0700). Sending
+// milliseconds makes SimpleDateFormat.parse throw, so the engine silently falls
+// back to "now" — breaking the concurrent-edit check. Match the pattern exactly.
 function fmtStartEdit(d) {
     const p = (n, w = 2) => String(n).padStart(w, '0');
     const off = -d.getTimezoneOffset();
     const abs = Math.abs(off);
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}${off >= 0 ? '+' : '-'}${p(Math.floor(abs / 60))}${p(abs % 60)}`;
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${off >= 0 ? '+' : '-'}${p(Math.floor(abs / 60))}${p(abs % 60)}`;
 }
 
 function qs(params) {

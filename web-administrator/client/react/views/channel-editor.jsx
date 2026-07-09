@@ -244,13 +244,22 @@ function ChannelEditorView({ params, query }) {
    present in the store here. `returning` = the channel was already in the store
    at mount (opened with edits / returning from a sub-editor) vs. fetched fresh. */
 function buildBody(params, query, onTasksChange, returning) {
-    // When editing began — the engine compares this against the channel's last-modified
-    // time on save (override=false) to detect edits by someone else, exactly like Swing's
-    // "this channel has been modified since you first opened it" warning.
-    let startEdit = new Date();
     /* ---- load --------------------------------------------------------------- */
 
     const channel = store.getState('editingChannel');
+    // Baseline for the concurrent-edit check (override=false): the channel's OWN
+    // last-modified AS LOADED — NOT wall-clock time. The engine only flags a
+    // conflict when the stored channel changed AFTER we loaded it, so keying off
+    // the channel's own timestamp makes this immune to clock skew or a stored
+    // last-modified that sits ahead of "now" (which was making every save falsely
+    // prompt "This channel has been modified…"). Round UP to the whole second: the
+    // engine parses startEdit at second precision, so a truncated-down value would
+    // read as "before" a millisecond-precise last-modified. Fall back to now for a
+    // channel with no recorded last-modified (e.g. brand new).
+    const loadedLM = channel && channel.exportData && channel.exportData.metadata
+        && channel.exportData.metadata.lastModified;
+    const loadedLMms = loadedLM ? Number(loadedLM.time != null ? loadedLM.time : loadedLM) : NaN;
+    let startEdit = Number.isFinite(loadedLMms) ? new Date(Math.ceil(loadedLMms / 1000) * 1000) : new Date();
     let isNew = query.new === '1' || store.getState('editingChannelNew') === true;
     store.setState('editingChannelNew', isNew);
 
@@ -426,7 +435,9 @@ function buildBody(params, query, onTasksChange, returning) {
                     }
                     await api.channels.update(channel.id, channel, true);
                 }
-                startEdit = new Date();   // saved — a fresh edit window starts now
+                // Keep the baseline: the engine round-trips our metadata, so the
+                // stored last-modified still matches what we loaded — no reset to
+                // wall-clock time (which would re-introduce the false prompt).
             }
             store.setState('editingChannelDirty', false);
             refreshSaveVisibility();
