@@ -27,6 +27,7 @@ import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
+import { platform } from '@oie/web-shell';
 
 export function register(platform) {
     platform.registerNavItem({ id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Engine', order: 1, task: 'doShowChannel' });
@@ -589,6 +590,17 @@ function ChannelsView() {
             lastGroupIdRef.current = null;
             refreshTasks();
         }
+        // Plugin-contributed per-channel actions (platform.registerChannelAction),
+        // e.g. "View History". Shown for a single-channel selection unless the
+        // action supplies its own isEnabled. Mirrors Swing's ChannelPanelPlugin tasks.
+        const actionCtx = { platform, channel, selectedIds: new Set(selectedRef.current) };
+        const singleSel = selectedRef.current.size === 1;
+        const pluginItems = platform.channelActions()
+            .filter((a) => (a.isEnabled ? a.isEnabled(actionCtx) : singleSel))
+            .map((a) => ({
+                label: a.label, icon: a.icon, task: a.task, group: a.group || 'channel',
+                onClick: () => a.onInvoke(channel, actionCtx)
+            }));
         // Full Swing channelPopupMenu (ChannelPanel) — the whole Channel Tasks list.
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
@@ -611,6 +623,7 @@ function ChannelsView() {
             { label: 'Clone Channel', icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask() },
             { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask() },
             { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', onClick: () => moveToGroupTask() },
+            ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
             { label: 'Delete Channel', icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask() }
         ]);
@@ -1122,6 +1135,10 @@ function ChannelsView() {
 
     useEffect(() => {
         refresh();
+        // A plugin that mutates a channel out-of-band (e.g. history revert) emits
+        // this so the list reflects the change immediately (Swing doRefreshChannels).
+        const off = platform.events.on('channels:changed', () => refresh());
+        return off;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -1201,6 +1218,16 @@ function ChannelsView() {
                         {showEnable && <TaskButton label="Enable Channel" icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true)} />}
                         {showDisable && <TaskButton label="Disable Channel" icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false)} />}
                         {showMessages && <TaskButton label="View Messages" icon="messages" task="doViewMessages" onClick={messagesTask} />}
+                        {singleChannel && (() => {
+                            // Get the selected channel WITHOUT single(), which toasts a
+                            // warning on a non-single selection (it's meant for click handlers).
+                            const c = selectedChannels()[0];
+                            const ctx = { platform, channel: c, selectedIds: new Set(selectedRef.current) };
+                            return platform.channelActions()
+                                .filter((a) => (a.isEnabled ? a.isEnabled(ctx) : true))
+                                .map((a) => <TaskButton key={a.id || a.label} label={a.label} icon={a.icon} task={a.task}
+                                    onClick={() => a.onInvoke(c, ctx)} />);
+                        })()}
                     </div>
                 </RailPane>
                 <RailPane title="Group Tasks" paneKey="tasks:Group Tasks" group="channelGroup">

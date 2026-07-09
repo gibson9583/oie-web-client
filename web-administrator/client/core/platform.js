@@ -32,6 +32,7 @@ import { webSupportBase } from './websupport.js';
 import { registerLoginAuthenticator } from './login-auth.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
+import { createDiffEditor } from './diffeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
 
 /* ---- @oie/* plugin API contract version --------------------------------------
@@ -70,6 +71,8 @@ const registries = {
     dashboardTabs: [],
     dashboardColumns: [],
     channelTabs: [],
+    channelActions: [],
+    codeTemplateActions: [],
     settingsPanels: [],
     attachmentViewers: [],
     stepTypes: new Map(),
@@ -109,6 +112,10 @@ export const platform = {
     events: { on: store.on, emit: store.emit },
     createCodeEditor,
     setCodeEditorFactory,
+    // Read-only side-by-side diff viewer backed by the host's single Monaco
+    // instance (core/diffeditor.js). Plugins showing diffs use this so they
+    // never bundle their own Monaco. Degrades to a plain two-pane view.
+    createDiffEditor,
 
     /* RBAC hook (Swing AuthorizationController): a Role-Based Access Control plugin
        calls setAuthorizationController({ checkTask(taskGroup, taskName) }) to hide
@@ -124,6 +131,19 @@ export const platform = {
     registerDashboardTab(tab) { registries.dashboardTabs.push(tab); },
     registerDashboardColumn(column) { registries.dashboardColumns.push(column); },
     registerChannelTab(tab) { registries.channelTabs.push(tab); },
+    /* A per-channel action, shown in the Channels view's right-click menu and
+       Channel Tasks pane when a single channel is selected (Swing's
+       ChannelPanelPlugin adding a task). def = { id, label, icon?, order?,
+       task?  (RBAC task name, gated via checkTask),
+       isEnabled?(ctx) → bool  (default: enabled for a single-channel selection),
+       onInvoke(channel, ctx) }. ctx = { platform, channel, selectedIds }. */
+    registerChannelAction(action) { registries.channelActions.push(action); },
+    /* A per-code-template action, shown in the Code Templates view's right-click
+       menu when a single template is selected (Swing's code-template panel
+       action). def = { id, label, icon?, order?, task?,
+       isEnabled?(ctx) → bool, onInvoke(template, ctx) }.
+       ctx = { platform, template, library }. */
+    registerCodeTemplateAction(action) { registries.codeTemplateActions.push(action); },
     registerSettingsPanel(panel) { registries.settingsPanels.push(panel); },
     registerAttachmentViewer(viewer) { registries.attachmentViewers.push(viewer); },
     registerStepType(type, def) { registries.stepTypes.set(type, def); },
@@ -153,6 +173,8 @@ export const platform = {
     dashboardTabs: () => sorted(registries.dashboardTabs),
     dashboardColumns: () => sorted(registries.dashboardColumns),
     channelTabs: () => sorted(registries.channelTabs),
+    channelActions: () => sorted(registries.channelActions),
+    codeTemplateActions: () => sorted(registries.codeTemplateActions),
     settingsPanels: () => sorted(registries.settingsPanels),
     attachmentViewers: () => [...registries.attachmentViewers],
     stepType: (type) => registries.stepTypes.get(type),

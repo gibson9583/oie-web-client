@@ -32,6 +32,7 @@ import { reactView, ViewTasks } from '../mount.jsx';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { RailPane, TaskButton, CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { platform } from '@oie/web-shell';
 
 export function register(platform) {
     // Reached via task buttons (Dashboard/Channels), matching the Swing client.
@@ -255,6 +256,17 @@ function CodeTemplatesView() {
         selectNode(sel);
         const isTpl = sel.kind === 'template';
         const isLib = sel.kind === 'library';
+        // Plugin-contributed per-code-template actions (registerCodeTemplateAction),
+        // e.g. "View History". Shown for a single selected template unless the
+        // action supplies its own isEnabled. Mirrors the Swing code-template action.
+        const resolved = findSelected() || {};
+        const actionCtx = { platform, template: resolved.template, library: resolved.entry && resolved.entry.library };
+        const pluginItems = platform.codeTemplateActions()
+            .filter((a) => (a.isEnabled ? a.isEnabled(actionCtx) : isTpl))
+            .map((a) => ({
+                label: a.label, icon: a.icon, task: a.task, group: a.group || 'codeTemplate',
+                onClick: () => a.onInvoke(resolved.template, actionCtx)
+            }));
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
@@ -268,6 +280,7 @@ function CodeTemplatesView() {
             { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() },
             '-',
             { label: 'Validate Script', icon: 'check', hidden: !isTpl, task: 'doValidateCodeTemplate', group: 'codeTemplate', onClick: () => validateScriptTask() },
+            ...(pluginItems.length ? ['-', ...pluginItems] : []),
             { label: 'Delete', icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', onClick: () => deleteSelected() },
             '-',
             { label: 'Save All', icon: 'save', task: 'doSaveCodeTemplates', group: 'codeTemplate', onClick: () => saveAll() }
@@ -754,7 +767,10 @@ function CodeTemplatesView() {
         });
         // Tab-close guard: same dirty state, synchronous (see core/unsaved.js).
         const unregister = registerUnsavedCheck(() => dirtyRef.current);
-        return () => { store.setState('navGuard', null); unregister(); };
+        // A plugin that mutates a template out-of-band (e.g. history revert) emits
+        // this so the tree reflects the change immediately (Swing doRefreshCodeTemplates).
+        const off = platform.events.on('codeTemplates:changed', () => load());
+        return () => { store.setState('navGuard', null); unregister(); off(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -793,6 +809,10 @@ function CodeTemplatesView() {
                         {isTemplate && <TaskButton label="Delete Code Template" icon="trash" danger task="doDeleteCodeTemplate" onClick={deleteSelected} />}
                         {isLibrary && <TaskButton label="Delete Library" icon="trash" danger task="doDeleteLibrary" onClick={deleteSelected} />}
                         {isTemplate && <TaskButton label="Validate Script" icon="check" task="doValidateCodeTemplate" onClick={validateScriptTask} />}
+                        {isTemplate && platform.codeTemplateActions()
+                            .filter((a) => (a.isEnabled ? a.isEnabled({ platform, template: found.template, library: found.entry.library }) : true))
+                            .map((a) => <TaskButton key={a.id || a.label} label={a.label} icon={a.icon} task={a.task}
+                                onClick={() => a.onInvoke(found.template, { platform, template: found.template, library: found.entry.library })} />)}
                     </div>
                 </RailPane>
             </ViewTasks>

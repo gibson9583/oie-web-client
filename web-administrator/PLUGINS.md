@@ -134,6 +134,8 @@ ones are built.
 | `DashboardColumnPlugin` | `dashboardstatus` (Connection column) | `registerDashboardColumn` — see `plugins/connection-status` |
 | `SettingsPanelPlugin` | `datapruner` (Data Pruner tab) | ships as the `datapruner` web plugin calling `registerSettingsPanel` |
 | `ChannelTabPlugin` | (commercial, e.g. history tabs) | `registerChannelTab` |
+| `ClientPlugin` adding a task to the Channels panel | `simple-channel-history` ("View History") | `registerChannelAction` — adds a right-click item + Channel Tasks button for a single-channel selection |
+| `ClientPlugin` adding a task to the Code Templates panel | `simple-channel-history` ("View History") | `registerCodeTemplateAction` — adds a right-click item for a selected code template |
 | `TransformerStepPlugin` / `FilterRulePlugin` | mapper, messagebuilder, javascriptstep, xsltstep, destinationsetfilter, scriptfilestep, iterator; rulebuilder, javascriptrule, scriptfilerule | bundled as the `transformer-steps` web plugin calling `registerStepType` / `registerRuleType` |
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
@@ -384,6 +386,20 @@ platform.registerChannelTab({ id, label, order,
 platform.registerSettingsPanel({ id, label, order,
     component: ({ platform, setTasks }) => <div className="view">…</div> });
 
+// Per-channel action (a Swing ClientPlugin adding a task to the Channels panel):
+// shows in the channel right-click menu AND the Channel Tasks pane for a single
+// selected channel. onInvoke gets the full channel; ctx = { platform, channel,
+// selectedIds }. isEnabled(ctx) defaults to "exactly one channel selected".
+platform.registerChannelAction({ id, label, icon, order, task, /* optional RBAC task */
+    isEnabled: (ctx) => true,
+    onInvoke: (channel, ctx) => { /* open a dialog, call an /extensions/... endpoint, … */ } });
+
+// Per-code-template action (same idea, on the Code Templates tree). onInvoke gets
+// the selected template; ctx = { platform, template, library }. isEnabled(ctx)
+// defaults to "a template (not a library) is selected".
+platform.registerCodeTemplateAction({ id, label, icon, order, task,
+    onInvoke: (template, ctx) => { /* … */ } });
+
 // Message attachment renderer (AttachmentViewer)
 platform.registerAttachmentViewer({ id,
     canHandle(attachment) { return attachment.type === 'application/dicom'; },
@@ -482,6 +498,7 @@ platform.setAuthorizationController({
 | `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. (Data types are no longer here — they come from the registry via `dataTypeDef`/`dataTypeList` in `/datatypes/index.js`.) |
 | `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` | Read the registered data types / transmission modes / resource types (each populated by a plugin). |
 | `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned: User API IntelliSense, in-scope code-template completions, engine-backed validation + Format Document), else a plain textarea. `platform.setCodeEditorFactory` swaps the implementation app-wide. |
+| `platform.createDiffEditor({ original, modified, language, renderSideBySide })` | Read-only side-by-side diff viewer backed by the host's single Monaco instance (side-by-side + inline word-level highlighting + syntax colors). Returns `{ el, setModels({ original, modified, language }), layout(), dispose() }`; mount `el`, call `setModels` to swap content, `dispose()` when done. Degrades to a plain two-pane text view if Monaco is unavailable, so you never branch on its presence. Used by `simple-channel-history` for its revision diff. |
 | `platform.router` | `navigate(path)`, `currentPath()` |
 | `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`, `'webadminConfig'`) and pub/sub bus |
 | `platform.registerLoginAuthenticator(clientPluginClass, authenticate)` | Register a multi-factor / extended-login handler (Swing `MultiFactorAuthenticationClientPlugin`). See [MFA / extended login](#mfa--extended-login) — MUST be registered pre-login, so it only works from a **bundled** plugin. |
