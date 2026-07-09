@@ -2,6 +2,26 @@ import { test, expect } from '@playwright/test';
 import { mockEngine, login } from './mock.js';
 
 test.describe('login', () => {
+    test('a grace-period login offers the change-password dialog', async ({ page }) => {
+        let authed = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 }),
+            'POST /users/_login': () => { authed = true; return { status: 'SUCCESS_GRACE_PERIOD', message: 'Your password expires in 3 days.' }; },
+        });
+
+        await page.goto('/');
+        await login(page, 'admin', 'admin');
+
+        // Login succeeded (grace = success) AND the engine's message is surfaced
+        // with the offer to change the password now.
+        await expect(page.getByText('Your password expires in 3 days.')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('button', { name: 'Change Password' })).toBeVisible();
+
+        // Accepting opens the change-password modal for the signed-in user.
+        await page.getByRole('button', { name: 'Change Password' }).click();
+        await expect(page.getByText('Change Password — admin')).toBeVisible();
+    });
+
     test('signs in and reaches the dashboard', async ({ page }) => {
         // current → 401 until login succeeds, so the login screen shows first.
         let authed = false;

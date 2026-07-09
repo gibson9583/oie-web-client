@@ -87,7 +87,10 @@ export function LoginForm({ onSuccess }) {
             const result = await api.auth.login(username.trim(), password);
             const status = result?.status || result;
             if (status === 'SUCCESS' || status === 'SUCCESS_GRACE_PERIOD') {
-                if (status === 'SUCCESS_GRACE_PERIOD') console.warn('Password grace period:', result?.message);
+                // Grace period: the login succeeded but the password is expiring —
+                // the engine's message says when. Passed up so the shell can offer
+                // the change-password dialog (Swing's ChangePasswordDialog).
+                const graceMessage = status === 'SUCCESS_GRACE_PERIOD' ? String(result?.message || '') : null;
                 // Plugins are discovered once per page load, from the connected
                 // engine, and their views register into module-level registries a
                 // soft sign-out doesn't clear. If this sign-in targets a DIFFERENT
@@ -100,7 +103,7 @@ export function LoginForm({ onSuccess }) {
                 try { loaded = sessionStorage.getItem('oie-loaded-engine'); } catch { /* private mode */ }
                 if (loaded != null && loaded !== newKey) { location.reload(); return; }
                 const user = await api.auth.current();
-                await onSuccess(user);
+                await onSuccess(user, { graceMessage });
                 return;
             }
             setError(result?.message || STATUS_MESSAGES[status] || 'Login failed.');

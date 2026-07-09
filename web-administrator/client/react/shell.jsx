@@ -521,7 +521,7 @@ export function App() {
         history.replaceState(null, '', '/');
     };
 
-    const onLoginSuccess = async (u) => {
+    const onLoginSuccess = async (u, { graceMessage = null } = {}) => {
         // Login notification + consent (Swing LoginPanel.handleSuccess): when the
         // server requires it, the user must accept the message before entering;
         // declining logs them back out.
@@ -546,6 +546,14 @@ export function App() {
         try { await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
         await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
         store.setState('user', u);
+        // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
+        // accepted but the password is expiring — the engine's message says when.
+        if (graceMessage != null) {
+            const change = await confirmDialog('Password Expiring',
+                graceMessage || 'Your password is expiring soon. Do you want to change it now?',
+                { okLabel: 'Change Password' });
+            if (change) openChangePasswordModal(u);
+        }
         // A channel draft stashed when a previous session died (see channel-draft.js).
         // Scope is set above, so the key only resolves for the same engine + user.
         const draft = peekChannelDraft();
