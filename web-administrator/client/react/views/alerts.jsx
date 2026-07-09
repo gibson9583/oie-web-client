@@ -42,18 +42,40 @@ function AlertsList() {
 
     const selectedRows = () => (tableRef.current ? tableRef.current.selectedRows() : []);
 
-    const refresh = async () => {
+    const destroyedRef = useRef(false);
+    const timerRef = useRef(null);
+
+    const refresh = async (manual = true) => {
         try {
             const list = (await api.alerts.list()).filter(a => a && a.id);
+            if (destroyedRef.current) return;
             alertsRef.current = list;
             setAlerts(list);
             setSel(selectedRows());
         } catch (e) {
-            toast(e.message, 'error');
+            // Background polls stay quiet — a transient failure self-heals on the
+            // next tick; only a user-initiated Refresh should toast.
+            if (manual) toast(e.message, 'error');
         }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => { refresh(); }, []);
+    // Swing parity: the alerts panel auto-refreshes while it is the current view
+    // (StatusUpdater covers dashboard AND alerts), on the same interval preference
+    // as the dashboard. The setTimeout chain dies on unmount, so navigating away —
+    // including into the alert editor/wizard — stops all polling.
+    useEffect(() => {
+        refresh(false);
+        const loop = () => {
+            const ms = Math.max(1, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000;
+            timerRef.current = setTimeout(async () => {
+                if (destroyedRef.current) return;
+                await refresh(false);
+                if (!destroyedRef.current) loop();
+            }, ms);
+        };
+        loop();
+        return () => { destroyedRef.current = true; clearTimeout(timerRef.current); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     function single() {
         const rows = selectedRows();
