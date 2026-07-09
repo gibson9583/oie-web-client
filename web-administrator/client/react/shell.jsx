@@ -20,6 +20,7 @@ import { initSplitters } from '../core/resize.js';
 import { h, icon, modal, toast, contextMenu, confirmDialog } from '@oie/web-ui';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
+import { registerLoginAuthenticators } from './login-authenticators.js';
 import { hasUnsavedWork } from '../core/unsaved.js';
 import { stashChannelDraft, peekChannelDraft, clearChannelDraft } from '../core/channel-draft.js';
 import { platform, loadPlugins } from '@oie/web-shell';
@@ -476,6 +477,10 @@ async function establishPrefScope(user) {
 export function App() {
     const user = useStoreKey('user');
     const [authChecked, setAuthChecked] = useState(false);
+    // Bundled MFA/extended-login authenticators register pre-login (see
+    // login-authenticators.js) — the login screen may need them before any
+    // session or engine-served plugin exists.
+    useEffect(() => { registerLoginAuthenticators(); }, []);
 
     useEffect(() => {
         store.initTheme();

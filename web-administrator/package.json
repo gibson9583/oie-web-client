@@ -8,9 +8,10 @@
     "oie-webadmin": "server/index.js"
   },
   "scripts": {
+    "prestart": "node tools/build-vendor.mjs",
     "start": "node server/index.js",
     "dev": "WEBADMIN_DEV=1 node --watch-path=./server server/index.js",
-    "build": "vite build && node tools/build-plugins.mjs && node tools/build-connectors.mjs",
+    "build": "node tools/build-vendor.mjs && vite build && node tools/build-plugins.mjs && node tools/build-connectors.mjs",
     "test": "for f in client/core/*.test.js server/*.test.js; do node \"$f\" || exit 1; done"
   },
   "engines": {
@@ -20,7 +21,8 @@
     "@zip.js/zip.js": "^2.8.26",
     "express": "^4.19.2",
     "js-beautify": "1.15.3",
-    "monaco-editor": "^0.52.2"
+    "monaco-editor": "^0.52.2",
+    "qrcode-generator": "2.0.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.1",

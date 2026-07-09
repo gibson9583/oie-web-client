@@ -8,6 +8,7 @@
  * URL field. The choice is written to the `oie-engine` cookie BEFORE the login
  * POST so it (and every later /api call) routes to that engine (server/proxy.js).
  */
+import { getLoginAuthenticator } from '../../core/login-auth.js';
 
 import { useState, useRef, useEffect } from 'react';
 import api from '@oie/web-api';
@@ -83,27 +84,57 @@ export function LoginForm({ onSuccess }) {
         }
 
         setSubmitting(true);
-        try {
-            const result = await api.auth.login(username.trim(), password);
+        // Completes a successful (primary or post-MFA) login: reload on an engine
+        // switch, else fetch the user and hand off to the shell.
+        const finishLogin = async (result) => {
             const status = result?.status || result;
+            const graceMessage = status === 'SUCCESS_GRACE_PERIOD' ? String(result?.message || '') : null;
+            // Plugins are discovered once per page load, from the connected engine,
+            // and their views register into module-level registries a soft sign-out
+            // doesn't clear. If this sign-in targets a DIFFERENT engine than the one
+            // plugins were loaded against, hard-reload so discovery re-runs against
+            // the new engine. First sign-in of a page session takes the soft path.
+            const newKey = showPicker ? (sel === 'custom' ? `custom:${customUrl.trim()}` : sel) : '0';
+            let loaded = null;
+            try { loaded = sessionStorage.getItem('oie-loaded-engine'); } catch { /* private mode */ }
+            if (loaded != null && loaded !== newKey) { location.reload(); return; }
+            const user = await api.auth.current();
+            await onSuccess(user, { graceMessage });
+        };
+        try {
+            let result = await api.auth.login(username.trim(), password);
+            let status = result?.status || result;
+
+            // Extended/MFA login (Swing ExtendedLoginStatus): a non-success status
+            // naming a clientPluginClass hands off to a registered web authenticator,
+            // which runs the second factor and the second-leg login. Mirrors the way
+            // Swing instantiates the named client plugin and calls authenticate().
+            if (status !== 'SUCCESS' && status !== 'SUCCESS_GRACE_PERIOD' && result && result.clientPluginClass) {
+                const authenticate = getLoginAuthenticator(result.clientPluginClass);
+                if (!authenticate) {
+                    setError('This engine requires a multi-factor login method that is not available in the web administrator. '
+                        + 'Use the desktop Administrator, or install the matching web login plugin.');
+                    return;
+                }
+                const enteredUser = username.trim();
+                const ctx = {
+                    clientPluginClass: result.clientPluginClass,
+                    username: result.updatedUsername || enteredUser,
+                    primaryStatus: result,
+                    // Full engine client, mirroring the `client` Swing hands the
+                    // MFA plugin's authenticate() — for any pre-completion calls.
+                    api,
+                    // Convenience for the common case: the second-leg login with the
+                    // factor in the X-Mirth-Login-Data header (Swing's getServlet
+                    // custom-header login).
+                    submit: (loginData) => api.auth.login(result.updatedUsername || enteredUser, password, loginData)
+                };
+                result = await authenticate(ctx);
+                status = result?.status || result;
+            }
+
             if (status === 'SUCCESS' || status === 'SUCCESS_GRACE_PERIOD') {
-                // Grace period: the login succeeded but the password is expiring —
-                // the engine's message says when. Passed up so the shell can offer
-                // the change-password dialog (Swing's ChangePasswordDialog).
-                const graceMessage = status === 'SUCCESS_GRACE_PERIOD' ? String(result?.message || '') : null;
-                // Plugins are discovered once per page load, from the connected
-                // engine, and their views register into module-level registries a
-                // soft sign-out doesn't clear. If this sign-in targets a DIFFERENT
-                // engine than the one plugins were loaded against, hard-reload so
-                // discovery re-runs against the new engine (else the previous
-                // engine's panels would linger). First sign-in of a page session
-                // has nothing loaded yet, so it takes the normal soft path.
-                const newKey = showPicker ? (sel === 'custom' ? `custom:${customUrl.trim()}` : sel) : '0';
-                let loaded = null;
-                try { loaded = sessionStorage.getItem('oie-loaded-engine'); } catch { /* private mode */ }
-                if (loaded != null && loaded !== newKey) { location.reload(); return; }
-                const user = await api.auth.current();
-                await onSuccess(user, { graceMessage });
+                await finishLogin(result);
                 return;
             }
             setError(result?.message || STATUS_MESSAGES[status] || 'Login failed.');

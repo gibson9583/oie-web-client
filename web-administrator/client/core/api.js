@@ -248,9 +248,32 @@ export const auth = {
     // Idle-timeout logout (Swing parity): a distinct engine operation so the event
     // log records "Logged out due to inactivity" instead of a plain logout.
     inactivityLogout: () => post('/users/_inactivityLogout', '', { noAuthHandler: true }),
-    login(username, password) {
+    // `loginData`, when present, is the second leg of an extended/MFA login: the
+    // engine reads it from the X-Mirth-Login-Data header (UserServletInterface
+    // .LOGIN_DATA_HEADER) and delegates to its MFA plugin instead of re-checking
+    // the password. Matches Swing's client.login-with-header second leg.
+    //
+    // The login endpoint conveys its result in the BODY (LoginStatus /
+    // ExtendedLoginStatus) and returns HTTP 401 for any not-yet-authenticated
+    // result — INCLUDING an MFA challenge and plain bad credentials. So we read and
+    // return the parsed body for ANY status; the caller inspects `.status` and
+    // `.clientPluginClass`. (Using post()/handle() here would throw on the 401 and
+    // discard the challenge — the MFA bug.) Only a network failure rejects.
+    async login(username, password, loginData) {
         const form = new URLSearchParams({ username, password });
-        return post('/users/_login', form.toString(), { contentType: 'application/x-www-form-urlencoded', noAuthHandler: true });
+        const h = headers('application/x-www-form-urlencoded');
+        if (loginData != null) h['X-Mirth-Login-Data'] = String(loginData);
+        const res = await fetch(BASE + '/users/_login', {
+            method: 'POST', headers: h, credentials: 'same-origin', body: form.toString()
+        });
+        const text = await res.text().catch(() => '');
+        const parsed = parseBody(text);
+        // Return the parsed LoginStatus whatever its shape: unwrap() reduces a
+        // minimal {status:'SUCCESS'} to the bare string 'SUCCESS', while a full
+        // status (or an MFA ExtendedLoginStatus) stays an object. The caller reads
+        // both via `result?.status || result` and `result.clientPluginClass`.
+        if (parsed !== null && parsed !== undefined && parsed !== '') return parsed;
+        throw new ApiError(res.status, text || `${res.status} ${res.statusText}`, text);
     },
     logout: () => post('/users/_logout', null, { noAuthHandler: true }),
     current: () => get('/users/current', undefined, { noAuthHandler: true })

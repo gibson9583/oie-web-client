@@ -29,6 +29,7 @@ import * as apiModule from './api.js';
 import * as ui from './ui.js';
 import * as oie from './oie.js';
 import { webSupportBase } from './websupport.js';
+import { registerLoginAuthenticator } from './login-auth.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
@@ -91,6 +92,9 @@ export const platform = {
     /* core libraries, handed to plugins so they share the app's toolkit */
     api: apiModule.default,
     ui,
+    // MFA/extended-login: register an authenticator keyed by the server's
+    // clientPluginClass (see core/login-auth.js). Must be called pre-login.
+    registerLoginAuthenticator,
     oie,
     columns,
     // The host's React instance (set by the shell at boot). Plugins author React

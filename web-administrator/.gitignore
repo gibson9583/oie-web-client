@@ -1,5 +1,7 @@
 node_modules/
+custom-plugins/
 config.json
 npm-debug.log
+.DS_Store
 client/dist/
-custom-plugins/
+client/vendor/

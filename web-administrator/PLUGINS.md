@@ -484,6 +484,68 @@ platform.setAuthorizationController({
 | `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned: User API IntelliSense, in-scope code-template completions, engine-backed validation + Format Document), else a plain textarea. `platform.setCodeEditorFactory` swaps the implementation app-wide. |
 | `platform.router` | `navigate(path)`, `currentPath()` |
 | `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`, `'webadminConfig'`) and pub/sub bus |
+| `platform.registerLoginAuthenticator(clientPluginClass, authenticate)` | Register a multi-factor / extended-login handler (Swing `MultiFactorAuthenticationClientPlugin`). See [MFA / extended login](#mfa--extended-login) — MUST be registered pre-login, so it only works from a **bundled** plugin. |
+
+### MFA / extended login
+
+When a primary login returns a non-success **`ExtendedLoginStatus`** — a status
+naming a `clientPluginClass` — the shell hands off to the authenticator registered
+for that class string.
+
+**Most MFA plugins need NO web code.** The host ships a built-in generic OTP
+authenticator: a server-side plugin (TOTP/HOTP/one-time-code) that returns the
+well-known `clientPluginClass` **`builtin:otp`** gets the standard enroll/verify UI
+for free — install the engine plugin and it works, nothing to bundle or rebuild.
+Its `ExtendedLoginStatus` `message` is a JSON string in the generic OTP protocol:
+
+```jsonc
+// already enrolled — ask for a code:
+{ "mode": "verify", "challenge": "<opaque, server-signed>", "prompt"?: "<text>" }
+// first login — set up + confirm a code (delivered as a login step):
+{ "mode": "enroll", "challenge": "<opaque>", "secret": "<base32>",
+  "otpauthUri"?: "<uri>", "prompt"?: "<text>" }
+```
+
+The client returns the code on the second leg as the login-data header
+`base64({ "challenge": "<opaque>", "code": "<digits>" })`; the server signs and
+verifies `challenge` (it is opaque to the client). See
+[`oie-totp-mfa`](https://github.com/gibson9583/oie-totp-mfa) for a complete
+server-only reference.
+
+A method that can't use the generic OTP UI (WebAuthn, push) bundles its OWN
+authenticator and registers it against the `clientPluginClass` its server returns:
+
+```js
+import { registerLoginAuthenticator } from '../core/login-auth.js';
+
+registerLoginAuthenticator(
+    'com.acme.mirth.totp.TotpAuthenticationClientPlugin',   // the server's clientPluginClass
+    async (ctx) => {
+        // ctx.username      updatedUsername from the primary status, else what was typed
+        // ctx.primaryStatus the full parsed primary result { status, message, ... }
+        // ctx.api           the full engine client (Swing hands the plugin `client`)
+        // ctx.submit(data)  performs the SECOND-leg login carrying `data` in the
+        //                   X-Mirth-Login-Data header; resolves to the parsed status
+        const code = await promptForCode();                 // your own modal
+        if (code == null) return { status: 'FAIL', message: 'Cancelled.' };
+        return ctx.submit(code);                             // returns the engine's status
+    });
+```
+
+The flow mirrors Swing exactly: primary login → `ExtendedLoginStatus(clientPluginClass)`
+→ run the authenticator → its second-leg login (with the factor in the
+`X-Mirth-Login-Data` header) → the engine delegates to its server-side MFA plugin →
+`SUCCESS`.
+
+**A custom authenticator must be bundled.** MFA runs before a session exists, but
+engine-served plugins load *after* login (fetched with the session). So a custom
+(non-`builtin:otp`) authenticator has to be **bundled** and registered at app boot —
+add it to `client/react/login-authenticators.js`, the single pre-login registration
+point. (Server-only OTP plugins avoid this entirely via `builtin:otp` above.)
+This matches Swing, whose MFA plugin ships in the client, not the server; an
+engine-*installed* plugin cannot provide MFA (it can't be fetched without the auth
+it grants). If an engine requires an MFA class no bundled authenticator handles, the
+login screen says so instead of failing opaquely.
 
 ### Resizable / reorderable columns
 
