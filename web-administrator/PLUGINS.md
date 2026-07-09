@@ -547,6 +547,30 @@ Notes:
    plugins in React* above) so plugins match both themes — noting the
    separately-built-plugin caveat (only host-emitted utilities are available
    unless the plugin ships its own CSS).
+4. **Gate your background polls.** A `setInterval`/`setTimeout` loop at module
+   scope outlives your view — and the session. Before every fetch, check that
+   a session exists and that your view is actually on screen, and re-arm
+   without fetching otherwise:
+
+   ```js
+   async function poll() {
+       // no session (logged out) → engine calls would 401 every tick, and
+       // any poll traffic resets the engine's session-inactivity timeout
+       if (!platform.store.getState('user')) return arm();
+       // not on the view this data feeds → wasted engine calls
+       const path = platform.router.currentPath();
+       if (!path.startsWith('/dashboard')) return arm();
+       // ...fetch + render, then arm()
+   }
+   ```
+
+   Keeping module-scope *state* (so monitoring survives a tab re-mount and
+   resumes when the user returns) is fine — it's the ungated *fetch* that
+   causes trouble. Beware `'/'`: it is only ever the logged-out path (the
+   shell rewrites it to `/dashboard` in-session), so never whitelist it.
+   Polls inside a component with proper `useEffect` cleanup (fetch loop dies
+   on unmount, like the server-log tab) don't need the route check — only
+   the session check if any timer survives the view.
 
 ## Server side
 
