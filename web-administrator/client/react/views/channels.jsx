@@ -22,6 +22,7 @@ import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
+import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
@@ -62,10 +63,21 @@ function alertWarning(message) {
     }));
 }
 
+// OK-only info (Swing alertInformation, title "Information"). pre-line renders the
+// message's \n line breaks the way JOptionPane does.
+function alertInformation(message) {
+    return new Promise(resolve => modal({
+        title: 'Information',
+        body: h('div', { style: 'white-space: pre-line' }, String(message)),
+        onClose: resolve,
+        buttons: [{ label: 'OK', primary: true, onClick: resolve }]
+    }));
+}
+
 // Yes / No option (Swing alertOption): resolves true on Yes, false on No/closed.
 function optionYesNo(title, message) {
     return new Promise(resolve => modal({
-        title, body: h('div', String(message)), onClose: () => resolve(false),
+        title, body: h('div', { style: 'white-space: pre-line' }, String(message)), onClose: () => resolve(false),
         buttons: [
             { label: 'No', onClick: () => resolve(false) },
             { label: 'Yes', primary: true, onClick: () => resolve(true) }
@@ -219,6 +231,17 @@ async function importChannelXml(xml, existing) {
         throw new Error('Not a valid channel XML file');
     }
     const channelEl = doc.documentElement;
+    // Swing promptObjectMigration: block newer-than-server exports (alertInformation),
+    // confirm the automatic conversion for older/unknown ones (Yes/No "Select an
+    // Option"), import same-version silently.
+    const verdict = checkImportVersion(channelEl.getAttribute('version'), 'channel');
+    if (verdict.action === 'block') {
+        await alertInformation(verdict.message);
+        return false;
+    }
+    if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) {
+        return false;
+    }
     const directChild = (tag) => [...channelEl.children].find(c => c.tagName === tag);
     const setChild = (tag, value) => {
         let el = directChild(tag);
@@ -1029,6 +1052,12 @@ function ChannelsView() {
         const file = await pickFile('.xml');
         if (!file) return;
         try {
+            // Swing promptObjectMigration("group"): block newer exports, confirm
+            // conversion of older/unknown ones.
+            const verdict = checkImportVersionFromDoc(
+                new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml'), 'group');
+            if (verdict.action === 'block') { await alertInformation(verdict.message); return; }
+            if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return;
             const imported = parseGroupXml(file.content);
             const importedIds = new Set(imported.map(g => g.id));
             const importedChannelIds = new Set(imported.flatMap(g =>

@@ -25,6 +25,7 @@ import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, modal, 
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
+import { checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { setTheme, getState, setState } from '../../core/store.js';
 import { reactView, ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
@@ -428,9 +429,34 @@ function renderServerTab({ setTasks, markClean, setSave }) {
         }
     }
 
+    // Swing alertInformation / "Select an Option" dialogs (pre-line renders \n).
+    function migrationDialog(verdict) {
+        if (verdict.action === 'block') {
+            return new Promise((resolve) => modal({
+                title: 'Information',
+                body: h('div', { style: 'white-space: pre-line' }, verdict.message),
+                onClose: () => resolve(false),
+                buttons: [{ label: 'OK', primary: true, onClick: () => resolve(false) }]
+            }));
+        }
+        return new Promise((resolve) => modal({
+            title: 'Select an Option',
+            body: h('div', { style: 'white-space: pre-line' }, verdict.message),
+            onClose: () => resolve(false),
+            buttons: [
+                { label: 'No', onClick: () => resolve(false) },
+                { label: 'Yes', primary: true, onClick: () => resolve(true) }
+            ]
+        }));
+    }
+
     async function restoreConfig() {
         const file = await pickFile('.xml');
         if (!file) return;
+        // Swing promptObjectMigration("server configuration") before the restore prompt.
+        const verdict = checkImportVersionFromDoc(
+            new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml'), 'server configuration');
+        if (verdict.action !== 'ok' && !await migrationDialog(verdict)) return;
         // Match the Swing import prompt: deploy ON by default, overwrite config map OFF.
         const deployCheck = checkbox('Deploy all channels after import', true);
         const overwriteCheck = checkbox('Overwrite Configuration Map', false);
