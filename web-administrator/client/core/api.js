@@ -245,6 +245,9 @@ export function asList(value, key) {
    ========================================================================== */
 
 export const auth = {
+    // Idle-timeout logout (Swing parity): a distinct engine operation so the event
+    // log records "Logged out due to inactivity" instead of a plain logout.
+    inactivityLogout: () => post('/users/_inactivityLogout', '', { noAuthHandler: true }),
     login(username, password) {
         const form = new URLSearchParams({ username, password });
         return post('/users/_login', form.toString(), { contentType: 'application/x-www-form-urlencoded', noAuthHandler: true });

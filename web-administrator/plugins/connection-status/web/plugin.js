@@ -23,8 +23,11 @@ function register(platform2) {
     return flat[flat.length - 1] || "";
   }
   async function poll() {
+    if (!(platform2.store && platform2.store.getState && platform2.store.getState("user"))) {
+      return;
+    }
     const path = platform2.router && platform2.router.currentPath && platform2.router.currentPath() || "";
-    if (!(path === "/" || path === "/dashboard" || path.startsWith("/dashboard?") || path.startsWith("/dashboard/"))) {
+    if (!(path === "/dashboard" || path.startsWith("/dashboard?") || path.startsWith("/dashboard/"))) {
       return;
     }
     try {

@@ -37,12 +37,17 @@ export function register(platform) {
     }
 
     async function poll() {
-        // Only hit the engine while the dashboard is on screen. This feeds the
-        // dashboard's Connection column and tab; polling from every view would waste
-        // engine calls and reset the session's inactivity timeout forever (matching
-        // Swing, whose status updater also stops off the dashboard).
+        // Only hit the engine while a session exists AND the dashboard is on screen.
+        // This feeds the dashboard's Connection column and tab; polling from every
+        // view would waste engine calls and reset the session's inactivity timeout
+        // forever (matching Swing, whose status updater also stops off the dashboard).
+        // The user check matters after logout: the interval keeps ticking, and the
+        // logged-out path is '/' — without it the poll would 401 every 5s forever.
+        if (!(platform.store && platform.store.getState && platform.store.getState('user'))) {
+            return;
+        }
         const path = (platform.router && platform.router.currentPath && platform.router.currentPath()) || '';
-        if (!(path === '/' || path === '/dashboard' || path.startsWith('/dashboard?') || path.startsWith('/dashboard/'))) {
+        if (!(path === '/dashboard' || path.startsWith('/dashboard?') || path.startsWith('/dashboard/'))) {
             return;
         }
         try {

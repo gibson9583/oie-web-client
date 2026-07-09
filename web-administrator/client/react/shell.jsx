@@ -549,7 +549,13 @@ export function App() {
     useEffect(() => {
         if (!user) return undefined;
         startIdleLogout(async () => {
-            await onLogout();
+            // Swing parity: the dedicated inactivity operation, audited distinctly.
+            try { await api.auth.inactivityLogout(); } catch { /* session may already be gone */ }
+            store.setState('user', null);
+            store.setState('navGuard', null);
+            store.setPrefScope(null, null);
+            resetSessionExpired();
+            history.replaceState(null, '', '/');
             toast('You were logged out due to inactivity.', 'warn');
         });
         return () => stopIdleLogout();
