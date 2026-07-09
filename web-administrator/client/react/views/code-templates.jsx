@@ -29,6 +29,7 @@ import * as store from '../../core/store.js';
 import { validateScript } from '../../core/serialize.js';
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { reactView, ViewTasks } from '../mount.jsx';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { RailPane, TaskButton, CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
@@ -751,7 +752,9 @@ function CodeTemplatesView() {
                 { danger: true, okLabel: 'Leave' });
             return ok ? undefined : false;
         });
-        return () => store.setState('navGuard', null);
+        // Tab-close guard: same dirty state, synchronous (see core/unsaved.js).
+        const unregister = registerUnsavedCheck(() => dirtyRef.current);
+        return () => { store.setState('navGuard', null); unregister(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

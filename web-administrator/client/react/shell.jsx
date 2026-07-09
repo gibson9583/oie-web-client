@@ -17,9 +17,11 @@ import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
-import { h, icon, modal, toast, contextMenu } from '@oie/web-ui';
+import { h, icon, modal, toast, contextMenu, confirmDialog } from '@oie/web-ui';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
+import { hasUnsavedWork } from '../core/unsaved.js';
+import { stashChannelDraft, peekChannelDraft, clearChannelDraft } from '../core/channel-draft.js';
 import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
@@ -501,6 +503,9 @@ export function App() {
             // matching the vanilla shell's loginShowing guard — otherwise a
             // spurious setState re-render can disrupt the login form.
             if (!store.getState('user')) return;
+            // Swing's exportChannelOnError(): don't lose a dirty channel to a dead
+            // session — stash it; the next login offers to resume.
+            stashChannelDraft();
             toast('Session expired — please sign in again', 'warn');
             store.setState('user', null);
         });
@@ -541,7 +546,37 @@ export function App() {
         try { await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
         await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
         store.setState('user', u);
+        // A channel draft stashed when a previous session died (see channel-draft.js).
+        // Scope is set above, so the key only resolves for the same engine + user.
+        const draft = peekChannelDraft();
+        if (draft && draft.channel && draft.channel.id) {
+            const resume = await confirmDialog('Recovered Unsaved Changes',
+                `Unsaved changes to channel "${draft.channel.name || draft.channel.id}" were recovered from your previous session. Resume editing?`,
+                { okLabel: 'Resume Editing' });
+            clearChannelDraft();
+            if (resume) {
+                store.setState('editingChannel', draft.channel);
+                store.setState('editingChannelNew', !!draft.isNew);
+                store.setState('editingChannelDirty', true);
+                router.navigate(`/channels/${draft.channel.id}/edit`);
+            }
+        }
     };
+
+    // Tab-close guard (Swing's confirmLeave on window close): the native browser
+    // prompt when any editor holds unsaved work. Channel editor/wizard share the
+    // 'editingChannelDirty' store flag; other editors register checks (core/unsaved).
+    useEffect(() => {
+        const onBeforeUnload = (e) => {
+            if (!store.getState('user')) return;
+            if (store.getState('editingChannelDirty') || hasUnsavedWork()) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, []);
 
     // Engine policy: auto logout after N idle minutes (Settings → Server). The same
     // client-side enforcement as Swing's InactivityListener — the engine publishes
@@ -549,6 +584,8 @@ export function App() {
     useEffect(() => {
         if (!user) return undefined;
         startIdleLogout(async () => {
+            // Stash first: the draft key derives from the pref scope cleared below.
+            stashChannelDraft();
             // Swing parity: the dedicated inactivity operation, audited distinctly.
             try { await api.auth.inactivityLogout(); } catch { /* session may already be gone */ }
             store.setState('user', null);

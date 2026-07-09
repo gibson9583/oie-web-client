@@ -46,6 +46,7 @@ import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { getPref } from '../../core/prefs.js';
 import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 
@@ -718,7 +719,13 @@ export function AlertEditor({ params, query = {} }) {
                 { danger: true, okLabel: 'Leave' });
             return ok ? undefined : false;
         });
-        return () => store.setState('navGuard', null);
+        // Tab-close guard: same snapshot comparison, synchronous (core/unsaved.js).
+        const unregister = registerUnsavedCheck(() => {
+            if (cleanSnapshotRef.current === null || !modelRef.current) return false;
+            const now = syncedModelJson();
+            return now !== null && now !== cleanSnapshotRef.current;
+        });
+        return () => { store.setState('navGuard', null); unregister(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 

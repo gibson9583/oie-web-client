@@ -12,6 +12,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
 import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { toast, saveFile } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -56,6 +57,8 @@ function AlertWizardInner({ alert, isNew }) {
     const baselineRef = useRef(null);   // server copy at edit start (alert conflict check)
     useEffect(() => {
         if (!isNew && alert.id) alertBaseline(alert.id).then((b) => { baselineRef.current = b; });
+        // Tab-close guard: the wizard's dirty flag, synchronous (core/unsaved.js).
+        return registerUnsavedCheck(() => dirtyRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     const [, forceRender] = useReducer((x) => x + 1, 0);
