@@ -9,5 +9,6 @@
     "devMode": false,
     "pluginDirs": [],
     "trustedProxies": [],
-    "codeTemplateCompletions": true
+    "codeTemplateCompletions": true,
+    "tls": null
 }

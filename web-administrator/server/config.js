@@ -23,6 +23,10 @@
  *   WEBADMIN_TRUSTED_PROXIES
  *                        Comma-separated peer IPs trusted to set X-Forwarded-For
  *                        (loopback is always trusted). Default none.
+ *   WEBADMIN_TLS_KEY / WEBADMIN_TLS_CERT / WEBADMIN_TLS_PASSPHRASE
+ *                        PEM key + cert (and optional passphrase) to serve the UI
+ *                        over HTTPS directly. Both key and cert required to enable;
+ *                        default is plain HTTP (terminate TLS at a reverse proxy).
  */
 
 'use strict';
@@ -58,7 +62,12 @@ const defaults = {
     // Peer IPs trusted to set X-Forwarded-For (a front TLS terminator / reverse
     // proxy). Loopback is always trusted; list a non-loopback front proxy here.
     // Requests from untrusted peers can't spoof the engine's audit-log client IP.
-    trustedProxies: []
+    trustedProxies: [],
+    // Optional built-in TLS for the browser <-> web admin hop. Off by default
+    // (plain HTTP) — most deployments terminate TLS at a reverse proxy. Set
+    // { key, cert, passphrase? } (PEM file paths, relative to the app root or
+    // absolute) to serve HTTPS directly; both key and cert are required.
+    tls: null
 };
 
 function load() {
@@ -84,6 +93,17 @@ function load() {
     if (process.env.WEBADMIN_DEV_MODE) config.devMode = process.env.WEBADMIN_DEV_MODE === 'true';
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES) config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
+
+    // Optional built-in TLS (config.json "tls" or the env vars below). Enabled only
+    // when BOTH key and cert are given; paths resolve against the app root. Off →
+    // plain HTTP. The server reads the PEM files at startup (index.js).
+    const tls = Object.assign({}, config.tls);
+    if (process.env.WEBADMIN_TLS_KEY) tls.key = process.env.WEBADMIN_TLS_KEY;
+    if (process.env.WEBADMIN_TLS_CERT) tls.cert = process.env.WEBADMIN_TLS_CERT;
+    if (process.env.WEBADMIN_TLS_PASSPHRASE) tls.passphrase = process.env.WEBADMIN_TLS_PASSPHRASE;
+    config.tls = (tls.key && tls.cert)
+        ? { key: path.resolve(ROOT, tls.key), cert: path.resolve(ROOT, tls.cert), passphrase: tls.passphrase || undefined }
+        : null;
 
     // Plugin SEARCH list: the shipped first-party (bundled framework) plugins in
     // ./plugins — ALWAYS scanned — plus any extra LOCAL dirs from config.json

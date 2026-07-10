@@ -115,6 +115,7 @@ machine-specific paths), with environment-variable overrides. Start from
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine, not stored here. `:`-separated in the env var |
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy). Loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
+| `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` (HTTP) | Serve the UI over **HTTPS** directly — set `{ "key", "cert", "passphrase"? }` to PEM file paths (both key and cert required). Off by default; see [Serving over HTTPS](#serving-over-https) |
 
 ### Deployment modes
 
@@ -143,8 +144,33 @@ the fallback for any entry that omits its own `verifyTls`. The `OIE_URL` /
 
 > **Authentication** is the engine's own: the login form posts to
 > `/api/users/_login` and the engine's `JSESSIONID` cookie carries the session.
-> The Node server stores no credentials; it is a streaming reverse proxy. For
-> production, terminate TLS in front of this app.
+> The Node server stores no credentials; it is a streaming reverse proxy.
+
+### Serving over HTTPS
+
+By default the app serves plain **HTTP** on `port` (the browser ↔ web-admin hop);
+the web-admin ↔ engine hop is already HTTPS. Two ways to encrypt the last hop:
+
+- **Reverse proxy (recommended for production).** Terminate TLS at nginx, Caddy,
+  Traefik, or a load balancer in front of the app — you get automatic certificate
+  issuance/renewal, HTTP→HTTPS redirect, and HSTS for free. Set `trustedProxies` to
+  the proxy's IP so the engine's audit log sees the real client address. With Caddy
+  it's essentially `your.host { reverse_proxy localhost:3030 }`.
+
+- **Built-in TLS (handy for standalone installs).** Point the app at a PEM key +
+  cert and it serves HTTPS itself — no extra process:
+
+  ```json
+  {
+      "tls": { "key": "certs/webadmin-key.pem", "cert": "certs/webadmin-cert.pem" }
+  }
+  ```
+
+  or via env: `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` (+ `WEBADMIN_TLS_PASSPHRASE`
+  if the key is encrypted). Paths are relative to `web-administrator/` or absolute;
+  **both key and cert are required** to enable it. Startup logs `https://…  (TLS)`.
+  A self-signed cert works for testing (browsers will warn); use a CA-issued cert
+  in production.
 
 Byte-exact message-tree serialization and JavaScript validation come from the
 **connected engine** (`/datatypes/_serialize`, `/javascript/_validate`) — no

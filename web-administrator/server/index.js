@@ -10,6 +10,8 @@
 
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const express = require('express');
 
 const { load } = require('./config');
@@ -24,6 +26,23 @@ const clientDir = path.join(config.root, 'client');
 // Dev mode (npm run dev) serves the shell through Vite for HMR; production
 // (npm start) serves the static files as before — zero extra dependencies.
 const DEV = process.env.WEBADMIN_DEV === '1';
+
+// Build the listening server: HTTPS when config.tls supplies a readable key+cert
+// PEM (a convenience for standalone installs), else plain HTTP. Most deployments
+// terminate TLS at a reverse proxy instead. Exits with a clear message on a bad key/cert.
+function createServer(handler, tls) {
+    if (!tls) return http.createServer(handler);
+    try {
+        return https.createServer({
+            key: fs.readFileSync(tls.key),
+            cert: fs.readFileSync(tls.cert),
+            passphrase: tls.passphrase
+        }, handler);
+    } catch (e) {
+        console.error(`[tls] Could not read the TLS key/cert (${e.message}). Check config.tls.key and config.tls.cert.`);
+        process.exit(1);
+    }
+}
 
 app.disable('x-powered-by');
 
@@ -139,15 +158,19 @@ async function start() {
         if (!built) console.warn('  [build] No client/dist found — serving unbundled source. Run "npm run build" for the optimized bundle.');
     }
 
-    app.listen(config.port, config.host, () => {
+    const server = createServer(app, config.tls);
+    const scheme = config.tls ? 'https' : 'http';
+
+    server.listen(config.port, config.host, () => {
         console.log('');
         console.log('  Open Integration Engine — Web Administrator');
         console.log('  --------------------------------------------');
         // 0.0.0.0 / :: are bind-all addresses, not browsable — print the loopback
         // URL you actually open, and note the interface it's bound to.
         const wildcard = config.host === '0.0.0.0' || config.host === '::';
-        console.log(`  UI:      http://${wildcard ? 'localhost' : config.host}:${config.port}`
+        console.log(`  UI:      ${scheme}://${wildcard ? 'localhost' : config.host}:${config.port}`
             + (wildcard ? `  (bound to ${config.host} — all interfaces)` : '')
+            + (config.tls ? '  (TLS)' : '')
             + (DEV ? '  (dev — Vite HMR)' : ''));
         if (config.engines.length > 1) {
             console.log(`  Engines: ${config.engines.map((e) => `${e.name} (${e.url})`).join(', ')}`);
