@@ -129,15 +129,15 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
     return parseBody(text);
 }
 
-// The engine's ChannelServlet parses startEdit with "yyyy-MM-dd'T'HH:mm:ssZ"
-// (RFC-822 zone, NO milliseconds, e.g. 1985-10-26T09:00:00-0700). Sending
-// milliseconds makes SimpleDateFormat.parse throw, so the engine silently falls
-// back to "now" — breaking the concurrent-edit check. Match the pattern exactly.
+// The engine's ChannelServlet parses startEdit with "yyyy-MM-dd'T'HH:mm:ssZ" — an
+// RFC-822 offset with NO milliseconds (millis make SimpleDateFormat.parse throw,
+// which silently falls back to "now" and breaks the concurrent-edit check). That's
+// NOT standard ISO-8601, so Date.toISOString() (millis + 'Z') can't be sent as-is.
+// Reshape the built-in ISO string to the engine's form — sent as UTC (+0000), since
+// only the absolute instant matters (the engine compares Calendars): drop the
+// ".SSS" and turn the trailing 'Z' into '+0000'.
 function fmtStartEdit(d) {
-    const p = (n, w = 2) => String(n).padStart(w, '0');
-    const off = -d.getTimezoneOffset();
-    const abs = Math.abs(off);
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${off >= 0 ? '+' : '-'}${p(Math.floor(abs / 60))}${p(abs % 60)}`;
+    return d.toISOString().replace(/\.\d{3}Z$/, '+0000');
 }
 
 function qs(params) {
