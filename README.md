@@ -7,8 +7,9 @@ developers add features by dropping a folder into `plugins/` (the web equivalent
 of the engine's `plugin.xml` extension model).
 
 Both administrators can be used side by side against the same engine — this app
-is read/write through the same `/api` surface the Swing client uses, so nothing
-about the engine install changes.
+is read/write through the same `/api` surface the Swing client uses. The one
+engine-side addition is a drop-in **[web support plugin](#requirements)** (it adds
+a few REST endpoints the client needs; it doesn't modify the engine).
 
 ```
 ┌─────────────┐   http :3030    ┌──────────────────┐   https :8443/api   ┌────────────┐
@@ -52,13 +53,20 @@ oie-web-client/
 |---|---|---|
 | **Node.js** | **20 LTS or newer** (18.18+ minimum) | Runs the server, the Vite build, and the tests; bundles a compatible npm. Check with `node -v`. |
 | **npm** | **9+** (ships with Node 18+) | This is an npm-**workspaces** monorepo (npm 7+ required). Yarn/pnpm are not used. |
-| **OIE / Mirth Connect engine** | any version exposing the REST API | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. Exact message-tree serialization + JS validation/format use the engine's own REST endpoints (no local JVM). |
+| **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. This release line targets OIE 4.6.0. |
+| **OIE Web Support plugin** | latest | **Required.** Installs the engine REST endpoints the web client uses for byte-exact message-tree serialization and JavaScript validation/formatting — these aren't in the core 4.6.0 engine. Install it into the engine's `extensions/` and restart. → **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)** |
 | **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
 
 Contributors running the end-to-end tests also install Playwright's browser once:
 `npx playwright install chromium`.
 
 ## Quick start
+
+> **Prerequisite — install the web support plugin first.** Your engine needs the
+> **[OIE Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin)**
+> installed, which adds REST endpoints the web client relies on that aren't in the
+> core 4.6.0 engine. Grab its latest release, extract it into the engine's
+> `extensions/` (or install via the Swing Administrator), and restart the engine.
 
 > ⚠️ Run `npm install` **at the repository root**. This is an npm-workspaces
 > monorepo — installing inside `web-administrator/` will not link the `@oie/*`
@@ -157,6 +165,23 @@ plugin UIs are disabled with a notice. Format Document runs entirely client-side
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
 | Vite or syntax errors on `npm run dev` / `npm start` | Use Node 20 LTS+ (`node -v`); Node < 18.18 can't run Vite 5 and the test tooling. |
 | Message trees, Validate Script, or plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install `websupport-<version>.zip` from the Extensions page and restart the engine. |
+
+## Plugins & the Community Store
+
+Nearly every feature is a plugin — connectors, data types, dashboard tabs,
+settings panels, and more — and third parties add their own the same way the
+bundled ones are built.
+
+The **[OIE Community Store](https://github.com/gibson9583/oie-community-store)** is
+the easiest way to find and install plugins that support the web client. It's a
+**web-only** feature: browse community plugins, channels, and code templates and
+install them straight from the client UI — no manual file copying. Many existing
+community plugins have been updated with web client support and are available there
+for testing.
+
+Building your own? See
+[`web-administrator/PLUGINS.md`](web-administrator/PLUGINS.md) for the extension
+points and worked examples.
 
 ## Framework packages (`@oie/*`)
 
