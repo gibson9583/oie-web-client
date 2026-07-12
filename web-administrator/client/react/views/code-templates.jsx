@@ -86,6 +86,12 @@ const CONTEXT_GROUPS = [
 
 const ALL_CONTEXTS = CONTEXT_GROUPS.flatMap(g => g.types.map(t => t[0]));
 
+// Swing's default for a NEW template is CodeTemplateContextSet.getConnectorContextSet()
+// — only the Source/Destination Connector contexts, not global/channel scripts.
+const CONNECTOR_CONTEXTS = CONTEXT_GROUPS
+    .filter(g => g.label === 'Source Connector' || g.label === 'Destination Connector')
+    .flatMap(g => g.types.map(t => t[0]));
+
 /* CodeTemplate.DEFAULT_CODE */
 const DEFAULT_CODE = '/**\n\tModify the description here. Modify the function name and parameters as needed. One function per\n\ttemplate is recommended; create a new code template for each new function.\n\n\t@param {String} arg1 - arg1 description\n\t@return {String} return description\n*/\nfunction new_function1(arg1) {\n\t// TODO: Enter code here\n}';
 
@@ -470,7 +476,7 @@ function CodeTemplatesView() {
         // No name prompt — create the library and select it with the empty Name
         // field focused (the library editor focuses it when focusNewName is set).
         const library = {
-            '@version': store.getState('serverVersion') || '4.6.0',
+            '@version': store.getState('serverVersion') || '4.5.2',
             id: uuid(),
             name: '',
             revision: 0,
@@ -495,7 +501,7 @@ function CodeTemplatesView() {
             toast('Select a library first', 'warn');
             return;
         }
-        const v = store.getState('serverVersion') || '4.6.0';
+        const v = store.getState('serverVersion') || '4.5.2';
         const template = {
             // '@version' is required: the engine migrates every write and
             // 500s when it's absent.
@@ -503,7 +509,7 @@ function CodeTemplatesView() {
             id: uuid(),
             name: 'New Code Template',
             revision: 0,
-            contextSet: { delegate: { contextType: [...ALL_CONTEXTS] } },
+            contextSet: { delegate: { contextType: [...CONNECTOR_CONTEXTS] } },
             properties: { '@class': PROPERTIES_CLASS, '@version': v, type: 'FUNCTION', code: DEFAULT_CODE }
         };
         entry.templates.push(template);
@@ -557,7 +563,7 @@ function CodeTemplatesView() {
             toast('Save cancelled — Refresh to load the latest code templates', 'warn');
         };
         try {
-            const v = store.getState('serverVersion') || '4.6.0';
+            const v = store.getState('serverVersion') || '4.5.2';
             const libraries = librariesRef.current;
             // 1. PUT each template individually (the Swing client's update path).
             for (const entry of libraries) {
@@ -700,7 +706,7 @@ function CodeTemplatesView() {
                 .filter(el => [...el.children].some(c => c.tagName !== 'id'));
             if (!els.length) throw new Error('No <codeTemplate> elements found in the file');
 
-            const v = store.getState('serverVersion') || '4.6.0';
+            const v = store.getState('serverVersion') || '4.5.2';
             const newIds = [];
             for (const el of els) {
                 let id = [...el.children].find(c => c.tagName === 'id')?.textContent;

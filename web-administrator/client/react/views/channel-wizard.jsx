@@ -533,7 +533,7 @@ function ReviewStep({ channel, inbound, outbound }) {
 // Loader: resolve the channel to edit (see wizard-frame's useWizardModel), then
 // render the wizard. /channels/new/guided creates; /channels/:channelId/guided edits.
 function ChannelWizardView({ params }) {
-    const version = store.getState('serverVersion') || '4.6.0';
+    const version = store.getState('serverVersion') || '4.5.2';
     const { model, isNew, ready } = useWizardModel({
         routeId: params && params.channelId,
         storeKey: 'editingChannel',

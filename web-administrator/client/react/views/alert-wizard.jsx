@@ -39,7 +39,7 @@ function normalizeActionGroups(a) {
 // Loader: resolve the alert to edit (see wizard-frame's useWizardModel), then
 // render the wizard. /alerts/new/guided creates; /alerts/:alertId/guided edits.
 function AlertWizardView({ params }) {
-    const version = store.getState('serverVersion') || '4.6.0';
+    const version = store.getState('serverVersion') || '4.5.2';
     const { model, isNew, ready } = useWizardModel({
         routeId: params && params.alertId,
         storeKey: 'editingAlert',

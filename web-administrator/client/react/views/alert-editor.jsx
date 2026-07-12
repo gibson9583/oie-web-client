@@ -77,7 +77,7 @@ export function eventTypeLabel(type) {
 export function newAlert(name, version) {
     return {
         // '@version' is required — the engine's migrator 500s without it.
-        '@version': version || '4.6.0',
+        '@version': version || '4.5.2',
         id: uuid(),
         name,
         enabled: false,

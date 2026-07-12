@@ -728,7 +728,7 @@ function ChannelsView() {
     // Classic path: seed a blank channel and open the tabbed editor on the Summary
     // tab with the Name field focused (the editor focuses it when isNew).
     function startClassicChannel() {
-        const channel = newChannel('', store.getState('serverVersion') || '4.6.0');
+        const channel = newChannel('', store.getState('serverVersion') || '4.5.2');
         store.setState('editingChannel', channel);
         router.navigate(`/channels/${channel.id}/edit?new=1`);
     }
