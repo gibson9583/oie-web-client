@@ -130,6 +130,10 @@ task/`JPopupMenu` behavior.
 - `doExportChannel` — Export Channel
 - `doValidateChannelScripts` — Validate Script
 - `doDebugDeployFromChannelView` — Debug Channel · `doDeployFromChannelView` — Deploy Channel
+- `doEditFilter` — Edit Filter · `doEditTransformer` — Edit Transformer ·
+  `doEditResponseTransformer` — Edit Response (task pane + destination right-click;
+  the Dashboard channel menu's Edit Filter/Transformer items carry this
+  `channelEdit` group explicitly, so a Swing policy hiding them applies there too)
 
 ### `message` — Message Tasks (message browser)
 - `doRefreshMessages` — Refresh · `doSendMessage` — Send Message
@@ -183,7 +187,9 @@ Shared on every tab: `doRefresh` — Refresh · `doSave` — Save.
 - **`settings_Server`** — `doBackup` (Backup Config), `doRestore` (Restore Config), `doClearAllStats` (Clear All Statistics)
 - **`settings_Administrator`** — `doSetAdminDefaults` (Restore Defaults)
 - **`settings_Tags`** — (Refresh/Save only)
-- **`settings_Configuration Map`** — `doImportMap` (Import Map), `doExportMap` (Export Map)
+- **`settings_Configuration Map`** — `doImportMap` (Import Map), `doExportMap` (Export Map).
+  The in-panel **Add Row** button also rides `doSave` (no separate identifier —
+  adding a row is meaningless without save rights)
 - **`settings_Database Tasks`** — `doRunDatabaseTask` (Run Task), `doCancelDatabaseTask` (Cancel Task)
 - **`settings_Resources`** — `doAddResource` (Add Resource), `doRemoveResource` (Remove Resource), `doReloadResource` (Reload Resource)
 
@@ -207,13 +213,17 @@ Shared on every tab: `doRefresh` — Refresh · `doSave` — Save.
 - **Web-only items with no Swing task are intentionally left untagged** (so they are
   *not* RBAC-hideable, since there is no canonical permission for them). If you need to
   gate these, add an OIE-specific `task`/`group` to them:
-  - channel editor: *Back to Channels*, *Edit Filter / Transformer / Response*
+  - channel editor: *Back to Channels*
   - alert editor: *Back to Alerts*, *Enable*, *Disable*, *Add Action*, *Delete Action*
   - users: *Change Password*
   - events: *Search*
   - extensions: *Install Extension*
   - settings (Tags): *Add Tag*, *Remove Tag*
-  - dashboard channel menu: *Edit Filter*, *Edit Transformer*
+
+  (*Edit Filter / Transformer / Response* — in the channel editor and on the Dashboard
+  channel menu — were previously in this list, but Swing **does** define
+  `doEditFilter` / `doEditTransformer` / `doEditResponseTransformer`; they are now
+  tagged under `channelEdit`. See the catalog above.)
 - **Selection-gated imperative buttons** (Settings → Database Tasks "Run/Cancel Task",
   Resources "Remove Resource") may be `null` once hidden; their visibility helpers
   null-check before touching `classList`. Keep that pattern if you tag more imperative

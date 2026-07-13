@@ -211,16 +211,16 @@ function ChannelEditorView({ params, query }) {
                         }} />}
 
                         {/* Contextual connector tasks (Swing ctx-tasks), gated by active tab. */}
-                        {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Filter', t.sourceStepCount('filter'))} icon="filter" onClick={() => t.gotoElements('filter', 0)} />}
-                        {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Transformer', t.sourceStepCount('transformer'))} icon="transform" onClick={() => t.gotoElements('transformer', 0)} />}
+                        {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Filter', t.sourceStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => t.gotoElements('filter', 0)} />}
+                        {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Transformer', t.sourceStepCount('transformer'))} icon="transform" task="doEditTransformer" onClick={() => t.gotoElements('transformer', 0)} />}
 
                         {t && ts.tab === 'Destinations' && <TaskButton label="New Destination" icon="plus" task="doNewDestination" onClick={t.destNew} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label="Delete Destination" icon="trash" danger task="doDeleteDestination" onClick={t.destDelete} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Up" icon="arrowUp" task="doMoveDestinationUp" onClick={() => t.destMove(-1)} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Down" icon="arrowDown" task="doMoveDestinationDown" onClick={() => t.destMove(1)} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Filter', t.destStepCount('filter'))} icon="filter" onClick={() => t.destEdit('filter')} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Transformer', t.destStepCount('transformer'))} icon="transform" onClick={() => t.destEdit('transformer')} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Response', t.destStepCount('responseTransformer'))} icon="transform" onClick={() => t.destEdit('response')} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Filter', t.destStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => t.destEdit('filter')} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Transformer', t.destStepCount('transformer'))} icon="transform" task="doEditTransformer" onClick={() => t.destEdit('transformer')} />}
+                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Response', t.destStepCount('responseTransformer'))} icon="transform" task="doEditResponseTransformer" onClick={() => t.destEdit('response')} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label="Import Connector" icon="import" task="doImportConnector" onClick={t.destImport} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label="Export Connector" icon="export" task="doExportConnector" onClick={t.destExport} />}
                     </div>
@@ -2175,9 +2175,9 @@ function buildBody(params, query, onTasksChange, returning) {
                     { label: 'Move Dest. Up', icon: 'arrowUp', task: 'doMoveDestinationUp', group: 'channelEdit', onClick: () => destTasks.move(-1) },
                     { label: 'Move Dest. Down', icon: 'arrowDown', task: 'doMoveDestinationDown', group: 'channelEdit', onClick: () => destTasks.move(1) },
                     '-',
-                    { label: 'Edit Filter', icon: 'filter', onClick: () => destTasks.editElements('filter') },
-                    { label: 'Edit Transformer', icon: 'transform', onClick: () => destTasks.editElements('transformer') },
-                    { label: 'Edit Response', icon: 'transform', onClick: () => destTasks.editElements('response') },
+                    { label: 'Edit Filter', icon: 'filter', task: 'doEditFilter', group: 'channelEdit', onClick: () => destTasks.editElements('filter') },
+                    { label: 'Edit Transformer', icon: 'transform', task: 'doEditTransformer', group: 'channelEdit', onClick: () => destTasks.editElements('transformer') },
+                    { label: 'Edit Response', icon: 'transform', task: 'doEditResponseTransformer', group: 'channelEdit', onClick: () => destTasks.editElements('response') },
                     '-',
                     { label: 'Import Connector', icon: 'import', task: 'doImportConnector', group: 'channelEdit', onClick: () => destTasks.importConnector() },
                     { label: 'Export Connector', icon: 'export', task: 'doExportConnector', group: 'channelEdit', onClick: () => destTasks.exportConnector() },

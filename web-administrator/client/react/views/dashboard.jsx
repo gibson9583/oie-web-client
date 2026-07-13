@@ -765,8 +765,10 @@ function DashboardView({ onToggleView }) {
             { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err) { toast(err.message, 'error'); } refresh(); } },
             '-',
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
-            { label: 'Edit Filter', icon: 'filter', onClick: () => router.navigate(`/channels/${st.channelId}/filter/0`) },
-            { label: 'Edit Transformer', icon: 'transform', onClick: () => router.navigate(`/channels/${st.channelId}/transformer/0`) }
+            // Tagged with Swing's channelEdit constants (CHANNEL_EDIT_FILTER/_TRANSFORMER)
+            // so an RBAC policy that hides filter/transformer editing applies here too.
+            { label: 'Edit Filter', icon: 'filter', task: 'doEditFilter', group: 'channelEdit', onClick: () => router.navigate(`/channels/${st.channelId}/filter/0`) },
+            { label: 'Edit Transformer', icon: 'transform', task: 'doEditTransformer', group: 'channelEdit', onClick: () => router.navigate(`/channels/${st.channelId}/transformer/0`) }
         ], 'dashboard');
     }
 

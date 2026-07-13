@@ -962,9 +962,11 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
             host.appendChild(h('div.flex.items-center.gap-2.mb-[14px]', showValues.el));
             host.appendChild(h('div.panel',
                 h('div.panel-header', 'Configuration Map',
-                    h('div.panel-tools', h('button.btn', {
+                    // Add Row rides the tab's doSave permission — adding a row is
+                    // meaningless without save rights, so no separate identifier.
+                    h('div.panel-tools', platform.checkTask('settings_Configuration Map', 'doSave') ? h('button.btn', {
                         onClick: () => { rows.push({ key: '', value: '', comment: '', propKey: CONFIGURATION_PROPERTY_CLASS, prop: null }); renderRows(); }
-                    }, icon('plus'), 'Add Row'))),
+                    }, icon('plus'), 'Add Row') : null)),
                 h('div.panel-body.flush', tableHost)));
             renderRows();
         } catch (e) {
