@@ -343,6 +343,19 @@ export function mountMonaco(monaco, editor, opts = {}) {
     });
     highlightReservedVars(monaco, instance);   // initial paint (whole document)
 
+    // The JS Monarch tokenizer resolves ASYNCHRONOUSLY, so the initial paint above
+    // can run against typeless tokens — the string/comment skip then never matches
+    // and reserved vars get colored inside comments, staying wrong on lines that
+    // are never edited. Re-run the affected lines whenever real tokenization lands
+    // (fires for the first background pass and any later re-tokenization). Safe:
+    // decorations don't change tokens, so this cannot loop.
+    const hlModel = instance.getModel();
+    const tokenSub = hlModel ? hlModel.onDidChangeTokens((e) => {
+        for (const r of (e.ranges || [])) {
+            highlightReservedVars(monaco, instance, r.fromLineNumber, r.toLineNumber);
+        }
+    }) : null;
+
     // Release the model, listeners, layout observer and timer. Idempotent. Called
     // explicitly from a view teardown, or automatically by the detached-sweep.
     let disposed = false;
@@ -353,6 +366,7 @@ export function mountMonaco(monaco, editor, opts = {}) {
         if (editor.__maxCleanup) editor.__maxCleanup();
         if (hlTimer) clearTimeout(hlTimer);
         changeSub.dispose();
+        if (tokenSub) tokenSub.dispose();
         const model = instance.getModel();
         instance.dispose();
         if (model) model.dispose();
