@@ -260,6 +260,13 @@ function buildBody(params, query, onTasksChange, returning) {
         && channel.exportData.metadata.lastModified;
     const loadedLMms = loadedLM ? Number(loadedLM.time != null ? loadedLM.time : loadedLM) : NaN;
     let startEdit = Number.isFinite(loadedLMms) ? new Date(Math.ceil(loadedLMms / 1000) * 1000) : new Date();
+    // A channel with NO stored last-modified (created/saved before the client
+    // stamped it) can't be guarded: the engine's getter substitutes the CURRENT
+    // clock when the stored value is absent, so any startEdit "loses" and every
+    // save falsely prompts "Channel Modified". For such a channel the first save
+    // skips the check (override=true); the save stamps a real last-modified,
+    // healing it so the genuine guard applies from the next save on.
+    let guardable = Number.isFinite(loadedLMms);
     let isNew = query.new === '1' || store.getState('editingChannelNew') === true;
     store.setState('editingChannelNew', isNew);
 
@@ -417,6 +424,25 @@ function buildBody(params, query, onTasksChange, returning) {
             // them (idempotent — survives a follow-up Deploy that re-saves).
             await ensureTags();
             applyTagsToChannel();
+            // Swing parity (ChannelSetup.setLastModified): stamp the metadata's
+            // last-modified at save time. The engine does NOT stamp it server-side
+            // (it stores whatever we send), and ChannelMetadata.getLastModified()
+            // lazily defaults to "now" when absent — so a save that stores no
+            // usable last-modified makes every LATER concurrent-edit check compare
+            // the baseline against the current clock and falsely prompt
+            // "Channel Modified". Stamping also gives us the exact instant to
+            // rebase startEdit onto after the save succeeds.
+            const savedMeta = (channel.exportData = channel.exportData || {}).metadata
+                = channel.exportData.metadata || { enabled: true };
+            const saveStamp = Date.now();
+            savedMeta.lastModified = {
+                time: saveStamp,
+                timezone: (savedMeta.lastModified && savedMeta.lastModified.timezone)
+                    || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+            };
+            // Rebase the edit window onto the stamp we are storing, rounded UP to
+            // the whole second (the engine parses startEdit at second precision).
+            const rebase = () => { startEdit = new Date(Math.ceil(saveStamp / 1000) * 1000); };
             if (isNew) {
                 await api.channels.create(channel);
                 isNew = false;
@@ -424,7 +450,11 @@ function buildBody(params, query, onTasksChange, returning) {
                 store.setState('editingChannelNew', false);
             } else {
                 channel.revision = (Number(channel.revision) || 0) + 1;
-                const ok = await api.channels.update(channel.id, channel, false, startEdit);
+                // An unguardable channel (see `guardable`) saves with override=true —
+                // the check would false-positive unconditionally — making the
+                // conflict branch below unreachable for it. The stamp above heals
+                // the channel, so the guard is live from the next save on.
+                const ok = await api.channels.update(channel.id, channel, !guardable, guardable ? startEdit : undefined);
                 if (String(ok) === 'false') {
                     const overwrite = await confirmDialog('Channel Modified',
                         'This channel has been modified since you first opened it. Are you sure you want to overwrite it?',
@@ -435,10 +465,9 @@ function buildBody(params, query, onTasksChange, returning) {
                     }
                     await api.channels.update(channel.id, channel, true);
                 }
-                // Keep the baseline: the engine round-trips our metadata, so the
-                // stored last-modified still matches what we loaded — no reset to
-                // wall-clock time (which would re-introduce the false prompt).
             }
+            guardable = true;   // the save stored our stamp — the guard is live now
+            rebase();           // future saves compare against the stamp we just stored
             store.setState('editingChannelDirty', false);
             refreshSaveVisibility();
             toast(`Saved ${channel.name}`);

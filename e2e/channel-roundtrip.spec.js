@@ -40,7 +40,12 @@ const FULL_CHANNEL = {
         }]
     },
     preprocessingScript: 'return message;', postprocessingScript: 'return;', deployScript: 'return;', undeployScript: 'return;',
-    properties: { '@version': '4.5.0', clearGlobalChannelMap: true, messageStorageMode: 'DEVELOPMENT', encryptData: false, removeContentOnCompletion: false, removeOnlyFilteredOnCompletion: false, removeAttachmentsOnCompletion: false, storeAttachments: false, metaDataColumns: { metaDataColumn: [{ name: 'SOURCE', type: 'STRING', mappingName: 'mirth_source' }] }, attachmentProperties: { '@version': '4.5.0', type: 'None', properties: null }, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, initialState: 'STARTED' }
+    properties: { '@version': '4.5.0', clearGlobalChannelMap: true, messageStorageMode: 'DEVELOPMENT', encryptData: false, removeContentOnCompletion: false, removeOnlyFilteredOnCompletion: false, removeAttachmentsOnCompletion: false, storeAttachments: false, metaDataColumns: { metaDataColumn: [{ name: 'SOURCE', type: 'STRING', mappingName: 'mirth_source' }] }, attachmentProperties: { '@version': '4.5.0', type: 'None', properties: null }, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, initialState: 'STARTED' },
+    // A stored last-modified marks this a HEALTHY channel: the editor's concurrent-
+    // edit guard applies (override=false + startEdit on save). Channels without one
+    // are unguardable — the engine substitutes "now" for a missing stored value, so
+    // the check always false-positives — and take the skip path (see the test below).
+    exportData: { metadata: { enabled: true, lastModified: { time: 1751000000000, timezone: 'America/New_York' } }, channelTags: null }
 };
 
 test('channel save round-trips the full channel (serialization preserved)', async ({ page }) => {
@@ -116,10 +121,48 @@ test('a conflicting save prompts "Channel Modified" and Overwrite retries with o
     await expect(page.getByText('This channel has been modified since you first opened it', { exact: false })).toBeVisible();
     expect(puts).toHaveLength(1);
     expect(puts[0].override).toBe('false');
-    expect(puts[0].startEdit).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{4}$/);
+    // The engine parses startEdit with SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ"):
+    // NO milliseconds (they make the parse throw and the check silently degrade),
+    // RFC-822 zone. The client sends UTC (+0000).
+    expect(puts[0].startEdit).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+0000$/);
 
     await page.getByRole('button', { name: 'Overwrite', exact: true }).click();
     await expect.poll(() => puts.length, { timeout: 8000 }).toBe(2);
     expect(puts[1].override).toBe('true');
     await expect(page.getByText('Saved RT Channel EDITED')).toBeVisible();
+});
+
+test('a channel with no stored last-modified saves once WITHOUT the guard (override=true, no prompt)', async ({ page }) => {
+    // Channels created/saved before the client stamped lastModified have no stored
+    // value; the engine substitutes "now" when it's absent, so an override=false
+    // save would ALWAYS false-positive. The editor detects the missing timestamp
+    // and skips the check for that first save — which also stamps a real
+    // last-modified, healing the channel so the guard applies afterwards.
+    const { exportData, ...UNGUARDED_CHANNEL } = FULL_CHANNEL;
+    await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel: UNGUARDED_CHANNEL } });
+
+    const puts = [];
+    await page.route((url) => url.pathname === `/api/channels/${CHANNEL_ID}`, async (route) => {
+        const req = route.request();
+        if (req.method() === 'PUT') {
+            const params = new URL(req.url()).searchParams;
+            puts.push({ override: params.get('override'), body: JSON.parse(req.postData()).channel });
+            return route.fulfill({ status: 200, contentType: 'application/json', body: 'true' });
+        }
+        return route.fallback();
+    });
+
+    await page.goto(`/channels/${CHANNEL_ID}/edit`);
+    const nameField = page.locator('.panel input[type=text]').first();
+    await expect(nameField).toHaveValue('RT Channel');
+    await nameField.fill('RT Channel EDITED');
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+
+    await expect(page.getByText('Saved RT Channel EDITED')).toBeVisible();
+    // Exactly one PUT, guard skipped, and NO "Channel Modified" prompt.
+    expect(puts).toHaveLength(1);
+    expect(puts[0].override).toBe('true');
+    await expect(page.getByText('This channel has been modified', { exact: false })).not.toBeVisible();
+    // The save healed the channel: a real last-modified was stamped into the body.
+    expect(puts[0].body.exportData.metadata.lastModified.time).toBeGreaterThan(0);
 });
