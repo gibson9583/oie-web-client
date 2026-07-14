@@ -30,10 +30,13 @@ Semantics (`client/core/authorization.js`):
 
 - **`checkTask(group, task)` returning `false` hides** the matching nav item, task
   button, and its right-click twin. Any other return value shows it.
-- **Fail-open.** A missing controller, an untagged item (no `group`/`task`), or a
+- **Fail-open.** A missing controller, an untagged item (no `task`), or a
   controller that throws all resolve to *visible* — exactly like Swing's
   `DefaultAuthorizationController`. RBAC can only ever *remove* options, never break
-  the UI.
+  the UI. A `task` **without** a `group` is still checked (the group is passed as
+  `''`): tagging a task signals gating intent, and RBAC controllers resolve bare
+  Swing task names without the group — a missing group tag must not silently fail
+  open.
 - The controller is a **singleton**, set once. Register it in your plugin's
   `register(platform)` (which runs during plugin load, before views mount).
 
@@ -210,15 +213,29 @@ Shared on every tab: `doRefresh` — Refresh · `doSave` — Save.
 - **Code-templates "Delete"** (tree right-click) is tagged with a *dynamic* task —
   `doDeleteCodeTemplate` when a template is selected, `doDeleteLibrary` for a library —
   because the web admin folds Swing's two delete tasks into one menu item.
-- **Web-only items with no Swing task are intentionally left untagged** (so they are
-  *not* RBAC-hideable, since there is no canonical permission for them). If you need to
-  gate these, add an OIE-specific `task`/`group` to them:
-  - channel editor: *Back to Channels*
-  - alert editor: *Back to Alerts*, *Enable*, *Disable*, *Add Action*, *Delete Action*
-  - users: *Change Password*
+- **Web-only mutation items with no Swing constant ride an existing task** whose
+  permission covers them (the pattern RBAC.md §3 established for the Config Map
+  *Add Row*):
+  - extensions *Install Extension* → `extensions/doRefreshExtensions` (every
+    extensions task maps to `manageExtensions`)
+  - settings (Tags) *Add/Edit/Remove Tag* → `settings_Tags/doSave`
+  - settings (Configuration Map) row menu *Insert/Delete Row* →
+    `settings_Configuration Map/doSave`
+  - filter/transformer editor *Add/Delete/Move step, Assign/Remove Iterator,
+    Import* → `channelEdit/doSaveChannel` (editing steps is meaningless without
+    channel-save rights); *Export/Validate* stay untagged (view affordances)
+  - wizard footers (*Create/Save*, *… & Deploy*) and the wizards' leave prompt hide
+    Save via `channelEdit/doSaveChannel` / `doDeployFromChannelView` /
+    `alertEdit/doSaveAlerts`; the classic channel editor's leave prompt swaps to an
+    OK-only notice the same way
+- **Web-only view affordances are intentionally left untagged** (pure navigation or
+  read-only actions):
+  - channel editor: *Back to Channels*, *Open in Wizard* (the wizard's own save
+    affordances are gated, above)
+  - alert editor: *Back to Alerts*, *Enable*, *Disable*, *Add Action*, *Delete
+    Action* (the editor is unreachable without `manageAlerts`)
+  - users: *Change Password* (view unreachable without `manageUsers`)
   - events: *Search*
-  - extensions: *Install Extension*
-  - settings (Tags): *Add Tag*, *Remove Tag*
 
   (*Edit Filter / Transformer / Response* — in the channel editor and on the Dashboard
   channel menu — were previously in this list, but Swing **does** define

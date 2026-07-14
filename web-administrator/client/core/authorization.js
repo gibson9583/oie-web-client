@@ -37,12 +37,16 @@ export function setAuthorizationController(ctrl) {
 }
 
 /**
- * True if the user may see/use the task. Untagged items (missing group or task)
- * are always allowed, and a throwing controller fails OPEN (visible) — matching
+ * True if the user may see/use the task. Untagged items (no task name) are
+ * always allowed, and a throwing controller fails OPEN (visible) — matching
  * Swing's DefaultAuthorizationController, which permits everything.
+ *
+ * A task WITHOUT a group is still checked (group passed as ''): tagging a task
+ * signals gating intent, and RBAC controllers resolve bare Swing task names
+ * without the group — so a missing group tag must not silently fail open.
  */
 export function checkTask(taskGroup, taskName) {
-    if (!taskGroup || !taskName) return true;
-    try { return controller.checkTask(taskGroup, taskName) !== false; }
+    if (!taskName) return true;
+    try { return controller.checkTask(taskGroup || '', taskName) !== false; }
     catch { return true; }
 }

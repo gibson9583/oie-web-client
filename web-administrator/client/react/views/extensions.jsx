@@ -326,11 +326,13 @@ function ExtensionsView() {
                 <RailPane title="Extension Tasks" paneKey="tasks:Extension Tasks" group="extensions">
                     <div className="taskbar" data-pane-title="Extension Tasks">
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshExtensions" onClick={load} />
-                        <TaskButton label="Install Extension" icon="import" onClick={installExtension} />
-                        {sel && !sel.enabled && <TaskButton label="Enable" icon="check" onClick={() => setEnabled(true)} />}
-                        {sel && sel.enabled && <TaskButton label="Disable" icon="x" onClick={() => setEnabled(false)} />}
-                        {sel && <TaskButton label="Properties" icon="eye" onClick={showProperties} />}
-                        {sel && <TaskButton label="Uninstall" icon="trash" danger onClick={uninstallExtension} />}
+                        {/* No Swing constant for Install — rides doRefreshExtensions
+                            (every extensions task maps to manageExtensions anyway). */}
+                        <TaskButton label="Install Extension" icon="import" task="doRefreshExtensions" onClick={installExtension} />
+                        {sel && !sel.enabled && <TaskButton label="Enable" icon="check" task="doEnableExtension" onClick={() => setEnabled(true)} />}
+                        {sel && sel.enabled && <TaskButton label="Disable" icon="x" task="doDisableExtension" onClick={() => setEnabled(false)} />}
+                        {sel && <TaskButton label="Properties" icon="eye" task="doShowExtensionProperties" onClick={showProperties} />}
+                        {sel && <TaskButton label="Uninstall" icon="trash" danger task="doUninstallExtension" onClick={uninstallExtension} />}
                     </div>
                 </RailPane>
             </ViewTasks>

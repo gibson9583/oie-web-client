@@ -1451,7 +1451,8 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                         toast(`Failed to fetch attachment: ${e.message}`, 'error');
                     }
                 }),
-                taskButton('Export', 'export', () => exportAttachment(message, attachment))),
+                taskButton('Export', 'export', () => exportAttachment(message, attachment),
+                    { task: 'doExportAttachment', group: 'message' })),
             contentHost);
     }
 

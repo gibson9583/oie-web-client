@@ -172,7 +172,11 @@ function Nav({ only, exclude }) {
 
 function OtherPane({ onLogout }) {
     // RBAC: each "other" task can be hidden (Swing's otherPane). checkTask returns
-    // true unless an authorization plugin denies the (group, task).
+    // true unless an authorization plugin denies the (group, task). Re-render when
+    // the plugin set lands: an RBAC plugin's controller installs during
+    // loadPlugins(), after this pane's first paint (the nav gets this for free
+    // from the route change; this static pane needs the subscription).
+    useStoreKey('webPlugins');
     const can = (task) => platform.checkTask('other', task);
     return (
         <RailPane title="Other" paneKey="Other" group="other">

@@ -584,8 +584,11 @@ function ChannelWizardInner({ channel, isNew, version }) {
     useLeaveGuard({
         model: channel, isNew, storeKey: 'editingChannel', storeNewKey: 'editingChannelNew',
         dirtyKey: 'editingChannelDirty', entityLabel: 'channel',
-        dirtyRef, savedRef, switchingRef, save: () => saveChannel(false)
+        dirtyRef, savedRef, switchingRef, save: () => saveChannel(false),
+        canSave: () => platform.checkTask('channelEdit', 'doSaveChannel')
     });
+    const canSave = platform.checkTask('channelEdit', 'doSaveChannel');
+    const canDeploy = platform.checkTask('channelEdit', 'doDeployFromChannelView');
 
     // Clear connector validation highlights whenever the step changes.
     useEffect(() => { clearHighlights(); }, [step]);
@@ -830,7 +833,9 @@ function ChannelWizardInner({ channel, isNew, version }) {
                         <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>Next</button>
                     ) : (
                         <>
-                            {isNew || dirtyRef.current ? (
+                            {/* RBAC: save/deploy affordances hide without the matching
+                                channelEdit task (same gating as the classic editor). */}
+                            {(isNew || dirtyRef.current) && canSave ? (
                                 <button className="btn" disabled={busy || !!nameError()} onClick={() => finish(false)}>
                                     <Icon name="save" size={14} />{saving ? (isNew ? 'Creating…' : 'Saving…') : (isNew ? 'Create Channel' : 'Save Changes')}
                                 </button>
@@ -840,11 +845,11 @@ function ChannelWizardInner({ channel, isNew, version }) {
                                 </button>
                             )}
                             {isNew || dirtyRef.current ? (
-                                <button className="btn btn-primary" disabled={busy || !!nameError()} onClick={() => finish(true)}>
+                                canSave && canDeploy && <button className="btn btn-primary" disabled={busy || !!nameError()} onClick={() => finish(true)}>
                                     <Icon name="deploy" size={14} />{deploying ? 'Deploying…' : (isNew ? 'Create & Deploy' : 'Save & Deploy')}
                                 </button>
                             ) : (
-                                <button className="btn btn-primary" disabled={busy} onClick={deployOnly}>
+                                canDeploy && <button className="btn btn-primary" disabled={busy} onClick={deployOnly}>
                                     <Icon name="deploy" size={14} />{deploying ? 'Deploying…' : 'Deploy'}
                                 </button>
                             )}

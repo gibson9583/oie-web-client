@@ -69,8 +69,19 @@ export function useWizardSteps(isNew, count) {
     return { step, setStep, maxStep, setMaxStep, goStep };
 }
 
-function confirmLeave(entityLabel, isNew) {
+function confirmLeave(entityLabel, isNew, canSave) {
     return new Promise((resolve) => {
+        // Users whose role can't save must not be offered a Save the server
+        // would reject — OK-only notice instead (channel editor parity).
+        if (canSave === false) {
+            modal({
+                title: `Unsaved ${entityLabel}`,
+                body: h('div', `You don't have permission to save this ${entityLabel}. Your changes will be discarded.`),
+                buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }],
+                onClose: () => resolve('cancel')
+            });
+            return;
+        }
         modal({
             title: `Unsaved ${entityLabel}`,
             body: h('div', isNew
@@ -92,9 +103,11 @@ function confirmLeave(entityLabel, isNew) {
  * classic editors use. A view switch sets switchingRef so the guard/cleanup leaves
  * the model in the store on the way out.
  *
- *   save - () => Promise<bool>: the wizard's save (no deploy); called on "Save".
+ *   save    - () => Promise<bool>: the wizard's save (no deploy); called on "Save".
+ *   canSave - optional () => bool (RBAC check); false swaps the Save prompt for
+ *             an OK-only "no permission" notice.
  */
-export function useLeaveGuard({ model, isNew, storeKey, storeNewKey, dirtyKey, entityLabel, dirtyRef, savedRef, switchingRef, save }) {
+export function useLeaveGuard({ model, isNew, storeKey, storeNewKey, dirtyKey, entityLabel, dirtyRef, savedRef, switchingRef, save, canSave }) {
     const cleanupStore = () => {
         if (store.getState(storeKey) === model) {
             store.setState(storeKey, null);
@@ -122,7 +135,7 @@ export function useLeaveGuard({ model, isNew, storeKey, storeNewKey, dirtyKey, e
         const guard = async () => {
             if (savedRef.current) return;               // already created/updated → allow
             if (!(isNew || dirtyRef.current)) return;   // nothing unsaved → allow
-            const choice = await confirmLeave(entityLabel, isNew);
+            const choice = await confirmLeave(entityLabel, isNew, canSave ? canSave() : true);
             if (choice === 'cancel') return false;      // stay
             if (choice === 'save') { const ok = await save(); if (!ok) return false; }
             store.setState('navGuard', null);

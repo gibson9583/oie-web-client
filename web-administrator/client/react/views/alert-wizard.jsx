@@ -19,6 +19,7 @@ import * as router from '../../core/router.js';
 import { Icon } from '../bridges.jsx';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
+import { platform } from '@oie/web-shell';
 import { getPref } from '../../core/prefs.js';
 import { useWizardModel, useWizardSteps, useLeaveGuard, WizardStepper, WizardHeader } from './wizard-frame.jsx';
 import {
@@ -94,8 +95,10 @@ function AlertWizardInner({ alert, isNew }) {
     // Keep the model in the store + prompt-on-leave (shared with the channel wizard).
     useLeaveGuard({
         model: alert, isNew, storeKey: 'editingAlert', storeNewKey: 'editingAlertNew',
-        entityLabel: 'alert', dirtyRef, savedRef, switchingRef, save: () => saveAlert(false)
+        entityLabel: 'alert', dirtyRef, savedRef, switchingRef, save: () => saveAlert(false),
+        canSave: () => platform.checkTask('alertEdit', 'doSaveAlerts')
     });
+    const canSave = platform.checkTask('alertEdit', 'doSaveAlerts');
 
     /* ---- model helpers ---- */
     const trigger = alert.trigger;
@@ -417,14 +420,15 @@ function AlertWizardInner({ alert, isNew }) {
             <div className="flex items-center gap-2 px-4 py-3 border-t border-line">
                 <button className="btn" disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>Back</button>
                 <div className="ml-auto flex items-center gap-2">
+                    {/* RBAC: save/create affordances hide without alertEdit/doSaveAlerts. */}
                     {!isLast ? (
                         <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>Next</button>
-                    ) : isNew ? (
+                    ) : isNew && canSave ? (
                         <>
                             <button className="btn" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Creating…' : 'Create Alert'}</button>
                             <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(true)}><Icon name="check" size={14} />Create &amp; Enable</button>
                         </>
-                    ) : dirtyRef.current ? (
+                    ) : !isNew && dirtyRef.current && canSave ? (
                         <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Saving…' : 'Save Alert'}</button>
                     ) : (
                         <button className="btn" onClick={() => router.navigate('/alerts')}><Icon name="x" size={14} />Exit</button>

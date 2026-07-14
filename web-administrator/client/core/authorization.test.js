@@ -8,8 +8,7 @@ const ok = (cond, label) => { if (cond) pass++; else { fail++; console.error('  
 ok(checkTask('channel', 'doNewChannel') === true, 'default allows a tagged task');
 ok(checkTask('view', 'doShowDashboard') === true, 'default allows a nav item');
 
-// Untagged items (missing group or task) are always allowed.
-ok(checkTask('', 'doNewChannel') === true, 'missing group → allowed');
+// Untagged items (no task name) are always allowed.
 ok(checkTask('channel', '') === true, 'missing task → allowed');
 ok(checkTask(null, null) === true, 'null/null → allowed');
 
@@ -23,6 +22,13 @@ ok(initialized === 1, 'initialize() runs once on register');
 ok(checkTask('channel', 'doNewChannel') === false, 'denied (group,task) is hidden');
 ok(checkTask('channel', 'doDeleteChannel') === true, 'sibling task still allowed');
 ok(checkTask('view', 'doShowDashboard') === true, 'unrelated group/task allowed');
+
+// A task WITHOUT a group still consults the controller (group passed as '') —
+// a missing group tag must not silently fail open.
+setAuthorizationController({ checkTask(g, t) { return !(g === '' && t === 'doSaveChannel'); } });
+ok(checkTask('', 'doSaveChannel') === false, 'groupless task still checked (empty group)');
+ok(checkTask(undefined, 'doSaveChannel') === false, 'groupless task still checked (undefined group)');
+ok(checkTask(undefined, 'doExportChannel') === true, 'groupless unrelated task allowed');
 
 // A controller that returns a truthy non-boolean still shows (only false hides).
 setAuthorizationController({ checkTask: () => undefined });

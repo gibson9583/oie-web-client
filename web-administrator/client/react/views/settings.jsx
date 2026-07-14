@@ -722,18 +722,20 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
         onActivate: (t) => editTag(t),
         onContextMenu: (t, e) => {
             currentTag = t; table.selected = new Set([t.id]); renderChannelList(); updateTaskVisibility();
+            // Tag mutations ride settings_Tags/doSave (no Swing constants —
+            // same convention as the Config Map Add Row, RBAC.md §3).
             contextMenu(e.clientX, e.clientY, [
-                { label: 'New Tag', icon: 'plus', onClick: () => addTag() },
-                { label: 'Edit Tag', icon: 'edit', onClick: () => editTag(t) },
+                { label: 'New Tag', icon: 'plus', task: 'doSave', group: 'settings_Tags', onClick: () => addTag() },
+                { label: 'Edit Tag', icon: 'edit', task: 'doSave', group: 'settings_Tags', onClick: () => editTag(t) },
                 '-',
-                { label: 'Remove Tag', icon: 'trash', danger: true, onClick: () => removeTag() }
+                { label: 'Remove Tag', icon: 'trash', danger: true, task: 'doSave', group: 'settings_Tags', onClick: () => removeTag() }
             ]);
         }
     });
 
     // Selection-dependent tasks only show when a tag is selected.
     const ctxTasks = h('div.ctx-tasks.hidden',
-        taskButton('Remove Tag', 'trash', removeTag, { danger: true }));
+        taskButton('Remove Tag', 'trash', removeTag, { danger: true, task: 'doSave', group: 'settings_Tags' }));
 
     function updateTaskVisibility() {
         ctxTasks.classList.toggle('hidden', !currentTag);
@@ -881,7 +883,7 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
     setTasks('Tag Tasks', [
         taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Tags' }),
         taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Tags' }),
-        taskButton('Add Tag', 'plus', addTag),
+        taskButton('Add Tag', 'plus', addTag, { task: 'doSave', group: 'settings_Tags' }),
         ctxTasks
     ]);
 
@@ -912,11 +914,12 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
             tbody.appendChild(h('tr', {
                 onContextmenu: (e) => {
                     e.preventDefault();
+                    // Row edits ride doSave like the Add Row button (RBAC.md §3).
                     contextMenu(e.clientX, e.clientY, [
-                        { label: 'Insert Row Above', icon: 'plus', onClick: () => { rows.splice(i, 0, blankRow()); renderRows(); } },
-                        { label: 'Insert Row Below', icon: 'plus', onClick: () => { rows.splice(i + 1, 0, blankRow()); renderRows(); } },
+                        { label: 'Insert Row Above', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => { rows.splice(i, 0, blankRow()); renderRows(); } },
+                        { label: 'Insert Row Below', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => { rows.splice(i + 1, 0, blankRow()); renderRows(); } },
                         '-',
-                        { label: 'Delete Row', icon: 'trash', onClick: () => { rows.splice(i, 1); renderRows(); } }
+                        { label: 'Delete Row', icon: 'trash', task: 'doSave', group: 'settings_Configuration Map', onClick: () => { rows.splice(i, 1); renderRows(); } }
                     ]);
                 }
             },

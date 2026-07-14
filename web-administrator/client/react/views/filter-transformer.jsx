@@ -122,17 +122,21 @@ function FilterTransformerView({ params, kindName }) {
     return (
         <div className="view flex flex-col flex-1 min-h-0">
             <ViewTasks>
-                <RailPane title={`${kind.title} Tasks`} paneKey={`tasks:${kind.title} Tasks`}>
+                {/* Mutation tasks ride channelEdit/doSaveChannel: there are no Swing
+                    constants for the individual step actions, and editing steps is
+                    meaningless without channel-save rights (RBAC.md §4). Export /
+                    Validate / Back stay untagged — view affordances. */}
+                <RailPane title={`${kind.title} Tasks`} paneKey={`tasks:${kind.title} Tasks`} group="channelEdit">
                     <div className="taskbar" data-pane-title={`${kind.title} Tasks`}>
-                        {t && <TaskButton label={`Add New ${kind.noun}`} icon="plus" onClick={t.addElement} />}
-                        {t && ts.onStep && <TaskButton label={`Delete ${kind.noun}`} icon="trash" danger onClick={t.deleteElement} />}
-                        {t && ts.assign && <TaskButton label="Assign To Iterator" icon="plus" onClick={t.assignToIterator} />}
-                        {t && ts.remove && <TaskButton label="Remove From Iterator" icon="minus" onClick={t.removeFromIterator} />}
-                        {t && <TaskButton label={`Import ${kind.title}`} icon="import" onClick={t.importElements} />}
+                        {t && <TaskButton label={`Add New ${kind.noun}`} icon="plus" task="doSaveChannel" onClick={t.addElement} />}
+                        {t && ts.onStep && <TaskButton label={`Delete ${kind.noun}`} icon="trash" danger task="doSaveChannel" onClick={t.deleteElement} />}
+                        {t && ts.assign && <TaskButton label="Assign To Iterator" icon="plus" task="doSaveChannel" onClick={t.assignToIterator} />}
+                        {t && ts.remove && <TaskButton label="Remove From Iterator" icon="minus" task="doSaveChannel" onClick={t.removeFromIterator} />}
+                        {t && <TaskButton label={`Import ${kind.title}`} icon="import" task="doSaveChannel" onClick={t.importElements} />}
                         {t && <TaskButton label={`Export ${kind.title}`} icon="export" onClick={t.exportElements} />}
                         {t && <TaskButton label={`Validate ${kind.title}`} icon="check" onClick={t.validateElements} />}
                         {t && ts.onStep && <TaskButton label={`Validate ${kind.noun}`} icon="check" onClick={t.validateElement} />}
-                        {t && ts.dirty && <TaskButton label="Save Channel" icon="save" primary onClick={t.saveChannel} />}
+                        {t && ts.dirty && <TaskButton label="Save Channel" icon="save" primary task="doSaveChannel" onClick={t.saveChannel} />}
                         {t && <TaskButton label="Back to Channel" icon="chevR" onClick={t.backToChannel} />}
                     </div>
                 </RailPane>
@@ -782,21 +786,23 @@ function buildBody(params, kindName, onTasksChange) {
         const el = elementAtPath(selectedPath);
         const onStep = !!el;
         const t = kind.title, n = kind.noun;
-        const items = [{ label: `Add New ${n}`, icon: 'plus', onClick: addElement }];
+        // Mutations ride channelEdit/doSaveChannel (same tagging as the task pane).
+        const gate = { task: 'doSaveChannel', group: 'channelEdit' };
+        const items = [{ label: `Add New ${n}`, icon: 'plus', ...gate, onClick: addElement }];
         if (onStep) {
-            items.push({ label: `Delete ${n}`, icon: 'trash', danger: true, onClick: deleteElement });
+            items.push({ label: `Delete ${n}`, icon: 'trash', danger: true, ...gate, onClick: deleteElement });
             if (!isIteratorType(el.__type) && iteratorTargets(selectedPath).length) {
-                items.push({ label: 'Assign To Iterator', onClick: assignToIterator });
+                items.push({ label: 'Assign To Iterator', ...gate, onClick: assignToIterator });
             }
             if (selectedPath.length > 1) {
-                items.push({ label: 'Remove From Iterator', onClick: removeFromIterator });
+                items.push({ label: 'Remove From Iterator', ...gate, onClick: removeFromIterator });
             }
             items.push('-',
-                { label: `Move ${n} Up`, icon: 'arrowUp', onClick: () => move(-1) },
-                { label: `Move ${n} Down`, icon: 'arrowDown', onClick: () => move(1) });
+                { label: `Move ${n} Up`, icon: 'arrowUp', ...gate, onClick: () => move(-1) },
+                { label: `Move ${n} Down`, icon: 'arrowDown', ...gate, onClick: () => move(1) });
         }
         items.push('-',
-            { label: `Import ${t}`, icon: 'import', onClick: importElements },
+            { label: `Import ${t}`, icon: 'import', ...gate, onClick: importElements },
             { label: `Export ${t}`, icon: 'export', onClick: exportElements },
             '-',
             { label: `Validate ${t}`, icon: 'check', onClick: validateElements });
