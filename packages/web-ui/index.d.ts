@@ -65,9 +65,30 @@ export function confirmDialog(
 ): Promise<boolean>;
 export function promptDialog(title: string, label: string, initial?: string): Promise<string | null>;
 
+/* ---- RBAC task model ------------------------------------------------------- */
+
+/**
+ * RBAC gating tags shared by every actionable surface — task-pane buttons,
+ * context-menu items, and (via @oie/web-shell) nav items and dashboard tabs.
+ *
+ * `task` is the action identifier, verbatim from Swing `TaskConstants`
+ * (e.g. `"doDeleteChannel"`) or an extension-published task name; `group` is
+ * the task-pane key (`"channel"`, `"channelEdit"`, `"settings_<Tab>"`, …).
+ * An authorization plugin's `checkTask(group, task)` returning false HIDES
+ * the item. Omitting `task` leaves the item ungated (always visible); a
+ * `task` without `group` is still checked — RBAC controllers resolve bare
+ * task names. Full catalog and conventions: web-administrator/RBAC.md.
+ */
+export interface TaskRef {
+    /** Swing TaskConstants action identifier (e.g. `"doNewChannel"`). Omit = ungated. */
+    task?: string;
+    /** Task-pane group key (e.g. `"channel"`, `"settings_Server"`). Optional — bare task names resolve without it. */
+    group?: string;
+}
+
 /* ---- context menu ---------------------------------------------------------- */
 
-export interface ContextMenuItem {
+export interface ContextMenuItem extends TaskRef {
     label: string;
     icon?: string;
     danger?: boolean;
@@ -141,12 +162,13 @@ export interface CheckboxHandle {
     input: HTMLInputElement;
 }
 export function checkbox(label: string, checked?: boolean, attrs?: ElementAttrs): CheckboxHandle;
+/** Task-pane button. `opts.task`/`opts.group` (see TaskRef) RBAC-gate it: unauthorized -> returns null (the rail skips it). */
 export function taskButton(
     label: string,
     iconName?: string,
     onClick?: (e: MouseEvent) => void,
-    opts?: { primary?: boolean; danger?: boolean; disabled?: boolean; title?: string }
-): HTMLElement;
+    opts?: TaskRef & { primary?: boolean; danger?: boolean; disabled?: boolean; title?: string }
+): HTMLElement | null;
 
 export function downloadFile(filename: string, content: string | Blob, type?: string): void;
 /** Save with a native "Save As" picker where supported, else a normal download. */

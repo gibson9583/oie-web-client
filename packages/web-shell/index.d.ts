@@ -8,6 +8,7 @@
  */
 
 import type { Api, OieObject } from '@oie/web-api';
+import type { TaskRef } from '@oie/web-ui';
 
 /** The DOM toolkit subset exposed as `platform.ui` (the ui.js surface). */
 type DomToolkit = Pick<
@@ -55,13 +56,15 @@ export interface EventsApi {
 
 /* ---- extension-point shapes ------------------------------------------------ */
 
-export interface NavItem {
+export interface NavItem extends Pick<TaskRef, 'task'> {
     id: string;
     label: string;
     icon?: string;
     path: string;
     section?: string;
     order?: number;
+    /** RBAC: checked as checkTask('view', task) — the nav entry hides when denied. Omit = always visible. */
+    task?: string;
 }
 export interface ViewContext {
     params: Record<string, string>;
@@ -78,10 +81,12 @@ export interface ViewMeta {
 
 export type ConnectorMode = 'SOURCE' | 'DESTINATION';
 
-export interface DashboardTab {
+export interface DashboardTab extends Pick<TaskRef, 'task'> {
     id: string;
     label: string;
     order?: number;
+    /** RBAC: checked as checkTask('dashboard', task) — the tab hides when denied. Omit = always visible. */
+    task?: string;
     /** Rendered in the dashboard's bottom tab strip; re-mounts when the selection changes. */
     component: PluginComponent<{ selection: any; platform: Platform }>;
     [key: string]: any;

@@ -250,12 +250,19 @@ Shared on every tab: `doRefresh` — Refresh · `doSave` — Save.
 
 ## 5. Adding RBAC to a new menu item
 
+The `(group, task)` pair is a typed model — **`TaskRef` in `@oie/web-ui`** — shared by
+every actionable surface: `ContextMenuItem` and `taskButton` opts extend it, and
+`NavItem`/`DashboardTab` in `@oie/web-shell` carry its `task` field (their groups are
+fixed: `view` and `dashboard` respectively). `type-tests/` guards the surface.
+
 1. Pick the `(group, task)` — reuse a Swing identifier from the catalog where one fits.
 2. **Nav:** add `task: '<doShow…>'` to `registerNavItem({ … })` (group is `view`).
-3. **React task button:** ensure the pane is `<RailPane group="<key>">` and add
+3. **Dashboard tab:** add `task: '<…>'` to `registerDashboardTab({ … })` (group is
+   `dashboard`; extension-published task names resolve through the merge).
+4. **React task button:** ensure the pane is `<RailPane group="<key>">` and add
    `<TaskButton task="<do…>" … />`.
-4. **Imperative task button (Settings):** `taskButton(label, icon, onClick, { task, group })`.
-5. **Context-menu item:** add `task`/`group` to the item, or pass a default group as the
+5. **Imperative task button (Settings):** `taskButton(label, icon, onClick, { task, group })`.
+6. **Context-menu item:** add `task`/`group` to the item, or pass a default group as the
    4th arg of `contextMenu(x, y, items, group)`. Tag it with the **same** `(group, task)`
    as its task-button twin so both hide together.
 

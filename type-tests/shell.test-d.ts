@@ -33,6 +33,12 @@ async function libraries() {
     return [v, id];
 }
 
+function taskGating() {
+    // Nav items and dashboard tabs carry the RBAC task tag (view/dashboard groups).
+    platform.registerNavItem({ id: 'x', label: 'X', path: '/x', task: 'doShowChannel' });
+    platform.registerDashboardTab({ id: 'y', label: 'Y', task: 'doShowThreadViewer', component: () => null });
+}
+
 function badUsage() {
     // @ts-expect-error connector mode must be 'SOURCE' | 'DESTINATION'
     platform.registerConnectorPanel('X', 'BOTH', { defaults: () => ({}), component: () => null });
@@ -46,3 +52,4 @@ function badUsage() {
 
 void libraries;
 void badUsage;
+void taskGating;
