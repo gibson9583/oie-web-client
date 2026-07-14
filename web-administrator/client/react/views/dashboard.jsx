@@ -1130,7 +1130,9 @@ function DashboardView({ onToggleView }) {
 
     /* ---- plugin dashboard tabs (Server Log, Connection Log, Global Maps, …) ---- */
 
-    const tabDefs = platform.dashboardTabs();
+    // A tab may declare a `task` (e.g. an extension task name published through
+    // RBAC's task-permission merge) — unauthorized tabs are hidden entirely.
+    const tabDefs = platform.dashboardTabs().filter((t) => !t.task || platform.checkTask('dashboard', t.task));
     const selectionForTabs = currentSelection();
     // Re-scope the open tab when the selection changes by remounting on a
     // signature key (the old tab's poll loop self-stops once detached).

@@ -521,6 +521,38 @@ export function App() {
         return () => { alive = false; if (typeof off === 'function') off(); };
     }, []);
 
+    // A login in ANOTHER TAB of this browser replaces the engine session cookie
+    // for every tab (JSESSIONID is browser-wide), leaving this tab rendering the
+    // previous user's UI while its API calls ride the new user's session. On tab
+    // focus, re-check who the session belongs to and reload if it changed —
+    // re-bootstrapping nav, plugins, and permissions as that user.
+    useEffect(() => {
+        if (!user) return undefined;
+        let alive = true, last = 0;
+        const check = async () => {
+            const now = Date.now();
+            if (now - last < 5000) return;   // focus + visibilitychange fire together
+            last = now;
+            try {
+                const u = await api.auth.current();
+                if (!alive || !u || !u.username) return;
+                if (String(u.id) !== String(user.id)) {
+                    stashChannelDraft();     // don't lose a dirty channel to the switch
+                    toast(`This browser is now signed in as ${u.username} — reloading`, 'warn');
+                    setTimeout(() => window.location.reload(), 800);
+                }
+            } catch { /* expired/unreachable — the session-expiry flow handles it */ }
+        };
+        const onVis = () => { if (document.visibilityState === 'visible') check(); };
+        window.addEventListener('focus', check);
+        document.addEventListener('visibilitychange', onVis);
+        return () => {
+            alive = false;
+            window.removeEventListener('focus', check);
+            document.removeEventListener('visibilitychange', onVis);
+        };
+    }, [user]);
+
     const onLogout = async () => {
         try { await api.auth.logout(); } catch { /* session may already be gone */ }
         store.setState('user', null);
