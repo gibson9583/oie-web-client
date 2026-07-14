@@ -1448,9 +1448,20 @@ function buildTabDefs(plat) {
     return defs;
 }
 
-/* Save/Discard/Cancel prompt for unsaved settings changes (Swing parity). */
-function promptSaveSettings() {
+/* Save/Discard/Cancel prompt for unsaved settings changes (Swing parity).
+   Users whose role can't save the tab (settings_<Tab>/doSave denied) must not
+   be offered a Save the server would reject — OK-only notice instead. */
+function promptSaveSettings(canSave) {
     return new Promise((resolve) => {
+        if (canSave === false) {
+            modal({
+                title: 'Unsaved Changes',
+                body: h('div', "You don't have permission to save this settings tab. Your changes will be discarded."),
+                onClose: () => resolve('cancel'),
+                buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }]
+            });
+            return;
+        }
         modal({
             title: 'Unsaved Changes',
             body: h('div', 'You have unsaved changes on this settings tab. Would you like to save them?'),
@@ -1538,6 +1549,7 @@ function SettingsView({ query }) {
     const tasksRef = useRef({ title: 'Server Tasks', items: [] });
     const dirtyRef = useRef(false);
     const saveRef = useRef(null);   // the active tab's save(), if it supports saving
+    const activeLabelRef = useRef(null);   // active tab label, for its settings_<Tab> RBAC group
 
     // setTasks is what each legacy builder calls; it captures the task spec and
     // forces a re-render of the portaled pane. ctx mirrors the vanilla shell ctx,
@@ -1548,7 +1560,8 @@ function SettingsView({ query }) {
         function refreshGuard() {
             if (dirtyRef.current) {
                 setState('navGuard', async () => {
-                    const choice = await promptSaveSettings();
+                    const choice = await promptSaveSettings(
+                        platform.checkTask(`settings_${activeLabelRef.current}`, 'doSave'));
                     if (choice === 'cancel') return false;
                     if (choice === 'save' && saveRef.current && (await saveRef.current()) === false) return false;
                     setClean();
@@ -1597,6 +1610,7 @@ function SettingsView({ query }) {
         shownRef.current = active;
         tasksRef.current = { title: `${def.label} Tasks`, items: [] };
     }
+    activeLabelRef.current = def.label;
 
     // Drop the leave-guard when the settings view itself unmounts.
     useEffect(() => () => { setState('navGuard', null); }, []);

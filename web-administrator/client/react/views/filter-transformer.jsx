@@ -366,6 +366,16 @@ function buildBody(params, kindName, onTasksChange) {
        keeps the working copy without prompting. */
     function promptSaveChanges() {
         return new Promise((resolve) => {
+            // No save permission -> OK-only notice (channel editor parity).
+            if (!platform.checkTask('channelEdit', 'doSaveChannel')) {
+                modal({
+                    title: 'Unsaved Changes',
+                    body: h('div', `You don't have permission to save changes to "${channel.name || 'this channel'}". Your changes will be discarded.`),
+                    onClose: () => resolve('cancel'),
+                    buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }]
+                });
+                return;
+            }
             modal({
                 title: 'Unsaved Changes',
                 body: h('div', `Would you like to save the changes made to "${channel.name || 'this channel'}"?`),

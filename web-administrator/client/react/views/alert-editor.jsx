@@ -45,6 +45,7 @@ import * as router from '../../core/router.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { getPref } from '../../core/prefs.js';
+import { platform } from '@oie/web-shell';
 import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { TreeTable } from '../tree-table.jsx';
@@ -714,9 +715,14 @@ export function AlertEditor({ params, query = {} }) {
             if (cleanSnapshotRef.current === null || !modelRef.current) return;
             const now = syncedModelJson();
             if (now === null || now === cleanSnapshotRef.current) return;
-            const ok = await confirmDialog('Unsaved Changes',
-                'You have unsaved alert changes. Leave without saving?',
-                { danger: true, okLabel: 'Leave' });
+            // No save permission -> say the edits can't be kept (channel editor parity).
+            const ok = platform.checkTask('alertEdit', 'doSaveAlerts')
+                ? await confirmDialog('Unsaved Changes',
+                    'You have unsaved alert changes. Leave without saving?',
+                    { danger: true, okLabel: 'Leave' })
+                : await confirmDialog('Unsaved Changes',
+                    "You don't have permission to save alert changes. Leaving will discard them.",
+                    { okLabel: 'OK' });
             return ok ? undefined : false;
         });
         // Tab-close guard: same snapshot comparison, synchronous (core/unsaved.js).

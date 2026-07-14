@@ -12,6 +12,7 @@ import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { validateScript } from '../../core/serialize.js';
 import { reactView, ViewTasks } from '../mount.jsx';
+import { platform } from '@oie/web-shell';
 import { RailPane, TaskButton, CodeEditor, Tabs } from '../ui.jsx';
 
 export function register(platform) {
@@ -60,9 +61,20 @@ function GlobalScriptsView() {
         }
     };
 
-    // Save / Don't Save / Cancel before leaving with unsaved scripts (Swing parity).
+    // Save / Don't Save / Cancel before leaving with unsaved scripts (Swing
+    // parity). Users whose role can't save (script/doSaveGlobalScripts denied)
+    // must not be offered a Save the server would reject — OK-only notice.
     function promptSave() {
         return new Promise((resolve) => {
+            if (!platform.checkTask('script', 'doSaveGlobalScripts')) {
+                modal({
+                    title: 'Unsaved Changes',
+                    body: h('div', "You don't have permission to save the global scripts. Your changes will be discarded."),
+                    onClose: () => resolve('cancel'),
+                    buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }]
+                });
+                return;
+            }
             modal({
                 title: 'Unsaved Changes',
                 body: h('div', 'You have unsaved changes to the global scripts. Would you like to save them?'),

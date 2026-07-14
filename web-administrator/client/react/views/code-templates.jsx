@@ -766,9 +766,14 @@ function CodeTemplatesView() {
         // Prompt before leaving with unsaved library/template edits (Swing parity).
         store.setState('navGuard', async () => {
             if (!dirtyRef.current) return;
-            const ok = await confirmDialog('Unsaved Changes',
-                'You have unsaved code template changes. Leave without saving?',
-                { danger: true, okLabel: 'Leave' });
+            // No save permission -> say the edits can't be kept (channel editor parity).
+            const ok = platform.checkTask('codeTemplate', 'doSaveCodeTemplates')
+                ? await confirmDialog('Unsaved Changes',
+                    'You have unsaved code template changes. Leave without saving?',
+                    { danger: true, okLabel: 'Leave' })
+                : await confirmDialog('Unsaved Changes',
+                    "You don't have permission to save code template changes. Leaving will discard them.",
+                    { okLabel: 'OK' });
             return ok ? undefined : false;
         });
         // Tab-close guard: same dirty state, synchronous (see core/unsaved.js).
