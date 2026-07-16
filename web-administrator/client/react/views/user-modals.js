@@ -41,7 +41,10 @@ export function userForm(user = {}) {
     return { grid, inputs };
 }
 
-export function passwordFields() {
+/* Password + Confirm inputs with up-front policy hints. `optional: true` (Edit
+   User) lets a blank pair leave the password unchanged; the default (New User /
+   Change Password) requires both. `label` renames the field ("New Password"). */
+export function passwordFields({ optional = false, label = 'Password' } = {}) {
     const password = h('input', { type: 'password' });
     const confirm = h('input', { type: 'password' });
     // Show the configured policy up front (the engine still enforces on submit).
@@ -49,13 +52,19 @@ export function passwordFields() {
     api.server.passwordRequirements()
         .then((reqs) => { const hs = passwordRequirementHints(reqs); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
         .catch(() => { /* requirements unavailable */ });
+    // Required (asterisk) when setting a password; plain when it's optional.
+    const passLabel = optional ? label : req(label);
+    const confLabel = optional ? `Confirm ${label}` : req(`Confirm ${label}`);
+    const children = [h('div.form-grid', field(passLabel, password), field(confLabel, confirm)), hint];
+    if (optional) children.push(h('div.hint', { class: 'mt-1.5' }, 'Leave blank to keep the current password.'));
+    // True once either field has input — the caller only pushes a password change then.
+    const hasValue = () => Boolean(password.value || confirm.value);
     return {
-        password, confirm,
-        // Password + Confirm are required when setting a password (Swing New User).
-        grid: h('div',
-            h('div.form-grid', field(req('Password'), password), field(req('Confirm Password'), confirm)),
-            hint),
+        password, confirm, hasValue,
+        grid: h('div', ...children),
         validate() {
+            // Optional + untouched → no password change, nothing to validate.
+            if (optional && !hasValue()) return true;
             if (!password.value) { toast('Password is required', 'warn'); return false; }
             if (password.value !== confirm.value) { toast('Passwords do not match', 'warn'); return false; }
             return true;
@@ -67,10 +76,14 @@ export function passwordFields() {
    save (the Users grid refreshes; the account menu re-reads the current user). */
 export function openEditUserModal(user, { onSaved } = {}) {
     const form = userForm(user);
+    // Mirror the New User form — profile fields + password — but the password is
+    // optional here (blank leaves it unchanged), so an admin can reset a forgotten
+    // password from the same place they edit the profile.
+    const pw = passwordFields({ optional: true, label: 'New Password' });
     modal({
         title: `Edit User — ${user.username}`,
         size: 'wide',
-        body: form.grid,
+        body: h('div', form.grid, pw.grid),
         buttons: [
             { label: 'Cancel' },
             {
@@ -78,9 +91,18 @@ export function openEditUserModal(user, { onSaved } = {}) {
                 onClick: async () => {
                     const username = form.inputs.username.value.trim();
                     if (!username) { toast('Username is required', 'warn'); return false; }
+                    if (!pw.validate()) return false;
                     try {
+                        // Enforce the password policy before saving anything (as New
+                        // User does) so a rejected password never leaves a half-applied
+                        // edit (profile saved, password not).
+                        if (pw.hasValue()) {
+                            const violations = passwordViolations(await api.users.checkPassword(pw.password.value));
+                            if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
+                        }
                         for (const def of USER_FIELDS) user[def.key] = form.inputs[def.key].value.trim();
                         await api.users.update(user.id, user);
+                        if (pw.hasValue()) await api.users.updatePassword(user.id, pw.password.value);
                         toast(`User "${username}" saved`);
                         if (onSaved) onSaved(user);
                         return true;
