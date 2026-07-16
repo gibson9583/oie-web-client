@@ -110,4 +110,28 @@ test.describe('card view', () => {
         // There is no separate card-view nav item — the Dashboard is the single entry.
         await expect(page.getByRole('link', { name: 'Monitor' })).toHaveCount(0);
     });
+
+    test('starting a PAUSED channel resumes it (POSTs _resume, not _start)', async ({ page }) => {
+        // Paused = stopped source + running destinations; _start is a no-op on it,
+        // so the card view's Start must call _resume (parity with the classic table).
+        await mockEngine(page, {
+            'GET /channels/statuses': { list: { dashboardStatus: [
+                { channelId: 'c-paused', name: 'Demo Paused', state: 'PAUSED', statistics: {} },
+            ] } },
+        });
+        await openCards(page);
+        await expect(page.getByText('Demo Paused')).toBeVisible();
+
+        let startCalled = false;
+        page.on('request', (r) => {
+            if (/\/api\/channels\/c-paused\/_start$/.test(r.url()) && r.method() === 'POST') startCalled = true;
+        });
+        const resumed = page.waitForRequest(
+            (r) => /\/api\/channels\/c-paused\/_resume$/.test(r.url()) && r.method() === 'POST'
+        );
+        await page.getByText('Demo Paused').click();
+        await page.locator('.taskbar').getByText('Start', { exact: true }).click();
+        await resumed;
+        expect(startCalled).toBe(false);
+    });
 });

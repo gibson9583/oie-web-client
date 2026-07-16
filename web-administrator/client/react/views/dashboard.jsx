@@ -211,8 +211,15 @@ function DashboardView({ onToggleView }) {
     async function controlSelected(action, label) {
         const selected = selectedRef.current;
         if (!selected.size) { toast('Select a channel first', 'warn'); return; }
+        const byId = new Map(statusesRef.current.map(s => [s.channelId, s]));
         for (const channelId of selected) {
-            try { await api.status[action](channelId); }
+            // "Start" on a PAUSED channel must resume it, not start it: PAUSED means
+            // the source is stopped while destinations run, and the engine's _start
+            // (Channel.start) only acts on a STOPPED/DEPLOYING channel — it's a no-op
+            // when PAUSED, so only _resume restarts the source. Matches Swing's
+            // Frame.doStart (PAUSED -> resumeChannels, else startChannels).
+            const act = (action === 'start' && byId.get(channelId)?.state === 'PAUSED') ? 'resume' : action;
+            try { await api.status[act](channelId); }
             catch (e) { toast(`${label} failed: ${e.message}`, 'error'); }
         }
         refresh();

@@ -229,7 +229,10 @@ function CardsView({ onToggleView }) {
         if (kind === 'halt' && !await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) return;
         try {
             if (kind === 'undeploy') await api.engine.undeployMany(ids);
-            else for (const s of targets) await api.status[kind](s.channelId);
+            // "Start" on a PAUSED channel resumes it (restarts the stopped source):
+            // the engine's _start (Channel.start) only acts on a STOPPED/DEPLOYING
+            // channel and is a no-op when PAUSED. Matches Swing's Frame.doStart.
+            else for (const s of targets) await api.status[(kind === 'start' && s.state === 'PAUSED') ? 'resume' : kind](s.channelId);
             refresh();
         } catch (e) { toast(e && e.message ? e.message : 'Action failed', 'error'); }
     }
