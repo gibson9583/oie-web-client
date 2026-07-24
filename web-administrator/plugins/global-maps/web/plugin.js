@@ -106,13 +106,21 @@ function register(platform2) {
       };
     }, []);
     const filtered = rows.filter((r) => r.channelId === null || !selectedIds.size || selectedIds.has(String(r.channelId)));
+    const [sort, setSort] = React.useState({ key: null, dir: 1 });
+    const sorted = React.useMemo(() => {
+      if (!sort.key) return filtered;
+      const val = (r) => String((sort.key === "channel" ? r.channel : r[sort.key]) ?? "").toLowerCase();
+      return [...filtered].sort((a, b) => val(a).localeCompare(val(b)) * sort.dir);
+    }, [filtered, sort]);
+    const toggleSort = (key) => setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
+    const arrow = (key) => sort.key === key ? sort.dir > 0 ? " \u25B2" : " \u25BC" : "";
     let body;
     if (error) {
       body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, `Global maps unavailable: ${error}`));
     } else if (!filtered.length) {
       body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, "No global map variables are set."));
     } else {
-      body = filtered.map((r, i) => {
+      body = sorted.map((r, i) => {
         const value = r.value.replace(/\s+/g, " ").trim();
         return /* @__PURE__ */ React.createElement(
           "tr",
@@ -129,7 +137,7 @@ function register(platform2) {
         );
       });
     }
-    return /* @__PURE__ */ React.createElement("div", { className: "dt-wrap min-h-0" }, /* @__PURE__ */ React.createElement("table", { className: "dt global-maps" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Server Id"), /* @__PURE__ */ React.createElement("th", null, "Channel"), /* @__PURE__ */ React.createElement("th", null, "Key"), /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, body)));
+    return /* @__PURE__ */ React.createElement("div", { className: "dt-wrap min-h-0" }, /* @__PURE__ */ React.createElement("table", { className: "dt global-maps" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("serverId") }, "Server Id", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("serverId"))), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("channel") }, "Channel", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("channel"))), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("key") }, "Key", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("key"))), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("value") }, "Value", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("value"))))), /* @__PURE__ */ React.createElement("tbody", null, body)));
   }
   platform2.registerDashboardTab({
     id: "global-maps",

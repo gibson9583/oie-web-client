@@ -35,6 +35,10 @@ export function TreeTable({
     rowDraggable, onRowDrop,
     columnsKey, columnWidths = {}, defaultHidden = [], pinnedKeys = [],
     emptyText = 'No items', matches, collapsedKeys, onToggleCollapse,
+    // Controlled sort (opt-in): pass `sort={{key,dir}}` + `onSort(key)` to let the
+    // parent own sorting (it pre-sorts `data`, e.g. the dashboard keeping display and
+    // shift-select order in sync). Omit both for TreeTable's built-in header sort.
+    sort: controlledSort, onSort,
     // When true (default) every expandable row gets the bold/tinted `group-row`
     // style. Trees with multiple expandable levels (e.g. the dashboard, where
     // channels are also expandable) set this false and class only true group
@@ -70,10 +74,12 @@ export function TreeTable({
 
     // Opt-in sort: clicking a header whose column has sortValue() sorts siblings
     // at every level (nulls last). Default (sort.key null) keeps the data order.
-    const [sort, setSort] = useState({ key: null, dir: 1 });
+    const controlled = typeof onSort === 'function';
+    const [internalSort, setInternalSort] = useState({ key: null, dir: 1 });
+    const sort = controlled ? (controlledSort || { key: null, dir: 1 }) : internalSort;
     const sortCol = sort.key ? columns.find((c) => c.key === sort.key && c.sortValue) : null;
     const sortNodes = (nodes) => {
-        if (!sortCol) return nodes;
+        if (controlled || !sortCol) return nodes;   // parent pre-sorts in controlled mode
         return [...nodes].sort((a, b) => {
             const av = sortCol.sortValue(a), bv = sortCol.sortValue(b);
             if (av == null && bv == null) return 0;
@@ -190,7 +196,7 @@ export function TreeTable({
                                 onDragStart={(e) => e.dataTransfer.setData('text/plain', c.key)}
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={(e) => { e.preventDefault(); onColDrop(e.dataTransfer.getData('text/plain'), c.key); }}
-                                onClick={c.sortValue ? () => setSort((s) => (s.key === c.key ? { key: c.key, dir: -s.dir } : { key: c.key, dir: 1 })) : undefined}>
+                                onClick={c.sortValue ? () => (controlled ? onSort(c.key) : setInternalSort((s) => (s.key === c.key ? { key: c.key, dir: -s.dir } : { key: c.key, dir: 1 }))) : undefined}>
                                 {c.label}
                                 {sort.key === c.key ? <span className="sort-arrow">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
                                 {c.key !== lastKey

@@ -141,6 +141,16 @@ export function register(platform) {
         const filtered = rows.filter(r =>
             r.channelId === null || !selectedIds.size || selectedIds.has(String(r.channelId)));
 
+        // Click-to-sort by any column (default = fetch order until a header is clicked).
+        const [sort, setSort] = React.useState({ key: null, dir: 1 });
+        const sorted = React.useMemo(() => {
+            if (!sort.key) return filtered;
+            const val = (r) => String((sort.key === 'channel' ? r.channel : r[sort.key]) ?? '').toLowerCase();
+            return [...filtered].sort((a, b) => val(a).localeCompare(val(b)) * sort.dir);
+        }, [filtered, sort]);
+        const toggleSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+        const arrow = (key) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
+
         let body;
         if (error) {
             body = (
@@ -155,7 +165,7 @@ export function register(platform) {
                 </td></tr>
             );
         } else {
-            body = filtered.map((r, i) => {
+            body = sorted.map((r, i) => {
                 const value = r.value.replace(/\s+/g, ' ').trim();
                 return (
                     <tr key={`${r.serverId}|${r.channelId}|${r.key}|${i}`}
@@ -175,10 +185,10 @@ export function register(platform) {
                 <table className="dt global-maps">
                     <thead>
                         <tr>
-                            <th>Server Id</th>
-                            <th>Channel</th>
-                            <th>Key</th>
-                            <th>Value</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('serverId')}>Server Id<span className="sort-arrow">{arrow('serverId')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('channel')}>Channel<span className="sort-arrow">{arrow('channel')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('key')}>Key<span className="sort-arrow">{arrow('key')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('value')}>Value<span className="sort-arrow">{arrow('value')}</span></th>
                         </tr>
                     </thead>
                     <tbody>{body}</tbody>

@@ -322,7 +322,7 @@ function EventsView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                <div ref={filterRef} className="flex-none py-2.5 px-3.5 bg-bg1 border-b border-line filter-collapse">
+                <div ref={filterRef} className="flex-none py-2.5 px-3.5 oie-card mx-[14px] mt-3 mb-3 filter-collapse">
                     <button className="btn filter-toggle" type="button" aria-haspopup="true" aria-expanded={filtersOpen}
                         onClick={() => setFiltersOpen((o) => !o)}>
                         <Icon name="filter" /><span>Filters</span><Icon name="chevD" size={14} />
@@ -367,18 +367,18 @@ function EventsView() {
                     </div>
                     </div>
                 </div>
-                <div className="flex-1 overflow-auto min-h-0 flex flex-col">
+                <div className="flex-1 overflow-auto min-h-0 flex flex-col oie-elev border border-line rounded-[10px] mx-[14px] mb-3">
                     <DataTableHost columns={COLUMNS} options={options} onReady={(t) => { tableRef.current = t; }} />
                 </div>
-                <div className="filterbar">
+                <div className="filterbar oie-card mx-[14px] mb-3">
                     <button className="btn" disabled={s.offset <= 0}
                         onClick={() => { st.current.offset = Math.max(0, st.current.offset - st.current.limit); search(false); }}>Prev</button>
                     <button className="btn" disabled={s.offset + s.limit >= s.total}
                         onClick={() => { st.current.offset += st.current.limit; search(false); }}>Next</button>
                     <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(s.total)}`}</span>
                 </div>
-                <div className="split-handle" data-orient="v" data-resize="next" />
-                <div className="flex-none h-[35%] min-h-[48px] overflow-auto bg-bg1">
+                <div className="split-handle mx-[14px] my-1" data-orient="v" data-resize="next" />
+                <div className="flex-none h-[35%] min-h-[48px] overflow-auto oie-card mx-[14px] mb-3">
                     <EventDetail event={selected} username={username} />
                 </div>
             </div>

@@ -236,6 +236,19 @@ function CodeTemplatesView() {
                     case 'lastModified': return fmtDate(n.kind === 'library' ? n.lib.lastModified : n.tpl.lastModified);
                     default: return '';
                 }
+            },
+            // Click-to-sort: mirror render(n)'s value extraction but return the raw
+            // comparable. Sorts libraries among themselves AND templates within each
+            // library (TreeTable sorts siblings at every level).
+            sortValue: (n) => {
+                switch (c.key) {
+                    case 'name': return String((n.kind === 'library' ? n.lib.name : n.tpl.name) || '').toLowerCase();
+                    case 'id': return String((n.kind === 'library' ? n.lib.id : n.tpl.id) || '').toLowerCase();
+                    case 'description': return String((n.kind === 'library' ? n.lib.description : templateDescription(n.tpl)) || '').toLowerCase();
+                    case 'revision': return Number(n.kind === 'library' ? n.lib.revision : n.tpl.revision) || 0;
+                    case 'lastModified': return (n.kind === 'library' ? n.lib.lastModified : n.tpl.lastModified)?.time ?? 0;
+                    default: return null;
+                }
             }
         }));
     }
@@ -833,7 +846,7 @@ function CodeTemplatesView() {
                     editor fills the column; the right Context panel stays. */}
                 <div className={'split vertical flex-1 min-w-0' + (editorMax ? ' is-editor-max' : '')}>
                     <div className="split-a h-[320px] flex-none flex flex-col min-h-0" data-editor-overtake>
-                        <div className="flex-1 min-h-0 overflow-auto">
+                        <div className="flex-1 min-h-0 overflow-auto oie-tablecard px-[14px] pt-3">
                             <TreeTable
                                 data={treeData}
                                 columns={treeColumns()}
@@ -853,7 +866,7 @@ function CodeTemplatesView() {
                                 pinnedKeys={['name']}
                                 emptyText="No code template libraries" />
                         </div>
-                        <div className="filterbar flex-none">
+                        <div className="filterbar flex-none oie-card mx-[14px] my-2">
                             <span className="counts">{countsText}</span>
                             <span className="ml-auto inline-flex items-center gap-1.5">
                                 <label>Filter:</label>
@@ -862,7 +875,7 @@ function CodeTemplatesView() {
                             </span>
                         </div>
                     </div>
-                    <div className="split-handle" data-orient="v" data-resize="prev" data-editor-overtake />
+                    <div className="split-handle mx-[14px]" data-orient="v" data-resize="prev" data-editor-overtake />
                     <div className="split-b flex flex-col min-h-0">
                         <div className="flex flex-col flex-1 min-h-0 py-3.5 px-4 overflow-auto">
                             <EditorPane found={found} kind={selected && selected.kind}

@@ -79,6 +79,20 @@ export function statsOf(status, lifetime = false) {
     return out;
 }
 
+/* Engine-wide totals summed from the deployed channel statuses — the same
+   per-channel numbers the table shows, aggregated (no new data source). Honors
+   the Current/Lifetime toggle. queuedChannels = channels with a live queue. */
+export function engineTotals(statuses, lifetime = false) {
+    const t = { RECEIVED: 0, FILTERED: 0, QUEUED: 0, SENT: 0, ERROR: 0, queuedChannels: 0 };
+    for (const st of statuses || []) {
+        const s = statsOf(st, lifetime);
+        t.RECEIVED += s.RECEIVED; t.FILTERED += s.FILTERED; t.QUEUED += s.QUEUED;
+        t.SENT += s.SENT; t.ERROR += s.ERROR;
+        if (s.QUEUED > 0) t.queuedChannels++;
+    }
+    return t;
+}
+
 function childrenOf(status) {
     const kids = status?.childStatuses?.dashboardStatus ?? status?.childStatuses;
     if (!kids) return [];
@@ -167,6 +181,7 @@ function DashboardView({ onToggleView }) {
 
     const savedTagMode = lsGet('oie-dash-tagmode', 'names');
     const tagModeRef = useRef(['names', 'icons', 'off'].includes(savedTagMode) ? savedTagMode : 'names');
+    const showStatsRef = useRef(lsGet('oie-dash-stats', 'on') !== 'off');   // KPI stat cards visibility
 
     // Type + Port are web-only columns Swing's dashboard doesn't have, so they
     // start hidden (reachable via the <TreeTable> column menu) — matching Swing's
@@ -517,12 +532,22 @@ function DashboardView({ onToggleView }) {
     function treeColumns() {
         return allColumns().map((col) => ({
             key: col.key, label: col.label, align: col.align, mono: col.mono, tree: col.tree,
+            sortValue: col.sortValue,   // makes the header click-to-sort (controlled below)
             render: (node) => {
                 if (node.kind === 'group') return col.renderGroupAggregate(node.totals, node.ctx);
                 if (node.kind === 'connector') return col.renderConnector(node.child, node.stats);
                 return col.renderChannel(node.st, node.stats);
             }
         }));
+    }
+
+    // Header-click sort: toggle direction on the same column, else sort ascending by
+    // the new one. sortChannels (used by BOTH the tree AND visibleChannelIds) reads
+    // these refs, so the displayed order and shift-select order stay in sync.
+    function handleSort(key) {
+        if (sortKeyRef.current === key) sortDirRef.current = -sortDirRef.current;
+        else { sortKeyRef.current = key; sortDirRef.current = 1; }
+        forceRender();
     }
 
     function sortChannels(list) {
@@ -540,6 +565,44 @@ function DashboardView({ onToggleView }) {
         });
     }
 
+    // Group-level sort value for the active column so the GROUPS reorder too — Swing's
+    // SortableTreeTableModel sorts each node's children (groups AND channels within).
+    // Stat columns use the group's aggregate total; Name uses the group name; other
+    // columns have no group-level value (groups keep their order).
+    const STAT_SORT_KEYS = { received: 'RECEIVED', filtered: 'FILTERED', queued: 'QUEUED', sent: 'SENT', errored: 'ERROR' };
+    function groupSortValue(members, sortKey) {
+        if (sortKey === 'name') return null;   // handled by caller (uses group.name)
+        const statKey = STAT_SORT_KEYS[sortKey];
+        if (!statKey) return null;
+        let sum = 0;
+        for (const st of members) sum += statsOf(st, lifetimeRef.current)[statKey] || 0;
+        return sum;
+    }
+
+    // Groups with their channels sorted, and the groups themselves ordered by the
+    // active column. Single source for BOTH the tree and the shift-select order.
+    function orderedGroups() {
+        const rows = groupedStatuses().map(({ group, members }) => ({
+            group, members: sortChannels(visibleMembers(members))
+        }));
+        const sortKey = sortKeyRef.current, sortDir = sortDirRef.current;
+        const valueOf = (r) => (sortKey === 'name'
+            ? String(r.group.name || '').toLowerCase()
+            : groupSortValue(r.members, sortKey));
+        if (rows.some(r => valueOf(r) !== null)) {
+            rows.sort((a, b) => {
+                const va = valueOf(a), vb = valueOf(b);
+                if (va === null && vb === null) return 0;
+                if (va === null) return 1;
+                if (vb === null) return -1;
+                const cmp = (typeof va === 'number' && typeof vb === 'number')
+                    ? va - vb : String(va).localeCompare(String(vb));
+                return cmp ? cmp * sortDir : String(a.group.name || '').localeCompare(String(b.group.name || ''));
+            });
+        }
+        return rows;
+    }
+
     /* ---- table ---- */
 
     // Flat list of visible channel ids in display order — the basis for
@@ -549,9 +612,9 @@ function DashboardView({ onToggleView }) {
             return sortChannels(visibleMembers(statusesRef.current)).map(st => st.channelId);
         }
         const ids = [];
-        for (const { group, members } of groupedStatuses()) {
+        for (const { group, members } of orderedGroups()) {
             if (collapsedGroupsRef.current.has(group.id)) continue;   // children hidden
-            for (const st of sortChannels(visibleMembers(members))) ids.push(st.channelId);
+            for (const st of members) ids.push(st.channelId);   // already sorted by orderedGroups
         }
         return ids;
     }
@@ -588,8 +651,7 @@ function DashboardView({ onToggleView }) {
             return sortChannels(visibleMembers(statusesRef.current)).map(channelNode);
         }
         const roots = [];
-        for (const { group, members } of groupedStatuses()) {
-            const visible = sortChannels(visibleMembers(members));
+        for (const { group, members: visible } of orderedGroups()) {
             if (filterTextRef.current && !visible.length) continue;   // skip empty group while filtering
             const totals = { RECEIVED: 0, FILTERED: 0, QUEUED: 0, SENT: 0, ERROR: 0 };
             let started = 0;
@@ -997,6 +1059,11 @@ function DashboardView({ onToggleView }) {
             { value: 'off', label: 'Off', title: 'Hide tags' }
         ], tagModeRef.current, (value) => { tagModeRef.current = value; lsSet('oie-dash-tagmode', value); renderTable(); });
 
+        const statsToggle = segControl([
+            { value: 'on', label: 'On', title: 'Show stat cards' },
+            { value: 'off', label: 'Off', title: 'Hide stat cards' }
+        ], showStatsRef.current ? 'on' : 'off', (value) => { showStatsRef.current = (value === 'on'); lsSet('oie-dash-stats', value); forceRender(); });
+
         const radioName = 'dash-stats-' + Math.floor(performance.now());
         // The filter (label+input+counts) always shows and grows.
         const filterZone = h('span', { class: 'flex items-center gap-2.5 flex-1 min-w-[220px]' },
@@ -1008,6 +1075,8 @@ function DashboardView({ onToggleView }) {
             viewToggle,
             h('span', { class: 'inline-flex items-center gap-[5px]' },
                 h('span', { class: 'text-text-faint text-[11px]' }, 'Tags:'), tagToggle),
+            h('span', { class: 'inline-flex items-center gap-[5px]' },
+                h('span', { class: 'text-text-faint text-[11px]' }, 'Stats:'), statsToggle),
             h('div.radio-group.inline-row', { class: 'ml-0' },
                 h('label', h('input', { type: 'radio', name: radioName, checked: true, onChange: () => { lifetimeRef.current = false; renderTable(); forceRender(); } }), 'Current Statistics'),
                 h('label', h('input', { type: 'radio', name: radioName, onChange: () => { lifetimeRef.current = true; renderTable(); forceRender(); } }), 'Lifetime Statistics')));
@@ -1186,12 +1255,43 @@ function DashboardView({ onToggleView }) {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                <div className="flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)]"
+                {statusesRef.current.length > 0 && showStatsRef.current && (() => {
+                    const k = engineTotals(statusesRef.current, lifetimeRef.current);
+                    const fmt = (n) => n.toLocaleString();
+                    const pct = (n, d) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
+                    return (
+                        <div className="dash-kpis">
+                            <div className="dash-kpi">
+                                <div className="k-lbl">Received</div><div className="k-val">{fmt(k.RECEIVED)}</div>
+                                <div className="k-sub">{lifetimeRef.current ? 'lifetime stats' : 'current stats'}</div>
+                            </div>
+                            <div className="dash-kpi">
+                                <div className="k-lbl">Filtered</div><div className="k-val">{fmt(k.FILTERED)}</div>
+                                <div className="k-sub">{pct(k.FILTERED, k.RECEIVED)}% of received</div>
+                            </div>
+                            <div className="dash-kpi warn">
+                                <div className="k-lbl">Queued</div><div className="k-val">{fmt(k.QUEUED)}</div>
+                                <div className="k-sub">across {k.queuedChannels} channel{k.queuedChannels === 1 ? '' : 's'}</div>
+                            </div>
+                            <div className="dash-kpi good">
+                                <div className="k-lbl">Sent</div><div className="k-val">{fmt(k.SENT)}</div>
+                                <div className="k-sub">{pct(k.SENT, k.RECEIVED)}% delivered</div>
+                            </div>
+                            <div className="dash-kpi bad">
+                                <div className="k-lbl">Errored</div><div className="k-val">{fmt(k.ERROR)}</div>
+                                <div className="k-sub">{pct(k.ERROR, k.RECEIVED)}% error rate</div>
+                            </div>
+                        </div>
+                    );
+                })()}
+                <div className="dash-content flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)]"
                     onClick={onEmptyClick}
                     onContextMenu={(e) => { if (!e.target.closest('tr') && !e.target.closest('thead')) onEmptyContextMenu(e); }}>
                     <TreeTable
                         data={treeData}
                         columns={treeColumns()}
+                        sort={{ key: sortKeyRef.current, dir: sortDirRef.current }}
+                        onSort={handleSort}
                         getChildren={(n) => n.children}
                         rowKey={rowKey}
                         rowClassName={(n) => (n.kind === 'group' ? 'group-row' : '')}
@@ -1209,11 +1309,11 @@ function DashboardView({ onToggleView }) {
                         pinnedKeys={['state', 'name']}
                         emptyText={emptyText} />
                 </div>
-                <div ref={filterbarHostRef} className="flex-none" />
+                <div ref={filterbarHostRef} className="dash-filterbar flex-none" />
                 {tabDefs.length > 0 && (
                     <>
-                        <div className="split-handle" data-orient="v" data-resize="next" />
-                        <div className="flex-none h-[clamp(140px,32vh,230px)] overflow-hidden flex flex-col">
+                        <div className="split-handle dash-split" data-orient="v" data-resize="next" />
+                        <div className="dash-dock flex-none h-[clamp(140px,32vh,230px)] overflow-hidden flex flex-col">
                             <div className="tabs flex-none">
                                 {tabDefs.map((def) => (
                                     <button key={def.id || def.label}
