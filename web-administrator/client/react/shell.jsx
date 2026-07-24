@@ -213,7 +213,9 @@ function TopBar({ user, onLogout, serverInfo }) {
             <button className="icon-btn rail-toggle"
                 title={railCollapsed ? 'Show navigation' : 'Hide navigation'}
                 onClick={() => store.setRailCollapsed(!railCollapsed)}>
-                <Icon name="menu" />
+                {/* Plain hamburger when collapsed ("open it"), fold/collapse glyph when expanded.
+                    size=24 sets the svg attr; `.topbar .rail-toggle svg` reinforces via CSS. */}
+                <Icon name={railCollapsed ? 'menu' : 'menuOpen'} size={24} />
             </button>
             <div className="view-title">{title}</div>
             <div className="topbar-spacer" />
@@ -417,8 +419,11 @@ function AppShell({ user, onLogout }) {
         <div className={'shell' + (railCollapsed ? ' rail-collapsed' : '')}>
             <aside className="rail">
                 <div className="rail-brand">
-                    <img src="/assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine"
-                        style={{ width: 172, height: 'auto', display: 'block' }} />
+                    {/* Pre-whitened vector logo — NO CSS filter (the filter softened it; copying
+                        the img grabbed the clean source, which is why it looked fine copied but off
+                        in the bar). Crisp at any DPI on the dark/blue rail. */}
+                    <img src="/assets/oie_logo_banner_text_white.svg" alt="Open Integration Engine"
+                        style={{ width: '100%', height: 'auto', display: 'block' }} />
                 </div>
                 <div className="rail-panes">
                     <Nav only="Engine" />
