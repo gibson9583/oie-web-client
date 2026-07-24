@@ -329,7 +329,7 @@ function isInvalid(channel) {
 function tagColor(tag) {
     const c = tag?.backgroundColor;
     if (c && typeof c === 'object' && c.red !== undefined && c.green !== undefined && c.blue !== undefined) {
-        return `rgba(${c.red}, ${c.green}, ${c.blue}, 0.25)`;
+        return `rgba(${c.red}, ${c.green}, ${c.blue}, 0.26)`;
     }
     return null;
 }

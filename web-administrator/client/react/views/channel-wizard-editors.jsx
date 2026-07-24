@@ -708,7 +708,7 @@ function randomTagColor() {
     return { red: Math.round((r + m) * 255), green: Math.round((g + m) * 255), blue: Math.round((b + m) * 255), alpha: 255 };
 }
 function tagChipBg(color) {
-    return (color && color.red !== undefined) ? `rgba(${color.red}, ${color.green}, ${color.blue}, 0.3)` : 'var(--bg2)';
+    return (color && color.red !== undefined) ? `rgba(${color.red}, ${color.green}, ${color.blue}, 0.26)` : 'var(--bg2)';
 }
 
 function ChannelTags({ channel, version }) {
@@ -769,7 +769,7 @@ function ChannelTags({ channel, version }) {
                         {assigned.map((name) => {
                             const tag = s.all.find((t) => t.name === name);
                             return (
-                                <span key={name} className="inline-flex items-center gap-1 py-0.5 px-2 rounded-full border border-line text-[12px]" style={{ background: tagChipBg(tag && tag.backgroundColor) }}>
+                                <span key={name} className="tag" style={{ background: tagChipBg(tag && tag.backgroundColor) }}>
                                     {name}
                                     <button type="button" className="appearance-none border-0 bg-transparent p-0 text-text-dim hover:text-[var(--text)] leading-none cursor-pointer" style={{ font: 'inherit' }} title="Remove tag" onClick={() => removeTag(name)}>✕</button>
                                 </span>

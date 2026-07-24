@@ -180,7 +180,7 @@ export function register(platform) {
                     <tbody>
                         {sorted.map((item, i) => (
                             <tr key={item.logId != null ? `log-${item.logId}` : `row-${i}`}>
-                                <td className="num">{fmtNumber(item.logId)}</td>
+                                <td className="mono">{fmtNumber(item.logId)}</td>
                                 <td className="mono">{String(item.dateAdded ?? '')}</td>
                                 <td>{String(item.channelName ?? '')}</td>
                                 <td>{String(item.connectorType ?? '')}</td>
