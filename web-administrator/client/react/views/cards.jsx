@@ -80,7 +80,7 @@ function ChannelCard({ status, tags, selected, onSelect, onOpen, onMenu, lifetim
                 </div>
             </div>
             <div className="px-3 h-[18px] overflow-hidden flex gap-1">
-                {tags.map((t, i) => <span key={i} className="tag !py-0 !text-[10px]" style={{ background: tagRgb(t, 0.25) }}>{t.name}</span>)}
+                {tags.map((t, i) => <span key={i} className="tag !py-0 !text-[10px]" style={{ background: tagRgb(t, 0.26) }}>{t.name}</span>)}
             </div>
             <div className="grid grid-cols-4 border-t border-line divide-x divide-line text-center">
                 {[['Received', s.RECEIVED, ''], ['Sent', s.SENT, ''], ['Queued', s.QUEUED, s.QUEUED ? 'text-warn' : ''], ['Errored', s.ERROR, s.ERROR ? 'text-err' : '']].map(([label, val, cls]) => (
@@ -363,14 +363,10 @@ function CardsView({ onToggleView }) {
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Current vs. Lifetime statistics */}
-                    <div className="inline-flex flex-none border border-line-strong rounded-md overflow-hidden text-[12px]">
+                    <div className="segpill flex-none">
                         {[['Current', false], ['Lifetime', true]].map(([label, val]) => (
                             <button key={label} type="button" onClick={() => setLifetime(val)}
-                                className="appearance-none border-0 cursor-pointer px-3 py-1 transition-colors"
-                                style={{
-                                    background: lifetime === val ? 'var(--accent-glow)' : 'transparent',
-                                    color: lifetime === val ? 'var(--accent)' : 'var(--text-dim)'
-                                }}>
+                                className={lifetime === val ? 'on' : ''}>
                                 {label}
                             </button>
                         ))}

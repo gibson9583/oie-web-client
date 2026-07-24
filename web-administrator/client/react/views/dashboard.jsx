@@ -29,6 +29,7 @@ import { Icon } from '../bridges.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { iconPath } from '../../core/icons.js';
+import * as Tabs from '@radix-ui/react-tabs';   // shadcn/Radix dock tabs
 import { CardsView } from './cards.jsx';
 
 export function register(platform) {
@@ -128,23 +129,30 @@ function tagRgb(tag, alpha) {
     return null;
 }
 
+/* Per-tag color applied like the .tag.<color> variants (tint fill, colored
+   border), with text mixed toward the theme foreground so arbitrary/pale tag
+   colors stay readable in both themes. */
+function tagPillStyle(tag) {
+    const c = tagRgb(tag);
+    if (!c) return undefined;
+    return {
+        background: `color-mix(in srgb, ${c} 26%, transparent)`,
+        borderColor: `color-mix(in srgb, ${c} 40%, transparent)`,
+        color: `color-mix(in srgb, ${c} 72%, var(--text))`
+    };
+}
+
 /* Compact two-option segmented control used in the filter bar. */
+/* Segmented toggle — the single app-wide toggle style (.segpill: shadcn pill,
+   same language as the tabs). Used for Tags / Stats / View / Current-Lifetime. */
 function segControl(options, current, onChange) {
-    const wrap = h('span', { class: 'inline-flex flex-none border border-line-strong rounded-[4px] overflow-hidden' });
+    const wrap = h('span', { class: 'segpill flex-none' });
     const buttons = options.map(opt => h('button', {
         type: 'button', title: opt.title || opt.label || '',
-        class: 'appearance-none border-none cursor-pointer py-[3px] px-2 text-[11px] inline-flex items-center gap-1',
-        style: {
-            background: 'transparent', color: 'var(--text-dim)', fontFamily: 'inherit'
-        },
         onClick: () => { paint(opt.value); onChange(opt.value); }
     }, opt.icon ? icon(opt.icon, 13) : null, opt.label || null));
     function paint(value) {
-        buttons.forEach((btn, i) => {
-            const active = options[i].value === value;
-            btn.style.background = active ? 'var(--accent-glow)' : 'transparent';
-            btn.style.color = active ? 'var(--accent)' : 'var(--text-dim)';
-        });
+        buttons.forEach((btn, i) => btn.classList.toggle('on', options[i].value === value));
     }
     paint(current);
     buttons.forEach(b => wrap.appendChild(b));
@@ -801,7 +809,7 @@ function DashboardView({ onToggleView }) {
         if (tagModeRef.current === 'off') return null;
         return tagsFor(channelId).map((tag, i) => tagModeRef.current === 'icons'
             ? tagIconJsx(tag, i)
-            : <span key={i} className="tag" style={{ background: tagRgb(tag, 0.25) }}>{tag.name}</span>);
+            : <span key={i} className="tag" style={tagPillStyle(tag)}>{tag.name}</span>);
     }
 
     // Single line, never wrapping — excess tags clip rather than grow the row.
@@ -1077,9 +1085,13 @@ function DashboardView({ onToggleView }) {
                 h('span', { class: 'text-text-faint text-[11px]' }, 'Tags:'), tagToggle),
             h('span', { class: 'inline-flex items-center gap-[5px]' },
                 h('span', { class: 'text-text-faint text-[11px]' }, 'Stats:'), statsToggle),
-            h('div.radio-group.inline-row', { class: 'ml-0' },
-                h('label', h('input', { type: 'radio', name: radioName, checked: true, onChange: () => { lifetimeRef.current = false; renderTable(); forceRender(); } }), 'Current Statistics'),
-                h('label', h('input', { type: 'radio', name: radioName, onChange: () => { lifetimeRef.current = true; renderTable(); forceRender(); } }), 'Lifetime Statistics')));
+            h('span', { class: 'inline-flex items-center gap-[5px]' },
+                h('span', { class: 'text-text-faint text-[11px]' }, 'Range:'),
+                segControl([
+                    { value: 'current', label: 'Current' },
+                    { value: 'lifetime', label: 'Lifetime' }
+                ], lifetimeRef.current ? 'lifetime' : 'current',
+                    (v) => { lifetimeRef.current = (v === 'lifetime'); renderTable(); forceRender(); })));
 
         const displayBtn = h('button.btn.dash-options-btn', {
             type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false',
@@ -1236,7 +1248,7 @@ function DashboardView({ onToggleView }) {
         : 'Contacting engine…';
 
     return (
-        <div className="view">
+        <div className="view dash-shadcn">
             <ViewTasks>
                 <RailPane title="Dashboard Tasks" paneKey="tasks:Dashboard Tasks" group="dashboard">
                     <div className="taskbar" data-pane-title="Dashboard Tasks">
@@ -1313,21 +1325,25 @@ function DashboardView({ onToggleView }) {
                 {tabDefs.length > 0 && (
                     <>
                         <div className="split-handle dash-split" data-orient="v" data-resize="next" />
-                        <div className="dash-dock flex-none h-[clamp(140px,32vh,230px)] overflow-hidden flex flex-col">
-                            <div className="tabs flex-none">
+                        {/* Dock tabs via Radix (headless a11y: arrow-key nav, roving focus). */}
+                        <Tabs.Root
+                            value={activeTab ? (activeTab.id || activeTab.label) : undefined}
+                            onValueChange={(v) => { activeTabRef.current = tabDefs.find((d) => (d.id || d.label) === v) || tabDefs[0]; forceRender(); }}
+                            className="dash-dock flex-none h-[clamp(140px,32vh,230px)] overflow-hidden flex flex-col">
+                            <Tabs.List className="tabs flex-none">
                                 {tabDefs.map((def) => (
-                                    <button key={def.id || def.label}
-                                        className={'tab' + (def === activeTab ? ' active' : '')}
-                                        onClick={() => { activeTabRef.current = def; forceRender(); }}>{def.label}</button>
+                                    <Tabs.Trigger key={def.id || def.label} value={def.id || def.label} className="tab">
+                                        {def.label}
+                                    </Tabs.Trigger>
                                 ))}
-                            </div>
-                            {activeTab && (
-                                <div key={(activeTab.id || activeTab.label) + '|' + selectionSig}
-                                    className="flex-1 overflow-auto min-h-0">
-                                    <PluginSlot def={activeTab} ctx={tabCtx} />
-                                </div>
-                            )}
-                        </div>
+                            </Tabs.List>
+                            {tabDefs.map((def) => (
+                                <Tabs.Content key={(def.id || def.label) + '|' + (def === activeTab ? selectionSig : '')}
+                                    value={def.id || def.label} className="flex-1 overflow-auto min-h-0">
+                                    {def === activeTab && <PluginSlot def={def} ctx={tabCtx} />}
+                                </Tabs.Content>
+                            ))}
+                        </Tabs.Root>
                     </>
                 )}
             </div>
