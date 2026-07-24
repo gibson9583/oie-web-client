@@ -295,13 +295,12 @@ function MapperEditor({ element, onChange }) {
                 <Field label="Mapping">
                     <input
                         type="text"
-                        placeholder="msg['MSH']['MSH.3']['MSH.3.1'].toString()"
                         value={element.mapping ?? ''}
                         onChange={(e) => { element.mapping = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
-            <div className="span-2">
+            <div className="span-2 mt-2">
                 <Field label="Default Value">
                     <input
                         type="text"

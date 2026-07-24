@@ -220,7 +220,6 @@ function MapperEditor({ element, onChange }) {
     "input",
     {
       type: "text",
-      placeholder: "msg['MSH']['MSH.3']['MSH.3.1'].toString()",
       value: element.mapping ?? "",
       onChange: (e) => {
         element.mapping = e.target.value;
@@ -228,7 +227,7 @@ function MapperEditor({ element, onChange }) {
         force();
       }
     }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Default Value" }, /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Default Value" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",

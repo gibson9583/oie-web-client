@@ -410,7 +410,7 @@ function buildBody(params, kindName, onTasksChange) {
 
     // Fills the pane so right-clicking anywhere in the step area (not just on a
     // row) opens the context menu.
-    const tableHost = h('div', { class: 'min-h-full' });
+    const tableHost = h('div', { class: 'min-h-full oie-card overflow-auto' });
 
     function typeDef(type) {
         return isFilter ? platform.ruleType(type) : platform.stepType(type);
@@ -531,7 +531,7 @@ function buildBody(params, kindName, onTasksChange) {
         clear(editorHost);
         const element = elementAtPath(selectedPath);
         if (!element) {
-            editorHost.appendChild(h('div.dt-empty',
+            editorHost.appendChild(h('div.dt-empty', { class: 'oie-card min-h-full' },
                 h('div', `Select a ${kind.noun.toLowerCase()} to edit`)));
             return;
         }
@@ -1476,7 +1476,7 @@ function buildBody(params, kindName, onTasksChange) {
     // its top pane is tagged `data-editor-overtake` so Maximize can hide it and let
     // the editor fill the column while the right reference panel stays put.
     const editorColumn = h('div.split-a.split.vertical', { class: 'flex-1 min-w-0' },
-        h('div.split-a', { class: 'h-[40%] flex-none', 'data-editor-overtake': '' }, tableHost),
+        h('div.split-a', { class: 'h-[40%] flex-none p-[14px] pb-2', 'data-editor-overtake': '' }, tableHost),
         h('div.split-handle', { 'data-editor-overtake': '' }),
         h('div.split-b', { class: 'flex flex-col min-h-0' },
             bottomTabs.el));
