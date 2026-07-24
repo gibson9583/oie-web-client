@@ -467,6 +467,42 @@ function ChannelsView() {
         return CHANNEL_COLUMNS.map((c) => ({
             key: c.key, label: c.label, align: c.key === 'revDelta' ? 'right' : undefined,
             mono: c.key === 'id', tree: c.key === 'status',
+            // Raw comparable per column (mirrors render's displayed value). Group rows
+            // return null for columns they leave blank/'--' so those sort last.
+            sortValue: (n) => {
+                const isGroup = n.kind === 'group';
+                switch (c.key) {
+                    case 'status': {
+                        if (isGroup) return null;
+                        const ch = n.channel;
+                        return isInvalid(ch) ? 'invalid' : (isEnabled(ch) ? 'enabled' : 'disabled');
+                    }
+                    case 'dataType': return isGroup ? null
+                        : String(n.channel.sourceConnector?.transformer?.inboundDataType || '').toLowerCase();
+                    case 'name': return isGroup
+                        ? String(n.group.name || '').toLowerCase()
+                        : String(n.channel.name || '').toLowerCase();
+                    case 'id': return isGroup
+                        ? String(n.group.id === DEFAULT_GROUP_ID ? 'Default Group' : (n.group.id || '')).toLowerCase()
+                        : String(n.channel.id || '').toLowerCase();
+                    case 'description': return isGroup
+                        ? String(firstLine(n.group.description) || '').toLowerCase()
+                        : String(firstLine(n.channel.description) || '').toLowerCase();
+                    case 'revDelta': {
+                        if (isGroup) return null;
+                        const status = statusByIdRef.current[n.channel.id];
+                        return status ? Number(status.deployedRevisionDelta) || 0 : null;
+                    }
+                    case 'lastDeployed': {
+                        if (isGroup) return null;
+                        const status = statusByIdRef.current[n.channel.id];
+                        return status ? (status.deployedDate?.time ?? 0) : null;
+                    }
+                    case 'lastModified': return isGroup ? null
+                        : (n.channel.exportData?.metadata?.lastModified?.time ?? 0);
+                    default: return null;
+                }
+            },
             render: (n) => {
                 const isGroup = n.kind === 'group';
                 switch (c.key) {
@@ -1247,7 +1283,7 @@ function ChannelsView() {
                     region (a flex child wouldn't grow on the main axis); this
                     leaves clickable empty space below a short tree for
                     click-to-clear, matching the legacy flex:1 grid host. */}
-                <div className="flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)]" onClick={onEmptyClick}>
+                <div className="oie-tablecard flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)] px-[14px] pt-3 pb-3" onClick={onEmptyClick}>
                     <TreeTable
                         data={treeData}
                         columns={treeColumns()}
@@ -1282,7 +1318,7 @@ function ChannelsView() {
                             </>
                         )} />
                 </div>
-                <div className="filterbar">
+                <div className="filterbar oie-card mx-[14px] mb-3">
                     <label>Filter:</label>
                     <input type="text" placeholder="Enter channel tag or name"
                         onInput={(e) => { filterTextRef.current = e.target.value; renderTable(); }} />

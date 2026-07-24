@@ -150,21 +150,35 @@ export function register(platform) {
             // Re-scope (and reset the poll loop) whenever the selection changes.
         }, [channelId, metaDataId]);
 
+        // Click-to-sort (default = fetch/receipt order until a header is clicked).
+        const [sort, setSort] = React.useState({ key: null, dir: 1 });
+        const sorted = React.useMemo(() => {
+            if (!sort.key) return items;
+            const num = sort.key === 'logId';
+            const val = (it) => (num ? (Number(it[sort.key]) || 0) : String(it[sort.key] ?? '').toLowerCase());
+            return [...items].sort((a, b) => {
+                const va = val(a), vb = val(b);
+                return (num ? va - vb : va.localeCompare(vb)) * sort.dir;
+            });
+        }, [items, sort]);
+        const toggleSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+        const arrow = (key) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
+
         return (
-            <div className="dt-wrap max-h-[260px]">
+            <div className="dt-wrap h-full">
                 <table className="dt">
                     <thead>
                         <tr>
-                            <th>Id</th>
-                            <th>Timestamp</th>
-                            <th>Channel</th>
-                            <th>Connector</th>
-                            <th>Event</th>
-                            <th>Information</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('logId')}>Id<span className="sort-arrow">{arrow('logId')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('dateAdded')}>Timestamp<span className="sort-arrow">{arrow('dateAdded')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('channelName')}>Channel<span className="sort-arrow">{arrow('channelName')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('connectorType')}>Connector<span className="sort-arrow">{arrow('connectorType')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('eventState')}>Event<span className="sort-arrow">{arrow('eventState')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('information')}>Information<span className="sort-arrow">{arrow('information')}</span></th>
                         </tr>
                     </thead>
                     <tbody>
-                        {items.map((item, i) => (
+                        {sorted.map((item, i) => (
                             <tr key={item.logId != null ? `log-${item.logId}` : `row-${i}`}>
                                 <td className="num">{fmtNumber(item.logId)}</td>
                                 <td className="mono">{String(item.dateAdded ?? '')}</td>
