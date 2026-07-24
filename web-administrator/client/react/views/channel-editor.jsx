@@ -200,15 +200,6 @@ function ChannelEditorView({ params, query }) {
                         {t && <TaskButton label="Debug Channel" icon="deploy" task="doDebugDeployFromChannelView" onClick={t.openDebugDeployModal} />}
                         {t && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={t.exportChannel} />}
                         {t && <TaskButton label="Back to Channels" icon="channels" onClick={t.backToChannels} />}
-                        {/* Switch to the wizard, carrying the (possibly unsaved) channel — the
-                            wizard reads it from the store. Clear the nav guard first so it
-                            neither prompts nor drops the working copy on the way out. */}
-                        {t && getPref('showViewSwitch') !== false && <TaskButton label="Open in Wizard" icon="wand" onClick={() => {
-                            const ch = store.getState('editingChannel');
-                            const wasNew = store.getState('editingChannelNew') === true;
-                            store.setState('navGuard', null);
-                            router.navigate(wasNew || !ch ? '/channels/new/guided' : `/channels/${ch.id}/guided`);
-                        }} />}
 
                         {/* Contextual connector tasks (Swing ctx-tasks), gated by active tab. */}
                         {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Filter', t.sourceStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => t.gotoElements('filter', 0)} />}
@@ -223,6 +214,17 @@ function ChannelEditorView({ params, query }) {
                         {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Response', t.destStepCount('responseTransformer'))} icon="transform" task="doEditResponseTransformer" onClick={() => t.destEdit('response')} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label="Import Connector" icon="import" task="doImportConnector" onClick={t.destImport} />}
                         {t && ts.tab === 'Destinations' && <TaskButton label="Export Connector" icon="export" task="doExportConnector" onClick={t.destExport} />}
+
+                        {/* Open in Wizard — always pinned to the bottom of the task list.
+                            Switches to the wizard carrying the (possibly unsaved) channel
+                            (read from the store); clear the nav guard first so it neither
+                            prompts nor drops the working copy on the way out. */}
+                        {t && getPref('showViewSwitch') !== false && <TaskButton label="Open in Wizard" icon="wand" onClick={() => {
+                            const ch = store.getState('editingChannel');
+                            const wasNew = store.getState('editingChannelNew') === true;
+                            store.setState('navGuard', null);
+                            router.navigate(wasNew || !ch ? '/channels/new/guided' : `/channels/${ch.id}/guided`);
+                        }} />}
                     </div>
                 </RailPane>
             </ViewTasks>
@@ -689,7 +691,7 @@ function buildBody(params, query, onTasksChange, returning) {
         const root = h('div', { class: 'flex flex-col gap-3.5' },
             renderChannelProperties(props, metadata),
             // Storage and pruning side by side; wraps to one column when narrow.
-            h('div', { class: 'grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] gap-3.5 items-start' },
+            h('div', { class: 'grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] gap-3.5 items-stretch' },
                 renderMessageStorage(props),
                 renderPruning(metadata)),
             renderMetaDataColumns(props),

@@ -805,6 +805,9 @@ export function AlertEditor({ params, query = {} }) {
                     <div className="taskbar" data-pane-title="Alert Edit Tasks">
                         <TaskButton label="Save Alert" icon="save" primary task="doSaveAlerts" onClick={save} />
                         <TaskButton label="Export Alert" icon="export" task="doExportAlert" onClick={exportTask} />
+                        <span className="sep" />
+                        <TaskButton label="Back to Alerts" icon="logout" onClick={() => router.navigate('/alerts')} />
+                        {/* Open in Wizard — always pinned to the bottom of the task list. */}
                         {getPref('showViewSwitch') !== false && <TaskButton label="Open in Wizard" icon="wand" onClick={() => {
                             const model = modelRef.current;
                             store.setState('editingAlert', model);
@@ -812,8 +815,6 @@ export function AlertEditor({ params, query = {} }) {
                             store.setState('navGuard', null);
                             router.navigate(isNew || !model ? '/alerts/new/guided' : `/alerts/${model.id}/guided`);
                         }} />}
-                        <span className="sep" />
-                        <TaskButton label="Back to Alerts" icon="logout" onClick={() => router.navigate('/alerts')} />
                     </div>
                 </RailPane>
             </ViewTasks>
