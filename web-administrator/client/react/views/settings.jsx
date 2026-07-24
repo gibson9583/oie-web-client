@@ -901,16 +901,38 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
     const host = tabHost();
     host.appendChild(loading());
     let rows = [];
+    let filterText = '';   // content filter across key / value / comment
 
     const tableHost = h('div.dt-wrap');
     const showValues = checkbox('Show values', false, { onChange: () => renderRows() });
+    const searchInput = h('input', {
+        type: 'search', placeholder: 'Filter entries…', autocomplete: 'off',
+        class: 'flex-1 min-w-0 bg-transparent border-0 outline-none text-text',
+        onInput: (e) => { filterText = e.target.value.trim().toLowerCase(); renderRows(); }
+    });
+    const searchBox = h('div', {
+        class: 'flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius)] border border-line-strong bg-bg2 text-text-dim min-w-[260px]'
+    }, icon('search', 15), searchInput);
 
     function renderRows() {
         clear(tableHost);
         const valueType = showValues.input.checked ? 'text' : 'password';
         const tbody = h('tbody');
         const blankRow = () => ({ key: '', value: '', comment: '', propKey: CONFIGURATION_PROPERTY_CLASS, prop: null });
+        // Content filter: match key / value / comment (case-insensitive). Blank rows
+        // (e.g. a just-added row) always show so adding while filtering isn't hidden.
+        const q = filterText;
+        const matches = (row) => {
+            if (!q) return true;
+            if (!row.key && !row.value && !row.comment) return true;
+            return row.key.toLowerCase().includes(q)
+                || row.value.toLowerCase().includes(q)
+                || row.comment.toLowerCase().includes(q);
+        };
+        let shown = 0;
         rows.forEach((row, i) => {
+            if (!matches(row)) return;   // hidden; original index i kept for insert/delete
+            shown++;
             tbody.appendChild(h('tr', {
                 onContextmenu: (e) => {
                     e.preventDefault();
@@ -933,6 +955,8 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
         });
         if (!rows.length) {
             tbody.appendChild(h('tr', h('td', { colspan: 4 }, h('span.text-text-faint', 'No configuration map entries'))));
+        } else if (!shown) {
+            tbody.appendChild(h('tr', h('td', { colspan: 4 }, h('span.text-text-faint', `No entries match “${filterText}”`))));
         }
         tableHost.appendChild(h('table.dt',
             h('thead', h('tr', h('th', 'Key'), h('th', 'Value'), h('th', 'Comment'), h('th', { class: 'w-10' }, ''))),
@@ -962,14 +986,16 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
                 });
             }
             clear(host);
-            host.appendChild(h('div.flex.items-center.gap-2.mb-[14px]', showValues.el));
             host.appendChild(h('div.panel',
+                // Controls live in the panel header (this app's convention — panels carry
+                // their tools in .panel-tools), so the filter attaches to the table it acts on.
                 h('div.panel-header', 'Configuration Map',
-                    // Add Row rides the tab's doSave permission — adding a row is
-                    // meaningless without save rights, so no separate identifier.
-                    h('div.panel-tools', platform.checkTask('settings_Configuration Map', 'doSave') ? h('button.btn', {
-                        onClick: () => { rows.push({ key: '', value: '', comment: '', propKey: CONFIGURATION_PROPERTY_CLASS, prop: null }); renderRows(); }
-                    }, icon('plus'), 'Add Row') : null)),
+                    h('div.panel-tools', searchBox, showValues.el,
+                        // Add Row rides the tab's doSave permission — adding a row is
+                        // meaningless without save rights, so no separate identifier.
+                        platform.checkTask('settings_Configuration Map', 'doSave') ? h('button.btn', {
+                            onClick: () => { rows.push({ key: '', value: '', comment: '', propKey: CONFIGURATION_PROPERTY_CLASS, prop: null }); renderRows(); }
+                        }, icon('plus'), 'Add Row') : null)),
                 h('div.panel-body.flush', tableHost)));
             renderRows();
         } catch (e) {
