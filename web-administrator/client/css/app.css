@@ -92,10 +92,13 @@
     --topbar-fg: #e4edf5;
     --statusbar-bg: #111922;
 
-    --radius: 5px;
+    --radius: 10px;
     --rail-w: 216px;
     --topbar-h: 48px;
     --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    /* Soft, layered card elevation — lifts panels off the ground. Distinct from
+       --shadow, which stays the heavy drop for floating layers (menus/toasts). */
+    --elev: 0 1px 2px rgba(0, 0, 0, 0.28), 0 6px 18px rgba(0, 0, 0, 0.34);
     --grid-dot: rgba(133, 158, 178, 0.05);
 }
 
@@ -128,6 +131,7 @@
     --topbar-fg: #ffffff;
     --statusbar-bg: #dde4ea;
     --shadow: 0 8px 28px rgba(29, 41, 53, 0.18);
+    --elev: 0 1px 2px rgba(29, 41, 53, 0.06), 0 6px 18px rgba(29, 41, 53, 0.10);
     --grid-dot: rgba(29, 41, 53, 0.045);
 }
 
@@ -233,7 +237,7 @@ code, pre, .mono { font-family: var(--font-mono); }
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 16px;
+    padding: 0 12px;
     /* Rail-aware hairline (matches the pane separators) — a fixed gray --line
        reads as an odd seam across a tinted environment-color rail. */
     border-bottom: 1px solid color-mix(in srgb, var(--rail-fg) 14%, transparent);
@@ -400,6 +404,12 @@ code, pre, .mono { font-family: var(--font-mono); }
 }
 .icon-btn:hover { background: var(--bg3); color: var(--text); }
 .icon-btn svg { width: 16px; height: 16px; }
+/* Nav (rail) toggle: a larger 24px glyph. `.icon-btn` is a fixed 30px FLEX box, so a
+   bigger svg gets flex-shrunk on the main axis (width collapses, height doesn't) — the
+   real reason earlier width tweaks did nothing. `flex-shrink:0` + a roomier padding-free
+   button fixes it. `.icon-btn.rail-toggle svg` outranks `.icon-btn svg` (avoids ordering). */
+.icon-btn.rail-toggle { width: 34px; height: 34px; padding: 0; }
+.icon-btn.rail-toggle svg { width: 24px; height: 24px; flex-shrink: 0; }
 
 /* ---- Content / views --------------------------------------------------------- */
 
@@ -559,8 +569,11 @@ code, pre, .mono { font-family: var(--font-mono); }
     background: var(--bg1);
     border: 1px solid var(--line);
     border-radius: var(--radius);
+    box-shadow: var(--elev);
     overflow: hidden;
 }
+/* Nested panels (e.g. the step editor) shouldn't stack a second shadow. */
+.panel .panel { box-shadow: none; }
 
 .panel + .panel { margin-top: 14px; }
 
@@ -804,7 +817,7 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .modal {
     background: var(--bg1);
     border: 1px solid var(--line-strong);
-    border-radius: 6px;
+    border-radius: var(--radius);
     box-shadow: var(--shadow);
     width: min(560px, calc(100vw - 40px));
     max-height: calc(100vh - 80px);
@@ -1891,3 +1904,97 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
 }
 
 } /* end @layer components */
+
+/* ── Dashboard: KPI stat strip + card-styled channel table & log dock ────
+   Engine-wide totals (summed from the same per-channel stats the table shows).
+   The table/dock get the lifted-card look via paint-only borders/shadow on the
+   existing scroll containers — no wrapper divs, so table interaction is intact. */
+.dash-kpis { display: flex; gap: 10px; padding: 12px 14px; flex: none; }
+.dash-kpi {
+    flex: 1; min-width: 0;
+    background: var(--bg2); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--elev);
+    padding: 9px 13px;
+}
+.dash-kpi .k-lbl { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
+.dash-kpi .k-val { font-size: 21px; font-weight: 680; letter-spacing: -0.01em; margin-top: 2px; color: var(--text); font-variant-numeric: tabular-nums; }
+.dash-kpi .k-sub { font-size: 11px; color: var(--text-dim); margin-top: 1px; font-variant-numeric: tabular-nums; }
+.dash-kpi.good .k-val { color: var(--ok); }
+.dash-kpi.warn .k-val { color: var(--warn); }
+.dash-kpi.bad .k-val { color: var(--err); }
+
+.dash-content { padding: 0 14px 12px; }
+/* When the stat strip is hidden (Stats: Off), the table is the first element under the
+   topbar — give it the top gap the strip would otherwise provide, so it isn't flush. */
+.dash-content:first-child { padding-top: 12px; }
+/* Card look painted directly onto the table's own scroll container — no extra
+   wrapper, so the sticky header + sort/resize grabbers keep working. */
+.dash-content > .dt-wrap {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+    background: var(--bg1);
+}
+
+/* Log dock (Server Log / Connection Log / Global Maps) — same card treatment.
+   Paint-only + margin; the dock's own overflow/scroll structure is untouched. */
+.dash-dock {
+    margin: 0 14px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+    background: var(--bg1);
+}
+/* Dock plugin tables (Connection Log / Global Maps / Server Log) fill the card
+   height so a short table doesn't leave empty space below it inside the card. */
+.dash-dock .dt-wrap { height: 100%; }
+
+/* Dashboard filter bar — carded to match the table & dock it sits between.
+   Scoped to .dash-filterbar so the SHARED .filterbar (messages/events/channels/
+   code-templates) is untouched. Replaces the base border-top with a full border. */
+.dash-filterbar .filterbar {
+    margin: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+}
+
+/* ── Sizing handles: unified grip-pill across EVERY split/resize divider ──
+   The bar becomes the (transparent) drag hit-area; a short rounded pill in the
+   middle is the visible grip — matching the rounded card language. Orientation-
+   aware: horizontal divider → horizontal pill, vertical divider → vertical pill. */
+.split-handle, .split > .split-handle { background: transparent; position: relative; }
+.split-handle::after, .split > .split-handle::after {
+    content: "";
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    border-radius: 99px; background: var(--line-strong);
+    transition: background 0.12s, width 0.12s, height 0.12s;
+}
+.split-handle[data-orient="v"]::after, .split.vertical > .split-handle::after { width: 40px; height: 4px; }
+.split-handle[data-orient="h"]::after, .split:not(.vertical) > .split-handle::after { width: 4px; height: 40px; }
+.split-handle:hover::after, .split-handle.dragging::after,
+.split > .split-handle:hover::after, .split.dragging > .split-handle::after { background: var(--accent); }
+/* Dashboard dock handle keeps its card-width inset. */
+.dash-split { margin: 4px 14px; }
+
+/* ── Reusable card vocabulary (apply across views for one consistent look) ─
+   `oie-card`      → panels / toolbars / dock: full card (border + radius + elev).
+   `oie-elev`      → just the soft elevation (compose with your own border/radius).
+   `oie-tablecard` → paints the card onto a data table's OWN scroll container.
+   NEVER wrap a data table in a new element — it breaks the sticky header and the
+   column-resize grabbers. Add `oie-tablecard` to the EXISTING container that holds
+   the table (its `.dt-wrap` child gets carded). */
+.oie-elev { box-shadow: var(--elev); }
+.oie-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+    background: var(--bg1);
+}
+/* Descendant (not child) so it works whether the table's `.dt-wrap` is a direct
+   child (TreeTable) or nested one level (DataTableHost's mount wrapper). */
+.oie-tablecard .dt-wrap {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+}
