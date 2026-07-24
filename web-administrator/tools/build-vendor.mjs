@@ -38,3 +38,48 @@ for (const [pkg, entry] of Object.entries(VENDOR)) {
     });
     console.log(`[build-vendor] bundled ${pkg} -> client/vendor/${pkg}.js`);
 }
+
+/*
+ * Monaco is special: a large multi-module ESM package with its own CSS + webfont
+ * that also spawns web workers. core/monaco.js imports it via the 'monaco-editor'
+ * specifier (mapped to /vendor/monaco/editor.main.js in the page import map) and
+ * constructs the workers from /vendor/monaco/*.worker.js. Everything is bundled
+ * here into client/vendor/monaco/ so it loads self-hosted (no CDN, air-gapped) as
+ * modern ESM — replacing the deprecated AMD min/vs loader.
+ */
+const monacoOut = resolve(clientDir, 'vendor', 'monaco');
+// Editor namespace (ESM). esbuild emits editor.main.css alongside (Monaco's CSS
+// isn't auto-injected the way Vite/webpack do it); core/monaco.js links it. The
+// codicon webfont is inlined as a data URL so there are no separate asset files
+// or path rewrites to serve.
+await build({
+    entryPoints: { 'editor.main': 'monaco-editor/esm/vs/editor/editor.main.js' },
+    outdir: monacoOut,
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    target: 'es2022',
+    minify: true,
+    legalComments: 'none',
+    loader: { '.ttf': 'dataurl' }
+});
+// Language-service workers — self-contained classic (IIFE) scripts loaded via
+// new Worker(url). Each bundles its own dependencies, so there's no importScripts
+// / AMD baseUrl dance.
+await build({
+    entryPoints: {
+        'editor.worker': 'monaco-editor/esm/vs/editor/editor.worker.js',
+        'ts.worker': 'monaco-editor/esm/vs/language/typescript/ts.worker.js',
+        'json.worker': 'monaco-editor/esm/vs/language/json/json.worker.js',
+        'css.worker': 'monaco-editor/esm/vs/language/css/css.worker.js',
+        'html.worker': 'monaco-editor/esm/vs/language/html/html.worker.js'
+    },
+    outdir: monacoOut,
+    bundle: true,
+    format: 'iife',
+    platform: 'browser',
+    target: 'es2022',
+    minify: true,
+    legalComments: 'none'
+});
+console.log('[build-vendor] bundled monaco-editor -> client/vendor/monaco/ (editor.main.js + 5 workers)');

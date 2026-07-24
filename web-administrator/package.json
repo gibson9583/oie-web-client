@@ -10,6 +10,7 @@
   "scripts": {
     "prestart": "node tools/build-vendor.mjs",
     "start": "node server/index.js",
+    "predev": "node tools/build-vendor.mjs",
     "dev": "WEBADMIN_DEV=1 node --watch-path=./server server/index.js",
     "build": "node tools/build-vendor.mjs && vite build && node tools/build-plugins.mjs && node tools/build-connectors.mjs",
     "test": "for f in client/core/*.test.js server/*.test.js; do node \"$f\" || exit 1; done"

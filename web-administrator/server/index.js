@@ -92,21 +92,16 @@ app.get('/webadmin/config.json', (req, res) => {
     });
 });
 
-// --- Vendored Monaco editor (bundled for air-gapped installs) ----------------
-// Code editors upgrade to Monaco from this local path instead of a CDN, so
-// syntax highlighting/completion work with no internet access. Served straight
-// from the installed monaco-editor package's prebuilt AMD bundle (min/vs); the
-// loader in client/core/monaco.js requests /vendor/monaco/vs/loader.js etc.
-// Registered here (before the Vite/static frontend) so it wins in dev and prod.
-// If the package isn't installed, editors fall back to the plain textarea.
-try {
-    const monacoMin = path.join(path.dirname(require.resolve('monaco-editor/package.json')), 'min');
-    // maxAge (not immutable): the min/vs filenames aren't content-hashed, so a
-    // Monaco version bump reuses the same URLs — let the browser revalidate.
-    app.use('/vendor/monaco', express.static(monacoMin, { maxAge: '1d', dotfiles: 'deny' }));
-} catch {
-    console.warn('  [monaco] monaco-editor not installed — code editors will use the basic textarea. Run "npm install".');
-}
+// --- Vendored Monaco editor (self-hosted ESM, for air-gapped installs) --------
+// Code editors upgrade to Monaco loaded from this local path instead of a CDN, so
+// syntax highlighting/completion work with no internet access. The editor bundle
+// + workers are built by tools/build-vendor.mjs into client/vendor/monaco/ (ESM,
+// self-contained). Mounted here (before the Vite/static frontend) so /vendor/
+// monaco/* resolves in dev and prod alike. If the bundle isn't present, editors
+// fall back to the plain textarea. Files are (re)built per install, so revalidate
+// rather than cache immutably.
+app.use('/vendor/monaco', express.static(path.join(clientDir, 'vendor', 'monaco'),
+    { maxAge: '1d', dotfiles: 'deny' }));
 
 // --- Plugins -----------------------------------------------------------------
 // Registered BEFORE the frontend so /plugins/* and /webadmin/plugins.json take

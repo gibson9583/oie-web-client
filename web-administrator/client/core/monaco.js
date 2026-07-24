@@ -1,16 +1,18 @@
 /*
  * Monaco editor integration (lazy, locally served, optional).
  *
- * Monaco is bundled with the web administrator (the server serves the installed
- * monaco-editor package's min/vs build at /vendor/monaco — see server/index.js),
- * so it works fully air-gapped with no CDN. The built-in textarea editor
- * (codeeditor.js) remains the guaranteed baseline if Monaco ever fails to load.
+ * Monaco is loaded as ESM: the editor bundle and its web workers are self-hosted,
+ * pre-bundled files under /vendor/monaco (built by tools/build-vendor.mjs, served
+ * by server/index.js) — so it works fully air-gapped with no CDN. Both are loaded
+ * by absolute URL (bypassing the app bundler with @vite-ignore), so dev and prod
+ * load identically. The built-in textarea editor (codeeditor.js) remains the
+ * guaranteed baseline if Monaco ever fails to load.
  * When it loads, every code editor upgrades in place to a full Monaco instance
  * with syntax highlighting tuned for the engine's Rhino JavaScript:
  *   - syntax-only validation (Rhino/E4X idioms like importPackage() would
  *     trip semantic checks)
- *   - completion entries for the Mirth/OIE scope variables (msg, tmp,
- *     channelMap, logger, ...)
+ *   - typed completion for the Mirth/OIE scope variables (msg, tmp, channelMap,
+ *     logger, ...) scoped to the Rhino runtime (no browser globals)
  *   - themes matching the app's light/dark palette, switched live
  */
 
@@ -19,87 +21,160 @@ import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
 import { getActiveCompletions } from './script-completions.js';
 
-// Local path the server mounts the monaco-editor min/vs build at (no CDN).
-const BASE = '/vendor/monaco';
+// Where the server serves the vendored Monaco worker bundles. The editor bundle
+// itself is imported via the 'monaco-editor' specifier (import map / Vite).
+const MONACO_VENDOR = '/vendor/monaco';
 const LOAD_TIMEOUT_MS = 10000;
 
 let loadPromise = null;
 
 export function ensureMonaco() {
     if (loadPromise) return loadPromise;
-    loadPromise = new Promise((resolve) => {
-        const timeout = setTimeout(() => resolve(null), LOAD_TIMEOUT_MS);
-        const script = document.createElement('script');
-        script.src = `${BASE}/vs/loader.js`;
-        script.onerror = () => { clearTimeout(timeout); resolve(null); };
-        script.onload = () => {
-            try {
-                window.require.config({ paths: { vs: `${BASE}/vs` } });
-                // Blob worker shim: a worker spawned from a blob: URL has an
-                // opaque origin, so a root-relative importScripts('/vendor/...')
-                // is an invalid URL *inside the worker* — it can't resolve '/...'
-                // against the blob: base. Use a fully-qualified same-origin URL so
-                // the worker (and its AMD baseUrl, which loads the language-service
-                // workers like tsWorker.js) resolve against this server. Without
-                // this the TS worker fails and IntelliSense/completion stops.
-                const workerBase = `${window.location.origin}${BASE}`;
-                window.MonacoEnvironment = {
-                    getWorkerUrl: () => URL.createObjectURL(new Blob([
-                        `self.MonacoEnvironment={baseUrl:'${workerBase}/'};importScripts('${workerBase}/vs/base/worker/workerMain.js');`
-                    ], { type: 'text/javascript' }))
-                };
-                window.require(['vs/editor/editor.main'],
-                    () => { clearTimeout(timeout); setup(window.monaco); resolve(window.monaco); },
-                    () => { clearTimeout(timeout); resolve(null); });
-            } catch {
-                clearTimeout(timeout);
-                resolve(null);
-            }
-        };
-        document.head.appendChild(script);
-    });
+    loadPromise = loadMonaco();
     return loadPromise;
 }
 
-/* Reserved scope variables Rhino injects into every channel script. Offered as
-   an always-available completion list (the util classes — ChannelUtil, DateUtil,
-   … — come from the generated User API .d.ts instead, with full member info). */
+// Inject the editor stylesheet emitted alongside the esbuild ESM bundle (which,
+// unlike Vite/webpack, doesn't auto-inject its CSS). Idempotent.
+function ensureMonacoCss() {
+    if (document.getElementById('oie-monaco-css')) return;
+    const link = document.createElement('link');
+    link.id = 'oie-monaco-css';
+    link.rel = 'stylesheet';
+    link.href = `${MONACO_VENDOR}/editor.main.css`;
+    document.head.appendChild(link);
+}
+
+async function loadMonaco() {
+    try {
+        // Route Monaco's language-service workers to the self-hosted, pre-bundled
+        // worker files (self-contained classic workers — no importScripts, no CDN,
+        // no blob shim). Must be set before the editor is imported.
+        self.MonacoEnvironment = {
+            getWorker(_workerId, label) {
+                const file =
+                    (label === 'typescript' || label === 'javascript') ? 'ts.worker.js'
+                        : label === 'json' ? 'json.worker.js'
+                            : (label === 'css' || label === 'scss' || label === 'less') ? 'css.worker.js'
+                                : (label === 'html' || label === 'handlebars' || label === 'razor') ? 'html.worker.js'
+                                    : 'editor.worker.js';
+                return new Worker(`${MONACO_VENDOR}/${file}`);
+            }
+        };
+        ensureMonacoCss();
+
+        // Load the vendored bundle by absolute URL. @vite-ignore keeps Vite from
+        // rewriting/pre-bundling it in dev, so the browser fetches the same
+        // self-hosted file in dev and prod (no editor/worker bundler mismatch).
+        const timeout = new Promise((res) => setTimeout(() => res(null), LOAD_TIMEOUT_MS));
+        const monaco = await Promise.race([
+            import(/* @vite-ignore */ `${MONACO_VENDOR}/editor.main.js`),
+            timeout
+        ]);
+        if (!monaco || !monaco.editor) return null;
+        // Views + codeeditor.js read the namespace off the global (monaco.Range,
+        // monaco.editor.getEditors()); keep that contract.
+        window.monaco = monaco;
+        setup(monaco);
+        return monaco;
+    } catch {
+        return null;   // textarea fallback (codeeditor.js) stays in place
+    }
+}
+
+/* Reserved scope variables Rhino injects into every channel script. Each carries
+   a TypeScript type so the language service gives member completion, signature
+   help and hover docs on them (e.g. channelMap.get(…), logger.info(…),
+   router.routeMessage(…)) — see MIRTH_GLOBALS_DTS below. Types that are engine
+   userutil classes (SourceMap, VMRouter, ImmutableConnectorMessage, …) resolve
+   from the generated User API .d.ts; the map globals reuse ChannelMap's shape;
+   `logger` uses the small Log4jLogger interface declared alongside. E4X values
+   (msg/tmp) and untyped helpers stay `any`. */
 const RHINO_GLOBALS = [
-    ['msg', 'The inbound message (E4X XML / JSON object depending on data type)'],
-    ['tmp', 'The outbound template message'],
-    ['template', 'The raw template string'],
-    ['message', 'Raw message string (preprocessor) / ImmutableMessage (postprocessor)'],
-    ['connectorMessage', 'The current ImmutableConnectorMessage'],
-    ['response', 'The Response (response transformer / postprocessor)'],
-    ['sourceMap', 'Source map (read-only variable map)'],
-    ['connectorMap', 'Connector-scoped variable map'],
-    ['channelMap', 'Channel-scoped variable map'],
-    ['globalChannelMap', 'Channel-scoped map persisted across messages'],
-    ['globalMap', 'Server-wide variable map'],
-    ['configurationMap', 'Configuration map (Settings → Configuration Map)'],
-    ['responseMap', 'Response variable map'],
-    ['logger', 'Log4j logger (logger.info/warn/error)'],
-    ['router', 'VMRouter — router.routeMessage(channelName, message)'],
-    ['alerts', 'AlertSender — alerts.sendAlert(message)'],
-    ['replacer', 'TemplateValueReplacer'],
-    ['destinationSet', 'DestinationSet — control which destinations process the message'],
-    ['channelId', 'Current channel id'],
-    ['channelName', 'Current channel name'],
-    ['importPackage', 'Rhino: import a Java package, e.g. importPackage(java.util)'],
-    ['validate', 'Transformer helper: validate(mapping, defaultValue, replacements)'],
-    ['$', "Shorthand lookup across all maps: $('variable')"],
-    ['$co', 'Connector map accessor'], ['$c', 'Channel map accessor'],
-    ['$s', 'Source map accessor'], ['$gc', 'Global channel map accessor'],
-    ['$g', 'Global map accessor'], ['$cfg', 'Configuration map accessor'],
-    ['$r', 'Response map accessor']
+    { name: 'msg', type: 'any', doc: 'The inbound message (E4X XML / JSON object depending on data type)' },
+    { name: 'tmp', type: 'any', doc: 'The outbound template message' },
+    { name: 'template', type: 'string', doc: 'The raw template string' },
+    { name: 'message', type: 'any', doc: 'Raw message string (preprocessor) / ImmutableMessage (postprocessor)' },
+    { name: 'connectorMessage', type: 'ImmutableConnectorMessage', doc: 'The current connector message' },
+    { name: 'response', type: 'Response', doc: 'The Response (response transformer / postprocessor)' },
+    { name: 'sourceMap', type: 'SourceMap', doc: 'Source map (read-only variable map)' },
+    { name: 'connectorMap', type: 'ChannelMap', doc: 'Connector-scoped variable map' },
+    { name: 'channelMap', type: 'ChannelMap', doc: 'Channel-scoped variable map' },
+    { name: 'globalChannelMap', type: 'ChannelMap', doc: 'Channel-scoped map persisted across messages' },
+    { name: 'globalMap', type: 'ChannelMap', doc: 'Server-wide variable map' },
+    { name: 'configurationMap', type: 'ChannelMap', doc: 'Configuration map (Settings → Configuration Map)' },
+    { name: 'responseMap', type: 'ResponseMap', doc: 'Response variable map' },
+    { name: 'logger', type: 'Log4jLogger', doc: 'Log4j logger (logger.info/warn/error)' },
+    { name: 'router', type: 'VMRouter', doc: 'VMRouter — router.routeMessage(channelName, message)' },
+    { name: 'alerts', type: 'AlertSender', doc: 'AlertSender — alerts.sendAlert(message)' },
+    { name: 'replacer', type: 'any', doc: 'TemplateValueReplacer' },
+    { name: 'destinationSet', type: 'DestinationSet', doc: 'Control which destinations process the message' },
+    { name: 'channelId', type: 'string', doc: 'Current channel id' },
+    { name: 'channelName', type: 'string', doc: 'Current channel name' },
+    { name: 'importPackage', type: '(pkg: any) => void', doc: 'Rhino: import a Java package, e.g. importPackage(java.util)' },
+    { name: 'validate', type: '(mapping: any, defaultValue?: any, replacements?: any[]) => any', doc: 'Transformer helper: validate(mapping, defaultValue, replacements)' },
+    { name: '$', type: '(key: string, value?: any) => any', doc: "Shorthand lookup across all maps: $('variable')" },
+    { name: '$co', type: '(key: string, value?: any) => any', doc: 'Connector map accessor' },
+    { name: '$c', type: '(key: string, value?: any) => any', doc: 'Channel map accessor' },
+    { name: '$s', type: '(key: string, value?: any) => any', doc: 'Source map accessor' },
+    { name: '$gc', type: '(key: string, value?: any) => any', doc: 'Global channel map accessor' },
+    { name: '$g', type: '(key: string, value?: any) => any', doc: 'Global map accessor' },
+    { name: '$cfg', type: '(key: string, value?: any) => any', doc: 'Configuration map accessor' },
+    { name: '$r', type: '(key: string, value?: any) => any', doc: 'Response map accessor' }
 ];
+
+/* A .d.ts for the injected scope variables above, added as its own extraLib so
+   the TypeScript language service treats them as typed globals. `logger` isn't a
+   userutil class, so declare the log4j surface it exposes here. Everything else
+   references a type from the generated User API lib (combined into one scope). */
+const MIRTH_GLOBALS_DTS =
+    '/* ---- Rhino scope variables injected into every channel script ---- */\n' +
+    'interface Log4jLogger {\n' +
+    '    info(message: any): void; warn(message: any): void; error(message: any): void;\n' +
+    '    debug(message: any): void; trace(message: any): void; fatal(message: any): void;\n' +
+    '}\n' +
+    RHINO_GLOBALS.map((g) => `/** ${g.doc} */\ndeclare const ${g.name}: ${g.type};`).join('\n') + '\n';
+
+/* ECMAScript baseline offered to IntelliSense, chosen to match the engine's
+   Rhino runtime (NOT a browser). `lib` deliberately omits 'dom', so browser
+   globals (window/document/fetch/console/localStorage/…) are never suggested.
+   ES2015 matches modern OIE/Mirth Rhino (1.7.14: let/const, arrow fns, template
+   literals, destructuring, Map/Set, for-of). Caveat: the es2015 lib still
+   surfaces Promise/Symbol, which Rhino lacks — an imperfect but close fit.
+   Drop to 'ES5'/['es5'] for older engines. */
+const RHINO_TARGET = 'ES2015';
+const RHINO_LIB = ['es2015'];
+
+/* Globals Rhino adds that no standard TS lib declares: Java interop (LiveConnect)
+   and E4X. Kept intentionally loose (`any`) — these are dynamic Java/XML bridges,
+   not typed APIs; the point is that completing `java.util.…`, `Packages.…`, or an
+   XML literal doesn't get flagged, and that they're offered while browser globals
+   are not. (importPackage is a typed global in MIRTH_GLOBALS_DTS above.) */
+const RHINO_INTEROP_DTS =
+    '/* ---- Rhino / LiveConnect (Java interop) + E4X globals ---- */\n' +
+    'declare const java: any;\n' +
+    'declare const javax: any;\n' +
+    'declare const Packages: any;\n' +
+    'declare const com: any;\n' +
+    'declare const org: any;\n' +
+    'declare const net: any;\n' +
+    'declare const edu: any;\n' +
+    'declare function importClass(className: any): void;\n' +
+    'declare const JavaAdapter: any;\n' +
+    'declare const JavaImporter: any;\n' +
+    '/* E4X (XML in JavaScript) — Rhino built-in */\n' +
+    'declare const XML: any;\n' +
+    'declare const XMLList: any;\n' +
+    'declare const Namespace: any;\n' +
+    'declare const QName: any;\n' +
+    'declare function isXMLName(name: any): boolean;\n';
 
 /* Reserved scope variables get keyword-style coloring (like the Swing editor),
    applied as editor decorations since Monaco's JS tokenizer would otherwise
    treat them as plain identifiers. Custom boundaries ([\w$]) so the $-accessors
    ($, $co, $gc, …) match exactly. Longest-first so $co wins over $. */
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const RESERVED_NAMES = RHINO_GLOBALS.map(([n]) => n).sort((a, b) => b.length - a.length);
+const RESERVED_NAMES = RHINO_GLOBALS.map((g) => g.name).sort((a, b) => b.length - a.length);
 const RESERVED_RE = new RegExp(`(?<![\\w$])(?:${RESERVED_NAMES.map(escapeRe).join('|')})(?![\\w$])`, 'g');
 // Don't color a match that falls inside a string/comment/regexp literal.
 const TOKEN_SKIP = /string|comment|regexp/;
@@ -159,7 +234,25 @@ function setup(monaco) {
     try {
         const jsDefaults = monaco.languages.typescript.javascriptDefaults;
         jsDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true });
+        // Scope IntelliSense to the engine's Rhino runtime, not a browser. By
+        // default Monaco's JS service loads the DOM lib (window, document, fetch,
+        // console, localStorage, alert, …) and the full modern-ES libs — none of
+        // which exist in Rhino, so completing them misleads channel authors into
+        // code that fails at runtime. Setting `lib` explicitly (no 'dom') drops
+        // the browser globals; RHINO_LIB picks the ECMAScript baseline. The Java
+        // interop + E4X globals Rhino *does* add (java, Packages, XML, …) are
+        // declared in RHINO_INTEROP_DTS below.
+        // Merge over the existing defaults (allowJs, allowNonTsExtensions, …) —
+        // setCompilerOptions replaces the whole object, so preserve what's there
+        // and only override the runtime baseline.
+        jsDefaults.setCompilerOptions({
+            ...jsDefaults.getCompilerOptions(),
+            target: monaco.languages.typescript.ScriptTarget[RHINO_TARGET],
+            lib: RHINO_LIB
+        });
         jsDefaults.addExtraLib(USER_API_DTS, 'ts:mirth-userapi.d.ts');
+        jsDefaults.addExtraLib(MIRTH_GLOBALS_DTS, 'ts:mirth-globals.d.ts');
+        jsDefaults.addExtraLib(RHINO_INTEROP_DTS, 'ts:rhino-interop.d.ts');
         // The TS formatter reflows E4X XML literals as if they were JSX
         // (e.g. <p/> → <p />), corrupting valid Rhino code — and the engine
         // doesn't auto-format scripts anyway. Turn the formatter off (Format
@@ -194,7 +287,10 @@ function setup(monaco) {
         }
     });
 
-    // Reserved scope variables — always offered (the curated list authors expect).
+    // Channel + context scoped code-template functions (the user's own). The
+    // Rhino scope variables themselves are no longer offered here — they're typed
+    // globals in MIRTH_GLOBALS_DTS now, so the TS language service completes them
+    // (with member completion, signature help and hover docs) and dedupes them.
     monaco.languages.registerCompletionItemProvider('javascript', {
         provideCompletionItems(model, position) {
             const word = model.getWordUntilPosition(position);
@@ -202,13 +298,7 @@ function setup(monaco) {
                 startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
                 startColumn: word.startColumn, endColumn: word.endColumn
             };
-            const suggestions = RHINO_GLOBALS.map(([name, doc]) => ({
-                label: name,
-                kind: monaco.languages.CompletionItemKind.Variable,
-                documentation: doc,
-                insertText: name,
-                range
-            }));
+            const suggestions = [];
             // Channel + context scoped code-template functions (the user's own).
             for (const t of getActiveCompletions()) {
                 const args = t.params.map((p, i) => `\${${i + 1}:${p}}`).join(', ');
@@ -227,10 +317,24 @@ function setup(monaco) {
         }
     });
 
+    // Syntax token colors tuned to the app's blue/graphite identity (the stock
+    // vs/vs-dark palettes only reach the editor chrome otherwise). Desaturated on
+    // purpose — professional over rainbow. Reserved Rhino globals are colored
+    // separately via the .rhino-global decoration, so they still stand out.
     monaco.editor.defineTheme('oie-dark', {
         base: 'vs-dark',
         inherit: true,
-        rules: [],
+        rules: [
+            { token: 'comment', foreground: '6a7a88', fontStyle: 'italic' },
+            { token: 'string', foreground: 'c9a37a' },
+            { token: 'string.escape', foreground: 'd7ba7d' },
+            { token: 'number', foreground: 'b5cea8' },
+            { token: 'regexp', foreground: 'd16969' },
+            { token: 'keyword', foreground: '6aa9e0' },
+            { token: 'type', foreground: '4ec9b0' },
+            { token: 'type.identifier', foreground: '4ec9b0' },
+            { token: 'delimiter', foreground: '9db2c4' }
+        ],
         colors: {
             'editor.background': '#0c1116',
             'editorGutter.background': '#111922',
@@ -242,7 +346,17 @@ function setup(monaco) {
     monaco.editor.defineTheme('oie-light', {
         base: 'vs',
         inherit: true,
-        rules: [],
+        rules: [
+            { token: 'comment', foreground: '5f7686', fontStyle: 'italic' },
+            { token: 'string', foreground: '8a5a2b' },
+            { token: 'string.escape', foreground: 'b06a2e' },
+            { token: 'number', foreground: '1c7d4d' },
+            { token: 'regexp', foreground: 'a3232f' },
+            { token: 'keyword', foreground: '1c4fbb' },
+            { token: 'type', foreground: '167c6d' },
+            { token: 'type.identifier', foreground: '167c6d' },
+            { token: 'delimiter', foreground: '55677a' }
+        ],
         colors: {
             'editor.background': '#ffffff',
             'editorGutter.background': '#f3f6f9',
@@ -300,9 +414,10 @@ export function mountMonaco(monaco, editor, opts = {}) {
     editor.el.appendChild(host);
     for (const b of zoomBtns) editor.el.appendChild(b);
 
+    const lang = LANGUAGES[opts.language || 'javascript'] || 'plaintext';
     const instance = monaco.editor.create(host, {
         value,
-        language: LANGUAGES[opts.language || 'javascript'] || 'plaintext',
+        language: lang,
         readOnly: !!opts.readOnly,
         automaticLayout: true,
         minimap: { enabled: false },
@@ -314,6 +429,13 @@ export function mountMonaco(monaco, editor, opts = {}) {
         folding: true,
         renderLineHighlight: 'line',
         fixedOverflowWidgets: true,
+        // For JavaScript the TS language service supplies real completions (typed
+        // scope globals, userutil, Java/E4X interop), so Monaco's word-based
+        // fallback only adds noise — most visibly buffer words offered after `.`
+        // on an E4X `any` value (msg./tmp.), where there are no real members.
+        // Turn it off for JS; keep it for SQL/XML/plaintext, where it's the main
+        // completion source.
+        wordBasedSuggestions: lang === 'javascript' ? 'off' : 'currentDocument',
         // Monaco's native drop-into-editor inserts dropped text as a *snippet*
         // (escaping ${...} to \${...\} and appending a $0 tab stop). We insert
         // velocity/accessor tokens as plain text ourselves, so disable it.
