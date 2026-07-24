@@ -62,7 +62,7 @@ function randomTagColor() {
 /* ChannelTag backgroundColor → a chip background rgba, matching channels.js. */
 function tagChipBg(color) {
     return (color && color.red !== undefined)
-        ? `rgba(${color.red}, ${color.green}, ${color.blue}, 0.3)` : 'var(--bg3)';
+        ? `rgba(${color.red}, ${color.green}, ${color.blue}, 0.26)` : 'var(--bg3)';
 }
 
 /* AttachmentHandlerType strings/classes from com.mirth.connect.model.attachments */
@@ -1718,7 +1718,8 @@ function buildBody(params, query, onTasksChange, returning) {
                 grid.appendChild(textInput(col.mappingName ?? '', {
                     onInput: (e) => { col.mappingName = e.target.value; commit(); }
                 }));
-                grid.appendChild(h('button.btn.btn-sm', {
+                grid.appendChild(h('button.btn', {
+                    class: 'w-full justify-center self-stretch',
                     title: 'Remove column',
                     onClick: () => { columns.splice(columns.indexOf(col), 1); commit(); renderRows(); }
                 }, 'Delete'));
