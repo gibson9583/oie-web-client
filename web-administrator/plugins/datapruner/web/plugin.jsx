@@ -838,7 +838,7 @@ export function register(platform) {
                                                 onInput={(e) => { setRootFolder(e.target.value); setArchiverDirty(true); }}
                                                 onChange={(e) => { setRootFolder(e.target.value); setArchiverDirty(true); }} />
                                         </Field>
-                                        <Field label="File Pattern" hint="Folder/filename pattern for written messages (supports ${message.*} variables).">
+                                        <Field label="File Pattern">
                                             <input ref={patternInputRef} type="text" value={filePattern} disabled={!archiveEnabled}
                                                 onFocus={() => { lastVarTargetRef.current = patternInputRef.current; }}
                                                 onDragOver={onArchiveVarDragOver} onDrop={onArchiveVarDrop}
