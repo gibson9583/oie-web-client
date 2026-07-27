@@ -42,6 +42,7 @@ OIE_URL=https://localhost:8443 npm start
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). `:`-separated in the env var. Extensions installed on the engine are served by the engine, not stored here. |
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy); loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
+| `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` | Serve the web UI itself over HTTPS: `{ "key", "cert", "passphrase"? }` (PEM paths). Leave `null` to serve HTTP and terminate TLS in front |
 
 Example `config.json`:
 
@@ -182,6 +183,17 @@ design system lives in `client/css/app.css`: **Tailwind CSS v4** utilities are
 generated from the design-token CSS variables (so light/dark theming is
 automatic, no `dark:` variants), alongside the app's component classes (`.btn`,
 `.panel`, `.dt`, `.tag`, …). See [PLUGINS.md](PLUGINS.md) for plugin styling.
+
+Third-party libraries are loaded one of three ways. Big client libs that plugins
+also need are **vendored** to `client/vendor/*` and exposed through the page
+import map (`monaco-editor` for the code editor, `js-beautify` for Format
+Document, `qrcode-generator`, `@zip.js/zip.js`). App-bundle React deps are
+bundled by Vite (`react`, `react-router-dom`, and `@radix-ui/react-tabs`, used
+for the dashboard tab strip in `client/react/views/dashboard.jsx`). A plugin's
+own npm dependencies are bundled into its `web/plugin.js` by esbuild — e.g. the
+DICOM attachment viewer bundles [`dicom-parser`](https://github.com/cornerstonejs/dicomParser)
+(MIT) for parsing; pixel data is decoded with the browser's native codecs and
+rendered to a `<canvas>`.
 
 Tests: `npm test` here runs the `client/core/*.test.js` unit tests; the
 Playwright end-to-end suite and the `@oie/*` type checks run from the repo root

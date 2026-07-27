@@ -106,7 +106,7 @@ task/`JPopupMenu` behavior.
 ### `channel` — Channel Tasks (Channels view)
 - `doRefreshChannels` — Refresh
 - `doRedeployAll` — Redeploy All
-- `doDeployInDebug` — Debug Channel · `doDeployChannel` — Deploy Channel
+- `doDeployChannel` — Deploy Channel *(Debug Channel is `channelEdit/doDebugDeployFromChannelView`, in the channel editor)*
 - `doEditGlobalScripts` — Edit Global Scripts · `doEditCodeTemplates` — Edit Code Templates
 - `doNewChannel` — New Channel · `doImportChannel` — Import Channel
 - `doExportAllChannels` — Export All Channels · `doExportChannel` — Export Channel
@@ -116,7 +116,6 @@ task/`JPopupMenu` behavior.
 - `doViewMessages` — View Messages
 
 ### `channelGroup` — Group Tasks (Channels view)
-- `doSaveGroups` — Save Group Changes
 - `doAssignChannelToGroup` — Assign To Group / Move to Group…
 - `doNewGroup` — New Group · `doEditGroupDetails` — Edit Group Details
 - `doImportGroup` — Import Group
@@ -179,8 +178,8 @@ task/`JPopupMenu` behavior.
 - `doShowExtensionProperties` — Properties · `doUninstallExtension` — Uninstall
 
 ### `other` — the "Other" rail pane
-- `goToUserAPI` — View REST API · `goToClientAPI` — View Client API
-- `doHelp` — Help · `goToAbout` — About
+- `goToUserAPI` — View REST API
+- `goToAbout` — About
 - `goToMirth` — Visit homepage *(see Outliers)*
 - `doReportIssue` — Report Issue · `doLogout` — Logout
 
