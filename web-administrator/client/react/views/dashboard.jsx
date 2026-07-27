@@ -1222,11 +1222,11 @@ function DashboardView({ onToggleView }) {
     // RBAC's task-permission merge) — unauthorized tabs are hidden entirely.
     const tabDefs = platform.dashboardTabs().filter((t) => !t.task || platform.checkTask('dashboard', t.task));
     const selectionForTabs = currentSelection();
-    // Re-scope the open tab when the selection changes by remounting on a
-    // signature key (the old tab's poll loop self-stops once detached).
-    const selectionSig = selectedConnectorRef.current
-        ? `conn:${selectedConnectorRef.current.channelId}:${selectedConnectorRef.current.metaDataId}`
-        : [...selectedRef.current].sort().join(',');
+    // Selection reaches the tabs through the `selection` prop (tabCtx) and each
+    // tab re-scopes from it via its own effect — so the tab must NOT be remounted
+    // on selection change. Keying it on a selection signature used to wipe the
+    // Server Log's accumulated entries (and reset every tab's poll) on any
+    // click/refresh; the key is now stable per tab.
     if (tabDefs.length && (!activeTabRef.current || !tabDefs.includes(activeTabRef.current))) {
         activeTabRef.current = tabDefs[0];
     }
@@ -1338,7 +1338,7 @@ function DashboardView({ onToggleView }) {
                                 ))}
                             </Tabs.List>
                             {tabDefs.map((def) => (
-                                <Tabs.Content key={(def.id || def.label) + '|' + (def === activeTab ? selectionSig : '')}
+                                <Tabs.Content key={def.id || def.label}
                                     value={def.id || def.label} className="flex-1 overflow-auto min-h-0">
                                     {def === activeTab && <PluginSlot def={def} ctx={tabCtx} />}
                                 </Tabs.Content>

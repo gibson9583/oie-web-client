@@ -185,3 +185,25 @@ test('double-clicking the channel name text opens the message browser', async ({
     await page.getByText('Conn Channel', { exact: true }).dblclick();
     await expect(page).toHaveURL(/\/messages\/c-conn$/);
 });
+
+test('Server Log keeps its entries when the selection changes (no remount wipe)', async ({ page }) => {
+    // Regression: the dock tab was keyed on a selection signature, so any click
+    // remounted the Server Log tab and wiped its accumulated entries.
+    await mockEngine(page, {
+        'GET /extensions/serverlog': { serverLogItem: [
+            { id: '1', level: 'ERROR', category: 'test', lineNumber: '1',
+              message: 'boom log entry', date: { time: 1700000000000, timezone: 'UTC' } },
+        ] },
+    });
+    await page.goto('/dashboard');
+
+    // The Server Log is the default dock tab; its entry appears.
+    await expect(page.getByText('boom log entry').first()).toBeVisible();
+
+    // Selecting a channel used to remount the tab and clear the log.
+    await page.locator('tr', { hasText: 'Demo Stopped' }).first().click();
+
+    // The entry survives the selection change.
+    await expect(page.getByText('boom log entry').first()).toBeVisible();
+    await expect(page.getByText('No server log entries yet.')).toHaveCount(0);
+});
