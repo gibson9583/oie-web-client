@@ -317,11 +317,13 @@ function defaultSchemeProperties(scheme) {
 function ensureSchemeProperties(properties) {
     const cls = SCHEME_PROPERTY_CLASSES[properties.scheme];
     if (!cls) {
-        // FILE/WEBDAV have no scheme properties. Force null: a leftover object from
-        // a previous scheme (or an empty {}) serializes as the ABSTRACT
-        // SchemeProperties base, which the engine cannot deserialize ("Cannot
-        // construct type ... SchemeProperties") and rejects the whole channel.
-        if (properties.schemeProperties != null) properties.schemeProperties = null;
+        // FILE/WEBDAV have no scheme properties. The key must be ABSENT, not null:
+        // the channel is sent as JSON, and "schemeProperties": null makes the engine
+        // store an empty <schemeProperties/> typed as the ABSTRACT SchemeProperties
+        // base, which it then can't deserialize ("Cannot construct type ...
+        // SchemeProperties") and rejects the whole channel. Deleting the key omits
+        // it from the JSON so the engine keeps its null default.
+        delete properties.schemeProperties;
         return;
     }
     const sp = properties.schemeProperties;
@@ -583,7 +585,6 @@ const fileReader = {
             pollConnectorProperties: defaultPollProperties(version),
             sourceConnectorProperties: defaultSourceProperties(version),
             scheme: 'FILE',
-            schemeProperties: null,
             host: '',
             fileFilter: '*',
             regex: false,
@@ -697,7 +698,6 @@ const fileWriter = {
             pluginProperties: null,
             destinationConnectorProperties: defaultDestinationProperties(version),
             scheme: 'FILE',
-            schemeProperties: null,
             host: '',
             outputPattern: '',
             anonymous: true,

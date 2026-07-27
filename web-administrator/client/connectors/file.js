@@ -276,7 +276,7 @@ function defaultSchemeProperties(scheme) {
 function ensureSchemeProperties(properties) {
   const cls = SCHEME_PROPERTY_CLASSES[properties.scheme];
   if (!cls) {
-    if (properties.schemeProperties != null) properties.schemeProperties = null;
+    delete properties.schemeProperties;
     return;
   }
   const sp = properties.schemeProperties;
@@ -541,7 +541,6 @@ const fileReader = {
       pollConnectorProperties: defaultPollProperties(version),
       sourceConnectorProperties: defaultSourceProperties(version),
       scheme: "FILE",
-      schemeProperties: null,
       host: "",
       fileFilter: "*",
       regex: false,
@@ -666,7 +665,6 @@ const fileWriter = {
       pluginProperties: null,
       destinationConnectorProperties: defaultDestinationProperties(version),
       scheme: "FILE",
-      schemeProperties: null,
       host: "",
       outputPattern: "",
       anonymous: true,
