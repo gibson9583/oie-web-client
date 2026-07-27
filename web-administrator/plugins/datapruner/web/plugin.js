@@ -702,7 +702,7 @@ function register(platform2) {
         }
       },
       ENCRYPTION_OPTIONS.map((o) => /* @__PURE__ */ React.createElement("option", { key: o.value, value: o.value }, o.label))
-    )), /* @__PURE__ */ React.createElement("div", { className: "span-2 flex gap-3 items-stretch" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0 flex flex-col gap-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Root Path", hint: "Relative paths resolve against the server home directory." }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "span-2 flex gap-3 items-stretch" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0 flex flex-col gap-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Root Path" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         ref: rootInputRef,

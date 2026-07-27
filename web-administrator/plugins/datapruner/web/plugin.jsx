@@ -791,7 +791,7 @@ export function register(platform) {
                                 </Field>
                                 <div className="span-2 flex gap-3 items-stretch">
                                     <div className="flex-1 min-w-0 flex flex-col gap-2">
-                                        <Field label="Root Path" hint="Relative paths resolve against the server home directory.">
+                                        <Field label="Root Path">
                                             <input ref={rootInputRef} type="text" value={rootFolder} disabled={!archiveEnabled}
                                                 onFocus={() => { lastVarTargetRef.current = rootInputRef.current; }}
                                                 onDragOver={onArchiveVarDragOver} onDrop={onArchiveVarDrop}
