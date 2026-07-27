@@ -956,7 +956,12 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 m.__attachments = attachments;
                 clear(host);
                 if (!attachments.length) { host.appendChild(h('div.text-text-faint', 'No attachments')); return; }
-                for (const a of attachments) host.appendChild(attachmentBlock(m, a, modalRoots));
+                const shownOnce = new Set();
+                for (const a of attachments) {
+                    const v = platform.attachmentViewers().find(x => { try { return x.canHandle(a); } catch { return false; } });
+                    if (v && v.handleMultiple) { if (shownOnce.has(v.id)) continue; shownOnce.add(v.id); }
+                    host.appendChild(attachmentBlock(m, a, modalRoots));
+                }
                 if (closed) sweep(); // closed mid-load — tear down the roots we just mounted
             } catch (e) { clear(host).appendChild(h('div.text-text-faint', `Failed to load attachments: ${e.message}`)); }
         })();
@@ -1423,7 +1428,13 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                     host.appendChild(h('div.text-text-faint', 'No attachments'));
                     return;
                 }
+                // A whole-message viewer (handleMultiple, e.g. DICOM — it reassembles
+                // the full object from the message) renders ONCE for all its
+                // attachments, not once per pixel-data attachment.
+                const shownOnce = new Set();
                 for (const attachment of attachments) {
+                    const v = platform.attachmentViewers().find(x => { try { return x.canHandle(attachment); } catch { return false; } });
+                    if (v && v.handleMultiple) { if (shownOnce.has(v.id)) continue; shownOnce.add(v.id); }
                     host.appendChild(attachmentBlock(message, attachment, roots));
                 }
             } catch (e) {

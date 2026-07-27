@@ -291,6 +291,9 @@ export function register(platform) {
 
     platform.registerAttachmentViewer({
         id: 'dicomviewer',
+        // Reassembles the WHOLE message DICOM, so render once for all of a
+        // message's pixel-data attachments (Swing DICOMViewer.handleMultiple).
+        handleMultiple: true,
         canHandle: (att) => /dicom|dcm/i.test(typeOf(att)),
         component: DicomViewer
     });
