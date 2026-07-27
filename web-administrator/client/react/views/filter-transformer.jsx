@@ -1577,8 +1577,9 @@ function buildBody(params, kindName, onTasksChange) {
     // (Reference's Available Variables) and template edits.
     const sideDefs = [{ label: 'Reference', render: () => buildReferenceTab() }];
     if (!isFilter) {
-        sideDefs.push({ label: 'Message Templates', render: () => buildTemplatesTab() });
+        // Trees before Templates, matching the Swing client's tab order.
         sideDefs.push({ label: 'Message Trees', render: () => buildTreesTab() });
+        sideDefs.push({ label: 'Message Templates', render: () => buildTemplatesTab() });
     }
     const sideTabs = tabs(sideDefs);
 
