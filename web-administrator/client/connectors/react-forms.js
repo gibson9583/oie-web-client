@@ -1,4 +1,4 @@
-import { React, useReducer, useRef, useEffect, useMemo } from "./react-platform.js";
+import { React, useReducer, useRef, useEffect, useMemo, useState } from "./react-platform.js";
 import { platform } from "@oie/web-shell";
 import { h, modal, toast, taskButton, icon } from "../core/ui.js";
 import { DESTINATION_MAPPINGS } from "../core/mappings.js";
@@ -499,7 +499,127 @@ function PollSettings({ properties, onChange }) {
         onChange();
       }
     }
-  ), "Poll Once on Start"))));
+  ), "Poll Once on Start"))), p.pollingType !== "CRON" && /* @__PURE__ */ React.createElement(PollAdvancedSettings, { p, pollingType: p.pollingType, onChange }));
+}
+const POLL_DAYS = [
+  { label: "S", idx: 1, title: "Sunday" },
+  { label: "M", idx: 2, title: "Monday" },
+  { label: "T", idx: 3, title: "Tuesday" },
+  { label: "W", idx: 4, title: "Wednesday" },
+  { label: "Th", idx: 5, title: "Thursday" },
+  { label: "F", idx: 6, title: "Friday" },
+  { label: "S", idx: 7, title: "Saturday" }
+];
+function PollAdvancedSettings({ p, pollingType, onChange }) {
+  const [, tick] = useReducer((n) => n + 1, 0);
+  const [open, setOpen] = useState(false);
+  const uid = useMemo(() => ++cformUid, []);
+  const notify = () => {
+    onChange();
+    tick();
+  };
+  if (!p.pollConnectorPropertiesAdvanced || typeof p.pollConnectorPropertiesAdvanced !== "object") {
+    p.pollConnectorPropertiesAdvanced = {
+      weekly: true,
+      inactiveDays: { boolean: [false, false, false, false, false, false, false, false] },
+      dayOfMonth: 1,
+      allDay: true,
+      startingHour: 8,
+      startingMinute: 0,
+      endingHour: 17,
+      endingMinute: 0
+    };
+  }
+  const adv = p.pollConnectorPropertiesAdvanced;
+  if (!adv.inactiveDays || typeof adv.inactiveDays !== "object") adv.inactiveDays = { boolean: [] };
+  if (!Array.isArray(adv.inactiveDays.boolean)) adv.inactiveDays.boolean = [];
+  while (adv.inactiveDays.boolean.length < 8) adv.inactiveDays.boolean.push(false);
+  const inactive = adv.inactiveDays.boolean;
+  const weekly = asBool(adv.weekly);
+  const allDay = asBool(adv.allDay);
+  const timeEnabled = pollingType === "INTERVAL";
+  const rangeEnabled = timeEnabled && !allDay;
+  const numField = (value, min, max, apply) => /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "number",
+      min,
+      max,
+      className: "w-[70px]",
+      value,
+      onChange: (e) => {
+        apply(parseInt(e.target.value, 10) || 0);
+        notify();
+      }
+    }
+  );
+  return /* @__PURE__ */ React.createElement("div", { className: "span-2 my-2.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => setOpen((o) => !o) }, open ? "Hide Advanced Settings" : "Advanced Settings"), open && /* @__PURE__ */ React.createElement("div", { className: "cform-section mt-2" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, "Advanced Settings"), /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Active Days"), /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "radio",
+      name: `poll-days-${uid}`,
+      checked: weekly,
+      onChange: () => {
+        adv.weekly = true;
+        notify();
+      }
+    }
+  ), "Weekly"), /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "radio",
+      name: `poll-days-${uid}`,
+      checked: !weekly,
+      onChange: () => {
+        adv.weekly = false;
+        notify();
+      }
+    }
+  ), "Monthly"))), weekly ? /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Days of Week"), /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row min-h-[34px] items-center" }, POLL_DAYS.map((d) => /* @__PURE__ */ React.createElement("label", { className: "check", key: d.idx, title: d.title }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "checkbox",
+      checked: !asBool(inactive[d.idx]),
+      onChange: (e) => {
+        inactive[d.idx] = !e.target.checked;
+        notify();
+      }
+    }
+  ), d.label)))) : /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Day of Month (1-31)"), numField(adv.dayOfMonth ?? 1, 1, 31, (v) => {
+    adv.dayOfMonth = Math.min(31, Math.max(1, v || 1));
+  })), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Active Time"), /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "radio",
+      name: `poll-time-${uid}`,
+      disabled: !timeEnabled,
+      checked: allDay,
+      onChange: () => {
+        adv.allDay = true;
+        notify();
+      }
+    }
+  ), "All Day"), /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "radio",
+      name: `poll-time-${uid}`,
+      disabled: !timeEnabled,
+      checked: !allDay,
+      onChange: () => {
+        adv.allDay = false;
+        notify();
+      }
+    }
+  ), "Range"))), rangeEnabled && /* @__PURE__ */ React.createElement("div", { className: "field span-2" }, /* @__PURE__ */ React.createElement("label", null, "Time Range (Start - End, H:M 24h)"), /* @__PURE__ */ React.createElement("div", { className: "flex gap-1.5 items-center" }, numField(adv.startingHour ?? 0, 0, 23, (v) => {
+    adv.startingHour = v;
+  }), /* @__PURE__ */ React.createElement("span", null, ":"), numField(adv.startingMinute ?? 0, 0, 59, (v) => {
+    adv.startingMinute = v;
+  }), /* @__PURE__ */ React.createElement("span", { className: "mx-1" }, "-"), numField(adv.endingHour ?? 0, 0, 23, (v) => {
+    adv.endingHour = v;
+  }), /* @__PURE__ */ React.createElement("span", null, ":"), numField(adv.endingMinute ?? 0, 0, 59, (v) => {
+    adv.endingMinute = v;
+  }))))));
 }
 function defaultFrameMode() {
   return {

@@ -62,3 +62,10 @@ test('TCP Sender: Test Connection / Ports in Use grey by mode + local binding', 
     await expect(page.getByRole('button', { name: 'Test Connection', exact: true })).toBeDisabled();
     await expect(page.getByRole('button', { name: 'Ports in Use', exact: true })).toBeEnabled();
 });
+
+test('Polling connector: Advanced Settings reveals the Active Days / Active Time editor', async ({ page }) => {
+    await openPanel(page, 'File Reader', 'SOURCE');
+    await page.getByRole('button', { name: 'Advanced Settings', exact: true }).click();
+    await expect(page.getByText('Active Days', { exact: true })).toBeVisible();
+    await expect(page.getByText('Active Time', { exact: true })).toBeVisible();
+});
