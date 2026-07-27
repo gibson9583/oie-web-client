@@ -472,7 +472,16 @@ function PollSettings({ properties, onChange }) {
                         <input type="number" min={0} className="w-[110px]"
                             value={Math.round((Number(p.pollingFrequency ?? 5000)) / unitMs(freqUnit))}
                             onChange={(e) => { p.pollingFrequency = (parseInt(e.target.value, 10) || 0) * unitMs(freqUnit); notify(); }} />
-                        <select value={freqUnit} onChange={(e) => { setFreqUnit(e.target.value); tick(); }}>
+                        <select value={freqUnit} onChange={(e) => {
+                            // Keep the displayed NUMBER the same; reinterpret it in the
+                            // new unit (5 seconds -> 5 hours), so pollingFrequency (ms)
+                            // is recomputed rather than the value being converted to 0.
+                            const newUnit = e.target.value;
+                            const value = Math.round((Number(p.pollingFrequency ?? 5000)) / unitMs(freqUnit));
+                            p.pollingFrequency = value * unitMs(newUnit);
+                            setFreqUnit(newUnit);
+                            notify();
+                        }}>
                             {FREQ_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
                         </select>
                     </div>

@@ -441,8 +441,11 @@ function PollSettings({ properties, onChange }) {
       }
     }
   ), /* @__PURE__ */ React.createElement("select", { value: freqUnit, onChange: (e) => {
-    setFreqUnit(e.target.value);
-    tick();
+    const newUnit = e.target.value;
+    const value = Math.round(Number(p.pollingFrequency ?? 5e3) / unitMs(freqUnit));
+    p.pollingFrequency = value * unitMs(newUnit);
+    setFreqUnit(newUnit);
+    notify();
   } }, FREQ_UNITS.map((u) => /* @__PURE__ */ React.createElement("option", { key: u.value, value: u.value }, u.label))))), p.pollingType === "TIME" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Hour (0-23)"), /* @__PURE__ */ React.createElement(
     "input",
     {
