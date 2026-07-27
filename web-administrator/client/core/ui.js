@@ -91,12 +91,14 @@ export function escapeHtml(s) {
 
 let toastHost = null;
 
-export function toast(message, type = 'info', timeout = 4200) {
+/* Low-level corner toast: transient, non-blocking. Used for info/success and
+   for feedback that must never steal focus (e.g. clipboard results). */
+function cornerToast(message, type = 'info', timeout = 4200) {
     if (!toastHost) {
         toastHost = h('div.toasts');
         document.body.appendChild(toastHost);
     }
-    const name = type === 'error' ? 'warning' : type === 'warn' ? 'warning' : 'check';
+    const name = (type === 'error' || type === 'warn') ? 'warning' : 'check';
     const el = h(`div.toast.${type}`, icon(name, 15), h('div.toast-msg', String(message)));
     toastHost.appendChild(el);
     setTimeout(() => {
@@ -105,6 +107,26 @@ export function toast(message, type = 'info', timeout = 4200) {
         setTimeout(() => el.remove(), 260);
     }, timeout);
     return el;
+}
+
+/*
+ * Notifications. Errors and warnings are surfaced in the readable,
+ * acknowledge-to-dismiss detail modal (the Server Log Entry look) instead of a
+ * corner toast, so long engine exceptions and important notices can't be missed
+ * or scroll away. Info/success stay as transient corner toasts. Callers that
+ * want a specific title/metadata call detailModal/errorModal directly (e.g. the
+ * deploy and validation flows); a plain toast(msg, 'error'|'warn') gets a
+ * generic Error/Warning dialog.
+ */
+export function toast(message, type = 'info', timeout = 4200) {
+    if (type === 'error' || type === 'warn') {
+        return detailModal({
+            title: type === 'error' ? 'Error' : 'Warning',
+            badge: { text: type === 'error' ? 'Error' : 'Warning', tone: type === 'error' ? 'err' : 'warn' },
+            sections: [{ text: String(message) }]
+        });
+    }
+    return cornerToast(message, type, timeout);
 }
 
 /* ---- modal dialogs ------------------------------------------------------------------ */
@@ -164,6 +186,72 @@ export function promptDialog(title, label, initial = '') {
             if (e.key === 'Enter') { resolve(input.value); m.close(); }
         });
         setTimeout(() => input.focus(), 30);
+    });
+}
+
+/* Copy text to the clipboard with a small toast — shared by detail modals. */
+function copyToClipboard(text) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(String(text));
+            toast('Copied to clipboard');
+            return;
+        }
+    } catch { /* fall through to the unavailable notice */ }
+    toast('Clipboard unavailable', 'warn');
+}
+
+const DETAIL_TONE = { err: 'var(--err)', warn: 'var(--warn)', ok: 'var(--ok)', info: 'var(--accent)' };
+
+/**
+ * A read-only detail dialog for an error or long message, styled like the
+ * Server Log Entry modal: an optional severity badge + a dim meta line, one or
+ * more labeled monospace blocks (scrollable), and Copy + Close. Use it instead
+ * of a corner toast whenever the content is long, multi-line, or important
+ * enough to demand acknowledgement — validation errors, deploy failures, etc.
+ *
+ *   title    dialog title
+ *   badge    { text, tone } — tone 'err' | 'warn' | 'ok' | 'info' (optional)
+ *   meta     small dim line beside the badge, e.g. a name/timestamp (optional)
+ *   sections [{ label?, text }]  one labeled <pre> block each
+ *   copy     text the Copy button writes (defaults to the sections joined)
+ */
+export function detailModal({ title, badge, meta, sections = [], copy } = {}) {
+    const preClass = 'mono m-0 whitespace-pre-wrap [word-break:break-word] overflow-x-hidden '
+        + 'overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px] '
+        + 'max-h-[50vh] text-[12px]';
+    const tone = badge ? (DETAIL_TONE[badge.tone] || 'var(--text)') : null;
+    const badgeEl = badge
+        ? h('span.tag', { class: 'font-[650]', style: { color: tone, borderColor: tone } },
+            String(badge.text).toUpperCase())
+        : null;
+    const copyText = copy != null ? copy : sections.map(s => s.text).join('\n\n');
+    return modal({
+        title,
+        size: 'wide',
+        body: h('div', { class: 'flex flex-col gap-2 min-w-[620px] max-w-[80vw]' },
+            (badge || meta) ? h('div', { class: 'flex gap-[14px] items-center flex-wrap' },
+                badgeEl, meta ? h('span.mono.text-text-faint', String(meta)) : null) : null,
+            ...sections.flatMap(s => [
+                s.label ? h('div', { class: 'font-semibold' }, s.label) : null,
+                h('pre', { class: preClass }, String(s.text ?? ''))
+            ])),
+        buttons: [
+            { label: 'Copy', onClick: () => { copyToClipboard(copyText); return false; } },
+            { label: 'Close', primary: true }
+        ]
+    });
+}
+
+/** Show an engine/operation error (deploy failure, etc.) in the detail modal —
+ *  a red ERROR badge + the full message. Shorthand over detailModal for the
+ *  common "long engine exception" case that must never go in a corner toast. */
+export function errorModal(title, error, meta) {
+    return detailModal({
+        title,
+        badge: { text: 'Error', tone: 'err' },
+        meta,
+        sections: [{ label: 'Message', text: (error && error.message) || String(error) }]
     });
 }
 

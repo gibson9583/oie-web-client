@@ -147,8 +147,10 @@ test('Edit User blocks a policy-violating password reset (nothing written)', asy
     await pw.nth(1).fill('weak');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-    // Blocked: violation surfaced, password never written, modal stays open.
+    // Blocked: violation surfaced in an error dialog, password never written, and
+    // the Edit User modal stays open (its two password fields remain) so the user
+    // can correct and retry.
     await expect(page.getByText(/Password rejected/i)).toBeVisible();
     expect(pwPut).toBe(false);
-    await expect(page.locator('.modal')).toHaveCount(1);
+    await expect(page.locator('.modal input[type=password]')).toHaveCount(2);
 });
