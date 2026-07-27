@@ -59,6 +59,14 @@ const BEHAVIORS = [
    / RuleBuilder dialog greys the values table for EXISTS / NOT_EXIST). */
 const CONDITION_USES_VALUES = new Set(['EQUALS', 'NOT_EQUAL', 'CONTAINS', 'NOT_CONTAIN']);
 
+/* Per-element field validation — the web-admin port of each type plugin's
+   checkProperties(properties, highlight). Each validator returns an error
+   message ('' = valid), mirroring StringUtils.isBlank checks in the Swing
+   client. The editor's validateAll runs these before returning to the channel.
+   (JavaScript step/rule have no field check — their script is syntax-validated
+   through the engine's Rhino compiler instead.) */
+const isBlank = (v) => v == null || String(v).trim() === '';
+
 /* ---- XStream list helpers ----------------------------------------------------
  * List<String>  round-trips as { string: [...] }  ('' when empty — an empty
  * XML element — so the server deserializes an empty list, not null).
@@ -283,6 +291,13 @@ function makeIteratorEditor(isRule) {
             ...(isRule ? { operator: 'AND' } : null),
             properties: emptyIteratorProperties()
         }),
+        validate: (el) => {
+            const p = el.properties || {};
+            let m = '';
+            if (isBlank(p.target)) m += 'The iteration target expression cannot be blank.\n';
+            if (isBlank(p.indexVariable)) m += 'The iteration index variable cannot be blank.\n';
+            return m.trim();
+        },
         component: IteratorEditor
     };
 }
@@ -621,6 +636,7 @@ export function register(platform) {
             name: '', enabled: true,
             variable: '', mapping: '', defaultValue: '', replacements: '', scope: 'CHANNEL'
         }),
+        validate: (el) => isBlank(el.variable) ? 'The variable name cannot be blank.' : '',
         component: MapperEditor
     });
 
@@ -631,6 +647,7 @@ export function register(platform) {
             name: '', enabled: true,
             messageSegment: '', mapping: '', defaultValue: '', replacements: ''
         }),
+        validate: (el) => isBlank(el.messageSegment) ? 'The message segment value cannot be blank.' : '',
         component: MessageBuilderEditor
     });
 
@@ -642,6 +659,12 @@ export function register(platform) {
             sourceXml: '', resultVariable: '', template: '',
             useCustomFactory: false, customFactory: ''
         }),
+        validate: (el) => {
+            let m = '';
+            if (isBlank(el.sourceXml)) m += 'The source XML string cannot be blank.\n';
+            if (isBlank(el.resultVariable)) m += 'The result variable cannot be blank.\n';
+            return m.trim();
+        },
         component: XsltEditor
     });
 
@@ -655,6 +678,7 @@ export function register(platform) {
             name: '', enabled: true,
             behavior: 'REMOVE', metaDataIds: '', field: '', condition: 'EXISTS', values: ''
         }),
+        validate: (el) => isBlank(el.field) ? 'The field cannot be blank.' : '',
         component: DestinationSetFilterEditor
     });
 
@@ -665,6 +689,7 @@ export function register(platform) {
             name: '', enabled: true,
             scriptPath: ''
         }),
+        validate: (el) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
         component: ScriptPathEditor
     });
 
@@ -689,6 +714,7 @@ export function register(platform) {
             name: '', enabled: true, operator: 'AND',
             field: '', condition: 'EXISTS', values: ''
         }),
+        validate: (el) => isBlank(el.field) ? 'The field cannot be blank.' : '',
         component: RuleBuilderEditor
     });
 
@@ -699,6 +725,7 @@ export function register(platform) {
             name: '', enabled: true, operator: 'AND',
             scriptPath: ''
         }),
+        validate: (el) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
         component: ScriptPathEditor
     });
 
