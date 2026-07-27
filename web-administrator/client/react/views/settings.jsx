@@ -1229,7 +1229,7 @@ function renderDatabaseTasksTab({ setTasks }) {
    (verified in DirectoryResourceServletInterface.java).
    ============================================================================ */
 
-function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
+function renderResourcesTab({ setTasks, platform, markClean, setSave, markDirty }) {
     const host = tabHost();
     host.appendChild(loading());
     let entries = [];               // [{ className, obj }]
@@ -1378,6 +1378,7 @@ function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
         entries.push(entry);
         table.setRows(entries);
         renderDetail(entry);
+        markDirty();
     }
 
     async function removeResource() {
@@ -1389,6 +1390,7 @@ function renderResourcesTab({ setTasks, platform, markClean, setSave }) {
             table.setRows(entries);
             renderDetail(null);
             updateTaskVisibility();
+            markDirty();
         }
     }
 
