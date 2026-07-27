@@ -804,6 +804,7 @@ function register(platform2) {
     const [frame, setFrame] = React.useState(0);
     const [win, setWin] = React.useState(null);
     const [zoom, setZoom] = React.useState(1);
+    const [popUrl, setPopUrl] = React.useState(null);
     const canvasRef = React.useRef(null);
     React.useEffect(() => {
       let cancelled = false;
@@ -929,7 +930,29 @@ function register(platform2) {
         value: win.w,
         onChange: (e) => setWin((w) => ({ ...w, w: parseFloat(e.target.value) }))
       }
-    ))))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[12px]" }, `This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.`), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, "Save DICOM")));
+    ))))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[12px]" }, `This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.`), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, renders && /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => {
+      try {
+        setPopUrl(canvasRef.current && canvasRef.current.toDataURL());
+      } catch {
+      }
+    } }, "\u2922 Pop Out"), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, "Save DICOM")), popUrl && /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: "fixed inset-0 z-[2000] bg-black/90 flex flex-col items-center justify-center p-4 cursor-zoom-out",
+        onClick: () => setPopUrl(null)
+      },
+      /* @__PURE__ */ React.createElement(
+        "img",
+        {
+          src: popUrl,
+          alt: "DICOM",
+          className: "max-w-[95vw] max-h-[88vh] object-contain",
+          style: { imageRendering: "pixelated" },
+          onClick: (e) => e.stopPropagation()
+        }
+      ),
+      /* @__PURE__ */ React.createElement("button", { className: "btn mt-3", onClick: () => setPopUrl(null) }, "Close")
+    ));
   }
   platform2.registerAttachmentViewer({
     id: "dicomviewer",
