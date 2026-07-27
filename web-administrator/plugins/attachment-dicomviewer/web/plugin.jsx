@@ -145,12 +145,24 @@ export function register(platform) {
             (async () => {
                 try {
                     const full = await platform.api.messages.attachment(channelId, messageId, attachment.id);
-                    const b64 = String(full?.content ?? '').replace(/\s+/g, '');
-                    const bin = atob(b64);
+                    const b64 = String(full?.content ?? full?.attachment?.content ?? '').replace(/\s+/g, '');
+                    if (!b64) throw new Error('the attachment has no content');
+                    let bin;
+                    try { bin = atob(b64); } catch { throw new Error('the attachment content is not valid Base64'); }
                     const bytes = new Uint8Array(bin.length);
                     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
 
-                    const ds = dicomParser.parseDicom(bytes);
+                    // Require the DICOM P10 preamble + "DICM" magic so a mangled /
+                    // non-DICOM attachment gives a clear message instead of a raw
+                    // parser throw (dicom-parser throws bare objects, not Errors).
+                    if (bytes.length < 132 ||
+                        String.fromCharCode(bytes[128], bytes[129], bytes[130], bytes[131]) !== 'DICM') {
+                        throw new Error('not a valid DICOM object (missing the DICM header) — the message content may not be raw binary DICOM');
+                    }
+
+                    let ds;
+                    try { ds = dicomParser.parseDicom(bytes); }
+                    catch (pe) { throw new Error('could not parse the DICOM dataset' + (pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : '')); }
                     const ts = (ds.string('x00020010') || '').trim();
                     const info = imageInfo(ds);
                     const meta = {};

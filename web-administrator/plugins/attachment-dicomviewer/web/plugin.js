@@ -814,11 +814,25 @@ function register(platform2) {
       (async () => {
         try {
           const full = await platform3.api.messages.attachment(channelId, messageId, attachment.id);
-          const b64 = String(full?.content ?? "").replace(/\s+/g, "");
-          const bin = atob(b64);
+          const b64 = String(full?.content ?? full?.attachment?.content ?? "").replace(/\s+/g, "");
+          if (!b64) throw new Error("the attachment has no content");
+          let bin;
+          try {
+            bin = atob(b64);
+          } catch {
+            throw new Error("the attachment content is not valid Base64");
+          }
           const bytes2 = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) bytes2[i] = bin.charCodeAt(i);
-          const ds = import_dicom_parser.default.parseDicom(bytes2);
+          if (bytes2.length < 132 || String.fromCharCode(bytes2[128], bytes2[129], bytes2[130], bytes2[131]) !== "DICM") {
+            throw new Error("not a valid DICOM object (missing the DICM header) \u2014 the message content may not be raw binary DICOM");
+          }
+          let ds;
+          try {
+            ds = import_dicom_parser.default.parseDicom(bytes2);
+          } catch (pe) {
+            throw new Error("could not parse the DICOM dataset" + (pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : ""));
+          }
           const ts = (ds.string("x00020010") || "").trim();
           const info2 = imageInfo(ds);
           const meta2 = {};
