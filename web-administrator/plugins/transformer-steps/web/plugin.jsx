@@ -534,7 +534,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
             </div>
 
             <div className="span-2 mt-2">
-                <Field label="Values" hint="Only used by Equals / Not Equal / Contains / Not Contain">
+                <Field label="Values">
                     <div className="flex gap-2 mb-1.5">
                         <button type="button" className="btn btn-sm" disabled={!valuesEnabled} onClick={newValue}>New</button>
                         <button
