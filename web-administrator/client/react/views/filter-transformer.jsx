@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useReducer, useState } from 'react';
-import { h, clear, field, textInput, select, tabs, modal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, clear, field, textInput, select, tabs, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
@@ -714,25 +714,96 @@ function buildBody(params, kindName, onTasksChange) {
             () => JSON.stringify({ elements }, null, 2));
     }
 
-    // Real Rhino validation (engine bridge) of every script-bearing element.
-    async function validateElements() {
-        const all = flattenRows(elements, [], 0, []).map(r => r.el);
-        if (!all.length) { toast(`${kind.title} is empty — nothing to validate`, 'warn'); return; }
-        for (const el of all) {
-            if (typeof el.script !== 'string') continue;
-            const result = await validateScript(el.script);
-            if (result.ok === null) { toast(result.message, 'warn'); return; }
-            if (result.ok === false) { toast(`${kind.noun} "${elementName(el)}" — ${result.message}`, 'error'); return; }
-        }
-        toast(`All ${kind.noun.toLowerCase()}s validated successfully`);
+    // The Swing per-element error wrapper (BaseEditorPane.validateElementRecursive):
+    //   Error in connector "<conn>" at [response ]<container> <element> <seq> ("<name>"):
+    //   <message>
+    function elementError(el, message) {
+        const containerWord = isFilter ? 'filter' : 'transformer';
+        const responsePrefix = kindName === 'response' ? 'response ' : '';
+        const seq = el.sequenceNumber != null ? el.sequenceNumber : '';
+        return `Error in connector "${connector.name}" at `
+            + `${responsePrefix}${containerWord} ${kind.noun.toLowerCase()} ${seq} `
+            + `("${elementName(el)}"):\n${message}`;
     }
+
+    // Per-element field validation — the web-admin port of Swing's
+    // BaseEditorPane.validateElementRecursive: each type's validate() hook
+    // (checkProperties) plus duplicate Iterator index-variable detection across
+    // the ancestor stack. Recurses into Iterator children. Collects EVERY
+    // offending element (Swing lists them all in one dialog), pre-wrapped.
+    function collectFieldErrors() {
+        const out = [];
+        const idxStack = [];
+        (function walk(list) {
+            for (const el of list) {
+                const def = typeDef(el.__type);
+                const msg = def && typeof def.validate === 'function' ? String(def.validate(el) || '').trim() : '';
+                if (msg) out.push(elementError(el, msg));
+                if (isIteratorType(el.__type)) {
+                    const iv = (el.properties && el.properties.indexVariable) || '';
+                    if (iv && idxStack.includes(iv)) {
+                        out.push(elementError(el, `Duplicate Iterator index variable ${iv} found.`));
+                    }
+                    idxStack.push(iv);
+                    walk(childrenOf(el));
+                    idxStack.pop();
+                }
+            }
+        })(elements);
+        return out;
+    }
+
+    // Swing's blocking "Error(s)" dialog — a modal (not a corner toast) that
+    // lists every validation error, matching alertCustomError.
+    function showValidationErrors(errors) {
+        detailModal({
+            title: `Error validating ${kind.title.toLowerCase()} ${kind.noun.toLowerCase()}s`,
+            badge: { text: 'Error', tone: 'err' },
+            sections: [{ text: errors.join('\n\n') }]
+        });
+    }
+
+    // Full validation for "Validate <Kind>" and "Back to Channel". Mirrors Swing
+    // BaseEditorPane.validateAll: (a) per-element field checks, then (b) a Rhino
+    // syntax check of every element's generated script (engine bridge), covering
+    // non-JavaScript steps/rules too. Returns 'ok' | 'fail' | 'unavailable'.
+    // `announce` controls the success/empty toasts (the manual Validate task
+    // announces; Back to Channel runs it silently and only surfaces the error).
+    async function runValidation(announce) {
+        if (!elements.length) {
+            if (announce) toast(`${kind.title} is empty — nothing to validate`, 'warn');
+            return 'ok';
+        }
+        // (a) Field checks (blank required fields, duplicate iterator index).
+        const fieldErrors = collectFieldErrors();
+        if (fieldErrors.length) { showValidationErrors(fieldErrors); return 'fail'; }
+        // (b) Rhino syntax check of each element's generated script. Iterator
+        // children roll into the parent's generated script.
+        for (const el of elements) {
+            const src = generateElementScript(el, childrenOf);
+            if (src == null) continue;
+            const result = await validateScript(src);
+            if (result.ok === null) { toast(result.message, 'warn'); return 'unavailable'; }
+            if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return 'fail'; }
+        }
+        if (announce) toast(`All ${kind.noun.toLowerCase()}s validated successfully`);
+        return 'ok';
+    }
+
+    async function validateElements() { await runValidation(true); }
 
     async function validateElement() {
         const el = elementAtPath(selectedPath);
         if (!el) { toast(`Select a ${kind.noun.toLowerCase()} first`, 'warn'); return; }
-        if (typeof el.script === 'string') {
-            const result = await validateScript(el.script);
-            if (result.ok === false) { toast(`${kind.noun} "${elementName(el)}" — ${result.message}`, 'error'); return; }
+        // (a) Field check for this element (Swing plugin.checkProperties).
+        const def = typeDef(el.__type);
+        const fieldMsg = def && typeof def.validate === 'function' ? String(def.validate(el) || '').trim() : '';
+        if (fieldMsg) { showValidationErrors([elementError(el, fieldMsg)]); return; }
+        // (b) Rhino syntax check of its generated script.
+        const src = generateElementScript(el, childrenOf);
+        if (src != null) {
+            const result = await validateScript(src);
+            if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return; }
             if (result.ok === null) { toast(result.message, 'warn'); return; }
         }
         toast(`${kind.noun} "${elementName(el)}" validated successfully`);
@@ -854,7 +925,12 @@ function buildBody(params, kindName, onTasksChange) {
         };
     }
 
-    function backToChannel() {
+    async function backToChannel() {
+        // Match the Swing editor: "Back to Channel" runs the same validation as the
+        // Validate task and stays put on a blocking error — BaseEditorPane.accept()
+        // aborts navigation when validateAll() reports errors. A non-blocking
+        // 'unavailable' (engine validate endpoint down) must not trap the user.
+        if (await runValidation(false) === 'fail') return;
         persist();    // navigating back is not an edit — don't mark dirty
         router.navigate(`/channels/${channel.id}/edit`);
     }

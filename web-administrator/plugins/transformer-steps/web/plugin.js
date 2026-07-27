@@ -22,6 +22,7 @@ var BEHAVIORS = [
   { value: "REMOVE_ALL", label: "Remove all" }
 ];
 var CONDITION_USES_VALUES = /* @__PURE__ */ new Set(["EQUALS", "NOT_EQUAL", "CONTAINS", "NOT_CONTAIN"]);
+var isBlank = (v) => v == null || String(v).trim() === "";
 function stringListToLines(value) {
   if (!value || typeof value !== "object") return [];
   const list = value.string;
@@ -194,6 +195,13 @@ function makeIteratorEditor(isRule) {
       ...isRule ? { operator: "AND" } : null,
       properties: emptyIteratorProperties()
     }),
+    validate: (el) => {
+      const p = el.properties || {};
+      let m = "";
+      if (isBlank(p.target)) m += "The iteration target expression cannot be blank.\n";
+      if (isBlank(p.indexVariable)) m += "The iteration index variable cannot be blank.\n";
+      return m.trim();
+    },
     component: IteratorEditor
   };
 }
@@ -515,6 +523,7 @@ function register(platform2) {
       replacements: "",
       scope: "CHANNEL"
     }),
+    validate: (el) => isBlank(el.variable) ? "The variable name cannot be blank." : "",
     component: MapperEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.messagebuilder.MessageBuilderStep", {
@@ -528,6 +537,7 @@ function register(platform2) {
       defaultValue: "",
       replacements: ""
     }),
+    validate: (el) => isBlank(el.messageSegment) ? "The message segment value cannot be blank." : "",
     component: MessageBuilderEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.xsltstep.XsltStep", {
@@ -542,6 +552,12 @@ function register(platform2) {
       useCustomFactory: false,
       customFactory: ""
     }),
+    validate: (el) => {
+      let m = "";
+      if (isBlank(el.sourceXml)) m += "The source XML string cannot be blank.\n";
+      if (isBlank(el.resultVariable)) m += "The result variable cannot be blank.\n";
+      return m.trim();
+    },
     component: XsltEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep", {
@@ -559,6 +575,7 @@ function register(platform2) {
       condition: "EXISTS",
       values: ""
     }),
+    validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
     component: DestinationSetFilterEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep", {
@@ -569,6 +586,7 @@ function register(platform2) {
       enabled: true,
       scriptPath: ""
     }),
+    validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
     component: ScriptPathEditor
   });
   platform2.registerStepType("com.mirth.connect.model.IteratorStep", makeIteratorEditor(false));
@@ -594,6 +612,7 @@ function register(platform2) {
       condition: "EXISTS",
       values: ""
     }),
+    validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
     component: RuleBuilderEditor
   });
   platform2.registerRuleType("com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule", {
@@ -605,6 +624,7 @@ function register(platform2) {
       operator: "AND",
       scriptPath: ""
     }),
+    validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
     component: ScriptPathEditor
   });
   platform2.registerRuleType("com.mirth.connect.model.IteratorRule", makeIteratorEditor(true));

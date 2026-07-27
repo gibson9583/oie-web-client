@@ -309,4 +309,72 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('columnheader', { name: 'Name', exact: true })).toBeVisible();
         await expect(page.getByRole('columnheader', { name: 'Type', exact: true })).toBeVisible();
     });
+
+    // Swing BaseEditorPane.accept() runs validateAll() before returning to the
+    // channel and aborts navigation when it reports an error — the web editor
+    // mirrors that: "Back to Channel" validates every script-bearing step first.
+    test('Back to Channel validates the transformer and blocks navigation on a script error', async ({ page }) => {
+        const channel = structuredClone(FULL_CHANNEL);
+        channel.sourceConnector.transformer.elements = {
+            'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
+                '@version': '4.5.0', name: 'Broken Step', sequenceNumber: '0', enabled: true,
+                script: 'var x = ;',
+            },
+        };
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES,
+            [`GET /channels/${CHANNEL_ID}`]: { channel },
+            'POST /javascript/_validate': { error: 'Error on line 1: syntax error.' },
+        });
+        await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
+        await expect(page.locator('input.grid-name')).toHaveValue('Broken Step');
+
+        await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
+
+        // Blocking error modal (Swing's "Error(s)" dialog); navigation aborted.
+        await expect(page.getByText('Error validating transformer steps', { exact: true })).toBeVisible();
+        await expect(page.getByText(/Error in connector "sourceConnector" at transformer step 0 \("Broken Step"\)/)).toBeVisible();
+        await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/transformer/0`));
+    });
+
+    test('Back to Channel returns to the channel when validation passes', async ({ page }) => {
+        const channel = structuredClone(FULL_CHANNEL);
+        channel.sourceConnector.transformer.elements = {
+            'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
+                '@version': '4.5.0', name: 'Good Step', sequenceNumber: '0', enabled: true,
+                script: "logger.info('ok');",
+            },
+        };
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES,
+            [`GET /channels/${CHANNEL_ID}`]: { channel },
+            'POST /javascript/_validate': { error: '' },
+        });
+        await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
+        await expect(page.locator('input.grid-name')).toHaveValue('Good Step');
+
+        await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/edit$`));
+    });
+
+    // Per-element field check (Swing checkProperties) — an Iterator with a blank
+    // target must block "Back to Channel" the same way the script compile does.
+    test('Back to Channel blocks on a per-element field error (blank Iterator target)', async ({ page }) => {
+        const channel = structuredClone(FULL_CHANNEL);
+        channel.sourceConnector.transformer.elements = {
+            'com.mirth.connect.model.IteratorStep': {
+                '@version': '4.5.0', name: 'For each ...', sequenceNumber: '0', enabled: true,
+                properties: { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '' },
+            },
+        };
+        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
+        await page.goto(`/channels/${CHANNEL_ID}/transformer/0`);
+        await expect(page.locator('input.grid-name')).toHaveValue('For each ...');
+
+        await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
+
+        await expect(page.getByText('Error validating transformer steps', { exact: true })).toBeVisible();
+        await expect(page.getByText(/The iteration target expression cannot be blank/)).toBeVisible();
+        await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/transformer/0`));
+    });
 });
