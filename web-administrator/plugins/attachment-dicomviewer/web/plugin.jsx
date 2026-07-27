@@ -136,6 +136,7 @@ export function register(platform) {
         const [frame, setFrame] = React.useState(0);
         const [win, setWin] = React.useState(null);   // { c, w } window center/width
         const [zoom, setZoom] = React.useState(1);
+        const [popUrl, setPopUrl] = React.useState(null);   // fullscreen pop-out image
         const canvasRef = React.useRef(null);
 
         // Load + parse the object once.
@@ -284,7 +285,23 @@ export function register(platform) {
 
                 {metaRows.length > 0 && <table className="dt self-start"><tbody>{metaRows}</tbody></table>}
 
-                <div><button className="btn" onClick={saveDicom}>Save DICOM</button></div>
+                <div className="flex gap-2">
+                    {renders && (
+                        <button className="btn" onClick={() => { try { setPopUrl(canvasRef.current && canvasRef.current.toDataURL()); } catch { /* nothing to pop */ } }}>
+                            ⤢ Pop Out
+                        </button>
+                    )}
+                    <button className="btn" onClick={saveDicom}>Save DICOM</button>
+                </div>
+
+                {popUrl && (
+                    <div className="fixed inset-0 z-[2000] bg-black/90 flex flex-col items-center justify-center p-4 cursor-zoom-out"
+                        onClick={() => setPopUrl(null)}>
+                        <img src={popUrl} alt="DICOM" className="max-w-[95vw] max-h-[88vh] object-contain"
+                            style={{ imageRendering: 'pixelated' }} onClick={(e) => e.stopPropagation()} />
+                        <button className="btn mt-3" onClick={() => setPopUrl(null)}>Close</button>
+                    </div>
+                )}
             </div>
         );
     }
