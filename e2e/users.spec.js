@@ -154,3 +154,12 @@ test('Edit User blocks a policy-violating password reset (nothing written)', asy
     expect(pwPut).toBe(false);
     await expect(page.locator('.modal input[type=password]')).toHaveCount(2);
 });
+
+test('New User dialog includes the extended profile fields (country/role/business/description)', async ({ page }) => {
+    await mockEngine(page);
+    await openNewUser(page);
+    const modal = page.locator('.modal');
+    for (const label of ['Country', 'Role', 'Business', 'Description']) {
+        await expect(modal.getByText(label, { exact: true })).toBeVisible();
+    }
+});
