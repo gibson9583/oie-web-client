@@ -1528,11 +1528,19 @@ function buildBody(params, kindName, onTasksChange) {
             // that output. No local parsing — this depends on the connected engine.
             (async () => {
                 let nodes = null;
-                const ser = await serializeTemplate(dataType, serProps, tmpl).catch(() => null);
-                if (ser && ser.text != null) {
-                    try {
-                        nodes = ser.format === 'json' ? jsonTree(ser.text, varName) : xmlTree(ser.text, varName, ser.meta);
-                    } catch { nodes = null; }
+                if (dataType === 'DICOM') {
+                    // The DICOM template is already the serialized DICOM XML (Open
+                    // File converted the binary), so build the tree from it directly.
+                    // Re-serializing would fail — the engine's DICOM serialize expects
+                    // raw binary, not the XML form.
+                    try { nodes = xmlTree(tmpl, varName); } catch { nodes = null; }
+                } else {
+                    const ser = await serializeTemplate(dataType, serProps, tmpl).catch(() => null);
+                    if (ser && ser.text != null) {
+                        try {
+                            nodes = ser.format === 'json' ? jsonTree(ser.text, varName) : xmlTree(ser.text, varName, ser.meta);
+                        } catch { nodes = null; }
+                    }
                 }
                 if (!nodes) {
                     clear(body);
