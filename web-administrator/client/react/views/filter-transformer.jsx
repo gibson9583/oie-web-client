@@ -1212,7 +1212,18 @@ function buildBody(params, kindName, onTasksChange) {
                         h('button.btn.btn-sm', {
                             onClick: () => openPropsModal(side, title),
                             title: 'Edit this data type’s serialization properties'
-                        }, 'Properties…'))));
+                        }, 'Properties…'),
+                        h('button.btn.btn-sm', {
+                            title: 'Load a message file into this template',
+                            onClick: async () => {
+                                const file = await pickFile();
+                                if (!file) return;
+                                const text = String(file.content ?? '');
+                                target[templateKey] = text === '' ? null : text;
+                                commit();
+                                render();
+                            }
+                        }, 'Open File…'))));
                 host.appendChild(field(`${title} Template`, templateArea(templateKey)));
             }
             render();
