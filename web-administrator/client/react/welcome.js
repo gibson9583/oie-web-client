@@ -13,29 +13,29 @@ import { h, modal, field, textInput, select, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { passwordRequirementHints } from '../core/passwords.js';
 
-const DEFAULT_OPTION = '--Select an option--';
+export const DEFAULT_OPTION = '--Select an option--';
 
 /* US state/territory codes (Swing UserEditPanel.STATE_TERRITORY_CODES). The
    State/Territory field is US-only — disabled for any other country. */
-const US_STATES = ['AL', 'AK', 'AS', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'GU', 'HI',
+export const US_STATES = ['AL', 'AK', 'AS', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'GU', 'HI',
     'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MP', 'MS', 'MO', 'MT', 'NE', 'NV',
     'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'PR', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT',
     'VA', 'VI', 'WA', 'WV', 'WI', 'WY'];
 
 /* Swing UserEditPanel.ROLES — its leading "Primary Role*" prompt entry is
    represented here by the DEFAULT_OPTION placeholder instead. */
-const ROLES = ['C-Suite', 'Consultant - Advisor', 'Consultant - Engineer', 'Consultant - Implementer',
+export const ROLES = ['C-Suite', 'Consultant - Advisor', 'Consultant - Engineer', 'Consultant - Implementer',
     'Employee - Engineer', 'Employee - Manager', 'Employee - Director', 'Employee - VP',
     'Independent Contractor', 'Other'];
 
 /* Swing UserEditPanel.INDUSTRIES (labelled "Business"). */
-const INDUSTRIES = ['ACO', 'CHC/FQHC', 'Clinic', 'HIE', 'HIT Consulting', 'HIT Software', 'Hospital', 'Lab',
+export const INDUSTRIES = ['ACO', 'CHC/FQHC', 'Clinic', 'HIE', 'HIT Consulting', 'HIT Software', 'Hospital', 'Lab',
     'Network', 'Other', 'Payer', 'Physicians Group', 'Private Practice', 'Public Health Agency',
     'Radiology Center', 'University'];
 
 /* Country display names. Swing derives these at runtime from libphonenumber's
    supported regions (alphabetically sorted); mirrored here as a static list. */
-const COUNTRIES = `Åland Islands
+export const COUNTRIES = `Åland Islands
 Afghanistan
 Albania
 Algeria
@@ -292,7 +292,7 @@ function req(label) {
 }
 
 /* Prepend the "--Select an option--" placeholder to a value list. */
-function placeholderOpts(list) {
+export function placeholderOpts(list) {
     return [{ value: '', label: DEFAULT_OPTION }, ...list.map(v => ({ value: v, label: v }))];
 }
 

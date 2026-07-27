@@ -5,19 +5,29 @@
  * truth for the field set and the password-policy enforcement (issue #7).
  */
 
-import { h, toast, modal, field, textInput } from '@oie/web-ui';
+import { h, toast, modal, field, textInput, select } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { passwordRequirementHints } from '../../core/passwords.js';
+import { COUNTRIES, US_STATES, ROLES, INDUSTRIES, placeholderOpts } from '../welcome.js';
 
 /* Fields editable in the web UI; everything else on the User object is
-   preserved on round-trip. */
+   preserved on round-trip. Extended profile fields (country, state/territory,
+   role, business/industry, description) mirror the first-login welcome flow
+   (react/welcome.js) — same labels, option sources and model keys, so the
+   round-trip to the engine's User model is identical. `type` selects the input
+   (text by default); `default` seeds an empty select. */
 export const USER_FIELDS = [
     { key: 'username', label: 'Username' },
     { key: 'firstName', label: 'First Name' },
     { key: 'lastName', label: 'Last Name' },
-    { key: 'organization', label: 'Organization' },
     { key: 'email', label: 'Email' },
-    { key: 'phoneNumber', label: 'Phone' }
+    { key: 'country', label: 'Country', type: 'select', options: COUNTRIES, default: 'United States' },
+    { key: 'stateTerritory', label: 'State/Territory', type: 'select', options: placeholderOpts(US_STATES) },
+    { key: 'phoneNumber', label: 'Phone' },
+    { key: 'organization', label: 'Organization' },
+    { key: 'role', label: 'Role', type: 'select', options: placeholderOpts(ROLES) },
+    { key: 'industry', label: 'Business', type: 'select', options: placeholderOpts(INDUSTRIES) },
+    { key: 'description', label: 'Description', type: 'textarea' }
 ];
 
 export function passwordViolations(result) {
@@ -34,9 +44,29 @@ export function userForm(user = {}) {
     const inputs = {};
     const grid = h('div.form-grid');
     for (const def of USER_FIELDS) {
-        inputs[def.key] = textInput(user[def.key] ?? '');
+        let el;
+        if (def.type === 'select') {
+            el = select(def.options, user[def.key] ?? def.default ?? '');
+        } else if (def.type === 'textarea') {
+            el = h('textarea', { rows: 4, style: { width: '100%', resize: 'vertical' } });
+            el.value = user[def.key] ?? '';
+        } else {
+            el = textInput(user[def.key] ?? '');
+        }
+        inputs[def.key] = el;
         // Username is the only always-required profile field (Swing UserEditPanel).
-        grid.appendChild(field(def.key === 'username' ? req(def.label) : def.label, inputs[def.key]));
+        grid.appendChild(field(def.key === 'username' ? req(def.label) : def.label, el));
+    }
+    // State/Territory is US-only (Swing enables it only for United States) —
+    // same behaviour as the welcome flow.
+    if (inputs.country && inputs.stateTerritory) {
+        const syncState = () => {
+            const isUS = inputs.country.value === 'United States';
+            inputs.stateTerritory.disabled = !isUS;
+            if (!isUS) inputs.stateTerritory.value = '';
+        };
+        inputs.country.addEventListener('change', syncState);
+        syncState();
     }
     return { grid, inputs };
 }
