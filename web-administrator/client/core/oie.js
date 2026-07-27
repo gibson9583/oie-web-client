@@ -245,7 +245,9 @@ export function newChannel(name, version) {
             removeOnlyFilteredOnCompletion: false,
             removeAttachmentsOnCompletion: false,
             initialState: 'STARTED',
-            storeAttachments: false,
+            // Engine ChannelProperties default is true (Swing parity) — attachment
+            // handlers only actually keep their extracted attachments when this is on.
+            storeAttachments: true,
             // Default custom metadata columns, matching the engine's
             // ServerSettings.defaultMetaDataColumns (SOURCE + TYPE).
             metaDataColumns: {
