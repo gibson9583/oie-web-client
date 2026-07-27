@@ -794,7 +794,7 @@ function register(platform2) {
           setArchiverDirty(true);
         }
       }
-    )), /* @__PURE__ */ React.createElement(Field, { label: "File Pattern", hint: "Folder/filename pattern for written messages (supports ${message.*} variables)." }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Field, { label: "File Pattern" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         ref: patternInputRef,
