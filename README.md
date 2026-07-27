@@ -237,6 +237,8 @@ Run from the repo root:
 | `npm run typecheck` | `tsc` over `type-tests/` — validates the `@oie/*` public type surface |
 | `npm run e2e` | Playwright suite; `/api/*` is mocked in-browser, so it runs with no engine |
 | `npm run e2e:live` | The same specs against a real engine (opt-in via `E2E_LIVE=1`) |
+| `npm run gen:userapi` | Regenerate `client/core/userapi.generated.js` from the engine's REST surface |
+| `npm run vendor:zip` | Rebuild the vendored `client/vendor/zipjs.min.js` bundle from `@zip.js/zip.js` |
 
 ## Documentation
 

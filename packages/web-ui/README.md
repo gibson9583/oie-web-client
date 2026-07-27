@@ -28,7 +28,7 @@ modal({ title: 'Hello', body: field('Name', textInput('')), buttons: [{ label: '
   `defaultDestinationProperties`) for building a connector's settings panel. A
   connector is an engine extension; its web half is only a property panel built
   with these. See the SQS connector for a worked example.
-- **Formatting** — `fmtDate` (timezone-aware), icons.
+- **Formatting** — `fmtDate` (timezone-aware), `icon`.
 
 ## Runtime model
 

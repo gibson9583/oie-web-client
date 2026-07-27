@@ -7,7 +7,7 @@ its plugins. This is the **leaf** package — it has no `@oie/*` dependencies.
 import api, { asList, uuid } from '@oie/web-api';
 
 const channels = await api.channels.list();
-const stats    = await api.channels.statistics();
+const stats    = await api.statistics.list();
 const ids      = asList(someXStreamMap, 'string');
 ```
 

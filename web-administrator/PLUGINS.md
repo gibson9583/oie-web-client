@@ -338,7 +338,10 @@ your bundle), keeping `@oie/*` external:
 
 - **First-party** plugins (in this repo's `plugins/`) are built automatically by
   `npm run build` (which runs `tools/build-plugins.mjs`, esbuild). Just write the
-  `.jsx`; the `.js` is generated.
+  `.jsx`; the `.js` is generated. A plugin's own npm dependencies are **bundled
+  into its `web/plugin.js`** (only `@oie/*` stays external) — e.g. the DICOM
+  attachment viewer imports `dicom-parser` and ships it inside its bundle; add
+  the dep to the repo's `web-administrator/package.json` so the build resolves it.
 - **Third-party** plugins ship a **pre-built `web/plugin.js`** in their zip (the
   repo's builder only scans its own `plugins/`). Compile with esbuild (or any
   bundler) using the same settings:
@@ -354,6 +357,13 @@ your bundle), keeping `@oie/*` external:
       external: ['@oie/web-api', '@oie/web-ui', '@oie/web-shell'],
   });
   ```
+
+> **Connector panels are a separate build.** The shared connector library under
+> `client/connectors/*.jsx` is not a plugin — it is compiled by its own tool,
+> `tools/build-connectors.mjs` (classic JSX runtime, transpile-only, imports kept
+> as-is), into the sibling `*.js` that the `connector-*` plugins load by URL.
+> `npm run build` runs it after `build-plugins.mjs`. Both `.jsx` and `.js` are
+> checked in: edit the `.jsx`, then regenerate the `.js`.
 
 ### Extension points (Swing equivalents in parentheses)
 
@@ -403,7 +413,13 @@ platform.registerCodeTemplateAction({ id, label, icon, order, task,
 // Message attachment renderer (AttachmentViewer)
 platform.registerAttachmentViewer({ id,
     canHandle(attachment) { return attachment.type === 'application/dicom'; },
-    component: ({ attachment, channelId, messageId }) => <div>…</div> });
+    // Optional: handleMultiple renders ONCE per message instead of once per
+    // matching attachment — for viewers that reassemble the whole-message
+    // object themselves (e.g. the DICOM viewer, whose pixel data spans many
+    // attachments). The message browser de-dupes by viewer id per message.
+    handleMultiple: true,
+    // ctx/props include `platform` alongside the attachment identifiers.
+    component: ({ attachment, channelId, messageId, platform }) => <div>…</div> });
 
 // Transformer step / filter rule editors (TransformerStepPlugin / FilterRulePlugin)
 platform.registerStepType('com.example.MyStep', {
@@ -440,11 +456,13 @@ platform.registerDataType('MYTYPE', { name: 'MYTYPE', label: 'My Type', order: 9
 platform.registerConnectorPropertiesPanel({
     id: 'my-ssl',
     title: 'SSL Settings',
+    // propertiesClass may be a string, or a resolver (transportName, mode, connector) → FQCN.
     propertiesClass: 'com.example.ssl.SSLConnectorPluginProperties',
-    isSupported: (transportName, mode) =>
+    isSupported: (transportName, mode, connector) =>
         ['HTTP Sender', 'TCP Sender', 'TCP Listener', 'HTTP Listener'].includes(transportName),
     defaults: (version) => ({ '@version': version, enabled: false, protocols: null /* …every Java field… */ }),
-    component: ({ getEntry, setEntry, connector, channel, onChange }) => {
+    // Component also receives `propertiesClass` and `platform`.
+    component: ({ getEntry, setEntry, propertiesClass, connector, channel, platform, onChange }) => {
         // getEntry() → current entry or null; setEntry(obj|null) creates/removes
         // it while preserving sibling plugin entries (e.g. HTTP auth).
         return <div>…</div>;
@@ -496,7 +514,7 @@ platform.setAuthorizationController({
 | `platform.setAuthorizationController(ctrl)` / `platform.checkTask(group, task)` | RBAC menu-hiding (Swing `AuthorizationController`). A plugin registers `{ checkTask(taskGroup, taskName) }` to hide nav/task/right-click items; `checkTask` is what the menu builders consult. Default allows all. **See [`RBAC.md`](RBAC.md).** |
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
 | `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. (Data types are no longer here — they come from the registry via `dataTypeDef`/`dataTypeList` in `/datatypes/index.js`.) |
-| `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` | Read the registered data types / transmission modes / resource types (each populated by a plugin). |
+| `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` / `platform.attachmentViewers()` | Read the registered data types / transmission modes / resource types / attachment viewers (each populated by a plugin). |
 | `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned: User API IntelliSense, in-scope code-template completions, engine-backed validation + Format Document), else a plain textarea. `platform.setCodeEditorFactory` swaps the implementation app-wide. |
 | `platform.createDiffEditor({ original, modified, language, renderSideBySide })` | Read-only side-by-side diff viewer backed by the host's single Monaco instance (side-by-side + inline word-level highlighting + syntax colors). Returns `{ el, setModels({ original, modified, language }), layout(), dispose() }`; mount `el`, call `setModels` to swap content, `dispose()` when done. Degrades to a plain two-pane text view if Monaco is unavailable, so you never branch on its presence. Used by `simple-channel-history` for its revision diff. |
 | `platform.router` | `navigate(path)`, `currentPath()` |

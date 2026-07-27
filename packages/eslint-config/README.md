@@ -32,8 +32,9 @@ export default [
 
 ## What it enforces
 
-- **`error`** — no imports of web-admin shell internals (`**/client/core/*`,
-  `**/web-administrator/**`) and no deep imports into `@oie/*` packages. Use the
+- **`error`** — no imports of web-admin shell internals (whole-directory globs:
+  `**/core/**`, `**/connectors/**`, `**/views/**`) and no deep imports into
+  `@oie/*` packages. Use the
   public entry: `@oie/web-api`, `@oie/web-ui`, `@oie/web-shell`.
 - **`warn`** — undefined references (`no-undef`) and unused code
   (`no-unused-vars`). Catches the kind of mistake `node --check` misses in ES
