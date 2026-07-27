@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useRef, useReducer } from 'react';
-import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
+import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorModal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -755,9 +755,10 @@ function ChannelsView() {
         if (!await confirmDialog('Redeploy All', 'Undeploy and redeploy all channels?', { okLabel: 'Redeploy' })) return;
         try {
             await api.engine.redeployAll();
-            toast('Redeploy task sent');
+            toast('Redeploying all channels');
+            router.navigate('/dashboard');
         } catch (e) {
-            toast(e.message, 'error');
+            errorModal('Redeploy Failed', e);
         }
     }
 
@@ -935,11 +936,16 @@ function ChannelsView() {
         if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         try {
             await api.engine.deployMany(rows.map(c => c.id));
-            toast('Deploy task sent');
+            // Move to the Dashboard to watch deployment (matches Swing).
+            toast(rows.length === 1 ? `Deploying ${rows[0].name}` : `Deploying ${rows.length} channels`);
+            router.navigate('/dashboard');
         } catch (e) {
-            toast(e.message, 'error');
+            // Deploy compile failures return the engine's full exception — show it
+            // in the readable/copyable detail modal, not a giant corner toast.
+            errorModal('Channel Deployment Failed', e,
+                rows.length === 1 ? rows[0].name : `${rows.length} channels`);
+            refresh();
         }
-        refresh();
     }
 
     function messagesTask() {

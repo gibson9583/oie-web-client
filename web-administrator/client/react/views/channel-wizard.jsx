@@ -16,7 +16,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
-import { toast, confirmDialog } from '@oie/web-ui';
+import { toast, confirmDialog, errorModal } from '@oie/web-ui';
 import { platform } from '@oie/web-shell';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -739,7 +739,13 @@ function ChannelWizardInner({ channel, isNew, version }) {
             catch (e) { toast(`Channel saved, but updating code-template libraries failed: ${e.message}`, 'warn'); }
             try { await persistChannelDependencies(depStateRef); }
             catch (e) { toast(`Channel saved, but updating dependencies failed: ${e.message}`, 'warn'); }
-            if (deploy) await api.engine.deploy(channel.id);
+            // The channel is saved at this point; a deploy compile failure
+            // shouldn't discard that. Surface the engine's full exception in the
+            // detail modal (not the generic save toast) and still return saved.
+            if (deploy) {
+                try { await api.engine.deploy(channel.id); }
+                catch (e) { errorModal('Channel Deployment Failed', e, channel.name); }
+            }
             savedRef.current = true;
             dirtyRef.current = false;
             return true;
@@ -772,7 +778,7 @@ function ChannelWizardInner({ channel, isNew, version }) {
             toast(`Deploying “${channel.name}”.`, 'info');
             router.navigate('/dashboard');
         } catch (e) {
-            toast(e && e.message ? e.message : 'Could not deploy the channel.', 'error');
+            errorModal('Channel Deployment Failed', e, channel.name);
             setDeploying(false);
         }
     }
