@@ -219,6 +219,30 @@ function register(platform2) {
     };
     const [archiverDirty, setArchiverDirty] = React.useState(false);
     const [hasArchiver, setHasArchiver] = React.useState(false);
+    const dirtyRef = React.useRef(false);
+    const cleanRef = React.useRef(null);
+    const snapshot = () => JSON.stringify([
+      enabled,
+      blockSize,
+      pruneEvents,
+      maxEventAge,
+      archiveEnabled,
+      archiverBlockSize,
+      includeAttachments,
+      contentKey,
+      encrypt,
+      compressKey,
+      passwordEnabled,
+      password,
+      encryptionType,
+      rootFolder,
+      filePattern,
+      scheduleType,
+      freqValue,
+      freqUnit,
+      pollTime,
+      cronJobs
+    ]);
     const getProp = (name, dflt = "") => {
       const p = propListRef.current.find((x) => x.name === name);
       return p === void 0 ? dflt : String(p.value ?? "");
@@ -401,6 +425,8 @@ function register(platform2) {
         }
         await api.extensions.setProperties("Data Pruner", listToProps(propListRef.current));
         toast("Data Pruner settings saved");
+        cleanRef.current = snapshot();
+        dirtyRef.current = false;
       } catch (e) {
         toast(`Save failed: ${e.message}`, "error");
       }
@@ -462,6 +488,51 @@ function register(platform2) {
       filePattern,
       archiverDirty
     ]);
+    React.useEffect(() => {
+      if (phase === "ready") {
+        cleanRef.current = snapshot();
+        dirtyRef.current = false;
+      }
+    }, [phase]);
+    React.useEffect(() => {
+      if (cleanRef.current != null) dirtyRef.current = snapshot() !== cleanRef.current;
+    }, [
+      enabled,
+      blockSize,
+      pruneEvents,
+      maxEventAge,
+      archiveEnabled,
+      archiverBlockSize,
+      includeAttachments,
+      contentKey,
+      encrypt,
+      compressKey,
+      passwordEnabled,
+      password,
+      encryptionType,
+      rootFolder,
+      filePattern,
+      scheduleType,
+      freqValue,
+      freqUnit,
+      pollTime,
+      cronJobs
+    ]);
+    React.useEffect(() => {
+      if (!platform3.store) return void 0;
+      platform3.store.setState("navGuard", async () => {
+        if (!dirtyRef.current) return void 0;
+        const leave = await confirmDialog(
+          "Data Pruner",
+          "You have unsaved Data Pruner changes. Leave without saving?",
+          { danger: true, okLabel: "Leave" }
+        );
+        return leave ? void 0 : false;
+      });
+      return () => {
+        if (platform3.store) platform3.store.setState("navGuard", null);
+      };
+    }, []);
     if (phase === "loading") return /* @__PURE__ */ React.createElement(Loading, null);
     if (phase === "error") {
       return /* @__PURE__ */ React.createElement("div", { className: "dt-empty" }, /* @__PURE__ */ React.createElement("div", { className: "empty-icon" }, /* @__PURE__ */ React.createElement(

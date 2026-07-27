@@ -291,6 +291,16 @@ export function register(platform) {
         const [archiverDirty, setArchiverDirty] = React.useState(false);
         const [hasArchiver, setHasArchiver] = React.useState(false);
 
+        // Unsaved-changes tracking for the nav-guard (Swing prompts to save the
+        // Data Pruner settings on leave). A snapshot of the saved/loaded form;
+        // dirty = the live values differ from it.
+        const dirtyRef = React.useRef(false);
+        const cleanRef = React.useRef(null);
+        const snapshot = () => JSON.stringify([enabled, blockSize, pruneEvents, maxEventAge,
+            archiveEnabled, archiverBlockSize, includeAttachments, contentKey, encrypt, compressKey,
+            passwordEnabled, password, encryptionType, rootFolder, filePattern,
+            scheduleType, freqValue, freqUnit, pollTime, cronJobs]);
+
         const getProp = (name, dflt = '') => {
             const p = propListRef.current.find(x => x.name === name);
             return p === undefined ? dflt : String(p.value ?? '');
@@ -505,6 +515,8 @@ export function register(platform) {
                    unchanged. */
                 await api.extensions.setProperties('Data Pruner', listToProps(propListRef.current));
                 toast('Data Pruner settings saved');
+                cleanRef.current = snapshot();   // saved state is the new clean baseline
+                dirtyRef.current = false;
             } catch (e) {
                 toast(`Save failed: ${e.message}`, 'error');
             }
@@ -552,6 +564,34 @@ export function register(platform) {
             includeAttachments, scheduleType, freqValue, freqUnit, pollTime, cronJobs, scheduleDirty,
             contentKey, encrypt, compressKey, passwordEnabled, password, encryptionType,
             rootFolder, filePattern, archiverDirty]);
+
+        // Capture the clean baseline once the form is populated (declared BEFORE the
+        // compute-dirty effect so it runs first on the load render).
+        React.useEffect(() => {
+            if (phase === 'ready') { cleanRef.current = snapshot(); dirtyRef.current = false; }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [phase]);
+        // Mark dirty whenever any field differs from the clean baseline.
+        React.useEffect(() => {
+            if (cleanRef.current != null) dirtyRef.current = snapshot() !== cleanRef.current;
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [enabled, blockSize, pruneEvents, maxEventAge, archiveEnabled, archiverBlockSize,
+            includeAttachments, contentKey, encrypt, compressKey, passwordEnabled, password,
+            encryptionType, rootFolder, filePattern, scheduleType, freqValue, freqUnit, pollTime, cronJobs]);
+        // Warn before leaving with unsaved changes (Swing parity), mirroring the
+        // channel editor / code templates nav-guard.
+        React.useEffect(() => {
+            if (!platform.store) return undefined;
+            platform.store.setState('navGuard', async () => {
+                if (!dirtyRef.current) return undefined;
+                const leave = await confirmDialog('Data Pruner',
+                    'You have unsaved Data Pruner changes. Leave without saving?',
+                    { danger: true, okLabel: 'Leave' });
+                return leave ? undefined : false;
+            });
+            return () => { if (platform.store) platform.store.setState('navGuard', null); };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []);
 
         if (phase === 'loading') return <Loading />;
         if (phase === 'error') {
