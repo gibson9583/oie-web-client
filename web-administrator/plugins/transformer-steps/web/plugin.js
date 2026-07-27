@@ -17,10 +17,11 @@ var CONDITIONS = [
   { value: "NOT_CONTAIN", label: "Not Contain" }
 ];
 var BEHAVIORS = [
-  { value: "REMOVE", label: "Remove the following destinations" },
-  { value: "REMOVE_ALL_EXCEPT", label: "Remove all except the following destinations" },
-  { value: "REMOVE_ALL", label: "Remove all destinations" }
+  { value: "REMOVE", label: "Remove the following" },
+  { value: "REMOVE_ALL_EXCEPT", label: "Remove all except the following" },
+  { value: "REMOVE_ALL", label: "Remove all" }
 ];
+var CONDITION_USES_VALUES = /* @__PURE__ */ new Set(["EQUALS", "NOT_EQUAL", "CONTAINS", "NOT_CONTAIN"]);
 function stringListToLines(value) {
   if (!value || typeof value !== "object") return [];
   const list = value.string;
@@ -31,15 +32,19 @@ function linesToStringList(text) {
   const lines = String(text || "").split("\n").map((s) => s.trim()).filter(Boolean);
   return lines.length ? { string: lines } : "";
 }
-function intListToText(value) {
-  if (!value || typeof value !== "object") return "";
+function checkedIdSet(value) {
+  if (!value || typeof value !== "object") return /* @__PURE__ */ new Set();
   const list = value.int;
-  if (list === null || list === void 0) return "";
-  return (Array.isArray(list) ? list : [list]).join(", ");
+  if (list === null || list === void 0) return /* @__PURE__ */ new Set();
+  return new Set((Array.isArray(list) ? list : [list]).map((v) => String(v)));
 }
-function textToIntList(text) {
-  const ids = String(text || "").split(/[,\s]+/).map((s) => s.trim()).filter((s) => s !== "" && !isNaN(Number(s))).map((s) => String(parseInt(s, 10)));
-  return ids.length ? { int: ids } : "";
+function idSetToMetaData(set, destinations) {
+  const ordered = destinations.map((d) => String(d.metaDataId)).filter((id) => set.has(id));
+  for (const id of set) if (!ordered.includes(id)) ordered.push(id);
+  return ordered.length ? { int: ordered } : "";
+}
+function stringArrayToList(arr) {
+  return arr.length ? { string: arr.map((s) => String(s ?? "")) } : "";
 }
 function Field({ label, hint, children }) {
   return /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, label), children, hint ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, hint) : null);
@@ -315,42 +320,66 @@ function XsltEditor({ element, onChange }) {
     }
   )));
 }
-function DestinationSetFilterEditor({ element, onChange }) {
+function DestinationSetFilterEditor({ element, onChange, destinations }) {
   const force = useRerender();
+  const [selValue, setSelValue] = React.useState(-1);
+  const dests = Array.isArray(destinations) ? destinations : [];
+  const behavior = element.behavior || "REMOVE";
+  const condition = element.condition || "EXISTS";
+  const checked = checkedIdSet(element.metaDataIds);
+  const values = stringListToLines(element.values);
+  const listDisabled = behavior === "REMOVE_ALL";
+  const valuesEnabled = CONDITION_USES_VALUES.has(condition);
+  const setChecked = (next) => {
+    element.metaDataIds = idSetToMetaData(next, dests);
+    onChange();
+    force();
+  };
+  const toggleId = (id, on) => {
+    const next = new Set(checked);
+    if (on) next.add(String(id));
+    else next.delete(String(id));
+    setChecked(next);
+  };
+  const selectAll = () => setChecked(new Set(dests.map((d) => String(d.metaDataId))));
+  const deselectAll = () => setChecked(/* @__PURE__ */ new Set());
+  const setValues = (arr) => {
+    element.values = stringArrayToList(arr);
+    onChange();
+    force();
+  };
+  const newValue = () => {
+    setValues([...values, ""]);
+    setSelValue(values.length);
+  };
+  const editValue = (i, v) => {
+    const next = values.slice();
+    next[i] = v;
+    setValues(next);
+  };
+  const deleteSelected = () => {
+    if (selValue < 0 || selValue >= values.length) return;
+    const next = values.slice();
+    next.splice(selValue, 1);
+    setValues(next);
+    setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
+  };
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Behavior" }, /* @__PURE__ */ React.createElement(
     Select,
     {
       options: BEHAVIORS,
-      value: element.behavior || "REMOVE",
+      value: behavior,
       onChange: (e) => {
         element.behavior = e.target.value;
         onChange();
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement(
-    Field,
-    {
-      label: "Destination Meta Data Ids",
-      hint: "Comma-separated destination metaDataIds this filter applies to"
-    },
-    /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        type: "text",
-        placeholder: "e.g. 1, 2",
-        value: intListToText(element.metaDataIds),
-        onChange: (e) => {
-          element.metaDataIds = textToIntList(e.target.value);
-          onChange();
-          force();
-        }
-      }
-    )
-  ), /* @__PURE__ */ React.createElement(Field, { label: "Field" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(Field, { label: "Field" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
+      placeholder: "msg['PID']['PID.3']['PID.3.1'].toString()",
       value: element.field ?? "",
       onChange: (e) => {
         element.field = e.target.value;
@@ -358,30 +387,69 @@ function DestinationSetFilterEditor({ element, onChange }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement(Field, { label: "Condition" }, /* @__PURE__ */ React.createElement(
-    Select,
+  )), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Destinations" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: selectAll }, "Select All"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: deselectAll }, "Deselect All")), /* @__PURE__ */ React.createElement(
+    "div",
     {
-      options: CONDITIONS,
-      value: element.condition || "EXISTS",
-      onChange: (e) => {
-        element.condition = e.target.value;
+      className: "dt-wrap border border-line rounded max-h-[180px]",
+      style: listDisabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
+    },
+    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "w-[42px]" }), /* @__PURE__ */ React.createElement("th", null, "Name"), /* @__PURE__ */ React.createElement("th", { className: "w-[70px]" }, "Id"))), /* @__PURE__ */ React.createElement("tbody", null, dests.length ? dests.map((d) => {
+      const id = String(d.metaDataId);
+      return /* @__PURE__ */ React.createElement("tr", { key: id }, /* @__PURE__ */ React.createElement("td", { className: "text-center" }, /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "checkbox",
+          checked: checked.has(id),
+          disabled: listDisabled,
+          onChange: (e) => toggleId(id, e.target.checked)
+        }
+      )), /* @__PURE__ */ React.createElement("td", null, d.name || `Destination ${id}`), /* @__PURE__ */ React.createElement("td", { className: "num" }, id));
+    }) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3 }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No destinations on this channel")))))
+  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Condition" }, /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, CONDITIONS.map((opt) => /* @__PURE__ */ React.createElement("label", { className: "check", key: opt.value }, /* @__PURE__ */ React.createElement(
+    "input",
+    {
+      type: "radio",
+      name: `dsf-condition-${element.__type}`,
+      checked: condition === opt.value,
+      onChange: () => {
+        element.condition = opt.value;
         onChange();
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
-    "textarea",
+  ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values", hint: "Only used by Equals / Not Equal / Contains / Not Contain" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: !valuesEnabled, onClick: newValue }, "New"), /* @__PURE__ */ React.createElement(
+    "button",
     {
-      rows: 4,
-      placeholder: "One value per line",
-      title: "Only used by Equals / Not Equal / Contains / Not Contain",
-      value: stringListToLines(element.values).join("\n"),
-      onChange: (e) => {
-        element.values = linesToStringList(e.target.value);
-        onChange();
-        force();
-      }
-    }
+      type: "button",
+      className: "btn btn-sm btn-danger",
+      disabled: !valuesEnabled || selValue < 0 || selValue >= values.length,
+      onClick: deleteSelected
+    },
+    "Delete"
+  )), /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      className: "dt-wrap border border-line rounded max-h-[180px]",
+      style: !valuesEnabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
+    },
+    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, values.length ? values.map((v, i) => /* @__PURE__ */ React.createElement(
+      "tr",
+      {
+        key: i,
+        className: selValue === i ? "selected" : null,
+        onClick: () => setSelValue(i)
+      },
+      /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "text",
+          value: v,
+          disabled: !valuesEnabled,
+          onFocus: () => setSelValue(i),
+          onChange: (e) => editValue(i, e.target.value)
+        }
+      ))
+    )) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No values \u2014 use New")))))
   ))));
 }
 function RuleBuilderEditor({ element, onChange }) {
