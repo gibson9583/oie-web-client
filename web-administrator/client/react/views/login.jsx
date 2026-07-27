@@ -198,7 +198,6 @@ export function LoginForm({ onSuccess }) {
                 <button className="btn btn-primary w-full justify-center p-[9px]" type="submit" disabled={submitting}>
                     {submitting ? 'Signing in…' : 'Sign in'}
                 </button>
-                <div className="login-foot">authenticated session · engine REST API</div>
             </form>
         </div>
     );
