@@ -413,10 +413,30 @@ export function PollSection({ properties, onChange }) {
     );
 }
 
+/* Interval unit dropdown (Swing PollingSettingsPanel). The model stores
+   pollingFrequency in MILLISECONDS; the UI shows value × unit. On load the unit
+   is the largest one the stored ms divides into evenly (so 18000000 → 5 hours,
+   5000 → 5 seconds), defaulting to milliseconds. */
+const FREQ_UNITS = [
+    { value: 'ms', label: 'milliseconds', ms: 1 },
+    { value: 's', label: 'seconds', ms: 1000 },
+    { value: 'm', label: 'minutes', ms: 60000 },
+    { value: 'h', label: 'hours', ms: 3600000 }
+];
+function deriveFreqUnit(freq) {
+    const f = Number(freq) || 0;
+    for (let i = FREQ_UNITS.length - 1; i >= 1; i--) {
+        if (f !== 0 && f % FREQ_UNITS[i].ms === 0) return FREQ_UNITS[i].value;
+    }
+    return 'ms';
+}
+const unitMs = (u) => (FREQ_UNITS.find((x) => x.value === u) || FREQ_UNITS[0]).ms;
+
 function PollSettings({ properties, onChange }) {
     const [, tick] = useReducer((n) => n + 1, 0);
     const notify = () => { onChange(); tick(); };
     const p = properties.pollConnectorProperties;
+    const [freqUnit, setFreqUnit] = useState(() => deriveFreqUnit(p.pollingFrequency ?? 5000));
 
     function cronRows() {
         const jobs = p.cronJobs;
@@ -447,9 +467,15 @@ function PollSettings({ properties, onChange }) {
 
             {p.pollingType === 'INTERVAL' && (
                 <div className="field">
-                    <label>Polling Frequency (ms)</label>
-                    <input type="number" value={p.pollingFrequency ?? 5000}
-                        onChange={(e) => { p.pollingFrequency = parseInt(e.target.value, 10) || 0; notify(); }} />
+                    <label>Polling Frequency</label>
+                    <div className="flex items-center gap-2">
+                        <input type="number" min={0} className="w-[110px]"
+                            value={Math.round((Number(p.pollingFrequency ?? 5000)) / unitMs(freqUnit))}
+                            onChange={(e) => { p.pollingFrequency = (parseInt(e.target.value, 10) || 0) * unitMs(freqUnit); notify(); }} />
+                        <select value={freqUnit} onChange={(e) => { setFreqUnit(e.target.value); tick(); }}>
+                            {FREQ_UNITS.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                        </select>
+                    </div>
                 </div>
             )}
 

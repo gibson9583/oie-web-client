@@ -390,6 +390,20 @@ function ConnectorTestButton({ label = "Test Connection", icon: iconName = "link
 function PollSection({ properties, onChange }) {
   return /* @__PURE__ */ React.createElement("div", { className: "cform-section mt-4" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section-title" }, "Polling Settings"), /* @__PURE__ */ React.createElement(PollSettings, { properties, onChange }));
 }
+const FREQ_UNITS = [
+  { value: "ms", label: "milliseconds", ms: 1 },
+  { value: "s", label: "seconds", ms: 1e3 },
+  { value: "m", label: "minutes", ms: 6e4 },
+  { value: "h", label: "hours", ms: 36e5 }
+];
+function deriveFreqUnit(freq) {
+  const f = Number(freq) || 0;
+  for (let i = FREQ_UNITS.length - 1; i >= 1; i--) {
+    if (f !== 0 && f % FREQ_UNITS[i].ms === 0) return FREQ_UNITS[i].value;
+  }
+  return "ms";
+}
+const unitMs = (u) => (FREQ_UNITS.find((x) => x.value === u) || FREQ_UNITS[0]).ms;
 function PollSettings({ properties, onChange }) {
   const [, tick] = useReducer((n) => n + 1, 0);
   const notify = () => {
@@ -397,6 +411,7 @@ function PollSettings({ properties, onChange }) {
     tick();
   };
   const p = properties.pollConnectorProperties;
+  const [freqUnit, setFreqUnit] = useState(() => deriveFreqUnit(p.pollingFrequency ?? 5e3));
   function cronRows() {
     const jobs = p.cronJobs;
     let list = jobs && typeof jobs === "object" ? jobs.cronProperty : null;
@@ -413,17 +428,22 @@ function PollSettings({ properties, onChange }) {
   return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Schedule Type"), /* @__PURE__ */ React.createElement("select", { value: p.pollingType, onChange: (e) => {
     p.pollingType = e.target.value;
     notify();
-  } }, /* @__PURE__ */ React.createElement("option", { value: "INTERVAL" }, "Interval"), /* @__PURE__ */ React.createElement("option", { value: "TIME" }, "Time"), /* @__PURE__ */ React.createElement("option", { value: "CRON" }, "Cron"))), p.pollingType === "INTERVAL" && /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Polling Frequency (ms)"), /* @__PURE__ */ React.createElement(
+  } }, /* @__PURE__ */ React.createElement("option", { value: "INTERVAL" }, "Interval"), /* @__PURE__ */ React.createElement("option", { value: "TIME" }, "Time"), /* @__PURE__ */ React.createElement("option", { value: "CRON" }, "Cron"))), p.pollingType === "INTERVAL" && /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Polling Frequency"), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
-      value: p.pollingFrequency ?? 5e3,
+      min: 0,
+      className: "w-[110px]",
+      value: Math.round(Number(p.pollingFrequency ?? 5e3) / unitMs(freqUnit)),
       onChange: (e) => {
-        p.pollingFrequency = parseInt(e.target.value, 10) || 0;
+        p.pollingFrequency = (parseInt(e.target.value, 10) || 0) * unitMs(freqUnit);
         notify();
       }
     }
-  )), p.pollingType === "TIME" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Hour (0-23)"), /* @__PURE__ */ React.createElement(
+  ), /* @__PURE__ */ React.createElement("select", { value: freqUnit, onChange: (e) => {
+    setFreqUnit(e.target.value);
+    tick();
+  } }, FREQ_UNITS.map((u) => /* @__PURE__ */ React.createElement("option", { key: u.value, value: u.value }, u.label))))), p.pollingType === "TIME" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Hour (0-23)"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",
