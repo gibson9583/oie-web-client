@@ -196,3 +196,15 @@ test('filter criteria collapse into a Filters popover when narrow', async ({ pag
     await expect(page.getByText('Advanced Search Filter')).toBeVisible();
     await expect(page.locator('.filter-popover')).toBeHidden();
 });
+
+test('message table columns are resizable + reorderable (like the dashboard)', async ({ page }) => {
+    await mockEngine(page, MESSAGE_FIXTURES);
+    await page.goto(`/messages/${CID}`);
+    const table = page.locator('table.msg-table');
+    // decorateColumns wired onto the custom tree table: fixed layout + colgroup +
+    // resize grabbers + draggable data headers (the twisty stays pinned first).
+    await expect(table).toHaveClass(/dt-resizable/);
+    await expect(table.locator('colgroup')).toHaveCount(1);
+    await expect(table.locator('thead .col-resize').first()).toBeAttached();
+    await expect(table.locator('thead th[draggable="true"]').first()).toBeAttached();
+});

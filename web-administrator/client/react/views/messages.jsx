@@ -28,7 +28,7 @@ import { mappingEntries, parseResponse, toDisplayString } from '../../core/xstre
 import { getPref } from '../../core/prefs.js';
 import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
-import { createCodeEditor } from '@oie/web-ui';
+import { createCodeEditor, createColumnManager, decorateColumns } from '@oie/web-ui';
 import { platform } from '../../core/platform.js';
 import { reactView, ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
@@ -875,6 +875,12 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     const isVisible = (c) => (c.key in columnVis) ? !!columnVis[c.key] : !!c.def;
     const saveColumnVis = () => { try { localStorage.setItem('webadmin-msg-columns', JSON.stringify(columnVis)); } catch { /* private mode */ } };
 
+    // Column order + widths (resizable / reorderable, persisted), like the
+    // dashboard. Visibility stays with columnVis above; the manager owns only
+    // order + widths. The leading twisty column is pinned (never moves/resizes).
+    const colManager = createColumnManager('messages',
+        Object.fromEntries(COLUMNS.filter(c => c.w).map(c => [c.key, parseInt(c.w, 10)])));
+
     /* Table state */
     let messages = [];
     let sortKey = 'id';
@@ -1046,8 +1052,16 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
                 tbody.appendChild(ctr);
             }
         }
-        tableHost.appendChild(h('div.dt-wrap', { class: 'flex-1 min-h-0 overflow-auto' },
-            h('table.msg-table', thead, tbody)));
+        const table = h('table.msg-table', thead, tbody);
+        tableHost.appendChild(h('div.dt-wrap', { class: 'flex-1 min-h-0 overflow-auto' }, table));
+        // Resizable + reorderable data columns (the twisty stays pinned first).
+        decorateColumns(table, {
+            manager: colManager,
+            presentKeys: cols.map(c => c.key),
+            pinned: 1,
+            pinnedWidths: [26],
+            onChange: renderTable
+        });
     }
     renderTable();
     const rebuildTable = renderTable;   // metadata columns appear on next render

@@ -9,6 +9,9 @@
 import { icon } from './icons.js';
 import { formatInZone } from './timezone.js';
 import { checkTask } from './authorization.js';
+// columns.js imports h/contextMenu from here; the cycle is safe because both
+// sides only use the imported bindings at call time, never at module load.
+import { createColumnManager, decorateColumns, attachColumnMenu } from './columns.js';
 
 /* ---- element builder -------------------------------------------------------- */
 
@@ -350,11 +353,21 @@ export class DataTable {
             const saved = localStorage.getItem(options.columnsMenuKey);
             if (saved != null) { try { this.hidden = new Set(JSON.parse(saved)); } catch { /* keep defaults */ } }
         }
+        // Opt-in resizable + reorderable + show/hide columns (persisted per view),
+        // the same machinery the Dashboard/Channels tree tables use. When set, the
+        // manager owns order/widths/visibility (superseding the columnsMenu path).
+        this.manager = options.columnsKey
+            ? createColumnManager(
+                options.columnsKey,
+                Object.fromEntries(columns.filter(c => c.width).map(c => [c.key, parseInt(c.width, 10) || 120])),
+                [...this.defaultHidden])
+            : null;
         this.el = h('div.dt-wrap');
         this.render();
     }
 
     visibleColumns() {
+        if (this.manager) return this.columns.filter(c => !this.manager.isHidden(c.key));
         return this.options.columnsMenu ? this.columns.filter(c => !this.hidden.has(c.key)) : this.columns;
     }
 
@@ -433,7 +446,7 @@ export class DataTable {
             col.label,
             this.sortKey === col.key ? h('span.sort-arrow', this.sortDir > 0 ? '▲' : '▼') : null)
         ));
-        if (options.columnsMenu) headRow.addEventListener('contextmenu', (e) => this.openColumnsMenu(e));
+        if (options.columnsMenu && !this.manager) headRow.addEventListener('contextmenu', (e) => this.openColumnsMenu(e));
         const thead = h('thead', headRow);
 
         const tbody = h('tbody');
@@ -464,7 +477,24 @@ export class DataTable {
             tbody.appendChild(tr);
         }
 
-        this.el.appendChild(h('table.dt', thead, tbody));
+        const table = h('table.dt', thead, tbody);
+        this.el.appendChild(table);
+
+        // Resizable + reorderable columns (+ a show/hide menu) when a columnsKey
+        // is configured. decorateColumns permutes/sizes the DOM in place; both it
+        // and the menu re-render through render() so the decoration re-applies.
+        if (this.manager) {
+            decorateColumns(table, {
+                manager: this.manager,
+                presentKeys: cols.map(c => c.key),
+                onChange: () => this.render()
+            });
+            attachColumnMenu(thead, {
+                manager: this.manager,
+                columns: this.columns,
+                onChange: () => this.render()
+            });
+        }
     }
 
     handleSelect(row, e) {

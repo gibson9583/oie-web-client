@@ -26,3 +26,14 @@ test('Events lists results and shows detail on selection', async ({ page }) => {
     // The selected event's id (101) appears only in the detail summary.
     await expect(page.getByText('101', { exact: true })).toBeVisible();
 });
+
+test('Events table columns are resizable + reorderable (like the dashboard)', async ({ page }) => {
+    await page.goto('/events');
+    const table = page.locator('.dt-wrap table.dt').first();
+    // decorateColumns wired: fixed-layout table with a colgroup + resize grabbers,
+    // draggable headers for reordering.
+    await expect(table).toHaveClass(/dt-resizable/);
+    await expect(table.locator('colgroup')).toHaveCount(1);
+    await expect(table.locator('thead .col-resize').first()).toBeAttached();
+    await expect(table.locator('thead th[draggable="true"]').first()).toBeAttached();
+});

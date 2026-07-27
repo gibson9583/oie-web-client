@@ -284,8 +284,8 @@ function EventsView() {
         selectable: 'single',
         rowKey: (e) => String(e.id),
         emptyText: 'No events found',
-        columnsMenu: true,
-        columnsMenuKey: 'webadmin-cols-events',
+        // Resizable + reorderable + show/hide columns (persisted), like the dashboard.
+        columnsKey: 'events',
         onSelect: (rows) => setSelected(rows.length ? rows[0] : null),
         onContextMenu: (row, ev) => {
             setSelected(row);
