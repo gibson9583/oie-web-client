@@ -596,7 +596,7 @@ export async function saveFile(suggestedName, type, getContent) {
     downloadFile(suggestedName, await resolve(), type);
 }
 
-export function pickFile(accept) {
+export function pickFile(accept, { binary = false } = {}) {
     return new Promise(resolve => {
         const input = h('input', { type: 'file', accept, class: 'hidden' });
         input.addEventListener('change', () => {
@@ -604,8 +604,12 @@ export function pickFile(accept) {
             input.remove();
             if (!file) return resolve(null);
             const reader = new FileReader();
-            reader.onload = () => resolve({ name: file.name, content: reader.result });
-            reader.readAsText(file);
+            // binary: resolve base64 (data URL payload) for non-text files (e.g. DICOM).
+            reader.onload = () => resolve({
+                name: file.name,
+                content: binary ? (String(reader.result).split(',')[1] || '') : reader.result
+            });
+            if (binary) reader.readAsDataURL(file); else reader.readAsText(file);
         });
         document.body.appendChild(input);
         input.click();

@@ -1216,9 +1216,21 @@ function buildBody(params, kindName, onTasksChange) {
                         h('button.btn.btn-sm', {
                             title: 'Load a message file into this template',
                             onClick: async () => {
-                                const file = await pickFile();
+                                const typeName = target[`${side}DataType`] || 'RAW';
+                                const isDicom = typeName === 'DICOM';
+                                // DICOM is binary; read it as base64 so it isn't
+                                // mangled, then serialize to the XML template.
+                                const file = await pickFile(undefined, { binary: isDicom });
                                 if (!file) return;
-                                const text = String(file.content ?? '');
+                                let text = String(file.content ?? '');
+                                if (isDicom) {
+                                    // Serialize the binary DICOM to its XML form via the
+                                    // engine's data-type serializer (Swing shows the
+                                    // serialized DICOM XML in the template, not raw bytes).
+                                    const ser = await serializeTemplate('DICOM', target[`${side}Properties`], text).catch(() => null);
+                                    if (ser && ser.text) { text = ser.text; }
+                                    else { toast('Could not serialize the DICOM file — the serialize endpoint may be unavailable.', 'warn'); return; }
+                                }
                                 target[templateKey] = text === '' ? null : text;
                                 commit();
                                 render();
