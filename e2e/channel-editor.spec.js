@@ -198,6 +198,17 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('cell', { name: 'Channel Writer', exact: true })).toBeVisible();
     });
 
+    test('connector settings panel shows a single (non-duplicated) settings heading', async ({ page }) => {
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+
+        // The Channel Writer dispatcher panel renders its own "Channel Writer
+        // Settings" section title; the host wrapper must not add a second
+        // identical header (Swing shows one titled group, not two in a row).
+        await expect(page.getByText('Channel Writer Settings', { exact: true })).toHaveCount(1);
+        await expect(page.locator('.panel-header', { hasText: 'Channel Writer Settings' })).toHaveCount(0);
+    });
+
     test('Validate Connector task shows on connector tabs and validates the channel', async ({ page }) => {
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
         await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();

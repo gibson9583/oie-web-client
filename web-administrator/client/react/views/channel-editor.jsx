@@ -1958,7 +1958,8 @@ function buildBody(params, query, onTasksChange, returning) {
     function connectorPanelHost(connector, mode) {
         const def = platform.connectorPanel(connector.transportName, mode) || platform.connectorPanel('*', mode);
         const container = h('div');
-        if (def && typeof def.component === 'function') {
+        const hasPanel = def && typeof def.component === 'function';
+        if (hasPanel) {
             pluginPanelRoots.push(mountReact(container, <PluginSlot def={def}
                 ctx={{ properties: connector.properties, connector, channel, platform, onChange: markDirty }} />));
         } else {
@@ -1985,8 +1986,12 @@ function buildBody(params, query, onTasksChange, returning) {
             container.appendChild(field('Connector Properties (JSON)', area,
                 `No settings panel registered for "${connector.transportName}" — edit the raw properties`));
         }
+        // A registered connector panel renders its own section title(s) (e.g.
+        // "HTTP Sender Settings"), so the wrapper's header would duplicate it —
+        // matching Swing, which shows a single titled group. Keep the header only
+        // for the raw-JSON fallback, where it's the only title.
         const settingsPanel = h('div.panel',
-            h('div.panel-header', `${connector.transportName} Settings`),
+            ...(hasPanel ? [] : [h('div.panel-header', `${connector.transportName} Settings`)]),
             h('div.panel-body', container));
 
         // This wrapper sits after the Source/Destination Settings panel; the
