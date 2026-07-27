@@ -275,7 +275,10 @@ function defaultSchemeProperties(scheme) {
 }
 function ensureSchemeProperties(properties) {
   const cls = SCHEME_PROPERTY_CLASSES[properties.scheme];
-  if (!cls) return;
+  if (!cls) {
+    if (properties.schemeProperties != null) properties.schemeProperties = null;
+    return;
+  }
   const sp = properties.schemeProperties;
   if (!sp || typeof sp !== "object" || sp["@class"] !== cls) {
     properties.schemeProperties = defaultSchemeProperties(properties.scheme);

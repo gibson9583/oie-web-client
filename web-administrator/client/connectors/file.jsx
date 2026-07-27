@@ -316,7 +316,14 @@ function defaultSchemeProperties(scheme) {
    (e.g. the user just switched schemes); leave a matching object untouched. */
 function ensureSchemeProperties(properties) {
     const cls = SCHEME_PROPERTY_CLASSES[properties.scheme];
-    if (!cls) return;
+    if (!cls) {
+        // FILE/WEBDAV have no scheme properties. Force null: a leftover object from
+        // a previous scheme (or an empty {}) serializes as the ABSTRACT
+        // SchemeProperties base, which the engine cannot deserialize ("Cannot
+        // construct type ... SchemeProperties") and rejects the whole channel.
+        if (properties.schemeProperties != null) properties.schemeProperties = null;
+        return;
+    }
     const sp = properties.schemeProperties;
     if (!sp || typeof sp !== 'object' || sp['@class'] !== cls) {
         properties.schemeProperties = defaultSchemeProperties(properties.scheme);
