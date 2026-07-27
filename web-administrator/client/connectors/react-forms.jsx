@@ -449,7 +449,7 @@ function PollSettings({ properties, onChange }) {
                 <div className="field">
                     <label>Polling Frequency (ms)</label>
                     <input type="number" value={p.pollingFrequency ?? 5000}
-                        onChange={(e) => { p.pollingFrequency = parseInt(e.target.value, 10) || 0; onChange(); }} />
+                        onChange={(e) => { p.pollingFrequency = parseInt(e.target.value, 10) || 0; notify(); }} />
                 </div>
             )}
 
@@ -458,12 +458,12 @@ function PollSettings({ properties, onChange }) {
                     <div className="field">
                         <label>Hour (0-23)</label>
                         <input type="number" min={0} max={23} value={p.pollingHour ?? 0}
-                            onChange={(e) => { p.pollingHour = parseInt(e.target.value, 10) || 0; onChange(); }} />
+                            onChange={(e) => { p.pollingHour = parseInt(e.target.value, 10) || 0; notify(); }} />
                     </div>
                     <div className="field">
                         <label>Minute (0-59)</label>
                         <input type="number" min={0} max={59} value={p.pollingMinute ?? 0}
-                            onChange={(e) => { p.pollingMinute = parseInt(e.target.value, 10) || 0; onChange(); }} />
+                            onChange={(e) => { p.pollingMinute = parseInt(e.target.value, 10) || 0; notify(); }} />
                     </div>
                 </>
             )}
@@ -494,7 +494,7 @@ function PollSettings({ properties, onChange }) {
                 <div className="min-h-[34px] flex items-center">
                     <label className="check">
                         <input type="checkbox" checked={asBool(p.pollOnStart)}
-                            onChange={(e) => { p.pollOnStart = e.target.checked; onChange(); }} />
+                            onChange={(e) => { p.pollOnStart = e.target.checked; notify(); }} />
                         Poll Once on Start
                     </label>
                 </div>
