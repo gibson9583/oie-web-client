@@ -420,7 +420,7 @@ function PollSettings({ properties, onChange }) {
       value: p.pollingFrequency ?? 5e3,
       onChange: (e) => {
         p.pollingFrequency = parseInt(e.target.value, 10) || 0;
-        onChange();
+        notify();
       }
     }
   )), p.pollingType === "TIME" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Hour (0-23)"), /* @__PURE__ */ React.createElement(
@@ -432,7 +432,7 @@ function PollSettings({ properties, onChange }) {
       value: p.pollingHour ?? 0,
       onChange: (e) => {
         p.pollingHour = parseInt(e.target.value, 10) || 0;
-        onChange();
+        notify();
       }
     }
   )), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Minute (0-59)"), /* @__PURE__ */ React.createElement(
@@ -444,7 +444,7 @@ function PollSettings({ properties, onChange }) {
       value: p.pollingMinute ?? 0,
       onChange: (e) => {
         p.pollingMinute = parseInt(e.target.value, 10) || 0;
-        onChange();
+        notify();
       }
     }
   ))), p.pollingType === "CRON" && /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Cron Jobs"), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, cron.map((row, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "flex gap-1.5 mb-1.5" }, /* @__PURE__ */ React.createElement(
@@ -496,7 +496,7 @@ function PollSettings({ properties, onChange }) {
       checked: asBool(p.pollOnStart),
       onChange: (e) => {
         p.pollOnStart = e.target.checked;
-        onChange();
+        notify();
       }
     }
   ), "Poll Once on Start"))), p.pollingType !== "CRON" && /* @__PURE__ */ React.createElement(PollAdvancedSettings, { p, pollingType: p.pollingType, onChange }));
