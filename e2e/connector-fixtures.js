@@ -112,7 +112,7 @@ const tcpDispatcher = () => ({
 const fileReceiver = () => ({
     '@class': 'com.mirth.connect.connectors.file.FileReceiverProperties', '@version': V, pluginProperties: null,
     pollConnectorProperties: pollProps(), sourceConnectorProperties: sourceConnectorProperties(),
-    scheme: 'FILE', schemeProperties: null, host: '/tmp/in', fileFilter: '*', regex: false, directoryRecursion: false,
+    scheme: 'FILE', host: '/tmp/in', fileFilter: '*', regex: false, directoryRecursion: false,
     ignoreDot: true, anonymous: true, username: '', password: '', timeout: '10000', secure: true, passive: true,
     validateConnection: true, afterProcessingAction: 'NONE', moveToDirectory: '', moveToFileName: '',
     errorReadingAction: 'NONE', errorResponseAction: 'AFTER_PROCESSING', errorMoveToDirectory: '', errorMoveToFileName: '',
@@ -122,7 +122,7 @@ const fileReceiver = () => ({
 const fileDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.file.FileDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    scheme: 'FILE', schemeProperties: null, host: '/tmp/out', outputPattern: 'out.txt', anonymous: true, username: '', password: '',
+    scheme: 'FILE', host: '/tmp/out', outputPattern: 'out.txt', anonymous: true, username: '', password: '',
     timeout: '10000', keepConnectionOpen: true, maxIdleTime: '0', secure: true, passive: true, validateConnection: true,
     outputAppend: true, errorOnExists: false, temporary: false, binary: false, charsetEncoding: 'DEFAULT_ENCODING', template: '${message.encodedData}'
 });
