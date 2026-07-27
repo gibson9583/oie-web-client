@@ -18,7 +18,7 @@
  * provided here as small React components (PortsInUseButton/ConnectorTestButton).
  */
 
-import { React, useReducer, useRef, useEffect, useMemo } from './react-platform.js';
+import { React, useReducer, useRef, useEffect, useMemo, useState } from './react-platform.js';
 import { platform } from '@oie/web-shell';
 // Import UI helpers from the core modules directly (NOT @oie/web-ui): pkg-ui
 // re-exports this module, so importing pkg-ui here would be a cycle.
@@ -499,6 +499,147 @@ function PollSettings({ properties, onChange }) {
                     </label>
                 </div>
             </div>
+
+            {/* Advanced active-days / active-time editor. Swing hides its wrench
+                button for Cron (advancedSettingsButton.setVisible(!CRON)); mirror
+                that by only offering the editor for Interval and Time. */}
+            {p.pollingType !== 'CRON' && (
+                <PollAdvancedSettings p={p} pollingType={p.pollingType} onChange={onChange} />
+            )}
+        </div>
+    );
+}
+
+/* Day-of-week checkboxes, ordered S M T W Th F S to match Swing's dialog. `idx`
+   is the java.util.Calendar constant used to index the inactiveDays boolean[8]
+   (SUNDAY=1 … SATURDAY=7; element 0 is unused). */
+const POLL_DAYS = [
+    { label: 'S', idx: 1, title: 'Sunday' },
+    { label: 'M', idx: 2, title: 'Monday' },
+    { label: 'T', idx: 3, title: 'Tuesday' },
+    { label: 'W', idx: 4, title: 'Wednesday' },
+    { label: 'Th', idx: 5, title: 'Thursday' },
+    { label: 'F', idx: 6, title: 'Friday' },
+    { label: 'S', idx: 7, title: 'Saturday' }
+];
+
+/* Port of AdvancedPollingSettingsDialog. Binds the existing
+   pollConnectorPropertiesAdvanced sub-object (weekly / inactiveDays /
+   dayOfMonth / allDay / starting|ending Hour|Minute) — the serialization shape
+   is left untouched. A day CHECKBOX means the day is ACTIVE, but the model
+   stores INACTIVE days, so checked === !inactiveDays[idx] (and writing back
+   inverts: inactiveDays[idx] = !checked). Active Time is only configurable for
+   Interval polling, matching Swing's enableComponents(). */
+function PollAdvancedSettings({ p, pollingType, onChange }) {
+    const [, tick] = useReducer((n) => n + 1, 0);
+    const [open, setOpen] = useState(false);
+    const uid = useMemo(() => ++cformUid, []);
+    const notify = () => { onChange(); tick(); };
+
+    // Defensively seed the sub-object so legacy properties without it still edit
+    // and round-trip; matches defaultPollProperties() in ./forms.js.
+    if (!p.pollConnectorPropertiesAdvanced || typeof p.pollConnectorPropertiesAdvanced !== 'object') {
+        p.pollConnectorPropertiesAdvanced = {
+            weekly: true,
+            inactiveDays: { boolean: [false, false, false, false, false, false, false, false] },
+            dayOfMonth: 1, allDay: true, startingHour: 8, startingMinute: 0, endingHour: 17, endingMinute: 0
+        };
+    }
+    const adv = p.pollConnectorPropertiesAdvanced;
+    if (!adv.inactiveDays || typeof adv.inactiveDays !== 'object') adv.inactiveDays = { boolean: [] };
+    if (!Array.isArray(adv.inactiveDays.boolean)) adv.inactiveDays.boolean = [];
+    while (adv.inactiveDays.boolean.length < 8) adv.inactiveDays.boolean.push(false);
+    const inactive = adv.inactiveDays.boolean;
+
+    const weekly = asBool(adv.weekly);
+    const allDay = asBool(adv.allDay);
+    const timeEnabled = pollingType === 'INTERVAL';   // Swing disables Active Time for Time/Cron
+    const rangeEnabled = timeEnabled && !allDay;
+
+    const numField = (value, min, max, apply) => (
+        <input type="number" min={min} max={max} className="w-[70px]" value={value}
+            onChange={(e) => { apply(parseInt(e.target.value, 10) || 0); notify(); }} />
+    );
+
+    return (
+        <div className="span-2 my-2.5">
+            <button type="button" className="btn" onClick={() => setOpen((o) => !o)}>
+                {open ? 'Hide Advanced Settings' : 'Advanced Settings'}
+            </button>
+
+            {open && (
+                <div className="cform-section mt-2">
+                    <div className="cform-section-title">Advanced Settings</div>
+                    <div className="form-grid">
+                        <div className="field">
+                            <label>Active Days</label>
+                            <div className="radio-group inline-row">
+                                <label className="check">
+                                    <input type="radio" name={`poll-days-${uid}`} checked={weekly}
+                                        onChange={() => { adv.weekly = true; notify(); }} />
+                                    Weekly
+                                </label>
+                                <label className="check">
+                                    <input type="radio" name={`poll-days-${uid}`} checked={!weekly}
+                                        onChange={() => { adv.weekly = false; notify(); }} />
+                                    Monthly
+                                </label>
+                            </div>
+                        </div>
+
+                        {weekly ? (
+                            <div className="field">
+                                <label>Days of Week</label>
+                                <div className="radio-group inline-row min-h-[34px] items-center">
+                                    {POLL_DAYS.map((d) => (
+                                        <label className="check" key={d.idx} title={d.title}>
+                                            <input type="checkbox" checked={!asBool(inactive[d.idx])}
+                                                onChange={(e) => { inactive[d.idx] = !e.target.checked; notify(); }} />
+                                            {d.label}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="field">
+                                <label>Day of Month (1-31)</label>
+                                {numField(adv.dayOfMonth ?? 1, 1, 31, (v) => { adv.dayOfMonth = Math.min(31, Math.max(1, v || 1)); })}
+                            </div>
+                        )}
+
+                        <div className="field">
+                            <label>Active Time</label>
+                            <div className="radio-group inline-row">
+                                <label className="check">
+                                    <input type="radio" name={`poll-time-${uid}`} disabled={!timeEnabled}
+                                        checked={allDay} onChange={() => { adv.allDay = true; notify(); }} />
+                                    All Day
+                                </label>
+                                <label className="check">
+                                    <input type="radio" name={`poll-time-${uid}`} disabled={!timeEnabled}
+                                        checked={!allDay} onChange={() => { adv.allDay = false; notify(); }} />
+                                    Range
+                                </label>
+                            </div>
+                        </div>
+
+                        {rangeEnabled && (
+                            <div className="field span-2">
+                                <label>Time Range (Start - End, H:M 24h)</label>
+                                <div className="flex gap-1.5 items-center">
+                                    {numField(adv.startingHour ?? 0, 0, 23, (v) => { adv.startingHour = v; })}
+                                    <span>:</span>
+                                    {numField(adv.startingMinute ?? 0, 0, 59, (v) => { adv.startingMinute = v; })}
+                                    <span className="mx-1">-</span>
+                                    {numField(adv.endingHour ?? 0, 0, 23, (v) => { adv.endingHour = v; })}
+                                    <span>:</span>
+                                    {numField(adv.endingMinute ?? 0, 0, 59, (v) => { adv.endingMinute = v; })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
