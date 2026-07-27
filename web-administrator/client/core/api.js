@@ -407,6 +407,13 @@ export const messages = {
         get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments`).then(v => asList(v, 'attachment')),
     attachment: (channelId, messageId, attachmentId) =>
         get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments/${encodeURIComponent(attachmentId)}`),
+    // Reattach a DICOM message's pixel-data attachment(s) and return the full,
+    // raw Base64 DICOM (Swing getDICOMMessage). Body is the ConnectorMessage.
+    getDicom: (channelId, messageId, connectorMessage) =>
+        post(`/channels/${enc(channelId)}/messages/${enc(messageId)}/_getDICOMMessage`, connectorMessage, {
+            wrapKey: (connectorMessage && connectorMessage['@class']) || 'com.mirth.connect.donkey.model.message.ConnectorMessage',
+            raw: true, noAuthHandler: true
+        }),
     processNew: (channelId, rawData, destinationMetaDataIds, sourceMapEntries) => {
         const params = {};
         if (destinationMetaDataIds && destinationMetaDataIds.length) params.destinationMetaDataId = destinationMetaDataIds;

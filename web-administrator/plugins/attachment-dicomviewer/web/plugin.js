@@ -813,9 +813,13 @@ function register(platform2) {
       setZoom(1);
       (async () => {
         try {
-          const full = await platform3.api.messages.attachment(channelId, messageId, attachment.id);
-          const b64 = String(full?.content ?? full?.attachment?.content ?? "").replace(/\s+/g, "");
-          if (!b64) throw new Error("the attachment has no content");
+          const msg = await platform3.api.messages.get(channelId, messageId);
+          const entries = platform3.api.asList(msg?.connectorMessages?.entry ?? msg?.connectorMessages);
+          const cms = entries.map((e) => e.connectorMessage ?? e).filter(Boolean);
+          const cm = cms.find((c) => String(c.metaDataId) === "0") || cms[0];
+          if (!cm) throw new Error("no connector message found for this message");
+          const b64 = String(await platform3.api.messages.getDicom(channelId, messageId, cm) ?? "").replace(/\s+/g, "");
+          if (!b64) throw new Error("the reassembled DICOM is empty");
           let bin;
           try {
             bin = atob(b64);
