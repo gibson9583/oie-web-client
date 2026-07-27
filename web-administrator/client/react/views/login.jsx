@@ -150,7 +150,7 @@ export function LoginForm({ onSuccess }) {
 
     return (
         <div className="login-stage">
-            <form className="login-card oie-card" onSubmit={submit}
+            <form className="login-card panel overflow-visible" onSubmit={submit}
                 onKeyDown={(e) => {
                     // Explicit Enter-to-submit so pressing Enter in a field logs in
                     // regardless of native implicit-submission quirks.

@@ -866,7 +866,7 @@ function CodeTemplatesView() {
                                 pinnedKeys={['name']}
                                 emptyText="No code template libraries" />
                         </div>
-                        <div className="filterbar flex-none oie-card mx-[14px] my-2">
+                        <div className="filterbar flex-none panel overflow-visible mx-[14px] my-2">
                             <span className="counts">{countsText}</span>
                             <span className="ml-auto inline-flex items-center gap-1.5">
                                 <label>Filter:</label>

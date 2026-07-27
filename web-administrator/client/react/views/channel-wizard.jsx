@@ -432,7 +432,7 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
         <div className="flex flex-col lg:flex-row gap-4 items-start">
             <div className="w-full lg:w-[240px] flex-none flex flex-col gap-2">
                 <div className="cform-section-title">Destinations</div>
-                <div className="step-list oie-card p-1.5 min-h-[140px]">
+                <div className="step-list panel overflow-visible p-1.5 min-h-[140px]">
                     {dests.map((d, i) => (
                         <div key={d.metaDataId} className={`step-item min-w-0 ${i === selected ? 'selected' : ''}`} onClick={() => onSelect(i)} title={`${d.name} — ${d.transportName}`}>
                             <div className="flex items-center gap-2 min-w-0">
