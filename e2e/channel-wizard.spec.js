@@ -109,9 +109,8 @@ test.describe('channel wizard', () => {
 
         await expect(page.getByText('Tags', { exact: true })).toBeVisible();
 
-        // The attachment handler config only appears once "Store attachments" is on.
-        await expect(page.getByText('Attachment handler')).toHaveCount(0);
-        await page.getByText('Store attachments').click();
+        // Store attachments is on by default (engine ChannelProperties parity), so
+        // the attachment handler config shows immediately.
         await expect(page.getByText('Attachment handler')).toBeVisible();
 
         // Switching the attachment handler to Regex reveals its pattern editor.
