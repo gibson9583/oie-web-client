@@ -112,6 +112,27 @@ test.describe('Channels React view', () => {
         await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toBeVisible();
     });
 
+    test('Deploy Channel moves to the dashboard on success', async ({ page }) => {
+        await mockEngine(page, { ...GROUPS_FIXTURE, 'POST /channels/_deploy': '' });
+        await gotoChannels(page);
+        await page.getByText('Demo Stopped', { exact: true }).click();
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+        await expect(page).toHaveURL(/\/dashboard/);
+    });
+
+    test('a deploy failure shows the error detail modal and stays on Channels', async ({ page }) => {
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'POST /channels/_deploy': { __status: 500, body: { error: 'compile failed' } },
+        });
+        await gotoChannels(page);
+        await page.getByText('Demo Stopped', { exact: true }).click();
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+
+        await expect(page.getByText('Channel Deployment Failed', { exact: true })).toBeVisible();
+        await expect(page).toHaveURL(/\/channels/);
+    });
+
     test('clicking empty space clears the selection and hides contextual tasks', async ({ page }) => {
         await gotoChannels(page);
         await page.getByText('Demo Stopped', { exact: true }).click();

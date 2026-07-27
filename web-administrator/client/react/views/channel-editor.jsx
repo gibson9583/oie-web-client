@@ -26,7 +26,7 @@
  */
 
 import { useEffect, useRef, useReducer, useState } from 'react';
-import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, tabs, toast, confirmDialog, promptDialog, modal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
+import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, tabs, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
@@ -504,9 +504,16 @@ function buildBody(params, query, onTasksChange, returning) {
         }
         try {
             await api.engine.deploy(channel.id);
-            toast(`Deployed ${channel.name}`);
+            // Switch to the Dashboard to watch deployment (matches Swing, which
+            // moves to the dashboard after a deploy).
+            toast(`Deploying ${channel.name}`);
+            router.navigate('/dashboard');
         } catch (e) {
-            toast(e.message, 'error');
+            // A deploy failure returns the engine's full exception (stack trace,
+            // compile error) — far too long for a corner toast. Show it in the
+            // Server Log-style detail modal so it's readable and copyable, and
+            // stay on the editor.
+            errorModal('Channel Deployment Failed', e, channel.name);
         }
     }
 
