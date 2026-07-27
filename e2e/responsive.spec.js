@@ -51,7 +51,7 @@ test.describe('responsive — phone (375px)', () => {
         await expect(page.locator('.dash-controls')).toBeHidden();
         await displayBtn.click();
         await expect(page.locator('.dash-controls')).toBeVisible();
-        await expect(page.locator('.dash-controls').getByText('Current Statistics')).toBeVisible();
+        await expect(page.locator('.dash-controls').getByText('Range:')).toBeVisible();
     });
 
     // Wide tree-tables get a min-width floor so a narrow viewport scrolls the
@@ -82,7 +82,7 @@ test('dashboard controls stay inline (no View button) at desktop width', async (
     await mockEngine(page);
     await page.goto('/dashboard');
     await expect(page.locator('.dash-options-btn')).toBeHidden();
-    await expect(page.locator('.dash-controls').getByText('Current Statistics')).toBeVisible();
+    await expect(page.locator('.dash-controls').getByText('Range:')).toBeVisible();
 });
 
 test('transformer sub-editor stacks its split panes on a narrow viewport', async ({ page }) => {
