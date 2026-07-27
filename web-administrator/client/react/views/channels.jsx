@@ -1324,7 +1324,7 @@ function ChannelsView() {
                             </>
                         )} />
                 </div>
-                <div className="filterbar oie-card mx-[14px] mb-3">
+                <div className="filterbar panel overflow-visible mx-[14px] mb-3">
                     <label>Filter:</label>
                     <input type="text" placeholder="Enter channel tag or name"
                         onInput={(e) => { filterTextRef.current = e.target.value; renderTable(); }} />

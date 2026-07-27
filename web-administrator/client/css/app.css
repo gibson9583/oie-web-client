@@ -2020,19 +2020,15 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
 .dash-split { margin: 4px 14px; }
 
 /* ── Reusable card vocabulary (apply across views for one consistent look) ─
-   `oie-card`      → panels / toolbars / dock: full card (border + radius + elev).
+   `panel`         → the card surface (border + radius + elev); clips to its
+                     corners. Add `overflow-visible` for a bare card whose
+                     content (dropdowns/popovers) must escape.
    `oie-elev`      → just the soft elevation (compose with your own border/radius).
    `oie-tablecard` → paints the card onto a data table's OWN scroll container.
    NEVER wrap a data table in a new element — it breaks the sticky header and the
    column-resize grabbers. Add `oie-tablecard` to the EXISTING container that holds
    the table (its `.dt-wrap` child gets carded). */
 .oie-elev { box-shadow: var(--elev); }
-.oie-card {
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    box-shadow: var(--elev);
-    background: var(--bg2);
-}
 /* Descendant (not child) so it works whether the table's `.dt-wrap` is a direct
    child (TreeTable) or nested one level (DataTableHost's mount wrapper). */
 .oie-tablecard .dt-wrap {

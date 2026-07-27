@@ -416,7 +416,7 @@ function buildBody(params, kindName, onTasksChange) {
 
     // Fills the pane so right-clicking anywhere in the step area (not just on a
     // row) opens the context menu.
-    const tableHost = h('div', { class: 'min-h-full oie-card overflow-auto' });
+    const tableHost = h('div', { class: 'min-h-full panel overflow-auto' });
 
     function typeDef(type) {
         return isFilter ? platform.ruleType(type) : platform.stepType(type);
@@ -539,7 +539,7 @@ function buildBody(params, kindName, onTasksChange) {
         clear(editorHost);
         const element = elementAtPath(selectedPath);
         if (!element) {
-            editorHost.appendChild(h('div.dt-empty', { class: 'oie-card min-h-full' },
+            editorHost.appendChild(h('div.dt-empty', { class: 'panel overflow-visible min-h-full' },
                 h('div', `Select a ${kind.noun.toLowerCase()} to edit`)));
             return;
         }

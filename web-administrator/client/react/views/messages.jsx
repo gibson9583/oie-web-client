@@ -1058,7 +1058,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
     const nextBtn = taskButton('Next ›', null, () => { offset += limit; search(false); });
     const lastBtn = taskButton('Last »', null, () => { if (total != null) { offset = Math.max(0, Math.floor(Math.max(0, total - 1) / limit) * limit); search(false); } });
     const countBtn = taskButton('Count', null, () => doCount());
-    const pagerBar = h('div.filterbar', { class: 'flex-none oie-card mx-[14px]' }, firstBtn, prevBtn, nextBtn, lastBtn, pagerLabel, countBtn);
+    const pagerBar = h('div.filterbar', { class: 'flex-none panel overflow-visible mx-[14px]' }, firstBtn, prevBtn, nextBtn, lastBtn, pagerLabel, countBtn);
 
     /* The total match count is resolved lazily (Swing's Count button): a COUNT is
        expensive on large tables, so we don't run one on every search. Resolves on
@@ -1125,7 +1125,7 @@ function buildBrowser(host, platform, channelId, options, onSelectionChange) {
 
     const detailHandle = h('div.split-handle', { class: 'mx-[14px]', dataset: { orient: 'v', resize: 'next' } });
     const detailPane = h('div', {
-        class: 'flex-none h-[36px] overflow-hidden flex flex-col oie-card mx-[14px] mb-3'
+        class: 'flex-none h-[36px] overflow-hidden flex flex-col panel mx-[14px] mb-3'
     });
     let detailHeight = '38%'; // last expanded height (preserved across selections)
     let detailExpanded = false;
