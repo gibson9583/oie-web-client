@@ -144,9 +144,17 @@ export function register(platform) {
             setState({ status: 'loading' }); setFrame(0); setWin(null); setZoom(1);
             (async () => {
                 try {
-                    const full = await platform.api.messages.attachment(channelId, messageId, attachment.id);
-                    const b64 = String(full?.content ?? full?.attachment?.content ?? '').replace(/\s+/g, '');
-                    if (!b64) throw new Error('the attachment has no content');
+                    // A DICOM attachment holds only the pixel data, so it has no
+                    // DICM header on its own. Fetch the REASSEMBLED full DICOM from
+                    // the source connector message (Swing getDICOMMessage), not the
+                    // raw attachment.
+                    const msg = await platform.api.messages.get(channelId, messageId);
+                    const entries = platform.api.asList(msg?.connectorMessages?.entry ?? msg?.connectorMessages);
+                    const cms = entries.map((e) => e.connectorMessage ?? e).filter(Boolean);
+                    const cm = cms.find((c) => String(c.metaDataId) === '0') || cms[0];
+                    if (!cm) throw new Error('no connector message found for this message');
+                    const b64 = String(await platform.api.messages.getDicom(channelId, messageId, cm) ?? '').replace(/\s+/g, '');
+                    if (!b64) throw new Error('the reassembled DICOM is empty');
                     let bin;
                     try { bin = atob(b64); } catch { throw new Error('the attachment content is not valid Base64'); }
                     const bytes = new Uint8Array(bin.length);
