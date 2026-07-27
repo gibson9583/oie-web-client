@@ -182,6 +182,11 @@ function buildBody(params, kindName, onTasksChange) {
         connector[kind.targetKey] = isFilter ? oie.emptyFilter(version) : oie.emptyTransformer(version);
     }
     const target = connector[kind.targetKey];
+    // The channel's destinations (metaDataId + name) — threaded to step editors
+    // that need them (e.g. Destination Set Filter's selectable destination list).
+    // Other editors ignore the extra ctx field, so this stays backward-compatible.
+    const stepDestinations = oie.destinationsOf(channel)
+        .map(d => ({ metaDataId: d.metaDataId, name: d.name }));
     // Connector type drives which data type property groups apply (see props-editor).
     const connectorType = kindName === 'response' ? 'RESPONSE'
         : (String(params.metaDataId) === '0' ? 'SOURCE' : 'DESTINATION');
@@ -552,7 +557,7 @@ function buildBody(params, kindName, onTasksChange) {
             // persist defaults — suppress dirty-marking so opening/selecting a
             // step doesn't flag the channel unsaved.
             settling = true;
-            try { elementEditorRoot = mountReact(body, <PluginSlot def={def} ctx={{ element, platform, onChange }} />); }
+            try { elementEditorRoot = mountReact(body, <PluginSlot def={def} ctx={{ element, platform, onChange, destinations: stepDestinations }} />); }
             finally { settling = false; }
         } else {
             // Unknown plugin type: raw JSON fallback so nothing is lost.

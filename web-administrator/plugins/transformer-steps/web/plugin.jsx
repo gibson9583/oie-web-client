@@ -50,10 +50,14 @@ const CONDITIONS = [
 ];
 
 const BEHAVIORS = [
-    { value: 'REMOVE', label: 'Remove the following destinations' },
-    { value: 'REMOVE_ALL_EXCEPT', label: 'Remove all except the following destinations' },
-    { value: 'REMOVE_ALL', label: 'Remove all destinations' }
+    { value: 'REMOVE', label: 'Remove the following' },
+    { value: 'REMOVE_ALL_EXCEPT', label: 'Remove all except the following' },
+    { value: 'REMOVE_ALL', label: 'Remove all' }
 ];
+
+/* Conditions that actually consume the Values list (the Swing DestinationSetFilter
+   / RuleBuilder dialog greys the values table for EXISTS / NOT_EXIST). */
+const CONDITION_USES_VALUES = new Set(['EQUALS', 'NOT_EQUAL', 'CONTAINS', 'NOT_CONTAIN']);
 
 /* ---- XStream list helpers ----------------------------------------------------
  * List<String>  round-trips as { string: [...] }  ('' when empty — an empty
@@ -73,17 +77,29 @@ function linesToStringList(text) {
     return lines.length ? { string: lines } : '';
 }
 
-function intListToText(value) {
-    if (!value || typeof value !== 'object') return '';
+/* DestinationSetFilter metaDataIds <-> the set of checked destination ids.
+   Reads the List<Integer> shape ({ int: [...] } | '' | array); writes it back
+   ordered by the destination list so the model round-trips deterministically
+   (and stays compatible with step-script's reader). */
+function checkedIdSet(value) {
+    if (!value || typeof value !== 'object') return new Set();
     const list = value.int;
-    if (list === null || list === undefined) return '';
-    return (Array.isArray(list) ? list : [list]).join(', ');
+    if (list === null || list === undefined) return new Set();
+    return new Set((Array.isArray(list) ? list : [list]).map(v => String(v)));
 }
 
-function textToIntList(text) {
-    const ids = String(text || '').split(/[,\s]+/).map(s => s.trim())
-        .filter(s => s !== '' && !isNaN(Number(s))).map(s => String(parseInt(s, 10)));
-    return ids.length ? { int: ids } : '';
+function idSetToMetaData(set, destinations) {
+    const ordered = destinations.map(d => String(d.metaDataId)).filter(id => set.has(id));
+    // Preserve any checked ids that aren't in the current destination list.
+    for (const id of set) if (!ordered.includes(id)) ordered.push(id);
+    return ordered.length ? { int: ordered } : '';
+}
+
+/* DestinationSetFilter values <-> an array of strings (List<String>). Unlike
+   linesToStringList this does NOT drop blanks — the values table keeps empty
+   rows the user is still typing into; '' stands in for an empty list. */
+function stringArrayToList(arr) {
+    return arr.length ? { string: arr.map(s => String(s ?? '')) } : '';
 }
 
 /* ---- JSX form helpers --------------------------------------------------------
@@ -381,51 +397,167 @@ function XsltEditor({ element, onChange }) {
     );
 }
 
-function DestinationSetFilterEditor({ element, onChange }) {
+/* Destination Set Filter — Swing-parity editor. The channel's destinations are
+   threaded in as the `destinations` prop ([{metaDataId, name}, …]) by the
+   filter/transformer view; other step editors ignore it, so it's backward
+   compatible. metaDataIds is stored as the List<Integer> of CHECKED ids and
+   values as a List<String>, in the same wire shape the model loaded with — a
+   loaded element the user only renames round-trips untouched. */
+function DestinationSetFilterEditor({ element, onChange, destinations }) {
     const force = useRerender();
+    const [selValue, setSelValue] = React.useState(-1);
+
+    const dests = Array.isArray(destinations) ? destinations : [];
+    const behavior = element.behavior || 'REMOVE';
+    const condition = element.condition || 'EXISTS';
+    const checked = checkedIdSet(element.metaDataIds);
+    const values = stringListToLines(element.values);
+
+    const listDisabled = behavior === 'REMOVE_ALL';   // REMOVE_ALL takes no ids
+    const valuesEnabled = CONDITION_USES_VALUES.has(condition);
+
+    // ---- destination checkbox list ----
+    const setChecked = (next) => { element.metaDataIds = idSetToMetaData(next, dests); onChange(); force(); };
+    const toggleId = (id, on) => {
+        const next = new Set(checked);
+        if (on) next.add(String(id)); else next.delete(String(id));
+        setChecked(next);
+    };
+    const selectAll = () => setChecked(new Set(dests.map(d => String(d.metaDataId))));
+    const deselectAll = () => setChecked(new Set());
+
+    // ---- values table ----
+    const setValues = (arr) => { element.values = stringArrayToList(arr); onChange(); force(); };
+    const newValue = () => { setValues([...values, '']); setSelValue(values.length); };
+    const editValue = (i, v) => { const next = values.slice(); next[i] = v; setValues(next); };
+    const deleteSelected = () => {
+        if (selValue < 0 || selValue >= values.length) return;
+        const next = values.slice();
+        next.splice(selValue, 1);
+        setValues(next);
+        setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
+    };
+
     return (
         <div className="form-grid">
             <Field label="Behavior">
                 <Select
                     options={BEHAVIORS}
-                    value={element.behavior || 'REMOVE'}
+                    value={behavior}
                     onChange={(e) => { element.behavior = e.target.value; onChange(); force(); }}
-                />
-            </Field>
-            <Field
-                label="Destination Meta Data Ids"
-                hint="Comma-separated destination metaDataIds this filter applies to"
-            >
-                <input
-                    type="text"
-                    placeholder="e.g. 1, 2"
-                    value={intListToText(element.metaDataIds)}
-                    onChange={(e) => { element.metaDataIds = textToIntList(e.target.value); onChange(); force(); }}
                 />
             </Field>
             <Field label="Field">
                 <input
                     type="text"
+                    placeholder="msg['PID']['PID.3']['PID.3.1'].toString()"
                     value={element.field ?? ''}
                     onChange={(e) => { element.field = e.target.value; onChange(); force(); }}
                 />
             </Field>
-            <Field label="Condition">
-                <Select
-                    options={CONDITIONS}
-                    value={element.condition || 'EXISTS'}
-                    onChange={(e) => { element.condition = e.target.value; onChange(); force(); }}
-                />
-            </Field>
-            <div className="span-2">
-                <Field label="Values">
-                    <textarea
-                        rows={4}
-                        placeholder="One value per line"
-                        title="Only used by Equals / Not Equal / Contains / Not Contain"
-                        value={stringListToLines(element.values).join('\n')}
-                        onChange={(e) => { element.values = linesToStringList(e.target.value); onChange(); force(); }}
-                    />
+
+            <div className="span-2 mt-2">
+                <Field label="Destinations">
+                    <div className="flex gap-2 mb-1.5">
+                        <button type="button" className="btn btn-sm" disabled={listDisabled} onClick={selectAll}>Select All</button>
+                        <button type="button" className="btn btn-sm" disabled={listDisabled} onClick={deselectAll}>Deselect All</button>
+                    </div>
+                    <div
+                        className="dt-wrap border border-line rounded max-h-[180px]"
+                        style={listDisabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+                    >
+                        <table className="dt">
+                            <thead>
+                                <tr>
+                                    <th className="w-[42px]"></th>
+                                    <th>Name</th>
+                                    <th className="w-[70px]">Id</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {dests.length ? dests.map((d) => {
+                                    const id = String(d.metaDataId);
+                                    return (
+                                        <tr key={id}>
+                                            <td className="text-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={checked.has(id)}
+                                                    disabled={listDisabled}
+                                                    onChange={(e) => toggleId(id, e.target.checked)}
+                                                />
+                                            </td>
+                                            <td>{d.name || `Destination ${id}`}</td>
+                                            <td className="num">{id}</td>
+                                        </tr>
+                                    );
+                                }) : (
+                                    <tr><td colSpan={3}><span className="text-text-faint">No destinations on this channel</span></td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Field>
+            </div>
+
+            <div className="span-2 mt-2">
+                <Field label="Condition">
+                    <div className="radio-group inline-row">
+                        {CONDITIONS.map((opt) => (
+                            <label className="check" key={opt.value}>
+                                <input
+                                    type="radio"
+                                    name={`dsf-condition-${element.__type}`}
+                                    checked={condition === opt.value}
+                                    onChange={() => { element.condition = opt.value; onChange(); force(); }}
+                                />
+                                {opt.label}
+                            </label>
+                        ))}
+                    </div>
+                </Field>
+            </div>
+
+            <div className="span-2 mt-2">
+                <Field label="Values" hint="Only used by Equals / Not Equal / Contains / Not Contain">
+                    <div className="flex gap-2 mb-1.5">
+                        <button type="button" className="btn btn-sm" disabled={!valuesEnabled} onClick={newValue}>New</button>
+                        <button
+                            type="button"
+                            className="btn btn-sm btn-danger"
+                            disabled={!valuesEnabled || selValue < 0 || selValue >= values.length}
+                            onClick={deleteSelected}
+                        >Delete</button>
+                    </div>
+                    <div
+                        className="dt-wrap border border-line rounded max-h-[180px]"
+                        style={!valuesEnabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
+                    >
+                        <table className="dt">
+                            <thead><tr><th>Value</th></tr></thead>
+                            <tbody>
+                                {values.length ? values.map((v, i) => (
+                                    <tr
+                                        key={i}
+                                        className={selValue === i ? 'selected' : null}
+                                        onClick={() => setSelValue(i)}
+                                    >
+                                        <td>
+                                            <input
+                                                type="text"
+                                                value={v}
+                                                disabled={!valuesEnabled}
+                                                onFocus={() => setSelValue(i)}
+                                                onChange={(e) => editValue(i, e.target.value)}
+                                            />
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr><td><span className="text-text-faint">No values — use New</span></td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 </Field>
             </div>
         </div>
