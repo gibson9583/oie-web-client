@@ -14,6 +14,8 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './queries.js';
 
 // The rail element React views portal their task panes into. Set by the shell
 // on mount, read when each view mounts.
@@ -29,9 +31,11 @@ export function reactView(Component) {
         el.style.display = 'contents';   // transparent wrapper: the view's .view is the flex child
         const root = createRoot(el);
         flushSync(() => root.render(
-            <TasksHostContext.Provider value={reactTasksHostEl}>
-                <Component params={params} query={query} />
-            </TasksHostContext.Provider>
+            <QueryClientProvider client={queryClient}>
+                <TasksHostContext.Provider value={reactTasksHostEl}>
+                    <Component params={params} query={query} />
+                </TasksHostContext.Provider>
+            </QueryClientProvider>
         ));
         return { el, teardown: () => root.unmount() };
     };
@@ -46,7 +50,9 @@ export function reactView(Component) {
 // the host so the React root doesn't leak.
 export function mountReact(hostEl, element) {
     const root = createRoot(hostEl);
-    flushSync(() => root.render(element));
+    flushSync(() => root.render(
+        <QueryClientProvider client={queryClient}>{element}</QueryClientProvider>
+    ));
     return () => root.unmount();
 }
 
