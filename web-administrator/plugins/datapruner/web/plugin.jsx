@@ -213,7 +213,7 @@ export function register(platform) {
 
     /* ---- main panel component (ctx as props: { platform, setTasks }) ---- */
 
-    function DataPrunerPanel({ platform, setTasks }) {
+    function DataPrunerPanel({ platform, setTasks, setSave, markDirty, markClean }) {
         const [phase, setPhase] = React.useState('loading');     // loading | ready | error
         const [errorMessage, setErrorMessage] = React.useState('');
         const [statusState, setStatusState] = React.useState({ phase: 'loading', pairs: [], message: '' });
@@ -517,8 +517,11 @@ export function register(platform) {
                 toast('Data Pruner settings saved');
                 cleanRef.current = snapshot();   // saved state is the new clean baseline
                 dirtyRef.current = false;
+                markClean();
+                return true;
             } catch (e) {
                 toast(`Save failed: ${e.message}`, 'error');
+                return false;
             }
         }
 
@@ -552,6 +555,10 @@ export function register(platform) {
         // into the rail). Re-declared whenever the bound save/prune state closures
         // change so the buttons always act on the latest field state.
         React.useEffect(() => {
+            // Participate in the Settings framework's dirty tracking: setSave makes
+            // markDirty engage, and the framework's tab-switch + route-leave prompts
+            // can save on the user's behalf.
+            setSave(save);
             setTasks('Data Pruner Tasks', [
                 taskButton('Refresh', 'refresh', () => { load(); }),
                 taskButton('Save', 'save', save, { primary: true }),
@@ -568,30 +575,21 @@ export function register(platform) {
         // Capture the clean baseline once the form is populated (declared BEFORE the
         // compute-dirty effect so it runs first on the load render).
         React.useEffect(() => {
-            if (phase === 'ready') { cleanRef.current = snapshot(); dirtyRef.current = false; }
+            if (phase === 'ready') { cleanRef.current = snapshot(); dirtyRef.current = false; markClean(); }
             // eslint-disable-next-line react-hooks/exhaustive-deps
         }, [phase]);
-        // Mark dirty whenever any field differs from the clean baseline.
+        // Mirror the snapshot-precise dirty state into the Settings framework —
+        // it drives BOTH the tab-switch prompt and the route-leave guard (and
+        // reverting an edit back to the baseline un-dirties again).
         React.useEffect(() => {
-            if (cleanRef.current != null) dirtyRef.current = snapshot() !== cleanRef.current;
+            if (cleanRef.current == null) return;
+            const isDirty = snapshot() !== cleanRef.current;
+            dirtyRef.current = isDirty;
+            if (isDirty) markDirty(); else markClean();
             // eslint-disable-next-line react-hooks/exhaustive-deps
         }, [enabled, blockSize, pruneEvents, maxEventAge, archiveEnabled, archiverBlockSize,
             includeAttachments, contentKey, encrypt, compressKey, passwordEnabled, password,
             encryptionType, rootFolder, filePattern, scheduleType, freqValue, freqUnit, pollTime, cronJobs]);
-        // Warn before leaving with unsaved changes (Swing parity), mirroring the
-        // channel editor / code templates nav-guard.
-        React.useEffect(() => {
-            if (!platform.store) return undefined;
-            platform.store.setState('navGuard', async () => {
-                if (!dirtyRef.current) return undefined;
-                const leave = await confirmDialog('Data Pruner',
-                    'You have unsaved Data Pruner changes. Leave without saving?',
-                    { danger: true, okLabel: 'Leave' });
-                return leave ? undefined : false;
-            });
-            return () => { if (platform.store) platform.store.setState('navGuard', null); };
-            // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, []);
 
         if (phase === 'loading') return <Loading />;
         if (phase === 'error') {

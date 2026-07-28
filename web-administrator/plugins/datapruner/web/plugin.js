@@ -157,7 +157,7 @@ function register(platform2) {
   function Loading({ text = "Loading\u2026" }) {
     return /* @__PURE__ */ React.createElement("div", { className: "loading-block" }, /* @__PURE__ */ React.createElement("div", { className: "spinner" }), text);
   }
-  function DataPrunerPanel({ platform: platform3, setTasks }) {
+  function DataPrunerPanel({ platform: platform3, setTasks, setSave, markDirty, markClean }) {
     const [phase, setPhase] = React.useState("loading");
     const [errorMessage, setErrorMessage] = React.useState("");
     const [statusState, setStatusState] = React.useState({ phase: "loading", pairs: [], message: "" });
@@ -427,8 +427,11 @@ function register(platform2) {
         toast("Data Pruner settings saved");
         cleanRef.current = snapshot();
         dirtyRef.current = false;
+        markClean();
+        return true;
       } catch (e) {
         toast(`Save failed: ${e.message}`, "error");
+        return false;
       }
     }
     async function pruneNow() {
@@ -455,6 +458,7 @@ function register(platform2) {
       load();
     }, []);
     React.useEffect(() => {
+      setSave(save);
       setTasks("Data Pruner Tasks", [
         taskButton("Refresh", "refresh", () => {
           load();
@@ -492,10 +496,15 @@ function register(platform2) {
       if (phase === "ready") {
         cleanRef.current = snapshot();
         dirtyRef.current = false;
+        markClean();
       }
     }, [phase]);
     React.useEffect(() => {
-      if (cleanRef.current != null) dirtyRef.current = snapshot() !== cleanRef.current;
+      if (cleanRef.current == null) return;
+      const isDirty = snapshot() !== cleanRef.current;
+      dirtyRef.current = isDirty;
+      if (isDirty) markDirty();
+      else markClean();
     }, [
       enabled,
       blockSize,
@@ -518,21 +527,6 @@ function register(platform2) {
       pollTime,
       cronJobs
     ]);
-    React.useEffect(() => {
-      if (!platform3.store) return void 0;
-      platform3.store.setState("navGuard", async () => {
-        if (!dirtyRef.current) return void 0;
-        const leave = await confirmDialog(
-          "Data Pruner",
-          "You have unsaved Data Pruner changes. Leave without saving?",
-          { danger: true, okLabel: "Leave" }
-        );
-        return leave ? void 0 : false;
-      });
-      return () => {
-        if (platform3.store) platform3.store.setState("navGuard", null);
-      };
-    }, []);
     if (phase === "loading") return /* @__PURE__ */ React.createElement(Loading, null);
     if (phase === "error") {
       return /* @__PURE__ */ React.createElement("div", { className: "dt-empty" }, /* @__PURE__ */ React.createElement("div", { className: "empty-icon" }, /* @__PURE__ */ React.createElement(

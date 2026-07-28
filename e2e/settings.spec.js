@@ -139,3 +139,24 @@ test('custom background color saves via the single-key preference endpoint (issu
     expect(single.body).toContain('<awt-color>');
     expect(puts.some((p) => /\/users\/1\/preferences$/.test(p.path))).toBe(false);
 });
+
+// Regression: unsaved edits must prompt BOTH on switching settings tabs and on
+// leaving the view — including plugin panels (Data Pruner), which participate
+// through the same ctx.setSave/markDirty framework contract.
+test('unsaved settings edits prompt on tab switch and on leaving the view', async ({ page }) => {
+    await page.goto('/settings');
+    const env = page.locator('.field', { hasText: 'Environment name' }).locator('input');
+    await env.fill('Prod-Edited');
+
+    // Switching tabs prompts; Cancel stays put with the edit intact.
+    await page.getByRole('button', { name: 'Tags', exact: true }).click();
+    await expect(page.locator('.modal', { hasText: 'Unsaved Changes' })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(env).toHaveValue('Prod-Edited');
+
+    // Leaving the settings view prompts too; Don't Save proceeds.
+    await page.getByRole('button', { name: 'Channels', exact: true }).click();
+    await expect(page.locator('.modal', { hasText: 'Unsaved Changes' })).toBeVisible();
+    await page.getByRole('button', { name: "Don't Save", exact: true }).click();
+    await expect(page).toHaveURL(/\/channels/);
+});
