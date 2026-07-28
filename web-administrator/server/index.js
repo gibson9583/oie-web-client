@@ -68,7 +68,16 @@ const CSP = [
     "base-uri 'self'",
     "frame-ancestors 'none'"
 ].join('; ');
-app.use((req, res, next) => { res.setHeader('Content-Security-Policy', CSP); next(); });
+app.use((req, res, next) => {
+    res.setHeader('Content-Security-Policy', CSP);
+    // Plugin files are served from disk by extension (/plugins/:id/*); nosniff
+    // stops a mistyped/omitted Content-Type from being sniffed into something
+    // executable. Referrer-Policy keeps internal paths (and any engine URL in a
+    // query) out of cross-origin Referer headers.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    next();
+});
 
 // --- Web-admin plugin install/uninstall (engine-gated) -----------------------
 // Local /api/_webadmin/* routes, registered BEFORE the proxy so they're handled
@@ -80,12 +89,14 @@ app.use('/api', createApiProxy(config));
 
 // --- Web admin metadata ------------------------------------------------------
 app.get('/webadmin/config.json', (req, res) => {
+    // This endpoint is served pre-auth (the login screen fetches it), so it must
+    // not disclose internal engine URLs. The client selects an engine by its
+    // index (the oie-engine cookie) and the proxy resolves the real URL server
+    // side (see server/proxy.js); the browser never needs the URL. Names are
+    // already host-derived when unset (buildEngines → engineLabel), so the login
+    // dropdown and the connected-engine label read fine from `name` alone.
     res.json({
-        engineUrl: config.engine.url,
-        // Selectable engines (login dropdown, by name) + whether a manual URL entry
-        // is allowed. The client sends the chosen engine's index as the oie-engine
-        // cookie; the proxy resolves it (see server/proxy.js).
-        engines: config.engines.map((e) => ({ name: e.name, url: e.url })),
+        engines: config.engines.map((e) => ({ name: e.name })),
         devMode: !!config.devMode,
         version: require('../package.json').version,
         codeTemplateCompletions: config.codeTemplateCompletions !== false
