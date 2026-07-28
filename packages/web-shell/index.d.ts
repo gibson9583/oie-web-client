@@ -87,7 +87,10 @@ export interface DashboardTab extends Pick<TaskRef, 'task'> {
     order?: number;
     /** RBAC: checked as checkTask('dashboard', task) — the tab hides when denied. Omit = always visible. */
     task?: string;
-    /** Rendered in the dashboard's bottom tab strip; re-mounts when the selection changes. */
+    /** Rendered in the dashboard's bottom tab strip. NOT remounted on selection
+     *  change — the new selection arrives through the `selection` prop, so a tab
+     *  may accumulate state (e.g. the Server Log's entries) across selections.
+     *  It unmounts only when the user switches dock tabs or leaves the dashboard. */
     component: PluginComponent<{ selection: any; platform: Platform }>;
     [key: string]: any;
 }

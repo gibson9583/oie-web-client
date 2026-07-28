@@ -1,22 +1,22 @@
 /*
- * Dashboard (React port of views/dashboard.js) — live channel status board with
- * the classic Administrator layout. The status board itself is the hand-built
- * `table.dt` tree-table (group rows + per-connector child rows + expand
- * twisties + per-row context menus + a resizable column manager + a typeahead
- * filter bar) — it is hierarchical and NOT expressible as a DataTable, so it is
- * kept mounted via refs and repainted imperatively, reusing the legacy
- * renderTable/groupRow/channelRow/connectorRow + filter-bar logic VERBATIM
- * (the HYBRID pattern, see code-templates.jsx).
+ * Dashboard — live channel status board with the classic Administrator layout,
+ * fully declarative React. Server state (statuses, groups, tags, connector
+ * metadata) comes from TanStack Query hooks (react/queries.js) polling on the
+ * dashboardRefreshSeconds preference; UI state (selection, expand/collapse,
+ * filter, sort, display toggles) is React state. The status board is the
+ * controlled <TreeTable> (column resize/reorder/hide + persistence); the filter
+ * bar is <DashFilterBar> below (chips + typeahead + segmented display toggles).
  *
- * What becomes React: the view shell, the "Dashboard Tasks" pane (selection-
- * gated TaskButtons portaled into the rail via <ViewTasks>), and the plugin
- * dashboard tabs (rendered through <PluginHost>). Selection state the task
- * buttons gate on lives in refs; a useReducer force-update refreshes them.
- * 'dashboard:selection' is re-emitted via store.emit on every selection change.
+ * Menu/task actions take EXPLICIT channel-id lists (computed where the action
+ * is offered) rather than reading selection state, so a context menu built
+ * before a selection change can never act on a stale closure.
+ * 'dashboard:selection' is re-emitted via store.emit on every user selection
+ * change (polls prune a dead selection silently, matching the classic board).
  */
 
-import { useEffect, useRef, useReducer, useState } from 'react';
-import { h, clear, icon, toast, confirmDialog, modal, checkbox, contextMenu, fmtNumber, fmtDate } from '@oie/web-ui';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { h, toast, confirmDialog, modal, checkbox, contextMenu, fmtNumber, fmtDate } from '@oie/web-ui';
 import api, { statePip, stateLabel } from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import * as store from '../../core/store.js';
@@ -24,6 +24,7 @@ import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { openSendMessageDialog } from './messages.jsx';
 import { reactView, ViewTasks } from '../mount.jsx';
+import { useDashboardStatuses, useChannelGroups, useChannelTags, useConnectorTypes, useSourcePorts } from '../queries.js';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { TreeTable } from '../tree-table.jsx';
@@ -53,6 +54,11 @@ function DashboardHost() {
         ? <CardsView onToggleView={toggle} />
         : <DashboardView onToggleView={toggle} />;
 }
+
+// Stable empty fallbacks while the queries load (stable identities keep the
+// effects that depend on `statuses` from re-running on every render).
+const EMPTY_MAP = new Map();
+const EMPTY_LIST = [];
 
 // Default widths for the dashboard's resizable data columns (after the twisty).
 const DASH_COL_WIDTHS = {
@@ -142,86 +148,292 @@ function tagPillStyle(tag) {
     };
 }
 
-/* Compact two-option segmented control used in the filter bar. */
+// Type + Port are web-only columns Swing's dashboard doesn't have, so they
+// start hidden (reachable via the <TreeTable> column menu) — matching Swing's
+// default set. <TreeTable> owns the column manager (widths/order/hidden via
+// the 'dashboard' storageKey) so the show/hide menu + persistence are reused.
+const DASH_DEFAULT_HIDDEN = ['type', 'port'];
+
 /* Segmented toggle — the single app-wide toggle style (.segpill: shadcn pill,
    same language as the tabs). Used for Tags / Stats / View / Current-Lifetime. */
-function segControl(options, current, onChange) {
-    const wrap = h('span', { class: 'segpill flex-none' });
-    const buttons = options.map(opt => h('button', {
-        type: 'button', title: opt.title || opt.label || '',
-        onClick: () => { paint(opt.value); onChange(opt.value); }
-    }, opt.icon ? icon(opt.icon, 13) : null, opt.label || null));
-    function paint(value) {
-        buttons.forEach((btn, i) => btn.classList.toggle('on', options[i].value === value));
-    }
-    paint(current);
-    buttons.forEach(b => wrap.appendChild(b));
-    return wrap;
+function SegPill({ options, value, onChange }) {
+    return (
+        <span className="segpill flex-none">
+            {options.map((opt) => (
+                <button key={opt.value} type="button" title={opt.title || opt.label || ''}
+                    className={opt.value === value ? 'on' : ''}
+                    onClick={() => onChange(opt.value)}>
+                    {opt.icon ? <Icon name={opt.icon} size={13} /> : null}
+                    {opt.label || null}
+                </button>
+            ))}
+        </span>
+    );
+}
+
+/* The dashboard filter bar: chips + typeahead filter input + counts label, the
+   "View" collapse button (container query on .filterbar hides the inline
+   controls at narrow widths; the button opens them as a popover), and the
+   View / Tags / Stats / Range segmented toggles. The typeahead dropdown is
+   position:fixed and portaled to document.body so the (container-type) filter
+   bar never becomes its containing block. */
+const TYPEAHEAD_MAX = 12;
+
+function DashFilterBar({
+    statuses, tags, countsText,
+    filterText, onFilterText, chips, onChips,
+    viewMode, onViewMode, tagMode, onTagMode,
+    showStats, onShowStats, lifetime, onLifetime
+}) {
+    const [taOpen, setTaOpen] = useState(false);
+    const [taIndex, setTaIndex] = useState(-1);
+    const [displayOpen, setDisplayOpen] = useState(false);
+    const inputRef = useRef(null);
+    const taRef = useRef(null);
+    const panelRef = useRef(null);
+    const btnRef = useRef(null);
+
+    /* Substring matches across channel names + tag names (already-picked chips
+       excluded). Derived from live props, so a poll landing while the dropdown
+       is open refreshes the suggestions in place — same as the classic bar. */
+    const taItems = useMemo(() => {
+        if (!taOpen) return [];
+        const needle = filterText.trim().toLowerCase();
+        const seen = new Set();
+        const out = [];
+        const add = (name, kind) => {
+            const key = kind + ':' + name.toLowerCase();
+            if (chips.some(c => c.kind === kind && c.value === name)) return;   // already picked
+            if (name.toLowerCase().includes(needle) && !seen.has(key)) { seen.add(key); out.push({ value: name, kind }); }
+        };
+        for (const st of statuses) if (st.name) add(String(st.name), 'channel');
+        for (const tag of tags) if (tag.name) add(String(tag.name), 'tag');
+        out.sort((a, b) => a.value.localeCompare(b.value));
+        return out.slice(0, TYPEAHEAD_MAX);
+    }, [taOpen, filterText, chips, statuses, tags]);
+
+    // Anchor under the filter input; flip above when the viewport runs out.
+    // Measurement-dependent, so it writes styles after layout.
+    useLayoutEffect(() => {
+        const ta = taRef.current, input = inputRef.current;
+        if (!taOpen || !taItems.length || !ta || !input) return;
+        const r = input.getBoundingClientRect();
+        ta.style.minWidth = r.width + 'px';
+        ta.style.left = Math.max(4, Math.min(r.left, window.innerWidth - ta.offsetWidth - 4)) + 'px';
+        ta.style.top = (r.bottom + 2) + 'px';
+        ta.style.bottom = 'auto';
+        if (ta.getBoundingClientRect().bottom > window.innerHeight - 4) {
+            ta.style.top = 'auto';
+            ta.style.bottom = (window.innerHeight - r.top + 2) + 'px';
+        }
+    }, [taOpen, taItems]);
+
+    useEffect(() => {
+        if (taIndex >= 0 && taRef.current?.children[taIndex]) {
+            taRef.current.children[taIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }, [taIndex]);
+
+    // Close the "View" popover on any outside press (deferred so the opening
+    // click doesn't immediately close it).
+    useEffect(() => {
+        if (!displayOpen) return;
+        const onDown = (e) => {
+            if (!panelRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setDisplayOpen(false);
+        };
+        const t = setTimeout(() => document.addEventListener('mousedown', onDown), 0);
+        return () => { clearTimeout(t); document.removeEventListener('mousedown', onDown); };
+    }, [displayOpen]);
+
+    const closeTypeahead = () => { setTaOpen(false); setTaIndex(-1); };
+
+    const pickSuggestion = (item) => {
+        // Add an explicit pill (deduped); clear the text so more can be added.
+        if (!chips.some(c => c.kind === item.kind && c.value === item.value)) {
+            onChips([...chips, { value: item.value, kind: item.kind }]);
+        }
+        onFilterText('');
+        closeTypeahead();
+        inputRef.current?.focus();
+    };
+
+    const removeChip = (chip) => {
+        onChips(chips.filter(c => c !== chip));
+        inputRef.current?.focus();
+    };
+
+    const onKeyDown = (e) => {
+        const open = taOpen && taItems.length > 0;
+        if (e.key === 'Backspace' && !filterText && chips.length) {
+            // Backspace on an empty input removes the last pill.
+            e.preventDefault();
+            removeChip(chips[chips.length - 1]);
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!open) { setTaOpen(true); return; }
+            const delta = e.key === 'ArrowDown' ? 1 : -1;
+            setTaIndex((i) => (i + delta + taItems.length) % taItems.length);
+        } else if (e.key === 'Enter' && open) {
+            e.preventDefault();
+            pickSuggestion(taItems[taIndex >= 0 ? taIndex : 0]);
+        } else if (e.key === 'Escape' && open) {
+            e.preventDefault();
+            closeTypeahead();
+        }
+    };
+
+    return (
+        <div className="filterbar">
+            <span className="flex items-center gap-2.5 flex-1 min-w-[220px]">
+                <label>Filter:</label>
+                {chips.length > 0 && (
+                    <span className="filter-chip-host gap-1 flex-wrap" style={{ display: 'inline-flex' }}>
+                        {chips.map((chip) => {
+                            const isTag = chip.kind === 'tag';
+                            const tag = isTag ? tags.find(t => String(t.name) === chip.value) : null;
+                            return (
+                                <span key={chip.kind + ':' + chip.value}
+                                    className="tag inline-flex items-center gap-1 py-px pr-1 pl-[7px]"
+                                    style={{ background: isTag ? (tagRgb(tag, 0.25) || 'var(--bg3)') : 'var(--bg3)' }}>
+                                    <Icon name={isTag ? 'tag' : 'server'} size={12} />
+                                    <span>{chip.value}</span>
+                                    <button title="Remove"
+                                        className="appearance-none border-none cursor-pointer text-inherit text-[14px] leading-none py-0 px-px"
+                                        style={{ background: 'none', fontFamily: 'inherit' }}
+                                        onClick={() => removeChip(chip)}>×</button>
+                                </span>
+                            );
+                        })}
+                    </span>
+                )}
+                <input ref={inputRef} type="text" placeholder="Enter channel tag or name" autoComplete="off"
+                    className="flex-1 min-w-0" value={filterText}
+                    onChange={(e) => { onFilterText(e.target.value); setTaOpen(true); setTaIndex(-1); }}
+                    onFocus={() => setTaOpen(true)}
+                    onBlur={() => setTimeout(closeTypeahead, 150)}    // small delay so clicks on the dropdown land
+                    onKeyDown={onKeyDown} />
+                <span className="whitespace-nowrap"><span className="counts">{countsText}</span></span>
+            </span>
+            <button ref={btnRef} type="button" className="btn dash-options-btn"
+                aria-haspopup="true" aria-expanded={String(displayOpen)}
+                onClick={() => setDisplayOpen(o => !o)}>
+                <Icon name="eye" /><span>View</span><Icon name="chevD" />
+            </button>
+            {/* View / Tags / Statistics controls. Inline when the bar is wide; when
+                the bar gets too narrow (container query on .filterbar) they collapse
+                behind the "View" button and open as a popover. */}
+            <div ref={panelRef}
+                className={'dash-controls flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto' + (displayOpen ? ' open' : '')}>
+                <SegPill value={viewMode} onChange={onViewMode} options={[
+                    { value: 'group', icon: 'folder', title: 'Group view' },
+                    { value: 'channel', icon: 'channels', title: 'Channel view' }
+                ]} />
+                <span className="inline-flex items-center gap-[5px]">
+                    <span className="text-text-faint text-[11px]">Tags:</span>
+                    <SegPill value={tagMode} onChange={onTagMode} options={[
+                        { value: 'names', label: 'Names', title: 'Show tags as names' },
+                        { value: 'icons', label: 'Icons', title: 'Show tags as icons' },
+                        { value: 'off', label: 'Off', title: 'Hide tags' }
+                    ]} />
+                </span>
+                <span className="inline-flex items-center gap-[5px]">
+                    <span className="text-text-faint text-[11px]">Stats:</span>
+                    <SegPill value={showStats ? 'on' : 'off'} onChange={(v) => onShowStats(v === 'on')} options={[
+                        { value: 'on', label: 'On', title: 'Show stat cards' },
+                        { value: 'off', label: 'Off', title: 'Hide stat cards' }
+                    ]} />
+                </span>
+                <span className="inline-flex items-center gap-[5px]">
+                    <span className="text-text-faint text-[11px]">Range:</span>
+                    <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v) => onLifetime(v === 'lifetime')} options={[
+                        { value: 'current', label: 'Current' },
+                        { value: 'lifetime', label: 'Lifetime' }
+                    ]} />
+                </span>
+            </div>
+            {createPortal(
+                <div ref={taRef} className={'typeahead' + (taOpen && taItems.length ? '' : ' hidden')}>
+                    {taItems.map((item, i) => (
+                        <div key={item.kind + ':' + item.value}
+                            className={'typeahead-item' + (i === taIndex ? ' active' : '')}
+                            onMouseDown={(e) => e.preventDefault()}   // keep input focus so blur doesn't race the click
+                            onClick={() => pickSuggestion(item)}>
+                            <Icon name={item.kind === 'tag' ? 'tag' : 'server'} size={14} />
+                            <span className="typeahead-label">{item.value}</span>
+                            <span className="typeahead-kind">{item.kind}</span>
+                        </div>
+                    ))}
+                </div>,
+                document.body)}
+        </div>
+    );
 }
 
 
 function DashboardView({ onToggleView }) {
-    const [, forceRender] = useReducer((x) => x + 1, 0);
+    /* ---- server state (TanStack Query; polls on dashboardRefreshSeconds) ---- */
+    const statusesQ = useDashboardStatuses();
+    const groupsQ = useChannelGroups({ poll: true });
+    const tagsQ = useChannelTags({ poll: true });
+    const typesQ = useConnectorTypes();               // Type column, ~60s cadence
+    const portsQ = useSourcePorts();                  // Port column, ~60s cadence
 
-    // Working state read by the imperative table/filter callbacks (captured at
-    // mount) and by the React task pane — kept in refs so neither sees a stale
-    // closure. forceRender() refreshes the React task pane + plugin tabs.
-    const statusesRef = useRef([]);
-    const groupsRef = useRef([]);
-    const tagsRef = useRef([]);
-    const selectedRef = useRef(new Set());            // channelIds
-    const lastClickedRef = useRef(null);              // anchor for shift-range selection
-    const selectedConnectorRef = useRef(null);        // { channelId, metaDataId } when a connector row is selected
-    const expandedChannelsRef = useRef(new Set());    // channels showing connector rows
-    const collapsedGroupsRef = useRef(new Set());     // groups default to expanded
-    const filterTextRef = useRef('');
-    const filterChipsRef = useRef([]);                // explicit picks: [{ value, kind: 'tag' | 'channel' }]
-    const lifetimeRef = useRef(false);
-    const viewModeRef = useRef(lsGet('oie-dash-view', 'group') === 'channel' ? 'channel' : 'group');
-    const sortKeyRef = useRef('name');
-    const sortDirRef = useRef(1);                     // 1 = asc, -1 = desc
-    const connectorTypesRef = useRef(new Map());      // channelId → Map(metaDataId → transportName)
-    const sourcePortsRef = useRef(new Map());         // channelId → source listener port string
-    const connectorMetaAtRef = useRef(0);             // last connector-metadata fetch (epoch ms)
-    const destroyedRef = useRef(false);
-    const loadedRef = useRef(false);                  // first status poll has landed
-    const timerRef = useRef(null);
+    const statuses = statusesQ.data ?? EMPTY_LIST;
+    const groups = groupsQ.data ?? EMPTY_LIST;
+    const tags = tagsQ.data ?? EMPTY_LIST;
+    const connectorTypes = typesQ.data ?? EMPTY_MAP;  // channelId → Map(metaDataId → transportName)
+    const sourcePorts = portsQ.data ?? EMPTY_MAP;     // channelId → source listener port string
+    const loaded = statusesQ.data !== undefined;      // first status poll has landed
 
-    const savedTagMode = lsGet('oie-dash-tagmode', 'names');
-    const tagModeRef = useRef(['names', 'icons', 'off'].includes(savedTagMode) ? savedTagMode : 'names');
-    const showStatsRef = useRef(lsGet('oie-dash-stats', 'on') !== 'off');   // KPI stat cards visibility
+    /* ---- UI state ---- */
+    const [selected, setSelected] = useState(() => new Set());          // channelIds
+    const [selectedConnector, setSelectedConnector] = useState(null);   // { channelId, metaDataId }
+    const lastClickedRef = useRef(null);              // anchor for shift-range selection (interaction-only)
+    const [expandedChannels, setExpandedChannels] = useState(() => new Set());   // channels showing connector rows
+    const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());     // groups default to expanded
+    const [filterText, setFilterText] = useState('');
+    const [chips, setChips] = useState([]);           // explicit picks: [{ value, kind: 'tag' | 'channel' }]
+    const [lifetime, setLifetime] = useState(false);
+    const [sort, setSort] = useState({ key: 'name', dir: 1 });          // dir: 1 = asc, -1 = desc
+    const [viewMode, setViewModeState] = useState(() => (lsGet('oie-dash-view', 'group') === 'channel' ? 'channel' : 'group'));
+    const [tagMode, setTagModeState] = useState(() => {
+        const saved = lsGet('oie-dash-tagmode', 'names');
+        return ['names', 'icons', 'off'].includes(saved) ? saved : 'names';
+    });
+    const [showStats, setShowStatsState] = useState(() => lsGet('oie-dash-stats', 'on') !== 'off');   // KPI stat cards
+    const [activeTabId, setActiveTabId] = useState(null);               // plugin dock tab (id || label)
 
-    // Type + Port are web-only columns Swing's dashboard doesn't have, so they
-    // start hidden (reachable via the <TreeTable> column menu) — matching Swing's
-    // default set. <TreeTable> owns the column manager (widths/order/hidden via
-    // the 'dashboard' storageKey) so the show/hide menu + persistence are reused.
-    const DASH_DEFAULT_HIDDEN = ['type', 'port'];
+    const setViewMode = (v) => { setViewModeState(v); lsSet('oie-dash-view', v); };
+    const setTagMode = (v) => { setTagModeState(v); lsSet('oie-dash-tagmode', v); };
+    const setShowStats = (v) => { setShowStatsState(v); lsSet('oie-dash-stats', v ? 'on' : 'off'); };
 
-    // The imperative filter-bar host (built once on mount). The status board is
-    // now the declarative <TreeTable> below.
-    const filterbarHostRef = useRef(null);
-    const countsLabelRef = useRef(null);
-    const filterInputRef = useRef(null);
-    const typeaheadRef = useRef(null);
-    const chipHostRef = useRef(null);
+    /* When a poll drops channels the selection referenced, prune silently — no
+       'dashboard:selection' emit, matching the classic board (only USER actions
+       announce a selection change). */
+    useEffect(() => {
+        const ids = new Set(statuses.map(s => s.channelId));
+        setSelected(prev => {
+            const next = new Set([...prev].filter(id => ids.has(id)));
+            return next.size === prev.size ? prev : next;
+        });
+        setSelectedConnector(prev => (prev && !ids.has(prev.channelId) ? null : prev));
+    }, [statuses]);
 
-    // Latest plugin-tab def + selection signature, mirrored into React state via
-    // forceRender so the open tab re-scopes when the selection changes.
-    const activeTabRef = useRef(null);
+    /* Selection handed to the dashboard tabs (Connection Log, …): the selected
+       connector's scope, otherwise the selected channels. */
+    const selectionForTabs = selectedConnector
+        ? [{ channelId: selectedConnector.channelId, metaDataId: selectedConnector.metaDataId }]
+        : statuses.filter(s => selected.has(s.channelId));
 
-    const CONNECTOR_META_MS = 60000;
-
-    // Selection handed to the dashboard tabs (Connection Log, …): the selected
-    // connector's scope, otherwise the selected channels.
-    function currentSelection() {
-        const sel = selectedConnectorRef.current;
-        return sel
-            ? [{ channelId: sel.channelId, metaDataId: sel.metaDataId }]
-            : statusesRef.current.filter(s => selectedRef.current.has(s.channelId));
-    }
-    function emitSelection() {
-        store.emit('dashboard:selection', currentSelection());
-        forceRender();   // re-render the open dashboard tab with the new selection
+    /* The single choke point for USER selection changes: set both halves and
+       re-emit for outside listeners (plugins). Rendering (task pane, tabs)
+       follows from the state change itself. */
+    function applySelection(nextSelected, nextConnector) {
+        setSelected(nextSelected);
+        setSelectedConnector(nextConnector);
+        store.emit('dashboard:selection', nextConnector
+            ? [{ channelId: nextConnector.channelId, metaDataId: nextConnector.metaDataId }]
+            : statuses.filter(s => nextSelected.has(s.channelId)));
     }
 
     /* ---- channel control tasks (the "Dashboard Tasks" sidebar pane) ---- */
@@ -231,11 +443,13 @@ function DashboardView({ onToggleView }) {
     const isHaltable = (s) => !['STARTED', 'STOPPED', 'PAUSED'].includes(s);
     const isHaltableNonSyncing = (s) => isHaltable(s) && s !== 'SYNCING';
 
-    async function controlSelected(action, label) {
-        const selected = selectedRef.current;
-        if (!selected.size) { toast('Select a channel first', 'warn'); return; }
-        const byId = new Map(statusesRef.current.map(s => [s.channelId, s]));
-        for (const channelId of selected) {
+    /* Every action takes an EXPLICIT id list computed where it is offered (task
+       pane closure or context-menu builder) — no reads of selection state from
+       long-lived closures, so a menu can never act on a stale selection. */
+    async function controlChannels(action, label, ids) {
+        if (!ids.length) { toast('Select a channel first', 'warn'); return; }
+        const byId = new Map(statuses.map(s => [s.channelId, s]));
+        for (const channelId of ids) {
             // "Start" on a PAUSED channel must resume it, not start it: PAUSED means
             // the source is stopped while destinations run, and the engine's _start
             // (Channel.start) only acts on a STOPPED/DEPLOYING channel — it's a no-op
@@ -247,12 +461,6 @@ function DashboardView({ onToggleView }) {
         }
         refresh();
     }
-
-    const needSel = (fn) => () => {
-        const selected = selectedRef.current;
-        if (!selected.size) { toast('Select a channel first', 'warn'); return; }
-        fn([...selected]);
-    };
 
     /* Classic Clear Statistics dialog: pick which counters to reset. The body
        is the same {channelId: null} map (null metaDataId list = whole channel,
@@ -296,79 +504,58 @@ function DashboardView({ onToggleView }) {
         });
     }
 
-    // Task-pane handlers, mirroring the Swing context group (Send/View/Remove
-    // All/Clear Statistics/Start/Pause/Stop/Halt/Undeploy).
-    function startTask() { controlSelected('start', 'Start'); }
-    function pauseTask() { controlSelected('pause', 'Pause'); }
-    function stopTask() { controlSelected('stop', 'Stop'); }
-    async function haltTask() {
+    // Task handlers, mirroring the Swing context group (Send/View/Remove
+    // All/Clear Statistics/Start/Pause/Stop/Halt/Undeploy). All take explicit ids.
+    const needIds = (ids) => {
+        if (!ids.length) { toast('Select a channel first', 'warn'); return false; }
+        return true;
+    };
+    const startTask = (ids) => controlChannels('start', 'Start', ids);
+    const pauseTask = (ids) => controlChannels('pause', 'Pause', ids);
+    const stopTask = (ids) => controlChannels('stop', 'Stop', ids);
+    async function haltTask(ids) {
+        if (!needIds(ids)) return;
         if (await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) {
-            controlSelected('halt', 'Halt');
+            controlChannels('halt', 'Halt', ids);
         }
     }
-    const clearStatsTask = needSel((ids) => openClearStatisticsDialog(ids));
-    const undeployTask = needSel(async (ids) => {
+    function clearStatsTask(ids) {
+        if (needIds(ids)) openClearStatisticsDialog(ids);
+    }
+    async function undeployTask(ids) {
+        if (!needIds(ids)) return;
         if (await confirmDialog('Undeploy', `Undeploy ${ids.length} channel(s)?`, { okLabel: 'Undeploy' })) {
             try { await api.engine.undeployMany(ids); } catch (e) { toast(e.message, 'error'); }
             refresh();
         }
-    });
-    const sendMessageTask = needSel((ids) => openSendMessageDialog(platform, ids[0], () => refresh()));
-    const viewMessagesTask = needSel((ids) => router.navigate(`/messages/${ids[0]}`));
-    const removeAllTask = needSel(async () => {
-        const selected = selectedRef.current;
-        if (await confirmDialog('Remove all messages', `Permanently remove ALL messages from ${selected.size} channel(s)? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) {
-            for (const id of selected) {
+    }
+    function sendMessageTask(ids) {
+        if (needIds(ids)) openSendMessageDialog(platform, ids[0], () => refresh());
+    }
+    function viewMessagesTask(ids) {
+        if (needIds(ids)) router.navigate(`/messages/${ids[0]}`);
+    }
+    async function removeAllTask(ids) {
+        if (!needIds(ids)) return;
+        if (await confirmDialog('Remove all messages', `Permanently remove ALL messages from ${ids.length} channel(s)? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) {
+            for (const id of ids) {
                 try { await api.messages.removeAll(id); } catch (e) { toast(e.message, 'error'); }
             }
             toast('Messages removed');
             refresh();
         }
-    });
-
-    /* ---- connector metadata (Type + Port columns) ---- */
-
-    /* Channel definitions and listener ports change rarely, so they refresh at
-       most every ~60s alongside the status poll (or on manual Refresh).
-       Failures degrade silently — the Type/Port cells simply render empty. */
-    async function refreshConnectorMeta(force = false) {
-        if (!force && Date.now() - connectorMetaAtRef.current < CONNECTOR_META_MS) return;
-        connectorMetaAtRef.current = Date.now();
-        const [channels, ports] = await Promise.all([
-            api.channels.list().catch(() => null),
-            api.channels.portsInUse().catch(() => null)
-        ]);
-        if (channels) {
-            const map = new Map();
-            for (const ch of channels) {
-                if (!ch || !ch.id) continue;
-                const types = new Map();
-                if (ch.sourceConnector?.transportName) types.set(0, ch.sourceConnector.transportName);
-                for (const dest of api.asList(ch.destinationConnectors, 'connector')) {
-                    if (dest?.transportName && dest.metaDataId !== undefined) types.set(Number(dest.metaDataId), dest.transportName);
-                }
-                map.set(ch.id, types);
-            }
-            connectorTypesRef.current = map;
-        }
-        if (ports) {
-            const map = new Map();
-            for (let row of ports) {
-                if (row && row.ports) row = row.ports;   // singleton lists stay wrapped
-                if (row && row.id && row.port) map.set(row.id, String(row.port));
-            }
-            sourcePortsRef.current = map;
-        }
     }
 
     /* ---- grouping ---- */
+    /* (Connector Type/Port metadata now comes from useConnectorTypes /
+       useSourcePorts — ~60s cadence, keep-last on failure, forced on manual
+       Refresh — so the throttled imperative fetch is gone.) */
 
     function groupedStatuses() {
-        const statuses = statusesRef.current;
         const byId = new Map(statuses.map(s => [s.channelId, s]));
         const used = new Set();
         const rows = [];
-        for (const group of groupsRef.current) {
+        for (const group of groups) {
             const memberIds = api.asList(group.channels, 'channel').map(c => c.id).filter(Boolean);
             const members = memberIds.map(id => byId.get(id)).filter(Boolean);
             members.forEach(m => used.add(m.channelId));
@@ -385,17 +572,16 @@ function DashboardView({ onToggleView }) {
     }
 
     function visibleMembers(members) {
-        const filterChips = filterChipsRef.current;
-        const filterText = filterTextRef.current;
-        if (!filterChips.length && !filterText) return members;
+        const text = filterText.trim();
+        if (!chips.length && !text) return members;
 
         // Explicit picks (exact, no wildcard): channels carrying any selected
         // tag, or matching any selected channel name. Multiple picks are OR'd.
         const chipChannelIds = new Set();
         const chipChannelNames = new Set();
-        for (const chip of filterChips) {
+        for (const chip of chips) {
             if (chip.kind === 'tag') {
-                for (const tag of tagsRef.current) {
+                for (const tag of tags) {
                     if (String(tag.name) === chip.value) {
                         api.asList(tag.channelIds, 'string').forEach(id => chipChannelIds.add(id));
                     }
@@ -406,11 +592,11 @@ function DashboardView({ onToggleView }) {
         }
 
         // Free-typed text → substring (wildcard) across name + tag names.
-        const needle = filterText.toLowerCase();
+        const needle = text.toLowerCase();
         let textTagged = null;
         if (needle) {
             textTagged = new Set();
-            for (const tag of tagsRef.current) {
+            for (const tag of tags) {
                 if (String(tag.name || '').toLowerCase().includes(needle)) {
                     api.asList(tag.channelIds, 'string').forEach(id => textTagged.add(id));
                 }
@@ -439,7 +625,7 @@ function DashboardView({ onToggleView }) {
 
     const statColumn = (key, label, statKey, warnLevel) => ({
         key, label, align: 'right', mono: true,
-        sortValue: (st) => statsOf(st, lifetimeRef.current)[statKey] || 0,
+        sortValue: (st) => statsOf(st, lifetime)[statKey] || 0,
         renderChannel: (st, stats) => statCellContent(stats[statKey], warnLevel),
         renderGroupAggregate: (totals) => statKey === 'ERROR'
             ? (totals.ERROR ? <span className="text-err">{fmtNumber(totals.ERROR)}</span> : '0')
@@ -451,7 +637,7 @@ function DashboardView({ onToggleView }) {
        (TreeTable wraps it in the <td>) for the three row types (group aggregate,
        channel, connector) and how to produce a sort value for a channel status.
        `tree:true` marks the column that carries the depth indent + twisty.
-       Statistics read the closure `lifetime` flag (via lifetimeRef). */
+       Statistics read the `lifetime` state flag. */
     const COLUMNS = [
         {
             key: 'state', label: 'Status',
@@ -473,23 +659,23 @@ function DashboardView({ onToggleView }) {
         {
             key: 'name', label: 'Name', tree: true,
             sortValue: (st) => String(st.name || '').toLowerCase(),
-            renderChannel: (st) => <NameCell st={st} />,
+            renderChannel: (st) => nameCell(st),
             renderGroupAggregate: (totals, ctx) => `[${ctx.group.name}]`,
             renderConnector: (child) => <span className="text-text-dim">{String(child.name ?? '')}</span>
         },
         {
             key: 'type', label: 'Type',
-            sortValue: (st) => String(connectorTypesRef.current.get(st.channelId)?.get(0) || ''),
-            renderChannel: (st) => connectorTypesRef.current.get(st.channelId)?.get(0) || '',
+            sortValue: (st) => String(connectorTypes.get(st.channelId)?.get(0) || ''),
+            renderChannel: (st) => connectorTypes.get(st.channelId)?.get(0) || '',
             renderGroupAggregate: () => '',
-            renderConnector: (child) => <span className="text-text-dim">{connectorTypesRef.current.get(child.channelId)?.get(Number(child.metaDataId)) || ''}</span>
+            renderConnector: (child) => <span className="text-text-dim">{connectorTypes.get(child.channelId)?.get(Number(child.metaDataId)) || ''}</span>
         },
         {
             key: 'port', label: 'Port', mono: true,
-            sortValue: (st) => Number(sourcePortsRef.current.get(st.channelId)) || 0,
-            renderChannel: (st) => sourcePortsRef.current.get(st.channelId) || '',
+            sortValue: (st) => Number(sourcePorts.get(st.channelId)) || 0,
+            renderChannel: (st) => sourcePorts.get(st.channelId) || '',
             renderGroupAggregate: () => '',
-            renderConnector: (child) => <span className="text-text-dim">{Number(child.metaDataId) === 0 ? (sourcePortsRef.current.get(child.channelId) || '') : ''}</span>
+            renderConnector: (child) => <span className="text-text-dim">{Number(child.metaDataId) === 0 ? (sourcePorts.get(child.channelId) || '') : ''}</span>
         },
         {
             key: 'rev', label: 'Rev Δ', align: 'right', mono: true,
@@ -551,19 +737,16 @@ function DashboardView({ onToggleView }) {
 
     // Header-click sort: toggle direction on the same column, else sort ascending by
     // the new one. sortChannels (used by BOTH the tree AND visibleChannelIds) reads
-    // these refs, so the displayed order and shift-select order stay in sync.
+    // the same sort state, so the displayed order and shift-select order stay in sync.
     function handleSort(key) {
-        if (sortKeyRef.current === key) sortDirRef.current = -sortDirRef.current;
-        else { sortKeyRef.current = key; sortDirRef.current = 1; }
-        forceRender();
+        setSort(s => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
     }
 
     function sortChannels(list) {
         const byName = (a, b) => String(a.name).localeCompare(String(b.name));
-        const sortKey = sortKeyRef.current;
-        const col = COLUMNS.find(c => c.key === sortKey && c.sortValue);
+        const col = COLUMNS.find(c => c.key === sort.key && c.sortValue);
         if (!col) return list.slice().sort(byName);
-        const sortDir = sortDirRef.current;
+        const sortDir = sort.dir;
         return list.slice().sort((a, b) => {
             const va = col.sortValue(a), vb = col.sortValue(b);
             let cmp;
@@ -583,7 +766,7 @@ function DashboardView({ onToggleView }) {
         const statKey = STAT_SORT_KEYS[sortKey];
         if (!statKey) return null;
         let sum = 0;
-        for (const st of members) sum += statsOf(st, lifetimeRef.current)[statKey] || 0;
+        for (const st of members) sum += statsOf(st, lifetime)[statKey] || 0;
         return sum;
     }
 
@@ -593,7 +776,7 @@ function DashboardView({ onToggleView }) {
         const rows = groupedStatuses().map(({ group, members }) => ({
             group, members: sortChannels(visibleMembers(members))
         }));
-        const sortKey = sortKeyRef.current, sortDir = sortDirRef.current;
+        const sortKey = sort.key, sortDir = sort.dir;
         const valueOf = (r) => (sortKey === 'name'
             ? String(r.group.name || '').toLowerCase()
             : groupSortValue(r.members, sortKey));
@@ -616,20 +799,16 @@ function DashboardView({ onToggleView }) {
     // Flat list of visible channel ids in display order — the basis for
     // shift-range selection (mirrors the channel-row rendering order below).
     function visibleChannelIds() {
-        if (viewModeRef.current === 'channel') {
-            return sortChannels(visibleMembers(statusesRef.current)).map(st => st.channelId);
+        if (viewMode === 'channel') {
+            return sortChannels(visibleMembers(statuses)).map(st => st.channelId);
         }
         const ids = [];
         for (const { group, members } of orderedGroups()) {
-            if (collapsedGroupsRef.current.has(group.id)) continue;   // children hidden
+            if (collapsedGroups.has(group.id)) continue;   // children hidden
             for (const st of members) ids.push(st.channelId);   // already sorted by orderedGroups
         }
         return ids;
     }
-
-    // The status board is now the declarative <TreeTable> below; renderTable()
-    // just triggers a React re-render (all existing call sites are unchanged).
-    function renderTable() { forceRender(); }
 
     /* ---- tree data for <TreeTable> -------------------------------------------- */
 
@@ -642,12 +821,12 @@ function DashboardView({ onToggleView }) {
 
     function connectorNodes(st) {
         return childrenOf(st).map((child) => ({
-            kind: 'connector', child, stats: statsOf(child, lifetimeRef.current)
+            kind: 'connector', child, stats: statsOf(child, lifetime)
         }));
     }
 
     function channelNode(st) {
-        return { kind: 'channel', st, stats: statsOf(st, lifetimeRef.current), children: connectorNodes(st) };
+        return { kind: 'channel', st, stats: statsOf(st, lifetime), children: connectorNodes(st) };
     }
 
     // Builds the root nodes the same way the legacy tbody walk did: channel view
@@ -655,16 +834,16 @@ function DashboardView({ onToggleView }) {
     // aggregate rows (an extra parent level). Filtering + sort are applied here
     // (matching the legacy renderTable), so <TreeTable> needs no `matches` prop.
     function buildTreeData() {
-        if (viewModeRef.current === 'channel') {
-            return sortChannels(visibleMembers(statusesRef.current)).map(channelNode);
+        if (viewMode === 'channel') {
+            return sortChannels(visibleMembers(statuses)).map(channelNode);
         }
         const roots = [];
         for (const { group, members: visible } of orderedGroups()) {
-            if (filterTextRef.current && !visible.length) continue;   // skip empty group while filtering
+            if (filterText.trim() && !visible.length) continue;   // skip empty group while filtering
             const totals = { RECEIVED: 0, FILTERED: 0, QUEUED: 0, SENT: 0, ERROR: 0 };
             let started = 0;
             for (const st of visible) {
-                const s = statsOf(st, lifetimeRef.current);
+                const s = statsOf(st, lifetime);
                 for (const k of Object.keys(totals)) totals[k] += s[k] || 0;
                 if (st.state === 'STARTED') started++;
             }
@@ -678,38 +857,34 @@ function DashboardView({ onToggleView }) {
     }
 
     /* ---- collapse (controlled) -------------------------------------------------
-       Two legacy collapse states map onto <TreeTable>'s single collapsedKeys Set:
-       groups default EXPANDED (collapsed when in collapsedGroupsRef); channels
-       default COLLAPSED (their connectors are hidden until expandedChannelsRef
+       Two collapse states map onto <TreeTable>'s single collapsedKeys Set:
+       groups default EXPANDED (collapsed when in collapsedGroups); channels
+       default COLLAPSED (their connectors are hidden until expandedChannels
        holds the channel). So a channel key is "collapsed" unless it is expanded. */
     function buildCollapsedKeys() {
         const set = new Set();
-        for (const groupId of collapsedGroupsRef.current) set.add(`group:${groupId}`);
-        for (const st of statusesRef.current) {
-            if (!expandedChannelsRef.current.has(st.channelId)) set.add(`chan:${st.channelId}`);
+        for (const groupId of collapsedGroups) set.add(`group:${groupId}`);
+        for (const st of statuses) {
+            if (!expandedChannels.has(st.channelId)) set.add(`chan:${st.channelId}`);
         }
         return set;
     }
 
     function onToggleCollapse(key) {
-        if (key.startsWith('group:')) {
-            const groupId = key.slice('group:'.length);
-            const collapsed = collapsedGroupsRef.current;
-            collapsed.has(groupId) ? collapsed.delete(groupId) : collapsed.add(groupId);
-        } else if (key.startsWith('chan:')) {
-            const channelId = key.slice('chan:'.length);
-            const expanded = expandedChannelsRef.current;
-            expanded.has(channelId) ? expanded.delete(channelId) : expanded.add(channelId);
-        }
-        forceRender();
+        const toggle = (prev, value) => {
+            const next = new Set(prev);
+            next.has(value) ? next.delete(value) : next.add(value);
+            return next;
+        };
+        if (key.startsWith('group:')) setCollapsedGroups(prev => toggle(prev, key.slice('group:'.length)));
+        else if (key.startsWith('chan:')) setExpandedChannels(prev => toggle(prev, key.slice('chan:'.length)));
     }
 
     /* ---- selection highlight (channels Set + optional connector) -------------- */
     function buildSelectedKeys() {
         const set = new Set();
-        for (const channelId of selectedRef.current) set.add(`chan:${channelId}`);
-        const conn = selectedConnectorRef.current;
-        if (conn) set.add(`conn:${conn.channelId}:${conn.metaDataId}`);
+        for (const channelId of selected) set.add(`chan:${channelId}`);
+        if (selectedConnector) set.add(`conn:${selectedConnector.channelId}:${selectedConnector.metaDataId}`);
         return set;
     }
 
@@ -719,29 +894,26 @@ function DashboardView({ onToggleView }) {
         if (node.kind === 'group') { onToggleCollapse(`group:${node.group.id}`); return; }
         if (node.kind === 'connector') {
             const child = node.child;
-            selectedConnectorRef.current = { channelId: child.channelId, metaDataId: child.metaDataId };
-            selectedRef.current = new Set();
             lastClickedRef.current = null;
-            forceRender();
-            emitSelection();
+            applySelection(new Set(), { channelId: child.channelId, metaDataId: child.metaDataId });
             return;
         }
         const st = node.st;
-        const selected = selectedRef.current;
+        let next;
         if (e.metaKey || e.ctrlKey) {
-            selected.has(st.channelId) ? selected.delete(st.channelId) : selected.add(st.channelId);
+            next = new Set(selected);
+            next.has(st.channelId) ? next.delete(st.channelId) : next.add(st.channelId);
         } else if (e.shiftKey && lastClickedRef.current) {
             const visible = visibleChannelIds();
             const a = visible.indexOf(lastClickedRef.current), b = visible.indexOf(st.channelId);
-            if (a !== -1 && b !== -1) selectedRef.current = new Set(visible.slice(Math.min(a, b), Math.max(a, b) + 1));
-            else selectedRef.current = new Set([st.channelId]);
+            next = (a !== -1 && b !== -1)
+                ? new Set(visible.slice(Math.min(a, b), Math.max(a, b) + 1))
+                : new Set([st.channelId]);
         } else {
-            selectedRef.current = new Set([st.channelId]);
+            next = new Set([st.channelId]);
         }
         lastClickedRef.current = st.channelId;
-        selectedConnectorRef.current = null;
-        forceRender();
-        emitSelection();
+        applySelection(next, null);
     }
 
     // Double-click: connector → message browser filtered to it; channel → the
@@ -763,11 +935,9 @@ function DashboardView({ onToggleView }) {
         e.preventDefault();
         if (!members.length) return;
         // Select the group's visible members, then mirror the channel-row menu
-        // acting on that selection. Send/View target the first member.
-        selectedRef.current = new Set(members.map(m => m.channelId));
-        selectedConnectorRef.current = null;
-        forceRender();
-        emitSelection();
+        // acting on those ids. Send/View target the first member.
+        const ids = members.map(m => m.channelId);
+        applySelection(new Set(ids), null);
         const first = members[0];
         const anyState = (fn) => members.some(fn);
         contextMenu(e.clientX, e.clientY, [
@@ -775,19 +945,19 @@ function DashboardView({ onToggleView }) {
             '-',
             { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => openSendMessageDialog(platform, first.channelId, () => refresh()) },
             { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${first.channelId}`) },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask() },
-            { label: 'Clear Statistics', icon: 'clear', hidden: lifetimeRef.current, task: 'doClearStats', onClick: () => clearStatsTask() },
+            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
+            { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
             '-',
-            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlSelected('start', 'Start') },
-            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), task: 'doPause', onClick: () => controlSelected('pause', 'Pause') },
-            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlSelected('stop', 'Stop') },
-            { label: 'Halt', icon: 'halt', hidden: !(members.length === 1 && isHaltable(members[0].state)), task: 'doHalt', onClick: () => haltTask() },
-            { label: 'Undeploy Channels', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask() }
+            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlChannels('start', 'Start', ids) },
+            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', 'Pause', ids) },
+            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', 'Stop', ids) },
+            { label: 'Halt', icon: 'halt', hidden: !(members.length === 1 && isHaltable(members[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
+            { label: 'Undeploy Channels', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) }
         ], 'dashboard');
     }
 
     function tagsFor(channelId) {
-        return tagsRef.current.filter(tag => api.asList(tag.channelIds, 'string').includes(channelId));
+        return tags.filter(tag => api.asList(tag.channelIds, 'string').includes(channelId));
     }
 
     /* Icons mode: the actual tag glyph filled with the tag's color, stroked a
@@ -806,14 +976,16 @@ function DashboardView({ onToggleView }) {
     }
 
     function tagChipsJsx(channelId) {
-        if (tagModeRef.current === 'off') return null;
-        return tagsFor(channelId).map((tag, i) => tagModeRef.current === 'icons'
+        if (tagMode === 'off') return null;
+        return tagsFor(channelId).map((tag, i) => tagMode === 'icons'
             ? tagIconJsx(tag, i)
             : <span key={i} className="tag" style={tagPillStyle(tag)}>{tag.name}</span>);
     }
 
     // Single line, never wrapping — excess tags clip rather than grow the row.
-    function NameCell({ st }) {
+    // A plain JSX builder (NOT a component defined per render, which would be a
+    // new component type every render and remount the cell on each poll).
+    function nameCell(st) {
         return (
             <span className="inline-flex items-center gap-1.5 flex-nowrap overflow-hidden max-w-full">
                 <span className="shrink-0">{st.name}</span>
@@ -824,21 +996,24 @@ function DashboardView({ onToggleView }) {
 
     function channelMenu(st, e) {
         e.preventDefault();
-        if (!selectedRef.current.has(st.channelId)) { selectedRef.current = new Set([st.channelId]); selectedConnectorRef.current = null; forceRender(); emitSelection(); }
-        const sel = statusesRef.current.filter(x => selectedRef.current.has(x.channelId));
+        // Right-click keeps a multi-selection that includes the row; otherwise it
+        // becomes the selection — and the menu acts on exactly those ids.
+        const ids = selected.has(st.channelId) ? [...selected] : [st.channelId];
+        if (!selected.has(st.channelId)) applySelection(new Set([st.channelId]), null);
+        const sel = statuses.filter(x => ids.includes(x.channelId));
         const anyState = (fn) => sel.some(fn);
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
             { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => openSendMessageDialog(platform, st.channelId, () => refresh()) },
             { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${st.channelId}`) },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask() },
-            { label: 'Clear Statistics', icon: 'clear', hidden: lifetimeRef.current, task: 'doClearStats', onClick: () => clearStatsTask() },
+            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
+            { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
             '-',
-            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlSelected('start', 'Start') },
-            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), task: 'doPause', onClick: () => controlSelected('pause', 'Pause') },
-            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlSelected('stop', 'Stop') },
-            { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), task: 'doHalt', onClick: () => haltTask() },
+            { label: 'Start', icon: 'play', hidden: !anyState(x => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlChannels('start', 'Start', ids) },
+            { label: 'Pause', icon: 'pause', hidden: !anyState(x => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', 'Pause', ids) },
+            { label: 'Stop', icon: 'stop', hidden: !anyState(x => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', 'Stop', ids) },
+            { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
             { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState(x => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err) { toast(err.message, 'error'); } refresh(); } },
             '-',
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
@@ -886,270 +1061,21 @@ function DashboardView({ onToggleView }) {
         ], 'dashboard');
     }
 
-    // Updates the counts label inside the imperative filter bar (kept verbatim).
-    // Called from an effect after every render so it tracks the live status refs.
-    function updateCounts() {
-        const countsLabel = countsLabelRef.current;
-        if (!countsLabel) return;
-        const statuses = statusesRef.current;
-        const channels = `${statuses.length} Deployed Channel${statuses.length === 1 ? '' : 's'}`;
-        if (viewModeRef.current === 'channel') {
-            countsLabel.textContent = channels;
-        } else {
-            const rows = groupedStatuses();
-            countsLabel.textContent = `${rows.length} Group${rows.length === 1 ? '' : 's'}, ${channels}`;
-        }
-    }
+    /* (The filter bar — chips, typeahead, counts, display toggles — is the
+       declarative <DashFilterBar> component above; the imperative builders,
+       updateCounts, and the document.body typeahead management are gone.) */
 
-    /* ---- filter bar (typeahead + view/tag toggles + statistics radios) ---- */
-
-    /* Custom typeahead dropdown (native <datalist> can't render icons):
-       substring matches across channel names + tag names, each row shows a
-       type icon (server = channel, tag = tag) and a right-aligned type hint. */
-    const TYPEAHEAD_MAX = 12;
-    let taItems = [];
-    let taIndex = -1;
-
-    function removeChip(chip) {
-        filterChipsRef.current = filterChipsRef.current.filter(c => c !== chip);
-        renderChips(); renderTable(); filterInputRef.current.focus();
-    }
-
-    function renderChips() {
-        const chipHost = chipHostRef.current;
-        clear(chipHost);
-        const filterChips = filterChipsRef.current;
-        for (const chip of filterChips) {
-            const isTag = chip.kind === 'tag';
-            const tag = isTag ? tagsRef.current.find(t => String(t.name) === chip.value) : null;
-            chipHost.appendChild(h('span.tag', {
-                class: 'inline-flex items-center gap-1 py-px pr-1 pl-[7px]',
-                style: {
-                    background: isTag ? (tagRgb(tag, 0.25) || 'var(--bg3)') : 'var(--bg3)'
-                }
-            },
-                icon(isTag ? 'tag' : 'server', 12),
-                h('span', chip.value),
-                h('button', {
-                    title: 'Remove', class: 'appearance-none border-none cursor-pointer text-inherit text-[14px] leading-none py-0 px-px',
-                    style: { background: 'none', fontFamily: 'inherit' },
-                    onClick: () => removeChip(chip)
-                }, '×')));
-        }
-        chipHost.style.display = filterChips.length ? 'inline-flex' : 'none';
-    }
-
-    function typeaheadMatches(text) {
-        const needle = text.toLowerCase();
-        const seen = new Set();
-        const out = [];
-        const filterChips = filterChipsRef.current;
-        const add = (name, kind) => {
-            const key = kind + ':' + name.toLowerCase();
-            if (filterChips.some(c => c.kind === kind && c.value === name)) return;   // already picked
-            if (name.toLowerCase().includes(needle) && !seen.has(key)) { seen.add(key); out.push({ value: name, kind }); }
-        };
-        for (const st of statusesRef.current) if (st.name) add(String(st.name), 'channel');
-        for (const tag of tagsRef.current) if (tag.name) add(String(tag.name), 'tag');
-        out.sort((a, b) => a.value.localeCompare(b.value));
-        return out.slice(0, TYPEAHEAD_MAX);
-    }
-
-    function closeTypeahead() {
-        typeaheadRef.current.classList.add('hidden');
-        taItems = [];
-        taIndex = -1;
-    }
-
-    function paintTypeahead() {
-        const typeahead = typeaheadRef.current;
-        [...typeahead.children].forEach((row, i) => row.classList.toggle('active', i === taIndex));
-        if (taIndex >= 0) typeahead.children[taIndex].scrollIntoView({ block: 'nearest' });
-    }
-
-    function pickSuggestion(item) {
-        // Add an explicit pill (deduped); clear the text so more can be added.
-        const filterChips = filterChipsRef.current;
-        if (!filterChips.some(c => c.kind === item.kind && c.value === item.value)) {
-            filterChips.push({ value: item.value, kind: item.kind });
-        }
-        filterTextRef.current = '';
-        filterInputRef.current.value = '';
-        renderChips();
-        renderTable();
-        closeTypeahead();
-        filterInputRef.current.focus();
-    }
-
-    function openTypeahead() {
-        const filterInput = filterInputRef.current;
-        const typeahead = typeaheadRef.current;
-        taItems = typeaheadMatches(filterInput.value.trim());
-        taIndex = -1;
-        if (!taItems.length) { closeTypeahead(); return; }
-        clear(typeahead);
-        for (const item of taItems) {
-            typeahead.appendChild(h('div.typeahead-item', {
-                onMousedown: (e) => e.preventDefault(),   // keep input focus so blur doesn't race the click
-                onClick: () => pickSuggestion(item)
-            },
-                icon(item.kind === 'tag' ? 'tag' : 'server', 14),
-                h('span.typeahead-label', item.value),
-                h('span.typeahead-kind', item.kind)));
-        }
-        typeahead.classList.remove('hidden');
-        // Anchor under the filter input; flip above when the viewport runs out.
-        const r = filterInput.getBoundingClientRect();
-        typeahead.style.minWidth = r.width + 'px';
-        // Keep the panel fully on-screen at narrow widths.
-        typeahead.style.left = Math.max(4, Math.min(r.left, window.innerWidth - typeahead.offsetWidth - 4)) + 'px';
-        typeahead.style.top = (r.bottom + 2) + 'px';
-        typeahead.style.bottom = 'auto';
-        if (typeahead.getBoundingClientRect().bottom > window.innerHeight - 4) {
-            typeahead.style.top = 'auto';
-            typeahead.style.bottom = (window.innerHeight - r.top + 2) + 'px';
-        }
-    }
-
-    // Builds the entire filter bar (hand-built DOM, reused verbatim) into the
-    // filterbar host. Called once on mount.
-    function buildFilterbar() {
-        const filterbarHost = filterbarHostRef.current;
-        if (!filterbarHost) return;
-        clear(filterbarHost);
-
-        const countsLabel = h('span.counts', '');
-        countsLabelRef.current = countsLabel;
-        const typeahead = h('div.typeahead.hidden');
-        typeaheadRef.current = typeahead;
-        // Explicit picks render as pills (tag/channel icon) before the input,
-        // which stays usable so multiple tags/channels can be selected.
-        const chipHost = h('span.filter-chip-host', { class: 'gap-1 flex-wrap', style: { display: 'none' } });
-        chipHostRef.current = chipHost;
-
-        const filterInput = h('input', {
-            type: 'text', placeholder: 'Enter channel tag or name', autocomplete: 'off',
-            class: 'flex-1 min-w-0',
-            onInput: (e) => { filterTextRef.current = e.target.value.trim(); renderTable(); openTypeahead(); },
-            onFocus: () => openTypeahead(),
-            onBlur: () => setTimeout(closeTypeahead, 150),    // small delay so clicks on the dropdown land
-            onKeydown: (e) => {
-                const open = !typeahead.classList.contains('hidden');
-                if (e.key === 'Backspace' && !filterInput.value && filterChipsRef.current.length) {
-                    // Backspace on an empty input removes the last pill.
-                    e.preventDefault();
-                    removeChip(filterChipsRef.current[filterChipsRef.current.length - 1]);
-                } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    if (!open) { openTypeahead(); return; }
-                    const delta = e.key === 'ArrowDown' ? 1 : -1;
-                    taIndex = (taIndex + delta + taItems.length) % taItems.length;
-                    paintTypeahead();
-                } else if (e.key === 'Enter' && open && taItems.length) {
-                    e.preventDefault();
-                    pickSuggestion(taItems[taIndex >= 0 ? taIndex : 0]);
-                } else if (e.key === 'Escape' && open) {
-                    e.preventDefault();
-                    closeTypeahead();
-                }
-            }
-        });
-        filterInputRef.current = filterInput;
-
-        const viewToggle = segControl([
-            { value: 'group', icon: 'folder', title: 'Group view' },
-            { value: 'channel', icon: 'channels', title: 'Channel view' }
-        ], viewModeRef.current, (value) => { viewModeRef.current = value; lsSet('oie-dash-view', value); renderTable(); });
-
-        const tagToggle = segControl([
-            { value: 'names', label: 'Names', title: 'Show tags as names' },
-            { value: 'icons', label: 'Icons', title: 'Show tags as icons' },
-            { value: 'off', label: 'Off', title: 'Hide tags' }
-        ], tagModeRef.current, (value) => { tagModeRef.current = value; lsSet('oie-dash-tagmode', value); renderTable(); });
-
-        const statsToggle = segControl([
-            { value: 'on', label: 'On', title: 'Show stat cards' },
-            { value: 'off', label: 'Off', title: 'Hide stat cards' }
-        ], showStatsRef.current ? 'on' : 'off', (value) => { showStatsRef.current = (value === 'on'); lsSet('oie-dash-stats', value); forceRender(); });
-
-        const radioName = 'dash-stats-' + Math.floor(performance.now());
-        // The filter (label+input+counts) always shows and grows.
-        const filterZone = h('span', { class: 'flex items-center gap-2.5 flex-1 min-w-[220px]' },
-            h('label', 'Filter:'), chipHost, filterInput, h('span', { class: 'whitespace-nowrap' }, countsLabel));
-        // View / Tags / Statistics controls. Inline when the bar is wide; when the bar
-        // gets too narrow (container query on .filterbar) they collapse behind the
-        // "Display" button and open as a popover — like the account menu.
-        const controlsPanel = h('div.dash-controls', { class: 'flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto' },
-            viewToggle,
-            h('span', { class: 'inline-flex items-center gap-[5px]' },
-                h('span', { class: 'text-text-faint text-[11px]' }, 'Tags:'), tagToggle),
-            h('span', { class: 'inline-flex items-center gap-[5px]' },
-                h('span', { class: 'text-text-faint text-[11px]' }, 'Stats:'), statsToggle),
-            h('span', { class: 'inline-flex items-center gap-[5px]' },
-                h('span', { class: 'text-text-faint text-[11px]' }, 'Range:'),
-                segControl([
-                    { value: 'current', label: 'Current' },
-                    { value: 'lifetime', label: 'Lifetime' }
-                ], lifetimeRef.current ? 'lifetime' : 'current',
-                    (v) => { lifetimeRef.current = (v === 'lifetime'); renderTable(); forceRender(); })));
-
-        const displayBtn = h('button.btn.dash-options-btn', {
-            type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false',
-            onClick: () => setDisplayOpen(!displayOpen)
-        }, icon('eye'), h('span', 'View'), icon('chevD'));
-        let displayOpen = false;
-        function onDisplayDocDown(e) {
-            if (!controlsPanel.contains(e.target) && !displayBtn.contains(e.target)) setDisplayOpen(false);
-        }
-        function setDisplayOpen(open) {
-            displayOpen = open;
-            controlsPanel.classList.toggle('open', open);
-            displayBtn.setAttribute('aria-expanded', String(open));
-            if (open) setTimeout(() => document.addEventListener('mousedown', onDisplayDocDown), 0);
-            else document.removeEventListener('mousedown', onDisplayDocDown);
-        }
-
-        const filterbar = h('div.filterbar', filterZone, displayBtn, controlsPanel);
-        filterbarHost.appendChild(filterbar);
-        // The typeahead is position:fixed; keep it OUT of the (container-type) filter
-        // bar so its containing block stays the viewport. Removed on unmount (below).
-        document.body.appendChild(typeahead);
-    }
-
-    /* ---- polling ---- */
-
+    /* ---- refresh (manual Refresh + post-action): refetch through the query
+       cache. The auto-poll itself is Query's refetchInterval (the
+       dashboardRefreshSeconds preference), so there is no timer chain here.
+       A background/post-action refetch failure keeps the last data silently
+       (self-heals next tick); only a MANUAL Refresh toasts. Manual also forces
+       the ~60s connector-metadata queries, like the classic bar. */
     async function refresh(manual = false) {
-        if (destroyedRef.current) return;
-        try {
-            const [st, gr, tg] = await Promise.all([
-                api.status.list(),
-                api.channelGroups.list().catch(() => groupsRef.current),
-                api.server.channelTags().catch(() => tagsRef.current),
-                refreshConnectorMeta(manual)              // never throws; ~60s cadence
-            ]);
-            statusesRef.current = st;
-            groupsRef.current = gr || [];
-            tagsRef.current = tg || [];
-            loadedRef.current = true;
-            // Prune selection of channels that no longer exist, then sync tasks.
-            const ids = new Set(statusesRef.current.map(x => x.channelId));
-            for (const id of [...selectedRef.current]) if (!ids.has(id)) selectedRef.current.delete(id);
-            if (selectedConnectorRef.current && !ids.has(selectedConnectorRef.current.channelId)) selectedConnectorRef.current = null;
-            // Refresh open suggestions in place when polling brings new data.
-            const typeahead = typeaheadRef.current;
-            if (typeahead && !typeahead.classList.contains('hidden') && document.activeElement === filterInputRef.current) openTypeahead();
-            renderTable();
-            forceRender();
-        } catch (e) {
-            if (manual) toast(`Refresh failed: ${e.message}`, 'error');
-        }
-    }
-
-    function loop() {
-        if (destroyedRef.current) return;
-        // Auto-refresh interval is a user preference (Administrator settings).
-        const intervalMs = Math.max(1, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000;
-        timerRef.current = setTimeout(async () => { await refresh(); if (!destroyedRef.current) loop(); }, intervalMs);
+        const jobs = [statusesQ.refetch(), groupsQ.refetch(), tagsQ.refetch()];
+        if (manual) jobs.push(typesQ.refetch(), portsQ.refetch());
+        const [st] = await Promise.all(jobs);
+        if (manual && st.error) toast(`Refresh failed: ${st.error.message}`, 'error');
     }
 
     // Click on empty space (not a row) clears the channel selection, so the
@@ -1157,54 +1083,35 @@ function DashboardView({ onToggleView }) {
     // empty-space clicks here).
     function onEmptyClick(e) {
         if (e.target.closest('tr')) return;
-        if (!selectedRef.current.size && !selectedConnectorRef.current) return;
-        selectedRef.current = new Set();
-        selectedConnectorRef.current = null;
+        if (!selected.size && !selectedConnector) return;
         lastClickedRef.current = null;
-        forceRender();
-        emitSelection();
+        applySelection(new Set(), null);
     }
     // Right-click the empty space below the rows: deselect and show the
     // no-selection dashboard popup (just Refresh), matching the Swing dashboard.
     function onEmptyContextMenu(e) {
         e.preventDefault();
-        if (selectedRef.current.size || selectedConnectorRef.current) {
-            selectedRef.current = new Set();
-            selectedConnectorRef.current = null;
+        if (selected.size || selectedConnector) {
             lastClickedRef.current = null;
-            forceRender();
-            emitSelection();
+            applySelection(new Set(), null);
         }
         contextMenu(e.clientX, e.clientY, [{ label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() }], 'dashboard');
     }
 
-    /* ---- mount: build the filter bar once, then poll ---- */
-
-    useEffect(() => {
-        buildFilterbar();
-        // Initial load shows the plugin tabs (via forceRender) once statuses land.
-        refresh(true).then(forceRender);
-        loop();
-
-        return () => {
-            destroyedRef.current = true;
-            clearTimeout(timerRef.current);
-            if (typeaheadRef.current) typeaheadRef.current.remove();   // it lives on document.body
-            // Leaving the dashboard ends the one-time "just deployed" cue, so it
-            // won't reappear when you navigate back.
-            for (const st of statusesRef.current) if (isJustDeployed(st)) seenDeploys.add(deployKey(st));
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    /* Leaving the dashboard ends the one-time "just deployed" cue, so it won't
+       reappear when you navigate back. The ref mirror exists only so the
+       unmount cleanup sees the LATEST statuses (a []-effect closure would see
+       the mount-time ones). */
+    const statusesAtCleanup = useRef([]);
+    useEffect(() => { statusesAtCleanup.current = statuses; }, [statuses]);
+    useEffect(() => () => {
+        for (const st of statusesAtCleanup.current) if (isJustDeployed(st)) seenDeploys.add(deployKey(st));
     }, []);
-
-    // Keep the imperative filter-bar's counts label in sync after every render.
-    useEffect(() => { updateCounts(); });
 
     /* ---- React task pane: selection-gated visibility (Swing Dashboard Tasks) ---- */
 
-    const sel = statusesRef.current.filter(s => selectedRef.current.has(s.channelId));
+    const sel = statuses.filter(s => selected.has(s.channelId));
     const hasSel = sel.length > 0;
-    const lifetime = lifetimeRef.current;
     const anyState = (fn) => sel.some(fn);
     // Started channel offers Pause/Stop, not Start/Halt (classic behavior).
     const showStart = anyState(s => s.state === 'STOPPED' || s.state === 'PAUSED');
@@ -1221,23 +1128,23 @@ function DashboardView({ onToggleView }) {
     // A tab may declare a `task` (e.g. an extension task name published through
     // RBAC's task-permission merge) — unauthorized tabs are hidden entirely.
     const tabDefs = platform.dashboardTabs().filter((t) => !t.task || platform.checkTask('dashboard', t.task));
-    const selectionForTabs = currentSelection();
     // Selection reaches the tabs through the `selection` prop (tabCtx) and each
     // tab re-scopes from it via its own effect — so the tab must NOT be remounted
     // on selection change. Keying it on a selection signature used to wipe the
     // Server Log's accumulated entries (and reset every tab's poll) on any
-    // click/refresh; the key is now stable per tab.
-    if (tabDefs.length && (!activeTabRef.current || !tabDefs.includes(activeTabRef.current))) {
-        activeTabRef.current = tabDefs[0];
-    }
-    const activeTab = tabDefs.length ? activeTabRef.current : null;
+    // click/refresh; the key is stable per tab (id || label).
+    const activeTab = tabDefs.find((d) => (d.id || d.label) === activeTabId) || tabDefs[0] || null;
     const tabCtx = { selection: selectionForTabs, platform };
 
     /* ---- status board (<TreeTable>) data + collapse/selection state ---- */
     const treeData = buildTreeData();
     const collapsedKeys = buildCollapsedKeys();
     const selectedKeys = buildSelectedKeys();
-    const emptyText = loadedRef.current
+    const channelsText = `${statuses.length} Deployed Channel${statuses.length === 1 ? '' : 's'}`;
+    const countsText = viewMode === 'channel'
+        ? channelsText
+        : (() => { const rows = groupedStatuses(); return `${rows.length} Group${rows.length === 1 ? '' : 's'}, ${channelsText}`; })();
+    const emptyText = loaded
         ? (
             <div className="dt-empty">
                 <div className="empty-icon"><Icon name="dashboard" size={30} /></div>
@@ -1254,28 +1161,28 @@ function DashboardView({ onToggleView }) {
                     <div className="taskbar" data-pane-title="Dashboard Tasks">
                         {onToggleView && <TaskButton label="Card view" icon="dashboard" onClick={onToggleView} />}
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshStatuses" onClick={() => refresh(true)} />
-                        {hasSel && <TaskButton label="Send Message" icon="send" task="doSendMessage" onClick={sendMessageTask} />}
-                        {hasSel && <TaskButton label="View Messages" icon="messages" task="doShowMessages" onClick={viewMessagesTask} />}
-                        {hasSel && <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={removeAllTask} />}
-                        {showClearStats && <TaskButton label="Clear Statistics" icon="clear" task="doClearStats" onClick={clearStatsTask} />}
-                        {showStart && <TaskButton label="Start" icon="play" task="doStart" onClick={startTask} />}
-                        {showPause && <TaskButton label="Pause" icon="pause" task="doPause" onClick={pauseTask} />}
-                        {showStop && <TaskButton label="Stop" icon="stop" task="doStop" onClick={stopTask} />}
-                        {showHalt && <TaskButton label="Halt" icon="halt" task="doHalt" onClick={haltTask} />}
-                        {showUndeploy && <TaskButton label="Undeploy Channel" icon="undeploy" task="doUndeployChannel" onClick={undeployTask} />}
+                        {hasSel && <TaskButton label="Send Message" icon="send" task="doSendMessage" onClick={() => sendMessageTask([...selected])} />}
+                        {hasSel && <TaskButton label="View Messages" icon="messages" task="doShowMessages" onClick={() => viewMessagesTask([...selected])} />}
+                        {hasSel && <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={() => removeAllTask([...selected])} />}
+                        {showClearStats && <TaskButton label="Clear Statistics" icon="clear" task="doClearStats" onClick={() => clearStatsTask([...selected])} />}
+                        {showStart && <TaskButton label="Start" icon="play" task="doStart" onClick={() => startTask([...selected])} />}
+                        {showPause && <TaskButton label="Pause" icon="pause" task="doPause" onClick={() => pauseTask([...selected])} />}
+                        {showStop && <TaskButton label="Stop" icon="stop" task="doStop" onClick={() => stopTask([...selected])} />}
+                        {showHalt && <TaskButton label="Halt" icon="halt" task="doHalt" onClick={() => haltTask([...selected])} />}
+                        {showUndeploy && <TaskButton label="Undeploy Channel" icon="undeploy" task="doUndeployChannel" onClick={() => undeployTask([...selected])} />}
                     </div>
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                {statusesRef.current.length > 0 && showStatsRef.current && (() => {
-                    const k = engineTotals(statusesRef.current, lifetimeRef.current);
+                {statuses.length > 0 && showStats && (() => {
+                    const k = engineTotals(statuses, lifetime);
                     const fmt = (n) => n.toLocaleString();
                     const pct = (n, d) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
                     return (
                         <div className="dash-kpis">
                             <div className="dash-kpi">
                                 <div className="k-lbl">Received</div><div className="k-val">{fmt(k.RECEIVED)}</div>
-                                <div className="k-sub">{lifetimeRef.current ? 'lifetime stats' : 'current stats'}</div>
+                                <div className="k-sub">{lifetime ? 'lifetime stats' : 'current stats'}</div>
                             </div>
                             <div className="dash-kpi">
                                 <div className="k-lbl">Filtered</div><div className="k-val">{fmt(k.FILTERED)}</div>
@@ -1302,7 +1209,7 @@ function DashboardView({ onToggleView }) {
                     <TreeTable
                         data={treeData}
                         columns={treeColumns()}
-                        sort={{ key: sortKeyRef.current, dir: sortDirRef.current }}
+                        sort={sort}
                         onSort={handleSort}
                         getChildren={(n) => n.children}
                         rowKey={rowKey}
@@ -1321,14 +1228,23 @@ function DashboardView({ onToggleView }) {
                         pinnedKeys={['state', 'name']}
                         emptyText={emptyText} />
                 </div>
-                <div ref={filterbarHostRef} className="dash-filterbar flex-none" />
+                <div className="dash-filterbar flex-none">
+                    <DashFilterBar
+                        statuses={statuses} tags={tags} countsText={countsText}
+                        filterText={filterText} onFilterText={setFilterText}
+                        chips={chips} onChips={setChips}
+                        viewMode={viewMode} onViewMode={setViewMode}
+                        tagMode={tagMode} onTagMode={setTagMode}
+                        showStats={showStats} onShowStats={setShowStats}
+                        lifetime={lifetime} onLifetime={setLifetime} />
+                </div>
                 {tabDefs.length > 0 && (
                     <>
                         <div className="split-handle dash-split" data-orient="v" data-resize="next" />
                         {/* Dock tabs via Radix (headless a11y: arrow-key nav, roving focus). */}
                         <Tabs.Root
                             value={activeTab ? (activeTab.id || activeTab.label) : undefined}
-                            onValueChange={(v) => { activeTabRef.current = tabDefs.find((d) => (d.id || d.label) === v) || tabDefs[0]; forceRender(); }}
+                            onValueChange={setActiveTabId}
                             className="dash-dock flex-none h-[clamp(140px,32vh,230px)] overflow-hidden flex flex-col">
                             <Tabs.List className="tabs flex-none">
                                 {tabDefs.map((def) => (
