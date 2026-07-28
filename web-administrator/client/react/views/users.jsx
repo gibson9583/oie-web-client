@@ -40,7 +40,7 @@ const COLUMNS = [
 ];
 
 function UsersView() {
-    // Server state via TanStack Query (Workstream A) — replaces the hand-rolled
+    // Server state via TanStack Query — replaces the hand-rolled
     // useState + useEffect(list) + manual refetch. `refresh` now just invalidates
     // the cache (and clears selection, as the old imperative refresh did).
     const usersQuery = useUsers();
