@@ -2276,15 +2276,19 @@ function MessagesView({ params, query }) {
                                     <span className="text-text-faint ml-2">▾</span>
                                 </button>
                             </Field>
-                            <Field label="Text Search">
+                            {/* The Regex checkbox rides on the label line (top-right of the
+                                field) so it costs no slot in the criteria row. */}
+                            <div className="field relative">
+                                <label>Text Search</label>
+                                <label className="check absolute right-0 top-0 gap-1 text-[11px] text-text-dim cursor-pointer"
+                                    title="Treat the text search as a regular expression">
+                                    <input type="checkbox" checked={textRegex} onChange={(e) => setTextRegex(e.target.checked)} />
+                                    Regex
+                                </label>
                                 <input type="text" placeholder="Search message content…" className="w-[220px]"
                                     value={textSearch} onChange={(e) => setTextSearch(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === 'Enter') runSearch(true); }} />
-                            </Field>
-                            <label className="check pb-1.5 whitespace-nowrap" title="Treat the text search as a regular expression">
-                                <input type="checkbox" checked={textRegex} onChange={(e) => setTextRegex(e.target.checked)} />
-                                Regex
-                            </label>
+                            </div>
                             <Field label="Connector">
                                 <select value={connectorVal} onChange={(e) => setConnectorVal(e.target.value)}>
                                     <option value="">Any</option>
