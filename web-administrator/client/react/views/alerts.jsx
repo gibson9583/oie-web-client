@@ -6,12 +6,13 @@
  * a ref'd host. Both halves register here.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { h, icon, modal, toast, confirmDialog, contextMenu, saveFile, pickFile } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
+import { useAlerts } from '../queries.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { newAlert, AlertEditor } from './alert-editor.jsx';
@@ -35,47 +36,22 @@ const COLUMNS = [
 ];
 
 function AlertsList() {
-    const [alerts, setAlerts] = useState([]);
+    // Server state + Swing-parity polling via TanStack Query — useAlerts'
+    // refetchInterval replaces the hand-rolled setTimeout loop (and the
+    // destroyed/timer refs). Manual Refresh toasts on error; background polls
+    // stay quiet — they self-heal on the next tick and Query keeps the last data.
+    const alertsQuery = useAlerts();
+    const alerts = alertsQuery.data ?? [];
     const [sel, setSel] = useState([]);
     const tableRef = useRef(null);
-    const alertsRef = useRef([]);   // full list, for export-all
 
     const selectedRows = () => (tableRef.current ? tableRef.current.selectedRows() : []);
 
-    const destroyedRef = useRef(false);
-    const timerRef = useRef(null);
-
-    const refresh = async (manual = true) => {
-        try {
-            const list = (await api.alerts.list()).filter(a => a && a.id);
-            if (destroyedRef.current) return;
-            alertsRef.current = list;
-            setAlerts(list);
-            setSel(selectedRows());
-        } catch (e) {
-            // Background polls stay quiet — a transient failure self-heals on the
-            // next tick; only a user-initiated Refresh should toast.
-            if (manual) toast(e.message, 'error');
-        }
+    const refresh = async () => {
+        const r = await alertsQuery.refetch();
+        if (r.error) toast(r.error.message, 'error');
+        setSel(selectedRows());
     };
-    // Swing parity: the alerts panel auto-refreshes while it is the current view
-    // (StatusUpdater covers dashboard AND alerts), on the same interval preference
-    // as the dashboard. The setTimeout chain dies on unmount, so navigating away —
-    // including into the alert editor/wizard — stops all polling.
-    useEffect(() => {
-        refresh(false);
-        const loop = () => {
-            const ms = Math.max(1, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000;
-            timerRef.current = setTimeout(async () => {
-                if (destroyedRef.current) return;
-                await refresh(false);
-                if (!destroyedRef.current) loop();
-            }, ms);
-        };
-        loop();
-        return () => { destroyedRef.current = true; clearTimeout(timerRef.current); };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     function single() {
         const rows = selectedRows();
@@ -177,7 +153,7 @@ function AlertsList() {
         }
     }
     async function exportAllTask() {
-        const all = alertsRef.current;
+        const all = alerts;
         if (!all.length) { toast('No alerts to export', 'warn'); return; }
         try {
             let count = 0;

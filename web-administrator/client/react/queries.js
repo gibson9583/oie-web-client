@@ -1,5 +1,5 @@
 /*
- * Server-state layer (Workstream A) — TanStack Query hooks wrapping the
+ * Server-state layer — TanStack Query hooks wrapping the
  * @oie/web-api client. Lives in the app bundle, NOT core/: core/*.js is served
  * external to plugins by URL and resolves bare specifiers through the page
  * import map, which has no '@tanstack/*' entry — so importing Query there would
@@ -12,6 +12,7 @@
 
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@oie/web-api';
+import { getPref } from '../core/prefs.js';
 
 // ONE shared client for the whole app. The strangler mounts each view in its own
 // React root (react/mount.jsx), so every mount point must wrap with this same
@@ -27,6 +28,20 @@ export function useUsers() {
     return useQuery({
         queryKey: ['users'],
         queryFn: async () => (await api.users.list()).filter((u) => u && u.id !== undefined)
+    });
+}
+
+/**
+ * Alerts list — auto-polls on the dashboard's refresh interval while mounted
+ * (Swing parity: the alerts panel refreshes like the dashboard). refetchInterval
+ * replaces the view's hand-rolled setTimeout loop; background poll failures are
+ * silent (Query keeps the last data), matching the old "quiet background" rule.
+ */
+export function useAlerts() {
+    return useQuery({
+        queryKey: ['alerts'],
+        queryFn: async () => (await api.alerts.list()).filter((a) => a && a.id),
+        refetchInterval: () => Math.max(1, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000
     });
 }
 
