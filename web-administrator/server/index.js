@@ -185,6 +185,18 @@ async function start() {
         }
         if (config.devMode) console.log('  devMode: ON — a login-entered engine URL will be proxied (trusted deployments only)');
         console.log(`  Plugins: ${loaded.length} loaded`);
+        // Bind-posture warning: on a routable interface without TLS, the proxy
+        // strips Secure from the JSESSIONID cookie (server/proxy.js), so the
+        // admin session — plus channel configs and message content — crosses the
+        // network in cleartext. Fine behind an upstream TLS terminator; a nudge
+        // when nothing is protecting it.
+        const loopback = config.host === '127.0.0.1' || config.host === '::1' || config.host === 'localhost';
+        if (!loopback && !config.tls) {
+            console.log('');
+            console.log('  WARNING: bound to a non-loopback address without TLS — the engine session');
+            console.log('           cookie and channel/message data cross the network in cleartext.');
+            console.log('           Terminate TLS upstream, set config.tls, or bind host to 127.0.0.1.');
+        }
         console.log('');
     });
 }
