@@ -20,6 +20,7 @@ import { getPref, setPrefs } from '../../core/prefs.js';
 import { statsOf } from './dashboard.jsx';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
+const EMPTY_LIST = [];  // stable fallback while queries load (memo-dep friendly)
 const CARD_H = 128;     // fixed card height (px) — required for virtualization
 const GAP = 12;
 const SECTION_CAP = 60; // grouped view: max cards rendered per section before "show more"
@@ -142,8 +143,8 @@ function CardsView({ onToggleView }) {
     // stays null until the first load so the loading state still renders.
     const statusesQuery = useDeployedStatuses(live);
     const statuses = statusesQuery.data ?? null;
-    const groups = useChannelGroups().data ?? [];
-    const tags = useChannelTags().data ?? [];
+    const groups = useChannelGroups().data ?? EMPTY_LIST;
+    const tags = useChannelTags().data ?? EMPTY_LIST;
     const refresh = () => statusesQuery.refetch();
     const [query, setQuery] = useState('');
     const [groupBy, setGroupByState] = useState(() => {

@@ -45,24 +45,89 @@ export function useAlerts() {
     });
 }
 
+/** The dashboard auto-refresh interval preference, in ms (min clamp per caller). */
+const dashIntervalMs = (min = 1) => Math.max(min, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000;
+
 /** Deployed channel statuses (the card/dashboard grid). Polls on the dashboard
  *  interval while `live`; pass live=false to pause. Undeployed channels excluded. */
 export function useDeployedStatuses(live = true) {
     return useQuery({
         queryKey: ['statuses', 'deployed'],
         queryFn: async () => (await api.status.list(undefined, undefined, false)).filter((s) => s.state !== 'UNDEPLOYED'),
-        refetchInterval: () => (live ? Math.max(2, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000 : false)
+        refetchInterval: () => (live ? dashIntervalMs(2) : false)
     });
 }
 
-/** Channel groups (rarely change — no polling). */
-export function useChannelGroups() {
-    return useQuery({ queryKey: ['channelGroups'], queryFn: () => api.channelGroups.list() });
+/** Full dashboard statuses (all deployed channels, connector children included).
+ *  Polls on the dashboard interval. Errors keep the last data (background polls
+ *  self-heal on the next tick, matching the classic silent-poll behavior). */
+export function useDashboardStatuses() {
+    return useQuery({
+        queryKey: ['statuses', 'dashboard'],
+        queryFn: () => api.status.list(),
+        refetchInterval: () => dashIntervalMs(1)
+    });
 }
 
-/** Channel tags (rarely change — no polling). */
-export function useChannelTags() {
-    return useQuery({ queryKey: ['channelTags'], queryFn: () => api.server.channelTags() });
+/** Channel groups. Pass { poll: true } to refresh on the dashboard interval
+ *  (the status board keeps grouping current); default is load-once. */
+export function useChannelGroups({ poll = false } = {}) {
+    return useQuery({
+        queryKey: ['channelGroups'],
+        queryFn: () => api.channelGroups.list(),
+        refetchInterval: poll ? () => dashIntervalMs(1) : undefined
+    });
+}
+
+/** Channel tags. Pass { poll: true } to refresh on the dashboard interval. */
+export function useChannelTags({ poll = false } = {}) {
+    return useQuery({
+        queryKey: ['channelTags'],
+        queryFn: () => api.server.channelTags(),
+        refetchInterval: poll ? () => dashIntervalMs(1) : undefined
+    });
+}
+
+/** channelId → Map(metaDataId → transportName), for the dashboard's Type column.
+ *  Channel definitions change rarely: ~60s cadence, keep-last on failure. */
+export function useConnectorTypes() {
+    return useQuery({
+        queryKey: ['connectorTypes'],
+        queryFn: async () => {
+            const channels = await api.channels.list();
+            const map = new Map();
+            for (const ch of channels) {
+                if (!ch || !ch.id) continue;
+                const types = new Map();
+                if (ch.sourceConnector?.transportName) types.set(0, ch.sourceConnector.transportName);
+                for (const dest of api.asList(ch.destinationConnectors, 'connector')) {
+                    if (dest?.transportName && dest.metaDataId !== undefined) types.set(Number(dest.metaDataId), dest.transportName);
+                }
+                map.set(ch.id, types);
+            }
+            return map;
+        },
+        refetchInterval: 60_000,
+        staleTime: 60_000
+    });
+}
+
+/** channelId → source listener port string, for the dashboard's Port column. */
+export function useSourcePorts() {
+    return useQuery({
+        queryKey: ['sourcePorts'],
+        queryFn: async () => {
+            const ports = await api.channels.portsInUse();
+            const map = new Map();
+            for (let row of ports) {
+                if (row && row.ports) row = row.ports;   // singleton lists stay wrapped
+                if (row && row.id && row.port) map.set(row.id, String(row.port));
+            }
+            return map;
+        },
+        refetchInterval: 60_000,
+        staleTime: 60_000
+    });
 }
 
 /** Returns an invalidator; call after a mutation to refetch the given key(s). */
