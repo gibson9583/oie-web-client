@@ -17,12 +17,24 @@
 const express = require('express');
 const { engineRequest, resolveEngine } = require('./proxy');
 
-const MAX_UPLOAD = '64mb';   // express.raw cap (engine zips ~ a few MB)
+const MAX_UPLOAD = '16mb';   // express.raw cap (engine zips are a few MB)
 
 // CSRF: require the engine's anti-CSRF header. A cross-site request can't set a
 // custom header without a preflight the same-origin policy/engine rejects — the
 // same guard the proxy relies on.
 function csrfOk(req) { return typeof req.headers['x-requested-with'] === 'string' && req.headers['x-requested-with'].length > 0; }
+
+// Cheap pre-parse gate: reject BEFORE express.raw buffers the upload. The engine
+// is still the real authorizer (EXTENSIONS_MANAGE), but there is no reason to
+// read up to MAX_UPLOAD from a caller that omits the CSRF header or carries no
+// engine session cookie — it could never be authorized. Blunts unauthenticated
+// memory-pressure/DoS against the web tier.
+function hasSession(req) { return /(?:^|;\s*)JSESSIONID=/.test(req.headers['cookie'] || ''); }
+function preUploadGate(req, res, next) {
+    if (!csrfOk(req)) return res.status(403).json({ error: 'CSRF', message: 'Missing X-Requested-With header' });
+    if (!hasSession(req)) return res.status(401).json({ error: 'NO_SESSION', message: 'No engine session' });
+    next();
+}
 
 function relayEngine(res, engineRes) {
     res.status(engineRes.status);
@@ -91,6 +103,7 @@ async function handleUninstall(req, res, config) {
 // Mount BEFORE the /api proxy in server/index.js.
 function installPluginRoutes(app, config) {
     app.post('/api/_webadmin/plugins/_install',
+        preUploadGate,
         express.raw({ type: () => true, limit: MAX_UPLOAD }),
         (req, res) => handleInstall(req, res, config));
     app.post('/api/_webadmin/plugins/_uninstall',
@@ -98,4 +111,4 @@ function installPluginRoutes(app, config) {
         (req, res) => handleUninstall(req, res, config));
 }
 
-module.exports = { installPluginRoutes, csrfOk };
+module.exports = { installPluginRoutes, csrfOk, hasSession, preUploadGate };
