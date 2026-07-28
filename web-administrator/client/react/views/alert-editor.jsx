@@ -1,26 +1,20 @@
 /*
- * Alert editor (React port of renderAlertEditor from views/alerts.js). The
- * editor's form body is heavy, intricately-wired legacy DOM — the actions table
- * with right-click Add/Delete, the draggable alert variables, the error-type
- * checkboxes, regex and template fields — and the AlertChannels serialization
- * that round-trips byte-exact with the Swing Administrator's export. That DOM +
- * the model helpers + saveModel() are reused VERBATIM (copied from
- * views/alerts.js). The connector-granular CHANNELS TREE (twisties, clickable
- * pip toggles, filter, Expand/Collapse All, Enable/Disable selected) is now the
- * declarative <TreeTable> rather than a hand-built imperative tree; the rest of
- * the form is mounted via <ImperativeMount> (heavy legacy DOM kept verbatim).
+ * Alert editor — fully declarative React. The form body (name/enabled, the
+ * error-type checkboxes, regex, the actions protocol/recipient table with its
+ * right-click Add/Delete, subject/template with the draggable alert variables)
+ * is controlled JSX bound to form state; the connector-granular CHANNELS TREE
+ * (clickable pip toggles, filter, Expand/Collapse All, Enable/Disable selected)
+ * is the declarative <TreeTable>.
  *
- * The shell is React: the heavy panels are mounted into ref'd <div>s
- * (<ImperativeMount>), the channels tree is <TreeTable>, the task pane
- * ('Alert Edit Tasks') is <ViewTasks>/<RailPane>/<TaskButton>, and the banner
- * title is refined via webadmin:set-title inside requestAnimationFrame (defer
- * past route:changed).
- *
- * The model is a mutable ref (NOT cloned into immutable React state) — its
- * @version/trigger/actionGroups identity is what saveModel() mutates and what
- * api.alerts.update sends, exactly as the legacy view depended on. The channels
- * tree's working node list (and the channel-level sets it serializes from) also
- * lives in refs; a useReducer force-update repaints the React tree.
+ * The MODEL stays a mutable ref (NOT cloned into immutable state) — its
+ * @version/trigger/actionGroups identity is what saveModel() writes and what
+ * api.alerts.update sends, with unknown engine fields round-tripping untouched.
+ * saveModel() reads the FORM STATE (not the DOM, as the legacy did) and
+ * serializes the AlertChannels byte-exactly with the Swing export; the
+ * saveModelRef bridge is re-pointed every render so the mount-captured
+ * navGuard/tab-close snapshot comparison always runs the latest closure.
+ * Channel-tree nodes are an edit-session structure in state: node flags are
+ * mutated in place and the container identity is bumped to repaint.
  *
  * XStream JSON shapes (verified against the Java model + serialized fixtures):
  *   trigger['@class']          'defaultTrigger'
@@ -37,8 +31,8 @@
  *                   disabledConnectors } }] } | null
  */
 
-import { useEffect, useRef, useReducer } from 'react';
-import { h, clear, toast, contextMenu, confirmDialog, field, textInput, select, checkbox, loading, icon, saveFile, taskButton } from '@oie/web-ui';
+import { useEffect, useRef, useState } from 'react';
+import { toast, contextMenu, confirmDialog, saveFile } from '@oie/web-ui';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -201,21 +195,36 @@ export function recipientOptionsOf(raw) {
     return out;
 }
 
-/* Mounts imperative DOM (built by `build()`) into a div, rebuilding on `deps`
-   change. Reused for the heavy legacy form panels (errors / regex / actions /
-   template / variables) kept verbatim. */
-function ImperativeMount({ build, deps = [], className, style }) {
-    const ref = useRef(null);
-    useEffect(() => {
-        const host = ref.current;
-        if (!host) return;
-        host.replaceChildren();
-        const node = build();
-        if (node) host.appendChild(node);
-        return () => host.replaceChildren();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, deps);
-    return <div ref={ref} className={className} style={style} />;
+/* Channel/User protocols carry an id->name option list (from /alerts/options);
+   fall back to the loaded channel list for Channel if the server omits it. */
+function recipientList(protocol, tree) {
+    const opts = tree.recipientOptions[protocol];
+    if (opts && opts.length) return opts;
+    if (protocol === 'Channel' && tree.channelEntries.length) {
+        return tree.channelEntries.map(c => ({ value: c.id, label: c.name }));
+    }
+    return null;
+}
+
+/* Recipient editor: a combo for list-carrying protocols (blank choice first; an
+   unknown current value is preserved so it round-trips), else free text. */
+function RecipientControl({ row, index, tree, patchAction }) {
+    const list = recipientList(row.protocol, tree);
+    if (list) {
+        const full = [{ value: '', label: '' }, ...list];
+        if (row.recipient && !list.some(o => String(o.value) === String(row.recipient))) {
+            full.push({ value: row.recipient, label: row.recipient });
+        }
+        return (
+            <select value={row.recipient || ''} onChange={(e) => patchAction(index, { recipient: e.target.value })}>
+                {full.map((o, i) => <option key={i} value={o.value}>{o.label}</option>)}
+            </select>
+        );
+    }
+    return (
+        <input type="text" placeholder="Recipient" value={row.recipient}
+            onChange={(e) => patchAction(index, { recipient: e.target.value })} />
+    );
 }
 
 /* ---- editor view ------------------------------------------------------------------ */
@@ -224,29 +233,27 @@ export function AlertEditor({ params, query = {} }) {
     const alertId = params.alertId;
     const isNew = query.new === '1';
 
-    const [, forceRender] = useReducer((x) => x + 1, 0);
-
     // The model is a mutable object held in a ref (NOT immutable React state):
     // its identity is what saveModel() mutates and api.alerts.update sends.
     const modelRef = useRef(null);
     const baselineRef = useRef(null);   // server copy at edit start (alert conflict check)
+    // Bridge for the mount-captured navGuard/tab-close guards: re-pointed at the
+    // latest saveModel closure every render.
     const saveModelRef = useRef(() => {});
 
-    // Channels-tree working state read by the JSX <TreeTable> + saveModel; kept
-    // in refs (the form does not own immutable React state). null until loaded.
-    const treeStateRef = useRef(null);
-    const selectedNodeKeyRef = useRef(null);
-    const channelFilterRef = useRef('');
-    const collapsedRef = useRef(new Set());   // collapsed channel-node keys
-    // The connector tree mounts eagerly (parity with Swing showing it on open).
-    // engageTree() is kept as a harmless no-op so the existing Channels-control
-    // handlers need no change.
-    const treeEngagedRef = useRef(true);
-    function engageTree() { if (!treeEngagedRef.current) { treeEngagedRef.current = true; forceRender(); } }
+    /* Form state (controlled inputs). null until the alert + options load. */
+    const [form, setForm] = useState(null);
+    const patchForm = (patch) => setForm(f => ({ ...f, ...patch }));
 
-    // Form-pane builders (errors/regex/actions/template/variables), set when the
-    // alert + options load. saveModel reads the controls they create via refs.
-    const panelsRef = useRef(null);
+    /* Channels-tree edit-session structure: node `enabled`/`dirty` flags are
+       mutated in place (saveModel serializes from the same objects); touchTree()
+       bumps the container identity to repaint. null until loaded; holds
+       { loadError } when the alert could not load. */
+    const [tree, setTree] = useState(null);
+    const touchTree = () => setTree(t => (t ? { ...t } : t));
+    const [selectedNodeKey, setSelectedNodeKey] = useState(null);
+    const [channelFilter, setChannelFilter] = useState('');
+    const [collapsed, setCollapsed] = useState(() => new Set());
 
     // Unsaved-changes detection: the serialized model captured once the form is
     // built (clean baseline). The nav guard re-serializes on leave and prompts
@@ -330,21 +337,18 @@ export function AlertEditor({ params, query = {} }) {
                 toast('Could not load channel connectors; channel-level granularity only', 'warn');
                 channelEntries = channelEntriesOf(await api.channels.idsAndNames().catch(() => null));
             }
-            buildForm(channelEntries, includeConnectors, protocolsOf(optionsRaw), recipientOptionsOf(optionsRaw));
-            forceRender();
+            initForm(channelEntries, includeConnectors, protocolsOf(optionsRaw), recipientOptionsOf(optionsRaw));
         } catch (e) {
             modelRef.current = null;
-            panelsRef.current = null;
-            treeStateRef.current = { loadError: e.message };
-            forceRender();
+            setForm(null);
+            setTree({ loadError: e.message });
         }
     }
 
-    /* Builds the channels-tree working state + the heavy imperative form panels.
-       The channels tree is rendered declaratively by <TreeTable>; the rest of the
-       panels stay verbatim legacy DOM (mounted via <ImperativeMount>). saveModel
-       reads everything back out of the closures captured here. */
-    function buildForm(channelEntries, includeConnectors, protocols, recipientOptions = {}) {
+    /* Builds the channels-tree working state + seeds the form state from the
+       loaded model. The tree nodes' enabled/dirty flags are the objects
+       saveModel() serializes from. */
+    function initForm(channelEntries, includeConnectors, protocols, recipientOptions = {}) {
         const model = modelRef.current;
         const trigger = model.trigger || (model.trigger = { '@class': 'defaultTrigger' });
         const alertChannels = trigger.alertChannels || (trigger.alertChannels = {
@@ -355,39 +359,7 @@ export function AlertEditor({ params, query = {} }) {
         const group = groups[0] || { actions: null, subject: '', template: '' };
         if (!groups.length) groups.push(group);
 
-        /* ---- top row: name + enabled ---- */
-
-        const nameInput = textInput(model.name || '', { class: 'flex-1 max-w-[560px]' });
-        const enabledCheck = checkbox('Enabled', model.enabled === true);
-        // New alert: focus the empty Name field so the user can type immediately.
-        if (isNew) setTimeout(() => { nameInput.focus(); nameInput.select(); }, 0);
-
-        const topRow = h('div', { class: 'flex items-center gap-3 mb-3.5' },
-            h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim' }, 'Alert Name:'),
-            nameInput,
-            enabledCheck.el);
-
-        /* ---- column 1: error event types (DefaultTrigger) ---- */
-
-        const selectedTypes = new Set(api.asList(trigger.errorEventTypes, 'errorEventType').map(String));
-        const typeChecks = ERROR_EVENT_TYPES.map(type => {
-            const cb = checkbox(eventTypeLabel(type), selectedTypes.has(type));
-            return { type, cb };
-        });
-
-        const errorsBody = h('div.panel-body', { class: 'flex-1 flex flex-col gap-0.5 overflow-auto' },
-            typeChecks.map(t => t.cb.el));
-
-        /* ---- column 2: regex ---- */
-
-        const regexInput = h('textarea', {
-            placeholder: 'Only trigger when the error matches this regular expression (leave blank to match any error)',
-            class: 'flex-1 resize-none min-h-[180px] font-mono'
-        }, trigger.regex ?? '');
-
-        const regexBody = h('div.panel-body', { class: 'flex-1 flex min-h-0' }, regexInput);
-
-        /* ---- column 3: channels tree (connector-level granularity, classic pane) ---- */
+        /* ---- channels tree working state (connector-level granularity) ---- */
 
         const enabledChannelSet = new Set(api.asList(alertChannels.enabledChannels, 'string').map(String));
         const disabledChannelSet = new Set(api.asList(alertChannels.disabledChannels, 'string').map(String));
@@ -434,226 +406,124 @@ export function AlertEditor({ params, query = {} }) {
         }));
         const allChannelNodes = [newChannelsNode, ...channelNodes];
 
-        treeStateRef.current = {
+        setTree({
             includeConnectors, channelEntries, allChannelNodes, newChannelsNode, channelNodes,
-            alertChannels, enabledChannelSet, disabledChannelSet
-        };
-        selectedNodeKeyRef.current = null;
-        channelFilterRef.current = '';
-        collapsedRef.current = new Set();
-
-        /* ---- bottom column 1: actions (protocol/recipient pairs) ---- */
-
-        let actionRows = api.asList(group.actions, 'alertAction')
-            .map(a => ({ protocol: String(a?.protocol ?? protocols[0]), recipient: String(a?.recipient ?? '') }));
-
-        const actionsHost = h('div');
-
-        const addAction = () => { actionRows.push({ protocol: protocols[0], recipient: '' }); renderActions(); };
-        const removeAction = (row) => { actionRows = actionRows.filter(r => r !== row); renderActions(); };
-        // Right-click parity (Swing alert action popup): Add Action anywhere in the
-        // panel, Delete Action on a row.
-        actionsHost.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            const tr = e.target.closest('tbody tr');
-            const row = tr ? actionRows[[...tr.parentNode.children].indexOf(tr)] : null;
-            const items = [{ label: 'Add Action', icon: 'plus', onClick: addAction }];
-            if (row) items.push({ label: 'Delete Action', icon: 'trash', danger: true, onClick: () => removeAction(row) });
-            contextMenu(e.clientX, e.clientY, items);
+            alertChannels, enabledChannelSet, disabledChannelSet,
+            protocols, recipientOptions
         });
+        setSelectedNodeKey(null);
+        setChannelFilter('');
+        setCollapsed(new Set());
 
-        // Channel/User protocols carry an id->name option list (from /alerts/options);
-        // fall back to the loaded channel list for Channel if the server omits it.
-        function recipientList(protocol) {
-            const opts = recipientOptions[protocol];
-            if (opts && opts.length) return opts;
-            if (protocol === 'Channel' && channelEntries.length) {
-                return channelEntries.map(c => ({ value: c.id, label: c.name }));
-            }
-            return null;
-        }
-
-        function recipientControl(row) {
-            const list = recipientList(row.protocol);
-            if (list) {
-                // Blank choice first; preserve an unknown current value so it round-trips.
-                const full = [{ value: '', label: '' }, ...list];
-                if (row.recipient && !list.some(o => String(o.value) === String(row.recipient))) {
-                    full.push({ value: row.recipient, label: row.recipient });
-                }
-                return select(full, row.recipient, { onChange: (e) => { row.recipient = e.target.value; } });
-            }
-            return textInput(row.recipient, {
-                placeholder: 'Recipient',
-                onInput: (e) => { row.recipient = e.target.value; }
-            });
-        }
-
-        function renderActions() {
-            clear(actionsHost);
-            if (!actionRows.length) {
-                actionsHost.appendChild(h('div.text-text-dim', { class: 'py-1.5 px-0' }, 'No actions defined'));
-                return;
-            }
-            const tbody = h('tbody');
-            for (const row of actionRows) {
-                // Switching protocol clears the recipient and swaps the editor (combo vs text).
-                const protocolSel = select(protocols, row.protocol, { onChange: (e) => {
-                    row.protocol = e.target.value;
-                    row.recipient = '';
-                    renderActions();
-                } });
-                tbody.appendChild(h('tr',
-                    h('td', { class: 'w-[120px]' }, protocolSel),
-                    h('td', recipientControl(row)),
-                    h('td', { class: 'w-[40px] text-right' },
-                        h('button.icon-btn', {
-                            title: 'Remove action',
-                            onClick: () => removeAction(row)
-                        }, icon('trash')))));
-            }
-            actionsHost.appendChild(h('div.dt-wrap', h('table.dt',
-                h('thead', h('tr', h('th', 'Protocol'), h('th', 'Recipient'), h('th', ''))),
-                tbody)));
-        }
-        renderActions();
-
-        const actionsBody = h('div.panel-body', { class: 'flex-1 flex flex-col min-h-0' },
-            h('div', { class: 'flex-1 overflow-auto min-h-0' }, actionsHost),
-            h('div.mt-[14px]', taskButton('Add', 'plus', addAction)));
-
-        /* ---- bottom column 2: subject + template ---- */
-
-        const subjectInput = textInput(group.subject ?? '');
-        const templateInput = h('textarea', { rows: 8, class: 'flex-1 resize-none min-h-[140px]' }, group.template ?? '');
-
-        // Variables insert into whichever of subject/template was last focused.
-        let lastFocused = null;
-        subjectInput.addEventListener('focus', () => { lastFocused = subjectInput; });
-        templateInput.addEventListener('focus', () => { lastFocused = templateInput; });
-
-        const messageBody = h('div.panel-body', { class: 'flex-1 flex flex-col min-h-0' },
-            field('Subject (only used for email messages)', subjectInput),
-            h('div.field', { class: 'flex-1 flex min-h-0 mb-0' },
-                h('label', 'Template'),
-                templateInput));
-
-        /* ---- bottom column 3: alert variables ---- */
-
-        function insertVariable(name) {
-            const target = lastFocused || templateInput;
-            const text = '${' + name + '}';
-            let start = target.selectionStart ?? target.value.length;
-            let end = target.selectionEnd ?? start;
-            if (!lastFocused) start = end = target.value.length; // never focused: append to template
-            target.value = target.value.slice(0, start) + text + target.value.slice(end);
-            const pos = start + text.length;
-            target.focus();
-            target.setSelectionRange(pos, pos);
-        }
-
-        const variablesBody = h('div.panel-body.flush', { class: 'flex-1 overflow-auto min-h-0 p-1.5' },
-            h('div.tree', ALERT_VARIABLES.map(name =>
-                h('div.tree-node', {
-                    title: 'Insert ${' + name + '} (drag onto the subject/template or click)',
-                    draggable: 'true',
-                    class: 'cursor-grab',
-                    onClick: () => insertVariable(name),
-                    onDragstart: (e) => {
-                        e.dataTransfer.setData('text/plain', '${' + name + '}');
-                        e.dataTransfer.effectAllowed = 'copy';
-                    }
-                }, name))));
-
-        /* ---- collect form values back into the round-tripped model ---- */
-
-        saveModelRef.current = () => {
-            model.name = nameInput.value.trim();
-            model.enabled = enabledCheck.input.checked;
-
-            const types = typeChecks.filter(t => t.cb.input.checked).map(t => t.type);
-            trigger.errorEventTypes = types.length ? { errorEventType: types } : null;
-            trigger.regex = regexInput.value;
-
-            if (includeConnectors) {
-                // Rebuild AlertChannels from the tree, mirroring the Swing
-                // ChannelTreeTableModel.getAlertChannels() + AlertChannels.addChannel().
-                const newSource = newChannelsNode.connectors[0].enabled;
-                const newDestination = newChannelsNode.connectors[1].enabled;
-                const fullEnabled = [];
-                const fullDisabled = [];
-                const partialEntries = [];
-                for (const node of channelNodes) {
-                    let allEnabled = true, allDisabled = true, matchesNewChannel = true;
-                    const en = [], dis = [];
-                    for (const c of node.connectors) {
-                        if (c.enabled) { allDisabled = false; en.push(c.metaDataId); }
-                        else { allEnabled = false; dis.push(c.metaDataId); }
-                        const newDefault = (c.metaDataId === null || c.metaDataId > 0) ? newDestination : newSource;
-                        if (c.enabled !== newDefault) matchesNewChannel = false;
-                    }
-                    if (matchesNewChannel) continue; // matches new-channel defaults: omit
-                    if (allEnabled) fullEnabled.push(node.id);
-                    else if (allDisabled) fullDisabled.push(node.id);
-                    else partialEntries.push({
-                        string: node.id,
-                        alertConnectors: {
-                            enabledConnectors: connectorIdSetJson(en),
-                            disabledConnectors: connectorIdSetJson(dis)
-                        }
-                    });
-                }
-                alertChannels.newChannelSource = newSource;
-                alertChannels.newChannelDestination = newDestination;
-                alertChannels.enabledChannels = fullEnabled.length ? { string: fullEnabled } : null;
-                alertChannels.disabledChannels = fullDisabled.length ? { string: fullDisabled } : null;
-                alertChannels.partialChannels = partialEntries.length ? { entry: partialEntries } : null;
-            } else {
-                // Channel-level fallback: only channels the user actually toggled
-                // move between the sets; everything else round-trips untouched.
-                const en = new Set(enabledChannelSet);
-                const dis = new Set(disabledChannelSet);
-                const dirtyIds = new Set();
-                for (const node of channelNodes) {
-                    if (!node.dirty) continue;
-                    dirtyIds.add(node.id);
-                    en.delete(node.id);
-                    dis.delete(node.id);
-                    (node.enabled ? en : dis).add(node.id);
-                }
-                alertChannels.enabledChannels = en.size ? { string: [...en] } : null;
-                alertChannels.disabledChannels = dis.size ? { string: [...dis] } : null;
-                if (dirtyIds.size) {
-                    const rawEntries = api.asList(alertChannels.partialChannels?.entry ?? alertChannels.partialChannels)
-                        .filter(entry => !dirtyIds.has(String(entry?.string)));
-                    alertChannels.partialChannels = rawEntries.length ? { entry: rawEntries } : null;
-                }
-                if (newChannelsNode.dirty) {
-                    alertChannels.newChannelSource = newChannelsNode.enabled;
-                    alertChannels.newChannelDestination = newChannelsNode.enabled;
-                }
-            }
-
-            group.subject = subjectInput.value;
-            group.template = templateInput.value;
-            const actions = actionRows
-                .filter(r => r.recipient.trim() || r.protocol)
-                .map(r => ({ protocol: r.protocol, recipient: r.recipient }));
-            group.actions = actions.length ? { alertAction: actions } : null;
-            model.actionGroups = { alertActionGroup: groups };
-        };
-
-        panelsRef.current = {
-            topRow: () => topRow,
-            errorsBody: () => errorsBody,
-            regexBody: () => regexBody,
-            actionsBody: () => actionsBody,
-            messageBody: () => messageBody,
-            variablesBody: () => variablesBody
-        };
+        /* ---- seed the form state from the model ---- */
+        setForm({
+            name: model.name || '',
+            enabled: model.enabled === true,
+            types: api.asList(trigger.errorEventTypes, 'errorEventType').map(String),
+            regex: trigger.regex ?? '',
+            subject: group.subject ?? '',
+            template: group.template ?? '',
+            actionRows: api.asList(group.actions, 'alertAction')
+                .map(a => ({ protocol: String(a?.protocol ?? protocols[0]), recipient: String(a?.recipient ?? '') }))
+        });
     }
 
-    /* ---- channels-tree helpers (read/write treeStateRef; repaint via forceRender) ---- */
+    /* ---- collect the form + tree state back into the round-tripped model ----
+       The AlertChannels rebuild mirrors Swing's ChannelTreeTableModel
+       .getAlertChannels() + AlertChannels.addChannel() byte-exactly. Re-created
+       every render (reads form/tree state); saveModelRef points at the latest
+       closure for the mount-captured guards. */
+    function saveModel() {
+        const model = modelRef.current;
+        if (!model || !form || !tree || tree.loadError) return;
+        const trigger = model.trigger;
+        const alertChannels = trigger.alertChannels;
+        const groups = groupsOf(model);
+        const group = groups[0] || { actions: null, subject: '', template: '' };
+        if (!groups.length) groups.push(group);
+
+        model.name = form.name.trim();
+        model.enabled = form.enabled;
+        // Canonical ERROR_EVENT_TYPES order (as the classic editor emitted):
+        // toggle order must not change the PUT bytes or trip the dirty snapshot.
+        // Unknown server-seeded values are preserved after the known set
+        // (round-trip invariant — the old editor silently dropped them).
+        const types = [
+            ...ERROR_EVENT_TYPES.filter(t => form.types.includes(t)),
+            ...form.types.filter(t => !ERROR_EVENT_TYPES.includes(t))
+        ];
+        trigger.errorEventTypes = types.length ? { errorEventType: types } : null;
+        trigger.regex = form.regex;
+
+        if (tree.includeConnectors) {
+            const { newChannelsNode, channelNodes } = tree;
+            const newSource = newChannelsNode.connectors[0].enabled;
+            const newDestination = newChannelsNode.connectors[1].enabled;
+            const fullEnabled = [];
+            const fullDisabled = [];
+            const partialEntries = [];
+            for (const node of channelNodes) {
+                let allEnabled = true, allDisabled = true, matchesNewChannel = true;
+                const en = [], dis = [];
+                for (const c of node.connectors) {
+                    if (c.enabled) { allDisabled = false; en.push(c.metaDataId); }
+                    else { allEnabled = false; dis.push(c.metaDataId); }
+                    const newDefault = (c.metaDataId === null || c.metaDataId > 0) ? newDestination : newSource;
+                    if (c.enabled !== newDefault) matchesNewChannel = false;
+                }
+                if (matchesNewChannel) continue; // matches new-channel defaults: omit
+                if (allEnabled) fullEnabled.push(node.id);
+                else if (allDisabled) fullDisabled.push(node.id);
+                else partialEntries.push({
+                    string: node.id,
+                    alertConnectors: {
+                        enabledConnectors: connectorIdSetJson(en),
+                        disabledConnectors: connectorIdSetJson(dis)
+                    }
+                });
+            }
+            alertChannels.newChannelSource = newSource;
+            alertChannels.newChannelDestination = newDestination;
+            alertChannels.enabledChannels = fullEnabled.length ? { string: fullEnabled } : null;
+            alertChannels.disabledChannels = fullDisabled.length ? { string: fullDisabled } : null;
+            alertChannels.partialChannels = partialEntries.length ? { entry: partialEntries } : null;
+        } else {
+            // Channel-level fallback: only channels the user actually toggled
+            // move between the sets; everything else round-trips untouched.
+            const en = new Set(tree.enabledChannelSet);
+            const dis = new Set(tree.disabledChannelSet);
+            const dirtyIds = new Set();
+            for (const node of tree.channelNodes) {
+                if (!node.dirty) continue;
+                dirtyIds.add(node.id);
+                en.delete(node.id);
+                dis.delete(node.id);
+                (node.enabled ? en : dis).add(node.id);
+            }
+            alertChannels.enabledChannels = en.size ? { string: [...en] } : null;
+            alertChannels.disabledChannels = dis.size ? { string: [...dis] } : null;
+            if (dirtyIds.size) {
+                const rawEntries = api.asList(alertChannels.partialChannels?.entry ?? alertChannels.partialChannels)
+                    .filter(entry => !dirtyIds.has(String(entry?.string)));
+                alertChannels.partialChannels = rawEntries.length ? { entry: rawEntries } : null;
+            }
+            if (tree.newChannelsNode.dirty) {
+                alertChannels.newChannelSource = tree.newChannelsNode.enabled;
+                alertChannels.newChannelDestination = tree.newChannelsNode.enabled;
+            }
+        }
+
+        group.subject = form.subject;
+        group.template = form.template;
+        const actions = form.actionRows
+            .filter(r => r.recipient.trim() || r.protocol)
+            .map(r => ({ protocol: r.protocol, recipient: r.recipient }));
+        group.actions = actions.length ? { alertAction: actions } : null;
+        model.actionGroups = { alertActionGroup: groups };
+    }
+    saveModelRef.current = saveModel;
+
+    /* ---- channels-tree helpers (mutate nodes in place; touchTree repaints) ---- */
 
     const channelKey = (node) => 'ch:' + (node.id ?? '[new]');
     const connectorKey = (node, c) => channelKey(node) + '/' + (c.metaDataId ?? 'new');
@@ -673,19 +543,17 @@ export function AlertEditor({ params, query = {} }) {
     // Enable/Disable buttons act on the selected node; a channel node
     // cascades to all of its connectors (classic toggleSelectedRows()).
     function setSelectedNode(enabled) {
-        const state = treeStateRef.current;
-        if (!state || !state.allChannelNodes) return;
-        const selectedNodeKey = selectedNodeKeyRef.current;
-        for (const node of state.allChannelNodes) {
+        if (!tree || !tree.allChannelNodes) return;
+        for (const node of tree.allChannelNodes) {
             if (channelKey(node) === selectedNodeKey) {
                 setChannelNode(node, enabled);
-                forceRender();
+                touchTree();
                 return;
             }
             for (const c of node.connectors || []) {
                 if (connectorKey(node, c) === selectedNodeKey) {
                     c.enabled = enabled;
-                    forceRender();
+                    touchTree();
                     return;
                 }
             }
@@ -694,20 +562,20 @@ export function AlertEditor({ params, query = {} }) {
     }
 
     function setAllExpanded(expanded) {
-        const state = treeStateRef.current;
-        if (!state || !state.allChannelNodes) return;
-        const collapsed = collapsedRef.current;
-        for (const node of state.allChannelNodes) {
-            if (!node.connectors) continue;
-            if (expanded) collapsed.delete(channelKey(node));
-            else collapsed.add(channelKey(node));
-        }
-        forceRender();
+        if (!tree || !tree.allChannelNodes) return;
+        setCollapsed(prev => {
+            const next = new Set(prev);
+            for (const node of tree.allChannelNodes) {
+                if (!node.connectors) continue;
+                if (expanded) next.delete(channelKey(node));
+                else next.add(channelKey(node));
+            }
+            return next;
+        });
     }
 
-    // Build the imperative form panels once loaded, then load. Callbacks above
-    // read the current model/saveModel/tree state via refs, so this mount-once
-    // effect is correct.
+    // Load on mount; the guards read the model + latest saveModel via refs, so
+    // this mount-once effect is correct.
     useEffect(() => {
         load();
         // Prompt before leaving with unsaved alert edits (Swing parity).
@@ -735,23 +603,59 @@ export function AlertEditor({ params, query = {} }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Capture the clean baseline once the form panels are built (before edits).
+    // Capture the clean baseline once the form is seeded (before edits).
     useEffect(() => {
-        if (cleanSnapshotRef.current === null && panelsRef.current && modelRef.current) {
+        if (cleanSnapshotRef.current === null && form && tree && !tree.loadError && modelRef.current) {
             cleanSnapshotRef.current = syncedModelJson();
         }
     });
 
-    const state = treeStateRef.current;
-    const panels = panelsRef.current;
-    const loadError = state && state.loadError;
+    // New alert: focus the empty Name field so the user can type immediately.
+    const nameRef = useRef(null);
+    const focusedNewRef = useRef(false);
+    useEffect(() => {
+        if (isNew && form && !focusedNewRef.current && nameRef.current) {
+            focusedNewRef.current = true;
+            nameRef.current.focus();
+            nameRef.current.select();
+        }
+    }, [isNew, form]);
+
+    // Variables insert into whichever of subject/template was last focused
+    // (default: append to the template).
+    const subjectRef = useRef(null);
+    const templateRef = useRef(null);
+    const lastFocusedRef = useRef(null);   // 'subject' | 'template' | null
+    function insertVariable(name) {
+        const key = lastFocusedRef.current;
+        const fieldKey = key === 'subject' ? 'subject' : 'template';
+        const target = key === 'subject' ? subjectRef.current : templateRef.current;
+        const text = '${' + name + '}';
+        const value = form[fieldKey] || '';
+        let start = key && target ? (target.selectionStart ?? value.length) : value.length;
+        let end = key && target ? (target.selectionEnd ?? start) : start;
+        patchForm({ [fieldKey]: value.slice(0, start) + text + value.slice(end) });
+        const pos = start + text.length;
+        requestAnimationFrame(() => {
+            target?.focus();
+            target?.setSelectionRange(pos, pos);
+        });
+    }
+
+    const loadError = tree && tree.loadError;
+    const ready = !!form && !!tree && !loadError;
+
+    /* ---- actions rows (protocol/recipient pairs) ---- */
+    const addAction = () => patchForm({ actionRows: [...form.actionRows, { protocol: tree.protocols[0], recipient: '' }] });
+    const removeAction = (i) => patchForm({ actionRows: form.actionRows.filter((_, idx) => idx !== i) });
+    const patchAction = (i, patch) => patchForm({ actionRows: form.actionRows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) });
 
     // <TreeTable> data + columns for the channels tree. Channel nodes are parents,
     // their connectors are children (only when connector-granular). The tree column
     // renders the clickable pip + the name.
     function treeData() {
-        if (!state || !state.allChannelNodes) return [];
-        return state.allChannelNodes.map(node => ({
+        if (!tree || !tree.allChannelNodes) return [];
+        return tree.allChannelNodes.map(node => ({
             kind: 'channel', node,
             children: node.connectors
                 ? node.connectors.map(c => ({ kind: 'connector', node, c }))
@@ -773,7 +677,7 @@ export function AlertEditor({ params, query = {} }) {
             if (n.kind === 'connector') {
                 return (
                     <span className="inline-flex items-center gap-[7px]">
-                        {pip(n.c.enabled ? 'ok' : 'err', () => { n.c.enabled = !n.c.enabled; forceRender(); })}
+                        {pip(n.c.enabled ? 'ok' : 'err', () => { n.c.enabled = !n.c.enabled; touchTree(); })}
                         <span>{n.c.name}</span>
                     </span>
                 );
@@ -782,14 +686,14 @@ export function AlertEditor({ params, query = {} }) {
             // toggles the whole channel (mixed -> fully enabled).
             return (
                 <span className="inline-flex items-center gap-[7px]">
-                    {pip(channelPipState(n.node), () => { setChannelNode(n.node, channelPipState(n.node) !== 'ok'); forceRender(); })}
+                    {pip(channelPipState(n.node), () => { setChannelNode(n.node, channelPipState(n.node) !== 'ok'); touchTree(); })}
                     <span>{n.node.name}</span>
                 </span>
             );
         }
     }];
 
-    const filterTerm = channelFilterRef.current.trim().toLowerCase();
+    const filterTerm = channelFilter.trim().toLowerCase();
     const treeMatches = filterTerm
         ? (n) => {
             if (n.kind === 'connector') return n.c.name.toLowerCase().includes(filterTerm);
@@ -809,6 +713,9 @@ export function AlertEditor({ params, query = {} }) {
                         <TaskButton label="Back to Alerts" icon="logout" onClick={() => router.navigate('/alerts')} />
                         {/* Open in Wizard — always pinned to the bottom of the task list. */}
                         {getPref('showViewSwitch') !== false && <TaskButton label="Open in Wizard" icon="wand" onClick={() => {
+                            // Flush the form state into the model FIRST — the wizard
+                            // receives the model object, not this editor's state.
+                            saveModelRef.current();
                             const model = modelRef.current;
                             store.setState('editingAlert', model);
                             store.setState('editingAlertNew', isNew);
@@ -824,60 +731,82 @@ export function AlertEditor({ params, query = {} }) {
                         <div className="empty-icon"><Icon name="alerts" size={30} /></div>
                         <div>Could not load alert: {loadError}</div>
                     </div>
-                    : !panels
-                        ? <div ref={(el) => { if (el && !el.firstChild) el.appendChild(loading('Loading alert…')); }} />
+                    : !ready
+                        ? <div className="loading-block"><div className="spinner" />Loading alert…</div>
                         : (
                             <>
-                                <ImperativeMount build={panels.topRow} />
+                                {/* ---- top row: name + enabled ---- */}
+                                <div className="flex items-center gap-3 mb-3.5">
+                                    <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Alert Name:</label>
+                                    <input ref={nameRef} type="text" className="flex-1 max-w-[560px]" value={form.name}
+                                        onChange={(e) => patchForm({ name: e.target.value })} />
+                                    <label className="check">
+                                        <input type="checkbox" checked={form.enabled}
+                                            onChange={(e) => patchForm({ enabled: e.target.checked })} />
+                                        Enabled
+                                    </label>
+                                </div>
                                 <div className="grid grid-cols-[repeat(auto-fit,minmax(min(220px,100%),1fr))] gap-3.5 items-stretch">
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Errors (select all that apply)</div>
-                                        <ImperativeMount build={panels.errorsBody} className="flex flex-col flex-1 min-h-0" />
+                                        <div className="panel-body flex-1 flex flex-col gap-0.5 overflow-auto">
+                                            {ERROR_EVENT_TYPES.map((type) => (
+                                                <label key={type} className="check">
+                                                    <input type="checkbox" checked={form.types.includes(type)}
+                                                        onChange={(e) => patchForm({
+                                                            types: e.target.checked
+                                                                ? [...form.types, type]
+                                                                : form.types.filter(t => t !== type)
+                                                        })} />
+                                                    {eventTypeLabel(type)}
+                                                </label>
+                                            ))}
+                                        </div>
                                     </div>
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Regex (optional)</div>
-                                        <ImperativeMount build={panels.regexBody} className="flex flex-col flex-1 min-h-0" />
+                                        <div className="panel-body flex-1 flex min-h-0">
+                                            <textarea className="flex-1 resize-none min-h-[180px] font-mono"
+                                                placeholder="Only trigger when the error matches this regular expression (leave blank to match any error)"
+                                                value={form.regex} onChange={(e) => patchForm({ regex: e.target.value })} />
+                                        </div>
                                     </div>
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Channels</div>
                                         <div className="panel-body flex-1 flex flex-col gap-2 min-h-0">
                                             <div className="flex gap-1.5 items-center">
                                                 <input type="text" placeholder="Filter channels" className="flex-1"
-                                                    defaultValue={channelFilterRef.current}
-                                                    onFocus={engageTree}
-                                                    onInput={(e) => { channelFilterRef.current = e.target.value; engageTree(); forceRender(); }} />
-                                                <TaskButton label="Enable" icon="check" onClick={() => { engageTree(); setSelectedNode(true); }} />
-                                                <TaskButton label="Disable" icon="x" onClick={() => { engageTree(); setSelectedNode(false); }} />
+                                                    value={channelFilter}
+                                                    onChange={(e) => setChannelFilter(e.target.value)} />
+                                                <TaskButton label="Enable" icon="check" onClick={() => setSelectedNode(true)} />
+                                                <TaskButton label="Disable" icon="x" onClick={() => setSelectedNode(false)} />
                                             </div>
-                                            {state.includeConnectors
+                                            {tree.includeConnectors
                                                 ? <div className="flex gap-2.5 justify-end">
                                                     <span title="Expand all nodes below." className="text-accent cursor-pointer underline text-[12px]"
-                                                        onClick={() => { engageTree(); setAllExpanded(true); }}>Expand All</span>
+                                                        onClick={() => setAllExpanded(true)}>Expand All</span>
                                                     <span title="Collapse all nodes below." className="text-accent cursor-pointer underline text-[12px]"
-                                                        onClick={() => { engageTree(); setAllExpanded(false); }}>Collapse All</span>
+                                                        onClick={() => setAllExpanded(false)}>Collapse All</span>
                                                 </div>
                                                 : null}
-                                            <div className="tree flex-1 min-h-0 max-h-[320px] overflow-auto"
-                                                onPointerDown={engageTree}>
-                                                {treeEngagedRef.current
-                                                    ? <TreeTable
-                                                        data={treeData()}
-                                                        columns={channelColumns}
-                                                        getChildren={(n) => n.children}
-                                                        rowKey={(n) => n.kind === 'connector' ? connectorKey(n.node, n.c) : channelKey(n.node)}
-                                                        selectedKey={selectedNodeKeyRef.current}
-                                                        onSelect={(n) => { selectedNodeKeyRef.current = n.kind === 'connector' ? connectorKey(n.node, n.c) : channelKey(n.node); forceRender(); }}
-                                                        matches={treeMatches}
-                                                        collapsedKeys={collapsedRef.current}
-                                                        onToggleCollapse={(key) => { const s = collapsedRef.current; if (s.has(key)) s.delete(key); else s.add(key); forceRender(); }}
-                                                        columnsKey="alert-channels"
-                                                        pinnedKeys={['name']}
-                                                        emptyText="No matching channels" />
-                                                    : <div className="text-text-dim py-1.5 px-2.5">
-                                                        {treeData().length
-                                                            ? `${state.channelNodes.length} channel${state.channelNodes.length === 1 ? '' : 's'} — click to configure connector enablement`
-                                                            : 'No channels'}
-                                                    </div>}
+                                            <div className="tree flex-1 min-h-0 max-h-[320px] overflow-auto">
+                                                <TreeTable
+                                                    data={treeData()}
+                                                    columns={channelColumns}
+                                                    getChildren={(n) => n.children}
+                                                    rowKey={(n) => n.kind === 'connector' ? connectorKey(n.node, n.c) : channelKey(n.node)}
+                                                    selectedKey={selectedNodeKey}
+                                                    onSelect={(n) => setSelectedNodeKey(n.kind === 'connector' ? connectorKey(n.node, n.c) : channelKey(n.node))}
+                                                    matches={treeMatches}
+                                                    collapsedKeys={collapsed}
+                                                    onToggleCollapse={(key) => setCollapsed(prev => {
+                                                        const next = new Set(prev);
+                                                        next.has(key) ? next.delete(key) : next.add(key);
+                                                        return next;
+                                                    })}
+                                                    columnsKey="alert-channels"
+                                                    pinnedKeys={['name']}
+                                                    emptyText="No matching channels" />
                                             </div>
                                         </div>
                                     </div>
@@ -885,15 +814,82 @@ export function AlertEditor({ params, query = {} }) {
                                 <div className="grid grid-cols-[repeat(auto-fit,minmax(min(240px,100%),1fr))] gap-3.5 mt-3.5 items-stretch">
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Actions</div>
-                                        <ImperativeMount build={panels.actionsBody} className="flex flex-col flex-1 min-h-0" />
+                                        <div className="panel-body flex-1 flex flex-col min-h-0">
+                                            <div className="flex-1 overflow-auto min-h-0"
+                                                onContextMenu={(e) => {
+                                                    // Right-click parity (Swing alert action popup): Add Action
+                                                    // anywhere in the panel, Delete Action on a row.
+                                                    e.preventDefault();
+                                                    const tr = e.target.closest('tbody tr');
+                                                    const index = tr ? [...tr.parentNode.children].indexOf(tr) : -1;
+                                                    const items = [{ label: 'Add Action', icon: 'plus', onClick: addAction }];
+                                                    if (index >= 0) items.push({ label: 'Delete Action', icon: 'trash', danger: true, onClick: () => removeAction(index) });
+                                                    contextMenu(e.clientX, e.clientY, items);
+                                                }}>
+                                                {form.actionRows.length === 0
+                                                    ? <div className="text-text-dim py-1.5 px-0">No actions defined</div>
+                                                    : (
+                                                        <div className="dt-wrap">
+                                                            <table className="dt">
+                                                                <thead><tr><th>Protocol</th><th>Recipient</th><th></th></tr></thead>
+                                                                <tbody>
+                                                                    {form.actionRows.map((row, i) => (
+                                                                        <tr key={i}>
+                                                                            <td className="w-[120px]">
+                                                                                {/* Switching protocol clears the recipient and swaps the editor (combo vs text). */}
+                                                                                <select value={row.protocol}
+                                                                                    onChange={(e) => patchAction(i, { protocol: e.target.value, recipient: '' })}>
+                                                                                    {tree.protocols.map((prot) => <option key={prot} value={prot}>{prot}</option>)}
+                                                                                </select>
+                                                                            </td>
+                                                                            <td><RecipientControl row={row} index={i} tree={tree} patchAction={patchAction} /></td>
+                                                                            <td className="w-[40px] text-right">
+                                                                                <button type="button" className="icon-btn" title="Remove action"
+                                                                                    onClick={() => removeAction(i)}><Icon name="trash" /></button>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    )}
+                                            </div>
+                                            <div className="mt-[14px]"><TaskButton label="Add" icon="plus" onClick={addAction} /></div>
+                                        </div>
                                     </div>
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Template</div>
-                                        <ImperativeMount build={panels.messageBody} className="flex flex-col flex-1 min-h-0" />
+                                        <div className="panel-body flex-1 flex flex-col min-h-0">
+                                            <div className="field">
+                                                <label>Subject (only used for email messages)</label>
+                                                <input ref={subjectRef} type="text" value={form.subject}
+                                                    onFocus={() => { lastFocusedRef.current = 'subject'; }}
+                                                    onChange={(e) => patchForm({ subject: e.target.value })} />
+                                            </div>
+                                            <div className="field flex-1 flex min-h-0 mb-0">
+                                                <label>Template</label>
+                                                <textarea ref={templateRef} rows={8} className="flex-1 resize-none min-h-[140px]"
+                                                    value={form.template}
+                                                    onFocus={() => { lastFocusedRef.current = 'template'; }}
+                                                    onChange={(e) => patchForm({ template: e.target.value })} />
+                                            </div>
+                                        </div>
                                     </div>
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Alert Variables</div>
-                                        <ImperativeMount build={panels.variablesBody} className="flex flex-col flex-1 min-h-0" />
+                                        <div className="panel-body flush flex-1 overflow-auto min-h-0 p-1.5">
+                                            <div className="tree">
+                                                {ALERT_VARIABLES.map((name) => (
+                                                    <div key={name} className="tree-node cursor-grab" draggable
+                                                        title={'Insert ${' + name + '} (drag onto the subject/template or click)'}
+                                                        onClick={() => insertVariable(name)}
+                                                        onDragStart={(e) => {
+                                                            e.dataTransfer.setData('text/plain', '${' + name + '}');
+                                                            e.dataTransfer.effectAllowed = 'copy';
+                                                        }}>{name}</div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </>
