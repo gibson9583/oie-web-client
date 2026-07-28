@@ -213,7 +213,7 @@ function defaultAdvancedCriteria() {
         minImportId: '', maxImportId: '',
         serverId: '',
         minSendAttempts: '', maxSendAttempts: '',
-        error: false, attachment: false, textSearchRegex: false,
+        error: false, attachment: false,
         includedMetaDataIds: null,  // null = all connectors; else [ids]
         excludedMetaDataIds: null,  // set instead when "Deleted Connectors" stays included
         contentSearches: [],   // [{type, text}]
@@ -1104,7 +1104,6 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
 
     const attachmentCheck = checkbox('Has Attachment', adv.attachment);
     const errorCheck = checkbox('Has Error', adv.error);
-    const regexCheck = checkbox('Text search is a regular expression (PostgreSQL/MySQL/Oracle only)', adv.textSearchRegex);
 
     /* ---- selectable search tables with right-side New/Delete ---- */
     function makeSelectableTable(head) {
@@ -1185,7 +1184,6 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
                 rangeRow('Send Attempts:', inputs.minSendAttempts, inputs.maxSendAttempts)),
             h('div', { class: 'flex gap-6 mt-1' },
                 attachmentCheck.el, errorCheck.el),
-            h('div.mt-[14px]', regexCheck.el),
             sectionLabel('Content Searches'),
             cs.el(() => addContentSearchRow().text.focus()),
             sectionLabel('Custom Metadata Searches'),
@@ -1219,7 +1217,6 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
                         minSendAttempts: inputs.minSendAttempts.value, maxSendAttempts: inputs.maxSendAttempts.value,
                         error: errorCheck.input.checked,
                         attachment: attachmentCheck.input.checked,
-                        textSearchRegex: regexCheck.input.checked,
                         includedMetaDataIds: included,
                         excludedMetaDataIds: excluded,
                         contentSearches: cs.rows
@@ -1678,6 +1675,7 @@ function MessagesView({ params, query }) {
     const [endDate, setEndDate] = useState('');
     const [statusSel, setStatusSel] = useState(() => new Set());
     const [textSearch, setTextSearch] = useState('');
+    const [textRegex, setTextRegex] = useState(false);
     const [connectorVal, setConnectorVal] = useState('');
     const [pageSize, setPageSize] = useState(() => String(Number(getPref('messagePageSize')) || 20));
     const [advOn, setAdvOn] = useState(() => advIsActive(advRef.current));
@@ -1745,7 +1743,7 @@ function MessagesView({ params, query }) {
         const text = textSearch.trim();
         if (text) {
             params.textSearch = text;
-            if (adv.textSearchRegex) params.textSearchRegex = true;
+            if (textRegex) params.textSearchRegex = true;
         }
         // Connector inclusion: the advanced filter's table wins; otherwise the
         // quick Connector dropdown narrows to a single connector.
@@ -1807,7 +1805,7 @@ function MessagesView({ params, query }) {
         parts.push(`Statuses: ${statusSel.size ? [...statusSel].join(', ') : '(any)'}`);
         parts.push(`Date Range: ${dt(startDate)} to ${dt(endDate)}`);
         const text = textSearch.trim();
-        if (text) parts.push(`Text Search: "${text}"${adv.textSearchRegex ? ' (regex)' : ''}`);
+        if (text) parts.push(`Text Search: "${text}"${textRegex ? ' (regex)' : ''}`);
         parts.push(`Connectors: ${describeConnectors()}`);
         let r;
         if ((r = range(adv.minMessageId, adv.maxMessageId))) parts.push(`Message Id: ${r}`);
@@ -2154,6 +2152,7 @@ function MessagesView({ params, query }) {
         setStatusSel(new Set());
         closeStatusMenu();
         setTextSearch('');
+        setTextRegex(false);
         setConnectorVal('');
         setPageSize(String(Number(getPref('messagePageSize')) || 20));
         advRef.current = defaultAdvancedCriteria();
@@ -2282,6 +2281,10 @@ function MessagesView({ params, query }) {
                                     value={textSearch} onChange={(e) => setTextSearch(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === 'Enter') runSearch(true); }} />
                             </Field>
+                            <label className="check pb-1.5 whitespace-nowrap" title="Treat the text search as a regular expression">
+                                <input type="checkbox" checked={textRegex} onChange={(e) => setTextRegex(e.target.checked)} />
+                                Regex
+                            </label>
                             <Field label="Connector">
                                 <select value={connectorVal} onChange={(e) => setConnectorVal(e.target.value)}>
                                     <option value="">Any</option>
