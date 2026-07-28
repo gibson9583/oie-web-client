@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege by default; individual jobs opt into more if ever needed.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref so CI stays fast and clean.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint · Typecheck · Unit · Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint (incl. @oie/* import-boundary rules)
+        run: npm run lint
+      - name: Typecheck (@oie/* public type surface)
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Audit (production dependencies)
+        # Blocking on critical (0 today). Tighten to `--audit-level=high` once the
+        # deferred dependency-upgrade task clears the known high transitives
+        # (js-beautify -> editorconfig -> brace-expansion; the eslint toolchain).
+        run: npm audit --omit=dev --audit-level=critical
+
+  build-drift:
+    name: Build-artifact drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Rebuild the generated connector + plugin bundles
+        working-directory: web-administrator
+        run: |
+          node tools/build-connectors.mjs
+          node tools/build-plugins.mjs
+      - name: Fail if the generated .js drifted from its .jsx source
+        run: |
+          if ! git diff --exit-code -- \
+              'web-administrator/client/connectors/*.js' \
+              'web-administrator/plugins/*/web/plugin.js'; then
+            echo "::error::Generated .js differs from its .jsx source. The .jsx is the"
+            echo "::error::source of truth — never edit the sibling .js by hand. Run"
+            echo "::error::'npm run build' (or the build-connectors/build-plugins tools)"
+            echo "::error::and commit the regenerated .js."
+            exit 1
+          fi
+
+  e2e:
+    name: Playwright e2e (engine mocked)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e suite (no engine — mocked in-browser)
+        run: npm run e2e
