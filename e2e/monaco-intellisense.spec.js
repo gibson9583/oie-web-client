@@ -25,7 +25,9 @@ test('Monaco TS worker answers member completions (IntelliSense)', async ({ page
     const result = await page.evaluate(async () => {
         const withTimeout = (p, ms, tag) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout ' + tag)), ms))]);
         const monaco = window.monaco;
-        const accessor = await withTimeout(monaco.languages.typescript.getJavaScriptWorker(), 8000, 'getWorker');
+        // monaco >=0.53 exposes the TS service at monaco.typescript (was monaco.languages.typescript).
+        const tsLang = (monaco.languages && monaco.languages.typescript) || monaco.typescript;
+        const accessor = await withTimeout(tsLang.getJavaScriptWorker(), 8000, 'getWorker');
         const model = monaco.editor.createModel('DateUtil.', 'javascript');
         try {
             const client = await withTimeout(accessor(model.uri), 8000, 'accessor');

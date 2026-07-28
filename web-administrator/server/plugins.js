@@ -124,10 +124,13 @@ function install(app, config) {
 
     // Plugin assets: resolve the owning directory per request so newly
     // installed plugins serve immediately.
-    app.get('/plugins/:id/*', (req, res) => {
+    app.get('/plugins/:id/*splat', (req, res) => {
         const found = discover(dirs).find(p => p.manifest.id === req.params.id);
         if (!found) return res.status(404).json({ error: 'PLUGIN_NOT_FOUND' });
-        const file = path.normalize(req.params[0]);
+        // express 5 (path-to-regexp 8): the named wildcard `*splat` replaces the
+        // old unnamed `req.params[0]` and can arrive as an array of segments.
+        const splat = req.params.splat;
+        const file = path.normalize(Array.isArray(splat) ? splat.join('/') : (splat || ''));
         if (file.startsWith('..') || path.isAbsolute(file)) return res.status(400).end();
         // normalize() / { root } only constrain the path STRING — a symlink
         // landed inside the plugin dir (e.g. via an extension zip) would still

@@ -8,5 +8,5 @@
   "main": "./index.js",
   "files": ["index.js", "README.md"],
   "peerDependencies": { "eslint": ">=9" },
-  "dependencies": { "globals": "^17.6.0" }
+  "dependencies": { "globals": "^17.8.0" }
 }

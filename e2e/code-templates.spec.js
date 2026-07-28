@@ -52,6 +52,9 @@ test('Code Templates lists libraries/templates, gates tasks on selection, and ed
 
     // Editing the code dirties the view → Save Changes appears.
     await expect(page.getByRole('button', { name: 'Save Changes', exact: true })).toHaveCount(0);
-    await page.locator('.ce textarea').first().fill('return msg.trim();');
+    // monaco 0.56 uses the EditContext API (no editable textarea to .fill()) —
+    // focus the editor and type via the keyboard to dirty the model.
+    await page.locator('.ce .monaco-editor').first().click();
+    await page.keyboard.type('return msg.trim();');
     await expect(page.getByRole('button', { name: 'Save Changes', exact: true })).toBeVisible();
 });
