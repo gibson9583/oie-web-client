@@ -33,10 +33,10 @@ jobs:
       - name: Unit tests
         run: npm test
       - name: Audit (production dependencies)
-        # Blocking on critical (0 today). Tighten to `--audit-level=high` once the
-        # deferred dependency-upgrade task clears the known high transitives
-        # (js-beautify -> editorconfig -> brace-expansion; the eslint toolchain).
-        run: npm audit --omit=dev --audit-level=critical
+        # Fail on high+ (0 today after the dependency modernization). Full-tree
+        # audit is also clean; scoped to prod deps here so a dev-only transitive
+        # advisory doesn't block CI. Loosen only with a documented reason.
+        run: npm audit --omit=dev --audit-level=high
 
   build-drift:
     name: Build-artifact drift
