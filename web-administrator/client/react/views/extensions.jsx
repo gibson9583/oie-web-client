@@ -1,21 +1,23 @@
 /*
- * Extensions view (React port of views/extensions.js). Two metadata grids
- * (Connectors / Plugins, mutually-exclusive single selection) drive the
- * selection-gated Extension Tasks pane (Enable/Disable/Properties/Uninstall),
- * plus a read-only Web Administrator Plugins grid fed from the plugin loader's
- * store key. The XStream normalization (metaRows/propertyPairs), the enabled
- * status pip, and the install/uninstall flows — including the
- * webadmin:restart-pending dispatch — are reused VERBATIM; only the rendering
- * layer is React.
+ * Extensions view — two metadata grids (Connectors / Plugins, mutually-
+ * exclusive single selection) drive the selection-gated Extension Tasks pane
+ * (Enable/Disable/Properties/Uninstall), plus a read-only Web Administrator
+ * Plugins grid fed from the plugin loader's store key. Fully declarative: rows
+ * are React state feeding controlled tables, enable/disable is an immutable
+ * update, and the load-failure block is a rendered state. Actions take the row
+ * EXPLICITLY (task pane passes `sel`, the context menu passes its row), so a
+ * mount-captured menu can never act on a stale selection. The XStream
+ * normalization (metaRows/propertyPairs) and the install/uninstall flows —
+ * including the webadmin:restart-pending dispatch — are reused VERBATIM.
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { h, clear, icon, toast, modal, confirmDialog, contextMenu } from '@oie/web-ui';
+import { h, toast, modal, confirmDialog, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { toDisplayString } from '../../core/xstream.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
-import { useStoreKey } from '../bridges.jsx';
+import { Icon, useStoreKey } from '../bridges.jsx';
 
 export function register(platform) {
     platform.registerNavItem({ id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Engine', order: 6, task: 'doShowExtensions' });
@@ -125,11 +127,14 @@ function propertyPairs(raw) {
 }
 
 function ExtensionsView() {
-    const [sel, setSel] = useState(null);   // { name, meta, enabled } | null
+    const [sel, setSel] = useState(null);            // { name, meta, enabled } | null
+    const [connectors, setConnectors] = useState([]);
+    const [plugins, setPlugins] = useState([]);
+    const [loadError, setLoadError] = useState(null);
+    // The table instances are kept ONLY for clearSelection(): mutually-exclusive
+    // selection across two independent tables is an imperative DataTable API.
     const connRef = useRef(null);
     const plugRef = useRef(null);
-    const selRef = useRef(null);             // latest selection, read by table callbacks captured at mount
-    selRef.current = sel;
 
     const webPlugins = useStoreKey('webPlugins') || [];
 
@@ -142,32 +147,29 @@ function ExtensionsView() {
         setSel(row);
     }
 
-    function requireSelection() {
-        const s = selRef.current;
-        if (!s) { toast('Select an extension first', 'warn'); return null; }
-        return s;
-    }
+    const requireRow = (s) => {
+        if (!s) { toast('Select an extension first', 'warn'); return false; }
+        return true;
+    };
 
-    /* ---- tasks --------------------------------------------------------- */
+    /* ---- tasks (all take the target row explicitly) --------------------- */
 
-    async function setEnabled(enabled) {
-        const s = requireSelection();
-        if (!s) return;
+    async function setEnabled(enabled, s) {
+        if (!requireRow(s)) return;
         try {
             await api.extensions.setEnabled(s.name, enabled);
-            s.enabled = enabled;
-            connRef.current?.render();
-            plugRef.current?.render();
-            setSel({ ...s });
+            const update = (rows) => rows.map(r => (r.name === s.name ? { ...r, enabled } : r));
+            setConnectors(update);
+            setPlugins(update);
+            setSel(prev => (prev && prev.name === s.name ? { ...prev, enabled } : prev));
             toast(`${s.name} ${enabled ? 'enabled' : 'disabled'}. Restart the engine to apply.`);
         } catch (e) {
             toast(`${enabled ? 'Enable' : 'Disable'} failed: ${e.message}`, 'error');
         }
     }
 
-    async function showProperties() {
-        const s = requireSelection();
-        if (!s) return;
+    async function showProperties(s) {
+        if (!requireRow(s)) return;
         try {
             const raw = await api.extensions.properties(s.name);
             const pairs = propertyPairs(raw);
@@ -217,9 +219,8 @@ function ExtensionsView() {
        engine's _uninstall (which enforces EXTENSIONS_MANAGE and writes its uninstall
        marker, applied on the next engine restart). The engine owns the web half too,
        so removing the extension removes its UI — nothing is stored web-admin-side. */
-    async function uninstallExtension() {
-        const s = requireSelection();
-        if (!s) return;
+    async function uninstallExtension(s) {
+        if (!requireRow(s)) return;
         // MetaData.path is an XML attribute, so the engine's JSON exposes it
         // as "@path" (plain "path" kept as a fallback for safety).
         const path = s.meta && (s.meta['@path'] ?? s.meta.path);
@@ -244,15 +245,12 @@ function ExtensionsView() {
 
     /* ---- load ---------------------------------------------------------- */
 
-    const connHostRef = useRef(null);
-    const plugHostRef = useRef(null);
-
     async function load() {
         try {
             const [connRaw, plugRaw] = await Promise.all([api.extensions.connectors(), api.extensions.plugins()]);
-            const connectors = metaRows(connRaw, 'connectorMetaData');
-            const plugins = metaRows(plugRaw, 'pluginMetaData');
-            await Promise.all([...connectors, ...plugins].map(async (row) => {
+            const conns = metaRows(connRaw, 'connectorMetaData');
+            const plugs = metaRows(plugRaw, 'pluginMetaData');
+            await Promise.all([...conns, ...plugs].map(async (row) => {
                 try {
                     const v = await api.extensions.isEnabled(row.name);
                     row.enabled = v === true || String(v).trim() === 'true';
@@ -260,20 +258,14 @@ function ExtensionsView() {
                     row.enabled = true;
                 }
             }));
-            connRef.current?.setRows(connectors);
-            plugRef.current?.setRows(plugins);
-            // setRows prunes vanished selections — resync the tracked row + tasks.
-            const kept = (connRef.current?.selectedRows()[0]) || (plugRef.current?.selectedRows()[0]) || null;
-            setSel(kept);
+            setConnectors(conns);
+            setPlugins(plugs);
+            setLoadError(null);
+            // A reload prunes a vanished selection — resync the tracked row + tasks.
+            setSel(prev => (prev ? [...conns, ...plugs].find(r => r.name === prev.name) ?? null : null));
         } catch (e) {
             toast(`Failed to load extensions: ${e.message}`, 'error');
-            const ch = connHostRef.current;
-            const ph = plugHostRef.current;
-            if (ch) clear(ch).appendChild(h('div.dt-empty',
-                h('div.empty-icon', icon('warning', 30)),
-                h('div', 'Failed to load'),
-                h('div.text-text-faint.mt-[14px]', String(e.message || e))));
-            if (ph) clear(ph);
+            setLoadError(String(e.message || e));
         }
     }
 
@@ -288,12 +280,13 @@ function ExtensionsView() {
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshExtensions', group: 'extensions', onClick: () => load() },
             '-',
             // Swing shows only the applicable action for the row's current state.
-            { label: 'Enable Extension', icon: 'check', task: 'doEnableExtension', group: 'extensions', hidden: !!row.enabled, onClick: () => setEnabled(true) },
-            { label: 'Disable Extension', icon: 'x', task: 'doDisableExtension', group: 'extensions', hidden: !row.enabled, onClick: () => setEnabled(false) },
+            // Each action targets THIS row explicitly (no selection-state read).
+            { label: 'Enable Extension', icon: 'check', task: 'doEnableExtension', group: 'extensions', hidden: !!row.enabled, onClick: () => setEnabled(true, row) },
+            { label: 'Disable Extension', icon: 'x', task: 'doDisableExtension', group: 'extensions', hidden: !row.enabled, onClick: () => setEnabled(false, row) },
             '-',
-            { label: 'Show Properties', icon: 'eye', task: 'doShowExtensionProperties', group: 'extensions', onClick: () => showProperties() },
+            { label: 'Show Properties', icon: 'eye', task: 'doShowExtensionProperties', group: 'extensions', onClick: () => showProperties(row) },
             '-',
-            { label: 'Uninstall Extension', icon: 'trash', task: 'doUninstallExtension', group: 'extensions', danger: true, onClick: () => uninstallExtension() }
+            { label: 'Uninstall Extension', icon: 'trash', task: 'doUninstallExtension', group: 'extensions', danger: true, onClick: () => uninstallExtension(row) }
         ]);
     }
 
@@ -329,26 +322,36 @@ function ExtensionsView() {
                         {/* No Swing constant for Install — rides doRefreshExtensions
                             (every extensions task maps to manageExtensions anyway). */}
                         <TaskButton label="Install Extension" icon="import" task="doRefreshExtensions" onClick={installExtension} />
-                        {sel && !sel.enabled && <TaskButton label="Enable" icon="check" task="doEnableExtension" onClick={() => setEnabled(true)} />}
-                        {sel && sel.enabled && <TaskButton label="Disable" icon="x" task="doDisableExtension" onClick={() => setEnabled(false)} />}
-                        {sel && <TaskButton label="Properties" icon="eye" task="doShowExtensionProperties" onClick={showProperties} />}
-                        {sel && <TaskButton label="Uninstall" icon="trash" danger task="doUninstallExtension" onClick={uninstallExtension} />}
+                        {sel && !sel.enabled && <TaskButton label="Enable" icon="check" task="doEnableExtension" onClick={() => setEnabled(true, sel)} />}
+                        {sel && sel.enabled && <TaskButton label="Disable" icon="x" task="doDisableExtension" onClick={() => setEnabled(false, sel)} />}
+                        {sel && <TaskButton label="Properties" icon="eye" task="doShowExtensionProperties" onClick={() => showProperties(sel)} />}
+                        {sel && <TaskButton label="Uninstall" icon="trash" danger task="doUninstallExtension" onClick={() => uninstallExtension(sel)} />}
                     </div>
                 </RailPane>
             </ViewTasks>
             <div className="view-body">
                 <div className="panel">
                     <div className="panel-header">Connectors</div>
-                    <div className="panel-body flush" ref={connHostRef}>
-                        <DataTableHost columns={connColumns} options={connOptions}
-                            onReady={(t) => { connRef.current = t; }} />
+                    <div className="panel-body flush">
+                        {loadError ? (
+                            <div className="dt-empty">
+                                <div className="empty-icon"><Icon name="warning" size={30} /></div>
+                                <div>Failed to load</div>
+                                <div className="text-text-faint mt-[14px]">{loadError}</div>
+                            </div>
+                        ) : (
+                            <DataTableHost columns={connColumns} options={connOptions} rows={connectors}
+                                onReady={(t) => { connRef.current = t; }} />
+                        )}
                     </div>
                 </div>
                 <div className="panel">
                     <div className="panel-header">Plugins</div>
-                    <div className="panel-body flush" ref={plugHostRef}>
-                        <DataTableHost columns={plugColumns} options={plugOptions}
-                            onReady={(t) => { plugRef.current = t; }} />
+                    <div className="panel-body flush">
+                        {loadError ? null : (
+                            <DataTableHost columns={plugColumns} options={plugOptions} rows={plugins}
+                                onReady={(t) => { plugRef.current = t; }} />
+                        )}
                     </div>
                 </div>
                 <div className="panel">
