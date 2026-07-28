@@ -10,13 +10,14 @@
  * per-row + header context menus, and drag-to-regroup are all owned by TreeTable.
  *
  * Two flat task panes — Channel Tasks / Group Tasks — render as React
- * <TaskButton>s gated on the current selection (effectiveChannels()/single()/
- * multi()); a useReducer force-update (renderTable()) refreshes the React tree +
- * task panes. New Channel seeds store.editingChannel and navigates to the
- * channel editor — a React view registered at /channels/:channelId/edit.
+ * <TaskButton>s gated on the selection state. Selection, collapse, filter and
+ * the loaded data are all React state; menu/task actions take EXPLICIT
+ * rows/groups computed where they are offered, so a context menu can never act
+ * on a stale selection. New Channel seeds store.editingChannel and navigates to
+ * the channel editor — a React view registered at /channels/:channelId/edit.
  */
 
-import { useEffect, useRef, useReducer } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorModal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
@@ -339,31 +340,27 @@ function firstLine(text) {
 }
 
 function ChannelsView() {
-    const [, forceRender] = useReducer((x) => x + 1, 0);
-
-    // Working state read by callbacks captured at mount — kept in refs.
-    const channelsRef = useRef([]);
-    const tagsRef = useRef([]);
-    const groupsRef = useRef([]);
-    const statusByIdRef = useRef({});        // channelId -> dashboardStatus
-    const selectedRef = useRef(new Set());   // channel ids
-    const lastClickedRef = useRef(null);     // for shift-range selection
-    const lastGroupIdRef = useRef(null);     // last-clicked group row (for Delete Group)
-    const collapsedRef = useRef(new Set());  // group ids (default expanded)
-    const filterTextRef = useRef('');
-
-    /* updateTasks/updateGroupTasks in the legacy toggled .hidden classes
-       imperatively; here the task panes are React, so the selection-gated
-       buttons re-render on a force-update. */
-    function refreshTasks() { forceRender(); }
+    /* Server data + UI state — React state driving the declarative <TreeTable>,
+       the task panes, and the filter bar. Loaded by refresh() (an explicit
+       command: mount, manual Refresh, post-action, and the channels:changed
+       plugin event — this view does not poll, so it is not a query hook).
+       Menu/task actions take EXPLICIT rows/ids computed where they are offered,
+       so a context menu can never act on a stale selection. */
+    const [channels, setChannels] = useState([]);
+    const [tags, setTags] = useState([]);
+    const [groups, setGroups] = useState([]);
+    const [statusById, setStatusById] = useState({});        // channelId -> dashboardStatus
+    const [selected, setSelected] = useState(() => new Set());   // channel ids
+    const lastClickedRef = useRef(null);                     // shift-range anchor (interaction-only)
+    const [lastGroupId, setLastGroupId] = useState(null);    // last-clicked group row (for Delete Group)
+    const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());   // group ids (default expanded)
+    const [filterText, setFilterText] = useState('');
 
     /* ---- grouping --------------------------------------------------------- */
 
     /* Returns [{ id, name, description, group?, channels: [...] }] — every
        real group plus the synthetic default group for unreferenced channels. */
     function groupedChannels() {
-        const channels = channelsRef.current;
-        const groups = groupsRef.current;
         const byId = new Map(channels.map(c => [c.id, c]));
         const claimed = new Set();
         const rows = [];
@@ -387,21 +384,17 @@ function ChannelsView() {
     }
 
     function channelTags(channel) {
-        return tagsRef.current.filter(t => api.asList(t.channelIds, 'string').includes(channel.id));
+        return tags.filter(t => api.asList(t.channelIds, 'string').includes(channel.id));
     }
 
     function matchesFilter(channel) {
-        const needle = filterTextRef.current.trim().toLowerCase();
+        const needle = filterText.trim().toLowerCase();
         if (!needle) return true;
         if (String(channel.name || '').toLowerCase().includes(needle)) return true;
         return channelTags(channel).some(t => String(t.name || '').toLowerCase().includes(needle));
     }
 
-    /* ---- table (Swing channel group tree-table, now <TreeTable>) ----------- */
-
-    // The tree is now the declarative <TreeTable> in the render below; renderTable()
-    // just triggers a React re-render (legacy call sites are unchanged).
-    function renderTable() { forceRender(); }
+    /* ---- table (Swing channel group tree-table, the declarative <TreeTable>) -- */
 
     function descriptionCell(text) {
         return (
@@ -443,7 +436,7 @@ function ChannelsView() {
     // The revision-delta cell: a flagged badge when out of sync, '--' when there
     // is no status, '0' otherwise (Swing parity).
     function revDeltaCell(channel) {
-        const status = statusByIdRef.current[channel.id];
+        const status = statusById[channel.id];
         const delta = status ? Number(status.deployedRevisionDelta) || 0 : null;
         // A channel is out of sync (needs redeploy) when its saved revision is
         // ahead of the deployed one OR its code templates changed since deploy —
@@ -490,12 +483,12 @@ function ChannelsView() {
                         : String(firstLine(n.channel.description) || '').toLowerCase();
                     case 'revDelta': {
                         if (isGroup) return null;
-                        const status = statusByIdRef.current[n.channel.id];
+                        const status = statusById[n.channel.id];
                         return status ? Number(status.deployedRevisionDelta) || 0 : null;
                     }
                     case 'lastDeployed': {
                         if (isGroup) return null;
-                        const status = statusByIdRef.current[n.channel.id];
+                        const status = statusById[n.channel.id];
                         return status ? (status.deployedDate?.time ?? 0) : null;
                     }
                     case 'lastModified': return isGroup ? null
@@ -519,7 +512,7 @@ function ChannelsView() {
                         : descriptionCell(n.channel.description);
                     case 'revDelta': return isGroup ? '--' : revDeltaCell(n.channel);
                     case 'lastDeployed': return isGroup ? '--'
-                        : (statusByIdRef.current[n.channel.id] ? fmtDate(statusByIdRef.current[n.channel.id].deployedDate) : '--');
+                        : (statusById[n.channel.id] ? fmtDate(statusById[n.channel.id].deployedDate) : '--');
                     case 'lastModified': return isGroup ? '--' : fmtDate(n.channel.exportData?.metadata?.lastModified);
                     default: return '';
                 }
@@ -530,30 +523,31 @@ function ChannelsView() {
     // A click on a group row selects the group (mutually exclusive with channel
     // selection), matching the legacy selectGroup().
     function selectGroup(group) {
-        lastGroupIdRef.current = group.id;
-        selectedRef.current = new Set();
+        setLastGroupId(group.id);
+        setSelected(new Set());
         lastClickedRef.current = null;
-        refreshTasks();
     }
 
     // A click on a channel row: ctrl/meta toggles, shift extends the range over
     // the visible (expanded, filtered, sorted) channels, plain selects one — and
     // clears any group selection (mutually exclusive). Mirrors the legacy click.
     function selectChannel(channel, e) {
-        const selected = selectedRef.current;
+        let next;
         if (e.metaKey || e.ctrlKey) {
-            selected.has(channel.id) ? selected.delete(channel.id) : selected.add(channel.id);
+            next = new Set(selected);
+            next.has(channel.id) ? next.delete(channel.id) : next.add(channel.id);
         } else if (e.shiftKey && lastClickedRef.current) {
             const visible = visibleChannelIds();
             const a = visible.indexOf(lastClickedRef.current), b = visible.indexOf(channel.id);
-            if (a !== -1 && b !== -1) selectedRef.current = new Set(visible.slice(Math.min(a, b), Math.max(a, b) + 1));
-            else selectedRef.current = new Set([channel.id]);
+            next = (a !== -1 && b !== -1)
+                ? new Set(visible.slice(Math.min(a, b), Math.max(a, b) + 1))
+                : new Set([channel.id]);
         } else {
-            selectedRef.current = new Set([channel.id]);
+            next = new Set([channel.id]);
         }
         lastClickedRef.current = channel.id;
-        lastGroupIdRef.current = null;
-        refreshTasks();
+        setSelected(next);
+        setLastGroupId(null);
     }
 
     function onRowSelect(node, e) {
@@ -561,15 +555,18 @@ function ChannelsView() {
         else selectChannel(node.channel, e);
     }
 
+    function toggleGroupCollapse(groupId) {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            next.has(groupId) ? next.delete(groupId) : next.add(groupId);
+            return next;
+        });
+    }
+
     function onRowActivate(node) {
         // Double-click: a group toggles its collapse; a channel opens the editor.
-        if (node.kind === 'group') {
-            const collapsed = collapsedRef.current;
-            collapsed.has(node.group.id) ? collapsed.delete(node.group.id) : collapsed.add(node.group.id);
-            forceRender();
-        } else {
-            router.navigate(`/channels/${node.channel.id}/edit`);
-        }
+        if (node.kind === 'group') toggleGroupCollapse(node.group.id);
+        else router.navigate(`/channels/${node.channel.id}/edit`);
     }
 
     // Right-click on blank space (empty list, or below the rows): clear any
@@ -577,11 +574,10 @@ function ChannelsView() {
     // MirthTree background popup, so New Channel is reachable when the list is empty.
     function onEmptyMenu(e) {
         e.preventDefault();
-        if (selectedRef.current.size || lastGroupIdRef.current) {
-            selectedRef.current = new Set();
+        if (selected.size || lastGroupId) {
+            setSelected(new Set());
             lastClickedRef.current = null;
-            lastGroupIdRef.current = null;
-            refreshTasks();
+            setLastGroupId(null);
         }
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
@@ -604,15 +600,16 @@ function ChannelsView() {
         if (node.kind === 'group') {
             selectGroup(node.group);
             const isRealGroup = node.group.id !== DEFAULT_GROUP_ID;
+            const group = node.group.group || node.group;   // the raw engine group object
             contextMenu(e.clientX, e.clientY, [
                 { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
                 '-',
                 { label: 'New Group', icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
-                { label: 'Edit Group Details', icon: 'edit', task: 'doEditGroupDetails', group: 'channelGroup', hidden: !isRealGroup, onClick: () => editGroupTask() },
-                { label: 'Delete Group', icon: 'trash', danger: true, task: 'doDeleteGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => deleteGroupTask() },
+                { label: 'Edit Group Details', icon: 'edit', task: 'doEditGroupDetails', group: 'channelGroup', hidden: !isRealGroup, onClick: () => editGroupTask(group) },
+                { label: 'Delete Group', icon: 'trash', danger: true, task: 'doDeleteGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => deleteGroupTask(group) },
                 '-',
                 { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
-                { label: 'Export Group', icon: 'export', task: 'doExportGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => exportGroupTask() },
+                { label: 'Export Group', icon: 'export', task: 'doExportGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => exportGroupTask(group) },
                 { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() },
                 '-',
                 { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() }
@@ -620,17 +617,22 @@ function ChannelsView() {
             return;
         }
         const channel = node.channel;
-        if (!selectedRef.current.has(channel.id)) {
-            selectedRef.current = new Set([channel.id]);
+        // The menu acts on the selection that includes this row, else on just this
+        // row (which also becomes the selection) — computed HERE so the menu items
+        // can never read a stale selection after the setState.
+        const rows = selected.has(channel.id)
+            ? channels.filter(c => selected.has(c.id))
+            : [channel];
+        if (!selected.has(channel.id)) {
             lastClickedRef.current = channel.id;
-            lastGroupIdRef.current = null;
-            refreshTasks();
+            setSelected(new Set([channel.id]));
+            setLastGroupId(null);
         }
         // Plugin-contributed per-channel actions (platform.registerChannelAction),
         // e.g. "View History". Shown for a single-channel selection unless the
         // action supplies its own isEnabled. Mirrors Swing's ChannelPanelPlugin tasks.
-        const actionCtx = { platform, channel, selectedIds: new Set(selectedRef.current) };
-        const singleSel = selectedRef.current.size === 1;
+        const actionCtx = { platform, channel, selectedIds: new Set(rows.map(c => c.id)) };
+        const singleSel = rows.length === 1;
         const pluginItems = platform.channelActions()
             .filter((a) => (a.isEnabled ? a.isEnabled(actionCtx) : singleSel))
             .map((a) => ({
@@ -650,18 +652,18 @@ function ChannelsView() {
             { label: 'Export All Channels', icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
             '-',
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${channel.id}/edit`) },
-            { label: 'View Messages', icon: 'messages', task: 'doViewMessages', group: 'channel', onClick: () => messagesTask() },
+            { label: 'View Messages', icon: 'messages', task: 'doViewMessages', group: 'channel', onClick: () => messagesTask(rows) },
             '-',
-            { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployChannel', group: 'channel', onClick: () => deployTask() },
-            { label: 'Enable Channel', icon: 'check', task: 'doEnableChannel', group: 'channel', onClick: () => setEnabledTask(true) },
-            { label: 'Disable Channel', icon: 'x', task: 'doDisableChannel', group: 'channel', onClick: () => setEnabledTask(false) },
+            { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployChannel', group: 'channel', onClick: () => deployTask(rows) },
+            { label: 'Enable Channel', icon: 'check', task: 'doEnableChannel', group: 'channel', onClick: () => setEnabledTask(true, rows) },
+            { label: 'Disable Channel', icon: 'x', task: 'doDisableChannel', group: 'channel', onClick: () => setEnabledTask(false, rows) },
             '-',
-            { label: 'Clone Channel', icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask() },
-            { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask() },
-            { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', onClick: () => moveToGroupTask() },
+            { label: 'Clone Channel', icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask(rows) },
+            { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask(rows) },
+            { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', onClick: () => moveToGroupTask(rows) },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
-            { label: 'Delete Channel', icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask() }
+            { label: 'Delete Channel', icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask(rows) }
         ]);
     }
 
@@ -672,8 +674,8 @@ function ChannelsView() {
         if (toNode.kind !== 'group') return;
         const id = String(fromKey || '').replace(/^ch:/, '');
         if (!id) return;
-        const ids = selectedRef.current.has(id) ? new Set(selectedRef.current) : new Set([id]);
-        const names = channelsRef.current.filter(c => ids.has(c.id)).map(c => c.name).join(', ');
+        const ids = selected.has(id) ? new Set(selected) : new Set([id]);
+        const names = channels.filter(c => ids.has(c.id)).map(c => c.name).join(', ');
         if (await confirmDialog('Move to Group',
             `Move ${ids.size === 1 ? `"${names}"` : ids.size + ' channels'} to [${toNode.group.name}]?`,
             { okLabel: 'Move' })) {
@@ -683,7 +685,7 @@ function ChannelsView() {
 
     function visibleChannelIds() {
         return groupedChannels()
-            .filter(g => !collapsedRef.current.has(g.id))
+            .filter(g => !collapsedGroups.has(g.id))
             .flatMap(g => [...g.channels]
                 .filter(matchesFilter)
                 .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
@@ -692,6 +694,8 @@ function ChannelsView() {
 
     /* ---- data --------------------------------------------------------------- */
 
+    /* Reads nothing (only fetches + functional setState), so the mount-captured
+       channels:changed listener can safely call the first render's closure. */
     async function refresh() {
         try {
             const [channelList, groupList, tagList, statusList] = await Promise.all([
@@ -700,21 +704,23 @@ function ChannelsView() {
                 api.server.channelTags().catch(() => []),
                 api.status.list().catch(() => [])
             ]);
-            channelsRef.current = channelList.filter(c => c && c.id);
-            groupsRef.current = groupList.filter(g => g && g.id);
-            tagsRef.current = tagList;
-            const statusById = {};
+            const nextChannels = channelList.filter(c => c && c.id);
+            const nextGroups = groupList.filter(g => g && g.id);
+            const byId = {};
             for (const st of statusList) {
-                if (st && st.channelId) statusById[st.channelId] = st;
+                if (st && st.channelId) byId[st.channelId] = st;
             }
-            statusByIdRef.current = statusById;
-            const ids = new Set(channelsRef.current.map(c => c.id));
-            const selected = selectedRef.current;
-            for (const id of [...selected]) if (!ids.has(id)) selected.delete(id);
-            // Drop a stale group selection (group deleted/renamed away).
-            if (lastGroupIdRef.current && lastGroupIdRef.current !== DEFAULT_GROUP_ID && !groupsRef.current.some(g => g.id === lastGroupIdRef.current)) lastGroupIdRef.current = null;
-            renderTable();
-            refreshTasks();
+            setChannels(nextChannels);
+            setGroups(nextGroups);
+            setTags(tagList);
+            setStatusById(byId);
+            // Prune a selection the reload invalidated (channel/group deleted).
+            const ids = new Set(nextChannels.map(c => c.id));
+            setSelected(prev => {
+                const next = new Set([...prev].filter(id => ids.has(id)));
+                return next.size === prev.size ? prev : next;
+            });
+            setLastGroupId(prev => (prev && prev !== DEFAULT_GROUP_ID && !nextGroups.some(g => g.id === prev) ? null : prev));
         } catch (e) {
             toast(e.message, 'error');
         }
@@ -723,31 +729,29 @@ function ChannelsView() {
     /* ---- selection helpers ---------------------------------------------------- */
 
     function selectedChannels() {
-        return channelsRef.current.filter(c => selectedRef.current.has(c.id));
+        return channels.filter(c => selected.has(c.id));
     }
 
     // Channels an action targets: the selected channels, or — when a group row is
     // selected — that group's channels (so Deploy/Enable/Disable work on a group).
     function effectiveChannels() {
-        if (selectedRef.current.size) return selectedChannels();
-        if (lastGroupIdRef.current) {
-            const g = groupedChannels().find(x => x.id === lastGroupIdRef.current);
+        if (selected.size) return selectedChannels();
+        if (lastGroupId) {
+            const g = groupedChannels().find(x => x.id === lastGroupId);
             return g ? g.channels : [];
         }
         return [];
     }
 
-    function single() {
-        const rows = selectedChannels();
+    const requireSingle = (rows) => {
         if (rows.length !== 1) { toast('Select a single channel', 'warn'); return null; }
         return rows[0];
-    }
+    };
 
-    function multi() {
-        const rows = selectedChannels();
+    const requireAny = (rows) => {
         if (!rows.length) { toast('Select a channel first', 'warn'); return null; }
         return rows;
-    }
+    };
 
     /* ---- channel tasks ----------------------------------------------------------- */
 
@@ -813,11 +817,11 @@ function ChannelsView() {
             const content = String(file.content || '').trim();
             if (content.startsWith('<')) {
                 // XML export — name/id collision flow + bundled libraries.
-                if (await importChannelXml(content, channelsRef.current) === false) return;
+                if (await importChannelXml(content, channels) === false) return;
             } else {
                 let obj = JSON.parse(content);
                 if (obj && typeof obj === 'object' && obj.channel) obj = obj.channel;
-                const resolved = await resolveImportName(obj.name || '', obj.id || '', channelsRef.current);
+                const resolved = await resolveImportName(obj.name || '', obj.id || '', channels);
                 if (!resolved) return;   // cancelled
                 // JSON bundle (web-admin native): merge bundled libraries as objects.
                 const bundled = api.asList(obj.exportData && obj.exportData.codeTemplateLibraries, 'codeTemplateLibrary')
@@ -857,8 +861,8 @@ function ChannelsView() {
        files are interchangeable with the Swing Administrator. The engine bundles
        the channel's code template libraries into exportData when asked
        (includeCodeTemplateLibraries) — same format the Swing client produces. */
-    async function exportTask() {
-        const channel = single();
+    async function exportTask(rows) {
+        const channel = requireSingle(rows);
         if (!channel) return;
         // Ask up front (before the save dialog) whether to bundle code template
         // libraries — only when the channel actually has linked ones. saveFile
@@ -887,7 +891,7 @@ function ChannelsView() {
     }
 
     async function exportAllTask() {
-        if (!channelsRef.current.length) { toast('No channels to export', 'warn'); return; }
+        if (!channels.length) { toast('No channels to export', 'warn'); return; }
         try {
             // One combined Swing-format <list> of <channel> elements.
             await saveFile('channels.xml', 'application/xml', () => api.getXml('/channels'));
@@ -896,8 +900,8 @@ function ChannelsView() {
         }
     }
 
-    async function cloneTask() {
-        const channel = single();
+    async function cloneTask(rows) {
+        const channel = requireSingle(rows);
         if (!channel) return;
         try {
             const copy = structuredClone(channel);
@@ -912,8 +916,8 @@ function ChannelsView() {
         }
     }
 
-    async function deleteTask() {
-        const rows = multi();
+    async function deleteTask(selRows) {
+        const rows = requireAny(selRows);
         if (!rows) return;
         if (!await confirmDialog('Delete channels', `Permanently delete ${rows.length} channel(s)? This cannot be undone.`, { danger: true, okLabel: 'Delete' })) return;
         for (const channel of rows) {
@@ -922,8 +926,7 @@ function ChannelsView() {
         refresh();
     }
 
-    async function setEnabledTask(enabled) {
-        const rows = effectiveChannels();
+    async function setEnabledTask(enabled, rows) {
         if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         for (const channel of rows) {
             try { await api.channels.setEnabled(channel.id, enabled); } catch (e) { toast(e.message, 'error'); }
@@ -931,8 +934,7 @@ function ChannelsView() {
         refresh();
     }
 
-    async function deployTask() {
-        const rows = effectiveChannels();
+    async function deployTask(rows) {
         if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         try {
             await api.engine.deployMany(rows.map(c => c.id));
@@ -948,16 +950,23 @@ function ChannelsView() {
         }
     }
 
-    function messagesTask() {
-        const channel = single();
+    function messagesTask(rows) {
+        const channel = requireSingle(rows);
         if (!channel) return;
         router.navigate(`/messages/${channel.id}`);
     }
 
+    /* Group MUTATIONS build on the latest-known group list, not a render-time
+       snapshot: bulkUpdate replaces the whole set, so acting on a stale copy
+       could resurrect a deleted group. The mirror tracks state each render and
+       is read only at mutation time (the legacy ref semantics, scoped down). */
+    const groupsNowRef = useRef(groups);
+    groupsNowRef.current = groups;
+
     /* Move channels between groups (used by the modal task and drag/drop).
        targetId DEFAULT_GROUP_ID means "remove from all groups". */
     async function moveChannelsToGroup(ids, targetId) {
-        const updated = structuredClone(groupsRef.current);
+        const updated = structuredClone(groupsNowRef.current);
         for (const group of updated) {
             let members = api.asList(group.channels, 'channel').filter(m => m && m.id && !ids.has(m.id));
             if (group.id === targetId) members = members.concat([...ids].map(id => ({ id })));
@@ -974,13 +983,13 @@ function ChannelsView() {
         }
     }
 
-    function moveToGroupTask() {
-        const rows = multi();
+    function moveToGroupTask(selRows) {
+        const rows = requireAny(selRows);
         if (!rows) return;
         const ids = new Set(rows.map(c => c.id));
         const picker = select(
             [{ value: DEFAULT_GROUP_ID, label: '[Default Group]' },
-             ...groupsRef.current.map(g => ({ value: g.id, label: g.name }))],
+             ...groups.map(g => ({ value: g.id, label: g.name }))],
             DEFAULT_GROUP_ID);
         modal({
             title: 'Move to Group',
@@ -1001,7 +1010,7 @@ function ChannelsView() {
     async function newGroupTask() {
         const name = await promptDialog('New Group', 'Group name');
         if (name === null || !name.trim()) return;
-        const updated = structuredClone(groupsRef.current);
+        const updated = structuredClone(groupsNowRef.current);
         updated.push({ id: uuid(), name: name.trim(), revision: 0, description: '', channels: null });
         try {
             await api.channelGroups.bulkUpdate(updated, []);
@@ -1012,36 +1021,31 @@ function ChannelsView() {
         }
     }
 
-    /* The last-clicked real group row (group tasks ignore the synthetic
-       Default Group, which only exists client-side). */
-    function lastClickedGroup() {
-        const lastGroupId = lastGroupIdRef.current;
-        if (!lastGroupId || lastGroupId === DEFAULT_GROUP_ID) {
-            toast('Select a group row first', 'warn');
-            return null;
-        }
-        const group = groupsRef.current.find(g => g.id === lastGroupId);
-        if (!group) toast('Select a group row first', 'warn');
-        return group || null;
-    }
+    /* Group tasks take the target group explicitly (the task pane passes the
+       render-resolved current group; the context menu passes its row's group).
+       The synthetic Default Group never reaches them — its items are hidden. */
+    const requireGroup = (group) => {
+        if (!group || group.id === DEFAULT_GROUP_ID) { toast('Select a group row first', 'warn'); return null; }
+        return group;
+    };
 
-    async function deleteGroupTask() {
-        const group = lastClickedGroup();
+    async function deleteGroupTask(g) {
+        const group = requireGroup(g);
         if (!group) return;
         if (!await confirmDialog('Delete Group', `Delete group "${group.name}"? Its channels move to the Default Group.`, { danger: true, okLabel: 'Delete' })) return;
-        const remaining = structuredClone(groupsRef.current.filter(g => g.id !== group.id));
+        const remaining = structuredClone(groupsNowRef.current.filter(x => x.id !== group.id));
         try {
             await api.channelGroups.bulkUpdate(remaining, [group.id]);
             toast(`Deleted group ${group.name}`);
-            lastGroupIdRef.current = null;
+            setLastGroupId(null);
             refresh();
         } catch (e) {
             toast(e.message, 'error');
         }
     }
 
-    function editGroupTask() {
-        const group = lastClickedGroup();
+    function editGroupTask(g) {
+        const group = requireGroup(g);
         if (!group) return;
         const nameInput = textInput(group.name || '');
         const descArea = h('textarea', { rows: 4 });
@@ -1056,7 +1060,7 @@ function ChannelsView() {
                     onClick: async () => {
                         const name = nameInput.value.trim();
                         if (!name) { toast('Group name is required', 'warn'); return false; }
-                        const updated = structuredClone(groupsRef.current);
+                        const updated = structuredClone(groupsNowRef.current);
                         const target = updated.find(g => g.id === group.id);
                         target.name = name;
                         target.description = descArea.value;
@@ -1119,7 +1123,7 @@ function ChannelsView() {
                 api.asList(g.channels, 'channel').map(ref => ref.id)));
             // Replace same-id groups and pull imported channels out of other
             // groups (a channel may only belong to one group).
-            const updated = structuredClone(groupsRef.current.filter(g => !importedIds.has(g.id)));
+            const updated = structuredClone(groupsNowRef.current.filter(g => !importedIds.has(g.id)));
             for (const group of updated) {
                 const members = api.asList(group.channels, 'channel')
                     .filter(ref => ref && ref.id && !importedChannelIds.has(ref.id));
@@ -1135,8 +1139,8 @@ function ChannelsView() {
 
     /* The engine has no single-group XML GET, so fetch the full Swing-format
        <list> and extract the one <channelGroup> element verbatim. */
-    async function exportGroupTask() {
-        const group = lastClickedGroup();
+    async function exportGroupTask(g) {
+        const group = requireGroup(g);
         if (!group) return;
         try {
             await saveFile(`${group.name || group.id}.xml`, 'application/xml', async () => {
@@ -1166,11 +1170,10 @@ function ChannelsView() {
     // (short) tree bubbles up here.
     function onEmptyClick(e) {
         if (e.target.closest('tr')) return;
-        if (!selectedRef.current.size && !lastGroupIdRef.current) return;
-        selectedRef.current = new Set();
+        if (!selected.size && !lastGroupId) return;
+        setSelected(new Set());
         lastClickedRef.current = null;
-        lastGroupIdRef.current = null;
-        refreshTasks();
+        setLastGroupId(null);
     }
 
     /* ---- mount: load ---- */
@@ -1181,16 +1184,15 @@ function ChannelsView() {
         // this so the list reflects the change immediately (Swing doRefreshChannels).
         const off = platform.events.on('channels:changed', () => refresh());
         return off;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     /* ---- task panes (Swing parity, selection-gated) ----
        Channel Tasks: deployable = a channel selected OR a group row selected;
        Group Tasks: realGroup = a real (non-default) group row selected. */
     const eff = effectiveChannels();
-    const channelSel = selectedRef.current.size > 0;
-    const singleChannel = selectedRef.current.size === 1;
-    const deployable = channelSel || !!lastGroupIdRef.current;
+    const channelSel = selected.size > 0;
+    const singleChannel = selected.size === 1;
+    const deployable = channelSel || !!lastGroupId;
     const showDeploy = deployable;
     const showExport = channelSel;
     const showDelete = channelSel;
@@ -1200,19 +1202,19 @@ function ChannelsView() {
     const showDisable = deployable && eff.some(c => isEnabled(c));
     const showMessages = singleChannel;
 
-    const lastGroupId = lastGroupIdRef.current;
-    const realGroup = !!lastGroupId && lastGroupId !== DEFAULT_GROUP_ID && groupsRef.current.some(g => g.id === lastGroupId);
+    const realGroup = !!lastGroupId && lastGroupId !== DEFAULT_GROUP_ID && groups.some(g => g.id === lastGroupId);
+    const currentGroup = realGroup ? groups.find(g => g.id === lastGroupId) : null;
     const showAssign = channelSel;
     const showGroupEdit = realGroup;
     const showGroupExport = realGroup;
     const showGroupDelete = realGroup;
 
     /* ---- tree data + filter + counts for the <TreeTable> ---- */
-    const hasFilter = !!filterTextRef.current.trim();
+    const hasFilter = !!filterText.trim();
     // Group nodes with their (name-sorted) channel children. When there are no
     // channels at all we pass [] so TreeTable shows its empty state (Swing parity:
     // the synthetic Default Group row is not drawn over an empty engine).
-    const treeData = channelsRef.current.length
+    const treeData = channels.length
         ? groupedChannels().map((g) => ({
             kind: 'group', id: g.id, group: g,
             // Children are wrapped channel nodes (sorted by name) so getChildren()
@@ -1228,7 +1230,7 @@ function ChannelsView() {
         ? (n) => (n.kind === 'group' ? false : matchesFilter(n.channel))
         : undefined;
     // Collapsed groups, keyed by the channel-tree rowKey ('grp:<id>').
-    const collapsedKeys = new Set([...collapsedRef.current].map((id) => 'grp:' + id));
+    const collapsedKeys = new Set([...collapsedGroups].map((id) => 'grp:' + id));
 
     // Counts bar: groups shown / channels shown / enabled (after the filter, and
     // dropping empty groups only while filtering — matching the legacy).
@@ -1248,23 +1250,21 @@ function ChannelsView() {
                     <div className="taskbar" data-pane-title="Channel Tasks">
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshChannels" onClick={() => refresh()} />
                         <TaskButton label="Redeploy All" icon="deploy" task="doRedeployAll" onClick={redeployAllTask} />
-                        {showDeploy && <TaskButton label="Deploy Channel" icon="deploy" task="doDeployChannel" onClick={deployTask} />}
+                        {showDeploy && <TaskButton label="Deploy Channel" icon="deploy" task="doDeployChannel" onClick={() => deployTask(effectiveChannels())} />}
                         <TaskButton label="Edit Global Scripts" icon="scripts" task="doEditGlobalScripts" onClick={() => router.navigate('/global-scripts')} />
                         <TaskButton label="Edit Code Templates" icon="code" task="doEditCodeTemplates" onClick={() => router.navigate('/code-templates')} />
                         <TaskButton label="New Channel" icon="plus" primary task="doNewChannel" onClick={newTask} />
                         <TaskButton label="Import Channel" icon="import" task="doImportChannel" onClick={importTask} />
-                        {showExport && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={exportTask} />}
-                        {showDelete && <TaskButton label="Delete Channel" icon="trash" danger task="doDeleteChannel" onClick={deleteTask} />}
-                        {showClone && <TaskButton label="Clone Channel" icon="copy" task="doCloneChannel" onClick={cloneTask} />}
-                        {showEdit && <TaskButton label="Edit Channel" icon="edit" task="doEditChannel" onClick={() => { const c = single(); if (c) router.navigate(`/channels/${c.id}/edit`); }} />}
-                        {showEnable && <TaskButton label="Enable Channel" icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true)} />}
-                        {showDisable && <TaskButton label="Disable Channel" icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false)} />}
-                        {showMessages && <TaskButton label="View Messages" icon="messages" task="doViewMessages" onClick={messagesTask} />}
+                        {showExport && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={() => exportTask(selectedChannels())} />}
+                        {showDelete && <TaskButton label="Delete Channel" icon="trash" danger task="doDeleteChannel" onClick={() => deleteTask(selectedChannels())} />}
+                        {showClone && <TaskButton label="Clone Channel" icon="copy" task="doCloneChannel" onClick={() => cloneTask(selectedChannels())} />}
+                        {showEdit && <TaskButton label="Edit Channel" icon="edit" task="doEditChannel" onClick={() => { const c = requireSingle(selectedChannels()); if (c) router.navigate(`/channels/${c.id}/edit`); }} />}
+                        {showEnable && <TaskButton label="Enable Channel" icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true, effectiveChannels())} />}
+                        {showDisable && <TaskButton label="Disable Channel" icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false, effectiveChannels())} />}
+                        {showMessages && <TaskButton label="View Messages" icon="messages" task="doViewMessages" onClick={() => messagesTask(selectedChannels())} />}
                         {singleChannel && (() => {
-                            // Get the selected channel WITHOUT single(), which toasts a
-                            // warning on a non-single selection (it's meant for click handlers).
                             const c = selectedChannels()[0];
-                            const ctx = { platform, channel: c, selectedIds: new Set(selectedRef.current) };
+                            const ctx = { platform, channel: c, selectedIds: new Set(selected) };
                             return platform.channelActions()
                                 .filter((a) => (a.isEnabled ? a.isEnabled(ctx) : true))
                                 .map((a) => <TaskButton key={a.id || a.label} label={a.label} icon={a.icon} task={a.task}
@@ -1274,13 +1274,13 @@ function ChannelsView() {
                 </RailPane>
                 <RailPane title="Group Tasks" paneKey="tasks:Group Tasks" group="channelGroup">
                     <div className="taskbar" data-pane-title="Group Tasks">
-                        {showAssign && <TaskButton label="Assign To Group" icon="folder" task="doAssignChannelToGroup" onClick={moveToGroupTask} />}
+                        {showAssign && <TaskButton label="Assign To Group" icon="folder" task="doAssignChannelToGroup" onClick={() => moveToGroupTask(selectedChannels())} />}
                         <TaskButton label="New Group" icon="plus" task="doNewGroup" onClick={newGroupTask} />
-                        {showGroupEdit && <TaskButton label="Edit Group Details" icon="edit" task="doEditGroupDetails" onClick={editGroupTask} />}
+                        {showGroupEdit && <TaskButton label="Edit Group Details" icon="edit" task="doEditGroupDetails" onClick={() => editGroupTask(currentGroup)} />}
                         <TaskButton label="Import Group" icon="import" task="doImportGroup" onClick={importGroupTask} />
                         <TaskButton label="Export All Groups" icon="export" task="doExportAllGroups" onClick={exportGroupsTask} />
-                        {showGroupExport && <TaskButton label="Export Group" icon="export" task="doExportGroup" onClick={exportGroupTask} />}
-                        {showGroupDelete && <TaskButton label="Delete Group" icon="trash" danger task="doDeleteGroup" onClick={deleteGroupTask} />}
+                        {showGroupExport && <TaskButton label="Export Group" icon="export" task="doExportGroup" onClick={() => exportGroupTask(currentGroup)} />}
+                        {showGroupDelete && <TaskButton label="Delete Group" icon="trash" danger task="doDeleteGroup" onClick={() => deleteGroupTask(currentGroup)} />}
                     </div>
                 </RailPane>
             </ViewTasks>
@@ -1297,7 +1297,7 @@ function ChannelsView() {
                         rowKey={(n) => (n.kind === 'group' ? 'grp:' + n.id : 'ch:' + n.channel.id)}
                         rowClassName={(n) => (n.kind === 'group' ? 'group-row' : '')}
                         selectedKeys={channelSel
-                            ? new Set([...selectedRef.current].map((id) => 'ch:' + id))
+                            ? new Set([...selected].map((id) => 'ch:' + id))
                             : (lastGroupId ? new Set(['grp:' + lastGroupId]) : new Set())}
                         onSelect={onRowSelect}
                         onActivate={onRowActivate}
@@ -1305,12 +1305,7 @@ function ChannelsView() {
                         onEmptyContextMenu={onEmptyMenu}
                         matches={treeMatches}
                         collapsedKeys={collapsedKeys}
-                        onToggleCollapse={(key) => {
-                            const id = key.replace(/^grp:/, '');
-                            const s = collapsedRef.current;
-                            s.has(id) ? s.delete(id) : s.add(id);
-                            forceRender();
-                        }}
+                        onToggleCollapse={(key) => toggleGroupCollapse(key.replace(/^grp:/, ''))}
                         rowDraggable={(n) => n.kind === 'channel'}
                         onRowDrop={onRowDrop}
                         columnsKey="channels"
@@ -1326,8 +1321,8 @@ function ChannelsView() {
                 </div>
                 <div className="filterbar panel overflow-visible mx-[14px] mb-3">
                     <label>Filter:</label>
-                    <input type="text" placeholder="Enter channel tag or name"
-                        onInput={(e) => { filterTextRef.current = e.target.value; renderTable(); }} />
+                    <input type="text" placeholder="Enter channel tag or name" value={filterText}
+                        onChange={(e) => setFilterText(e.target.value)} />
                     <span className="counts">{countsText}</span>
                 </div>
             </div>
