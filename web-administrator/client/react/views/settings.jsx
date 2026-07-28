@@ -1,18 +1,17 @@
 /*
- * Settings view (React port of views/settings.js). Server configuration with the
- * same 7 tabs as the Swing Administrator's Settings panel: Server, Administrator,
- * Tags, Configuration Map, Database Tasks, Resources, plus any panels registered
- * through platform.registerSettingsPanel (e.g. Data Pruner), which append after
- * the built-ins.
+ * Settings view — server configuration with the same tabs as the Swing
+ * Administrator's Settings panel: Server, Administrator, Tags, Configuration
+ * Map, Database Tasks, Resources, plus any panels registered through
+ * platform.registerSettingsPanel (e.g. Data Pruner), which append after the
+ * built-ins.
  *
- * Each tab's BODY is heavy legacy DOM (forms, DataTables, tag channel lists, the
- * config-map grid, the resource detail pane, the imported Data Pruner panel) with
- * intricate XStream round-tripping; it is reused VERBATIM via a ref'd mount, the
- * code-templates hybrid pattern. The per-tab task pane is rendered in React via
- * <ViewTasks> keyed to the active tab — switching tabs swaps the task pane (and
- * its title) reactively, no route change. Only the active tab is mounted, so its
- * tasks are the only ones portaled, and re-activating a tab reloads it (matching
- * the vanilla tabs() which rebuilds on switch).
+ * Every built-in tab body is a React component (controlled forms/grids +
+ * DataTableHost tables), mounted through the SAME mountReact wrapper the
+ * plugin panels use — the ctx contract (setTasks with DOM taskButton items,
+ * markDirty/markClean/setSave) is unchanged, so plugin settings panels are
+ * unaffected. The per-tab task pane is portaled into the rail via <ViewTasks>;
+ * switching tabs swaps the pane (and title) reactively, no route change. Only
+ * the active tab is mounted, and re-activating a tab reloads it.
  *
  * All writes round-trip the object shapes fetched from the engine so that XStream
  * "@class"/"@version" attributes and unknown keys survive. The per-tab Save lives
@@ -20,7 +19,7 @@
  * Pruner save; Administrator is localStorage-only; Database Tasks has no Save).
  */
 
-import { useState, useEffect, useRef, useReducer } from 'react';
+import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
 import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, modal, DataTable, field, textInput, numberInput, select, checkbox, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
@@ -30,7 +29,7 @@ import { setTheme, getState, setState } from '../../core/store.js';
 import { reactView, ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane } from '../ui.jsx';
+import { RailPane, DataTableHost } from '../ui.jsx';
 
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
 const CONFIGURATION_PROPERTY_CLASS = 'com.mirth.connect.util.ConfigurationProperty';
@@ -134,6 +133,73 @@ function tabHost() {
     return h('div', { class: 'p-3.5 overflow-auto flex-1' });
 }
 
+/* ---- React tab scaffolding ----------------------------------------------------
+   Ported tab bodies are React components hosted through the SAME mountReact
+   wrapper the plugin settings panels use (teardown tracked on the host node so
+   SettingsTab unmounts the root on tab switch). The ctx contract is unchanged:
+   React inputs dispatch native input/change events, so SettingsTab's host
+   listeners keep driving markDirty; task panes still receive DOM taskButton
+   items via ctx.setTasks (the one contract plugin panels share). */
+
+function reactTab(ctx, Component) {
+    const hostEl = tabHost();
+    hostEl.__teardown = mountReact(hostEl, <Component ctx={ctx} />);
+    return hostEl;
+}
+
+/* React twins of the radioGroup/yesNo builders (same DOM: .radio-group.inline-row). */
+let reactRadioSeq = 0;
+function RadioGroup({ options, value, onChange }) {
+    const nameRef = useRef(null);
+    if (!nameRef.current) nameRef.current = 'settings-rg-' + (reactRadioSeq++);
+    return (
+        <div className="radio-group inline-row">
+            {options.map((o) => (
+                <label key={String(o.value)}>
+                    <input type="radio" name={nameRef.current} value={o.value}
+                        checked={String(o.value) === String(value)}
+                        onChange={() => onChange(o.value)} />
+                    {o.label}
+                </label>
+            ))}
+        </div>
+    );
+}
+
+function YesNo({ value, onChange }) {
+    return <RadioGroup value={value ? 'yes' : 'no'} onChange={(v) => onChange(v === 'yes')}
+        options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />;
+}
+
+function TabLoadFailed({ error }) {
+    return (
+        <div className="dt-empty">
+            <div className="empty-icon">{/* warning glyph, same as loadFailed() */}
+                <span className="inline-flex" ref={(el) => { if (el && !el.firstChild) el.appendChild(icon('warning', 30)); }} />
+            </div>
+            <div>Failed to load</div>
+            <div className="text-text-faint mt-[14px]">{String(error)}</div>
+        </div>
+    );
+}
+
+function Field({ label, children, className = '' }) {
+    return <div className={'field ' + className}><label>{label}</label>{children}</div>;
+}
+
+/* Stacked label-left / control-right row (Swing settings layout; one preference
+   per line). Module scope on purpose: defining it inside a tab would mint a new
+   component type every render and remount each row — dropping input focus per
+   keystroke and closing the native color picker mid-adjustment. */
+function PrefRow({ label, children }) {
+    return (
+        <div className="flex items-center gap-4 py-2.5 px-0 border-b border-line">
+            <label className="flex-1 m-0">{label}</label>
+            <div className="flex-none">{children}</div>
+        </div>
+    );
+}
+
 /* =============================================================================
    Tab 1 — Server settings
    ServerSettings fields (verified in server/src/.../model/ServerSettings.java):
@@ -152,233 +218,135 @@ const DEFAULT_META_COLUMNS = {
     VERSION: { name: 'VERSION', type: 'STRING', mappingName: 'mirth_version' }
 };
 
-function renderServerTab({ setTasks, markClean, setSave }) {
-    const host = tabHost();
-    host.appendChild(loading());
-    let settings = null;
-    let updateSettings = null;  // UpdateSettings {statsEnabled, lastStatsTime} — round-tripped
-    let form = null;
+function ServerTab({ ctx }) {
+    // Round-trip objects (mutated on save; unknown fields survive).
+    const settingsRef = useRef(null);        // ServerSettings
+    const updateSettingsRef = useRef(null);  // UpdateSettings {statsEnabled,...} | null
+    const [form, setForm] = useState(null);  // null = loading
+    const [loadError, setLoadError] = useState(null);
+    const patch = (p) => setForm(f => ({ ...f, ...p }));
 
     async function load() {
+        setForm(null);
+        setLoadError(null);
         try {
-            settings = (await api.server.settings()) || {};
+            settingsRef.current = (await api.server.settings()) || {};
         } catch (e) {
             toast(`Failed to load server settings: ${e.message}`, 'error');
-            loadFailed(host, e);
+            setLoadError(String(e.message || e));
             return;
         }
         /* GET /server/updateSettings (verified in ConfigurationServletInterface;
            model UpdateSettings.statsEnabled). Best effort — the radios are
            simply omitted if it cannot be loaded. */
         try {
-            updateSettings = (await api.server.updateSettings()) || {};
+            updateSettingsRef.current = (await api.server.updateSettings()) || {};
         } catch {
-            updateSettings = null;
+            updateSettingsRef.current = null;
         }
-        build();
-    }
-
-    function build() {
-        clear(host);
-
-        /* General */
-        const envName = textInput(settings.environmentName ?? '');
-        const srvName = textInput(settings.serverName ?? '');
-        const bgColor = h('input', {
-            type: 'color',
-            class: 'w-[60px] p-0.5 h-8',
-            value: colorToHex(settings.defaultAdministratorBackgroundColor, '#2a75b2')
-        });
-        // Reset the picker to the engine default (ServerSettings.DEFAULT_COLOR =
-        // 0x2A75B2); Save persists + re-tints.
-        const bgColorRestore = h('button.btn', {
-            type: 'button', class: 'ml-2',
-            title: 'Reset to the default background color', onClick: () => { bgColor.value = '#2a75b2'; paintBgPreview(); }
-        }, 'Restore Default');
-
-        // Live preview of the rail + topbar tint in both light and dark mode
-        // (Swing's color-chooser Preview panel), updating as the color changes.
-        const bgPreview = h('div', { class: 'flex gap-3.5 flex-wrap' });
-        function miniPreview(colorObj, dark) {
-            const v = environmentColorVars(colorObj, dark);
-            // Dark mode also recolors the main surfaces toward the chosen hue — show
-            // it here so the preview matches the live app (use the --bg1 tone).
-            const surf = dark ? darkSurfaceTint(colorObj) : null;
-            const paneBg = surf ? surf['--bg1'] : (dark ? '#111922' : '#f4f7fa');
-            return h('div', { class: 'w-[190px]' },
-                h('div', { class: 'text-[10px] text-text-faint mb-[3px] uppercase tracking-[0.1em]' }, dark ? 'Dark mode' : 'Light mode'),
-                h('div', { class: 'border border-line rounded overflow-hidden' },
-                    h('div', { class: 'py-[5px] px-[9px] text-[11px] font-[650]', style: { background: v.topbarBg, color: v.fg } }, 'Dashboard'),
-                    h('div', { class: 'flex min-h-16' },
-                        h('div', { class: 'py-[7px] px-2 w-16 text-[10px]', style: { background: v.railBg } },
-                            h('div', { class: 'font-bold tracking-[0.1em] mb-[3px]', style: { color: v.fgDim } }, 'TASKS'),
-                            h('div', { style: { color: v.fg } }, 'Channels'),
-                            h('div', { style: { color: v.fgDim } }, 'Messages'),
-                            h('div', { style: { color: v.fgDim } }, 'Settings')),
-                        h('div', { class: 'flex-1 p-2 text-[11px]', style: { color: dark ? '#c8d4e0' : '#33414f', background: paneBg } }, 'Sample Text'))));
-        }
-        function paintBgPreview() {
-            clear(bgPreview);
-            const colorObj = hexToColor(bgColor.value, 255);
-            bgPreview.appendChild(miniPreview(colorObj, false));
-            bgPreview.appendChild(miniPreview(colorObj, true));
-        }
-        bgColor.addEventListener('input', paintBgPreview);
-        paintBgPreview();
-        const autoLogoutInterval = numberInput(settings.administratorAutoLogoutIntervalField ?? 5,
-            { min: 1, disabled: settings.administratorAutoLogoutIntervalEnabled !== true });
-        const autoLogout = yesNo(settings.administratorAutoLogoutIntervalEnabled === true,
-            (v) => { autoLogoutInterval.disabled = !v; });
-        /* Default is "yes" when statsEnabled is null/absent, matching the
-           Swing SettingsPanelServer behavior. */
-        const usageStats = updateSettings ? yesNo(updateSettings.statsEnabled !== false) : null;
-
-        /* Channel */
-        const clearMap = yesNo(settings.clearGlobalMap === true);
-        const queueBuffer = numberInput(settings.queueBufferSize ?? '', { min: 1 });
-        const metaCols = api.asList(settings.defaultMetaDataColumns, 'metaDataColumn')
+        const s = settingsRef.current;
+        const metaCols = api.asList(s.defaultMetaDataColumns, 'metaDataColumn')
             .filter(c => c && typeof c === 'object');
         const hasCol = (n) => metaCols.some(c => String(c.name || '').toUpperCase() === n);
-        const metaSource = checkbox('Source', hasCol('SOURCE'));
-        const metaType = checkbox('Type', hasCol('TYPE'));
-        const metaVersion = checkbox('Version', hasCol('VERSION'));
-
-        /* Email — smtpSecure is a String: 'none' | 'tls' | 'ssl' */
-        const smtpHost = textInput(settings.smtpHost ?? '');
-        const smtpPort = textInput(settings.smtpPort ?? '');
-        const smtpTimeout = textInput(settings.smtpTimeout ?? '');
-        const smtpFrom = textInput(settings.smtpFrom ?? '');
-        const smtpSecure = radioGroup([
-            { value: 'none', label: 'None' },
-            { value: 'tls', label: 'STARTTLS' },
-            { value: 'ssl', label: 'SSL' }
-        ], String(settings.smtpSecure || 'none').toLowerCase());
-        const smtpUsername = textInput(settings.smtpUsername ?? '', { disabled: settings.smtpAuth !== true });
-        const smtpPassword = h('input', { type: 'password', value: settings.smtpPassword ?? '', disabled: settings.smtpAuth !== true });
-        const smtpAuth = yesNo(settings.smtpAuth === true, (v) => {
-            smtpUsername.disabled = !v;
-            smtpPassword.disabled = !v;
+        setForm({
+            envName: s.environmentName ?? '',
+            srvName: s.serverName ?? '',
+            bgColor: colorToHex(s.defaultAdministratorBackgroundColor, '#2a75b2'),
+            autoLogout: s.administratorAutoLogoutIntervalEnabled === true,
+            autoLogoutInterval: String(s.administratorAutoLogoutIntervalField ?? 5),
+            /* Default is "yes" when statsEnabled is null/absent, matching the
+               Swing SettingsPanelServer behavior. */
+            usageStats: updateSettingsRef.current ? updateSettingsRef.current.statsEnabled !== false : null,
+            clearMap: s.clearGlobalMap === true,
+            queueBuffer: String(s.queueBufferSize ?? ''),
+            metaCols,
+            metaSource: hasCol('SOURCE'), metaType: hasCol('TYPE'), metaVersion: hasCol('VERSION'),
+            smtpHost: s.smtpHost ?? '', smtpPort: s.smtpPort ?? '',
+            smtpTimeout: s.smtpTimeout ?? '', smtpFrom: s.smtpFrom ?? '',
+            smtpSecure: String(s.smtpSecure || 'none').toLowerCase(),
+            smtpAuth: s.smtpAuth === true,
+            smtpUsername: s.smtpUsername ?? '', smtpPassword: s.smtpPassword ?? '',
+            loginNotification: s.loginNotificationEnabled === true,
+            loginNotificationMessage: s.loginNotificationMessage ?? ''
         });
-
-        /* Notification */
-        const loginNotificationMessage = h('textarea',
-            { disabled: settings.loginNotificationEnabled !== true },
-            settings.loginNotificationMessage ?? '');
-        const loginNotification = yesNo(settings.loginNotificationEnabled === true,
-            (v) => { loginNotificationMessage.disabled = !v; });
-
-        form = {
-            envName, srvName, bgColor, autoLogout, autoLogoutInterval, usageStats,
-            clearMap, queueBuffer, metaCols, metaSource, metaType, metaVersion,
-            smtpHost, smtpPort, smtpTimeout, smtpFrom, smtpSecure, smtpAuth,
-            smtpUsername, smtpPassword, loginNotification, loginNotificationMessage
-        };
-
-        host.appendChild(h('div.panel',
-            h('div.panel-header', 'General'),
-            h('div.panel-body', h('div.form-grid',
-                field('Environment name', envName),
-                field('Server name', srvName),
-                field('Default Background Color', h('div', { class: 'flex items-center' }, bgColor, bgColorRestore)),
-                h('div.field.span-2', h('label', 'Preview'), bgPreview),
-                h('div.field', h('label', 'Enable Auto Logout'), autoLogout.el),
-                field('Auto Logout Interval (minutes)', autoLogoutInterval),
-                usageStats ? h('div.field', h('label', 'Provide usage statistics'), usageStats.el) : null))));
-
-        host.appendChild(h('div.panel',
-            h('div.panel-header', 'Channel'),
-            h('div.panel-body', h('div.form-grid',
-                h('div.field', h('label', 'Clear global map on redeploy'), clearMap.el),
-                field('Default Queue Buffer Size', queueBuffer),
-                h('div.field', h('label', 'Default Metadata Columns'),
-                    h('div.radio-group.inline-row', metaSource.el, metaType.el, metaVersion.el))))));
-
-        host.appendChild(h('div.panel',
-            h('div.panel-header', 'Email'),
-            h('div.panel-body', h('div.form-grid',
-                h('div.field', h('label', 'SMTP Host'),
-                    h('div.flex.items-center.gap-2', smtpHost,
-                        h('button.btn.whitespace-nowrap', { onClick: sendTestEmail }, icon('mail'), 'Send Test Email'))),
-                field('SMTP Port', smtpPort),
-                field('Send Timeout (ms)', smtpTimeout),
-                field('Default From Address', smtpFrom),
-                h('div.field', h('label', 'Secure Connection'), smtpSecure.el),
-                h('div.field', h('label', 'Require Authentication'), smtpAuth.el),
-                field('Username', smtpUsername),
-                field('Password', smtpPassword)))));
-
-        host.appendChild(h('div.panel',
-            h('div.panel-header', 'Notification'),
-            h('div.panel-body',
-                h('div.field', h('label', 'Require Login Notification and Consent'), loginNotification.el),
-                h('div.field', h('label', 'Login Notification'), loginNotificationMessage))));
     }
 
     async function save() {
-        if (!form || !settings) return;
+        const settings = settingsRef.current;
+        const f = formRef.current;
+        if (!f || !settings) return;
         try {
-            settings.environmentName = form.envName.value;
-            settings.serverName = form.srvName.value;
+            settings.environmentName = f.envName;
+            settings.serverName = f.srvName;
             const alpha = settings.defaultAdministratorBackgroundColor?.alpha ?? 255;
-            settings.defaultAdministratorBackgroundColor = hexToColor(form.bgColor.value, alpha);
-            settings.administratorAutoLogoutIntervalEnabled = form.autoLogout.checked;
-            const interval = parseInt(form.autoLogoutInterval.value, 10);
+            settings.defaultAdministratorBackgroundColor = hexToColor(f.bgColor, alpha);
+            settings.administratorAutoLogoutIntervalEnabled = f.autoLogout;
+            const interval = parseInt(f.autoLogoutInterval, 10);
             settings.administratorAutoLogoutIntervalField = isNaN(interval) ? 5 : interval;
 
-            settings.clearGlobalMap = form.clearMap.checked;
-            if (form.queueBuffer.value !== '') settings.queueBufferSize = parseInt(form.queueBuffer.value, 10);
+            settings.clearGlobalMap = f.clearMap;
+            if (String(f.queueBuffer) !== '') settings.queueBufferSize = parseInt(f.queueBuffer, 10);
             else delete settings.queueBufferSize;
 
             /* Rebuild defaultMetaDataColumns: known columns follow the
                checkboxes, unknown entries are preserved untouched. */
             const next = [];
             for (const name of ['SOURCE', 'TYPE', 'VERSION']) {
-                const box = { SOURCE: form.metaSource, TYPE: form.metaType, VERSION: form.metaVersion }[name];
-                if (!box.input.checked) continue;
-                next.push(form.metaCols.find(c => String(c.name || '').toUpperCase() === name) || DEFAULT_META_COLUMNS[name]);
+                const on = { SOURCE: f.metaSource, TYPE: f.metaType, VERSION: f.metaVersion }[name];
+                if (!on) continue;
+                next.push(f.metaCols.find(c => String(c.name || '').toUpperCase() === name) || DEFAULT_META_COLUMNS[name]);
             }
-            for (const c of form.metaCols) {
+            for (const c of f.metaCols) {
                 const n = String(c.name || '').toUpperCase();
                 if (n !== 'SOURCE' && n !== 'TYPE' && n !== 'VERSION') next.push(c);
             }
             settings.defaultMetaDataColumns = Array.isArray(settings.defaultMetaDataColumns)
                 ? next : { metaDataColumn: next };
 
-            settings.smtpHost = form.smtpHost.value;
-            settings.smtpPort = form.smtpPort.value;
-            settings.smtpTimeout = form.smtpTimeout.value;
-            settings.smtpFrom = form.smtpFrom.value;
-            settings.smtpSecure = form.smtpSecure.value;
-            settings.smtpAuth = form.smtpAuth.checked;
-            settings.smtpUsername = form.smtpUsername.value;
-            settings.smtpPassword = form.smtpPassword.value;
+            settings.smtpHost = f.smtpHost;
+            settings.smtpPort = f.smtpPort;
+            settings.smtpTimeout = f.smtpTimeout;
+            settings.smtpFrom = f.smtpFrom;
+            settings.smtpSecure = f.smtpSecure;
+            settings.smtpAuth = f.smtpAuth;
+            settings.smtpUsername = f.smtpUsername;
+            settings.smtpPassword = f.smtpPassword;
 
-            settings.loginNotificationEnabled = form.loginNotification.checked;
-            settings.loginNotificationMessage = form.loginNotificationMessage.value;
+            settings.loginNotificationEnabled = f.loginNotification;
+            settings.loginNotificationMessage = f.loginNotificationMessage;
 
             await api.server.setSettings(settings);
-            if (form.usageStats && updateSettings) {
-                updateSettings.statsEnabled = form.usageStats.checked;
-                await api.server.setUpdateSettings(updateSettings);
+            if (f.usageStats !== null && updateSettingsRef.current) {
+                updateSettingsRef.current.statsEnabled = f.usageStats;
+                await api.server.setUpdateSettings(updateSettingsRef.current);
             }
             // Re-tint the rail + topbar live with the saved color.
             applyEnvironmentColor(settings.defaultAdministratorBackgroundColor);
             toast('Server settings saved');
-            markClean();
+            ctx.markClean();
             return true;
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');
             return false;
         }
     }
-    setSave(save);
+
+    // The task pane + ctx.setSave are registered ONCE (mount); they run the
+    // LATEST load/save/form through refs.
+    const formRef = useRef(null);
+    formRef.current = form;
+    const loadRef = useRef(load);
+    loadRef.current = load;
+    const saveRef = useRef(save);
+    saveRef.current = save;
 
     function sendTestEmail() {
-        if (!form) return;
+        const f = formRef.current;
+        if (!f) return;
         /* Properties keys verified against SettingsPanelServer.sendTestEmail():
            port, encryption, host, timeout, authentication, username,
            password, toAddress, fromAddress. */
-        const toInput = textInput(form.smtpFrom.value);
+        const toInput = textInput(f.smtpFrom);
         modal({
             title: 'Send Test Email',
             body: field('To address', toInput),
@@ -389,15 +357,15 @@ function renderServerTab({ setTasks, markClean, setSave }) {
                     onClick: async () => {
                         try {
                             const props = listToProps([
-                                { name: 'port', value: form.smtpPort.value },
-                                { name: 'encryption', value: form.smtpSecure.value },
-                                { name: 'host', value: form.smtpHost.value },
-                                { name: 'timeout', value: form.smtpTimeout.value },
-                                { name: 'authentication', value: String(form.smtpAuth.checked) },
-                                { name: 'username', value: form.smtpUsername.value },
-                                { name: 'password', value: form.smtpPassword.value },
+                                { name: 'port', value: f.smtpPort },
+                                { name: 'encryption', value: f.smtpSecure },
+                                { name: 'host', value: f.smtpHost },
+                                { name: 'timeout', value: f.smtpTimeout },
+                                { name: 'authentication', value: String(f.smtpAuth) },
+                                { name: 'username', value: f.smtpUsername },
+                                { name: 'password', value: f.smtpPassword },
                                 { name: 'toAddress', value: toInput.value },
-                                { name: 'fromAddress', value: form.smtpFrom.value }
+                                { name: 'fromAddress', value: f.smtpFrom }
                             ]);
                             const response = await api.server.testEmail(props);
                             const message = (response && typeof response === 'object' ? response.message : response) || 'Test email sent';
@@ -485,7 +453,7 @@ function renderServerTab({ setTasks, markClean, setSave }) {
                                 }
                             });
                             toast('Server configuration restored');
-                            load();
+                            loadRef.current();
                         } catch (e) {
                             toast(`Restore failed: ${e.message}`, 'error');
                             return false;
@@ -509,17 +477,160 @@ function renderServerTab({ setTasks, markClean, setSave }) {
         }
     }
 
-    setTasks('Server Tasks', [
-        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Server' }),
-        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Server' }),
-        '-',
-        taskButton('Backup Config', 'export', backupConfig, { task: 'doBackup', group: 'settings_Server' }),
-        taskButton('Restore Config', 'import', restoreConfig, { task: 'doRestore', group: 'settings_Server' }),
-        taskButton('Clear All Statistics', 'clear', clearAllStatistics, { danger: true, task: 'doClearAllStats', group: 'settings_Server' })
-    ]);
+    useEffect(() => {
+        ctx.setSave(() => saveRef.current());
+        ctx.setTasks('Server Tasks', [
+            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Server' }),
+            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Server' }),
+            '-',
+            taskButton('Backup Config', 'export', backupConfig, { task: 'doBackup', group: 'settings_Server' }),
+            taskButton('Restore Config', 'import', restoreConfig, { task: 'doRestore', group: 'settings_Server' }),
+            taskButton('Clear All Statistics', 'clear', clearAllStatistics, { danger: true, task: 'doClearAllStats', group: 'settings_Server' })
+        ]);
+        loadRef.current();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    load();
-    return host;
+    if (loadError) return <TabLoadFailed error={loadError} />;
+    if (!form) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+
+    /* Live preview of the rail + topbar tint in both light and dark mode
+       (Swing's color-chooser Preview panel), updating as the color changes. */
+    const previewColor = hexToColor(form.bgColor, 255);
+    const miniPreview = (dark) => {
+        const v = environmentColorVars(previewColor, dark);
+        const surf = dark ? darkSurfaceTint(previewColor) : null;
+        const paneBg = surf ? surf['--bg1'] : (dark ? '#111922' : '#f4f7fa');
+        return (
+            <div className="w-[190px]">
+                <div className="text-[10px] text-text-faint mb-[3px] uppercase tracking-[0.1em]">{dark ? 'Dark mode' : 'Light mode'}</div>
+                <div className="border border-line rounded overflow-hidden">
+                    <div className="py-[5px] px-[9px] text-[11px] font-[650]" style={{ background: v.topbarBg, color: v.fg }}>Dashboard</div>
+                    <div className="flex min-h-16">
+                        <div className="py-[7px] px-2 w-16 text-[10px]" style={{ background: v.railBg }}>
+                            <div className="font-bold tracking-[0.1em] mb-[3px]" style={{ color: v.fgDim }}>TASKS</div>
+                            <div style={{ color: v.fg }}>Channels</div>
+                            <div style={{ color: v.fgDim }}>Messages</div>
+                            <div style={{ color: v.fgDim }}>Settings</div>
+                        </div>
+                        <div className="flex-1 p-2 text-[11px]" style={{ color: dark ? '#c8d4e0' : '#33414f', background: paneBg }}>Sample Text</div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <>
+            <div className="panel">
+                <div className="panel-header">General</div>
+                <div className="panel-body"><div className="form-grid">
+                    <Field label="Environment name">
+                        <input type="text" value={form.envName} onChange={(e) => patch({ envName: e.target.value })} />
+                    </Field>
+                    <Field label="Server name">
+                        <input type="text" value={form.srvName} onChange={(e) => patch({ srvName: e.target.value })} />
+                    </Field>
+                    <Field label="Default Background Color">
+                        <div className="flex items-center">
+                            <input type="color" className="w-[60px] p-0.5 h-8" value={form.bgColor}
+                                onChange={(e) => patch({ bgColor: e.target.value })} />
+                            {/* Reset the picker to the engine default (ServerSettings.DEFAULT_COLOR = 0x2A75B2). */}
+                            <button type="button" className="btn ml-2" title="Reset to the default background color"
+                                onClick={() => patch({ bgColor: '#2a75b2' })}>Restore Default</button>
+                        </div>
+                    </Field>
+                    <div className="field span-2">
+                        <label>Preview</label>
+                        <div className="flex gap-3.5 flex-wrap">{miniPreview(false)}{miniPreview(true)}</div>
+                    </div>
+                    <Field label="Enable Auto Logout">
+                        <YesNo value={form.autoLogout} onChange={(v) => patch({ autoLogout: v })} />
+                    </Field>
+                    <Field label="Auto Logout Interval (minutes)">
+                        <input type="number" min="1" disabled={!form.autoLogout} value={form.autoLogoutInterval}
+                            onChange={(e) => patch({ autoLogoutInterval: e.target.value })} />
+                    </Field>
+                    {form.usageStats !== null && (
+                        <Field label="Provide usage statistics">
+                            <YesNo value={form.usageStats} onChange={(v) => patch({ usageStats: v })} />
+                        </Field>
+                    )}
+                </div></div>
+            </div>
+            <div className="panel">
+                <div className="panel-header">Channel</div>
+                <div className="panel-body"><div className="form-grid">
+                    <Field label="Clear global map on redeploy">
+                        <YesNo value={form.clearMap} onChange={(v) => patch({ clearMap: v })} />
+                    </Field>
+                    <Field label="Default Queue Buffer Size">
+                        <input type="number" min="1" value={form.queueBuffer}
+                            onChange={(e) => patch({ queueBuffer: e.target.value })} />
+                    </Field>
+                    <Field label="Default Metadata Columns">
+                        <div className="radio-group inline-row">
+                            <label className="check"><input type="checkbox" checked={form.metaSource} onChange={(e) => patch({ metaSource: e.target.checked })} />Source</label>
+                            <label className="check"><input type="checkbox" checked={form.metaType} onChange={(e) => patch({ metaType: e.target.checked })} />Type</label>
+                            <label className="check"><input type="checkbox" checked={form.metaVersion} onChange={(e) => patch({ metaVersion: e.target.checked })} />Version</label>
+                        </div>
+                    </Field>
+                </div></div>
+            </div>
+            <div className="panel">
+                <div className="panel-header">Email</div>
+                <div className="panel-body"><div className="form-grid">
+                    <Field label="SMTP Host">
+                        <div className="flex items-center gap-2">
+                            <input type="text" value={form.smtpHost} onChange={(e) => patch({ smtpHost: e.target.value })} />
+                            <button type="button" className="btn whitespace-nowrap" onClick={sendTestEmail}>
+                                <span className="inline-flex" ref={(el) => { if (el && !el.firstChild) el.appendChild(icon('mail')); }} />Send Test Email
+                            </button>
+                        </div>
+                    </Field>
+                    <Field label="SMTP Port">
+                        <input type="text" value={form.smtpPort} onChange={(e) => patch({ smtpPort: e.target.value })} />
+                    </Field>
+                    <Field label="Send Timeout (ms)">
+                        <input type="text" value={form.smtpTimeout} onChange={(e) => patch({ smtpTimeout: e.target.value })} />
+                    </Field>
+                    <Field label="Default From Address">
+                        <input type="text" value={form.smtpFrom} onChange={(e) => patch({ smtpFrom: e.target.value })} />
+                    </Field>
+                    <Field label="Secure Connection">
+                        <RadioGroup value={form.smtpSecure} onChange={(v) => patch({ smtpSecure: v })} options={[
+                            { value: 'none', label: 'None' },
+                            { value: 'tls', label: 'STARTTLS' },
+                            { value: 'ssl', label: 'SSL' }
+                        ]} />
+                    </Field>
+                    <Field label="Require Authentication">
+                        <YesNo value={form.smtpAuth} onChange={(v) => patch({ smtpAuth: v })} />
+                    </Field>
+                    <Field label="Username">
+                        <input type="text" disabled={!form.smtpAuth} value={form.smtpUsername}
+                            onChange={(e) => patch({ smtpUsername: e.target.value })} />
+                    </Field>
+                    <Field label="Password">
+                        <input type="password" disabled={!form.smtpAuth} value={form.smtpPassword}
+                            onChange={(e) => patch({ smtpPassword: e.target.value })} />
+                    </Field>
+                </div></div>
+            </div>
+            <div className="panel">
+                <div className="panel-header">Notification</div>
+                <div className="panel-body">
+                    <Field label="Require Login Notification and Consent">
+                        <YesNo value={form.loginNotification} onChange={(v) => patch({ loginNotification: v })} />
+                    </Field>
+                    <Field label="Login Notification">
+                        <textarea disabled={!form.loginNotification} value={form.loginNotificationMessage}
+                            onChange={(e) => patch({ loginNotificationMessage: e.target.value })} />
+                    </Field>
+                </div>
+            </div>
+        </>
+    );
 }
 
 /* =============================================================================
@@ -558,44 +669,34 @@ function channelIdNamePairs(raw) {
    Preferences); stored per-browser via core/prefs.js.
    ============================================================================ */
 
-function renderAdministratorTab({ setTasks, markClean, setSave }) {
-    const host = tabHost();
+function AdministratorTab({ ctx }) {
+    const [form, setForm] = useState(null);
+    const patch = (p) => setForm(f => ({ ...f, ...p }));
+    const serverDefaultColorRef = useRef(null);   // loaded async, for the live re-tint on save
+    const userId = getState('user')?.id;
 
-    function build() {
-        clear(host);
-        const themeNow = document.documentElement.dataset.theme || 'light';
+    const yesNoAskValue = (val) => (['yes', 'no', 'ask'].includes(val) ? val : 'ask');
+    const builderValue = (val) => (['ask', 'classic', 'guided'].includes(val) ? val : 'ask');
 
-        const dashRefresh = numberInput(getPref('dashboardRefreshSeconds'), { min: 1 });
-        const msgPageSize = select([20, 50, 100], Number(getPref('messagePageSize')) || 20);
-        const evtPageSize = select([20, 50, 100], Number(getPref('eventPageSize')) || 20);
-        const formatMsgs = yesNo(getPref('formatMessages') !== false);
-        const confirmReprocess = yesNo(getPref('confirmReprocessRemove') !== false);
-        const yesNoAsk = (val) => select(
-            [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }, { value: 'ask', label: 'Ask' }],
-            ['yes', 'no', 'ask'].includes(val) ? val : 'ask');
-        const importLibs = yesNoAsk(getPref('importLibrariesWithChannels'));
-        const exportLibs = yesNoAsk(getPref('exportLibrariesWithChannels'));
-        const newChannelDefault = select(
-            [{ value: 'ask', label: 'Ask each time' }, { value: 'classic', label: 'Classic editor' }, { value: 'guided', label: 'Wizard' }],
-            ['ask', 'classic', 'guided'].includes(getPref('newChannelDefault')) ? getPref('newChannelDefault') : 'ask');
-        const newAlertDefault = select(
-            [{ value: 'ask', label: 'Ask each time' }, { value: 'classic', label: 'Classic editor' }, { value: 'guided', label: 'Wizard' }],
-            ['ask', 'classic', 'guided'].includes(getPref('newAlertDefault')) ? getPref('newAlertDefault') : 'ask');
-        const showViewSwitch = yesNo(getPref('showViewSwitch') !== false);
-        const themeSel = select([{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], themeNow);
-
-        // Per-user background-color override (Swing SettingsPanelAdministrator):
-        // "Server Default" uses the server's color; "Custom" overrides it for this
-        // user. Stored as the server user preference "backgroundColor".
-        const userId = getState('user')?.id;
-        let serverDefaultColor = null;   // loaded async, for the live preview on save
-        const bgMode = select([{ value: 'default', label: 'Server Default' }, { value: 'custom', label: 'Custom' }], 'default');
-        const bgPicker = h('input', {
-            type: 'color', value: '#2a75b2', disabled: true,
-            class: 'w-[60px] p-0.5 h-8 ml-2'
+    function load() {
+        setForm({
+            dashRefresh: String(getPref('dashboardRefreshSeconds') ?? ''),
+            msgPageSize: String(Number(getPref('messagePageSize')) || 20),
+            evtPageSize: String(Number(getPref('eventPageSize')) || 20),
+            formatMsgs: getPref('formatMessages') !== false,
+            confirmReprocess: getPref('confirmReprocessRemove') !== false,
+            importLibs: yesNoAskValue(getPref('importLibrariesWithChannels')),
+            exportLibs: yesNoAskValue(getPref('exportLibrariesWithChannels')),
+            newChannelDefault: builderValue(getPref('newChannelDefault')),
+            newAlertDefault: builderValue(getPref('newAlertDefault')),
+            showViewSwitch: getPref('showViewSwitch') !== false,
+            theme: document.documentElement.dataset.theme || 'light',
+            bgMode: 'default',
+            bgColor: '#2a75b2'
         });
-        bgMode.addEventListener('change', () => { bgPicker.disabled = bgMode.value !== 'custom'; });
-        const bgOverride = h('div', { class: 'flex items-center' }, bgMode, bgPicker);
+        // Per-user background-color override (Swing SettingsPanelAdministrator):
+        // "Server Default" uses the server's color; "Custom" overrides it for
+        // this user. Stored as the server user preference "backgroundColor".
         (async () => {
             try {
                 const [srv, bgPref] = await Promise.all([
@@ -604,229 +705,229 @@ function renderAdministratorTab({ setTasks, markClean, setSave }) {
                     // getPreferences collapses/mangles the <awt-color> value.
                     userId != null ? api.users.getPreference(userId, 'backgroundColor', { raw: true }).catch(() => null) : Promise.resolve(null)
                 ]);
-                serverDefaultColor = srv && srv.defaultAdministratorBackgroundColor;
+                serverDefaultColorRef.current = srv && srv.defaultAdministratorBackgroundColor;
                 const override = parseColorPref(bgPref);
-                if (override) { bgMode.value = 'custom'; bgPicker.disabled = false; bgPicker.value = colorToHex(override, '#2a75b2'); }
+                if (override) patch({ bgMode: 'custom', bgColor: colorToHex(override, '#2a75b2') });
             } catch { /* ignore */ }
         })();
-
-        // Stacked label-left / control-right rows (matches the Swing settings layout
-        // and fills the panel width, one preference per line).
-        const prefRow = (label, control) => h('div', {
-            class: 'flex items-center gap-4 py-2.5 px-0 border-b border-line'
-        }, h('label', { class: 'flex-1 m-0' }, label),
-            h('div', { class: 'flex-none' }, control));
-
-        host.appendChild(h('div.panel',
-            h('div.panel-header', 'System Preferences'),
-            h('div.panel-body',
-                prefRow('Dashboard refresh interval (seconds)', dashRefresh),
-                prefRow('Message browser page size', msgPageSize),
-                prefRow('Event browser page size', evtPageSize),
-                prefRow('Format text in message browser', formatMsgs.el),
-                prefRow('Reprocess/remove messages confirmation', confirmReprocess.el),
-                prefRow('Import code template libraries with channels', importLibs),
-                prefRow('Export code template libraries with channels', exportLibs),
-                prefRow('Default new-channel builder', newChannelDefault),
-                prefRow('Default new-alert builder', newAlertDefault),
-                prefRow('Show "switch view" in the channel/alert editor', showViewSwitch.el))));
-
-        host.appendChild(h('div.panel',
-            h('div.panel-header', 'User Preferences'),
-            h('div.panel-body',
-                prefRow('Theme', themeSel),
-                prefRow('Background color', bgOverride))));
-
-        async function save() {
-            setPrefs({
-                dashboardRefreshSeconds: Math.max(1, parseInt(dashRefresh.value, 10) || 5),
-                messagePageSize: Number(msgPageSize.value) || 20,
-                eventPageSize: Number(evtPageSize.value) || 20,
-                formatMessages: formatMsgs.checked,
-                confirmReprocessRemove: confirmReprocess.checked,
-                importLibrariesWithChannels: importLibs.value,
-                exportLibrariesWithChannels: exportLibs.value,
-                newChannelDefault: newChannelDefault.value,
-                newAlertDefault: newAlertDefault.value,
-                showViewSwitch: showViewSwitch.checked
-            });
-            setTheme(themeSel.value);
-            // Persist the per-user color override (or clear it) and re-tint live.
-            // Swing (SettingsPanelAdministrator.doSave) writes this as a single
-            // preference: setUserPreference(id, "backgroundColor", <awt-color xml>).
-            // The whole-map PUT deserializes to a Java Properties server-side and
-            // 500s on the <awt-color> value (issue #10), so mirror Swing exactly
-            // and set just the one key (stored verbatim, no server-side parsing).
-            if (userId != null) {
-                try {
-                    let effective, value;
-                    if (bgMode.value === 'custom') {
-                        const c = hexToColor(bgPicker.value, 255);
-                        value = serializeColorPref(c);   // <awt-color> XML (Swing-compatible)
-                        effective = c;
-                    } else {
-                        // Swing clears the override by writing ObjectXMLSerializer
-                        // .serialize(null) === "<null/>" (NOT an empty string). Match
-                        // it: both tools read a non-<awt-color> value as server
-                        // default, and a non-empty value avoids an Oracle edge case
-                        // where '' -> NULL breaks the insert/update existence check
-                        // and can duplicate the preference row.
-                        value = '<null/>';
-                        effective = serverDefaultColor;
-                    }
-                    await api.users.setPreference(userId, 'backgroundColor', value);
-                    applyEnvironmentColor(effective);
-                } catch (e) {
-                    toast(`Could not save background color: ${e.message}`, 'error');
-                }
-            }
-            markClean();
-            toast('Preferences saved');
-            return true;
-        }
-        setSave(save);
-
-        setTasks('Administrator Tasks', [
-            taskButton('Refresh', 'refresh', build, { task: 'doRefresh', group: 'settings_Administrator' }),
-            taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Administrator' }),
-            taskButton('Restore Defaults', 'refresh', () => { resetPrefs(); build(); toast('Preferences reset to defaults'); }, { task: 'doSetAdminDefaults', group: 'settings_Administrator' })
-        ]);
     }
 
-    build();
-    return host;
+    async function save() {
+        const f = formRef.current;
+        if (!f) return;
+        setPrefs({
+            dashboardRefreshSeconds: Math.max(1, parseInt(f.dashRefresh, 10) || 5),
+            messagePageSize: Number(f.msgPageSize) || 20,
+            eventPageSize: Number(f.evtPageSize) || 20,
+            formatMessages: f.formatMsgs,
+            confirmReprocessRemove: f.confirmReprocess,
+            importLibrariesWithChannels: f.importLibs,
+            exportLibrariesWithChannels: f.exportLibs,
+            newChannelDefault: f.newChannelDefault,
+            newAlertDefault: f.newAlertDefault,
+            showViewSwitch: f.showViewSwitch
+        });
+        setTheme(f.theme);
+        // Persist the per-user color override (or clear it) and re-tint live.
+        // Swing (SettingsPanelAdministrator.doSave) writes this as a single
+        // preference: setUserPreference(id, "backgroundColor", <awt-color xml>).
+        // The whole-map PUT deserializes to a Java Properties server-side and
+        // 500s on the <awt-color> value (issue #10), so mirror Swing exactly
+        // and set just the one key (stored verbatim, no server-side parsing).
+        if (userId != null) {
+            try {
+                let effective, value;
+                if (f.bgMode === 'custom') {
+                    const c = hexToColor(f.bgColor, 255);
+                    value = serializeColorPref(c);   // <awt-color> XML (Swing-compatible)
+                    effective = c;
+                } else {
+                    // Swing clears the override by writing ObjectXMLSerializer
+                    // .serialize(null) === "<null/>" (NOT an empty string). Match
+                    // it: both tools read a non-<awt-color> value as server
+                    // default, and a non-empty value avoids an Oracle edge case
+                    // where '' -> NULL breaks the insert/update existence check
+                    // and can duplicate the preference row.
+                    value = '<null/>';
+                    effective = serverDefaultColorRef.current;
+                }
+                await api.users.setPreference(userId, 'backgroundColor', value);
+                applyEnvironmentColor(effective);
+            } catch (e) {
+                toast(`Could not save background color: ${e.message}`, 'error');
+            }
+        }
+        ctx.markClean();
+        toast('Preferences saved');
+        return true;
+    }
+
+    const formRef = useRef(null);
+    formRef.current = form;
+    const loadRef = useRef(load);
+    loadRef.current = load;
+    const saveRef = useRef(save);
+    saveRef.current = save;
+
+    useEffect(() => {
+        ctx.setSave(() => saveRef.current());
+        ctx.setTasks('Administrator Tasks', [
+            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Administrator' }),
+            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Administrator' }),
+            taskButton('Restore Defaults', 'refresh', () => { resetPrefs(); loadRef.current(); toast('Preferences reset to defaults'); }, { task: 'doSetAdminDefaults', group: 'settings_Administrator' })
+        ]);
+        loadRef.current();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    if (!form) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+
+    const pageSizeOptions = [20, 50, 100].map((n) => <option key={n} value={String(n)}>{n}</option>);
+
+    return (
+        <>
+            <div className="panel">
+                <div className="panel-header">System Preferences</div>
+                <div className="panel-body">
+                    <PrefRow label="Dashboard refresh interval (seconds)">
+                        <input type="number" min="1" value={form.dashRefresh}
+                            onChange={(e) => patch({ dashRefresh: e.target.value })} />
+                    </PrefRow>
+                    <PrefRow label="Message browser page size">
+                        <select value={form.msgPageSize} onChange={(e) => patch({ msgPageSize: e.target.value })}>{pageSizeOptions}</select>
+                    </PrefRow>
+                    <PrefRow label="Event browser page size">
+                        <select value={form.evtPageSize} onChange={(e) => patch({ evtPageSize: e.target.value })}>{pageSizeOptions}</select>
+                    </PrefRow>
+                    <PrefRow label="Format text in message browser">
+                        <YesNo value={form.formatMsgs} onChange={(v) => patch({ formatMsgs: v })} />
+                    </PrefRow>
+                    <PrefRow label="Reprocess/remove messages confirmation">
+                        <YesNo value={form.confirmReprocess} onChange={(v) => patch({ confirmReprocess: v })} />
+                    </PrefRow>
+                    <PrefRow label="Import code template libraries with channels">
+                        <select value={form.importLibs} onChange={(e) => patch({ importLibs: e.target.value })}>
+                            <option value="yes">Yes</option><option value="no">No</option><option value="ask">Ask</option>
+                        </select>
+                    </PrefRow>
+                    <PrefRow label="Export code template libraries with channels">
+                        <select value={form.exportLibs} onChange={(e) => patch({ exportLibs: e.target.value })}>
+                            <option value="yes">Yes</option><option value="no">No</option><option value="ask">Ask</option>
+                        </select>
+                    </PrefRow>
+                    <PrefRow label="Default new-channel builder">
+                        <select value={form.newChannelDefault} onChange={(e) => patch({ newChannelDefault: e.target.value })}>
+                            <option value="ask">Ask each time</option><option value="classic">Classic editor</option><option value="guided">Wizard</option>
+                        </select>
+                    </PrefRow>
+                    <PrefRow label="Default new-alert builder">
+                        <select value={form.newAlertDefault} onChange={(e) => patch({ newAlertDefault: e.target.value })}>
+                            <option value="ask">Ask each time</option><option value="classic">Classic editor</option><option value="guided">Wizard</option>
+                        </select>
+                    </PrefRow>
+                    <PrefRow label={'Show "switch view" in the channel/alert editor'}>
+                        <YesNo value={form.showViewSwitch} onChange={(v) => patch({ showViewSwitch: v })} />
+                    </PrefRow>
+                </div>
+            </div>
+            <div className="panel">
+                <div className="panel-header">User Preferences</div>
+                <div className="panel-body">
+                    <PrefRow label="Theme">
+                        <select value={form.theme} onChange={(e) => patch({ theme: e.target.value })}>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </PrefRow>
+                    <PrefRow label="Background color">
+                        <div className="flex items-center">
+                            <select value={form.bgMode} onChange={(e) => patch({ bgMode: e.target.value })}>
+                                <option value="default">Server Default</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                            <input type="color" className="w-[60px] p-0.5 h-8 ml-2" disabled={form.bgMode !== 'custom'}
+                                value={form.bgColor} onChange={(e) => patch({ bgColor: e.target.value })} />
+                        </div>
+                    </PrefRow>
+                </div>
+            </div>
+        </>
+    );
 }
 
-function renderTagsTab({ setTasks, markClean, setSave }) {
-    const host = tabHost();
-    host.appendChild(loading());
-    let tags = [];
-    let allChannels = [];
-    let currentTag = null;
+function TagsTab({ ctx }) {
+    /* Edit-session model: tag objects are mutated in place (their identity is
+       the setChannelTags payload); mutations bump the container to repaint.
+       Modal-driven mutations (add/edit/remove) call ctx.markDirty() explicitly —
+       modals live outside the tab host, so their edits never bubble into the
+       auto-dirty listeners (the legacy builder silently missed them). */
+    const [tags, setTags] = useState(null);          // null = loading
+    const tagsNowRef = useRef(tags);
+    tagsNowRef.current = tags;
+    const [allChannels, setAllChannels] = useState([]);
+    const [selectedId, setSelectedId] = useState(null);
+    const [chFilter, setChFilter] = useState('');
+    const [loadError, setLoadError] = useState(null);
+    const tableRef = useRef(null);
 
     const tagChannelIds = (tag) => api.asList(tag.channelIds, 'string').map(String);
     const setTagChannelIds = (tag, ids) => { tag.channelIds = ids.length ? { string: ids } : ''; };
     const channelCount = (tag) => tagChannelIds(tag).length;
+    const touch = () => setTags(prev => (prev ? prev.slice() : prev));
 
-    const table = new DataTable([
-        { key: 'color', label: '', width: '36px', sortable: false, render: (t) => swatch(t.backgroundColor) },
-        { key: 'name', label: 'Name', render: (t) => t.name || '' },
-        { key: 'channels', label: 'Channel Count', className: 'num', width: '130px', sortValue: channelCount, render: (t) => String(channelCount(t)) }
-    ], {
-        selectable: 'single',
-        rowKey: (t) => t.id,
-        emptyText: 'No tags defined',
-        columnsMenu: true,
-        columnsMenuKey: 'webadmin-cols-tags',
-        onSelect: (rows) => { currentTag = rows[0] || null; renderChannelList(); updateTaskVisibility(); },
-        onActivate: (t) => editTag(t),
-        onContextMenu: (t, e) => {
-            currentTag = t; table.selected = new Set([t.id]); renderChannelList(); updateTaskVisibility();
-            // Tag mutations ride settings_Tags/doSave (no Swing constants —
-            // same convention as the Config Map Add Row, RBAC.md §3).
-            contextMenu(e.clientX, e.clientY, [
-                { label: 'New Tag', icon: 'plus', task: 'doSave', group: 'settings_Tags', onClick: () => addTag() },
-                { label: 'Edit Tag', icon: 'edit', task: 'doSave', group: 'settings_Tags', onClick: () => editTag(t) },
-                '-',
-                { label: 'Remove Tag', icon: 'trash', danger: true, task: 'doSave', group: 'settings_Tags', onClick: () => removeTag() }
-            ]);
-        }
-    });
-
-    // Selection-dependent tasks only show when a tag is selected.
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        taskButton('Remove Tag', 'trash', removeTag, { danger: true, task: 'doSave', group: 'settings_Tags' }));
-
-    function updateTaskVisibility() {
-        ctxTasks.classList.toggle('hidden', !currentTag);
-    }
-
-    const filterInput = h('input', {
-        type: 'text', placeholder: 'Filter channels', class: 'max-w-[280px]',
-        onInput: () => renderChannelList()
-    });
-    const channelListHost = h('div', { class: 'max-h-[260px] overflow-auto flex flex-col gap-1.5' });
-
-    function visibleChannels() {
-        const filter = filterInput.value.trim().toLowerCase();
-        return filter ? allChannels.filter(c => c.name.toLowerCase().includes(filter)) : allChannels;
-    }
-
-    function renderChannelList() {
-        clear(channelListHost);
-        if (!currentTag) {
-            channelListHost.appendChild(h('div.text-text-faint', 'Select a tag above to edit its channel assignments'));
-            return;
-        }
-        const ids = new Set(tagChannelIds(currentTag));
-        const visible = visibleChannels();
-        if (!visible.length) {
-            channelListHost.appendChild(h('div.text-text-faint', 'No channels match the filter'));
-            return;
-        }
-        for (const ch of visible) {
-            channelListHost.appendChild(checkbox(ch.name, ids.has(ch.id), {
-                onChange: (e) => {
-                    const cur = new Set(tagChannelIds(currentTag));
-                    if (e.target.checked) cur.add(ch.id); else cur.delete(ch.id);
-                    setTagChannelIds(currentTag, [...cur]);
-                    table.setRows(tags);
-                }
-            }).el);
-        }
-    }
-
-    function bulkSelect(checked) {
-        if (!currentTag) { toast('Select a tag first', 'warn'); return; }
-        const cur = new Set(tagChannelIds(currentTag));
-        for (const ch of visibleChannels()) {
-            if (checked) cur.add(ch.id); else cur.delete(ch.id);
-        }
-        setTagChannelIds(currentTag, [...cur]);
-        table.setRows(tags);
-        renderChannelList();
-    }
+    const currentTag = (tags || []).find(t => t.id === selectedId) || null;
 
     async function load() {
+        setLoadError(null);
         try {
             const [tagList, idsAndNames] = await Promise.all([
                 api.server.channelTags(),
                 api.channels.idsAndNames()
             ]);
-            tags = tagList;
-            allChannels = channelIdNamePairs(idsAndNames);
+            setTags(tagList);
+            setAllChannels(channelIdNamePairs(idsAndNames));
+            setSelectedId(null);
+            tableRef.current?.clearSelection();
         } catch (e) {
             toast(`Failed to load tags: ${e.message}`, 'error');
-            loadFailed(host, e);
-            return;
+            setLoadError(String(e.message || e));
         }
-        clear(host);
-        currentTag = null;
-        table.clearSelection();
-        table.setRows(tags);
-        updateTaskVisibility();
-        host.appendChild(h('div.panel', h('div.panel-body.flush', table.el)));
-        host.appendChild(h('div.panel',
-            h('div.panel-header', 'Channels'),
-            h('div.panel-body',
-                h('div.hint.mb-[14px]', 'Channel selections will be applied to the currently selected tag.'),
-                h('div.flex.items-center.gap-2.mb-[14px]', filterInput,
-                    h('button.btn', { onClick: () => bulkSelect(true) }, 'Select All'),
-                    h('button.btn', { onClick: () => bulkSelect(false) }, 'Deselect All')),
-                channelListHost)));
-        renderChannelList();
+    }
+
+    function visibleChannels() {
+        const filter = chFilter.trim().toLowerCase();
+        return filter ? allChannels.filter(c => c.name.toLowerCase().includes(filter)) : allChannels;
+    }
+
+    function toggleChannel(tag, id, on) {
+        const cur = new Set(tagChannelIds(tag));
+        if (on) cur.add(id); else cur.delete(id);
+        setTagChannelIds(tag, [...cur]);
+        touch();
+    }
+
+    function bulkSelect(checked) {
+        const tag = tagsNowRef.current?.find(t => t.id === selectedId) || null;
+        if (!tag) { toast('Select a tag first', 'warn'); return; }
+        const cur = new Set(tagChannelIds(tag));
+        for (const ch of visibleChannels()) {
+            if (checked) cur.add(ch.id); else cur.delete(ch.id);
+        }
+        setTagChannelIds(tag, [...cur]);
+        touch();
+        ctx.markDirty();
     }
 
     async function addTag() {
         const name = await promptDialog('New Tag', 'Tag name');
         if (name === null || name.trim() === '') return;
-        tags.push({
+        setTags(prev => [...(prev || []), {
             id: crypto.randomUUID(),
             name: fixTagName(name),
             channelIds: '',
             backgroundColor: randomPastel()
-        });
-        table.setRows(tags);
+        }]);
+        ctx.markDirty();
     }
 
     function editTag(tag) {
@@ -846,49 +947,135 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
                         const alpha = tag.backgroundColor && tag.backgroundColor.alpha !== undefined
                             ? tag.backgroundColor.alpha : 255;
                         tag.backgroundColor = hexToColor(colorInput.value, alpha);
-                        table.setRows(tags);
+                        touch();
+                        ctx.markDirty();
                     }
                 }
             ]
         });
     }
 
-    async function removeTag() {
-        const sel = table.selectedRows();
-        if (!sel.length) { toast('Select a tag first', 'warn'); return; }
-        const tag = sel[0];
+    async function removeTag(tagArg) {
+        const tag = tagArg || tagsNowRef.current?.find(t => t.id === selectedId) || null;
+        if (!tag) { toast('Select a tag first', 'warn'); return; }
         if (await confirmDialog('Remove Tag', `Remove tag "${tag.name}"? Save to apply.`, { danger: true, okLabel: 'Remove' })) {
-            tags = tags.filter(t => t !== tag);
-            if (currentTag === tag) currentTag = null;
-            table.setRows(tags);
-            renderChannelList();
-            updateTaskVisibility();
+            setTags(prev => prev.filter(t => t !== tag));
+            setSelectedId(prev => (prev === tag.id ? null : prev));
+            ctx.markDirty();
         }
     }
 
     async function save() {
         try {
-            await api.server.setChannelTags(tags);
-            markClean();
+            await api.server.setChannelTags(tagsNowRef.current || []);
+            ctx.markClean();
             toast('Tags saved');
-            load();
+            loadRef.current();
             return true;
         } catch (e) {
             toast(`Save failed: ${e.message}`, 'error');
             return false;
         }
     }
-    setSave(save);
 
-    setTasks('Tag Tasks', [
-        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Tags' }),
-        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Tags' }),
-        taskButton('Add Tag', 'plus', addTag, { task: 'doSave', group: 'settings_Tags' }),
-        ctxTasks
-    ]);
+    const loadRef = useRef(load);
+    loadRef.current = load;
+    const saveRef = useRef(save);
+    saveRef.current = save;
+    const addRef = useRef(addTag);
+    addRef.current = addTag;
+    const editRef = useRef(editTag);
+    editRef.current = editTag;
+    const removeRef = useRef(removeTag);
+    removeRef.current = removeTag;
 
-    load();
-    return host;
+    // Table config is mount-captured by DataTableHost — every callback routes
+    // through the refs above so it always runs the latest closure.
+    const columns = useRef([
+        { key: 'color', label: '', width: '36px', sortable: false, render: (t) => swatch(t.backgroundColor) },
+        { key: 'name', label: 'Name', render: (t) => t.name || '' },
+        { key: 'channels', label: 'Channel Count', className: 'num', width: '130px', sortValue: (t) => channelCount(t), render: (t) => String(channelCount(t)) }
+    ]).current;
+    const options = useRef({
+        selectable: 'single',
+        rowKey: (t) => t.id,
+        emptyText: 'No tags defined',
+        columnsMenu: true,
+        columnsMenuKey: 'webadmin-cols-tags',
+        onSelect: (rows) => setSelectedId(rows[0] ? rows[0].id : null),
+        onActivate: (t) => editRef.current(t),
+        onContextMenu: (t, e) => {
+            setSelectedId(t.id);
+            if (tableRef.current) { tableRef.current.selected = new Set([t.id]); tableRef.current.render(); }
+            // Tag mutations ride settings_Tags/doSave (no Swing constants —
+            // same convention as the Config Map Add Row, RBAC.md §3).
+            contextMenu(e.clientX, e.clientY, [
+                { label: 'New Tag', icon: 'plus', task: 'doSave', group: 'settings_Tags', onClick: () => addRef.current() },
+                { label: 'Edit Tag', icon: 'edit', task: 'doSave', group: 'settings_Tags', onClick: () => editRef.current(t) },
+                '-',
+                { label: 'Remove Tag', icon: 'trash', danger: true, task: 'doSave', group: 'settings_Tags', onClick: () => removeRef.current(t) }
+            ]);
+        }
+    }).current;
+
+    useEffect(() => {
+        ctx.setSave(() => saveRef.current());
+        loadRef.current();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Selection-dependent tasks only show when a tag is selected.
+    useEffect(() => {
+        ctx.setTasks('Tag Tasks', [
+            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Tags' }),
+            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Tags' }),
+            taskButton('Add Tag', 'plus', () => addRef.current(), { task: 'doSave', group: 'settings_Tags' }),
+            selectedId ? taskButton('Remove Tag', 'trash', () => removeRef.current(), { danger: true, task: 'doSave', group: 'settings_Tags' }) : null
+        ]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedId]);
+
+    if (loadError) return <TabLoadFailed error={loadError} />;
+    if (!tags) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+
+    const ids = currentTag ? new Set(tagChannelIds(currentTag)) : null;
+    const visible = visibleChannels();
+
+    return (
+        <>
+            <div className="panel"><div className="panel-body flush">
+                <DataTableHost columns={columns} options={options} rows={tags}
+                    onReady={(t) => { tableRef.current = t; }} />
+            </div></div>
+            <div className="panel">
+                <div className="panel-header">Channels</div>
+                <div className="panel-body">
+                    <div className="hint mb-[14px]">Channel selections will be applied to the currently selected tag.</div>
+                    <div className="flex items-center gap-2 mb-[14px]">
+                        <input type="text" placeholder="Filter channels" className="max-w-[280px]"
+                            value={chFilter} onChange={(e) => setChFilter(e.target.value)} />
+                        <button type="button" className="btn" onClick={() => bulkSelect(true)}>Select All</button>
+                        <button type="button" className="btn" onClick={() => bulkSelect(false)}>Deselect All</button>
+                    </div>
+                    <div className="max-h-[260px] overflow-auto flex flex-col gap-1.5">
+                        {!currentTag ? (
+                            <div className="text-text-faint">Select a tag above to edit its channel assignments</div>
+                        ) : visible.length === 0 ? (
+                            <div className="text-text-faint">No channels match the filter</div>
+                        ) : (
+                            visible.map((ch) => (
+                                <label key={ch.id} className="check">
+                                    <input type="checkbox" checked={ids.has(ch.id)}
+                                        onChange={(e) => toggleChannel(currentTag, ch.id, e.target.checked)} />
+                                    {ch.name}
+                                </label>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+        </>
+    );
 }
 
 /* =============================================================================
@@ -897,76 +1084,34 @@ function renderTagsTab({ setTasks, markClean, setSave }) {
             {value, comment}}]}
    ============================================================================ */
 
-function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
-    const host = tabHost();
-    host.appendChild(loading());
-    let rows = [];
-    let filterText = '';   // content filter across key / value / comment
+let cfgRowSeq = 0;
+const newCfgRow = (key = '', value = '', comment = '', propKey = CONFIGURATION_PROPERTY_CLASS, prop = null) =>
+    ({ _id: ++cfgRowSeq, key, value, comment, propKey, prop });
 
-    const tableHost = h('div.dt-wrap');
-    const showValues = checkbox('Show values', false, { onChange: () => renderRows() });
-    const searchInput = h('input', {
-        type: 'search', placeholder: 'Filter entries…', autocomplete: 'off',
-        class: 'flex-1 min-w-0 bg-transparent border-0 outline-none text-text',
-        onInput: (e) => { filterText = e.target.value.trim().toLowerCase(); renderRows(); }
-    });
-    const searchBox = h('div', {
-        class: 'flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius)] border border-line-strong bg-bg2 text-text-dim min-w-[260px]'
-    }, icon('search', 15), searchInput);
-
-    function renderRows() {
-        clear(tableHost);
-        const valueType = showValues.input.checked ? 'text' : 'password';
-        const tbody = h('tbody');
-        const blankRow = () => ({ key: '', value: '', comment: '', propKey: CONFIGURATION_PROPERTY_CLASS, prop: null });
-        // Content filter: match key / value / comment (case-insensitive). Blank rows
-        // (e.g. a just-added row) always show so adding while filtering isn't hidden.
-        const q = filterText;
-        const matches = (row) => {
-            if (!q) return true;
-            if (!row.key && !row.value && !row.comment) return true;
-            return row.key.toLowerCase().includes(q)
-                || row.value.toLowerCase().includes(q)
-                || row.comment.toLowerCase().includes(q);
-        };
-        let shown = 0;
-        rows.forEach((row, i) => {
-            if (!matches(row)) return;   // hidden; original index i kept for insert/delete
-            shown++;
-            tbody.appendChild(h('tr', {
-                onContextmenu: (e) => {
-                    e.preventDefault();
-                    // Row edits ride doSave like the Add Row button (RBAC.md §3).
-                    contextMenu(e.clientX, e.clientY, [
-                        { label: 'Insert Row Above', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => { rows.splice(i, 0, blankRow()); renderRows(); } },
-                        { label: 'Insert Row Below', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => { rows.splice(i + 1, 0, blankRow()); renderRows(); } },
-                        '-',
-                        { label: 'Delete Row', icon: 'trash', task: 'doSave', group: 'settings_Configuration Map', onClick: () => { rows.splice(i, 1); renderRows(); } }
-                    ]);
-                }
-            },
-                h('td', h('input', { type: 'text', value: row.key, onInput: (e) => { row.key = e.target.value; } })),
-                h('td', h('input', { type: valueType, value: row.value, onInput: (e) => { row.value = e.target.value; } })),
-                h('td', h('input', { type: 'text', value: row.comment, onInput: (e) => { row.comment = e.target.value; } })),
-                h('td', h('button.icon-btn', {
-                    title: 'Remove row',
-                    onClick: () => { rows.splice(i, 1); renderRows(); }
-                }, icon('trash')))));
-        });
-        if (!rows.length) {
-            tbody.appendChild(h('tr', h('td', { colspan: 4 }, h('span.text-text-faint', 'No configuration map entries'))));
-        } else if (!shown) {
-            tbody.appendChild(h('tr', h('td', { colspan: 4 }, h('span.text-text-faint', `No entries match “${filterText}”`))));
-        }
-        tableHost.appendChild(h('table.dt',
-            h('thead', h('tr', h('th', 'Key'), h('th', 'Value'), h('th', 'Comment'), h('th', { class: 'w-10' }, ''))),
-            tbody));
-    }
+function ConfigurationMapTab({ ctx }) {
+    /* Rows are plain state; inputs are controlled with STABLE per-row keys so
+       typing keeps focus across re-renders and insert/delete never re-binds a
+       neighboring row's value. Insert/delete positions use the ORIGINAL index
+       (the filter only hides rows), exactly like the legacy grid. */
+    const [rows, setRows] = useState(null);          // null = loading
+    const rowsNowRef = useRef(rows);
+    rowsNowRef.current = rows;
+    const [filterText, setFilterText] = useState('');
+    const [showValues, setShowValues] = useState(false);
+    const [loadError, setLoadError] = useState(null);
+    // Bumped on structural changes only (load/insert/delete/add/import). The
+    // content filter re-applies on FILTER or STRUCTURE changes — never on a
+    // value keystroke, so the row being edited can't vanish under the cursor
+    // (and a just-added blank row survives its first characters), matching the
+    // legacy grid's re-filter timing.
+    const [structureVersion, setStructureVersion] = useState(0);
+    const bumpStructure = () => setStructureVersion(v => v + 1);
 
     async function load() {
+        setLoadError(null);
         try {
             const raw = await api.server.configurationMap();
-            rows = [];
+            const next = [];
             for (const entry of api.asList(raw && raw.entry)) {
                 if (!entry || typeof entry !== 'object') continue;
                 const key = Array.isArray(entry.string) ? entry.string[0] : entry.string;
@@ -977,30 +1122,18 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
                         if (k !== 'string' && v && typeof v === 'object') { propKey = k; prop = v; break; }
                     }
                 }
-                rows.push({
-                    key: String(key ?? ''),
-                    value: String(prop?.value ?? ''),
-                    comment: String(prop?.comment ?? ''),
+                next.push(newCfgRow(
+                    String(key ?? ''),
+                    String(prop?.value ?? ''),
+                    String(prop?.comment ?? ''),
                     propKey,
-                    prop: (prop && typeof prop === 'object') ? prop : null
-                });
+                    (prop && typeof prop === 'object') ? prop : null));
             }
-            clear(host);
-            host.appendChild(h('div.panel',
-                // Controls live in the panel header (this app's convention — panels carry
-                // their tools in .panel-tools), so the filter attaches to the table it acts on.
-                h('div.panel-header', 'Configuration Map',
-                    h('div.panel-tools', searchBox, showValues.el,
-                        // Add Row rides the tab's doSave permission — adding a row is
-                        // meaningless without save rights, so no separate identifier.
-                        platform.checkTask('settings_Configuration Map', 'doSave') ? h('button.btn', {
-                            onClick: () => { rows.push({ key: '', value: '', comment: '', propKey: CONFIGURATION_PROPERTY_CLASS, prop: null }); renderRows(); }
-                        }, icon('plus'), 'Add Row') : null)),
-                h('div.panel-body.flush', tableHost)));
-            renderRows();
+            setRows(next);
+            bumpStructure();
         } catch (e) {
             toast(`Failed to load configuration map: ${e.message}`, 'error');
-            loadFailed(host, e);
+            setLoadError(String(e.message || e));
         }
     }
 
@@ -1008,12 +1141,12 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
         try {
             /* Round-trip each entry's property-class key and any extra fields
                the engine put on the ConfigurationProperty. */
-            const entry = rows.filter(r => r.key.trim() !== '').map(r => ({
+            const entry = (rowsNowRef.current || []).filter(r => r.key.trim() !== '').map(r => ({
                 string: r.key.trim(),
                 [r.propKey || CONFIGURATION_PROPERTY_CLASS]: { ...(r.prop || {}), value: r.value, comment: r.comment }
             }));
             await api.server.setConfigurationMap({ entry });
-            markClean();
+            ctx.markClean();
             toast('Configuration map saved');
             return true;
         } catch (e) {
@@ -1021,9 +1154,9 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
             return false;
         }
     }
-    setSave(save);
 
     async function importMap() {
+        if (!rowsNowRef.current) { toast('The configuration map has not loaded yet', 'warn'); return; }
         const file = await pickFile('.properties');
         if (!file) return;
         const imported = [];
@@ -1038,29 +1171,35 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
             pendingComment = [];
         }
         if (!imported.length) { toast('No properties found in file', 'warn'); return; }
-        const existing = new Set(rows.map(r => r.key));
+        const current = rowsNowRef.current || [];
+        const existing = new Set(current.map(r => r.key));
         const overlap = imported.filter(i => existing.has(i.key)).length;
         const ok = await confirmDialog('Import Configuration Map',
             `Import ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} from "${file.name}"?` +
             (overlap ? ` ${overlap} existing key(s) will be overwritten.` : ''),
             { okLabel: 'Import' });
         if (!ok) return;
-        for (const imp of imported) {
-            const row = rows.find(r => r.key === imp.key);
-            if (row) {
-                row.value = imp.value;
-                if (imp.comment) row.comment = imp.comment;
-            } else {
-                rows.push({ key: imp.key, value: imp.value, comment: imp.comment, propKey: CONFIGURATION_PROPERTY_CLASS, prop: null });
+        setRows(prev => {
+            const next = prev.slice();
+            for (const imp of imported) {
+                const row = next.find(r => r.key === imp.key);
+                if (row) {
+                    row.value = imp.value;
+                    if (imp.comment) row.comment = imp.comment;
+                } else {
+                    next.push(newCfgRow(imp.key, imp.value, imp.comment));
+                }
             }
-        }
-        renderRows();
+            return next;
+        });
+        bumpStructure();
+        ctx.markDirty();
         toast(`Imported ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} — Save to apply`);
     }
 
     function exportMap() {
         const lines = [];
-        for (const r of rows) {
+        for (const r of rowsNowRef.current || []) {
             if (r.key.trim() === '') continue;
             if (r.comment && String(r.comment).trim() !== '') {
                 for (const c of String(r.comment).split(/\r?\n/)) lines.push('# ' + c);
@@ -1070,15 +1209,118 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
         saveFile('configuration.properties', 'text/plain', lines.join('\n') + '\n');
     }
 
-    setTasks('Configuration Map Tasks', [
-        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Configuration Map' }),
-        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Configuration Map' }),
-        taskButton('Import Map', 'import', importMap, { task: 'doImportMap', group: 'settings_Configuration Map' }),
-        taskButton('Export Map', 'export', exportMap, { task: 'doExportMap', group: 'settings_Configuration Map' })
-    ]);
+    const loadRef = useRef(load);
+    loadRef.current = load;
+    const saveRef = useRef(save);
+    saveRef.current = save;
+    const importRef = useRef(importMap);
+    importRef.current = importMap;
+    const exportRef = useRef(exportMap);
+    exportRef.current = exportMap;
 
-    load();
-    return host;
+    useEffect(() => {
+        ctx.setSave(() => saveRef.current());
+        ctx.setTasks('Configuration Map Tasks', [
+            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Configuration Map' }),
+            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Configuration Map' }),
+            taskButton('Import Map', 'import', () => importRef.current(), { task: 'doImportMap', group: 'settings_Configuration Map' }),
+            taskButton('Export Map', 'export', () => exportRef.current(), { task: 'doExportMap', group: 'settings_Configuration Map' })
+        ]);
+        loadRef.current();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    /* Visible-row set, frozen between filter/structure changes (see above). */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const visibleIds = useMemo(() => {
+        const q = filterText.trim().toLowerCase();
+        const matches = (row) => {
+            if (!q) return true;
+            // Blank rows (e.g. a just-added row) always show so adding while
+            // filtering isn't hidden.
+            if (!row.key && !row.value && !row.comment) return true;
+            return row.key.toLowerCase().includes(q)
+                || row.value.toLowerCase().includes(q)
+                || row.comment.toLowerCase().includes(q);
+        };
+        return new Set((rowsNowRef.current || []).filter(matches).map(r => r._id));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filterText, structureVersion]);
+
+    if (loadError) return <TabLoadFailed error={loadError} />;
+    if (!rows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+
+    const shown = rows.filter(r => visibleIds.has(r._id)).length;
+    const patchRow = (id, patch) => setRows(prev => prev.map(r => (r._id === id ? { ...r, ...patch } : r)));
+    const insertAt = (i) => { setRows(prev => { const next = prev.slice(); next.splice(i, 0, newCfgRow()); return next; }); bumpStructure(); ctx.markDirty(); };
+    const deleteAt = (i) => { setRows(prev => { const next = prev.slice(); next.splice(i, 1); return next; }); bumpStructure(); ctx.markDirty(); };
+    const addRow = () => { setRows(prev => [...prev, newCfgRow()]); bumpStructure(); ctx.markDirty(); };
+
+    const valueType = showValues ? 'text' : 'password';
+
+    return (
+        <div className="panel">
+            {/* Controls live in the panel header (this app's convention — panels carry
+                their tools in .panel-tools), so the filter attaches to the table it acts on. */}
+            <div className="panel-header">Configuration Map
+                <div className="panel-tools">
+                    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius)] border border-line-strong bg-bg2 text-text-dim min-w-[260px]">
+                        <span className="inline-flex" ref={(el) => { if (el && !el.firstChild) el.appendChild(icon('search', 15)); }} />
+                        <input type="search" placeholder="Filter entries…" autoComplete="off"
+                            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-text"
+                            value={filterText} onChange={(e) => setFilterText(e.target.value)} />
+                    </div>
+                    <label className="check">
+                        <input type="checkbox" checked={showValues} onChange={(e) => setShowValues(e.target.checked)} />
+                        Show values
+                    </label>
+                    {/* Add Row rides the tab's doSave permission — adding a row is
+                        meaningless without save rights, so no separate identifier. */}
+                    {platform.checkTask('settings_Configuration Map', 'doSave') && (
+                        <button type="button" className="btn" onClick={addRow}>
+                            <span className="inline-flex" ref={(el) => { if (el && !el.firstChild) el.appendChild(icon('plus')); }} />Add Row
+                        </button>
+                    )}
+                </div>
+            </div>
+            <div className="panel-body flush">
+                <div className="dt-wrap">
+                    <table className="dt">
+                        <thead><tr><th>Key</th><th>Value</th><th>Comment</th><th className="w-10"></th></tr></thead>
+                        <tbody>
+                            {rows.map((row, i) => visibleIds.has(row._id) && (
+                                <tr key={row._id}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault();
+                                        // Row edits ride doSave like the Add Row button (RBAC.md §3).
+                                        contextMenu(e.clientX, e.clientY, [
+                                            { label: 'Insert Row Above', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i) },
+                                            { label: 'Insert Row Below', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i + 1) },
+                                            '-',
+                                            { label: 'Delete Row', icon: 'trash', task: 'doSave', group: 'settings_Configuration Map', onClick: () => deleteAt(i) }
+                                        ]);
+                                    }}>
+                                    <td><input type="text" value={row.key} onChange={(e) => patchRow(row._id, { key: e.target.value })} /></td>
+                                    <td><input type={valueType} value={row.value} onChange={(e) => patchRow(row._id, { value: e.target.value })} /></td>
+                                    <td><input type="text" value={row.comment} onChange={(e) => patchRow(row._id, { comment: e.target.value })} /></td>
+                                    <td>
+                                        <button type="button" className="icon-btn" title="Remove row" onClick={() => deleteAt(i)}>
+                                            <span className="inline-flex" ref={(el) => { if (el && !el.firstChild) el.appendChild(icon('trash')); }} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {rows.length === 0 ? (
+                                <tr><td colSpan={4}><span className="text-text-faint">No configuration map entries</span></td></tr>
+                            ) : shown === 0 ? (
+                                <tr><td colSpan={4}><span className="text-text-faint">{`No entries match “${filterText.trim().toLowerCase()}”`}</span></td></tr>
+                            ) : null}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 /* =============================================================================
@@ -1087,56 +1329,18 @@ function renderConfigurationMapTab({ setTasks, markClean, setSave }) {
                    confirmationMessage, affectedChannels, startDateTime }
    ============================================================================ */
 
-function renderDatabaseTasksTab({ setTasks }) {
-    const host = tabHost();
-    host.appendChild(loading());
+function DatabaseTasksTab({ ctx }) {
+    const [taskRows, setTaskRows] = useState(null);   // null = loading
+    const [selectedId, setSelectedId] = useState(null);
+    const [loadError, setLoadError] = useState(null);
+    const tableRef = useRef(null);
 
-    // Status-driven menu gating (Swing parity): Run only when no task is running;
+    // Status-driven gating (Swing parity): Run only when no task is running;
     // Cancel only for the running task.
-    let allRows = [];
     const isRunning = (t) => String((t && t.status) || '').toUpperCase() === 'RUNNING';
-    const anyRunning = () => allRows.some(isRunning);
-
-    const table = new DataTable([
-        { key: 'name', label: 'Name', render: (t) => t.name || '' },
-        { key: 'description', label: 'Description', render: (t) => t.description || '' },
-        {
-            key: 'status', label: 'Status', width: '120px',
-            render: (t) => {
-                const running = String(t.status || '').toUpperCase() === 'RUNNING';
-                return h('span.status-cell', h(`span.pip${running ? '.busy' : ''}`), running ? 'Running' : 'Idle');
-            }
-        }
-    ], {
-        selectable: 'single',
-        rowKey: (t) => t.id,
-        emptyText: 'No database tasks — the engine has no cleanup work to do',
-        columnsMenu: true,
-        columnsMenuKey: 'webadmin-cols-dbtasks',
-        onSelect: () => updateTaskVisibility(),
-        onContextMenu: (row, e) => {
-            table.selected = new Set([row.id]);
-            updateTaskVisibility();
-            contextMenu(e.clientX, e.clientY, [
-                { label: 'Run Task', icon: 'play', hidden: anyRunning(), task: 'doRunDatabaseTask', group: 'settings_Database Tasks', onClick: () => runTask() },
-                { label: 'Cancel Task', icon: 'stop', danger: true, hidden: !isRunning(row), task: 'doCancelDatabaseTask', group: 'settings_Database Tasks', onClick: () => cancelTask() }
-            ]);
-        }
-    });
-
-    // Selection-dependent tasks only show when a task row is selected.
-    const runBtn = taskButton('Run Task', 'play', runTask, { task: 'doRunDatabaseTask', group: 'settings_Database Tasks' });
-    const cancelBtn = taskButton('Cancel Task', 'stop', cancelTask, { danger: true, task: 'doCancelDatabaseTask', group: 'settings_Database Tasks' });
-    const ctxTasks = h('div.ctx-tasks.hidden', runBtn, cancelBtn);
-
-    function updateTaskVisibility() {
-        const sel = table.selectedRows();
-        ctxTasks.classList.toggle('hidden', sel.length === 0);
-        // Run when nothing is running; Cancel only for the running selection.
-        // (Buttons may be null if RBAC hid the task.)
-        if (runBtn) runBtn.classList.toggle('hidden', sel.length === 0 || anyRunning());
-        if (cancelBtn) cancelBtn.classList.toggle('hidden', sel.length === 0 || !isRunning(sel[0]));
-    }
+    const anyRunning = () => (taskRowsNowRef.current || []).some(isRunning);
+    const taskRowsNowRef = useRef(taskRows);
+    taskRowsNowRef.current = taskRows;
 
     function normalize(raw) {
         const tasks = [];
@@ -1156,32 +1360,18 @@ function renderDatabaseTasksTab({ setTasks }) {
         return api.asList(raw, 'databaseTask').filter(t => t && typeof t === 'object');
     }
 
-    let firstLoad = true;
     async function load() {
         try {
-            allRows = normalize(await api.databaseTasks.list());
-            table.setRows(allRows);
-            updateTaskVisibility();
-            if (firstLoad) {
-                firstLoad = false;
-                clear(host);
-                host.appendChild(h('div.panel', h('div.panel-body.flush', table.el)));
-            }
+            setTaskRows(normalize(await api.databaseTasks.list()));
+            setLoadError(null);
         } catch (e) {
             toast(`Failed to load database tasks: ${e.message}`, 'error');
-            if (firstLoad) loadFailed(host, e);
+            if (taskRowsNowRef.current === null) setLoadError(String(e.message || e));
         }
     }
 
-    function selectedTask() {
-        const sel = table.selectedRows();
-        if (!sel.length) { toast('Select a task first', 'warn'); return null; }
-        return sel[0];
-    }
-
-    async function runTask() {
-        const task = selectedTask();
-        if (!task) return;
+    async function runTask(task) {
+        if (!task) { toast('Select a task first', 'warn'); return; }
         const message = task.confirmationMessage || `Run "${task.name}"? This task may take a long time to complete.`;
         if (await confirmDialog('Run Database Task', message, { okLabel: 'Run' })) {
             try {
@@ -1190,13 +1380,12 @@ function renderDatabaseTasksTab({ setTasks }) {
             } catch (e) {
                 toast(`Run failed: ${e.message}`, 'error');
             }
-            load();
+            loadRef.current();
         }
     }
 
-    async function cancelTask() {
-        const task = selectedTask();
-        if (!task) return;
+    async function cancelTask(task) {
+        if (!task) { toast('Select a task first', 'warn'); return; }
         if (!isRunning(task)) { toast(`Task "${task.name}" is not currently running.`, 'warn'); return; }
         try {
             await api.databaseTasks.cancel(task.id);
@@ -1204,16 +1393,70 @@ function renderDatabaseTasksTab({ setTasks }) {
         } catch (e) {
             toast(`Cancel failed: ${e.message}`, 'error');
         }
-        load();
+        loadRef.current();
     }
 
-    setTasks('Database Task Tasks', [
-        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Database Tasks' }),
-        ctxTasks
-    ]);
+    const loadRef = useRef(load);
+    loadRef.current = load;
+    const runRef = useRef(runTask);
+    runRef.current = runTask;
+    const cancelRef = useRef(cancelTask);
+    cancelRef.current = cancelTask;
 
-    load();
-    return host;
+    // Table config is mount-captured by DataTableHost — callbacks route through refs.
+    const columns = useRef([
+        { key: 'name', label: 'Name', render: (t) => t.name || '' },
+        { key: 'description', label: 'Description', render: (t) => t.description || '' },
+        {
+            key: 'status', label: 'Status', width: '120px',
+            render: (t) => {
+                const running = String(t.status || '').toUpperCase() === 'RUNNING';
+                return h('span.status-cell', h(`span.pip${running ? '.busy' : ''}`), running ? 'Running' : 'Idle');
+            }
+        }
+    ]).current;
+    const options = useRef({
+        selectable: 'single',
+        rowKey: (t) => t.id,
+        emptyText: 'No database tasks — the engine has no cleanup work to do',
+        columnsMenu: true,
+        columnsMenuKey: 'webadmin-cols-dbtasks',
+        onSelect: (rows) => setSelectedId(rows[0] ? rows[0].id : null),
+        onContextMenu: (row, e) => {
+            setSelectedId(row.id);
+            if (tableRef.current) { tableRef.current.selected = new Set([row.id]); tableRef.current.render(); }
+            contextMenu(e.clientX, e.clientY, [
+                { label: 'Run Task', icon: 'play', hidden: anyRunning(), task: 'doRunDatabaseTask', group: 'settings_Database Tasks', onClick: () => runRef.current(row) },
+                { label: 'Cancel Task', icon: 'stop', danger: true, hidden: !isRunning(row), task: 'doCancelDatabaseTask', group: 'settings_Database Tasks', onClick: () => cancelRef.current(row) }
+            ]);
+        }
+    }).current;
+
+    useEffect(() => {
+        loadRef.current();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Selection/status-gated task pane (no Save — this tab is read/run only).
+    const selected = (taskRows || []).find(t => t.id === selectedId) || null;
+    useEffect(() => {
+        ctx.setTasks('Database Task Tasks', [
+            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Database Tasks' }),
+            selected && !anyRunning() ? taskButton('Run Task', 'play', () => runRef.current(selected), { task: 'doRunDatabaseTask', group: 'settings_Database Tasks' }) : null,
+            selected && isRunning(selected) ? taskButton('Cancel Task', 'stop', () => cancelRef.current(selected), { danger: true, task: 'doCancelDatabaseTask', group: 'settings_Database Tasks' }) : null
+        ]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedId, taskRows]);
+
+    if (loadError) return <TabLoadFailed error={loadError} />;
+    if (!taskRows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+
+    return (
+        <div className="panel"><div className="panel-body flush">
+            <DataTableHost columns={columns} options={options} rows={taskRows}
+                onReady={(t) => { tableRef.current = t; }} />
+        </div></div>
+    );
 }
 
 /* =============================================================================
@@ -1229,15 +1472,132 @@ function renderDatabaseTasksTab({ setTasks }) {
    (verified in DirectoryResourceServletInterface.java).
    ============================================================================ */
 
-function renderResourcesTab({ setTasks, platform, markClean, setSave, markDirty }) {
-    const host = tabHost();
-    host.appendChild(loading());
-    let entries = [];               // [{ className, obj }]
-    let containerIsArray = false;   // round-trip the fetched container shape
+function ResourcesTab({ ctx }) {
+    /* Edit-session model: [{ className, obj }] — resource objects are mutated
+       in place (checkbox columns, the plugin detail editor) and the container
+       identity bumps to repaint; save rebuilds the fetched container shape.
+       The detail editor for each resource type comes from a registered
+       ResourceClientPlugin (e.g. plugins/directoryresource) — rendered as a
+       plain <PluginSlot> child now (no nested mountReact/teardown dance), with
+       the SAME ctx contract: { entry, locked, platform, refreshTable }. */
+    const [entries, setEntries] = useState(null);        // null = loading
+    const entriesNowRef = useRef(entries);
+    entriesNowRef.current = entries;
+    const containerIsArrayRef = useRef(false);           // round-trip the fetched container shape
+    const [selectedId, setSelectedId] = useState(null);
+    const [loadError, setLoadError] = useState(null);
+    const tableRef = useRef(null);
 
     const isDefault = (entry) => entry && entry.obj.id === 'Default Resource';
+    const touch = () => setEntries(prev => (prev ? prev.slice() : prev));
 
-    const table = new DataTable([
+    function normalize(raw) {
+        const next = [];
+        containerIsArrayRef.current = Array.isArray(raw);
+        if (containerIsArrayRef.current) {
+            for (const obj of raw) {
+                if (obj && typeof obj === 'object') next.push({ className: obj['@class'] || DIRECTORY_RESOURCE_CLASS, obj });
+            }
+        } else if (raw && typeof raw === 'object') {
+            for (const [className, value] of Object.entries(raw)) {
+                if (className.startsWith('@')) continue;
+                for (const obj of api.asList(value)) {
+                    if (obj && typeof obj === 'object') next.push({ className, obj });
+                }
+            }
+        }
+        return next;
+    }
+
+    function container() {
+        const list = entriesNowRef.current || [];
+        if (containerIsArrayRef.current) return list.map(e => e.obj);
+        const out = {};
+        for (const e of list) {
+            if (!out[e.className]) out[e.className] = [];
+            out[e.className].push(e.obj);
+        }
+        return out;
+    }
+
+    async function load() {
+        setLoadError(null);
+        try {
+            setEntries(normalize(await api.server.resources()));
+            setSelectedId(null);
+            tableRef.current?.clearSelection();
+        } catch (e) {
+            toast(`Failed to load resources: ${e.message}`, 'error');
+            setLoadError(String(e.message || e));
+        }
+    }
+
+    // Create a new resource of the (only, for now) registered type, then edit it
+    // in the detail panel below — the type plugin supplies the factory + editor.
+    function addResource() {
+        const def = platform.resourceTypes()[0];
+        if (!def || !def.create) { toast('No resource types are registered', 'warn'); return; }
+        const list = entriesNowRef.current || [];
+        const template = list.find(e => e.obj && e.obj['@version']);
+        const obj = def.create({ version: template ? template.obj['@version'] : undefined, containerIsArray: containerIsArrayRef.current });
+        const entry = { className: def.propertiesClass || DIRECTORY_RESOURCE_CLASS, obj };
+        setEntries(prev => [...(prev || []), entry]);
+        // Adding SELECTS the new resource everywhere — table highlight, detail
+        // pane, and the selection-gated tasks (the legacy opened the detail
+        // without selecting the row, leaving the task pane out of sync).
+        setSelectedId(obj.id);
+        if (tableRef.current) { tableRef.current.selected = new Set([obj.id]); tableRef.current.render(); }
+        ctx.markDirty();
+    }
+
+    async function removeResource(entryArg) {
+        const entry = entryArg || (entriesNowRef.current || []).find(e => e.obj.id === selectedId) || null;
+        if (!entry) { toast('Select a resource first', 'warn'); return; }
+        if (isDefault(entry)) { toast('The Default Resource cannot be removed', 'warn'); return; }
+        if (await confirmDialog('Remove Resource', `Remove resource "${entry.obj.name}"? Save to apply.`, { danger: true, okLabel: 'Remove' })) {
+            setEntries(prev => prev.filter(e => e !== entry));
+            setSelectedId(prev => (prev === entry.obj.id ? null : prev));
+            ctx.markDirty();
+        }
+    }
+
+    async function reloadResource(entryArg) {
+        const entry = entryArg || (entriesNowRef.current || []).find(e => e.obj.id === selectedId) || null;
+        if (!entry) { toast('Select a resource first', 'warn'); return; }
+        try {
+            await api.server.reloadResource(entry.obj.id);
+            toast(`Resource "${entry.obj.name}" reloaded`);
+        } catch (e) {
+            toast(`Reload failed: ${e.message}`, 'error');
+        }
+    }
+
+    async function save() {
+        try {
+            await api.server.setResources(container());
+            ctx.markClean();
+            toast('Resources saved');
+            loadRef.current();
+            return true;
+        } catch (e) {
+            toast(`Save failed: ${e.message}`, 'error');
+            return false;
+        }
+    }
+
+    const loadRef = useRef(load);
+    loadRef.current = load;
+    const saveRef = useRef(save);
+    saveRef.current = save;
+    const addRef = useRef(addResource);
+    addRef.current = addResource;
+    const removeRef = useRef(removeResource);
+    removeRef.current = removeResource;
+    const reloadRef = useRef(reloadResource);
+    reloadRef.current = reloadResource;
+
+    // Table config is mount-captured by DataTableHost — callbacks route through refs.
+    const columns = useRef([
         { key: 'name', label: 'Name', sortValue: (e) => e.obj.name, render: (e) => e.obj.name || '' },
         { key: 'type', label: 'Type', width: '120px', sortValue: (e) => e.obj.type, render: (e) => e.obj.type || '' },
         {
@@ -1258,199 +1618,93 @@ function renderResourcesTab({ setTasks, platform, markClean, setSave, markDirty 
                 onChange: (ev) => { e.obj.loadParentFirst = ev.target.checked; }
             })
         }
-    ], {
+    ]).current;
+    const options = useRef({
         selectable: 'single',
         rowKey: (e) => e.obj.id,
         emptyText: 'No resources',
         columnsMenu: true,
         columnsMenuKey: 'webadmin-cols-resources',
-        onSelect: (rows) => { renderDetail(rows[0] || null); updateTaskVisibility(); },
+        onSelect: (rows) => setSelectedId(rows[0] ? rows[0].obj.id : null),
         onContextMenu: (row, e) => {
-            renderDetail(row);
-            updateTaskVisibility();
+            setSelectedId(row.obj.id);
+            if (tableRef.current) { tableRef.current.selected = new Set([row.obj.id]); tableRef.current.render(); }
             contextMenu(e.clientX, e.clientY, [
-                { label: 'Add Resource', icon: 'plus', task: 'doAddResource', group: 'settings_Resources', onClick: () => addResource() },
-                { label: 'Remove Resource', icon: 'trash', danger: true, hidden: isDefault(row), task: 'doRemoveResource', group: 'settings_Resources', onClick: () => removeResource() },
-                { label: 'Reload Resource', icon: 'refresh', task: 'doReloadResource', group: 'settings_Resources', onClick: () => reloadResource() }
+                { label: 'Add Resource', icon: 'plus', task: 'doAddResource', group: 'settings_Resources', onClick: () => addRef.current() },
+                { label: 'Remove Resource', icon: 'trash', danger: true, hidden: isDefault(row), task: 'doRemoveResource', group: 'settings_Resources', onClick: () => removeRef.current(row) },
+                { label: 'Reload Resource', icon: 'refresh', task: 'doReloadResource', group: 'settings_Resources', onClick: () => reloadRef.current(row) }
             ]);
         }
-    });
+    }).current;
 
-    // Selection-dependent tasks only show when a resource is selected.
-    const removeBtn = taskButton('Remove Resource', 'trash', removeResource, { danger: true, task: 'doRemoveResource', group: 'settings_Resources' });
-    const ctxTasks = h('div.ctx-tasks.hidden',
-        removeBtn,
-        taskButton('Reload Resource', 'refresh', reloadResource, { task: 'doReloadResource', group: 'settings_Resources' }));
+    useEffect(() => {
+        ctx.setSave(() => saveRef.current());
+        loadRef.current();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    function updateTaskVisibility() {
-        const sel = table.selectedRows();
-        ctxTasks.classList.toggle('hidden', sel.length === 0);
-        // The Default Resource cannot be removed (Swing hides Remove for it).
-        // (removeBtn may be null if RBAC hid the task.)
-        if (removeBtn) removeBtn.classList.toggle('hidden', sel.length === 0 || isDefault(sel[0]));
-    }
+    // Selection-gated task pane (the Default Resource cannot be removed).
+    const selected = (entries || []).find(e => e.obj.id === selectedId) || null;
+    useEffect(() => {
+        ctx.setTasks('Resource Tasks', [
+            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Resources' }),
+            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Resources' }),
+            taskButton('Add Resource', 'plus', () => addRef.current(), { task: 'doAddResource', group: 'settings_Resources' }),
+            selected && !isDefault(selected) ? taskButton('Remove Resource', 'trash', () => removeRef.current(selected), { danger: true, task: 'doRemoveResource', group: 'settings_Resources' }) : null,
+            selected ? taskButton('Reload Resource', 'refresh', () => reloadRef.current(selected), { task: 'doReloadResource', group: 'settings_Resources' }) : null
+        ]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedId, entries]);
 
-    const detailHost = h('div');
-    let detailRoot = null;   // teardown for the mounted resource-detail React component
+    if (loadError) return <TabLoadFailed error={loadError} />;
+    if (!entries) return <div className="loading-block"><div className="spinner" />Loading…</div>;
 
-    function normalize(raw) {
-        entries = [];
-        containerIsArray = Array.isArray(raw);
-        if (containerIsArray) {
-            for (const obj of raw) {
-                if (obj && typeof obj === 'object') entries.push({ className: obj['@class'] || DIRECTORY_RESOURCE_CLASS, obj });
-            }
-        } else if (raw && typeof raw === 'object') {
-            for (const [className, value] of Object.entries(raw)) {
-                if (className.startsWith('@')) continue;
-                for (const obj of api.asList(value)) {
-                    if (obj && typeof obj === 'object') entries.push({ className, obj });
-                }
-            }
-        }
-    }
+    const types = platform.resourceTypes();
+    const detailDef = selected ? (types.find(t => t.type === selected.obj.type) || types[0]) : null;
 
-    function container() {
-        if (containerIsArray) return entries.map(e => e.obj);
-        const out = {};
-        for (const e of entries) {
-            if (!out[e.className]) out[e.className] = [];
-            out[e.className].push(e.obj);
-        }
-        return out;
-    }
-
-    function selectedEntry() {
-        const sel = table.selectedRows();
-        if (!sel.length) { toast('Select a resource first', 'warn'); return null; }
-        return sel[0];
-    }
-
-    // The detail editor for each resource type comes from a registered
-    // ResourceClientPlugin (e.g. plugins/directoryresource); the Resources panel
-    // itself stays generic.
-    function renderDetail(entry) {
-        if (detailRoot) { detailRoot(); detailRoot = null; }
-        clear(detailHost);
-        if (!entry) {
-            detailHost.appendChild(h('div.text-text-faint', 'Select a resource above to edit its settings'));
-            return;
-        }
-        const types = platform.resourceTypes();
-        const def = types.find(t => t.type === entry.obj.type) || types[0];
-        if (def && def.component) {
-            detailRoot = mountReact(detailHost, <PluginSlot def={def} ctx={{
-                entry, locked: isDefault(entry), platform,
-                refreshTable: () => table.setRows(entries)
-            }} />);
-        } else {
-            detailHost.appendChild(h('div.text-text-faint', `No editor registered for resource type "${entry.obj.type || '?'}"`));
-        }
-    }
-
-    async function load() {
-        try {
-            normalize(await api.server.resources());
-        } catch (e) {
-            toast(`Failed to load resources: ${e.message}`, 'error');
-            loadFailed(host, e);
-            return;
-        }
-        clear(host);
-        table.clearSelection();
-        table.setRows(entries);
-        updateTaskVisibility();
-        host.appendChild(h('div.panel', h('div.panel-body.flush', table.el)));
-        host.appendChild(h('div.panel',
-            h('div.panel-header', (platform.resourceTypes()[0] || {}).detailHeader || 'Resource Settings'),
-            h('div.panel-body', detailHost)));
-        renderDetail(null);
-    }
-
-    // Create a new resource of the (only, for now) registered type, then edit it
-    // in the detail panel below — the type plugin supplies the factory + editor.
-    function addResource() {
-        const def = platform.resourceTypes()[0];
-        if (!def || !def.create) { toast('No resource types are registered', 'warn'); return; }
-        const template = entries.find(e => e.obj && e.obj['@version']);
-        const obj = def.create({ version: template ? template.obj['@version'] : undefined, containerIsArray });
-        const entry = { className: def.propertiesClass || DIRECTORY_RESOURCE_CLASS, obj };
-        entries.push(entry);
-        table.setRows(entries);
-        renderDetail(entry);
-        markDirty();
-    }
-
-    async function removeResource() {
-        const entry = selectedEntry();
-        if (!entry) return;
-        if (isDefault(entry)) { toast('The Default Resource cannot be removed', 'warn'); return; }
-        if (await confirmDialog('Remove Resource', `Remove resource "${entry.obj.name}"? Save to apply.`, { danger: true, okLabel: 'Remove' })) {
-            entries = entries.filter(e => e !== entry);
-            table.setRows(entries);
-            renderDetail(null);
-            updateTaskVisibility();
-            markDirty();
-        }
-    }
-
-    async function reloadResource() {
-        const entry = selectedEntry();
-        if (!entry) return;
-        try {
-            await api.server.reloadResource(entry.obj.id);
-            toast(`Resource "${entry.obj.name}" reloaded`);
-        } catch (e) {
-            toast(`Reload failed: ${e.message}`, 'error');
-        }
-    }
-
-    async function save() {
-        try {
-            await api.server.setResources(container());
-            markClean();
-            toast('Resources saved');
-            load();
-            return true;
-        } catch (e) {
-            toast(`Save failed: ${e.message}`, 'error');
-            return false;
-        }
-    }
-    setSave(save);
-
-    setTasks('Resource Tasks', [
-        taskButton('Refresh', 'refresh', load, { task: 'doRefresh', group: 'settings_Resources' }),
-        taskButton('Save', 'save', save, { primary: true, task: 'doSave', group: 'settings_Resources' }),
-        taskButton('Add Resource', 'plus', addResource, { task: 'doAddResource', group: 'settings_Resources' }),
-        ctxTasks
-    ]);
-
-    load();
-    // Unmount the resource-detail React root on tab switch (SettingsTab teardown
-    // calls host.__teardown); detailRoot is reassigned lazily in renderDetail.
-    host.__teardown = () => { if (detailRoot) { detailRoot(); detailRoot = null; } };
-    return host;
+    return (
+        <>
+            <div className="panel"><div className="panel-body flush">
+                <DataTableHost columns={columns} options={options} rows={entries}
+                    onReady={(t) => { tableRef.current = t; }} />
+            </div></div>
+            <div className="panel">
+                <div className="panel-header">{(types[0] || {}).detailHeader || 'Resource Settings'}</div>
+                <div className="panel-body">
+                    {!selected ? (
+                        <div className="text-text-faint">Select a resource above to edit its settings</div>
+                    ) : detailDef && detailDef.component ? (
+                        <PluginSlot key={selected.obj.id} def={detailDef} ctx={{
+                            entry: selected, locked: isDefault(selected), platform,
+                            refreshTable: () => touch()
+                        }} />
+                    ) : (
+                        <div className="text-text-faint">{`No editor registered for resource type "${selected.obj.type || '?'}"`}</div>
+                    )}
+                </div>
+            </div>
+        </>
+    );
 }
 
 /* =============================================================================
    View shell — React tabs + per-tab task pane via <ViewTasks>
-   Each tab BODY is the legacy imperative builder mounted into a ref'd div; the
-   builder calls setTasks(title, items) to declare its task pane (legacy DOM task
-   buttons, including the .ctx-tasks selection-gated groups). The active tab's
-   taskbar DOM is portaled into the rail through <RailPane> + <ViewTasks>, with
-   the pane title following the active tab — switching tabs swaps the pane (and
-   title) reactively, no route change. Only the active tab is mounted, matching
-   the vanilla tabs() that rebuilds on switch.
+   Each tab BODY is a React component mounted via reactTab() (the same wrapper
+   plugin panels use); it declares its task pane by calling setTasks(title,
+   items) with DOM taskButton items — the one task-pane contract shared with
+   plugin panels. The active tab's taskbar DOM is portaled into the rail
+   through <RailPane> + <ViewTasks>, with the pane title following the active
+   tab — switching tabs swaps the pane (and title) reactively, no route change.
+   Only the active tab is mounted; re-activating a tab reloads it.
    ============================================================================ */
 
 const BUILTIN_TABS = [
-    { label: 'Server', render: (ctx) => renderServerTab(ctx) },
-    { label: 'Administrator', render: (ctx) => renderAdministratorTab(ctx) },
-    { label: 'Tags', render: (ctx) => renderTagsTab(ctx) },
-    { label: 'Configuration Map', render: (ctx) => renderConfigurationMapTab(ctx) },
-    { label: 'Database Tasks', render: (ctx) => renderDatabaseTasksTab(ctx) },
-    { label: 'Resources', render: (ctx) => renderResourcesTab(ctx) }
+    { label: 'Server', render: (ctx) => reactTab(ctx, ServerTab) },
+    { label: 'Administrator', render: (ctx) => reactTab(ctx, AdministratorTab) },
+    { label: 'Tags', render: (ctx) => reactTab(ctx, TagsTab) },
+    { label: 'Configuration Map', render: (ctx) => reactTab(ctx, ConfigurationMapTab) },
+    { label: 'Database Tasks', render: (ctx) => reactTab(ctx, DatabaseTasksTab) },
+    { label: 'Resources', render: (ctx) => reactTab(ctx, ResourcesTab) }
     // Data Pruner is a settings-panel plugin (plugins/datapruner), appended
     // below via platform.settingsPanels().
 ];
