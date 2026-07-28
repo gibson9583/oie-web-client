@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useReducer, useState } from 'react';
-import { h, clear, field, textInput, select, tabs, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, clear, field, textInput, select, tabs, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu, icon } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
@@ -448,8 +448,17 @@ function buildBody(params, kindName, onTasksChange) {
     function renderTable() {
         clear(tableHost);
         if (!elements.length) {
+            // Empty landing state (matches the Alerts view): icon + title + the
+            // two ways in, gated like their task-pane twins (channelEdit/doSaveChannel).
+            const canEdit = platform.checkTask('channelEdit', 'doSaveChannel');
             tableHost.appendChild(h('div.dt-empty',
-                `No ${kind.noun.toLowerCase()}s — use Add New ${kind.noun}`));
+                h('div.empty-icon', icon(isFilter ? 'filter' : 'transform', 30)),
+                h('div', `No ${kind.noun}s Configured`),
+                canEdit ? h('div', { class: 'mt-[16px] flex items-center justify-center gap-2' },
+                    h('button.btn.btn-primary', { type: 'button', onClick: () => addElement() },
+                        icon('plus', 14), `Add New ${kind.noun}`),
+                    h('button.btn', { type: 'button', onClick: () => importElements() },
+                        icon('import', 14), `Import ${kind.title}`)) : null));
             return;
         }
         const thead = h('thead', h('tr',

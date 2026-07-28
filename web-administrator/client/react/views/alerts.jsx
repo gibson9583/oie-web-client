@@ -15,6 +15,8 @@ import { getPref, setPrefs } from '../../core/prefs.js';
 import { useAlerts } from '../queries.js';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
+import { Icon } from '../bridges.jsx';
+import { platform } from '@oie/web-shell';
 import { newAlert, AlertEditor } from './alert-editor.jsx';
 
 export function register(platform) {
@@ -229,8 +231,31 @@ function AlertsList() {
             </ViewTasks>
             <div className="view-body">
                 <div className="panel"><div className="panel-body flush">
-                    <DataTableHost columns={COLUMNS} options={options} rows={alerts}
-                        onReady={(t) => { tableRef.current = t; }} />
+                    {alertsQuery.data === undefined ? (
+                        <div className="loading-block"><div className="spinner" />Loading alerts…</div>
+                    ) : alerts.length === 0 ? (
+                        /* Empty landing state: explain what alerts do and offer the two
+                           ways in (RBAC-gated like their task buttons). */
+                        <div className="dt-empty">
+                            <div className="empty-icon"><Icon name="alerts" size={30} /></div>
+                            <div>No Alerts Configured</div>
+                            <div className="mt-[16px] flex items-center justify-center gap-2">
+                                {platform.checkTask('alert', 'doNewAlert') && (
+                                    <button type="button" className="btn btn-primary" onClick={newTask}>
+                                        <Icon name="plus" size={14} />Create Alert
+                                    </button>
+                                )}
+                                {platform.checkTask('alert', 'doImportAlert') && (
+                                    <button type="button" className="btn" onClick={importTask}>
+                                        <Icon name="import" size={14} />Import Alert
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        <DataTableHost columns={COLUMNS} options={options} rows={alerts}
+                            onReady={(t) => { tableRef.current = t; }} />
+                    )}
                 </div></div>
             </div>
         </div>
