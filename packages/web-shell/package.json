@@ -10,5 +10,5 @@
   "files": ["dist", "index.js", "index.d.ts", "README.md"],
   "scripts": { "build": "vite build" },
   "dependencies": { "@oie/web-api": "0.1.0", "@oie/web-ui": "0.1.0" },
-  "devDependencies": { "vite": "^5.4.10" }
+  "devDependencies": { "vite": "^8.1.5" }
 }

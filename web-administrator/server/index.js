@@ -152,7 +152,8 @@ async function start() {
         // each plugin entry, so the browser fetches plugin code in parallel with
         // the app bundle rather than discovering it after the plugins.json fetch.
         const indexHtmlPath = path.join(shellDir, 'index.html');
-        app.get('*', (req, res) => {
+        // express 5 requires a named wildcard; `/*splat` matches every path.
+        app.get('/*splat', (req, res) => {
             let html;
             try { html = fs.readFileSync(indexHtmlPath, 'utf8'); }
             catch { return res.status(500).type('text').send('index.html not found — run "npm run build"'); }

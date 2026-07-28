@@ -53,7 +53,10 @@ const monacoOut = resolve(clientDir, 'vendor', 'monaco');
 // codicon webfont is inlined as a data URL so there are no separate asset files
 // or path rewrites to serve.
 await build({
-    entryPoints: { 'editor.main': 'monaco-editor/esm/vs/editor/editor.main.js' },
+    // monaco-editor >=0.53 ships an `exports` map that rewrites `monaco-editor/*`
+    // to `esm/vs/*`; the old deep `esm/vs/...` specifier now double-resolves, so
+    // reference the exports-map path (the `esm/vs/` prefix is added back for us).
+    entryPoints: { 'editor.main': 'monaco-editor/editor/editor.main.js' },
     outdir: monacoOut,
     bundle: true,
     format: 'esm',
@@ -68,11 +71,11 @@ await build({
 // / AMD baseUrl dance.
 await build({
     entryPoints: {
-        'editor.worker': 'monaco-editor/esm/vs/editor/editor.worker.js',
-        'ts.worker': 'monaco-editor/esm/vs/language/typescript/ts.worker.js',
-        'json.worker': 'monaco-editor/esm/vs/language/json/json.worker.js',
-        'css.worker': 'monaco-editor/esm/vs/language/css/css.worker.js',
-        'html.worker': 'monaco-editor/esm/vs/language/html/html.worker.js'
+        'editor.worker': 'monaco-editor/editor/editor.worker.js',
+        'ts.worker': 'monaco-editor/language/typescript/ts.worker.js',
+        'json.worker': 'monaco-editor/language/json/json.worker.js',
+        'css.worker': 'monaco-editor/language/css/css.worker.js',
+        'html.worker': 'monaco-editor/language/html/html.worker.js'
     },
     outdir: monacoOut,
     bundle: true,

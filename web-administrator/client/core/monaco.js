@@ -232,7 +232,11 @@ function setup(monaco) {
     // completion / signature help / hover docs (the language service provides
     // those regardless of the diagnostic flags).
     try {
-        const jsDefaults = monaco.languages.typescript.javascriptDefaults;
+        // monaco >=0.53 moved the TS language service off `monaco.languages.typescript`
+        // to the top-level `monaco.typescript` export; support both so IntelliSense
+        // (Rhino libs, diagnostics config) keeps working across versions.
+        const ts = (monaco.languages && monaco.languages.typescript) || monaco.typescript;
+        const jsDefaults = ts.javascriptDefaults;
         jsDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true });
         // Scope IntelliSense to the engine's Rhino runtime, not a browser. By
         // default Monaco's JS service loads the DOM lib (window, document, fetch,
@@ -247,7 +251,7 @@ function setup(monaco) {
         // and only override the runtime baseline.
         jsDefaults.setCompilerOptions({
             ...jsDefaults.getCompilerOptions(),
-            target: monaco.languages.typescript.ScriptTarget[RHINO_TARGET],
+            target: ts.ScriptTarget[RHINO_TARGET],
             lib: RHINO_LIB
         });
         jsDefaults.addExtraLib(USER_API_DTS, 'ts:mirth-userapi.d.ts');

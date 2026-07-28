@@ -5,7 +5,11 @@ var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  try {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  } catch (e) {
+    throw mod = 0, e;
+  }
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
@@ -33,9 +37,9 @@ var require_zlib = __commonJS({
 // ../node_modules/dicom-parser/dist/dicomParser.min.js
 var require_dicomParser_min = __commonJS({
   "../node_modules/dicom-parser/dist/dicomParser.min.js"(exports, module) {
-    !function(e, t) {
+    !(function(e, t) {
       "object" == typeof exports && "object" == typeof module ? module.exports = t(require_zlib()) : "function" == typeof define && define.amd ? define("dicom-parser", ["zlib"], t) : "object" == typeof exports ? exports["dicom-parser"] = t(require_zlib()) : e.dicomParser = t(e.zlib);
-    }(exports, function(r) {
+    })(exports, function(r) {
       return a = [function(e, t) {
         e.exports = r;
       }, function(e, t, s) {
@@ -126,7 +130,7 @@ var require_dicomParser_min = __commonJS({
           if (t2) throw "invalid TM '".concat(e2, "'");
         }
         function i2(e2, t2, r3) {
-          return !isNaN(r3) && (0 < t2 && t2 <= 12 && 0 < e2 && e2 <= function(e3, t3) {
+          return !isNaN(r3) && (0 < t2 && t2 <= 12 && 0 < e2 && e2 <= (function(e3, t3) {
             switch (e3) {
               case 2:
                 return t3 % 4 == 0 && t3 % 100 || t3 % 400 == 0 ? 29 : 28;
@@ -138,7 +142,7 @@ var require_dicomParser_min = __commonJS({
               default:
                 return 31;
             }
-          }(t2, r3));
+          })(t2, r3));
         }
         function o(e2, t2) {
           if (e2 && 8 === e2.length) {
@@ -253,11 +257,11 @@ var require_dicomParser_min = __commonJS({
         function P(e2, t2) {
           return void 0 !== e2.parser ? e2.parser : t2;
         }
-        var w = function() {
+        var w = (function() {
           function a3(e3, t3, r4) {
-            !function(e4, t4) {
+            !(function(e4, t4) {
               if (!(e4 instanceof t4)) throw new TypeError("Cannot call a class as a function");
-            }(this, a3), this.byteArrayParser = e3, this.byteArray = t3, this.elements = r4;
+            })(this, a3), this.byteArrayParser = e3, this.byteArray = t3, this.elements = r4;
           }
           var e2, t2, r3;
           return e2 = a3, (t2 = [{ key: "uint16", value: function(e3, t3) {
@@ -316,7 +320,7 @@ var require_dicomParser_min = __commonJS({
               return "x".concat("00000000".concat((256 * r4(e3, t3) * 256 + r4(e3, t3 + 2)).toString(16)).substr(-8));
             }
           } }]) && v(e2.prototype, t2), r3 && v(e2, r3), Object.defineProperty(e2, "prototype", { writable: false }), a3;
-        }();
+        })();
         function x(e2, t2) {
           if (void 0 === e2) throw "dicomParser.readDicomElementImplicit: missing required parameter 'byteStream'";
           for (var r3 = e2.byteArray.length - 8; e2.position <= r3; ) if (65534 === e2.readUint16()) {
@@ -346,13 +350,13 @@ var require_dicomParser_min = __commonJS({
         }
         function D(e2, t2) {
           var r3 = S(e2);
-          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = function(e3, t3) {
+          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = (function(e3, t3) {
             for (var r4 = {}; e3.position < e3.byteArray.length; ) {
               var a3 = A(e3, void 0, t3);
               if ("xfffee00d" === (r4[a3.tag] = a3).tag) return new w(e3.byteArrayParser, e3.byteArray, r4);
             }
             return e3.warnings.push("eof encountered before finding sequence item delimiter in sequence item of undefined length"), new w(e3.byteArrayParser, e3.byteArray, r4);
-          }(e2, t2), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), T(r3.dataSet, e2, e2.position + r3.length, { vrCallback: t2 })), r3;
+          })(e2, t2), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), T(r3.dataSet, e2, e2.position + r3.length, { vrCallback: t2 })), r3;
         }
         function F(e2, t2, r3) {
           if (void 0 === e2) throw "dicomParser.readSequenceItemsImplicit: missing required parameter 'byteStream'";
@@ -374,13 +378,13 @@ var require_dicomParser_min = __commonJS({
         }
         function O(e2, t2) {
           var r3 = S(e2);
-          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = function(e3, t3) {
+          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = (function(e3, t3) {
             for (var r4 = {}; e3.position < e3.byteArray.length; ) {
               var a3 = B(e3, t3);
               if ("xfffee00d" === (r4[a3.tag] = a3).tag) return new w(e3.byteArrayParser, e3.byteArray, r4);
             }
             return t3.push("eof encountered before finding item delimiter tag while reading sequence item of undefined length"), new w(e3.byteArrayParser, e3.byteArray, r4);
-          }(e2, t2), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), q(r3.dataSet, e2, e2.position + r3.length)), r3;
+          })(e2, t2), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), q(r3.dataSet, e2, e2.position + r3.length)), r3;
         }
         function I(e2, t2, r3) {
           if (void 0 === e2) throw "dicomParser.readSequenceItemsExplicit: missing required parameter 'byteStream'";
@@ -471,11 +475,11 @@ var require_dicomParser_min = __commonJS({
             a3.enumerable = a3.enumerable || false, a3.configurable = true, "value" in a3 && (a3.writable = true), Object.defineProperty(e2, a3.key, a3);
           }
         }
-        var J = function() {
+        var J = (function() {
           function a3(e3, t3, r4) {
-            if (!function(e4, t4) {
+            if (!(function(e4, t4) {
               if (!(e4 instanceof t4)) throw new TypeError("Cannot call a class as a function");
-            }(this, a3), void 0 === e3) throw "dicomParser.ByteStream: missing required parameter 'byteArrayParser'";
+            })(this, a3), void 0 === e3) throw "dicomParser.ByteStream: missing required parameter 'byteArrayParser'";
             if (void 0 === t3) throw "dicomParser.ByteStream: missing required parameter 'byteArray'";
             if (t3 instanceof Uint8Array == false && ("undefined" == typeof Buffer || t3 instanceof Buffer == false)) throw "dicomParser.ByteStream: parameter byteArray is not of type Uint8Array or Buffer";
             if (r4 < 0) throw "dicomParser.ByteStream: parameter 'position' cannot be less than 0";
@@ -502,7 +506,7 @@ var require_dicomParser_min = __commonJS({
             var t3 = b(this.byteArray, this.position, e3);
             return this.position += e3, t3;
           } }]) && C(e2.prototype, t2), r3 && C(e2, r3), Object.defineProperty(e2, "prototype", { writable: false }), a3;
-        }(), M = { readUint16: function(e2, t2) {
+        })(), M = { readUint16: function(e2, t2) {
           if (t2 < 0) throw "littleEndianByteArrayParser.readUint16: position cannot be less than 0";
           if (t2 + 2 > e2.length) throw "littleEndianByteArrayParser.readUint16: attempt to read past end of buffer";
           return e2[t2] + 256 * e2[t2 + 1];
@@ -534,13 +538,13 @@ var require_dicomParser_min = __commonJS({
           var i3 = 1 < arguments.length && void 0 !== arguments[1] ? arguments[1] : {};
           if (void 0 === e2) throw "dicomParser.readPart10Header: missing required parameter 'byteArray'";
           var o2 = i3.TransferSyntaxUID, s2 = new J(M, e2);
-          return function() {
-            var e3 = function() {
+          return (function() {
+            var e3 = (function() {
               if (s2.getSize() <= 132 && o2) return false;
               if (s2.seek(128), "DICM" === s2.readFixedString(4)) return true;
               if (!(i3 || {}).TransferSyntaxUID) throw "dicomParser.readPart10Header: DICM prefix not found at location 132 - this is not a valid DICOM P10 file.";
               return s2.seek(0), false;
-            }(), t2 = [], r3 = {};
+            })(), t2 = [], r3 = {};
             if (!e3) return s2.position = 0, { elements: { x00020010: { tag: "x00020010", vr: "UI", Value: o2 } }, warnings: t2 };
             for (; s2.position < s2.byteArray.length; ) {
               var a3 = s2.position, n3 = B(s2, t2);
@@ -551,7 +555,7 @@ var require_dicomParser_min = __commonJS({
               n3.parser = M, r3[n3.tag] = n3;
             }
             return (e3 = new w(s2.byteArrayParser, s2.byteArray, r3)).warnings = s2.warnings, e3.position = s2.position, e3;
-          }();
+          })();
         }
         var z = "1.2.840.10008.1.2.2";
         function V(i3) {
@@ -563,7 +567,7 @@ var require_dicomParser_min = __commonJS({
             return e3 && e3.Value || b(i3, e3.dataOffset, e3.length);
           };
           function t2(t3) {
-            var e3 = a3(t3), r3 = "1.2.840.10008.1.2" !== e3, e3 = function(e4, t4) {
+            var e3 = a3(t3), r3 = "1.2.840.10008.1.2" !== e3, e3 = (function(e4, t4) {
               var r4 = "[object process]" === Object.prototype.toString.call("undefined" != typeof process ? process : 0);
               if ("1.2.840.10008.1.2.1.99" !== e4) return new J(e4 === z ? N : M, i3, t4);
               if (o2 && o2.inflater) {
@@ -576,7 +580,7 @@ var require_dicomParser_min = __commonJS({
               }
               if ("undefined" == typeof pako) throw "dicomParser.parseDicom: no inflater available to handle deflate transfer syntax";
               return a4 = i3.slice(t4), n3 = pako.inflateRaw(a4), (a4 = k(i3, n3.length + t4)).set(i3.slice(0, t4), 0), a4.set(n3, t4), new J(M, a4, 0);
-            }(e3, t3.position), t3 = new w(e3.byteArrayParser, e3.byteArray, {});
+            })(e3, t3.position), t3 = new w(e3.byteArrayParser, e3.byteArray, {});
             t3.warnings = e3.warnings;
             try {
               (r3 ? q : T)(t3, e3, e3.byteArray.length, o2);
@@ -585,10 +589,10 @@ var require_dicomParser_min = __commonJS({
             }
             return t3;
           }
-          return function(e3, t3) {
+          return (function(e3, t3) {
             for (var r3 in e3.elements) e3.elements.hasOwnProperty(r3) && (t3.elements[r3] = e3.elements[r3]);
             return void 0 !== e3.warnings && (t3.warnings = e3.warnings.concat(t3.warnings)), t3;
-          }(e2 = G(i3, o2), t2(e2));
+          })(e2 = G(i3, o2), t2(e2));
         }
         var R = function(e2, t2, r3) {
           for (var a3 = 0, n3 = t2; n3 < t2 + r3; n3++) a3 += e2[n3].length;
