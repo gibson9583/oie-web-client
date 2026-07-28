@@ -1,18 +1,16 @@
 /*
- * Code Templates view (React port of views/code-templates.js). The Swing-parity
- * library/template tree-table is the hand-built `table.dt` grid driven by
- * createColumnManager/decorateColumns/attachColumnMenu — it is hierarchical
- * (libraries with expand twisties + nested templates + per-row context menus),
- * so it is NOT a DataTable; it is kept mounted via a ref and repainted
- * imperatively, reusing the legacy renderTable/nodeMenu logic verbatim.
+ * Code Templates view — fully declarative React. The library/template tree is
+ * the controlled <TreeTable>; the editor pane branches on the selection into
+ * the <LibraryEditor> (name/include-new + description + channel checkbox list)
+ * or the template editor (<TemplateForm> + <CodeEditor> island + the
+ * <ContextPanel> checkbox tree).
  *
- * The editor pane is React: it branches on the selection. The library editor and
- * the template's context/channel checkbox trees are heavy legacy DOM, reused
- * VERBATIM via <ImperativeMount>; the selected template's code uses the React
- * <CodeEditor> island. State the table callbacks (captured at mount) must read —
- * the working library list, current selection, filter text, dirty flag,
- * collapsed set — lives in refs; a useReducer force-update refreshes the React
- * tree (editor pane + gated task buttons).
+ * The libraries/templates are an EDIT-SESSION MODEL: the objects are mutated in
+ * place (their identity is what saveAll PUTs, with the engine's round-trip
+ * fields preserved) and markDirty() bumps the container identity so React
+ * repaints. Two documented refs bridge mount-captured contracts: dirtyRef (the
+ * navGuard/tab-close guards registered once) and entriesNowRef (save/import
+ * mutations act on the latest-known list, never a render-stale snapshot).
  *
  * Saving mirrors the Swing client: each template is PUT individually
  * (/codeTemplates/{id}?override=true), then the libraries are PUT as a full set
@@ -21,8 +19,8 @@
  * refetch the new scope.
  */
 
-import { useEffect, useRef, useReducer, useState } from 'react';
-import { h, clear, toast, confirmDialog, field, textInput, checkbox, select, loading, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
+import { useEffect, useRef, useState } from 'react';
+import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
@@ -137,25 +135,7 @@ function templateDescription(template) {
     return '';
 }
 
-/* Mounts imperative DOM (built by `build()`) into a div, rebuilding on `deps`
-   change. Reused for the legacy library editor + channel/context checkbox-tree
-   builders (heavy DOM kept verbatim). */
-function ImperativeMount({ build, deps = [], style }) {
-    const ref = useRef(null);
-    useEffect(() => {
-        const host = ref.current;
-        if (!host) return;
-        host.replaceChildren();
-        const node = build();
-        if (node) host.appendChild(node);
-        return () => host.replaceChildren();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, deps);
-    return <div ref={ref} className="flex flex-col flex-1 min-h-0" style={style} />;
-}
-
 function CodeTemplatesView() {
-    const [, forceRender] = useReducer((x) => x + 1, 0);
     // Maximize: grow the Code editor over the library list (top) and the
     // Name/Library/Type form, keeping the right-hand Context panel. Esc restores.
     const [editorMax, setEditorMax] = useState(false);
@@ -166,23 +146,39 @@ function CodeTemplatesView() {
         return () => document.removeEventListener('keydown', onKey, true);
     }, [editorMax]);
 
-    // Working state read by callbacks captured at mount — kept in refs.
-    const librariesRef = useRef([]);     // [{ library, templates: [...] }] working copies
-    const selectedRef = useRef(null);    // { kind: 'library'|'template', id }
+    /* Edit-session model: [{ library, templates: [...] }] working copies. The
+       objects are mutated in place; markDirty() bumps the container identity so
+       React repaints. entriesNowRef mirrors the state for save/import mutations
+       (which must act on the latest-known list, not a render-stale snapshot);
+       dirtyRef mirrors the dirty flag for the mount-captured guards. */
+    const [entries, setEntries] = useState([]);
+    const entriesNowRef = useRef(entries);
+    entriesNowRef.current = entries;
+    const [selected, setSelected] = useState(null);   // { kind: 'library'|'template', id }
+    const [dirty, setDirty] = useState(false);
     const dirtyRef = useRef(false);
-    const filterRef = useRef('');
-    const focusNewNameRef = useRef(false);  // focus the Name field after creating a library/template
-    const collapsedRef = useRef(new Set());  // collapsed library keys ('library:<id>')
+    const [filterText, setFilterText] = useState('');
+    const [focusName, setFocusName] = useState(false);   // focus the Name field after creating
+    const [collapsed, setCollapsed] = useState(() => new Set());   // collapsed library keys ('library:<id>')
 
-    function markDirty() { dirtyRef.current = true; forceRender(); }
+    function markDirty() {
+        dirtyRef.current = true;
+        setDirty(true);
+        setEntries(prev => prev.slice());   // model mutated in place — repaint
+    }
+    function markClean() {
+        dirtyRef.current = false;
+        setDirty(false);
+    }
 
-    function findSelected() {
-        const selected = selectedRef.current;
-        if (!selected) return null;
-        for (const entry of librariesRef.current) {
-            if (selected.kind === 'library' && entry.library.id === selected.id) return { entry };
-            if (selected.kind === 'template') {
-                const template = entry.templates.find(t => t.id === selected.id);
+    // Resolve a { kind, id } selection against a library list (defaults to the
+    // current render's). Menus/actions pass their own resolution explicitly.
+    function resolve(sel, list = entries) {
+        if (!sel) return null;
+        for (const entry of list) {
+            if (sel.kind === 'library' && entry.library.id === sel.id) return { entry };
+            if (sel.kind === 'template') {
+                const template = entry.templates.find(t => t.id === sel.id);
                 if (template) return { entry, template };
             }
         }
@@ -191,14 +187,15 @@ function CodeTemplatesView() {
 
     /* ---- data ------------------------------------------------------------------ */
 
+    /* Reads no render state (fetch + setState only), so the mount-captured
+       codeTemplates:changed listener can safely call the first render's closure. */
     async function load() {
         try {
             const list = await api.codeTemplates.libraries(true);
-            librariesRef.current = list.map(library => ({ library, templates: templatesOf(library) }));
-            dirtyRef.current = false;
-            if (selectedRef.current && !findSelected()) selectedRef.current = null;
-            renderTable();
-            forceRender();
+            const next = list.map(library => ({ library, templates: templatesOf(library) }));
+            setEntries(next);
+            markClean();
+            setSelected(prev => (prev && resolve(prev, next) ? prev : null));
         } catch (e) {
             toast(`Load failed: ${e.message}`, 'error');
         }
@@ -206,20 +203,12 @@ function CodeTemplatesView() {
 
     /* ---- table (Swing Code Templates tree-table) -------------------------------- */
 
-    function selectNode(sel) {
-        selectedRef.current = sel; renderTable(); forceRender();
-    }
-
     function templateMatches(template, term) {
         if (!term) return true;
         return (template.name || '').toLowerCase().includes(term)
             || (template.id || '').toLowerCase().includes(term)
             || templateDescription(template).toLowerCase().includes(term);
     }
-
-    // The tree is now the declarative <TreeTable> in the render below; renderTable()
-    // just triggers a React re-render (call sites are unchanged).
-    function renderTable() { forceRender(); }
 
     // Columns/data/filter for the JSX <TreeTable> (libraries -> code templates).
     function treeColumns() {
@@ -257,28 +246,31 @@ function CodeTemplatesView() {
     function emptyMenu(e) {
         if (e.target.closest('tr')) return;   // row menus are handled per-row
         e.preventDefault();
+        const found = resolve(selected);
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate() },
+            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate(found && found.entry) },
             { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates() },
+            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates(found && found.entry) },
             { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
             { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() }
         ]);
     }
 
     // Right-click parity with the Swing Code Templates tree (codeTemplatePopupMenu).
+    // The menu resolves its target ONCE, here — every item acts on that explicit
+    // resolution, never on selection state that changes underneath it.
     function nodeMenu(sel, e) {
         e.preventDefault();
-        selectNode(sel);
+        setSelected(sel);
         const isTpl = sel.kind === 'template';
         const isLib = sel.kind === 'library';
+        const resolved = resolve(sel) || {};
         // Plugin-contributed per-code-template actions (registerCodeTemplateAction),
         // e.g. "View History". Shown for a single selected template unless the
         // action supplies its own isEnabled. Mirrors the Swing code-template action.
-        const resolved = findSelected() || {};
         const actionCtx = { platform, template: resolved.template, library: resolved.entry && resolved.entry.library };
         const pluginItems = platform.codeTemplateActions()
             .filter((a) => (a.isEnabled ? a.isEnabled(actionCtx) : isTpl))
@@ -289,199 +281,26 @@ function CodeTemplatesView() {
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate() },
+            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate(resolved.entry) },
             { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates() },
+            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates(resolved.entry) },
             { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
-            { label: 'Export Code Template', icon: 'export', hidden: !isTpl, task: 'doExportCodeTemplate', group: 'codeTemplate', onClick: () => exportTemplate() },
-            { label: 'Export Library', icon: 'export', hidden: !isLib, task: 'doExportLibrary', group: 'codeTemplate', onClick: () => exportLibrary() },
+            { label: 'Export Code Template', icon: 'export', hidden: !isTpl, task: 'doExportCodeTemplate', group: 'codeTemplate', onClick: () => exportTemplate(resolved) },
+            { label: 'Export Library', icon: 'export', hidden: !isLib, task: 'doExportLibrary', group: 'codeTemplate', onClick: () => exportLibrary(resolved) },
             { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() },
             '-',
-            { label: 'Validate Script', icon: 'check', hidden: !isTpl, task: 'doValidateCodeTemplate', group: 'codeTemplate', onClick: () => validateScriptTask() },
+            { label: 'Validate Script', icon: 'check', hidden: !isTpl, task: 'doValidateCodeTemplate', group: 'codeTemplate', onClick: () => validateScriptTask(resolved) },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
-            { label: 'Delete', icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', onClick: () => deleteSelected() },
+            { label: 'Delete', icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', onClick: () => deleteSelected(sel) },
             '-',
             { label: 'Save All', icon: 'save', task: 'doSaveCodeTemplates', group: 'codeTemplate', onClick: () => saveAll() }
         ]);
     }
 
-    /* ---- imperative editor sub-builders (heavy legacy DOM, reused verbatim) ---- */
-
-    // The library editor (name/include-new + summary/description + channels list).
-    function buildLibraryEditor(entry) {
-        const { library } = entry;
-
-        const nameInput = textInput(library.name || '', {
-            onInput: (e) => { library.name = e.target.value; markDirty(); renderTable(); }
-        });
-        // Newly created library: focus the empty Name field so the user types immediately.
-        if (focusNewNameRef.current) { focusNewNameRef.current = false; setTimeout(() => { nameInput.focus(); nameInput.select(); }, 0); }
-        const includeNew = checkbox('Include New Channels', !!library.includeNewChannels, {
-            onChange: (e) => { library.includeNewChannels = e.target.checked; markDirty(); }
-        });
-
-        // Summary line (Swing shows template-type counts for the library).
-        const counts = { FUNCTION: 0, DRAG_AND_DROP_CODE: 0, COMPILED_CODE: 0 };
-        for (const t of entry.templates) {
-            const type = (t.properties && t.properties.type) || 'FUNCTION';
-            if (counts[type] === undefined) counts[type] = 0;
-            counts[type]++;
-        }
-        const summaryText = `${counts.FUNCTION} Function${counts.FUNCTION === 1 ? '' : 's'}, `
-            + `${counts.DRAG_AND_DROP_CODE} Drag-and-Drop Code Block${counts.DRAG_AND_DROP_CODE === 1 ? '' : 's'}, `
-            + `${counts.COMPILED_CODE} Compiled Code Block${counts.COMPILED_CODE === 1 ? '' : 's'}`;
-
-        const descArea = h('textarea', { onInput: (e) => { library.description = e.target.value; markDirty(); }, class: 'flex-1 min-h-[120px] resize-none' });
-        descArea.value = library.description || '';
-
-        const descColumn = h('div', { class: 'flex flex-col flex-1 min-h-0 mr-3.5' },
-            h('div', { class: 'mb-2.5 text-[12px] text-text-dim' },
-                h('span', { class: 'font-[650]' }, 'Summary: '), summaryText),
-            h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5' }, 'Description'),
-            descArea);
-
-        /* ---- Channels panel (Swing's right-hand checkbox list) ---- */
-        const channelHost = h('div', { class: 'overflow-auto flex-1' }, loading('Loading channels…'));
-        const channelFilter = textInput('', { placeholder: 'Filter…', class: 'w-full mb-1.5' });
-        let allRows = [];
-        function channelChecked(id) { return idSetOf(library.enabledChannelIds).includes(id); }
-        function setChannel(id, on) {
-            const enabled = new Set(idSetOf(library.enabledChannelIds));
-            const disabled = new Set(idSetOf(library.disabledChannelIds));
-            if (on) { enabled.add(id); disabled.delete(id); } else { enabled.delete(id); disabled.add(id); }
-            library.enabledChannelIds = toIdSet([...enabled]);
-            library.disabledChannelIds = toIdSet([...disabled]);
-            markDirty();
-        }
-        function paintChannels() {
-            clear(channelHost);
-            const term = channelFilter.value.trim().toLowerCase();
-            const rows = allRows.filter(r => !term || r.name.toLowerCase().includes(term));
-            if (!rows.length) { channelHost.appendChild(h('div.text-text-faint', allRows.length ? 'No matches' : 'No channels')); return; }
-            for (const row of rows) {
-                const cb = checkbox(row.name, channelChecked(row.id), { onChange: (e) => setChannel(row.id, e.target.checked) });
-                channelHost.appendChild(h('div', cb.el));
-            }
-        }
-        function setAllChannels(on) {
-            const term = channelFilter.value.trim().toLowerCase();
-            for (const row of allRows) { if (!term || row.name.toLowerCase().includes(term)) setChannel(row.id, on); }
-            paintChannels();
-        }
-        channelFilter.addEventListener('input', paintChannels);
-
-        const channelsPanel = h('div', { class: 'w-[300px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5' },
-            h('div', { class: 'flex items-baseline justify-between mb-2' },
-                h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim' }, 'Channels'),
-                h('span', { class: 'text-[11px]' },
-                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAllChannels(true); } }, 'Select All'),
-                    h('span', { class: 'text-text-faint my-0 mx-1.5' }, '|'),
-                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAllChannels(false); } }, 'Deselect All'))),
-            channelFilter,
-            channelHost);
-
-        api.channels.idsAndNames().then(map => {
-            const entries = api.asList(map && map.entry);
-            allRows = entries.map(en => {
-                const pair = api.asList(en.string);
-                return { id: String(pair[0] ?? ''), name: String(pair[1] ?? pair[0] ?? '') };
-            }).sort((a, b) => a.name.localeCompare(b.name));
-            paintChannels();
-        }).catch(e => {
-            clear(channelHost).appendChild(h('div.text-text-faint', `Channels unavailable: ${e.message}`));
-        });
-
-        return h('div', { class: 'flex flex-col flex-1 min-h-0' },
-            h('div.form-grid', { class: 'mb-3' },
-                field('Name', nameInput),
-                h('div.field', { class: 'justify-end' }, includeNew.el)),
-            h('div', { class: 'flex flex-1 min-h-0' },
-                descColumn,
-                channelsPanel));
-    }
-
-    // The template's Name / Library / Type form row.
-    function buildTemplateForm(entry, template) {
-        if (!template.properties || typeof template.properties !== 'object') {
-            template.properties = { '@class': PROPERTIES_CLASS, type: 'FUNCTION', code: '' };
-        }
-        const nameInput = textInput(template.name || '', {
-            onInput: (e) => { template.name = e.target.value; markDirty(); renderTable(); }
-        });
-        // Newly created template: focus the Name field so the user types immediately.
-        if (focusNewNameRef.current) { focusNewNameRef.current = false; setTimeout(() => { nameInput.focus(); nameInput.select(); }, 0); }
-
-        // Library dropdown — Swing lets you move a template between libraries here.
-        const librarySelect = select(
-            librariesRef.current.map(en => ({ value: en.library.id, label: en.library.name || '(unnamed library)' })),
-            entry.library.id, {
-            onChange: (e) => {
-                const targetId = e.target.value;
-                if (targetId === entry.library.id) return;
-                const target = librariesRef.current.find(en => en.library.id === targetId);
-                if (!target) return;
-                entry.templates = entry.templates.filter(t => t !== template);
-                target.templates.push(template);
-                collapsedRef.current.delete('library:' + targetId);
-                selectedRef.current = { kind: 'template', id: template.id };
-                markDirty();
-                renderTable();
-                forceRender();
-            }
-        });
-
-        const typeSelect = select(TEMPLATE_TYPES, template.properties.type || 'FUNCTION', {
-            onChange: (e) => { template.properties.type = e.target.value; markDirty(); }
-        });
-
-        return h('div.form-grid', { class: 'mb-3' },
-            field('Name', nameInput),
-            field('Library', librarySelect),
-            field('Type', typeSelect));
-    }
-
-    // The template's Context checkbox tree (Swing's right-hand panel).
-    function buildContextPanel(template) {
-        const contextChecks = new Map();   // type -> input
-        function applyContexts() {
-            const types = ALL_CONTEXTS.filter(t => contextChecks.get(t).checked);
-            setContexts(template, types);
-            markDirty();
-        }
-        const groupNodes = CONTEXT_GROUPS.map(group => {
-            const itemChecks = [];
-            const items = group.types.map(([type, label]) => {
-                const cb = checkbox(label, contextsOf(template).includes(type), { onChange: () => { applyContexts(); syncGroup(); } });
-                contextChecks.set(type, cb.input);
-                itemChecks.push(cb.input);
-                return h('div', { class: 'pl-5' }, cb.el);
-            });
-            const groupCb = checkbox(group.label, false, {
-                onChange: (e) => { itemChecks.forEach(i => { i.checked = e.target.checked; }); applyContexts(); }
-            });
-            function syncGroup() {
-                const on = itemChecks.filter(i => i.checked).length;
-                groupCb.input.checked = on === itemChecks.length && on > 0;
-                groupCb.input.indeterminate = on > 0 && on < itemChecks.length;
-            }
-            syncGroup();
-            return { el: h('div', { class: 'mb-1.5' }, h('div', groupCb.el), ...items), syncGroup };
-        });
-        function setAll(value) {
-            contextChecks.forEach(i => { i.checked = value; });
-            groupNodes.forEach(g => g.syncGroup());
-            applyContexts();
-        }
-        return h('div', { class: 'w-[260px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5' },
-            h('div', { class: 'flex items-baseline justify-between mb-2' },
-                h('label', { class: 'text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim' }, 'Context'),
-                h('span', { class: 'text-[11px]' },
-                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAll(true); } }, 'Select All'),
-                    h('span', { class: 'text-text-faint my-0 mx-1.5' }, '|'),
-                    h('a', { href: '#', class: 'text-accent', onClick: (e) => { e.preventDefault(); setAll(false); } }, 'Deselect All'))),
-            h('div', { class: 'overflow-auto flex-1' }, ...groupNodes.map(g => g.el)));
-    }
+    /* (The library editor, template form, and context checkbox tree are the
+       declarative <LibraryEditor> / <TemplateForm> / <ContextPanel> components
+       at the bottom of this file.) */
 
     /* ---- tasks --------------------------------------------------------------------- */
 
@@ -499,17 +318,18 @@ function CodeTemplatesView() {
             disabledChannelIds: '',
             codeTemplates: null
         };
-        librariesRef.current.push({ library, templates: [] });
-        selectedRef.current = { kind: 'library', id: library.id };
-        focusNewNameRef.current = true;
-        markDirty();
-        renderTable();
-        forceRender();
+        setEntries(prev => [...prev, { library, templates: [] }]);
+        setSelected({ kind: 'library', id: library.id });
+        setFocusName(true);
+        dirtyRef.current = true;
+        setDirty(true);
     }
 
-    function newTemplate() {
-        const found = findSelected();
-        const entry = found && found.entry;
+    function newTemplate(entryArg) {
+        // Re-resolve by id at execution time: the menu that offered this action
+        // may have outlived a reload, leaving entryArg detached from the live
+        // list (pushing onto it would silently never reach saveAll).
+        const entry = entryArg && entriesNowRef.current.find(en => en.library.id === entryArg.library.id);
         if (!entry) {
             toast('Select a library first', 'warn');
             return;
@@ -526,40 +346,42 @@ function CodeTemplatesView() {
             properties: { '@class': PROPERTIES_CLASS, '@version': v, type: 'FUNCTION', code: DEFAULT_CODE }
         };
         entry.templates.push(template);
-        selectedRef.current = { kind: 'template', id: template.id };
-        focusNewNameRef.current = true;
+        setSelected({ kind: 'template', id: template.id });
+        setFocusName(true);
         markDirty();
-        renderTable();
-        forceRender();
     }
 
-    async function deleteSelected() {
-        const found = findSelected();
-        if (!found) { toast('Select a library or code template first', 'warn'); return; }
-        const selected = selectedRef.current;
+    /* Deletion re-resolves its target against the LATEST list both at entry and
+       again after the confirm await — a reload landing while the menu or the
+       dialog was open would otherwise leave a detached entry whose removal
+       no-ops, letting a later Save All resurrect the engine-deleted templates. */
+    async function deleteSelected(sel) {
+        let found = resolve(sel, entriesNowRef.current);
+        if (!sel || !found) { toast('Select a library or code template first', 'warn'); return; }
 
-        if (selected.kind === 'library') {
-            const { entry } = found;
-            const count = entry.templates.length;
+        if (sel.kind === 'library') {
+            const count = found.entry.templates.length;
             const message = count
-                ? `Delete library "${entry.library.name}" and its ${count} code template(s)? Save All commits the removal.`
-                : `Delete library "${entry.library.name}"? Save All commits the removal.`;
+                ? `Delete library "${found.entry.library.name}" and its ${count} code template(s)? Save All commits the removal.`
+                : `Delete library "${found.entry.library.name}"? Save All commits the removal.`;
             if (!await confirmDialog('Delete Library', message, { danger: true, okLabel: 'Delete' })) return;
+            found = resolve(sel, entriesNowRef.current);
+            if (!found) { toast('The library no longer exists (the list was reloaded)', 'warn'); return; }
+            const entry = found.entry;
             for (const template of entry.templates) {
                 try { await api.codeTemplates.remove(template.id); } catch { /* not yet saved */ }
             }
-            librariesRef.current = librariesRef.current.filter(en => en !== entry);
+            setEntries(prev => prev.filter(en => en !== entry));
         } else {
-            const { entry, template } = found;
-            if (!await confirmDialog('Delete Code Template', `Delete code template "${template.name}"?`, { danger: true, okLabel: 'Delete' })) return;
-            try { await api.codeTemplates.remove(template.id); } catch { /* not yet saved */ }
-            entry.templates = entry.templates.filter(t => t !== template);
+            if (!await confirmDialog('Delete Code Template', `Delete code template "${found.template.name}"?`, { danger: true, okLabel: 'Delete' })) return;
+            found = resolve(sel, entriesNowRef.current);
+            if (!found) { toast('The code template no longer exists (the list was reloaded)', 'warn'); return; }
+            try { await api.codeTemplates.remove(found.template.id); } catch { /* not yet saved */ }
+            found.entry.templates = found.entry.templates.filter(t => t !== found.template);
         }
         invalidateCompletions();   // deleted templates no longer autocomplete
-        selectedRef.current = null;
+        setSelected(null);
         markDirty();
-        renderTable();
-        forceRender();
         toast('Deleted — use Save All to commit library changes');
     }
 
@@ -577,7 +399,7 @@ function CodeTemplatesView() {
         };
         try {
             const v = store.getState('serverVersion') || '4.5.2';
-            const libraries = librariesRef.current;
+            const libraries = entriesNowRef.current;
             // 1. PUT each template individually (the Swing client's update path).
             for (const entry of libraries) {
                 for (const template of entry.templates) {
@@ -619,9 +441,8 @@ function CodeTemplatesView() {
         }
     }
 
-    async function exportLibrary() {
-        const found = findSelected();
-        if (!found || selectedRef.current.kind !== 'library') {
+    async function exportLibrary(found) {
+        if (!found || !found.entry || found.template) {
             toast('Select a library first', 'warn');
             return;
         }
@@ -637,9 +458,8 @@ function CodeTemplatesView() {
         }
     }
 
-    async function exportTemplate() {
-        const found = findSelected();
-        if (!found || selectedRef.current.kind !== 'template') {
+    async function exportTemplate(found) {
+        if (!found || !found.template) {
             toast('Select a code template first', 'warn');
             return;
         }
@@ -688,7 +508,7 @@ function CodeTemplatesView() {
             await api.putXml('/codeTemplateLibraries', xml, { override: true });
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${file.name}`);
-            selectedRef.current = null;
+            setSelected(null);
             await load();
         } catch (e) {
             toast(`Import failed: ${e.message}`, 'error');
@@ -699,13 +519,14 @@ function CodeTemplatesView() {
        "Import Code Templates"). Each <codeTemplate> is PUT to the server, then
        the target library's references are rewritten — so this commits like
        Import Libraries rather than editing the working copy. */
-    async function importCodeTemplates() {
-        const found = findSelected();
-        let target = found && found.entry;
+    async function importCodeTemplates(entryArg) {
+        // Re-resolve the target by id (the offering menu may have outlived a reload).
+        let target = entryArg && entriesNowRef.current.find(en => en.library.id === entryArg.library.id);
         if (!target) {
-            if (librariesRef.current.length === 1) target = librariesRef.current[0];
+            if (entriesNowRef.current.length === 1) target = entriesNowRef.current[0];
             else { toast('Select a library to import into first', 'warn'); return; }
         }
+        const targetId = target.library.id;
         if (dirtyRef.current && !await confirmDialog('Import Code Templates',
             'Discard unsaved changes and import? The imported templates are added to the selected library and saved.',
             { okLabel: 'Import' })) return;
@@ -733,15 +554,16 @@ function CodeTemplatesView() {
                     new XMLSerializer().serializeToString(el), { override: true });
                 newIds.push(id);
             }
-            // Rewrite the library set with the new refs appended to the target.
-            const payload = librariesRef.current.map(entry => {
-                const ids = entry === target
-                    ? [...entry.templates.map(t => t.id), ...newIds]
-                    : entry.templates.map(t => t.id);
+            // Rewrite the library set with the new refs appended to the target —
+            // matched by id, not object identity (the awaits above may span a reload).
+            const payload = entriesNowRef.current.map(en => {
+                const ids = en.library.id === targetId
+                    ? [...en.templates.map(t => t.id), ...newIds]
+                    : en.templates.map(t => t.id);
                 return {
-                    '@version': entry.library['@version'] || v,
-                    ...entry.library,
-                    revision: (Number(entry.library.revision) || 0) + 1,
+                    '@version': en.library['@version'] || v,
+                    ...en.library,
+                    revision: (Number(en.library.revision) || 0) + 1,
                     codeTemplates: ids.length ? { codeTemplate: ids.map(id => ({ '@version': v, id })) } : null
                 };
             });
@@ -756,9 +578,8 @@ function CodeTemplatesView() {
 
     /* Validate Script (Swing) — real Rhino compile check of the selected
        template's code via the engine bridge. */
-    async function validateScriptTask() {
-        const found = findSelected();
-        if (!found || selectedRef.current.kind !== 'template') { toast('Select a code template first', 'warn'); return; }
+    async function validateScriptTask(found) {
+        if (!found || !found.template) { toast('Select a code template first', 'warn'); return; }
         const code = found.template.properties && found.template.properties.code;
         if (typeof code !== 'string' || !code.trim()) { toast('Template has no code to validate', 'warn'); return; }
         const result = await validateScript(code);
@@ -770,6 +591,20 @@ function CodeTemplatesView() {
     async function refreshTask() {
         if (dirtyRef.current && !await confirmDialog('Refresh', 'Discard unsaved changes and refresh?', { okLabel: 'Refresh' })) return;
         load();
+    }
+
+    /* Move a template between libraries (the Library dropdown on the template
+       form). Mutates both entries' template lists, expands the target, and
+       keeps the template selected. */
+    function moveTemplate(entry, template, targetId) {
+        if (targetId === entry.library.id) return;
+        const target = entries.find(en => en.library.id === targetId);
+        if (!target) return;
+        entry.templates = entry.templates.filter(t => t !== template);
+        target.templates.push(template);
+        setCollapsed(prev => { const next = new Set(prev); next.delete('library:' + targetId); return next; });
+        setSelected({ kind: 'template', id: template.id });
+        markDirty();
     }
 
     /* ---- mount: load ---- */
@@ -799,23 +634,21 @@ function CodeTemplatesView() {
     }, []);
 
     // Selection-dependent task visibility (Swing Code Template Tasks pane).
-    const found = findSelected();
-    const selected = selectedRef.current;
+    const found = resolve(selected);
     const isTemplate = !!found && selected && selected.kind === 'template';
     const isLibrary = !!found && selected && selected.kind === 'library';
-    const dirty = dirtyRef.current;
 
     // Tree data + filter for the <TreeTable>.
-    const treeData = librariesRef.current.map((entry) => ({
+    const treeData = entries.map((entry) => ({
         kind: 'library', id: entry.library.id, lib: entry.library,
         children: entry.templates.map((t) => ({ kind: 'template', id: t.id, tpl: t }))
     }));
-    const term = filterRef.current.trim().toLowerCase();
+    const term = filterText.trim().toLowerCase();
     const ctMatches = term
         ? (n) => (n.kind === 'library' ? (n.lib.name || '').toLowerCase().includes(term) : templateMatches(n.tpl, term))
         : undefined;
-    const totalTemplates = librariesRef.current.reduce((sum, en) => sum + en.templates.length, 0);
-    const countsText = `${librariesRef.current.length} Librar${librariesRef.current.length === 1 ? 'y' : 'ies'}, ${totalTemplates} Code Template${totalTemplates === 1 ? '' : 's'}`;
+    const totalTemplates = entries.reduce((sum, en) => sum + en.templates.length, 0);
+    const countsText = `${entries.length} Librar${entries.length === 1 ? 'y' : 'ies'}, ${totalTemplates} Code Template${totalTemplates === 1 ? '' : 's'}`;
 
     return (
         <div className="view">
@@ -823,16 +656,16 @@ function CodeTemplatesView() {
                 <RailPane title="Code Template Tasks" paneKey="tasks:Code Template Tasks" group="codeTemplate">
                     <div className="taskbar" data-pane-title="Code Template Tasks">
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshCodeTemplates" onClick={refreshTask} />
-                        {dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveCodeTemplates" onClick={saveAll} />}
-                        {found && <TaskButton label="New Code Template" icon="plus" task="doNewCodeTemplate" onClick={newTemplate} />}
+                        {dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveCodeTemplates" onClick={() => saveAll()} />}
+                        {found && <TaskButton label="New Code Template" icon="plus" task="doNewCodeTemplate" onClick={() => newTemplate(found.entry)} />}
                         <TaskButton label="New Library" icon="folder" task="doNewLibrary" onClick={newLibrary} />
-                        <TaskButton label="Import Code Templates" icon="import" task="doImportCodeTemplates" onClick={importCodeTemplates} />
+                        <TaskButton label="Import Code Templates" icon="import" task="doImportCodeTemplates" onClick={() => importCodeTemplates(found && found.entry)} />
                         <TaskButton label="Import Libraries" icon="import" task="doImportLibraries" onClick={importLibraries} />
-                        {isTemplate && <TaskButton label="Export Code Template" icon="export" task="doExportCodeTemplate" onClick={exportTemplate} />}
-                        {isLibrary && <TaskButton label="Export Library" icon="export" task="doExportLibrary" onClick={exportLibrary} />}
-                        {isTemplate && <TaskButton label="Delete Code Template" icon="trash" danger task="doDeleteCodeTemplate" onClick={deleteSelected} />}
-                        {isLibrary && <TaskButton label="Delete Library" icon="trash" danger task="doDeleteLibrary" onClick={deleteSelected} />}
-                        {isTemplate && <TaskButton label="Validate Script" icon="check" task="doValidateCodeTemplate" onClick={validateScriptTask} />}
+                        {isTemplate && <TaskButton label="Export Code Template" icon="export" task="doExportCodeTemplate" onClick={() => exportTemplate(found)} />}
+                        {isLibrary && <TaskButton label="Export Library" icon="export" task="doExportLibrary" onClick={() => exportLibrary(found)} />}
+                        {isTemplate && <TaskButton label="Delete Code Template" icon="trash" danger task="doDeleteCodeTemplate" onClick={() => deleteSelected(selected)} />}
+                        {isLibrary && <TaskButton label="Delete Library" icon="trash" danger task="doDeleteLibrary" onClick={() => deleteSelected(selected)} />}
+                        {isTemplate && <TaskButton label="Validate Script" icon="check" task="doValidateCodeTemplate" onClick={() => validateScriptTask(found)} />}
                         {isTemplate && platform.codeTemplateActions()
                             .filter((a) => (a.isEnabled ? a.isEnabled({ platform, template: found.template, library: found.entry.library }) : true))
                             .map((a) => <TaskButton key={a.id || a.label} label={a.label} icon={a.icon} task={a.task}
@@ -854,12 +687,16 @@ function CodeTemplatesView() {
                                 rowKey={(n) => `${n.kind}:${n.id}`}
                                 rowClassName={(n) => (n.kind === 'library' ? 'group-row' : '')}
                                 selectedKey={selected ? `${selected.kind}:${selected.id}` : null}
-                                onSelect={(n) => selectNode({ kind: n.kind, id: n.id })}
+                                onSelect={(n) => setSelected({ kind: n.kind, id: n.id })}
                                 onRowContextMenu={(n, e) => nodeMenu({ kind: n.kind, id: n.id }, e)}
                                 onEmptyContextMenu={emptyMenu}
                                 matches={ctMatches}
-                                collapsedKeys={collapsedRef.current}
-                                onToggleCollapse={(key) => { const s = collapsedRef.current; if (s.has(key)) s.delete(key); else s.add(key); forceRender(); }}
+                                collapsedKeys={collapsed}
+                                onToggleCollapse={(key) => setCollapsed(prev => {
+                                    const next = new Set(prev);
+                                    next.has(key) ? next.delete(key) : next.add(key);
+                                    return next;
+                                })}
                                 columnsKey="codetemplates"
                                 columnWidths={CT_COL_WIDTHS}
                                 defaultHidden={['id']}
@@ -870,8 +707,8 @@ function CodeTemplatesView() {
                             <span className="counts">{countsText}</span>
                             <span className="ml-auto inline-flex items-center gap-1.5">
                                 <label>Filter:</label>
-                                <input type="text" placeholder="Filter…" className="max-w-[260px]"
-                                    onInput={(e) => { filterRef.current = e.target.value; renderTable(); }} />
+                                <input type="text" placeholder="Filter…" className="max-w-[260px]" value={filterText}
+                                    onChange={(e) => setFilterText(e.target.value)} />
                             </span>
                         </div>
                     </div>
@@ -879,10 +716,11 @@ function CodeTemplatesView() {
                     <div className="split-b flex flex-col min-h-0">
                         <div className="flex flex-col flex-1 min-h-0 py-3.5 px-4 overflow-auto">
                             <EditorPane found={found} kind={selected && selected.kind}
-                                buildLibraryEditor={buildLibraryEditor}
-                                buildTemplateForm={buildTemplateForm}
-                                buildContextPanel={buildContextPanel}
+                                entries={entries}
                                 markDirty={markDirty}
+                                focusName={focusName}
+                                onFocusConsumed={() => setFocusName(false)}
+                                onMoveTemplate={moveTemplate}
                                 maximized={editorMax}
                                 onToggleMax={() => setEditorMax((m) => !m)} />
                         </div>
@@ -893,11 +731,10 @@ function CodeTemplatesView() {
     );
 }
 
-/* The editor pane. Branches on the current selection. The library editor and the
-   template's Name/Library/Type form + Context checkbox tree are heavy legacy DOM
-   reused verbatim via <ImperativeMount>; the template's code uses the React
-   <CodeEditor> island. Keyed on the selected id so it rebuilds per selection. */
-function EditorPane({ found, kind, buildLibraryEditor, buildTemplateForm, buildContextPanel, markDirty, maximized, onToggleMax }) {
+/* The editor pane. Branches on the current selection into the declarative
+   library / template editors. Keyed on the selected id so per-selection state
+   (channel filter, focus) resets when the selection changes. */
+function EditorPane({ found, kind, entries, markDirty, focusName, onFocusConsumed, onMoveTemplate, maximized, onToggleMax }) {
     if (!found) {
         return (
             <div className="dt-empty">
@@ -907,21 +744,172 @@ function EditorPane({ found, kind, buildLibraryEditor, buildTemplateForm, buildC
         );
     }
     if (kind === 'library') {
-        return <ImperativeMount key={'lib:' + found.entry.library.id} build={() => buildLibraryEditor(found.entry)} />;
+        return <LibraryEditor key={'lib:' + found.entry.library.id} entry={found.entry}
+            markDirty={markDirty} focusName={focusName} onFocusConsumed={onFocusConsumed} />;
     }
     return <TemplateEditor key={'tpl:' + found.template.id} entry={found.entry} template={found.template}
-        buildTemplateForm={buildTemplateForm} buildContextPanel={buildContextPanel} markDirty={markDirty}
-        maximized={maximized} onToggleMax={onToggleMax} />;
+        entries={entries} markDirty={markDirty} focusName={focusName} onFocusConsumed={onFocusConsumed}
+        onMoveTemplate={onMoveTemplate} maximized={maximized} onToggleMax={onToggleMax} />;
 }
 
-function TemplateEditor({ entry, template, buildTemplateForm, buildContextPanel, markDirty, maximized, onToggleMax }) {
+/* Focuses + selects the Name input once, when the editor opens for a
+   just-created library/template. */
+function useFocusName(focusName, onFocusConsumed) {
+    const ref = useRef(null);
+    useEffect(() => {
+        if (focusName) {
+            onFocusConsumed();
+            ref.current?.focus();
+            ref.current?.select();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return ref;
+}
+
+/* The library editor: Name / Include New Channels, the type-count summary +
+   Description, and the Channels checkbox list (Swing's right-hand panel). */
+function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }) {
+    const { library } = entry;
+    const nameRef = useFocusName(focusName, onFocusConsumed);
+    const [channels, setChannels] = useState(null);   // null = loading
+    const [chError, setChError] = useState(null);
+    const [chFilter, setChFilter] = useState('');
+
+    useEffect(() => {
+        let alive = true;
+        api.channels.idsAndNames().then((map) => {
+            if (!alive) return;
+            const rows = api.asList(map && map.entry).map((en) => {
+                const pair = api.asList(en.string);
+                return { id: String(pair[0] ?? ''), name: String(pair[1] ?? pair[0] ?? '') };
+            }).sort((a, b) => a.name.localeCompare(b.name));
+            setChannels(rows);
+        }).catch((e) => { if (alive) setChError(e.message); });
+        return () => { alive = false; };
+    }, []);
+
+    // Summary line (Swing shows template-type counts for the library).
+    const counts = { FUNCTION: 0, DRAG_AND_DROP_CODE: 0, COMPILED_CODE: 0 };
+    for (const t of entry.templates) {
+        const type = (t.properties && t.properties.type) || 'FUNCTION';
+        if (counts[type] === undefined) counts[type] = 0;
+        counts[type]++;
+    }
+    const summaryText = `${counts.FUNCTION} Function${counts.FUNCTION === 1 ? '' : 's'}, `
+        + `${counts.DRAG_AND_DROP_CODE} Drag-and-Drop Code Block${counts.DRAG_AND_DROP_CODE === 1 ? '' : 's'}, `
+        + `${counts.COMPILED_CODE} Compiled Code Block${counts.COMPILED_CODE === 1 ? '' : 's'}`;
+
+    const enabled = new Set(idSetOf(library.enabledChannelIds));
+    function setChannel(id, on) {
+        const en = new Set(idSetOf(library.enabledChannelIds));
+        const dis = new Set(idSetOf(library.disabledChannelIds));
+        if (on) { en.add(id); dis.delete(id); } else { en.delete(id); dis.add(id); }
+        library.enabledChannelIds = toIdSet([...en]);
+        library.disabledChannelIds = toIdSet([...dis]);
+        markDirty();
+    }
+    function setAllChannels(on) {
+        const term = chFilter.trim().toLowerCase();
+        for (const row of channels || []) {
+            if (!term || row.name.toLowerCase().includes(term)) setChannel(row.id, on);
+        }
+    }
+
+    const term = chFilter.trim().toLowerCase();
+    const visible = (channels || []).filter((r) => !term || r.name.toLowerCase().includes(term));
+
+    return (
+        <div className="flex flex-col flex-1 min-h-0">
+            <div className="form-grid mb-3">
+                <div className="field">
+                    <label>Name</label>
+                    <input ref={nameRef} type="text" value={library.name || ''}
+                        onChange={(e) => { library.name = e.target.value; markDirty(); }} />
+                </div>
+                <div className="field justify-end">
+                    <label className="check">
+                        <input type="checkbox" checked={!!library.includeNewChannels}
+                            onChange={(e) => { library.includeNewChannels = e.target.checked; markDirty(); }} />
+                        Include New Channels
+                    </label>
+                </div>
+            </div>
+            <div className="flex flex-1 min-h-0">
+                <div className="flex flex-col flex-1 min-h-0 mr-3.5">
+                    <div className="mb-2.5 text-[12px] text-text-dim">
+                        <span className="font-[650]">Summary: </span>{summaryText}
+                    </div>
+                    <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5">Description</label>
+                    <textarea className="flex-1 min-h-[120px] resize-none" value={library.description || ''}
+                        onChange={(e) => { library.description = e.target.value; markDirty(); }} />
+                </div>
+                <div className="w-[300px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
+                    <div className="flex items-baseline justify-between mb-2">
+                        <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Channels</label>
+                        <span className="text-[11px]">
+                            <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAllChannels(true); }}>Select All</a>
+                            <span className="text-text-faint my-0 mx-1.5">|</span>
+                            <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAllChannels(false); }}>Deselect All</a>
+                        </span>
+                    </div>
+                    <input type="text" placeholder="Filter…" className="w-full mb-1.5" value={chFilter}
+                        onChange={(e) => setChFilter(e.target.value)} />
+                    <div className="overflow-auto flex-1">
+                        {chError ? <div className="text-text-faint">{`Channels unavailable: ${chError}`}</div>
+                            : channels === null ? <div className="loading-block"><div className="spinner" />Loading channels…</div>
+                                : visible.length === 0 ? <div className="text-text-faint">{channels.length ? 'No matches' : 'No channels'}</div>
+                                    : visible.map((row) => (
+                                        <div key={row.id}>
+                                            <label className="check">
+                                                <input type="checkbox" checked={enabled.has(row.id)}
+                                                    onChange={(e) => setChannel(row.id, e.target.checked)} />
+                                                {row.name}
+                                            </label>
+                                        </div>
+                                    ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocusConsumed, onMoveTemplate, maximized, onToggleMax }) {
+    const nameRef = useFocusName(focusName, onFocusConsumed);
+    if (!template.properties || typeof template.properties !== 'object') {
+        template.properties = { '@class': PROPERTIES_CLASS, type: 'FUNCTION', code: '' };
+    }
     // Maximize (state lifted to the view so it can also hide the library list above)
     // grows the Code editor over the Name/Library/Type form, which is tagged
     // data-editor-overtake, while the right-hand Context panel stays visible.
     return (
         <div className="flex flex-col flex-1 min-h-0">
             <div data-editor-overtake style={{ flex: 'none' }}>
-                <ImperativeMount build={() => buildTemplateForm(entry, template)} />
+                <div className="form-grid mb-3">
+                    <div className="field">
+                        <label>Name</label>
+                        <input ref={nameRef} type="text" value={template.name || ''}
+                            onChange={(e) => { template.name = e.target.value; markDirty(); }} />
+                    </div>
+                    <div className="field">
+                        <label>Library</label>
+                        {/* Swing lets you move a template between libraries here. */}
+                        <select value={entry.library.id}
+                            onChange={(e) => onMoveTemplate(entry, template, e.target.value)}>
+                            {entries.map((en) => (
+                                <option key={en.library.id} value={en.library.id}>{en.library.name || '(unnamed library)'}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="field">
+                        <label>Type</label>
+                        <select value={template.properties.type || 'FUNCTION'}
+                            onChange={(e) => { template.properties.type = e.target.value; markDirty(); }}>
+                            {TEMPLATE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                    </div>
+                </div>
             </div>
             <div className="flex flex-1 min-h-0">
                 <div className="flex flex-col flex-1 min-h-0 mr-3.5">
@@ -938,7 +926,78 @@ function TemplateEditor({ entry, template, buildTemplateForm, buildContextPanel,
                         onChange={(v) => { template.properties.code = v; markDirty(); }}
                         style={{ flex: 1, minHeight: '200px' }} />
                 </div>
-                <ImperativeMount build={() => buildContextPanel(template)} style={{ width: '260px', flex: 'none' }} />
+                <ContextPanel template={template} markDirty={markDirty} />
+            </div>
+        </div>
+    );
+}
+
+/* Group checkbox with the tri-state (indeterminate) look — `indeterminate` is a
+   DOM property, not an attribute, so it is applied through a ref. */
+function GroupCheck({ label, checked, indeterminate, onChange }) {
+    const ref = useRef(null);
+    useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate; }, [indeterminate]);
+    return (
+        <label className="check">
+            <input ref={ref} type="checkbox" checked={checked} onChange={onChange} />
+            {label}
+        </label>
+    );
+}
+
+/* The template's Context checkbox tree (Swing's right-hand panel). All state
+   derives from the template's contextSet; toggles rewrite it via setContexts. */
+function ContextPanel({ template, markDirty }) {
+    const active = new Set(contextsOf(template));
+    const apply = (next) => {
+        setContexts(template, ALL_CONTEXTS.filter((t) => next.has(t)));
+        markDirty();
+    };
+    const toggleType = (type, on) => {
+        const next = new Set(active);
+        on ? next.add(type) : next.delete(type);
+        apply(next);
+    };
+    const toggleGroup = (group, on) => {
+        const next = new Set(active);
+        for (const [type] of group.types) { on ? next.add(type) : next.delete(type); }
+        apply(next);
+    };
+    const setAll = (on) => apply(on ? new Set(ALL_CONTEXTS) : new Set());
+
+    return (
+        <div className="w-[260px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
+            <div className="flex items-baseline justify-between mb-2">
+                <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Context</label>
+                <span className="text-[11px]">
+                    <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAll(true); }}>Select All</a>
+                    <span className="text-text-faint my-0 mx-1.5">|</span>
+                    <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAll(false); }}>Deselect All</a>
+                </span>
+            </div>
+            <div className="overflow-auto flex-1">
+                {CONTEXT_GROUPS.map((group) => {
+                    const on = group.types.filter(([type]) => active.has(type)).length;
+                    return (
+                        <div key={group.label} className="mb-1.5">
+                            <div>
+                                <GroupCheck label={group.label}
+                                    checked={on === group.types.length && on > 0}
+                                    indeterminate={on > 0 && on < group.types.length}
+                                    onChange={(e) => toggleGroup(group, e.target.checked)} />
+                            </div>
+                            {group.types.map(([type, label]) => (
+                                <div key={type} className="pl-5">
+                                    <label className="check">
+                                        <input type="checkbox" checked={active.has(type)}
+                                            onChange={(e) => toggleType(type, e.target.checked)} />
+                                        {label}
+                                    </label>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
