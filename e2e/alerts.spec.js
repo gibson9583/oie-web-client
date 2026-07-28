@@ -42,3 +42,19 @@ test('alert editor adds an action via right-click', async ({ page }) => {
     await page.locator('.ctx-menu').getByText('Add Action').click();
     await expect(page.getByText('No actions defined')).toHaveCount(0);
 });
+
+// The empty landing state offers Create/Import actions (RBAC-gated like their
+// task buttons) instead of a bare "No alerts" table.
+test('an empty alert list lands on the create/import empty state', async ({ page }) => {
+    await mockEngine(page, { 'GET /alerts': { list: '' } });
+    await page.goto('/alerts');
+
+    await expect(page.getByText('No Alerts Configured')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Create Alert' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Import Alert', exact: true }).last()).toBeVisible();
+
+    // Create Alert opens the same New Alert chooser flow as the task button
+    // (no saved default in a fresh session → the chooser modal).
+    await page.getByRole('button', { name: 'Create Alert' }).click();
+    await expect(page.getByText('Classic editor')).toBeVisible();
+});
