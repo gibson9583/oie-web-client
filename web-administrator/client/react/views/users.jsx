@@ -10,6 +10,7 @@ import { h, toast, confirmDialog, contextMenu, modal, fmtDate } from '@oie/web-u
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { reactView, ViewTasks } from '../mount.jsx';
+import { useUsers, useInvalidate } from '../queries.js';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import {
     USER_FIELDS, userForm, passwordFields, passwordViolations,
@@ -39,20 +40,21 @@ const COLUMNS = [
 ];
 
 function UsersView() {
-    const [users, setUsers] = useState([]);
+    // Server state via TanStack Query (Workstream A) — replaces the hand-rolled
+    // useState + useEffect(list) + manual refetch. `refresh` now just invalidates
+    // the cache (and clears selection, as the old imperative refresh did).
+    const usersQuery = useUsers();
+    const users = usersQuery.data ?? [];
     const [sel, setSel] = useState([]);
     const tableRef = useRef(null);
+    const invalidate = useInvalidate();
 
-    const refresh = async () => {
-        try {
-            const list = (await api.users.list()).filter(u => u && u.id !== undefined);
-            setUsers(list);
-            setSel([]);
-        } catch (e) {
-            toast(e.message, 'error');
-        }
-    };
-    useEffect(() => { refresh(); }, []);
+    // Surface load errors the way the old imperative refresh did (toast).
+    useEffect(() => {
+        if (usersQuery.error) toast(usersQuery.error.message, 'error');
+    }, [usersQuery.error]);
+
+    const refresh = () => { invalidate(['users']); setSel([]); };
 
     const single = () => (sel.length === 1 ? sel[0] : null);
 
