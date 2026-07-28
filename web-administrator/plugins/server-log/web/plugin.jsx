@@ -3,12 +3,13 @@
  *
  * Adds a "Server Log" tab to the dashboard, streaming the engine's log via the
  * bundled Server Log extension REST endpoint (GET /extensions/serverlog). Web
- * counterpart of com.mirth.connect.plugins.serverlog: a single "Log
- * Information" column where each row is the whole formatted entry —
- * [date] <pill> (category:lineNumber): message + stack trace — truncated with
- * an ellipsis at the right edge. Double-clicking a row opens the full entry,
- * including the complete stack trace. A thin bottom toolbar (pause, clear, log
- * size) sticks to the bottom; the header sticks to the top.
+ * counterpart of com.mirth.connect.plugins.serverlog, presented as three
+ * sortable columns — Timestamp | Level | Message (scope + message + collapsed
+ * stack trace, truncated with an ellipsis) — defaulting to newest-first.
+ * Level sorts by severity rank, not alphabetically. Double-clicking a row
+ * opens the full entry, including the complete stack trace. A thin bottom
+ * toolbar (pause, clear, log size) sticks to the bottom; the header sticks
+ * to the top.
  *
  * React port: the tab is a {component} (useEffect polling, JSX table). The
  * fetch + newest-first sort + size-cap + level/scope normalization are reused
@@ -70,6 +71,27 @@ function scopeLabel(item) {
     return `(${cat}${line ? ':' + line : ''})`;
 }
 
+/* Raw epoch millis for the Timestamp column's sort (same normalization as
+   formatLogDate). */
+function logDateMillis(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    let millis = value;
+    if (typeof value === 'object') millis = value.time ?? value.timestamp ?? null;
+    if (millis !== null && !isNaN(Number(millis))) return Number(millis);
+    const d = new Date(String(value));
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+/* Severity rank for the Level column's sort (severity order, not alphabetical). */
+const LEVEL_RANK = { FATAL: 5, ERROR: 4, WARN: 3, INFO: 2, DEBUG: 1, TRACE: 0 };
+
+/* The one-line remainder of an entry: scope + message + collapsed stack trace. */
+function restText(item) {
+    const stack = item.throwableInformation && String(item.throwableInformation).trim();
+    return (`${scopeLabel(item)}: ${item.message ?? ''}`
+        + (stack ? '  ' + stack : '')).replace(/\s+/g, ' ').trim();
+}
+
 /* The full single-string form Swing renders for one entry. */
 function fullText(item) {
     let s = `[${formatLogDate(item.date)}]  ${String(item.level || '').toUpperCase()}  (${String(item.category ?? '')}`;
@@ -116,20 +138,15 @@ function showDetail(item) {
     });
 }
 
-/* One log row: timestamp, severity pill, then the rest of the entry (scope,
-   message + trace) on one line, truncated with an ellipsis. */
+/* One log row: Timestamp | Level | Message (scope, message + trace on one
+   line, truncated with an ellipsis). */
 function LogRow({ item }) {
-    const stack = item.throwableInformation && String(item.throwableInformation).trim();
-    const rest = (`${scopeLabel(item)}: ${item.message ?? ''}`
-        + (stack ? '  ' + stack : '')).replace(/\s+/g, ' ').trim();
     return (
         <tr className="cursor-pointer" title="Double-click for the full entry"
             onDoubleClick={() => showDetail(item)}>
-            <td className="max-w-0 truncate text-[12px]">
-                <span className="mono text-text-faint mr-2">[{formatLogDate(item.date)}]</span>
-                <LevelTag level={item.level} style={{ verticalAlign: 'middle', marginRight: '8px' }} />
-                {rest}
-            </td>
+            <td className="mono text-text-faint whitespace-nowrap text-[12px] w-[178px]">{formatLogDate(item.date)}</td>
+            <td className="whitespace-nowrap w-[84px]"><LevelTag level={item.level} style={{ verticalAlign: 'middle' }} /></td>
+            <td className="max-w-0 truncate text-[12px]">{restText(item)}</td>
         </tr>
     );
 }
@@ -141,6 +158,8 @@ function ServerLogTab() {
     const [logSize, setLogSize] = React.useState(DEFAULT_LOG_SIZE);
     const [sizeText, setSizeText] = React.useState(String(DEFAULT_LOG_SIZE));
     const [error, setError] = React.useState(null);
+    // Column sort — timestamp-desc is the classic newest-first default.
+    const [sort, setSort] = React.useState({ key: 'timestamp', dir: -1 });
 
     // Refs so the single poll loop reads live values without re-arming on
     // every state change (closures stay correct across the setTimeout chain).
@@ -214,6 +233,31 @@ function ServerLogTab() {
 
     const btnClass = 'py-[1px] px-1.5 h-[22px] leading-none';
 
+    // Same header-sort convention as the core tables: click toggles direction
+    // on the current column, else sorts the new column ascending.
+    function handleSort(key) {
+        setSort(s => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+    }
+    const sortedItems = React.useMemo(() => {
+        const val = (item) => sort.key === 'timestamp' ? logDateMillis(item.date)
+            : sort.key === 'level' ? (LEVEL_RANK[String(item.level || '').toUpperCase()] ?? -1)
+                : restText(item).toLowerCase();
+        return [...items].sort((a, b) => {
+            const va = val(a), vb = val(b);
+            const cmp = (typeof va === 'number' && typeof vb === 'number')
+                ? va - vb : String(va).localeCompare(String(vb));
+            // Tiebreak on the log id so equal values keep a stable order.
+            return (cmp || (Number(a.id) - Number(b.id))) * sort.dir;
+        });
+    }, [items, sort]);
+
+    const headerTh = (key, label, extra = '') => (
+        <th className={'sortable sticky top-0 z-[1] bg-bg1 text-left ' + extra} onClick={() => handleSort(key)}>
+            {label}
+            {sort.key === key ? <span className="sort-arrow">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
+        </th>
+    );
+
     return (
         <div className="flex flex-col h-full min-h-0">
             {/* scrollable log table */}
@@ -221,18 +265,18 @@ function ServerLogTab() {
                 <table className="dt server-log w-full">
                     <thead>
                         <tr>
-                            <th className="text-center sticky top-0 z-[1] bg-bg1">
-                                Log Information
-                            </th>
+                            {headerTh('timestamp', 'Timestamp', 'w-[178px]')}
+                            {headerTh('level', 'Level', 'w-[84px]')}
+                            {headerTh('message', 'Message')}
                         </tr>
                     </thead>
                     <tbody>
                         {error && !items.length ? (
-                            <tr><td className="text-text-faint p-3">{`Server Log unavailable: ${error}`}</td></tr>
+                            <tr><td colSpan={3} className="text-text-faint p-3">{`Server Log unavailable: ${error}`}</td></tr>
                         ) : !items.length ? (
-                            <tr><td className="text-text-faint p-3">No server log entries yet.</td></tr>
+                            <tr><td colSpan={3} className="text-text-faint p-3">No server log entries yet.</td></tr>
                         ) : (
-                            items.map(item => <LogRow key={item.id} item={item} />)
+                            sortedItems.map(item => <LogRow key={item.id} item={item} />)
                         )}
                     </tbody>
                 </table>
