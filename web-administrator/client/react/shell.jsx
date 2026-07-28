@@ -104,8 +104,11 @@ function startEngine() {
 /* ---- Other-pane actions (ported from app.js) ---- */
 
 function openApiDocs() {
-    const config = store.getState('webadminConfig') || {};
-    window.open((config.engineUrl || '') + '/api/', '_blank');
+    // Open the engine's API docs through our same-origin proxy (/api/) rather
+    // than the engine URL directly — carries the session, and avoids the
+    // engine's self-signed-cert interstitial. The server no longer exposes the
+    // engine URL to the browser (see /webadmin/config.json).
+    window.open('/api/', '_blank');
 }
 
 async function showAbout() {
@@ -251,8 +254,9 @@ function currentEngineLabel(config) {
     const engines = Array.isArray(config.engines) ? config.engines : [];
     const idx = /^\d+$/.test(sel) ? Number(sel) : 0;
     const eng = engines[idx] || engines[0];
-    if (!eng) return config.engineUrl || '';
-    return eng.name && eng.name !== eng.url ? `${eng.name} (${eng.url})` : (eng.url || eng.name);
+    // The server sends name-only now (host-derived when unset), so the label is
+    // just the name — no engine URL is exposed to the browser.
+    return (eng && eng.name) || '';
 }
 
 // True when there's more than one engine to choose from (a dropdown or devMode).
