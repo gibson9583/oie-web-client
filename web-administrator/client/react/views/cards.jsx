@@ -13,6 +13,7 @@ import api, { statePip, stateLabel } from '@oie/web-api';
 import { toast, confirmDialog, contextMenu } from '@oie/web-ui';
 import { Icon } from '../bridges.jsx';
 import { ViewTasks } from '../mount.jsx';
+import { useDeployedStatuses, useChannelGroups, useChannelTags } from '../queries.js';
 import { RailPane, TaskButton } from '../ui.jsx';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
@@ -135,9 +136,15 @@ function VirtualGrid({ items, tagsFor, selectedSet, onSelect, onOpen, onMenu, on
 /* ---- view ---- */
 
 function CardsView({ onToggleView }) {
-    const [statuses, setStatuses] = useState(null);
-    const [groups, setGroups] = useState([]);
-    const [tags, setTags] = useState([]);
+    const [live, setLive] = useState(true);
+    // Server state via TanStack Query — deployed statuses poll on the dashboard
+    // interval (paused when `live` is off); groups/tags load once. `statuses`
+    // stays null until the first load so the loading state still renders.
+    const statusesQuery = useDeployedStatuses(live);
+    const statuses = statusesQuery.data ?? null;
+    const groups = useChannelGroups().data ?? [];
+    const tags = useChannelTags().data ?? [];
+    const refresh = () => statusesQuery.refetch();
     const [query, setQuery] = useState('');
     const [groupBy, setGroupByState] = useState(() => {
         const g = getPref('cardsGroupBy');
@@ -148,29 +155,10 @@ function CardsView({ onToggleView }) {
     const [collapsed, setCollapsed] = useState(() => new Set());
     const [sectionLimits, setSectionLimits] = useState({});   // grouped view: sectionKey → cards shown
     const [selected, setSelected] = useState(() => new Set());   // selected channelIds (multi-select)
-    const [live, setLive] = useState(true);
-    const liveRef = useRef(true);
-    liveRef.current = live;
     // Current (since deploy/reset) vs. Lifetime statistics — mirrors the classic
     // dashboard's toggle; remembered like the group-by choice.
     const [lifetime, setLifetimeState] = useState(() => getPref('cardsLifetime') === true);
     const setLifetime = (v) => { setLifetimeState(v); setPrefs({ cardsLifetime: v }); };
-
-    const refresh = async () => {
-        // Deployed channels only — undeployed ones aren't running, so they're excluded.
-        try {
-            const list = await api.status.list(undefined, undefined, false);
-            setStatuses(list.filter((s) => s.state !== 'UNDEPLOYED'));
-        } catch { /* keep last */ }
-    };
-    useEffect(() => {
-        refresh();
-        api.channelGroups.list().then(setGroups).catch(() => {});
-        api.server.channelTags().then(setTags).catch(() => {});
-        const secs = Math.max(2, Number(getPref('dashboardRefreshSeconds')) || 5);
-        const t = setInterval(() => { if (liveRef.current) refresh(); }, secs * 1000);
-        return () => clearInterval(t);
-    }, []);
 
     // channelId -> tags
     const tagsByChannel = useMemo(() => {

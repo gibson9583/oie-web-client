@@ -45,6 +45,26 @@ export function useAlerts() {
     });
 }
 
+/** Deployed channel statuses (the card/dashboard grid). Polls on the dashboard
+ *  interval while `live`; pass live=false to pause. Undeployed channels excluded. */
+export function useDeployedStatuses(live = true) {
+    return useQuery({
+        queryKey: ['statuses', 'deployed'],
+        queryFn: async () => (await api.status.list(undefined, undefined, false)).filter((s) => s.state !== 'UNDEPLOYED'),
+        refetchInterval: () => (live ? Math.max(2, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000 : false)
+    });
+}
+
+/** Channel groups (rarely change — no polling). */
+export function useChannelGroups() {
+    return useQuery({ queryKey: ['channelGroups'], queryFn: () => api.channelGroups.list() });
+}
+
+/** Channel tags (rarely change — no polling). */
+export function useChannelTags() {
+    return useQuery({ queryKey: ['channelTags'], queryFn: () => api.server.channelTags() });
+}
+
 /** Returns an invalidator; call after a mutation to refetch the given key(s). */
 export function useInvalidate() {
     const qc = useQueryClient();
