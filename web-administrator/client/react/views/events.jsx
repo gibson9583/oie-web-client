@@ -1,12 +1,17 @@
 /*
- * Events view (React port of views/events.js). Criteria bar → paginated results
- * table (DataTableHost) → resizable detail pane. The XStream normalization,
+ * Events view — criteria bar → paginated results table → resizable detail pane,
+ * fully declarative: results and pager position are React state and the table
+ * is a controlled <DataTableHost rows={...}>. The XStream normalization,
  * level/outcome tags, calendar-param formatting and the subtle buildParams/
- * countParams engine quirks are reused VERBATIM; the criteria inputs are
- * controlled React state, the detail pane is a React component.
+ * countParams engine quirks are reused VERBATIM.
+ *
+ * Search is an explicit command (criteria + Search button), not reactive server
+ * state — so it stays a plain async call, not a query hook. Each search runs
+ * with EXPLICIT (params, offset, limit) args, so pagination can never race the
+ * criteria inputs.
  */
 
-import { useState, useEffect, useRef, useReducer } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { h, icon, toast, confirmDialog, contextMenu, fmtDate, fmtNumber } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { toDisplayString } from '../../core/xstream.js';
@@ -167,7 +172,6 @@ function EventDetail({ event, username }) {
 /* ---- view ---- */
 
 function EventsView() {
-    const [, forceRender] = useReducer((x) => x + 1, 0);
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
     const [name, setName] = useState('');
@@ -190,13 +194,17 @@ function EventsView() {
         return () => document.removeEventListener('mousedown', onDown);
     }, [filtersOpen]);
 
-    // Search-engine state lives in a ref (mutated imperatively across pages);
-    // forceRender refreshes the pager. usernames is best-effort id -> name.
-    const st = useRef({ offset: 0, limit: pageSize, total: 0, lastParams: {} });
-    const tableRef = useRef(null);
+    // Results + pager position — React state driving the controlled table and
+    // the pager bar. `params` are the criteria of the LAST run search, so
+    // Prev/Next page through those, not whatever is typed now (classic behavior).
+    const [events, setEvents] = useState([]);
+    const [page, setPage] = useState({ offset: 0, limit: Number(getPref('eventPageSize')) || 20, total: 0, params: null });
+
+    // Best-effort id -> username cache. A ref (not state) because the table's
+    // column renderers are captured once by DataTableHost at mount; when the
+    // names land, the rows are re-set (fresh identity) to repaint with them.
     const usernamesRef = useRef({});
-    // Latest criteria + search, read by table callbacks captured at mount.
-    const criteriaRef = useRef(null);
+    // The table's mount-captured context menu needs the LATEST search closure.
     const searchRef = useRef(null);
 
     function username(uid) {
@@ -208,49 +216,46 @@ function EventsView() {
     /* Optional criteria are OMITTED when unset (qs() drops ''/null/undefined).
        Level: a strict subset is sent as repeated params; none/all = no filter. */
     function buildParams() {
-        const c = criteriaRef.current;
         const params = {};
-        if (c.name.trim()) params.name = c.name.trim();
-        const ls = LEVELS.filter((l) => c.levels[l]);
+        if (name.trim()) params.name = name.trim();
+        const ls = LEVELS.filter((l) => levels[l]);
         if (ls.length > 0 && ls.length < LEVELS.length) params.level = ls;
-        if (c.outcome) params.outcome = c.outcome;
-        const s = toCalendarParam(c.start);
-        const e = toCalendarParam(c.end);
+        if (outcome) params.outcome = outcome;
+        const s = toCalendarParam(start);
+        const e = toCalendarParam(end);
         if (s) params.startDate = s;
         if (e) params.endDate = e;
-        if (c.userId.trim() !== '') params.userId = c.userId.trim();
-        if (c.ip.trim()) params.ipAddress = c.ip.trim();
-        if (c.serverId.trim()) params.serverId = c.serverId.trim();
-        if (c.attrSearch.trim()) params.attributeSearch = c.attrSearch.trim();
+        if (userId.trim() !== '') params.userId = userId.trim();
+        if (ip.trim()) params.ipAddress = ip.trim();
+        if (serverId.trim()) params.serverId = serverId.trim();
+        if (attrSearch.trim()) params.attributeSearch = attrSearch.trim();
         return params;
     }
     // The count path 500s on an empty level set ("EVENT_LEVEL IN ()"); always send one.
     const countParams = (params) => ({ ...params, level: params.level ?? LEVELS });
 
-    async function search(resetOffset) {
-        const c = criteriaRef.current;
-        if (resetOffset) {
-            st.current.offset = 0;
-            st.current.lastParams = buildParams();
-            st.current.limit = Number(c.pageSize) || 20;
-        }
-        const { offset, limit, lastParams } = st.current;
+    async function runSearch(params, offset, limit) {
+        let rows = [];
+        let total = 0;
         try {
-            const [rows, count] = await Promise.all([
-                api.events.search({ ...lastParams, offset, limit }),
-                api.events.count(countParams(lastParams))
+            const [raw, count] = await Promise.all([
+                api.events.search({ ...params, offset, limit }),
+                api.events.count(countParams(params))
             ]);
-            st.current.total = toCount(count);
-            tableRef.current?.setRows(normalizeEvents(rows));
+            rows = normalizeEvents(raw);
+            total = toCount(count);
         } catch (e) {
-            st.current.total = 0;
-            tableRef.current?.setRows([]);
             toast(`Event search failed: ${shortError(e)}`, 'error');
         }
-        const kept = tableRef.current ? tableRef.current.selectedRows() : [];
-        setSelected(kept.length ? kept[0] : null);
-        forceRender();
+        setEvents(rows);
+        setPage({ offset, limit, total, params });
+        // Keep the selection when the same event is still in the new page.
+        setSelected(prev => (prev ? rows.find(r => String(r.id) === String(prev.id)) ?? null : null));
     }
+
+    // A NEW search snapshots the criteria at click time; Prev/Next re-run the
+    // snapshot at a different offset.
+    const search = () => runSearch(buildParams(), 0, Number(pageSize) || 20);
 
     async function exportAllEvents() {
         if (!await confirmDialog('Export All Events',
@@ -263,8 +268,7 @@ function EventsView() {
         }
     }
 
-    // Mirror current criteria into the ref each render; expose search to callbacks.
-    criteriaRef.current = { start, end, name, levels, outcome, pageSize, userId, ip, serverId, attrSearch };
+    // Re-point the mount-captured table callbacks at this render's search closure.
     searchRef.current = search;
 
     const COLUMNS = useRef([
@@ -290,7 +294,7 @@ function EventsView() {
         onContextMenu: (row, ev) => {
             setSelected(row);
             contextMenu(ev.clientX, ev.clientY, [
-                { label: 'Refresh', icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current(true) },
+                { label: 'Refresh', icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current() },
                 { label: 'Export All Events', icon: 'export', task: 'doExportAllEvents', group: 'event', onClick: () => exportAllEvents() }
             ]);
         }
@@ -300,23 +304,23 @@ function EventsView() {
     useEffect(() => {
         api.users.list().then((users) => {
             for (const u of users) if (u && u.id !== undefined) usernamesRef.current[String(u.id)] = displayValue(u.username || u.id);
-            tableRef.current?.render();
+            // Names landed after the first page rendered: re-set the rows (fresh
+            // identity) so the mount-captured User column repaints with them.
+            setEvents(prev => prev.slice());
         }).catch(() => { /* keep raw ids */ });
-        search(true);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        searchRef.current();
     }, []);
 
-    const enterSearch = (e) => { if (e.key === 'Enter') searchRef.current(true); };
-    const s = st.current;
-    const from = s.total === 0 ? 0 : s.offset + 1;
-    const to = Math.min(s.offset + s.limit, s.total);
+    const enterSearch = (e) => { if (e.key === 'Enter') search(); };
+    const from = page.total === 0 ? 0 : page.offset + 1;
+    const to = Math.min(page.offset + page.limit, page.total);
 
     return (
         <div className="view">
             <ViewTasks>
                 <RailPane title="Event Tasks" paneKey="tasks:Event Tasks" group="event">
                     <div className="taskbar" data-pane-title="Event Tasks">
-                        <TaskButton label="Search" icon="refresh" onClick={() => search(true)} />
+                        <TaskButton label="Search" icon="refresh" onClick={() => search()} />
                         <TaskButton label="Export All Events" icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
                     </div>
                 </RailPane>
@@ -355,7 +359,7 @@ function EventsView() {
                         </Field>
                         <button className={'btn filter-adv-toggle' + (advancedOpen ? ' btn-primary' : '')} title="Show advanced search criteria"
                             onClick={() => setAdvancedOpen((o) => !o)}><Icon name="filter" />Advanced</button>
-                        <TaskButton label="Search" icon="search" primary onClick={() => { search(true); setFiltersOpen(false); }} />
+                        <TaskButton label="Search" icon="search" primary onClick={() => { search(); setFiltersOpen(false); }} />
                     </div>
                     {/* Always rendered; hidden inline behind the Advanced toggle when wide,
                         but always shown inside the Filters popover (no menu-in-a-menu). */}
@@ -368,14 +372,14 @@ function EventsView() {
                     </div>
                 </div>
                 <div className="flex-1 overflow-auto min-h-0 flex flex-col oie-elev border border-line rounded-[10px] mx-[14px] mb-3">
-                    <DataTableHost columns={COLUMNS} options={options} onReady={(t) => { tableRef.current = t; }} />
+                    <DataTableHost columns={COLUMNS} options={options} rows={events} />
                 </div>
                 <div className="filterbar panel overflow-visible mx-[14px] mb-3">
-                    <button className="btn" disabled={s.offset <= 0}
-                        onClick={() => { st.current.offset = Math.max(0, st.current.offset - st.current.limit); search(false); }}>Prev</button>
-                    <button className="btn" disabled={s.offset + s.limit >= s.total}
-                        onClick={() => { st.current.offset += st.current.limit; search(false); }}>Next</button>
-                    <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(s.total)}`}</span>
+                    <button className="btn" disabled={page.offset <= 0}
+                        onClick={() => runSearch(page.params ?? {}, Math.max(0, page.offset - page.limit), page.limit)}>Prev</button>
+                    <button className="btn" disabled={page.offset + page.limit >= page.total}
+                        onClick={() => runSearch(page.params ?? {}, page.offset + page.limit, page.limit)}>Next</button>
+                    <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(page.total)}`}</span>
                 </div>
                 <div className="split-handle mx-[14px] my-1" data-orient="v" data-resize="next" />
                 <div className="flex-none h-[35%] min-h-[48px] overflow-auto panel mx-[14px] mb-3">
