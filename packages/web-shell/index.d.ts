@@ -46,12 +46,16 @@ export interface RouterApi {
 }
 export interface StoreApi {
     getState(key: string): any;
+    /** Notifies this key's subscribers on every call, even when the value is unchanged. */
     setState(key: string, value: any): void;
-    subscribe(key: string, fn: (value: any) => void): void;
+    /** Returns an unsubscribe. */
+    subscribe(key: string, fn: (value: any) => void): () => void;
 }
 export interface EventsApi {
-    on(event: string, fn: (...args: any[]) => void): void;
-    emit(event: string, ...args: any[]): void;
+    /** Returns an unsubscribe. */
+    on(event: string, fn: (detail: any) => void): () => void;
+    /** One detail value, delivered as the handler's sole argument. */
+    emit(event: string, detail?: any): void;
 }
 
 /* ---- extension-point shapes ------------------------------------------------ */
