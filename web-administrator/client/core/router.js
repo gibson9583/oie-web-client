@@ -16,6 +16,12 @@ let beforeEach = null;
 let currentTeardown = null;
 let acceptedPath = null;     // last path the guard allowed (target for rollback)
 let started = false;         // popstate listener attached once, across re-mounts
+// Bumped once per navigation. handleChange awaits (the guard, and the handler
+// itself once view modules are imported on demand), so two navigations can be in
+// flight at once; without this the LAST one to resolve wins the outlet rather
+// than the last one requested, leaving the URL and the rendered view disagreeing
+// and orphaning the loser's React root — whose polling would keep running.
+let generation = 0;
 
 export function register(pattern, handler, meta = {}) {
     const names = [];
@@ -32,9 +38,9 @@ export function setGuard(fn) { beforeEach = fn; }
 
 export function navigate(path) {
     const target = path.startsWith('/') ? path : '/' + path;
-    if (target === currentPath()) { handleChange(); return; }   // re-render in place
+    if (target === currentPath()) { handleChange().catch(() => {}); return; }   // re-render in place
     history.pushState(null, '', target);
-    handleChange();
+    handleChange().catch(() => {});
 }
 
 export function currentPath() {
@@ -48,6 +54,7 @@ function parseQuery(qsStr) {
 }
 
 async function handleChange() {
+    const gen = ++generation;
     let path = currentPath();
     let query = {};
     const qIndex = path.indexOf('?');
@@ -67,6 +74,7 @@ async function handleChange() {
 
         if (beforeEach) {
             const verdict = await beforeEach({ path, params, query, meta: route.meta });
+            if (gen !== generation) return;   // superseded while the guard was deciding
             if (verdict === false) {
                 // The URL may already have moved (a programmatic nav pushed it, or
                 // the user pressed Back/Forward) — restore it to the view that
@@ -81,9 +89,32 @@ async function handleChange() {
         }
         acceptedPath = currentPath();
 
+        // Tear the old view down BEFORE building the new one. Tempting to defer this
+        // until the handler resolves (it would avoid a blank outlet while a view
+        // module loads), but several views null the navGuard slot in their unmount
+        // effect — unmounting the old view after the new one has mounted would wipe
+        // the guard the new view just installed.
         if (currentTeardown) { try { currentTeardown(); } catch { /* view cleanup */ } currentTeardown = null; }
 
-        const result = await route.handler({ path, params, query, meta: route.meta });
+        let result;
+        try {
+            result = await route.handler({ path, params, query, meta: route.meta });
+        } catch (err) {
+            if (gen !== generation) return;
+            console.error('[router] view failed to load', path, err);
+            renderInto(loadErrorNode(path));
+            window.dispatchEvent(new CustomEvent('route:changed', { detail: { path, params, query, meta: route.meta } }));
+            return;
+        }
+        if (gen !== generation) {
+            // A newer navigation won while this view was being built. It already owns
+            // the outlet, so discard ours instead of rendering over it — otherwise its
+            // React root leaks and keeps polling.
+            if (result && typeof result.teardown === 'function') {
+                try { result.teardown(); } catch { /* view cleanup */ }
+            }
+            return;
+        }
         if (result) {
             if (result.el) {
                 renderInto(result.el);
@@ -105,7 +136,33 @@ function renderInto(node) {
     outlet.appendChild(node);
 }
 
+// Built with bare DOM calls, not the ui helpers, to keep this module import-free.
+// Mirrors the notFound node's shape so it inherits the same empty-state styling.
+function loadErrorNode(path) {
+    const view = document.createElement('div');
+    view.className = 'view';
+    const body = document.createElement('div');
+    body.className = 'view-body';
+    const empty = document.createElement('div');
+    empty.className = 'dt-empty';
+    const msg = document.createElement('div');
+    msg.textContent = 'This view failed to load.';
+    const retry = document.createElement('button');
+    retry.className = 'btn btn-primary';
+    retry.textContent = 'Retry';
+    retry.addEventListener('click', () => navigate(path));
+    empty.append(msg, retry);
+    body.appendChild(empty);
+    view.appendChild(body);
+    return view;
+}
+
 export function start() {
-    if (!started) { window.addEventListener('popstate', handleChange); started = true; }
-    handleChange();
+    // handleChange is async, so every call site floats a promise. Swallow rejections
+    // here rather than leaving them unhandled — a failing view is reported in-outlet.
+    if (!started) {
+        window.addEventListener('popstate', () => { handleChange().catch(() => {}); });
+        started = true;
+    }
+    handleChange().catch(() => {});
 }
