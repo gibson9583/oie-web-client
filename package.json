@@ -12,6 +12,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc -p type-tests/tsconfig.json",
+    "pree2e": "npm run build -w web-administrator",
     "e2e": "playwright test",
     "e2e:live": "E2E_LIVE=1 playwright test --project=live",
     "test": "npm test -w web-administrator",

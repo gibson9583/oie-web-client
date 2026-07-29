@@ -177,7 +177,11 @@ async function start() {
         // the bare `/` — the braced `/{*splat}` form does, and `/` must reach
         // the shell now that the static mounts no longer serve a directory index.
         app.get('/{*splat}', serveShell);
-        if (!built) console.warn('  [build] No client/dist found — serving unbundled source. Run "npm run build" for the optimized bundle.');
+        // The unbundled-source fallback below cannot actually boot the app: the shell
+        // entry is /main.jsx (browsers refuse a text/jsx module) and app.css imports
+        // Tailwind, so both need a build step. Say so plainly — the symptom is an
+        // otherwise unexplained blank page stuck on the boot splash.
+        if (!built) console.warn('  [build] No client/dist found — the app WILL NOT LOAD. Run "npm run build" (or "npm run dev" for the Vite dev server).');
     }
 
     const server = createServer(app, config.tls);
