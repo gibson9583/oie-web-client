@@ -8,6 +8,13 @@
  * Task panes: React views render their task panes through <ViewTasks>, which
  * portals into the shell's React-tasks rail container (separate from the legacy
  * relocateTaskbars container, so the two task mechanisms never fight).
+ *
+ * The two flushSync calls below are the only ones in the client, and both are
+ * load-bearing contracts rather than migration leftovers — don't fold either into
+ * a plain root.render(). Caveat: React 19 DEFERS a flushSync render issued while
+ * it is already processing effects, so mountReact called from inside an effect
+ * does NOT render synchronously; islands that depend on the settled DOM in that
+ * case must guard for it in-tree (see StepEditorPanel in filter-transformer.jsx).
  */
 
 import { createRoot } from 'react-dom/client';
