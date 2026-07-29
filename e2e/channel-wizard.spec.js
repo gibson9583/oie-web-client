@@ -190,6 +190,51 @@ test.describe('channel wizard', () => {
         await expect(page.getByText(/required/).first()).toBeVisible();
     });
 
+    // The embedded filter/transformer editor shares the single navGuard store
+    // slot with the wizard. Its mount/unmount must leave the wizard's guard in
+    // place — regressed, leaving the wizard after touching the Transformer tab
+    // skips the unsaved-changes prompt and silently discards the channel.
+    test('leave prompt survives mounting the embedded transformer editor', async ({ page }) => {
+        await mockEngine(page);
+        await page.goto('/channels/new/guided');
+        await page.locator('.view-body input').first().fill('Guarded Channel');
+        await next(page).click();   // Dependencies
+        await next(page).click();   // Channel Options
+        await next(page).click();   // Source
+
+        // Mount the embedded editor (its Message Trees rail proves it's live).
+        await page.getByRole('button', { name: 'Transformer', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
+
+        // Leave via the nav rail — the WIZARD's guard must still prompt.
+        await page.locator('button.rail-item', { hasText: 'Dashboard' }).click();
+        await expect(page.getByText(/before leaving/)).toBeVisible();
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(page.locator('.modal')).toHaveCount(0);
+        await expect(page).toHaveURL(/\/channels\/new\/guided/);
+    });
+
+    test('leave prompt survives unmounting the embedded transformer editor', async ({ page }) => {
+        await mockEngine(page);
+        await page.goto('/channels/new/guided');
+        await page.locator('.view-body input').first().fill('Guarded Channel');
+        await next(page).click();   // Dependencies
+        await next(page).click();   // Channel Options
+        await next(page).click();   // Source
+        await page.getByRole('button', { name: 'Transformer', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
+
+        // Unmount the embedded editor by jumping back to Basics — its cleanup
+        // must not null out the wizard's guard on the way down.
+        await page.locator('.wiz-step', { hasText: 'Basics' }).click();
+        await expect(page.locator('.view-body input').first()).toHaveValue('Guarded Channel');
+
+        await page.locator('button.rail-item', { hasText: 'Dashboard' }).click();
+        await expect(page.getByText(/before leaving/)).toBeVisible();
+        await page.getByRole('button', { name: 'Discard', exact: true }).click();
+        await expect(page).toHaveURL(/\/dashboard/);
+    });
+
     test('prompts to save when leaving with unsaved changes', async ({ page }) => {
         await mockEngine(page);
         await page.goto('/channels/new/guided');

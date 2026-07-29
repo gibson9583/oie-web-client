@@ -24,7 +24,12 @@ export default defineConfig({
     reporter: process.env.CI ? 'github' : 'list',
     use: {
         baseURL: BASE_URL,
-        trace: 'on-first-retry',
+        // retain-on-failure (not on-first-retry) so the rare boot-timing flake
+        // leaves the FAILING attempt's trace behind — on-first-retry only traces
+        // the retry, which passes, so the flake was never diagnosable after the
+        // fact. Passing runs delete their traces, so the steady-state cost is
+        // recording overhead only.
+        trace: 'retain-on-failure',
     },
     // Boot the web admin (Node server). With mocked /api it needs no engine.
     // reuseExistingServer lets you point at an already-running dev server (and is
