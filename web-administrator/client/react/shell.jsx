@@ -8,6 +8,7 @@
 
 import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     useStoreKey, useTheme, useTimezone, useViewTitle, useRouteChange,
     useServerIdentity, useRestartWatch, Icon
@@ -52,10 +53,10 @@ const ISSUES_URL = 'https://github.com/OpenIntegrationEngine/engine/issues';
  */
 const VIEW_ROUTES = [
     { path: '/dashboard', meta: { title: 'Dashboard' },
-        nav: { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Engine', order: 0, task: 'doShowDashboard' },
+        nav: { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Monitor', order: 0, task: 'doShowDashboard' },
         load: () => import('./views/dashboard.jsx'), pick: (m) => m.DashboardHost },
     { path: '/channels', meta: { title: 'Channels' },
-        nav: { id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Engine', order: 1, task: 'doShowChannel' },
+        nav: { id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Design', order: 0, task: 'doShowChannel' },
         load: () => import('./views/channels.jsx'), pick: (m) => m.ChannelsView },
     { path: '/channels/:channelId/edit', meta: { title: 'Edit Channel' },
         load: () => import('./views/channel-editor.jsx'), pick: (m) => m.ChannelEditorView },
@@ -72,10 +73,10 @@ const VIEW_ROUTES = [
     { path: '/messages/:channelId', meta: { title: 'Messages' },
         load: () => import('./views/messages.jsx'), pick: (m) => m.MessagesView },
     { path: '/events', meta: { title: 'Events' },
-        nav: { id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Engine', order: 5, task: 'doShowEvents' },
+        nav: { id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Monitor', order: 2, task: 'doShowEvents' },
         load: () => import('./views/events.jsx'), pick: (m) => m.EventsView },
     { path: '/alerts', meta: { title: 'Alerts' },
-        nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Engine', order: 4, task: 'doShowAlerts' },
+        nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Monitor', order: 1, task: 'doShowAlerts' },
         load: () => import('./views/alerts.jsx'), pick: (m) => m.AlertsList },
     { path: '/alerts/:alertId/edit', meta: { title: 'Edit Alert' },
         load: () => import('./views/alert-editor.jsx'), pick: (m) => m.AlertEditor },
@@ -84,17 +85,19 @@ const VIEW_ROUTES = [
     { path: '/alerts/:alertId/guided', meta: { title: 'Alert — Wizard' },
         load: () => import('./views/alert-wizard.jsx'), pick: (m) => m.AlertWizardView },
     { path: '/users', meta: { title: 'Users' },
-        nav: { id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2, task: 'doShowUsers' },
+        nav: { id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Manage', order: 0, task: 'doShowUsers' },
         load: () => import('./views/users.jsx'), pick: (m) => m.UsersView },
     { path: '/settings', meta: { title: 'Settings' },
-        nav: { id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Engine', order: 3, task: 'doShowSettings' },
+        nav: { id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Manage', order: 1, task: 'doShowSettings' },
         load: () => import('./views/settings.jsx'), pick: (m) => m.SettingsView },
     { path: '/code-templates', meta: { title: 'Code Templates' },
+        nav: { id: 'code-templates', label: 'Code Templates', icon: 'code', path: '/code-templates', section: 'Design', order: 1 },
         load: () => import('./views/code-templates.jsx'), pick: (m) => m.CodeTemplatesView },
     { path: '/global-scripts', meta: { title: 'Global Scripts' },
+        nav: { id: 'global-scripts', label: 'Global Scripts', icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2 },
         load: () => import('./views/global-scripts.jsx'), pick: (m) => m.GlobalScriptsView },
     { path: '/extensions', meta: { title: 'Extensions' },
-        nav: { id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Engine', order: 6, task: 'doShowExtensions' },
+        nav: { id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Manage', order: 2, task: 'doShowExtensions' },
         load: () => import('./views/extensions.jsx'), pick: (m) => m.ExtensionsView },
 ];
 
@@ -204,20 +207,50 @@ async function showAbout() {
 
 // Nav panes, grouped by section. `only`/`exclude` split the Engine pane (top)
 // from plugin panes (below the contextual task panes) — matching app.js order.
-function Nav({ only, exclude }) {
+const SECTION_ORDER = ['Monitor', 'Design', 'Manage'];
+
+/* 'Engine' was the single catch-all group before Run/Design/Manage, and plugins
+   built against that convention still declare it — the Community Store, which
+   ships from its own repo, is one. Without this they render a stray ENGINE
+   heading of their own. Manage is where an extension marketplace belongs, and is
+   the closest home for anything else that asked to sit with the app's views. */
+const LEGACY_SECTIONS = { Engine: 'Manage' };
+
+/* Label for a collapsed rail item. Portaled to <body> and position:fixed because
+   .rail scrolls — an absolutely positioned child would be clipped by it, and would
+   also pad its scrollWidth into a horizontal scrollbar. Shown on focus too, or the
+   rail becomes unusable by keyboard once collapsed. */
+function RailFlyout({ target }) {
+    if (!target) return null;
+    const r = target.el.getBoundingClientRect();
+    return createPortal(
+        <div className="rail-flyout visible" role="tooltip"
+            style={{ left: r.right + 10, top: r.top + r.height / 2, transform: 'translateY(-50%)' }}>
+            {target.label}
+        </div>,
+        document.body
+    );
+}
+
+function Nav({ only, exclude, collapsed, onPeek }) {
     const current = useRouteChange();
     const sections = new Map();
     for (const item of platform.navItems()) {
-        const section = item.section || 'Plugins';
-        if (only && section !== only) continue;
-        if (exclude && section === exclude) continue;
+        const section = LEGACY_SECTIONS[item.section] || item.section || 'Plugins';
+        if (only && !only.includes(section)) continue;
+        if (exclude && exclude.includes(section)) continue;
         // RBAC: hide a view the user isn't authorized for (Swing's "view" task pane).
         if (item.task && !platform.checkTask('view', item.task)) continue;
         if (!sections.has(section)) sections.set(section, []);
         sections.get(section).push(item);
     }
-    const ordered = [...sections.keys()].sort((a, b) =>
-        (a === 'Engine' ? -1 : b === 'Engine' ? 1 : a.localeCompare(b)));
+    // Grouped by what you came to do rather than by build order. Anything a plugin
+    // introduces sorts after these, alphabetically, with Plugins last of all.
+    const rank = (s) => {
+        const i = SECTION_ORDER.indexOf(s);
+        return i >= 0 ? i : (s === 'Plugins' ? 900 : 500);
+    };
+    const ordered = [...sections.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
     return (
         <>
             {ordered.map((section) => (
@@ -228,6 +261,12 @@ function Nav({ only, exclude }) {
                         return (
                             <button key={item.id || item.path}
                                 className={'rail-item' + (active ? ' active' : '')}
+                                title={collapsed ? item.label : undefined}
+                                aria-label={collapsed ? item.label : undefined}
+                                onMouseEnter={(e) => collapsed && onPeek({ el: e.currentTarget, label: item.label })}
+                                onMouseLeave={() => collapsed && onPeek(null)}
+                                onFocus={(e) => collapsed && onPeek({ el: e.currentTarget, label: item.label })}
+                                onBlur={() => collapsed && onPeek(null)}
                                 onClick={() => router.navigate(item.path)}>
                                 <Icon name={item.icon || 'puzzle'} size={15} />
                                 <span>{item.label}</span>
@@ -240,7 +279,7 @@ function Nav({ only, exclude }) {
     );
 }
 
-function OtherPane({ onLogout }) {
+function OtherPane({ onLogout, collapsed, onPeek }) {
     // RBAC: each "other" task can be hidden (Swing's otherPane). checkTask returns
     // true unless an authorization plugin denies the (group, task). Re-render when
     // the plugin set lands: an RBAC plugin's controller installs during
@@ -248,15 +287,24 @@ function OtherPane({ onLogout }) {
     // from the route change; this static pane needs the subscription).
     useStoreKey('webPlugins');
     const can = (task) => platform.checkTask('other', task);
+    // Same peek behaviour as the nav items when the rail is an icon strip.
+    const peek = (label) => (collapsed ? {
+        title: label,
+        'aria-label': label,
+        onMouseEnter: (e) => onPeek({ el: e.currentTarget, label }),
+        onMouseLeave: () => onPeek(null),
+        onFocus: (e) => onPeek({ el: e.currentTarget, label }),
+        onBlur: () => onPeek(null),
+    } : {});
     return (
         <RailPane title="Other" paneKey="Other" group="other">
             <div className="taskbar">
-                {can('goToUserAPI') && <button className="btn" onClick={openApiDocs}><Icon name="code" />View REST API</button>}
-                {can('goToAbout') && <button className="btn" onClick={showAbout}><Icon name="info" />About</button>}
-                {can('goToMirth') && <button className="btn" onClick={() => window.open(HOMEPAGE_URL, '_blank')}><Icon name="globe" />Visit homepage</button>}
-                {can('doReportIssue') && <button className="btn" onClick={() => window.open(ISSUES_URL, '_blank')}><Icon name="bug" />Report issue</button>}
+                {can('goToUserAPI') && <button className="btn" onClick={openApiDocs} {...peek('View REST API')}><Icon name="apiDoc" />View REST API</button>}
+                {can('goToAbout') && <button className="btn" onClick={showAbout} {...peek('About')}><Icon name="info" />About</button>}
+                {can('goToMirth') && <button className="btn" onClick={() => window.open(HOMEPAGE_URL, '_blank')} {...peek('Visit homepage')}><Icon name="globe" />Visit homepage</button>}
+                {can('doReportIssue') && <button className="btn" onClick={() => window.open(ISSUES_URL, '_blank')} {...peek('Report issue')}><Icon name="bug" />Report issue</button>}
                 <span className="sep" />
-                {can('doLogout') && <button className="btn" onClick={onLogout}><Icon name="logout" />Logout</button>}
+                {can('doLogout') && <button className="btn" onClick={onLogout} {...peek('Logout')}><Icon name="logout" />Logout</button>}
             </div>
         </RailPane>
     );
@@ -464,6 +512,7 @@ function AppShell({ user, onLogout }) {
 
     const railVersion = serverInfo && !serverInfo.error ? `engine v${serverInfo.version}` : '';
     const railCollapsed = useStoreKey('railCollapsed');
+    const [peek, setPeek] = useState(null);
 
     // On phone/tablet the rail is an off-canvas drawer — close it after navigating
     // (transient, so the desktop open/closed preference isn't overwritten). Only a
@@ -492,24 +541,38 @@ function AppShell({ user, onLogout }) {
                 <div className="rail-brand">
                     {/* Pre-whitened vector logo — NO CSS filter (the filter softened it; copying
                         the img grabbed the clean source, which is why it looked fine copied but off
-                        in the bar). Crisp at any DPI on the dark/blue rail. */}
-                    <img src="/assets/oie_logo_banner_text_white.svg" alt="Open Integration Engine"
-                        style={{ width: '100%', height: 'auto', display: 'block' }} />
+                        in the bar). Crisp at any DPI on the dark/blue rail. Dropped entirely when
+                        collapsed: it is a banner lockup, illegible at 56px, and its inline width
+                        would beat any CSS that tried to hide it. */}
+                    {!railCollapsed && (
+                        <img src="/assets/oie_logo_banner_text_white.svg" alt="Open Integration Engine"
+                            style={{ width: '100%', height: 'auto', display: 'block' }} />
+                    )}
                 </div>
+                {/* Navigation only. Per-view task panes portal into .view-tasks in the
+                    content column instead (see below) — they change on every navigation,
+                    and having them here pushed the nav around and off-screen. */}
                 <div className="rail-panes">
-                    <Nav only="Engine" />
-                    <div ref={reactTasksRef} />
-                    <Nav exclude="Engine" />
-                    <OtherPane onLogout={onLogout} />
+                    <Nav only={SECTION_ORDER} collapsed={railCollapsed} onPeek={setPeek} />
+                    <Nav exclude={SECTION_ORDER} collapsed={railCollapsed} onPeek={setPeek} />
+                    <OtherPane onLogout={onLogout} collapsed={railCollapsed} onPeek={setPeek} />
                 </div>
                 <div className="rail-foot"><span id="rail-version">{railVersion}</span></div>
             </aside>
             {/* Off-canvas drawer backdrop (phone/tablet only via CSS) — tap to close. */}
+            {railCollapsed && <RailFlyout target={peek} />}
             <div className="rail-backdrop" onClick={() => store.setState('railCollapsed', true)} />
             <TopBar user={user} onLogout={onLogout} serverInfo={serverInfo} />
             <div className="content">
                 <RestartBanner />
-                <main ref={outletRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} />
+                {/* Every view's task pane lands here through <ViewTasks> — its own
+                    column beside the content it acts on, separate from navigation so
+                    the nav no longer moves when tasks change. Stays empty (and
+                    collapsed away by CSS) for views that declare no tasks. */}
+                <div className="content-row">
+                    <div className="view-tasks" ref={reactTasksRef} />
+                    <main ref={outletRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} />
+                </div>
             </div>
             <StatusBar user={user} serverInfo={serverInfo} />
         </div>

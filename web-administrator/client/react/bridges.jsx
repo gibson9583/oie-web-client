@@ -84,7 +84,7 @@ export function useRouteChange() {
    distinct. Theme-aware — dark mode dims the color into a deep tint that fits the
    dark theme; light mode uses it close to as-is (like Swing's blue task panes).
    Foreground is luminance-picked so text stays readable on any color. */
-const ENV_COLOR_VARS = ['--rail-bg', '--topbar-bg', '--rail-fg', '--rail-fg-dim', '--topbar-fg'];
+const ENV_COLOR_VARS = ['--rail-bg', '--rail-fg', '--rail-fg-dim', '--topbar-fg'];
 let lastEnvColor = null;   // remembered so a theme toggle can re-tint
 
 /* Compute the rail/topbar gradients + readable foreground for a color object in
@@ -100,8 +100,12 @@ export function environmentColorVars(colorObj, dark) {
     const shift = (amt) => `rgb(${clamp(r + amt)}, ${clamp(g + amt)}, ${clamp(b + amt)})`;
     const darkBg = (0.299 * r + 0.587 * g + 0.114 * b) < 140;   // perceived luminance
     return {
+        // One gradient for the whole chrome. There used to be a second, horizontal
+        // one for the topbar, which is why a tinted environment showed the same
+        // seam as the default palette: two ramps can only agree at a single point.
+        // The topbar paints --rail-bg too (viewport-attached), so it samples the
+        // top of this one.
         railBg: `linear-gradient(180deg, ${shift(12)} 0%, ${shift(-14)} 100%)`,
-        topbarBg: `linear-gradient(90deg, ${shift(-6)} 0%, ${shift(10)} 100%)`,
         // Dim foreground sits higher than a typical secondary text alpha: on a
         // saturated mid-luminance env color (bright red/green/blue) a 0.6 alpha
         // washes into the background, so the nav items + section labels were hard
@@ -178,7 +182,6 @@ export function applyEnvironmentColor(colorObj) {
         ENV_COLOR_VARS.forEach((p) => root.style.removeProperty(p));
     } else {
         root.style.setProperty('--rail-bg', v.railBg);
-        root.style.setProperty('--topbar-bg', v.topbarBg);
         root.style.setProperty('--rail-fg', v.fg);
         root.style.setProperty('--rail-fg-dim', v.fgDim);
         root.style.setProperty('--topbar-fg', v.fg);

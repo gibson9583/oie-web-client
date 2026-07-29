@@ -85,15 +85,18 @@
 
     /* Chrome surfaces (sidebar backdrop + title strip). */
     --rail-bg: linear-gradient(180deg, #101a26 0%, #0c141d 100%);
+    /* Fine horizontal scanline, shared by the whole chrome so the topbar and rail
+       carry identical texture as well as identical colour. */
+    --chrome-texture: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0, 0, 0, 0.06) 2px 3px);
     --rail-fg: #c8d4e0;
     --rail-fg-dim: #74859a;
     --pane-bg: #16212c;
-    --topbar-bg: linear-gradient(90deg, #142a40 0%, #18324d 100%);
     --topbar-fg: #e4edf5;
     --statusbar-bg: #111922;
 
     --radius: 10px;
     --rail-w: 216px;
+    --rail-w-icons: 56px;
     --topbar-h: 48px;
     --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     /* Soft, layered card elevation — lifts panels off the ground. Distinct from
@@ -127,7 +130,6 @@
     --rail-fg: #f2f7fb;
     --rail-fg-dim: #c4d8ea;
     --pane-bg: #fbfcfe;
-    --topbar-bg: linear-gradient(90deg, #2e6da4 0%, #3a7cc0 100%);
     --topbar-fg: #ffffff;
     --statusbar-bg: #dde4ea;
     --shadow: 0 8px 28px rgba(29, 41, 53, 0.18);
@@ -217,7 +219,18 @@ code, pre, .mono { font-family: var(--font-mono); }
 
 /* Collapsed via the topbar hamburger: close the rail's column so the content
    spans full width (the rail clips horizontally as it closes). */
-.shell.rail-collapsed { grid-template-columns: 0 1fr; }
+/* Collapsed = an ICON RAIL, not a hidden one: the nav stays reachable and keeps
+   its selected-item cue, while handing ~146px back to the content. Phone/tablet
+   is different — there the rail is an off-canvas drawer and collapsed means
+   genuinely gone, so this width is scoped away below (see the 768px block). */
+.shell.rail-collapsed {
+    grid-template-columns: var(--rail-w-icons) 1fr;
+    /* The topbar takes the full width so the rail starts BELOW it. Otherwise the
+       rail keeps a brand slot level with the topbar, and with the wordmark gone
+       that is just an empty 56px block — this puts the hamburger in that corner
+       instead. */
+    grid-template-areas: "topbar topbar" "rail content" "status status";
+}
 
 @keyframes shell-in { from { opacity: 0; } to { opacity: 1; } }
 
@@ -225,8 +238,8 @@ code, pre, .mono { font-family: var(--font-mono); }
 
 .rail {
     grid-area: rail;
-    background: var(--rail-bg);
-    border-right: 1px solid var(--line);
+    background: var(--chrome-texture), var(--rail-bg);
+    background-attachment: fixed;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
@@ -321,10 +334,14 @@ code, pre, .mono { font-family: var(--font-mono); }
     align-items: center;
     gap: 14px;
     padding: 0 18px;
-    background:
-        repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,0.06) 2px 3px),
-        var(--topbar-bg);
-    border-bottom: 1px solid var(--line);
+    /* The topbar and the rail are ONE surface. They used to run different
+       gradients — the rail vertical, the topbar horizontal — so they agreed at a
+       single point and showed a seam everywhere else, in both themes. Painting
+       both with the same gradient and attaching it to the VIEWPORT means each
+       samples its own slice of one continuous ramp: no seam at any corner, and
+       the rail keeps the depth it gets from darkening downward. */
+    background: var(--chrome-texture), var(--rail-bg);
+    background-attachment: fixed;
     color: var(--topbar-fg);
 }
 
@@ -413,7 +430,12 @@ code, pre, .mono { font-family: var(--font-mono); }
 
 /* ---- Content / views --------------------------------------------------------- */
 
+/* The chrome (topbar + rail) carries NO internal borders — a line between two
+   halves of one surface reads as a mistake. The hairline belongs where the chrome
+   meets the content, so the content owns it on the two edges that touch. */
 .content {
+    border-top: 1px solid var(--line);
+    border-left: 1px solid var(--line);
     grid-area: content;
     overflow: hidden;
     display: flex;
@@ -1496,6 +1518,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     width: 100%;
     box-shadow: none;
 }
+.rail-pane-body .taskbar .btn svg { width: 16px; height: 16px; }
 .rail-pane-body .taskbar .btn:hover {
     background: color-mix(in srgb, var(--rail-fg) 10%, transparent);
     color: var(--rail-fg);
@@ -1525,6 +1548,202 @@ input.grid-name::placeholder { color: var(--text-faint); }
    whole pane, header included, until the view reports a selection. Regular
    panes keep their always-visible tasks. */
 .rail-pane.ctx-pane:has(> .rail-pane-body > .taskbar > .ctx-tasks.hidden) { display: none; }
+
+/* ---- Collapsed icon rail ----------------------------------------------------------------- */
+
+.rail-collapsed .rail { align-items: center; }
+/* No brand slot at all when collapsed: the wordmark is a banner lockup that
+   cannot shrink to 56px legibly, and the topbar now owns that corner. */
+.rail-collapsed .rail-brand { display: none; }
+.rail-collapsed .rail-panes { padding: 4px 0 8px; width: 100%; }
+
+/* Section captions become hairlines: the grouping still reads as separation
+   without room for "Design" to sit anywhere sensible. */
+.rail-collapsed .rail-pane-header { padding: 0; pointer-events: none; }
+.rail-collapsed .pane-title,
+.rail-collapsed .pane-chevron { display: none; }
+.rail-collapsed .rail-pane + .rail-pane { margin-top: 8px; padding-top: 8px; }
+
+.rail-collapsed .rail-item {
+    justify-content: center;
+    padding: 9px 0;
+    margin: 2px auto;
+    width: 40px;
+    border-radius: 8px;
+}
+.rail-collapsed .rail-item span { display: none; }
+/* 24px: an icon carrying a nav item ALONE needs to read as a target, where the
+   expanded rail's 15px is only a hint beside its label. */
+.rail-collapsed .rail-pane .rail-item svg { width: 24px; height: 24px; }
+
+/* The Other pane's buttons carry their label as a bare text node, so there is no
+   element to hide — font-size:0 collapses the text while the icons keep their
+   explicit width/height. */
+.rail-collapsed .rail-pane-body .taskbar .btn {
+    font-size: 0;
+    justify-content: center;
+    width: 40px;
+    margin: 2px auto;
+    padding: 9px 0;
+    border-radius: 8px;
+}
+/* Match the nav items exactly — 20 next to 24 reads as a mistake, not a hierarchy. */
+.rail-collapsed .rail-pane-body .taskbar .btn svg { width: 24px; height: 24px; }
+.rail-collapsed .rail-pane-body .taskbar .sep { margin: 4px auto; width: 24px; }
+
+.rail-collapsed .rail-foot { padding: 8px 0; text-align: center; }
+.rail-collapsed .rail-foot #rail-version { display: none; }
+
+/* Label flyout. MUST be position:fixed and live outside the rail: .rail scrolls
+   (overflow-y:auto), and an absolutely positioned child of a scroll container is
+   both clipped by it AND counted in its scrollWidth — which is how you end up
+   with a horizontal scrollbar inside a 56px rail. */
+.rail-flyout {
+    position: fixed;
+    z-index: 200;
+    background: var(--bg3);
+    color: var(--text);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 5px 10px;
+    font-size: 12.5px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.rail-flyout.visible { opacity: 1; }
+
+/* ---- View task toolbar ------------------------------------------------------------------------------------------------------------------- */
+
+/* The same RailPane markup the nav uses, but portaled into the content column
+   instead of the rail, so a view's actions sit above the thing they act on.
+   Everything here out-specifies the rail rules above by one class (.view-tasks),
+   which is why the panes need no markup change — and why plugin task panes come
+   along for free. */
+/* Its own column beside the content, not a bar above it. Vertical keeps the
+   familiar Swing task-list reading order and needs no horizontal scrolling for
+   the long sets (Channels reaches 14 tasks with rows selected), while still
+   getting the actions out of the navigation rail so the nav stops moving.
+   Growing this column also cannot push the grid around — which a top bar does,
+   badly: revealing selection-gated tasks between the two clicks of a
+   double-click made the second click land on the wrong row. */
+.view-tasks {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    /* Under 186px on a 1280 viewport: the rail leaves 1066, and the dashboard's
+       control bar collapses at a container width of 880 (see .dash-options-btn),
+       so a wider column would silently degrade the dashboard at normal sizes. */
+    width: 176px;
+    flex: none;
+    padding: 8px 8px 12px;
+    background: var(--bg1);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+/* Views that declare no tasks (and the login screen) get no column at all. */
+.view-tasks:empty { display: none; }
+
+.content-row { display: flex; flex: 1; min-height: 0; }
+
+.view-tasks .rail-pane { display: block; flex: none; }
+.view-tasks .rail-pane + .rail-pane {
+    border-top: 1px solid var(--line);
+    margin-top: 8px;
+    padding-top: 8px;
+}
+
+/* Header stays a group caption. Collapsing is kept here — unlike a toolbar this
+   column has vertical space worth reclaiming when a view has several panes. */
+.view-tasks .rail-pane-header { padding: 4px 6px 5px; }
+.view-tasks .pane-title {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.view-tasks .pane-chevron { color: var(--text-faint); }
+
+.view-tasks .rail-pane-body { padding: 0; }
+.view-tasks .rail-pane-body .taskbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1px;
+}
+
+/* Content colours rather than the rail's dim-on-blue, and with a readable
+   surface behind them the primary/danger emphasis the rail dropped is worth
+   having back. */
+.view-tasks .rail-pane-body .taskbar .btn {
+    width: 100%;
+    margin: 0;
+    justify-content: flex-start;
+    padding: 5px 8px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+    background: none;
+    border: 0;
+}
+.view-tasks .rail-pane-body .taskbar .btn svg { width: 16px; height: 16px; }
+.view-tasks .rail-pane-body .taskbar .btn svg { width: 16px; height: 16px; }
+.rail-pane-body .taskbar .btn:hover {
+    background: var(--accent-glow);
+    color: var(--text);
+    border: 0;
+}
+.view-tasks .rail-pane-body .taskbar .btn-primary { color: var(--accent); font-weight: 600; }
+.view-tasks .rail-pane-body .taskbar .btn-danger { color: var(--err); }
+.view-tasks .rail-pane-body .taskbar .btn-danger:hover {
+    background: color-mix(in srgb, var(--err) 12%, transparent);
+}
+
+.view-tasks .rail-pane-body .taskbar .sep {
+    width: auto;
+    height: 1px;
+    margin: 5px 8px;
+    background: var(--line);
+}
+.view-tasks .rail-pane-body .taskbar .taskbar-spacer { display: none; }
+.view-tasks .rail-pane-body .taskbar .check { padding: 4px 8px; font-size: 12px; }
+.view-tasks .rail-pane-body .taskbar input[type="text"],
+.view-tasks .rail-pane-body .taskbar select { margin: 4px 0; width: 100%; font-size: 12px; }
+
+/* Narrow viewports have no horizontal width to give away — the rail is already an
+   off-canvas drawer here, and a fixed task column would leave the transformer's
+   split panes about 190px. Lay the same panes out as a scrolling bar across the
+   top instead, so every task stays reachable at no cost to the content width. */
+@media (max-width: 900px) {
+    .content-row { flex-direction: column; min-height: 0; }
+    .view-tasks {
+        flex-direction: row;
+        align-items: center;
+        width: auto;
+        gap: 10px;
+        padding: 6px 10px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+    .view-tasks .rail-pane { display: flex; align-items: center; gap: 6px; }
+    .view-tasks .rail-pane + .rail-pane {
+        border-top: 0;
+        margin-top: 0;
+        padding-top: 0;
+        border-left: 1px solid var(--line);
+        padding-left: 10px;
+    }
+    .view-tasks .rail-pane-header { padding: 0; pointer-events: none; }
+    .view-tasks .pane-chevron { display: none; }
+    .view-tasks .rail-pane-body .taskbar { flex-direction: row; flex-wrap: nowrap; gap: 4px; }
+    .view-tasks .rail-pane-body .taskbar .btn { width: auto; flex: none; white-space: nowrap; }
+    .view-tasks .rail-pane-body .taskbar .sep { width: 1px; height: 16px; margin: 0 2px; }
+}
 
 /* ---- Status bar -------------------------------------------------------------------------------------------------------------------------- */
 
@@ -1719,6 +1938,9 @@ table.dt td .twisty.twisty-lg { padding: 5px 8px; margin: -5px -8px; }
        an icon-only strip gives no labels, and touch has no hover tooltips). Content
        spans full width; the topbar hamburger and the backdrop open/close it. */
     .shell { grid-template-columns: 0 1fr; }
+    /* The drawer is the full rail; collapsed means off-canvas here, so the
+       icon-rail width must not apply. */
+    .shell.rail-collapsed { grid-template-columns: 0 1fr; }
     .rail {
         position: fixed;
         top: 0; bottom: 0; left: 0;

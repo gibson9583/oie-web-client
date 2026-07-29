@@ -79,8 +79,27 @@ test.describe('responsive — phone (375px)', () => {
 });
 
 test('dashboard controls stay inline (no View button) at desktop width', async ({ page }) => {
+    // "Desktop" now has to account for the task column beside the content: rail 216
+    // + tasks 176 leaves the filterbar under the 880px container width at 1280, so
+    // the controls correctly fold into the View menu there. 1440 is the first
+    // common width with room for them inline.
+    await page.setViewportSize({ width: 1440, height: 900 });
     await mockEngine(page);
     await page.goto('/dashboard');
+    await expect(page.locator('.dash-options-btn')).toBeHidden();
+    await expect(page.locator('.dash-controls').getByText('Range:')).toBeVisible();
+});
+
+test('collapsing the rail wins back enough width for the inline dashboard controls', async ({ page }) => {
+    // The flip side of the task column: at 1280 the controls start folded, and
+    // collapsing the rail to the icon strip hands back the ~160px that restores
+    // them. This is the escape hatch for the width the column costs.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.locator('.dash-options-btn')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Hide navigation' }).click();
     await expect(page.locator('.dash-options-btn')).toBeHidden();
     await expect(page.locator('.dash-controls').getByText('Range:')).toBeVisible();
 });
