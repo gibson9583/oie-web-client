@@ -145,7 +145,7 @@ function UsersView() {
         ]);
     };
 
-    const options = {
+    const options = useRef({
         selectable: 'single',
         rowKey: (u) => String(u.id),
         emptyText: 'No users',
@@ -154,7 +154,7 @@ function UsersView() {
         onActivate: (u) => editTask(u),
         onSelect: (rows) => setSel(rows),
         onContextMenu: openMenu
-    };
+    }).current;
 
     const hasSel = sel.length > 0;
 

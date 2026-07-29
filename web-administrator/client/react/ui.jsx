@@ -64,13 +64,32 @@ export function DataTableHost({ columns, options, rows, onReady }) {
         host.appendChild(table.el);
         if (onReady) onReady(table);
         return () => { host.replaceChildren(); };
-        // Build once; rows are pushed via the effect below. columns/options are
-        // captured at mount (views keep them stable), matching legacy view usage.
+        // Build once; rows are pushed via the effect below. columns/options/onReady
+        // are captured at mount and never re-read — the table owns sort, selection
+        // and column visibility from then on, so rebuilding it would throw that
+        // state away. The effect below enforces the stability that assumes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     useEffect(() => {
         if (tableRef.current && rows) tableRef.current.setRows(rows);
     }, [rows]);
+    // Dev-only: a caller that rebuilds columns/options/onReady each render silently
+    // gets the FIRST render's values forever — the failure is invisible (stale
+    // callbacks), so say it out loud. Seeded from a ref rather than the mount
+    // effect's closure so a StrictMode remount re-seeds instead of false-firing.
+    // vite constant-folds import.meta.env.DEV, so this whole block leaves the build.
+    const stableRef = useRef(null);
+    useEffect(() => {
+        if (!import.meta.env || !import.meta.env.DEV) return;
+        const prev = stableRef.current;
+        stableRef.current = { columns, options, onReady };
+        if (!prev) return;
+        const changed = ['columns', 'options', 'onReady']
+            .filter((k) => prev[k] !== stableRef.current[k]);
+        if (changed.length) {
+            console.warn(`[ui] DataTableHost: ${changed.map((k) => `\`${k}\``).join(', ')} changed identity after mount and ${changed.length > 1 ? 'were' : 'was'} ignored — hoist ${changed.length > 1 ? 'them' : 'it'} (useRef/useMemo/module const) or the table keeps the first render's values.`);
+        }
+    }, [columns, options, onReady]);
     return <div ref={ref} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1 }} />;
 }
 
