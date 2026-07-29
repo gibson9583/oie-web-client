@@ -2137,7 +2137,10 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
 }
 
 /* Dock inherits the single global segmented-tab style; just the top divider. */
-.dash-shadcn .dash-dock { border-top: 1px solid var(--sh-border); }
+/* Same card surface as the status table above (.dash-content .dt-wrap) — the
+   dock inherits the base .dash-dock's --bg1 otherwise, which reads darker than
+   the table in dark mode and duller in light. */
+.dash-shadcn .dash-dock { border-top: 1px solid var(--sh-border); background: var(--bg2); }
 /* Keep the dock panel flush like the original — the log/connection/global-maps
    plugins own their internal layout; extra padding shifted the server log. */
 .dash-shadcn .dash-dock [role="tabpanel"] { padding: 0; }
