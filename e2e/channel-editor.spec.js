@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mockEngine } from './mock.js';
+import { CASES as CONNECTOR_CASES, makeChannel } from './connector-fixtures.js';
 
 /*
  * UI coverage for the channel editor (React port of views/channel-editor.js) and
@@ -366,6 +367,79 @@ test.describe('Channel editor', () => {
 
         await page.getByRole('button', { name: 'Back to Channel', exact: true }).click();
         await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/edit$`));
+    });
+
+    // The Tags field commits on the native change event only (Enter / blur /
+    // datalist pick). A regression to React's per-keystroke onChange mints a
+    // junk tag for every character typed and clears the input mid-word.
+    test('Tags field commits a tag on Enter, not per keystroke', async ({ page }) => {
+        let putBody = null;
+        await page.route((url) => url.pathname === `/api/channels/${CHANNEL_ID}`, async (route) => {
+            const req = route.request();
+            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+            return route.fallback();
+        });
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+
+        // Type character by character (real per-keystroke input events): no chip
+        // may appear and the typed text must survive until the commit.
+        const tagInput = page.getByPlaceholder('Add tag…');
+        await tagInput.pressSequentially('prod');
+        await expect(page.getByTitle('Remove tag')).toHaveCount(0);
+        await expect(tagInput).toHaveValue('prod');
+
+        // Enter commits: exactly one chip, input cleared, channel dirty.
+        await tagInput.press('Enter');
+        await expect(page.getByTitle('Remove tag')).toHaveCount(1);
+        await expect(tagInput).toHaveValue('');
+
+        // The one committed tag round-trips into the saved channel.
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
+        const tags = JSON.parse(putBody).channel.exportData.channelTags.channelTag;
+        expect(tags).toHaveLength(1);
+        expect(tags[0].name).toBe('prod');
+        expect(tags[0].channelIds.string).toContain(CHANNEL_ID);
+    });
+
+    // Importing a connector of the SAME transport must rebind the settings panel.
+    // The transport doesn't change, so nothing remounts unless the panel host also
+    // keys off the properties object — regressed, the panel keeps showing the
+    // pre-import values and edits write to a detached object (lost on save).
+    test('same-transport Import Connector rebinds the settings panel', async ({ page }) => {
+        const ID = 'tcp-rebind';
+        const tcp = CONNECTOR_CASES.find((c) => c.name === 'TCP Sender');
+        const channel = makeChannel(ID, { destination: { transportName: 'TCP Sender', properties: tcp.properties() } });
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        let putBody = null;
+        await page.route((url) => url.pathname === `/api/channels/${ID}`, async (route) => {
+            const req = route.request();
+            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+            return route.fallback();
+        });
+
+        await page.goto(`/channels/${ID}/edit`);
+        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+        await expect(page.locator('[data-fkey="remoteAddress"]')).toHaveValue('127.0.0.1');
+
+        // Import a TCP Sender export (same transport, different values).
+        const imported = { connector: { transportName: 'TCP Sender', mode: 'DESTINATION',
+            properties: { ...tcp.properties(), remoteAddress: '10.9.9.9', remotePort: '9999' } } };
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Import Connector', exact: true }).click();
+        await (await chooser).setFiles({ name: 'conn.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(imported)) });
+        await page.locator('.modal').getByRole('button', { name: 'OK', exact: true }).click();
+
+        // The panel rebinds to the imported properties despite the unchanged transport.
+        await expect(page.locator('[data-fkey="remoteAddress"]')).toHaveValue('10.9.9.9');
+
+        // Edits after the import reach the live object — both survive the save.
+        await page.locator('[data-fkey="remotePort"]').fill('7777');
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
+        const sent = JSON.parse(putBody).channel.destinationConnectors.connector[0].properties;
+        expect(sent.remoteAddress).toBe('10.9.9.9');
+        expect(sent.remotePort).toBe('7777');
     });
 
     // Per-element field check (Swing checkProperties) — an Iterator with a blank

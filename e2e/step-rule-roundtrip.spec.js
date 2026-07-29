@@ -58,3 +58,55 @@ for (const c of CASES) {
         expect(target.elements).toEqual(expected);
     });
 }
+
+// Accessor tokens dropped onto a React-controlled step-editor field must be
+// written through the native prototype value setter — a plain `.value =` write
+// is reverted by React's change tracker and never reaches the model, so the
+// token silently vanishes from both the field and the saved channel.
+test('accessor drop into a step editor field survives React control', async ({ page }) => {
+    const mapper = CASES.find((c) => c.label === 'Mapper Step');
+    const id = 'rt-accessor-drop';
+    const element = mapper.element();
+    const channel = channelWithSourceElement(id, 'transformer', mapper.class, mapper.element());
+
+    await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
+    let putBody = null;
+    await page.route((url) => url.pathname === `/api/channels/${id}`, async (route) => {
+        const req = route.request();
+        if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+        return route.fallback();
+    });
+
+    await page.goto(`/channels/${id}/edit`);
+    await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.getByRole('button', { name: /^Edit Transformer/ }).click();
+
+    const firstRow = page.locator('table.dt tbody tr').first();
+    await firstRow.locator('td.num').click();
+    await expect(page.locator('.step-editor-fill .panel').first()).toBeVisible();
+
+    // Drop an accessor token at the end of the Mapper's Variable field, the way
+    // makeAccessorDrop receives it from a Reference/Message Trees drag.
+    const token = "msg['MSH']['MSH.3']['MSH.3.1'].toString()";
+    const variable = page.locator('.step-editor-fill .field:has(label:text-is("Variable")) input');
+    await expect(variable).toHaveValue(element.variable);
+    await variable.evaluate((el, tok) => {
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+        const dt = new DataTransfer();
+        dt.setData('text/plain', tok);
+        dt.setData('application/x-oie-accessor', tok);
+        el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    }, token);
+
+    // The field keeps the inserted token (no React revert) …
+    const expected = element.variable + token;
+    await expect(variable).toHaveValue(expected);
+
+    // … and the token reaches the saved element (the model write fired).
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
+    const sent = JSON.parse(putBody).channel;
+    expect(sent.sourceConnector.transformer.elements[mapper.class][0].variable).toBe(expected);
+});
