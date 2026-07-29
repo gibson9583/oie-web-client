@@ -54,3 +54,62 @@ test('alert editor adds an action via the Add button and via right-click', async
     await page.locator('.ctx-menu').getByText('Add Action').click();
     await expect(actionRows).toHaveCount(2);
 });
+
+// Cold deep link into the alert editor. Both existing tests in this file reach
+// the editor via New Alert -> Classic editor, which hands the model over IN THE
+// STORE (alerts.jsx startClassicAlert seeds store.editingAlert, then navigates),
+// so the editor's own fetch path is never exercised. page.goto boots it with an
+// empty store: load() must fall back to api.alerts.get and build the whole form
+// from the response.
+test('a cold deep link to /alerts/:alertId/edit fetches and renders the alert', async ({ page }) => {
+    const AL = 'al-1';
+    // The default fixtures only serve the alerts LIST; the editor GETs the single
+    // alert (and a second time for the conflict baseline), so it needs its own key.
+    const existing = {
+        '@version': '4.5.0', id: AL, name: 'Error Alert', enabled: true,
+        trigger: {
+            '@class': 'defaultTrigger',
+            alertChannels: {
+                newChannelSource: false, newChannelDestination: false,
+                enabledChannels: null, disabledChannels: null, partialChannels: null,
+            },
+            errorEventTypes: { errorEventType: ['ANY'] },
+            regex: 'HL7 parse failure',
+        },
+        actionGroups: { alertActionGroup: [{ actions: null, subject: 'Alert subject', template: 'Alert body' }] },
+        properties: null,
+    };
+    await mockEngine(page, { [`GET /alerts/${AL}`]: { alertModel: existing } });
+
+    await page.goto(`/alerts/${AL}/edit`);
+
+    // Fields seeded from the FETCHED payload (name / regex / subject) — the form
+    // state is built in initForm from the response body, not from any route param.
+    // The alert name is the first text input in the body (the channel filter box
+    // comes later in the DOM).
+    await expect(page.locator('.view-body input[type=text]').first())
+        .toHaveValue('Error Alert', { timeout: 15_000 });
+    await expect(page.getByPlaceholder(/Only trigger when the error matches/))
+        .toHaveValue('HL7 parse failure');
+
+    // Panel row unique to the classic alert editor.
+    await expect(page.locator('.panel-header', { hasText: 'Errors (select all that apply)' })).toBeVisible();
+    await expect(page.locator('.panel-header', { hasText: 'Regex (optional)' })).toBeVisible();
+    await expect(page.locator('.panel-header', { hasText: 'Alert Variables' })).toBeVisible();
+
+    // The channels tree was built from GET /channels (connector granularity).
+    await expect(page.getByText('Demo Started')).toBeVisible();
+
+    // The view's own task pane (portaled into the rail by <ViewTasks>).
+    await expect(page.locator('.rail-pane', { hasText: 'Alert Edit Tasks' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Save Alert', exact: true })).toBeVisible();
+
+    // The banner is re-stamped by the view's own load() with the fetched NAME;
+    // the router's static route title is only 'Edit Alert'.
+    await expect(page.locator('.view-title')).toHaveText('Edit Alert - Error Alert');
+
+    // Not the load-error state.
+    await expect(page.getByText(/Could not load alert/)).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/alerts/${AL}/edit$`));
+    expect(page.url()).not.toContain('#');
+});
