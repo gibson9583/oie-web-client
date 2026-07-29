@@ -143,7 +143,7 @@ function TransportPicker({ mode, current, onPick }) {
 // channel from the store, so we point store.editingChannel at the wizard's channel.
 function EmbeddedElementEditor({ channel, metaDataId, kind, onChange }) {
     const hostRef = useRef(null);
-    const ctxRef = useRef(null);
+    const [ctx, setCtx] = useState(null);
     const [, forceBar] = useReducer((x) => x + 1, 0);
     // Latest onChange without re-running the mount effect (bump is a fresh closure each render).
     const onChangeRef = useRef(onChange);
@@ -160,25 +160,23 @@ function EmbeddedElementEditor({ channel, metaDataId, kind, onChange }) {
         const wizardGuard = store.getState('navGuard');
         // An edit in the embedded filter/transformer/response must mark the WIZARD dirty
         // (via bump), or an existing channel's Save never shows and the edits are lost.
-        const ctx = createEmbeddedEditor({ channelId: channel.id, metaDataId }, kind,
+        const editor = createEmbeddedEditor({ channelId: channel.id, metaDataId }, kind,
             () => { forceBar(); if (onChangeRef.current) onChangeRef.current(); });
-        ctxRef.current = ctx;
-        host.appendChild(ctx.el);
-        if (ctx.onAccessorDragOver) host.addEventListener('dragover', ctx.onAccessorDragOver);
-        if (ctx.onAccessorDrop) host.addEventListener('drop', ctx.onAccessorDrop);
+        host.appendChild(editor.el);
+        if (editor.onAccessorDragOver) host.addEventListener('dragover', editor.onAccessorDragOver);
+        if (editor.onAccessorDrop) host.addEventListener('drop', editor.onAccessorDrop);
         store.setState('navGuard', wizardGuard);
-        forceBar();
+        setCtx(editor);
         return () => {
-            if (ctx.onAccessorDragOver) host.removeEventListener('dragover', ctx.onAccessorDragOver);
-            if (ctx.onAccessorDrop) host.removeEventListener('drop', ctx.onAccessorDrop);
-            ctxRef.current = null;
-            try { ctx.teardown && ctx.teardown(); } catch { /* ignore */ }
+            if (editor.onAccessorDragOver) host.removeEventListener('dragover', editor.onAccessorDragOver);
+            if (editor.onAccessorDrop) host.removeEventListener('drop', editor.onAccessorDrop);
+            setCtx(null);
+            try { editor.teardown && editor.teardown(); } catch { /* ignore */ }
             host.replaceChildren();
             store.setState('navGuard', wizardGuard);
         };
     }, [channel, metaDataId, kind]);
 
-    const ctx = ctxRef.current;
     const t = ctx && ctx.handlers;
     const ts = (ctx && ctx.taskState && ctx.taskState()) || { onStep: false, assign: false, remove: false };
     const noun = kind === 'filter' ? 'Rule' : 'Step';

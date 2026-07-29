@@ -1773,9 +1773,7 @@ function TasksPane({ title, items }) {
 
 function SettingsView({ query }) {
     // Tab defs (built-ins + plugin panels) are stable for the view's lifetime.
-    const defsRef = useRef(null);
-    if (!defsRef.current) defsRef.current = buildTabDefs(platform);
-    const defs = defsRef.current;
+    const [defs] = useState(() => buildTabDefs(platform));
 
     // Deep-link: /settings?tab=<label> opens that tab (e.g. the account menu's
     // "Settings" → Administrator preferences). Unknown/absent → Server (0).
@@ -1795,8 +1793,7 @@ function SettingsView({ query }) {
     // setTasks is what each legacy builder calls; it captures the task spec and
     // forces a re-render of the portaled pane. ctx mirrors the vanilla shell ctx,
     // plus dirty-tracking hooks (markDirty/markClean/setSave) used by the tabs.
-    const ctxRef = useRef(null);
-    if (!ctxRef.current) {
+    const [ctx] = useState(() => {
         // When dirty, install a route-leave guard that prompts to save/discard.
         function refreshGuard() {
             if (dirtyRef.current) {
@@ -1819,15 +1816,14 @@ function SettingsView({ query }) {
         function setClean() {
             dirtyRef.current = false; setDirtyState(false); setState('navGuard', null);
         }
-        ctxRef.current = {
+        return {
             platform,
             setTasks(title, items) { tasksRef.current = { title, items }; force(); },
             markDirty: setDirty,
             markClean: setClean,
             setSave(fn) { saveRef.current = fn || null; }
         };
-    }
-    const ctx = ctxRef.current;
+    });
 
     const def = defs[active] || defs[0];
 
