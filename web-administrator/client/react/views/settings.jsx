@@ -20,7 +20,7 @@
  */
 
 import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
-import { h, clear, icon, toast, taskButton, confirmDialog, promptDialog, modal, DataTable, field, textInput, numberInput, select, checkbox, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
@@ -90,45 +90,6 @@ function swatch(color) {
 
 /* ---- misc helpers ---- */
 
-let radioSeq = 0;
-
-function radioGroup(options, value, onChange) {
-    const name = 'settings-rg-' + (radioSeq++);
-    const inputs = options.map(o => h('input', {
-        type: 'radio', name, value: o.value,
-        checked: String(o.value) === String(value),
-        onChange: () => onChange && onChange(o.value)
-    }));
-    return {
-        el: h('div.radio-group.inline-row', options.map((o, i) => h('label', inputs[i], o.label))),
-        get value() {
-            const i = inputs.findIndex(x => x.checked);
-            return i >= 0 ? options[i].value : value;
-        },
-        set value(v) { inputs.forEach((x, i) => { x.checked = String(options[i].value) === String(v); }); }
-    };
-}
-
-function yesNo(initial, onChange) {
-    const g = radioGroup(
-        [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }],
-        initial ? 'yes' : 'no',
-        onChange ? (v) => onChange(v === 'yes') : null);
-    return {
-        el: g.el,
-        get checked() { return g.value === 'yes'; },
-        set checked(v) { g.value = v ? 'yes' : 'no'; }
-    };
-}
-
-function loadFailed(host, e) {
-    clear(host);
-    host.appendChild(h('div.dt-empty',
-        h('div.empty-icon', icon('warning', 30)),
-        h('div', 'Failed to load'),
-        h('div.text-text-faint.mt-[14px]', String(e.message || e))));
-}
-
 function tabHost() {
     return h('div', { class: 'p-3.5 overflow-auto flex-1' });
 }
@@ -147,7 +108,7 @@ function reactTab(ctx, Component) {
     return hostEl;
 }
 
-/* React twins of the radioGroup/yesNo builders (same DOM: .radio-group.inline-row). */
+/* Radio-group primitives (same DOM as the Swing-era builders: .radio-group.inline-row). */
 let reactRadioSeq = 0;
 function RadioGroup({ options, value, onChange }) {
     const nameRef = useRef(null);
@@ -1231,7 +1192,6 @@ function ConfigurationMapTab({ ctx }) {
     }, []);
 
     /* Visible-row set, frozen between filter/structure changes (see above). */
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     const visibleIds = useMemo(() => {
         const q = filterText.trim().toLowerCase();
         const matches = (row) => {
@@ -1434,7 +1394,6 @@ function DatabaseTasksTab({ ctx }) {
 
     useEffect(() => {
         loadRef.current();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Selection/status-gated task pane (no Save — this tab is read/run only).
