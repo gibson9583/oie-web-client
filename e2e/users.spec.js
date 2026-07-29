@@ -163,3 +163,33 @@ test('New User dialog includes the extended profile fields (country/role/busines
         await expect(modal.getByText(label, { exact: true })).toBeVisible();
     }
 });
+
+// Cold deep link. Every other test in this file reaches Users by clicking the
+// nav item on an already-booted shell (page.goto('/') then the Users button),
+// which cannot catch a view module that fails to load on demand — the shell is
+// warm by then. Only page.goto('/users') exercises the view's first load.
+test('a cold deep link to /users boots straight into the Users view', async ({ page }) => {
+    await page.goto('/users');
+
+    // Rows come from GET /users (SAMPLE_USERS) through useUsers -> DataTableHost.
+    await expect(page.getByRole('cell', { name: 'operator', exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('cell', { name: 'op@example.com', exact: true })).toBeVisible();
+
+    // The Users COLUMN SET is unique to this view — no other view renders all of
+    // Organization + Phone + Last Login, so these headers can only come from
+    // users.jsx's COLUMNS.
+    await expect(page.getByRole('columnheader', { name: 'Organization', exact: true })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Phone', exact: true })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Last Login', exact: true })).toBeVisible();
+
+    // The view portals its own task pane into the rail (<ViewTasks>); the shell
+    // never renders it and the not-found fallback renders no pane at all.
+    await expect(page.locator('.rail-pane', { hasText: 'User Tasks' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New User', exact: true })).toBeVisible();
+
+    // Explicitly not the router's not-found view.
+    await expect(page.getByText('View not found')).toHaveCount(0);
+
+    await expect(page).toHaveURL(/\/users$/);
+    expect(page.url()).not.toContain('#');
+});

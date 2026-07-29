@@ -462,4 +462,107 @@ test.describe('Channel editor', () => {
         await expect(page.getByText(/The iteration target expression cannot be blank/)).toBeVisible();
         await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/transformer/0`));
     });
+
+    // Cold deep link to the FILTER sub-editor of a DESTINATION connector. Only
+    // the transformer variant of the filter/transformer/response trio was
+    // deep-linked before; all three share one component, so the filter route
+    // needs its own cold boot (and its own connector resolution: metaDataId 1,
+    // not the source).
+    test('opening a destination Filter route cold shows the rule grid', async ({ page }) => {
+        // FULL_CHANNEL's destination filter is empty (elements: ''), which would
+        // render the "No Rules Configured" landing state — seed one Rule Builder
+        // rule so the grid itself is what we assert on.
+        const channel = structuredClone(FULL_CHANNEL);
+        channel.destinationConnectors.connector[0].filter.elements = {
+            'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': {
+                '@version': '4.5.0', name: 'Accept ADT Only', sequenceNumber: '0', enabled: true,
+                operator: 'NONE', field: "msg['MSH']['MSH.9']['MSH.9.1'].toString()",
+                condition: 'EXISTS', values: '',
+            },
+        };
+        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
+
+        await page.goto(`/channels/${CHANNEL_ID}/filter/1`);
+
+        // The rule held by the DESTINATION's filter — proves the channel was
+        // fetched cold AND metaDataId 1 resolved to the right connector/target.
+        await expect(page.locator('input.grid-name')).toHaveValue('Accept ADT Only', { timeout: 15_000 });
+
+        // "Operator" is emitted only when kindName === 'filter'; the transformer
+        // and response routes share this component and never render that column.
+        await expect(page.getByRole('columnheader', { name: 'Operator', exact: true })).toBeVisible();
+
+        // Filter wording throughout the view's own task pane ("Rule", not "Step").
+        await expect(page.locator('.rail-pane', { hasText: 'Filter Tasks' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Add New Rule', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Validate Filter', exact: true })).toBeVisible();
+
+        // Filter routes get a Reference-only side panel — no message-tree tabs.
+        await expect(page.getByRole('button', { name: 'Reference', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toHaveCount(0);
+
+        // The rule's plugin editor mounted from the RULE registry (platform.ruleType).
+        await expect(page.locator('.step-editor-fill .field:has(label:text-is("Field")) input'))
+            .toHaveValue("msg['MSH']['MSH.9']['MSH.9.1'].toString()");
+
+        // Swing-parity banner, built from the fetched channel + resolved connector.
+        await expect(page.locator('.view-title'))
+            .toHaveText('Edit Channel - Round Trip Channel - Send To Downstream Filter');
+
+        await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/filter/1$`));
+        expect(page.url()).not.toContain('#');
+    });
+
+    // Cold deep link to the RESPONSE transformer of a destination connector. It
+    // shares a component with the filter/transformer routes but reads a third
+    // target (responseTransformer) and a third connectorType ('RESPONSE'), so a
+    // decoy step is planted on the plain transformer: reading the wrong target
+    // surfaces the decoy and fails the grid assertion.
+    test('opening a destination Response Transformer route cold shows its own step list', async ({ page }) => {
+        const channel = structuredClone(FULL_CHANNEL);
+        const dest = channel.destinationConnectors.connector[0];
+        dest.transformer.elements = {
+            'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
+                '@version': '4.5.0', name: 'Outbound Step (decoy)', sequenceNumber: '0', enabled: true,
+                script: 'return;',
+            },
+        };
+        dest.responseTransformer.elements = {
+            'com.mirth.connect.plugins.mapper.MapperStep': {
+                '@version': '4.5.0', name: 'Map ACK Code', sequenceNumber: '0', enabled: true,
+                variable: 'ackCode', mapping: "msg['MSA']['MSA.1'].toString()",
+                defaultValue: '', replacements: '', scope: 'CHANNEL',
+            },
+        };
+        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
+
+        await page.goto(`/channels/${CHANNEL_ID}/response/1`);
+
+        // The RESPONSE transformer's step — never the destination transformer's decoy.
+        await expect(page.locator('input.grid-name')).toHaveValue('Map ACK Code', { timeout: 15_000 });
+
+        // Response wording in the view's own task pane — unique to kindName 'response'.
+        await expect(page.locator('.rail-pane', { hasText: 'Response Transformer Tasks' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Add New Step', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Import Response Transformer', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Validate Response Transformer', exact: true })).toBeVisible();
+
+        // Transformer-family side panel (filter routes render Reference only) …
+        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Message Templates', exact: true })).toBeVisible();
+        // … and no filter-only Operator column.
+        await expect(page.getByRole('columnheader', { name: 'Operator', exact: true })).toHaveCount(0);
+
+        // The Mapper's plugin editor mounted against the RESPONSE step.
+        await expect(page.locator('.step-editor-fill .field:has(label:text-is("Variable")) input'))
+            .toHaveValue('ackCode');
+
+        // Swing-parity banner, built from the fetched channel + resolved connector.
+        await expect(page.locator('.view-title'))
+            .toHaveText('Edit Channel - Round Trip Channel - Send To Downstream Response Transformer');
+
+        await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/response/1$`));
+        expect(page.url()).not.toContain('#');
+    });
+
 });
