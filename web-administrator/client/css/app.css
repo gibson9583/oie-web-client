@@ -518,7 +518,14 @@ code, pre, .mono { font-family: var(--font-mono); }
     white-space: nowrap;
     transition: background 0.12s, border-color 0.12s, transform 0.05s;
 }
-.btn svg { width: 14px; height: 14px; }
+.btn svg {
+    width: 14px;
+    height: 14px;
+    /* An icon is a flex item: without this a label wider than its button shrinks
+       the icon toward zero instead of overflowing the text. It shows up first in
+       narrow containers (the task column at 176px), but the bug is general. */
+    flex: none;
+}
 .btn:hover { background: var(--bg3); border-color: var(--text-faint); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.42; cursor: not-allowed; transform: none; }
