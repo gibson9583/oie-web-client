@@ -22,7 +22,6 @@ import { platform } from '@oie/web-shell';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
-import { openSendMessageDialog } from './messages.jsx';
 import { reactView, ViewTasks } from '../mount.jsx';
 import { useDashboardStatuses, useChannelGroups, useChannelTags, useConnectorTypes, useSourcePorts } from '../queries.js';
 import { RailPane, TaskButton } from '../ui.jsx';
@@ -32,6 +31,15 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import { iconPath } from '../../core/icons.js';
 import * as Tabs from '@radix-ui/react-tabs';   // shadcn/Radix dock tabs
 import { CardsView } from './cards.jsx';
+
+// Loaded on demand. This dialog is the dashboard's ONLY use of the message
+// browser, and importing it statically drags that whole view — the largest in the
+// app — into whatever chunk the dashboard lands in. It is already async, so the
+// call sites are unchanged.
+async function openSendMessageDialog(platform, channelId, onSent) {
+    const messages = await import('./messages.jsx');
+    return messages.openSendMessageDialog(platform, channelId, onSent);
+}
 
 export function register(platform) {
     platform.registerNavItem({ id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Engine', order: 0, task: 'doShowDashboard' });
