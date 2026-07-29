@@ -18,7 +18,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const express = require('express');
-const { install } = require('./plugins.js');
+const { install, preloadLinks } = require('./plugins.js');
 
 let failures = 0;
 async function test(name, fn) {
@@ -102,6 +102,23 @@ function get(port, rawPath) {
     await test('a null byte in the path is rejected', async () => {
         const r = await get(port, '/plugins/demo/web%2fplugin.js%00.txt');
         assert.notStrictEqual(r.status, 200);
+    });
+
+    await test('a hostile client.entry cannot inject markup through the shell preload links', async () => {
+        // `id` is shape-validated at discovery but `client.entry` is any string —
+        // it must come out attribute-escaped in the <link rel="modulepreload">
+        // tags interpolated into the served index.html.
+        const hostile = path.join(pluginsDir, 'hostile');
+        fs.mkdirSync(hostile, { recursive: true });
+        fs.writeFileSync(path.join(hostile, 'plugin.json'), JSON.stringify({
+            id: 'hostile', name: 'Hostile',
+            client: { entry: 'web/x.js"><script>alert(1)</script>' }
+        }));
+        const links = preloadLinks({ pluginDirs: [pluginsDir] }).join('\n');
+        assert.ok(links.includes('/plugins/hostile/'), 'expected the hostile plugin entry to be listed');
+        assert.ok(!links.includes('<script'), 'entry injected a tag through the preload link');
+        assert.ok(links.includes('&quot;&gt;&lt;script&gt;'), 'expected the breakout to be attribute-escaped');
+        fs.rmSync(hostile, { recursive: true, force: true });
     });
 
     server.close();

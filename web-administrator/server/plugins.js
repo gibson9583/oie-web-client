@@ -181,4 +181,14 @@ function clientEntries(config) {
         .filter(Boolean);
 }
 
-module.exports = { install, clientEntries };
+// The <link rel="modulepreload"> tags interpolated into the served shell. The
+// href's entry segment comes straight from plugin.json (`client.entry` is not
+// shape-validated the way `id` is), so attribute-escape it — a crafted entry
+// must not break out of the href and inject markup into the shell.
+function preloadLinks(config) {
+    const esc = (s) => String(s).replace(/[&<>"']/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    return clientEntries(config).map((e) => `<link rel="modulepreload" href="${esc(e)}">`);
+}
+
+module.exports = { install, clientEntries, preloadLinks };
