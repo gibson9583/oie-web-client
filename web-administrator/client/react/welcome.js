@@ -386,7 +386,12 @@ function showWelcomeDialog(user) {
                 }
             ]
         });
-        setTimeout(() => pwInput.focus(), 30);
+        // Focus the password field once the modal has settled — but only if the
+        // user hasn't already tabbed/clicked into the form. A blind focus here
+        // steals it back mid-input (e.g. a fast typist, or a test filling the
+        // confirm field, within 30ms of the modal opening), landing their next
+        // keystrokes in the wrong field.
+        setTimeout(() => { if (!body.contains(document.activeElement)) pwInput.focus(); }, 30);
     });
 }
 
