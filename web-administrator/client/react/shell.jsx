@@ -527,7 +527,7 @@ export function App() {
             toast('Session expired — please sign in again', 'warn');
             store.setState('user', null);
         });
-        return () => { alive = false; if (typeof off === 'function') off(); };
+        return () => { alive = false; off(); };
     }, []);
 
     // A login in ANOTHER TAB of this browser replaces the engine session cookie

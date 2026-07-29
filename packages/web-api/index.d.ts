@@ -76,8 +76,8 @@ export class ApiError extends Error {
     body: string;
 }
 
-/** Register a callback fired once when the engine session expires (a background 401). */
-export function onSessionExpired(fn: () => void): void;
+/** Register a callback fired once when the engine session expires (a background 401). Returns an unsubscribe. */
+export function onSessionExpired(fn: () => void): () => void;
 /** Re-arm the session-expired handler after a successful re-login. */
 export function resetSessionExpired(): void;
 /** Parse an engine response body (JSON or XML), unwrapping the XStream root key. */

@@ -24,7 +24,18 @@ let sessionExpiredFired = false;
 // transforms don't mutate the object the editor still holds.
 const cloneJson = (o) => JSON.parse(JSON.stringify(o));
 
-export function onSessionExpired(fn) { listeners.sessionExpired.push(fn); }
+// Returns an unsubscribe. Callers that register from a React effect MUST call it
+// on cleanup: without one, a remount (StrictMode's double-invoke, or any future
+// remount of the registering component) leaves a second handler behind and one
+// 401 then fires the whole expiry flow twice — two stacked "session expired"
+// modals over the login screen.
+export function onSessionExpired(fn) {
+    listeners.sessionExpired.push(fn);
+    return () => {
+        const i = listeners.sessionExpired.indexOf(fn);
+        if (i >= 0) listeners.sessionExpired.splice(i, 1);
+    };
+}
 
 /* Call after a successful re-login so the next 401 fires again. */
 export function resetSessionExpired() { sessionExpiredFired = false; }
