@@ -16,17 +16,13 @@ import { h, icon, toast, confirmDialog, contextMenu, fmtDate, fmtNumber } from '
 import api from '@oie/web-api';
 import { toDisplayString } from '../../core/xstream.js';
 import { getPref } from '../../core/prefs.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 const LEVELS = ['INFORMATION', 'WARNING', 'ERROR'];
 const OUTCOMES = ['SUCCESS', 'FAILURE'];
 
-export function register(platform) {
-    platform.registerNavItem({ id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Engine', order: 5, task: 'doShowEvents' });
-    platform.registerView('/events', reactView(EventsView), { title: 'Events' });
-}
 
 /* ---- XStream normalization + display helpers (reused verbatim) ---- */
 
@@ -171,7 +167,7 @@ function EventDetail({ event, username }) {
 
 /* ---- view ---- */
 
-function EventsView() {
+export function EventsView() {
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
     const [name, setName] = useState('');

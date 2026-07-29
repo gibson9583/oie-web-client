@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'react';
 import { h, toast, confirmDialog, contextMenu, modal, fmtDate } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { useUsers, useInvalidate } from '../queries.js';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import {
@@ -17,10 +17,6 @@ import {
     openEditUserModal, openChangePasswordModal
 } from './user-modals.js';
 
-export function register(platform) {
-    platform.registerNavItem({ id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2, task: 'doShowUsers' });
-    platform.registerView('/users', reactView(UsersView), { title: 'Users' });
-}
 
 const COLUMNS = [
     { key: 'username', label: 'Username', render: (u) => u.username || '' },
@@ -39,7 +35,7 @@ const COLUMNS = [
     }
 ];
 
-function UsersView() {
+export function UsersView() {
     // Server state via TanStack Query — replaces the hand-rolled
     // useState + useEffect(list) + manual refetch. `refresh` now just invalidates
     // the cache (and clears selection, as the old imperative refresh did).

@@ -43,16 +43,11 @@ import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
 import { createCodeEditor, createColumnManager } from '@oie/web-ui';
 import { platform } from '../../core/platform.js';
-import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
-export function register(platform) {
-    // The message browser is always per-channel (reached via Dashboard/Channels
-    // "View Messages"), matching the Swing client — there is no standalone picker.
-    platform.registerView('/messages/:channelId', reactView(MessagesView), { title: 'Messages' });
-}
 
 /* ---- XStream JSON normalization helpers -------------------------------------- */
 
@@ -1641,7 +1636,7 @@ function Field({ label, children }) {
     return <div className="field"><label>{label}</label>{children}</div>;
 }
 
-function MessagesView({ params, query }) {
+export function MessagesView({ params, query }) {
     const channelId = params.channelId;
 
     /* ---- search-engine state ------------------------------------------------

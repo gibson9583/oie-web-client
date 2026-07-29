@@ -13,17 +13,12 @@ import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { useAlerts } from '../queries.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
-import { newAlert, AlertEditor } from './alert-editor.jsx';
+import { newAlert } from './alert-editor.jsx';
 
-export function register(platform) {
-    platform.registerNavItem({ id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Engine', order: 4, task: 'doShowAlerts' });
-    platform.registerView('/alerts', reactView(AlertsList), { title: 'Alerts' });
-    platform.registerView('/alerts/:alertId/edit', reactView(AlertEditor), { title: 'Edit Alert' });
-}
 
 const COLUMNS = [
     {
@@ -37,7 +32,7 @@ const COLUMNS = [
     { key: 'id', label: 'Id', className: 'mono', render: (a) => h('span', { style: { color: 'var(--text-faint)' } }, a.id || '') }
 ];
 
-function AlertsList() {
+export function AlertsList() {
     // Server state + Swing-parity polling via TanStack Query — useAlerts'
     // refetchInterval replaces the hand-rolled setTimeout loop (and the
     // destroyed/timer refs). Manual Refresh toasts on error; background polls

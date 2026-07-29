@@ -17,7 +17,7 @@ import { toast, saveFile } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { Icon } from '../bridges.jsx';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { platform } from '@oie/web-shell';
 import { getPref } from '../../core/prefs.js';
@@ -439,9 +439,5 @@ function AlertWizardInner({ alert, isNew }) {
     );
 }
 
-export function register(platform) {
-    platform.registerView('/alerts/new/guided', reactView(AlertWizardView), { title: 'New Alert — Wizard' });
-    platform.registerView('/alerts/:alertId/guided', reactView(AlertWizardView), { title: 'Alert — Wizard' });
-}
 
 export { AlertWizardView };

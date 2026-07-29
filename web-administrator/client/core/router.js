@@ -32,6 +32,13 @@ export function register(pattern, handler, meta = {}) {
     routes.push({ pattern, regex, names, handler, meta });
 }
 
+// Identifies the in-flight navigation. A handler that awaits should capture this
+// first and re-check it before doing anything with side effects: BUILDING a view
+// is not free, because mounting one writes shared state (notably the nav-guard
+// slot), and a view that is built and then discarded takes the winning view's
+// guard down with it when its unmount cleanup runs.
+export function navigationToken() { return generation; }
+
 export function setOutlet(el) { outlet = el; }
 export function setNotFound(handler) { notFound = handler; }
 export function setGuard(fn) { beforeEach = fn; }
