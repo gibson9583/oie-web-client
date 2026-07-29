@@ -32,7 +32,10 @@ import {
     ConnectorPropertiesPanels, QueueSettings, ChannelScripts, ChannelSettings, DataTypeBar,
     DependenciesStep, persistLibraryAssociations, persistChannelDependencies
 } from './channel-wizard-editors.jsx';
-import { DESTINATION_MAPPINGS } from './channel-editor.jsx';
+// Straight from core/mappings.js, not via channel-editor.jsx's re-export of it —
+// the wizard has no other reason to reference the classic editor, and that lone
+// import is what would otherwise chain the two into one bundle chunk.
+import { DESTINATION_MAPPINGS } from '../../core/mappings.js';
 
 const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinations', 'Scripts', 'Review'];
 
