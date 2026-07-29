@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const express = require('express');
 
 const { load } = require('./config');
@@ -51,13 +52,18 @@ app.disable('x-powered-by');
 // below) so it needs no CDN — the only external origin left is Google Fonts
 // (fonts.googleapis.com / fonts.gstatic.com), which degrades gracefully to the
 // system font fallbacks when unreachable (air-gapped). data: covers the
-// attachment viewers' inline images/frames. 'unsafe-inline' (the importmap +
-// pervasive inline styles) and 'unsafe-eval' (Monaco's worker + the datatype
-// script validator) are required by the current client. Dev (Vite HMR) also
-// needs a WebSocket.
-const CSP = [
+// attachment viewers' inline images/frames.
+//
+// script-src carries no 'unsafe-inline'/'unsafe-eval': the shell's ONE inline
+// script (the importmap) is authorized by a per-response nonce the shell route
+// injects, script validation goes through the engine (core/serialize.js), and
+// Monaco's workers are covered by worker-src blob:. Style-src keeps
+// 'unsafe-inline' (pervasive inline styles). Dev (Vite HMR) still needs inline
+// + eval (the react-refresh preamble, dep optimizer) and a WebSocket.
+const cspFor = (nonce) => [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    DEV ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : `script-src 'self' 'nonce-${nonce}'`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' data:",
@@ -69,7 +75,8 @@ const CSP = [
     "frame-ancestors 'none'"
 ].join('; ');
 app.use((req, res, next) => {
-    res.setHeader('Content-Security-Policy', CSP);
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    res.setHeader('Content-Security-Policy', cspFor(res.locals.cspNonce));
     // Plugin files are served from disk by extension (/plugins/:id/*); nosniff
     // stops a mistyped/omitted Content-Type from being sniffed into something
     // executable. Referrer-Policy keeps internal paths (and any engine URL in a
@@ -143,24 +150,33 @@ async function start() {
         const distDir = path.join(clientDir, 'dist');
         const built = fs.existsSync(path.join(distDir, 'index.html'));
         const shellDir = built ? distDir : clientDir;
-        // dotfiles:'deny' rejects nested dotfile segments (e.g. a /.git/config or
-        // .env that ever landed under a served root) — express.static's default
-        // 'ignore' only blocks them as a leaf. Matches the /plugins handler.
-        if (built) app.use(express.static(distDir, { dotfiles: 'deny' }));
-        app.use(express.static(clientDir, { dotfiles: 'deny' }));
-        // SPA fallback: render the shell with <link rel="modulepreload"> hints for
-        // each plugin entry, so the browser fetches plugin code in parallel with
-        // the app bundle rather than discovering it after the plugins.json fetch.
+        // Shell route: render index.html with <link rel="modulepreload"> hints for
+        // each plugin entry (so the browser fetches plugin code in parallel with
+        // the app bundle) and the CSP nonce on the importmap — the shell's one
+        // inline script, which script-src authorizes per response.
         const indexHtmlPath = path.join(shellDir, 'index.html');
-        // express 5 requires a named wildcard; `/*splat` matches every path.
-        app.get('/*splat', (req, res) => {
+        const serveShell = (req, res) => {
             let html;
             try { html = fs.readFileSync(indexHtmlPath, 'utf8'); }
             catch { return res.status(500).type('text').send('index.html not found — run "npm run build"'); }
+            html = html.replace('<script type="importmap"', `<script type="importmap" nonce="${res.locals.cspNonce}"`);
             const preloads = plugins.preloadLinks(config).join('\n  ');
             if (preloads) html = html.replace('</head>', `  ${preloads}\n</head>`);
             res.type('html').send(html);
-        });
+        };
+        // The raw file must never bypass the nonce injection: register the shell
+        // route for /index.html ahead of the static mounts, and disable their
+        // directory-index serving so `/` reaches the fallback too.
+        app.get('/index.html', serveShell);
+        // dotfiles:'deny' rejects nested dotfile segments (e.g. a /.git/config or
+        // .env that ever landed under a served root) — express.static's default
+        // 'ignore' only blocks them as a leaf. Matches the /plugins handler.
+        if (built) app.use(express.static(distDir, { dotfiles: 'deny', index: false }));
+        app.use(express.static(clientDir, { dotfiles: 'deny', index: false }));
+        // SPA fallback. Express 5 named-wildcard note: `/*splat` does NOT match
+        // the bare `/` — the braced `/{*splat}` form does, and `/` must reach
+        // the shell now that the static mounts no longer serve a directory index.
+        app.get('/{*splat}', serveShell);
         if (!built) console.warn('  [build] No client/dist found — serving unbundled source. Run "npm run build" for the optimized bundle.');
     }
 

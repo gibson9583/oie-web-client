@@ -277,6 +277,29 @@ misses in ES modules (e.g. an unbalanced paren).
 
 ## Browser side
 
+### Content Security Policy (plugin-API rule)
+
+The app is served with a strict CSP; plugin code runs under it. Two things it
+forbids that plugin authors must not rely on:
+
+- **No `eval` / `new Function` / string-argument timers.** `script-src` carries
+  no `'unsafe-eval'`. This applies inside Workers too (blob workers inherit the
+  page's policy). If you need to check a user-entered script, use the sanctioned
+  engine-backed helper — it validates with the engine's own Rhino compiler
+  (E4X-aware, i.e. what the script will actually run under):
+
+  ```js
+  import { validateScript } from '@oie/web-api';
+  const r = await validateScript(code);   // { ok: true } | { ok: false, message } | { ok: null, message: unavailable }
+  ```
+
+- **No inline `<script>` tags.** `script-src` allows only same-origin module
+  scripts (plus the shell's own nonce'd importmap). Load code as ES modules from
+  your plugin directory; never inject script text into the DOM.
+
+Inline **styles** remain allowed (`style-src 'unsafe-inline'`), so React `style`
+props and `<style>` injection keep working.
+
 `web/plugin.js` is dynamically imported and must export:
 
 ```js
