@@ -7,12 +7,20 @@
  * params, Promise shapes) is hand-maintained here and points at those models.
  *
  * Caveat — the schemas describe the engine's CLEAN logical model, but the wire
- * is XStream JSON which the framework normalizes at runtime. A few fields differ
- * from the schema until normalized: polymorphic `*Connectors.connector` wrapping,
- * filter/transformer `elements` keyed by Java class, the `@class`/`@version`
- * attributes, and one-element lists arriving as bare objects (use `asList`).
- * For those, prefer the model helpers (elementsToArray/destinationsOf) and the
- * loose `OieObject` rather than trusting the field type literally.
+ * is XStream's structural encoding of Java objects, and the two differ at every
+ * collection: polymorphic `*Connectors.connector` wrapping, filter/transformer
+ * `elements` keyed by Java class, `@class`/`@version` attributes, and one-element
+ * lists arriving as bare objects.
+ *
+ * Where that caveat used to be prose you had to remember, it is now in the types:
+ * `XStreamList<T>` and `XStreamElements<T>` name the wire shapes, and
+ * `WireChannel` is what `api.channels.get` actually returns — so reading
+ * `channel.destinationConnectors` as an array no longer compiles, and the
+ * compiler points you at `destinationsOf()` / `elementsToArray()` instead.
+ *
+ * NOT yet modelled (next slice): the nested connector/transformer tree still
+ * inherits the generated types, so `sourceConnector.transformer.elements` is
+ * still declared `Step[]` when the wire gives a class-keyed map.
  */
 import type { components } from './oie-schema';
 
@@ -44,6 +52,56 @@ export type { components, paths, operations } from './oie-schema';
 
 /** A loose engine object — fallback for dynamic/map payloads and XStream-quirk fields. */
 export type OieObject = Record<string, any>;
+
+/**
+ * A field XStream produced from a Java collection, exactly as it reaches the
+ * browser. ONE element arrives as a bare object, several as an array, none as
+ * `''`, `null` or absent — so the JSON shape of the same field changes with how
+ * many things are in it, and `.map()`/`[0]` on one is a latent crash that only
+ * reproduces on single-element data.
+ *
+ * Deliberately NOT assignable to `T[]`: the compiler should send you through
+ * `asList()`, or better the model helper for that field (`destinationsOf`,
+ * `elementsToArray`, ...), rather than let you trust a shape that only holds
+ * when the engine happened to return two or more.
+ */
+export type XStreamList<T> = T | T[] | '' | null | undefined;
+
+/**
+ * Filter rules and transformer steps as they arrive: NOT a list, but a map keyed
+ * by the element's Java class name (`'com.mirth.connect.plugins.mapper.MapperStep'`),
+ * whose value is a single element or an array of them, plus `@`-prefixed XStream
+ * attributes to skip. Ordering lives in each element's `sequenceNumber`, not in
+ * the object.
+ *
+ * The generated `Transformer.elements` says `Step[]`, which is the engine's clean
+ * logical model and not what the browser receives. Read these with
+ * `elementsToArray()` (which flattens, tags each with `__type`, and sorts by
+ * sequenceNumber) and write them back with `arrayToElements()`.
+ */
+export type XStreamElements<T = OieObject> = {
+    [javaClassName: string]: T | T[] | undefined;
+};
+
+/**
+ * A Channel as it ACTUALLY arrives from the engine.
+ *
+ * The generated `Channel` describes the engine's clean logical model — what its
+ * OpenAPI spec declares — but the wire is XStream's structural encoding of Java
+ * objects, and the two differ at every collection. `Channel` says
+ * `destinationConnectors: Connector[]`; the wire gives
+ * `{ connector: Connector }` for a one-destination channel. `api.channels.get`
+ * decodes base64 templates but does NOT reshape this, so the raw form is what
+ * callers hold.
+ *
+ * Use `destinationsOf()` to read destinations and `elementsToArray()` for
+ * filter/transformer elements (which are keyed by Java class name, not listed).
+ */
+export type WireChannel = Omit<Channel, 'destinationConnectors'> & {
+    destinationConnectors?:
+        | { connector?: XStreamList<Connector> }
+        | XStreamList<Connector>;
+};
 
 /** A response whose shape depends on the endpoint (often a count, id, or status). */
 export type Json = any;
@@ -120,10 +178,11 @@ export interface UsersApi {
 }
 
 export interface ChannelsApi {
-    list(channelIds?: string | string[], pollingOnly?: boolean): Promise<Channel[]>;
-    get(channelId: string): Promise<Channel>;
-    create(channel: Channel | OieObject): Promise<Json>;
-    update(channelId: string, channel: Channel | OieObject, override?: boolean): Promise<Json>;
+    list(channelIds?: string | string[], pollingOnly?: boolean): Promise<WireChannel[]>;
+    /** Returns the RAW engine shape (see `WireChannel`) — read destinations via `destinationsOf`. */
+    get(channelId: string): Promise<WireChannel>;
+    create(channel: WireChannel | Channel | OieObject): Promise<Json>;
+    update(channelId: string, channel: WireChannel | Channel | OieObject, override?: boolean): Promise<Json>;
     remove(channelId: string): Promise<Json>;
     /** Map of channel id → name. */
     idsAndNames(): Promise<OieObject>;
@@ -346,7 +405,7 @@ export interface Element {
 }
 
 export function uuid(): string;
-export function elementsToArray(elements: OieObject | null | undefined): Element[];
+export function elementsToArray(elements: XStreamElements | OieObject | null | undefined): Element[];
 export function arrayToElements(items: Element[]): OieObject | null;
 
 export const CHANNEL_STATES: string[];
@@ -365,7 +424,12 @@ export function emptyFilter(version: string): OieObject;
 export function defaultSourceConnector(version: string): OieObject;
 export function defaultDestinationConnector(version: string, metaDataId?: number, name?: string): OieObject;
 export function newChannel(name: string, version: string): OieObject;
-export function destinationsOf(channel: OieObject): OieObject[];
+/**
+ * The destination connectors of a channel, flattened out of whichever XStream
+ * shape the engine produced (`{connector: X}`, `{connector: [X]}`, a bare
+ * connector, or absent). Always use this instead of reading the field.
+ */
+export function destinationsOf(channel: WireChannel | OieObject): Connector[];
 export function setDestinations(channel: OieObject, destinations: OieObject[]): void;
 export function validateChannel(channel: OieObject): string[];
 
