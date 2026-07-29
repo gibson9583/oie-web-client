@@ -207,3 +207,21 @@ test('Server Log keeps its entries when the selection changes (no remount wipe)'
     await expect(page.getByText('boom log entry').first()).toBeVisible();
     await expect(page.getByText('No server log entries yet.')).toHaveCount(0);
 });
+
+test('Send Message opens the editor dialog from the dashboard task pane', async ({ page }) => {
+    // The dialog lives in the message browser, which the dashboard now loads on
+    // demand rather than importing statically — so this also pins that the
+    // deferred import actually resolves when the task is invoked.
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+
+    await page.locator('tr', { hasText: 'Demo Started' }).first().click();
+    await page.getByRole('button', { name: 'Send Message', exact: true }).click();
+
+    // The dialog is titled "Message" and carries the Process Message action; the
+    // destination picker only appears for a channel that has destinations, which
+    // the dashboard fixtures deliberately do not give this one.
+    await expect(page.locator('.modal-overlay')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Process Message', exact: true })).toBeVisible();
+});
