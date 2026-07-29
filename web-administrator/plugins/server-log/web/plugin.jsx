@@ -252,7 +252,7 @@ function ServerLogTab() {
     }, [items, sort]);
 
     const headerTh = (key, label, extra = '') => (
-        <th className={'sortable sticky top-0 z-[1] bg-bg1 text-left ' + extra} onClick={() => handleSort(key)}>
+        <th className={'sortable sticky top-0 z-[1] bg-bg2 text-left ' + extra} onClick={() => handleSort(key)}>
             {label}
             {sort.key === key ? <span className="sort-arrow">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
         </th>
@@ -282,7 +282,7 @@ function ServerLogTab() {
                 </table>
             </div>
             {/* thin sticky bottom toolbar: pause | clear | … | Log Size */}
-            <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[12px] z-[2] bg-bg1 border-t border-[var(--bg3)]">
+            <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[12px] z-[2] bg-bg2 border-t border-[var(--bg3)]">
                 <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={togglePause}>
                     <span className="text-[13px] leading-none">{paused ? '⏵' : '⏸'}</span>
                 </button>
