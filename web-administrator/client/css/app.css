@@ -595,44 +595,6 @@ code, pre, .mono { font-family: var(--font-mono); }
 .panel-body { padding: 14px; }
 .panel-body.flush { padding: 0; }
 
-/* ---- Stat blocks (dashboard) ----------------------------------------------------------- */
-
-.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
-
-.stat-block {
-    background: var(--bg1);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 12px 14px;
-    position: relative;
-    overflow: hidden;
-}
-
-.stat-block::after {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 2px;
-    background: var(--stat-color, var(--line-strong));
-    opacity: 0.85;
-}
-
-.stat-block .stat-label {
-    font-size: 9.5px;
-    font-weight: 620;
-    letter-spacing: 0.24em;
-    text-transform: uppercase;
-    color: var(--text-faint);
-}
-
-.stat-block .stat-value {
-    font-family: var(--font-mono);
-    font-size: 24px;
-    font-weight: 600;
-    margin-top: 4px;
-    color: var(--stat-color, var(--text));
-}
-
 /* ---- Data tables -------------------------------------------------------------------------- */
 
 .dt-wrap { overflow: auto; }
