@@ -11,14 +11,10 @@ import { toast, confirmDialog, saveFile, pickFile, modal, h } from '@oie/web-ui'
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { validateScript } from '../../core/serialize.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { platform } from '@oie/web-shell';
 import { RailPane, TaskButton, CodeEditor, Tabs } from '../ui.jsx';
 
-export function register(platform) {
-    // Reached via task buttons (Dashboard/Channels), matching the Swing client.
-    platform.registerView('/global-scripts', reactView(GlobalScriptsView), { title: 'Global Scripts' });
-}
 
 /* ScriptController script keys + JavaScriptConstants default bodies */
 const SCRIPTS = [
@@ -38,7 +34,7 @@ function normalizeScripts(map) {
     return out;
 }
 
-function GlobalScriptsView() {
+export function GlobalScriptsView() {
     const [active, setActive] = useState(0);
     const [dirty, setDirty] = useState(false);
     const editors = useRef({});   // key -> CodeEditor imperative handle

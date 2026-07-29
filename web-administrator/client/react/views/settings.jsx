@@ -26,7 +26,7 @@ import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
 import { checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { setTheme, getState, setState } from '../../core/store.js';
-import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane, DataTableHost } from '../ui.jsx';
@@ -34,10 +34,6 @@ import { RailPane, DataTableHost } from '../ui.jsx';
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
 const CONFIGURATION_PROPERTY_CLASS = 'com.mirth.connect.util.ConfigurationProperty';
 
-export function register(platform) {
-    platform.registerNavItem({ id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Engine', order: 3, task: 'doShowSettings' });
-    platform.registerView('/settings', reactView(SettingsView), { title: 'Settings' });
-}
 
 /* ---- java.util.Properties helpers --------------------------------------------
    XStream serializes Properties as {"property":[{"@name":"key","$":"value"}]}.
@@ -1771,7 +1767,7 @@ function TasksPane({ title, items }) {
     );
 }
 
-function SettingsView({ query }) {
+export function SettingsView({ query }) {
     // Tab defs (built-ins + plugin panels) are stable for the view's lifetime.
     const [defs] = useState(() => buildTabDefs(platform));
 

@@ -49,7 +49,7 @@ import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { REFERENCE_CATALOG } from '../../core/reference-catalog.js';
 import { platform } from '@oie/web-shell';
-import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
@@ -60,14 +60,6 @@ const KINDS = {
     response: { title: 'Response Transformer', noun: 'Step', targetKey: 'responseTransformer' }
 };
 
-export function register(platform) {
-    platform.registerView('/channels/:channelId/filter/:metaDataId',
-        reactView((props) => <FilterTransformerView {...props} kindName="filter" />), { title: 'Filter' });
-    platform.registerView('/channels/:channelId/transformer/:metaDataId',
-        reactView((props) => <FilterTransformerView {...props} kindName="transformer" />), { title: 'Transformer' });
-    platform.registerView('/channels/:channelId/response/:metaDataId',
-        reactView((props) => <FilterTransformerView {...props} kindName="response" />), { title: 'Response Transformer' });
-}
 
 /* ---- element tree machinery (pure, shared by grid + actions) ------------------ */
 
@@ -1842,6 +1834,12 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }) {
 }
 
 /* ---- the routed view ---------------------------------------------------------- */
+
+// One component serves all three routes; these bind the kind so the shell's route
+// table can name a component per route without building wrappers of its own.
+export function FilterView(props) { return <FilterTransformerView {...props} kindName="filter" />; }
+export function TransformerView(props) { return <FilterTransformerView {...props} kindName="transformer" />; }
+export function ResponseTransformerView(props) { return <FilterTransformerView {...props} kindName="response" />; }
 
 function FilterTransformerView({ params, kindName }) {
     const [, forceRender] = useReducer((x) => x + 1, 0);

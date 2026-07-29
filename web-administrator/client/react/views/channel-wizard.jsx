@@ -23,7 +23,7 @@ import * as router from '../../core/router.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { getPref } from '../../core/prefs.js';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { reactView, mountReact, ViewTasks } from '../mount.jsx';
+import { mountReact, ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { useWizardModel, useWizardSteps, useLeaveGuard, WizardStepper, WizardHeader } from './wizard-frame.jsx';
@@ -868,9 +868,5 @@ function ChannelWizardInner({ channel, isNew, version }) {
     );
 }
 
-export function register(platform) {
-    platform.registerView('/channels/new/guided', reactView(ChannelWizardView), { title: 'New Channel — Wizard' });
-    platform.registerView('/channels/:channelId/guided', reactView(ChannelWizardView), { title: 'Channel — Wizard' });
-}
 
 export { ChannelWizardView };

@@ -28,23 +28,100 @@ import { LoginForm } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
 
-import { register as registerDashboard } from './views/dashboard.jsx';
-import { register as registerChannels } from './views/channels.jsx';
-import { register as registerChannelEditor } from './views/channel-editor.jsx';
-import { register as registerChannelWizard } from './views/channel-wizard.jsx';
-import { register as registerMessages } from './views/messages.jsx';
-import { register as registerEvents } from './views/events.jsx';
-import { register as registerAlerts } from './views/alerts.jsx';
-import { register as registerAlertWizard } from './views/alert-wizard.jsx';
-import { register as registerUsers } from './views/users.jsx';
-import { register as registerSettings } from './views/settings.jsx';
-import { register as registerCodeTemplates } from './views/code-templates.jsx';
-import { register as registerGlobalScripts } from './views/global-scripts.jsx';
-import { register as registerExtensions } from './views/extensions.jsx';
 import { register as registerConnectors } from '../connectors/index.js';
 
 const HOMEPAGE_URL = 'https://github.com/OpenIntegrationEngine/engine';
 const ISSUES_URL = 'https://github.com/OpenIntegrationEngine/engine/issues';
+
+/* ---- the app's own routes ----------------------------------------------------
+ * Registration is EAGER — patterns, meta, match order and the nav items all have
+ * to exist before router.start() — but each view MODULE is imported on first
+ * navigation, so the initial download is the shell rather than all ~18k lines of
+ * views. core/router.js awaits its handlers, so the deferral needs nothing more
+ * than an async handler.
+ *
+ * ORDER IS LOAD-BEARING in two places: ':channelId' compiles to '([^/]+)', which
+ * also matches the literal 'new', and the router returns on first match. So
+ * '/channels/new/guided' MUST stay ahead of '/channels/:channelId/guided', and
+ * likewise for the alert pair — otherwise the wizard still opens but carries the
+ * wrong title. Keep each pair adjacent and in this order.
+ *
+ * Specifiers must stay STRING LITERALS: vite.config.mjs's externalFramework
+ * plugin rewrites core/ imports per-module, and it cannot see a computed one —
+ * a template literal here would silently produce a second framework instance.
+ */
+const VIEW_ROUTES = [
+    { path: '/dashboard', meta: { title: 'Dashboard' },
+        nav: { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Engine', order: 0, task: 'doShowDashboard' },
+        load: () => import('./views/dashboard.jsx'), pick: (m) => m.DashboardHost },
+    { path: '/channels', meta: { title: 'Channels' },
+        nav: { id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Engine', order: 1, task: 'doShowChannel' },
+        load: () => import('./views/channels.jsx'), pick: (m) => m.ChannelsView },
+    { path: '/channels/:channelId/edit', meta: { title: 'Edit Channel' },
+        load: () => import('./views/channel-editor.jsx'), pick: (m) => m.ChannelEditorView },
+    { path: '/channels/:channelId/filter/:metaDataId', meta: { title: 'Filter' },
+        load: () => import('./views/filter-transformer.jsx'), pick: (m) => m.FilterView },
+    { path: '/channels/:channelId/transformer/:metaDataId', meta: { title: 'Transformer' },
+        load: () => import('./views/filter-transformer.jsx'), pick: (m) => m.TransformerView },
+    { path: '/channels/:channelId/response/:metaDataId', meta: { title: 'Response Transformer' },
+        load: () => import('./views/filter-transformer.jsx'), pick: (m) => m.ResponseTransformerView },
+    { path: '/channels/new/guided', meta: { title: 'New Channel — Wizard' },
+        load: () => import('./views/channel-wizard.jsx'), pick: (m) => m.ChannelWizardView },
+    { path: '/channels/:channelId/guided', meta: { title: 'Channel — Wizard' },
+        load: () => import('./views/channel-wizard.jsx'), pick: (m) => m.ChannelWizardView },
+    { path: '/messages/:channelId', meta: { title: 'Messages' },
+        load: () => import('./views/messages.jsx'), pick: (m) => m.MessagesView },
+    { path: '/events', meta: { title: 'Events' },
+        nav: { id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Engine', order: 5, task: 'doShowEvents' },
+        load: () => import('./views/events.jsx'), pick: (m) => m.EventsView },
+    { path: '/alerts', meta: { title: 'Alerts' },
+        nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Engine', order: 4, task: 'doShowAlerts' },
+        load: () => import('./views/alerts.jsx'), pick: (m) => m.AlertsList },
+    { path: '/alerts/:alertId/edit', meta: { title: 'Edit Alert' },
+        load: () => import('./views/alert-editor.jsx'), pick: (m) => m.AlertEditor },
+    { path: '/alerts/new/guided', meta: { title: 'New Alert — Wizard' },
+        load: () => import('./views/alert-wizard.jsx'), pick: (m) => m.AlertWizardView },
+    { path: '/alerts/:alertId/guided', meta: { title: 'Alert — Wizard' },
+        load: () => import('./views/alert-wizard.jsx'), pick: (m) => m.AlertWizardView },
+    { path: '/users', meta: { title: 'Users' },
+        nav: { id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Engine', order: 2, task: 'doShowUsers' },
+        load: () => import('./views/users.jsx'), pick: (m) => m.UsersView },
+    { path: '/settings', meta: { title: 'Settings' },
+        nav: { id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Engine', order: 3, task: 'doShowSettings' },
+        load: () => import('./views/settings.jsx'), pick: (m) => m.SettingsView },
+    { path: '/code-templates', meta: { title: 'Code Templates' },
+        load: () => import('./views/code-templates.jsx'), pick: (m) => m.CodeTemplatesView },
+    { path: '/global-scripts', meta: { title: 'Global Scripts' },
+        load: () => import('./views/global-scripts.jsx'), pick: (m) => m.GlobalScriptsView },
+    { path: '/extensions', meta: { title: 'Extensions' },
+        nav: { id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Engine', order: 6, task: 'doShowExtensions' },
+        load: () => import('./views/extensions.jsx'), pick: (m) => m.ExtensionsView },
+];
+
+// A route handler that imports its view on first use. The module cache makes
+// every later navigation a no-op await, and reactView still builds a fresh root
+// per navigation exactly as it did when the component was imported eagerly.
+//
+// The token check matters on cold deep links: the shell re-navigates once the
+// engine timezone resolves, and on a cold load that fires while the chunk is
+// still downloading. Mounting the superseded view anyway would install ITS nav
+// guard over the surviving view's, and then null the slot entirely when the
+// discarded instance unmounts — leaving the visible view unguarded.
+function lazyView(load, pick) {
+    return async (ctx) => {
+        const token = router.navigationToken();
+        const mod = await load();
+        if (router.navigationToken() !== token) return null;
+        return reactView(pick(mod))(ctx);
+    };
+}
+
+function registerViewRoutes(plat) {
+    for (const route of VIEW_ROUTES) {
+        if (route.nav) plat.registerNavItem(route.nav);
+        plat.registerView(route.path, lazyView(route.load, route.pick), route.meta);
+    }
+}
 
 /* ---- engine bootstrap (once) — mirrors app.js startApp registration block ---- */
 
@@ -67,20 +144,10 @@ function startEngine() {
         // Warm Monaco in the background; air-gapped installs keep the baseline editor.
         import('../core/monaco.js').then((m) => m.ensureMonaco()).catch(() => {});
 
+        // Connector panels stay eager: the '*' wildcard panel is the fallback the
+        // channel editor resolves at render time, so it must exist before any view.
         registerConnectors(platform);
-        registerDashboard(platform);
-        registerChannels(platform);
-        registerChannelEditor(platform);
-        registerChannelWizard(platform);
-        registerMessages(platform);
-        registerEvents(platform);
-        registerAlerts(platform);
-        registerAlertWizard(platform);
-        registerUsers(platform);
-        registerSettings(platform);
-        registerCodeTemplates(platform);
-        registerGlobalScripts(platform);
-        registerExtensions(platform);
+        registerViewRoutes(platform);
 
         router.setNotFound(() => h('div.view', h('div.view-body',
             h('div.dt-empty', h('div.empty-icon', icon('search', 30)), 'View not found'))));

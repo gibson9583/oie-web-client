@@ -42,8 +42,7 @@ import { getPref } from '../../core/prefs.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
-import { register as registerFilterTransformer } from './filter-transformer.jsx';
-import { reactView, ViewTasks, mountReact } from '../mount.jsx';
+import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
@@ -133,13 +132,6 @@ function objToEntries(obj) {
     return entries.length ? { entry: entries } : null;
 }
 
-export function register(platform) {
-    platform.registerView('/channels/:channelId/edit', reactView(ChannelEditorView), { title: 'Edit Channel' });
-    // Data types are provided entirely by plugins (plugins/datatype-*), loaded
-    // at startup and read from the platform registry via dataTypeDef/dataTypeList.
-    // Companion routes (filter / transformer / response transformer editors).
-    registerFilterTransformer(platform);
-}
 
 // Count the filter rules / transformer steps on a connector so the task
 // buttons can show a "(n)" indicator (Swing shows none; this surfaces that a
@@ -2864,7 +2856,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }) {
     );
 }
 
-function ChannelEditorView({ params, query }) {
+export function ChannelEditorView({ params, query }) {
     const [, forceRender] = useReducer((x) => x + 1, 0);
     // Whether the channel was already in the store at mount (returning from a
     // sub-editor / opened from the list with edits) vs. fetched fresh here. A

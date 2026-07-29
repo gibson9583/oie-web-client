@@ -15,14 +15,10 @@ import { useState, useEffect, useRef } from 'react';
 import { h, toast, modal, confirmDialog, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { toDisplayString } from '../../core/xstream.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon, useStoreKey } from '../bridges.jsx';
 
-export function register(platform) {
-    platform.registerNavItem({ id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Engine', order: 6, task: 'doShowExtensions' });
-    platform.registerView('/extensions', reactView(ExtensionsView), { title: 'Extensions' });
-}
 
 /* GET /extensions/connectors and /extensions/plugins return XStream maps:
    {entry:[{string: name, connectorMetaData|pluginMetaData: {...}}]} —
@@ -126,7 +122,7 @@ function propertyPairs(raw) {
     return pairs;
 }
 
-function ExtensionsView() {
+export function ExtensionsView() {
     const [sel, setSel] = useState(null);            // { name, meta, enabled } | null
     const [connectors, setConnectors] = useState([]);
     const [plugins, setPlugins] = useState([]);

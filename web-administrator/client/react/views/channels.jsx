@@ -24,16 +24,12 @@ import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 
-export function register(platform) {
-    platform.registerNavItem({ id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Engine', order: 1, task: 'doShowChannel' });
-    platform.registerView('/channels', reactView(ChannelsView), { title: 'Channels' });
-}
 
 // Canonical data columns (the Name column carries the tree twisty/indent), with
 // default widths. Order/visibility/widths are persisted by TreeTable's column
@@ -339,7 +335,7 @@ function firstLine(text) {
     return String(text || '').split('\n')[0].trim();
 }
 
-function ChannelsView() {
+export function ChannelsView() {
     /* Server data + UI state — React state driving the declarative <TreeTable>,
        the task panes, and the filter bar. Loaded by refresh() (an explicit
        command: mount, manual Refresh, post-action, and the channels:changed

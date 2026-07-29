@@ -22,7 +22,7 @@ import { platform } from '@oie/web-shell';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { useDashboardStatuses, useChannelGroups, useChannelTags, useConnectorTypes, useSourcePorts } from '../queries.js';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
@@ -41,17 +41,13 @@ async function openSendMessageDialog(platform, channelId, onSent) {
     return messages.openSendMessageDialog(platform, channelId, onSent);
 }
 
-export function register(platform) {
-    platform.registerNavItem({ id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Engine', order: 0, task: 'doShowDashboard' });
-    platform.registerView('/dashboard', reactView(DashboardHost), { title: 'Dashboard' });
-}
 
 /* The Dashboard is two interchangeable looks at the same channel-status data:
    the classic Swing-style table (DashboardView) and the modern card grid
    (CardsView) — alternates, like the classic vs. guided channel editor. One
    nav item; the remembered `dashboardView` preference picks which renders, and
    each view's rail has a toggle (persisted) to switch. */
-function DashboardHost() {
+export function DashboardHost() {
     const [view, setView] = useState(() => (getPref('dashboardView') === 'cards' ? 'cards' : 'classic'));
     const toggle = () => setView((v) => {
         const next = v === 'cards' ? 'classic' : 'cards';

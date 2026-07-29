@@ -26,16 +26,12 @@ import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { validateScript } from '../../core/serialize.js';
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
-import { reactView, ViewTasks } from '../mount.jsx';
+import { ViewTasks } from '../mount.jsx';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { RailPane, TaskButton, CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 
-export function register(platform) {
-    // Reached via task buttons (Dashboard/Channels), matching the Swing client.
-    platform.registerView('/code-templates', reactView(CodeTemplatesView), { title: 'Code Templates' });
-}
 
 const CT_COLUMNS = [
     { key: 'name', label: 'Name' },
@@ -135,7 +131,7 @@ function templateDescription(template) {
     return '';
 }
 
-function CodeTemplatesView() {
+export function CodeTemplatesView() {
     // Maximize: grow the Code editor over the library list (top) and the
     // Name/Library/Type form, keeping the right-hand Context panel. Esc restores.
     const [editorMax, setEditorMax] = useState(false);
