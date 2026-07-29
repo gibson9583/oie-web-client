@@ -368,3 +368,8 @@ export function newChannel(name: string, version: string): OieObject;
 export function destinationsOf(channel: OieObject): OieObject[];
 export function setDestinations(channel: OieObject, destinations: OieObject[]): void;
 export function validateChannel(channel: OieObject): string[];
+
+/* Engine-backed script validation/formatting (core/serialize.js) — the
+   sanctioned path for checking user scripts under the no-eval CSP. */
+export function validateScript(script: string): Promise<{ ok: boolean | null, message?: string }>;
+export function formatScript(script: string): Promise<string | null>;

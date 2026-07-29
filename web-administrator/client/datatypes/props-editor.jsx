@@ -13,6 +13,7 @@
 
 import { useReducer } from 'react';
 import { toast, modal, pickFile, createCodeEditor } from '@oie/web-ui';
+import { validateScript } from '../core/serialize.js';
 import { dataTypeDef } from './index.js';
 
 /* Script editor in a modal (the Swing data-type properties "Edit" → Script
@@ -27,7 +28,18 @@ function openScriptModal(value, onSave) {
         onClose: () => { editor.dispose && editor.dispose(); },
         buttons: [
             { label: 'Open File…', onClick: async () => { const file = await pickFile('.js,.txt'); if (file) { draft = file.content; editor.setValue(file.content); } return false; } },
-            { label: 'Validate Script', onClick: () => { try { new Function(draft); toast('Script is valid.'); } catch (e) { toast(`Invalid script: ${e.message}`, 'error'); } return false; } },
+            {
+                label: 'Validate Script',
+                // Engine-side Rhino compile check (these scripts execute on the
+                // engine, where E4X is legal — a local `new Function` parse
+                // can't accept it, and it would need 'unsafe-eval' in the CSP).
+                onClick: async () => {
+                    const r = await validateScript(draft);
+                    if (r.ok === true) toast('Script is valid.');
+                    else toast(r.ok === false ? `Invalid script: ${r.message}` : r.message, r.ok === false ? 'error' : 'warn');
+                    return false;
+                }
+            },
             { label: 'Cancel' },
             { label: 'OK', primary: true, onClick: () => onSave(draft === '' ? null : draft) }
         ]

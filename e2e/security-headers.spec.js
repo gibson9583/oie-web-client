@@ -19,6 +19,24 @@ test.describe('security headers', () => {
         expect(h['x-powered-by']).toBeUndefined();
     });
 
+    test('script-src is nonce-based — no unsafe-inline or unsafe-eval', async ({ page }) => {
+        for (const path of ['/', '/index.html', '/dashboard']) {
+            const resp = await page.request.get(path);
+            const csp = resp.headers()['content-security-policy'];
+            const scriptSrc = csp.split(';').map((s) => s.trim()).find((s) => s.startsWith('script-src'));
+            expect(scriptSrc, `${path} script-src`).toMatch(/'nonce-[A-Za-z0-9+/=]+'/);
+            expect(scriptSrc, `${path} script-src`).not.toContain('unsafe-inline');
+            expect(scriptSrc, `${path} script-src`).not.toContain('unsafe-eval');
+
+            // The served shell's importmap (its one inline script) carries the SAME
+            // nonce the header authorizes — on every path that can serve the shell,
+            // including the raw-file route that must not bypass the injection.
+            const nonce = /'nonce-([^']+)'/.exec(scriptSrc)[1];
+            const html = await resp.text();
+            expect(html, `${path} importmap nonce`).toContain(`<script type="importmap" nonce="${nonce}"`);
+        }
+    });
+
     test('the pre-auth config endpoint no longer discloses engine URLs (§1.3)', async ({ page }) => {
         const resp = await page.request.get('/webadmin/config.json');
         expect(resp.ok()).toBeTruthy();
