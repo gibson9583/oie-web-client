@@ -6,13 +6,14 @@ import { mockEngine } from './mock.js';
  * single-key getUserPreference(id, "backgroundColor"); the bulk getPreferences
  * mangles the <awt-color> value (unwrap() collapses a one-entry map; parseBody
  * turns the XML into an object). useServerIdentity now does the raw per-key read
- * and tints the chrome (--topbar-bg / --rail-bg) on login.
+ * and tints the chrome on login. The topbar and rail are ONE painted surface now,
+ * so a single --rail-bg drives both — there is no separate --topbar-bg.
  */
 
 const AWT = '<awt-color>\n  <red>255</red>\n  <green>136</green>\n  <blue>0</blue>\n  <alpha>255</alpha>\n</awt-color>';
 
-const topbarVar = (page) =>
-    page.evaluate(() => document.documentElement.style.getPropertyValue('--topbar-bg').trim());
+const railVar = (page) =>
+    page.evaluate(() => document.documentElement.style.getPropertyValue('--rail-bg').trim());
 
 test('a saved backgroundColor override is applied on login', async ({ page }) => {
     await mockEngine(page, { 'GET /users/1/preferences/backgroundColor': AWT });
@@ -21,7 +22,7 @@ test('a saved backgroundColor override is applied on login', async ({ page }) =>
     // The server chip renders once useServerIdentity resolves (same .then that
     // applies the color), so this also gates the color having been applied.
     await expect(page.locator('.server-chip')).toContainText('v4.5.0');
-    expect(await topbarVar(page)).not.toBe('');
+    expect(await railVar(page)).not.toBe('');
 });
 
 test('no override falls back to server default (chrome not user-tinted)', async ({ page }) => {
@@ -30,5 +31,5 @@ test('no override falls back to server default (chrome not user-tinted)', async 
 
     await expect(page.locator('.server-chip')).toContainText('v4.5.0');
     // No override and no server default color in the fixtures → env vars cleared.
-    expect(await topbarVar(page)).toBe('');
+    expect(await railVar(page)).toBe('');
 });

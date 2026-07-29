@@ -13,6 +13,9 @@ const P = {
     users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
     settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2l.4 2.7h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.07-.4.1-.8.1-1.2z',
     extensions: 'M8 2v6M16 2v6M5 8h14v4a7 7 0 0 1-14 0V8zM12 19v3',
+    // A document with a code chevron — the REST API reference. Literal "API"
+    // lettering was the ask, but type is unreadable at the 14-16px these render at.
+    apiDoc: 'M6 3h8l4 4v14H6zM14 3v4h4M10.5 13 9 15l1.5 2M13.5 13 15 15l-1.5 2',
     code: 'M8 7l-5 5 5 5M16 7l5 5-5 5M13 4l-2 16',
     scripts: 'M7 3h10l4 4v14H7zM17 3v4h4M10 12h6M10 16h6',
     play: 'M7 4l13 8-13 8z',
