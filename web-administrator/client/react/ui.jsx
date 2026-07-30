@@ -23,17 +23,47 @@ const TaskGroupContext = createContext(null);
 
 /* Collapsible rail pane (shared by the shell nav and React view task panes).
    `group` (optional) is the RBAC task-pane key, provided to child TaskButtons. */
-export function RailPane({ title, paneKey, group, className, children }) {
+export function RailPane({
+    title, paneKey, group, className, children,
+    /* Nav-rail customization hooks (see react/nav-rail.jsx). While customizing,
+       `onHeaderClick` replaces the collapse action with a rename, so the header
+       stops being a disclosure and drops its expanded state accordingly. */
+    headerTitle, headerExtra, onHeaderClick, headerDraggable,
+    onHeaderDragStart, onHeaderDragEnd, onHeaderContextMenu, onPaneDragOver, onPaneDrop
+}) {
     const k = paneKey || title;
     const [collapsed, setCollapsed] = useState(() => paneCollapsed.get(k) || false);
     const toggle = () => { const next = !collapsed; setCollapsed(next); paneCollapsed.set(k, next); };
+    // Stable id so the header can point at the region it collapses.
+    const bodyId = 'rail-pane-' + String(k).replace(/[^a-zA-Z0-9_-]+/g, '-');
+    const disclosure = !onHeaderClick;
     return (
-        <div className={'rail-pane' + (collapsed ? ' collapsed' : '') + (className ? ' ' + className : '')}>
-            <div className="rail-pane-header" onClick={toggle}>
-                <span className="pane-title">{title}</span>
-                <span className="pane-chevron">▲</span>
+        <div className={'rail-pane' + (collapsed ? ' collapsed' : '') + (className ? ' ' + className : '')}
+            onDragOver={onPaneDragOver} onDrop={onPaneDrop}>
+            {/* A collapse that was pointer-only and announced nothing: role + state,
+                and Enter/Space so it can be worked from the keyboard. Kept as a div
+                (not a <button>) so the rail's header layout/CSS is untouched. */}
+            <div className="rail-pane-header" onClick={onHeaderClick || toggle}
+                role="button"
+                tabIndex={0}
+                aria-expanded={disclosure ? String(!collapsed) : undefined}
+                aria-controls={disclosure ? bodyId : undefined}
+                aria-label={disclosure ? undefined : `Rename group ${title}`}
+                draggable={headerDraggable || undefined}
+                onDragStart={onHeaderDragStart}
+                onDragEnd={onHeaderDragEnd}
+                onContextMenu={onHeaderContextMenu}
+                onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    (onHeaderClick || toggle)();
+                }}>
+                {headerDraggable ? <span className="rail-grip" aria-hidden="true">⠿</span> : null}
+                {headerTitle !== undefined ? headerTitle : <span className="pane-title">{title}</span>}
+                {headerExtra}
+                {disclosure ? <span className="pane-chevron" aria-hidden="true">▲</span> : null}
             </div>
-            <div className="rail-pane-body">
+            <div className="rail-pane-body" id={bodyId}>
                 {group ? <TaskGroupContext.Provider value={group}>{children}</TaskGroupContext.Provider> : children}
             </div>
         </div>
@@ -125,23 +155,69 @@ export const CodeEditor = forwardRef(function CodeEditor({ language, readOnly, d
     return <div ref={ref} style={{ display: 'flex', flexDirection: 'column', minHeight: 0, ...style }} />;
 });
 
+/*
+ * Tablist semantics + keyboard for the app's hand-rolled `.tabs` strips.
+ *
+ * The dashboard dock is Radix and gets this for free; the other strips were bare
+ * button rows — every tab its own Tab stop, arrows doing nothing, and no
+ * announcement of which one was selected. Spread the returned props rather than
+ * repeating the logic eight times:
+ *
+ *   const t = useTabList(labels.length, active, setActive, { label: 'Settings' });
+ *   <div className="tabs" {...t.list}>
+ *     {labels.map((l, i) => <button className="tab" {...t.tab(i)}>{l}</button>)}
+ *   </div>
+ *   <div className="tab-body" {...t.panel}>…</div>
+ *
+ * Activation follows focus (the APG default for tabs): the arrow keys select as
+ * they move. Every tab button is in the DOM regardless of which is active, so the
+ * new tab can be focused synchronously — no deferred focus() to race a keystroke.
+ */
+export function useTabList(count, active, onChange, { label = 'Tabs' } = {}) {
+    const stripRef = useRef(null);
+    const focusTab = (i) => {
+        const btns = stripRef.current ? stripRef.current.querySelectorAll('[role="tab"]') : [];
+        if (btns[i] && btns[i].focus) btns[i].focus();
+    };
+    const onKeyDown = (e) => {
+        let to = -1;
+        if (e.key === 'ArrowRight') to = (active + 1) % count;
+        else if (e.key === 'ArrowLeft') to = (active - 1 + count) % count;
+        else if (e.key === 'Home') to = 0;
+        else if (e.key === 'End') to = count - 1;
+        if (to < 0 || !count) return;
+        e.preventDefault();
+        onChange(to);
+        focusTab(to);
+    };
+    return {
+        list: { ref: stripRef, role: 'tablist', 'aria-label': label, onKeyDown },
+        // Roving tabindex: the strip is one tab stop, not one per tab.
+        tab: (i) => ({ role: 'tab', 'aria-selected': String(i === active), tabIndex: i === active ? 0 : -1 }),
+        panel: { role: 'tabpanel' }
+    };
+}
+
 /* Tabs (controlled). Every panel stays MOUNTED (inactive ones hidden via CSS) so
    editors/state inside survive tab switches — matches the vanilla tabs(). */
-export function Tabs({ tabs, active, onActiveChange }) {
+export function Tabs({ tabs, active, onActiveChange, label }) {
     // flex-based height chain (not height:100%) so editors/content fill even when
     // the parent's height is flex-computed — matches the vanilla tabs().
+    const t = useTabList(tabs.length, active, onActiveChange, { label });
     return (
         <div className="tabs-wrap" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <div className="tabs">
-                {tabs.map((t, i) => (
+            <div className="tabs" {...t.list}>
+                {tabs.map((tb, i) => (
                     <button key={i} className={'tab' + (i === active ? ' active' : '')}
-                        onClick={() => onActiveChange(i)}>{t.label}</button>
+                        {...t.tab(i)}
+                        onClick={() => onActiveChange(i)}>{tb.label}</button>
                 ))}
             </div>
             <div className="tab-body" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                {tabs.map((t, i) => (
-                    <div key={i} style={{ flex: 1, minHeight: 0, display: i === active ? 'flex' : 'none', flexDirection: 'column' }}>
-                        {t.content}
+                {tabs.map((tb, i) => (
+                    <div key={i} {...(i === active ? t.panel : { role: 'tabpanel', 'aria-hidden': 'true' })}
+                        style={{ flex: 1, minHeight: 0, display: i === active ? 'flex' : 'none', flexDirection: 'column' }}>
+                        {tb.content}
                     </div>
                 ))}
             </div>

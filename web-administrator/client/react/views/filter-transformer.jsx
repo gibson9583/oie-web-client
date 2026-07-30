@@ -51,7 +51,7 @@ import { REFERENCE_CATALOG } from '../../core/reference-catalog.js';
 import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane, TaskButton } from '../ui.jsx';
+import { RailPane, TaskButton, useTabList } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 const KINDS = {
@@ -605,11 +605,13 @@ function RawElementFallback({ element, onReplace }) {
    survive tab switches; hidden-not-detached also keeps the Monaco host in the
    document, out of the route-change detached-editor sweep. */
 function BottomTabs({ tabs, active, onActive }) {
+    const tabKeys = useTabList(tabs.length, active, onActive, { label: 'Step editor sections' });
     return (
         <div className="flex flex-col flex-1 overflow-hidden min-h-0">
-            <div className="tabs">
+            <div className="tabs" {...tabKeys.list}>
                 {tabs.map((t, i) => (
                     <button key={t.label} className={'tab' + (i === active ? ' active' : '')}
+                        {...tabKeys.tab(i)}
                         onClick={() => onActive(i)}>{t.label}</button>
                 ))}
             </div>
@@ -1062,6 +1064,8 @@ function SidePanel({ ctx }) {
     const [active, setActive] = useState(0);
     const { isFilter } = ctx;
     const labels = isFilter ? ['Reference'] : ['Reference', 'Message Trees', 'Message Templates'];
+    const tabKeys = useTabList(labels.length, Math.min(active, labels.length - 1), setActive,
+        { label: 'Reference panel sections' });
     const label = labels[Math.min(active, labels.length - 1)];
     let body = null;
     if (label === 'Reference') {
@@ -1074,9 +1078,10 @@ function SidePanel({ ctx }) {
     }
     return (
         <div className="flex flex-col flex-1 overflow-hidden min-h-0">
-            <div className="tabs">
+            <div className="tabs" {...tabKeys.list}>
                 {labels.map((l, i) => (
                     <button key={l} className={'tab' + (i === active ? ' active' : '')}
+                        {...tabKeys.tab(i)}
                         onClick={() => setActive(i)}>{l}</button>
                 ))}
             </div>

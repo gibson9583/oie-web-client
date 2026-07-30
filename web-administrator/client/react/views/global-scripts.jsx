@@ -168,7 +168,7 @@ export function GlobalScriptsView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                <Tabs tabs={tabs} active={active} onActiveChange={setActive} />
+                <Tabs tabs={tabs} active={active} onActiveChange={setActive} label="Global scripts" />
             </div>
         </div>
     );

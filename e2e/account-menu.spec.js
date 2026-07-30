@@ -26,9 +26,12 @@ test('account chip opens a menu with the signed-in header and all items visible'
     await expect(menu.locator('.ctx-head-name')).toHaveText('admin');
     await expect(menu.locator('.ctx-head-sub')).toHaveText('Admin User');
 
-    // Every action is real, always-visible text — not a hover-only tooltip.
+    // Every action is real, always-visible text — not a hover-only tooltip. The
+    // items are menuitems, not buttons: the menu carries role="menu", so an
+    // explicit menuitem role on each child is what a screen reader is owed.
+    await expect(menu).toHaveAttribute('role', 'menu');
     for (const label of ['Edit Account', 'Change Password', 'Settings', 'Sign out']) {
-        await expect(menu.getByRole('button', { name: label })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
     }
 });
 
@@ -40,7 +43,7 @@ test('Sign out returns to the login screen', async ({ page }) => {
 
     await page.goto('/');
     await page.locator('button.user-chip').click();
-    await page.locator('.ctx-menu').getByRole('button', { name: 'Sign out' }).click();
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Sign out' }).click();
 
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     expect(loggedOut).toBe(true);
@@ -49,7 +52,7 @@ test('Sign out returns to the login screen', async ({ page }) => {
 test('Change Password opens the self-service modal for the current user', async ({ page }) => {
     await page.goto('/');
     await page.locator('button.user-chip').click();
-    await page.locator('.ctx-menu').getByRole('button', { name: 'Change Password' }).click();
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Change Password' }).click();
 
     // Same modal the Users grid uses, scoped to the signed-in user.
     await expect(page.getByText('Change Password — admin')).toBeVisible();
@@ -58,7 +61,7 @@ test('Change Password opens the self-service modal for the current user', async 
 test('Settings jumps to the Administrator (user prefs) tab, not Server', async ({ page }) => {
     await page.goto('/');
     await page.locator('button.user-chip').click();
-    await page.locator('.ctx-menu').getByRole('button', { name: 'Settings' }).click();
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Settings' }).click();
 
     await expect(page).toHaveURL(/\/settings\?tab=administrator/);
     // The Administrator tab is the active one (not the default Server tab).

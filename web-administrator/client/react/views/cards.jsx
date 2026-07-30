@@ -352,9 +352,14 @@ function CardsView({ onToggleView }) {
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Current vs. Lifetime statistics */}
-                    <div className="segpill flex-none">
+                    {/* Single choice: radiogroup + aria-checked, matching the
+                        dashboard's SegPill, so the selection is announced. */}
+                    <div className="segpill flex-none" role="radiogroup" aria-label="Statistics range">
                         {[['Current', false], ['Lifetime', true]].map(([label, val]) => (
                             <button key={label} type="button" onClick={() => setLifetime(val)}
+                                role="radio"
+                                aria-checked={String(lifetime === val)}
+                                tabIndex={lifetime === val ? 0 : -1}
                                 className={lifetime === val ? 'on' : ''}>
                                 {label}
                             </button>

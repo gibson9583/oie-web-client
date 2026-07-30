@@ -174,10 +174,10 @@ test.describe('Channel editor', () => {
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
 
         // The four classic setup tabs are present.
-        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Source', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Destinations', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Scripts', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Source', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Destinations', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Scripts', exact: true })).toBeVisible();
 
         // The Summary tab (default) shows the channel name in its Name field
         // (value lives on the DOM property, so match with toHaveValue). The Name
@@ -189,7 +189,7 @@ test.describe('Channel editor', () => {
     test('switching to Destinations shows the destination row', async ({ page }) => {
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
 
-        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+        await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
 
         // The destinations grid lists the one destination connector (inline-edit
         // name cell carries the value on its DOM property).
@@ -201,7 +201,7 @@ test.describe('Channel editor', () => {
 
     test('connector settings panel shows a single (non-duplicated) settings heading', async ({ page }) => {
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
-        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+        await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
 
         // The Channel Writer dispatcher panel renders its own "Channel Writer
         // Settings" section title; the host wrapper must not add a second
@@ -212,7 +212,7 @@ test.describe('Channel editor', () => {
 
     test('Validate Connector task shows on connector tabs and validates the channel', async ({ page }) => {
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
-        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
 
         const validate = page.getByRole('button', { name: 'Validate Connector', exact: true });
 
@@ -220,9 +220,9 @@ test.describe('Channel editor', () => {
         await expect(validate).toHaveCount(0);
 
         // Appears on the Source and Destinations tabs, regardless of unsaved changes.
-        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await page.getByRole('tab', { name: 'Source', exact: true }).click();
         await expect(validate).toBeVisible();
-        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+        await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
         await expect(validate).toBeVisible();
 
         // Clicking runs the same structural check save() uses; the demo channel is
@@ -293,7 +293,7 @@ test.describe('Channel editor', () => {
         };
         await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
-        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+        await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
 
         // The HTTP Sender panel renders for the (auto-selected) destination; the URL
         // field carries data-fkey="host" and starts un-highlighted.
@@ -419,7 +419,7 @@ test.describe('Channel editor', () => {
         });
 
         await page.goto(`/channels/${ID}/edit`);
-        await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+        await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
         await expect(page.locator('[data-fkey="remoteAddress"]')).toHaveValue('127.0.0.1');
 
         // Import a TCP Sender export (same transport, different values).
@@ -498,8 +498,8 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('button', { name: 'Validate Filter', exact: true })).toBeVisible();
 
         // Filter routes get a Reference-only side panel — no message-tree tabs.
-        await expect(page.getByRole('button', { name: 'Reference', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('tab', { name: 'Reference', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toHaveCount(0);
 
         // The rule's plugin editor mounted from the RULE registry (platform.ruleType).
         await expect(page.locator('.step-editor-fill .field:has(label:text-is("Field")) input'))
@@ -548,8 +548,8 @@ test.describe('Channel editor', () => {
         await expect(page.getByRole('button', { name: 'Validate Response Transformer', exact: true })).toBeVisible();
 
         // Transformer-family side panel (filter routes render Reference only) …
-        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Message Templates', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Message Templates', exact: true })).toBeVisible();
         // … and no filter-only Operator column.
         await expect(page.getByRole('columnheader', { name: 'Operator', exact: true })).toHaveCount(0);
 

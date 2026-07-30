@@ -10,9 +10,9 @@ test('Global Scripts shows the four script tabs, editor, and task pane', async (
     await page.goto('/global-scripts');
     await expect(page).toHaveURL(/\/global-scripts/);
 
-    // One tab per script.
+    // One tab per script (the shared <Tabs> component, so role=tab).
     for (const t of ['Deploy', 'Undeploy', 'Preprocessor', 'Postprocessor']) {
-        await expect(page.getByRole('button', { name: t, exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: t, exact: true })).toBeVisible();
     }
 
     // The CodeEditor island mounts AND fills the view — a broken flex/height

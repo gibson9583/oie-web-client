@@ -21,7 +21,7 @@ test('HTTP Listener Static Resources cell keeps focus while typing', async ({ pa
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
     await page.goto(`/channels/${id}/edit`);
-    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
     await expect(page.locator('.cform-section').first()).toBeVisible();
 
     // The Static Resources table is the panel's last custom field; add a row.

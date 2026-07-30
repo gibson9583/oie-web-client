@@ -38,6 +38,10 @@ const P = {
     import: 'M12 3v12M8 11l4 4 4-4M5 21h14v-7',
     send: 'M22 2L11 13M22 2l-7 20-4-9-9-4z',
     eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+    // Same eye, struck through — the nav rail's hide/show toggle.
+    eyeOff: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7zM4 4l16 16',
+    // Counter-clockwise twin of `refresh`, for revert/reset-to-default actions.
+    undo: 'M4 12a8 8 0 1 0 2.3-5.6M4 3v5h5',
     filter: 'M3 5h18l-7 8v6l-4-2v-4z',
     transform: 'M4 7h12M12 3l4 4-4 4M20 17H8M12 13l-4 4 4 4',
     chevL: 'M15 6l-6 6 6 6',

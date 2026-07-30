@@ -83,5 +83,7 @@ test('degrades cleanly when the engine has no /api/webplugins endpoint', async (
     // unmatched /api calls, so discovery yields nothing and the app loads normally.
     await mockEngine(page);
     await page.goto('/dashboard');
-    await expect(page.getByRole('button', { name: 'Dashboard' })).toBeVisible();
+    // exact: the task pane's own header is a disclosure button named
+    // "Dashboard Tasks", which a substring match also picks up.
+    await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
 });

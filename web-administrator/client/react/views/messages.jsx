@@ -45,7 +45,7 @@ import { createCodeEditor, createColumnManager } from '@oie/web-ui';
 import { platform } from '../../core/platform.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane, TaskButton } from '../ui.jsx';
+import { RailPane, TaskButton, useTabList } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 
@@ -938,13 +938,15 @@ async function exportAttachmentTask(platform, channelId, m) {
    first tab. */
 function DetailTabs({ defs }) {
     const [active, setActive] = useState(0);
+    const tabKeys = useTabList(defs.length, active, setActive, { label: 'Message sections' });
     if (!defs.length) return null;
     const current = defs[Math.min(active, defs.length - 1)];
     return (
         <div className="flex-1 min-h-0 flex flex-col">
-            <div className="tabs flex-none">
+            <div className="tabs flex-none" {...tabKeys.list}>
                 {defs.map((def, i) => (
                     <button key={def.label} className={'tab' + (i === active ? ' active' : '')}
+                        {...tabKeys.tab(i)}
                         onClick={() => setActive(i)}>{def.label}</button>
                 ))}
             </div>
@@ -1424,7 +1426,13 @@ function exportResultsDialog({ channelId, total, lastParams }) {
 
     const status = h('div.text-text-faint', `${fmtNumber(total)} message(s) match the current search.`);
     const fill = h('div.progress-fill', { class: 'w-[0%]' });
-    const barWrap = h('div.progress', { style: { display: 'none' } }, fill);
+    // A progressbar, not an anonymous div: an export of tens of thousands of
+    // messages is the one long operation in the app, and its state was visual only.
+    const barWrap = h('div.progress', {
+        style: { display: 'none' },
+        role: 'progressbar', 'aria-label': 'Export progress',
+        'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': '0'
+    }, fill);
 
     function updateEnabled() {
         const opt = EXPORT_CONTENT_OPTIONS.find(o => o.value === contentSel.value) || EXPORT_CONTENT_OPTIONS[0];
@@ -1476,6 +1484,7 @@ function exportResultsDialog({ channelId, total, lastParams }) {
     }
     function progress(done) {
         fill.style.width = total ? Math.round((done / total) * 100) + '%' : '0%';
+        barWrap.setAttribute('aria-valuenow', String(done));
         status.textContent = `Exporting… ${fmtNumber(done)} / ${fmtNumber(total)}`;
     }
 

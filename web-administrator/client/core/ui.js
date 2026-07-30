@@ -98,7 +98,11 @@ let toastHost = null;
    for feedback that must never steal focus (e.g. clipboard results). */
 function cornerToast(message, type = 'info', timeout = 4200) {
     if (!toastHost) {
-        toastHost = h('div.toasts');
+        // A polite live region, or none of this reaches a screen reader: these are
+        // the app's only confirmation that a save/deploy/copy actually happened.
+        // aria-atomic=false so a second toast announces on its own rather than
+        // re-reading the whole stack.
+        toastHost = h('div.toasts', { role: 'status', 'aria-live': 'polite', 'aria-atomic': 'false' });
         document.body.appendChild(toastHost);
     }
     const name = (type === 'error' || type === 'warn') ? 'warning' : 'check';
@@ -134,13 +138,45 @@ export function toast(message, type = 'info', timeout = 4200) {
 
 /* ---- modal dialogs ------------------------------------------------------------------ */
 
-export function modal({ title, body, buttons = [], size = '', onClose }) {
-    const overlay = h('div.modal-overlay');
-    const close = () => { overlay.remove(); onClose && onClose(); };
+/* Focusable descendants, in DOM order — the tab ring for a trapped dialog.
+   Deliberately not a generic selector library: this is the set the app builds. */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+    'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function focusable(root) {
+    return Array.from(root.querySelectorAll(FOCUSABLE))
+        .filter((el) => el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+}
 
-    const dialog = h(`div.modal${size ? '.' + size : ''}`,
-        h('div.modal-header', title,
-            h('button.icon-btn', { onClick: close, title: 'Close' }, icon('x'))),
+let modalSeq = 0;     // unique ids for aria-labelledby
+
+export function modal({ title, body, buttons = [], size = '', onClose, label }) {
+    const overlay = h('div.modal-overlay');
+    // The element to hand focus back to. Captured before the dialog mounts, so
+    // dismissing returns the caret to whatever opened it (Swing does the same).
+    const opener = document.activeElement;
+    const titleId = 'modal-title-' + (++modalSeq);
+    let closed = false;
+
+    const close = () => {
+        if (closed) return;                       // idempotent: overlay click + button can race
+        closed = true;
+        document.removeEventListener('keydown', onKeyDown);
+        overlay.remove();
+        syncAppHidden();          // a nested confirm closing must not un-hide the app
+        if (opener && opener.isConnected && opener.focus) opener.focus();
+        onClose && onClose();
+    };
+
+    const dialog = h(`div.modal${size ? '.' + size : ''}`, {
+        role: 'dialog',
+        'aria-modal': 'true',
+        // -1 so the dialog itself can take focus when it holds no controls.
+        tabindex: '-1',
+        // Prefer the visible title; `label` covers dialogs built with a node title.
+        ...(label ? { 'aria-label': label } : { 'aria-labelledby': titleId })
+    },
+        h('div.modal-header', h('span', { id: titleId }, title),
+            h('button.icon-btn', { onClick: close, title: 'Close', 'aria-label': 'Close' }, icon('x'))),
         h('div.modal-body', body),
         buttons.length ? h('div.modal-foot', buttons.map(btn =>
             h(`button.btn${btn.primary ? '.btn-primary' : ''}${btn.danger ? '.btn-danger' : ''}`, {
@@ -151,12 +187,62 @@ export function modal({ title, body, buttons = [], size = '', onClose }) {
             }, btn.label))) : null
     );
 
+    /* Escape closes; Tab cycles inside the dialog instead of walking out into the
+       page behind the overlay. One listener, removed by close() — NOT only on the
+       Escape path, or every dialog dismissed another way leaves a live handler
+       that re-runs close()/onClose() on the next Escape anywhere in the app. */
+    // Nested dialogs both listen on document, so each one only acts when it is the
+    // topmost overlay — otherwise one Escape would close the whole stack.
+    const isTopmost = () => {
+        const all = document.querySelectorAll('.modal-overlay');
+        return !all.length || all[all.length - 1] === overlay;
+    };
+
+    function onKeyDown(e) {
+        if (!isTopmost()) return;
+        if (e.key === 'Escape') { close(); return; }
+        if (e.key !== 'Tab') return;
+        const ring = focusable(dialog);
+        if (!ring.length) { e.preventDefault(); return; }
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        const active = document.activeElement;
+        if (!dialog.contains(active)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+        if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+    }
+
     overlay.appendChild(dialog);
     overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
     document.body.appendChild(overlay);
-    const escHandler = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); } };
-    document.addEventListener('keydown', escHandler);
+    syncAppHidden();
+    document.addEventListener('keydown', onKeyDown);
+
+    /* Initial focus inside the dialog, so the trap has somewhere to start and a
+       screen reader announces the dialog rather than the page behind it. A form
+       field wins over the header's Close button — that's where the caret belongs
+       in a prompt, and it saves callers a deferred focus() of their own. */
+    const ring = focusable(dialog);
+    const field = ring.find((el) => /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+    (field || ring[0] || dialog).focus();
+
     return { close, el: dialog };
+}
+
+/* Hide the app from assistive tech while a dialog owns the screen — otherwise a
+   screen reader walks straight past the dialog into the page behind it. `inert`
+   would also block pointer/focus, but the overlay does that visually and the Tab
+   trap does it for the keyboard; this is the announce-ability half. Dialogs live
+   in document.body, outside #app, so they stay reachable.
+
+   Derived from the DOM rather than a counter, so it is self-healing: if an
+   overlay is ever removed by something other than close() (a React unmount, a
+   navigation), the next open or close puts the attribute back in step. */
+function syncAppHidden() {
+    const app = document.getElementById('app') || document.querySelector('.shell');
+    if (!app) return;
+    if (document.querySelector('.modal-overlay')) app.setAttribute('aria-hidden', 'true');
+    else app.removeAttribute('aria-hidden');
 }
 
 export function confirmDialog(title, message, { danger = false, okLabel = 'OK' } = {}) {
@@ -188,7 +274,9 @@ export function promptDialog(title, label, initial = '') {
         input.addEventListener('keydown', e => {
             if (e.key === 'Enter') { resolve(input.value); m.close(); }
         });
-        setTimeout(() => input.focus(), 30);
+        // No deferred focus() here: modal() focuses the first form field as it
+        // mounts. A setTimeout focus can land mid-keystroke and yank the caret
+        // back to this field after the user has already moved on.
     });
 }
 
@@ -261,16 +349,21 @@ export function errorModal(title, error, meta) {
 /* ---- context menu ----------------------------------------------------------------------- */
 
 let openMenu = null;
+let menuOpener = null;   // element focus returns to when the menu is dismissed
 
 export function contextMenu(x, y, items, group) {
-    closeContextMenu();
-    const menu = h('div.ctx-menu');
+    // restore:false — replacing one menu with another must not bounce focus back
+    // to the first menu's opener on the way.
+    closeContextMenu({ restore: false });
+    // Hand focus back where it came from on dismiss (the row, the task button).
+    menuOpener = document.activeElement;
+    const menu = h('div.ctx-menu', { role: 'menu' });
     for (const item of items) {
-        if (item === '-') { menu.appendChild(h('div.ctx-sep')); continue; }
+        if (item === '-') { menu.appendChild(h('div.ctx-sep', { role: 'separator' })); continue; }
         if (item.hidden) continue;
         // Non-interactive heading row (e.g. the account menu's "signed in as").
         if (item.header) {
-            menu.appendChild(h('div.ctx-head',
+            menu.appendChild(h('div.ctx-head', { role: 'presentation' },
                 h('div.ctx-head-name', item.label),
                 item.sub ? h('div.ctx-head-sub', item.sub) : null));
             continue;
@@ -279,8 +372,11 @@ export function contextMenu(x, y, items, group) {
         // task). `group` (the task-pane key) may be set per item or for the menu.
         if (item.task && !checkTask(item.group || group, item.task)) continue;
         menu.appendChild(h(`button.ctx-item${item.danger ? '.danger' : ''}`, {
+            role: 'menuitem',
+            // Roving focus: the menu is one stop, arrows move within it.
+            tabindex: '-1',
             disabled: item.disabled,
-            onClick: () => { closeContextMenu(); item.onClick && item.onClick(); }
+            onClick: () => { closeContextMenu({ restore: false }); item.onClick && item.onClick(); }
         }, item.icon ? icon(item.icon) : null, item.label));
     }
     document.body.appendChild(menu);
@@ -289,33 +385,110 @@ export function contextMenu(x, y, items, group) {
     menu.style.top = Math.min(y, window.innerHeight - rect.height - 8) + 'px';
     openMenu = menu;
     setTimeout(() => document.addEventListener('mousedown', dismissMenu), 0);
+    document.addEventListener('keydown', menuKeys);
+    // Focus the first item so the menu is operable from the keyboard at all — it
+    // used to open with focus left behind on the page, unreachable by Tab.
+    const first = menuItems()[0];
+    if (first) first.focus();
     return menu;
 }
 
-function dismissMenu(e) {
-    if (openMenu && !openMenu.contains(e.target)) closeContextMenu();
+function menuItems() {
+    return openMenu ? Array.from(openMenu.querySelectorAll('.ctx-item:not([disabled])')) : [];
 }
 
-export function closeContextMenu() {
-    if (openMenu) { openMenu.remove(); openMenu = null; document.removeEventListener('mousedown', dismissMenu); }
+function menuMove(delta, absolute) {
+    const items = menuItems();
+    if (!items.length) return;
+    const cur = items.indexOf(document.activeElement);
+    const next = absolute !== undefined
+        ? (absolute < 0 ? items.length - 1 : 0)
+        : (cur + delta + items.length) % items.length;
+    items[next].focus();
+}
+
+function menuKeys(e) {
+    if (!openMenu) return;
+    switch (e.key) {
+        case 'Escape':
+            e.preventDefault();
+            closeContextMenu();
+            return;
+        case 'ArrowDown': e.preventDefault(); menuMove(1); return;
+        case 'ArrowUp': e.preventDefault(); menuMove(-1); return;
+        case 'Home': e.preventDefault(); menuMove(0, 0); return;
+        case 'End': e.preventDefault(); menuMove(0, -1); return;
+        case 'Tab':
+            // Tabbing out of a popup menu dismisses it (Swing does the same).
+            closeContextMenu();
+            return;
+        default:
+            break;
+    }
+    // Type-ahead: jump to the next item starting with the typed letter.
+    if (e.key.length === 1 && /\S/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const items = menuItems();
+        const from = items.indexOf(document.activeElement) + 1;
+        const key = e.key.toLowerCase();
+        for (let i = 0; i < items.length; i++) {
+            const it = items[(from + i) % items.length];
+            if (it.textContent.trim().toLowerCase().startsWith(key)) { e.preventDefault(); it.focus(); return; }
+        }
+    }
+}
+
+function dismissMenu(e) {
+    if (openMenu && !openMenu.contains(e.target)) closeContextMenu({ restore: false });
+}
+
+export function closeContextMenu({ restore = true } = {}) {
+    if (!openMenu) return;
+    openMenu.remove();
+    openMenu = null;
+    document.removeEventListener('mousedown', dismissMenu);
+    document.removeEventListener('keydown', menuKeys);
+    // Only a keyboard dismissal returns focus; a click elsewhere has already
+    // moved it, and an activated item may have opened a dialog of its own.
+    const opener = menuOpener;
+    menuOpener = null;
+    if (restore && opener && opener.isConnected && opener.focus) opener.focus();
 }
 
 /* ---- tabs ----------------------------------------------------------------------------------- */
 
-export function tabs(defs, { onChange, active = 0 } = {}) {
-    const bar = h('div.tabs');
-    const body = h('div.tab-body');
+export function tabs(defs, { onChange, active = 0, label = 'Tabs' } = {}) {
+    // role=tablist + roving tabindex, matching react/ui.jsx useTabList: one tab
+    // stop for the strip, arrows move and select (the APG default for tabs).
+    const bar = h('div.tabs', { role: 'tablist', 'aria-label': label });
+    const body = h('div.tab-body', { role: 'tabpanel' });
     const root = h('div', { class: 'flex flex-col flex-1 overflow-hidden min-h-0' }, bar, body);
     let current = -1;
 
     const buttons = defs.map((def, i) =>
-        h('button.tab', { onClick: () => select(i) }, def.label));
+        h('button.tab', { role: 'tab', tabindex: '-1', onClick: () => select(i) }, def.label));
     buttons.forEach(b => bar.appendChild(b));
+
+    bar.addEventListener('keydown', (e) => {
+        let to = -1;
+        if (e.key === 'ArrowRight') to = (current + 1) % buttons.length;
+        else if (e.key === 'ArrowLeft') to = (current - 1 + buttons.length) % buttons.length;
+        else if (e.key === 'Home') to = 0;
+        else if (e.key === 'End') to = buttons.length - 1;
+        if (to < 0 || !buttons.length) return;
+        e.preventDefault();
+        select(to);
+        buttons[to].focus();
+    });
 
     function select(i) {
         if (i === current) return;
         current = i;
-        buttons.forEach((b, j) => b.classList.toggle('active', i === j));
+        buttons.forEach((b, j) => {
+            const on = i === j;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', String(on));
+            b.tabIndex = on ? 0 : -1;
+        });
         clear(body);
         const content = defs[i].render();
         if (content instanceof Node) body.appendChild(content);
@@ -434,18 +607,36 @@ export class DataTable {
         }
 
         const cols = this.visibleColumns();
-        const headRow = h('tr', cols.map(col =>
-            h('th' + (col.sortable === false ? '' : '.sortable'), {
+        const headRow = h('tr', cols.map(col => {
+            const sortable = col.sortable !== false;
+            const sortNow = () => {
+                if (this.sortKey === col.key) this.sortDir = -this.sortDir;
+                else { this.sortKey = col.key; this.sortDir = 1; }
+                this.render();
+            };
+            return h('th' + (sortable ? '.sortable' : ''), {
+                scope: 'col',
                 style: col.width ? { width: col.width } : null,
-                onClick: col.sortable === false ? null : () => {
-                    if (this.sortKey === col.key) this.sortDir = -this.sortDir;
-                    else { this.sortKey = col.key; this.sortDir = 1; }
-                    this.render();
-                }
+                // Sort state was visual only; and a sortable header is a control, so
+                // it needs to be reachable and operable from the keyboard.
+                'aria-sort': sortable
+                    ? (this.sortKey === col.key ? (this.sortDir > 0 ? 'ascending' : 'descending') : 'none')
+                    : null,
+                tabindex: sortable ? '0' : null,
+                onKeydown: sortable ? (e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    sortNow();
+                } : null,
+                onClick: sortable ? sortNow : null
             },
             col.label,
-            this.sortKey === col.key ? h('span.sort-arrow', this.sortDir > 0 ? '▲' : '▼') : null)
-        ));
+            // Decorative: aria-sort carries the state, and an exposed glyph would
+            // append "▲" to the header's accessible name.
+            this.sortKey === col.key
+                ? h('span.sort-arrow', { 'aria-hidden': 'true' }, this.sortDir > 0 ? '▲' : '▼')
+                : null);
+        }));
         if (options.columnsMenu && !this.manager) headRow.addEventListener('contextmenu', (e) => this.openColumnsMenu(e));
         const thead = h('thead', headRow);
 

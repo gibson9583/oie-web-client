@@ -160,11 +160,31 @@ const DASH_DEFAULT_HIDDEN = ['type', 'port'];
 
 /* Segmented toggle — the single app-wide toggle style (.segpill: shadcn pill,
    same language as the tabs). Used for Tags / Stats / View / Current-Lifetime. */
-function SegPill({ options, value, onChange }) {
+function SegPill({ options, value, onChange, label }) {
+    // A single-choice control: radiogroup + aria-checked, so the selected option is
+    // announced rather than living only in an `.on` class. Arrows move the choice
+    // (radiogroup convention) and the group is one tab stop, not one per option.
+    const ref = useRef(null);
+    const idx = options.findIndex((o) => o.value === value);
+    const move = (delta) => {
+        if (!options.length) return;
+        const to = (idx + delta + options.length) % options.length;
+        onChange(options[to].value);
+        const btns = ref.current ? ref.current.querySelectorAll('button') : [];
+        if (btns[to]) btns[to].focus();
+    };
     return (
-        <span className="segpill flex-none">
-            {options.map((opt) => (
+        <span className="segpill flex-none" ref={ref} role="radiogroup" aria-label={label}
+            onKeyDown={(e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
+            }}>
+            {options.map((opt, i) => (
                 <button key={opt.value} type="button" title={opt.title || opt.label || ''}
+                    role="radio"
+                    aria-checked={String(opt.value === value)}
+                    aria-label={opt.label ? undefined : (opt.title || undefined)}
+                    tabIndex={i === (idx < 0 ? 0 : idx) ? 0 : -1}
                     className={opt.value === value ? 'on' : ''}
                     onClick={() => onChange(opt.value)}>
                     {opt.icon ? <Icon name={opt.icon} size={13} /> : null}
@@ -239,14 +259,26 @@ function DashFilterBar({
     }, [taIndex]);
 
     // Close the "View" popover on any outside press (deferred so the opening
-    // click doesn't immediately close it).
+    // click doesn't immediately close it) — or on Escape, which used to leave it
+    // open with no way back to the trigger.
     useEffect(() => {
         if (!displayOpen) return;
         const onDown = (e) => {
             if (!panelRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setDisplayOpen(false);
         };
+        const onEsc = (e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            setDisplayOpen(false);
+            btnRef.current?.focus();          // hand focus back to the View button
+        };
         const t = setTimeout(() => document.addEventListener('mousedown', onDown), 0);
-        return () => { clearTimeout(t); document.removeEventListener('mousedown', onDown); };
+        document.addEventListener('keydown', onEsc);
+        return () => {
+            clearTimeout(t);
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('keydown', onEsc);
+        };
     }, [displayOpen]);
 
     const closeTypeahead = () => { setTaOpen(false); setTaIndex(-1); };
@@ -310,8 +342,16 @@ function DashFilterBar({
                         })}
                     </span>
                 )}
+                {/* combobox over the suggestion list: the arrow-key cursor was
+                    visual only, so a screen reader never heard the active item. */}
                 <input ref={inputRef} type="text" placeholder="Enter channel tag or name" autoComplete="off"
                     className="flex-1 min-w-0" value={filterText}
+                    role="combobox"
+                    aria-expanded={String(taOpen && taItems.length > 0)}
+                    aria-controls="dash-typeahead"
+                    aria-autocomplete="list"
+                    aria-activedescendant={taOpen && taIndex >= 0 && taItems[taIndex]
+                        ? `dash-ta-${taIndex}` : undefined}
                     onChange={(e) => { onFilterText(e.target.value); setTaOpen(true); setTaIndex(-1); }}
                     onFocus={() => setTaOpen(true)}
                     onBlur={() => setTimeout(closeTypeahead, 150)}    // small delay so clicks on the dropdown land
@@ -328,13 +368,13 @@ function DashFilterBar({
                 behind the "View" button and open as a popover. */}
             <div ref={panelRef}
                 className={'dash-controls flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto' + (displayOpen ? ' open' : '')}>
-                <SegPill value={viewMode} onChange={onViewMode} options={[
+                <SegPill value={viewMode} onChange={onViewMode} label="Row grouping" options={[
                     { value: 'group', icon: 'folder', title: 'Group view' },
                     { value: 'channel', icon: 'channels', title: 'Channel view' }
                 ]} />
                 <span className="inline-flex items-center gap-[5px]">
                     <span className="text-text-faint text-[11px]">Tags:</span>
-                    <SegPill value={tagMode} onChange={onTagMode} options={[
+                    <SegPill value={tagMode} onChange={onTagMode} label="Tag display" options={[
                         { value: 'names', label: 'Names', title: 'Show tags as names' },
                         { value: 'icons', label: 'Icons', title: 'Show tags as icons' },
                         { value: 'off', label: 'Off', title: 'Hide tags' }
@@ -342,23 +382,27 @@ function DashFilterBar({
                 </span>
                 <span className="inline-flex items-center gap-[5px]">
                     <span className="text-text-faint text-[11px]">Stats:</span>
-                    <SegPill value={showStats ? 'on' : 'off'} onChange={(v) => onShowStats(v === 'on')} options={[
+                    <SegPill value={showStats ? 'on' : 'off'} onChange={(v) => onShowStats(v === 'on')} label="Statistics strip" options={[
                         { value: 'on', label: 'On', title: 'Show stat cards' },
                         { value: 'off', label: 'Off', title: 'Hide stat cards' }
                     ]} />
                 </span>
                 <span className="inline-flex items-center gap-[5px]">
                     <span className="text-text-faint text-[11px]">Range:</span>
-                    <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v) => onLifetime(v === 'lifetime')} options={[
+                    <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v) => onLifetime(v === 'lifetime')} label="Statistics range" options={[
                         { value: 'current', label: 'Current' },
                         { value: 'lifetime', label: 'Lifetime' }
                     ]} />
                 </span>
             </div>
             {createPortal(
-                <div ref={taRef} className={'typeahead' + (taOpen && taItems.length ? '' : ' hidden')}>
+                <div ref={taRef} id="dash-typeahead" role="listbox" aria-label="Filter suggestions"
+                    className={'typeahead' + (taOpen && taItems.length ? '' : ' hidden')}>
                     {taItems.map((item, i) => (
                         <div key={item.kind + ':' + item.value}
+                            id={`dash-ta-${i}`}
+                            role="option"
+                            aria-selected={String(i === taIndex)}
                             className={'typeahead-item' + (i === taIndex ? ' active' : '')}
                             onMouseDown={(e) => e.preventDefault()}   // keep input focus so blur doesn't race the click
                             onClick={() => pickSuggestion(item)}>

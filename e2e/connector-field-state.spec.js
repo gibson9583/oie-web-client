@@ -17,7 +17,7 @@ async function openPanel(page, name, mode) {
         : makeChannel(id, { destination: { transportName: name, properties: c.properties() } });
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
     await page.goto(`/channels/${id}/edit`);
-    await page.getByRole('button', { name: mode === 'SOURCE' ? 'Source' : 'Destinations', exact: true }).click();
+    await page.getByRole('tab', { name: mode === 'SOURCE' ? 'Source' : 'Destinations', exact: true }).click();
     if (mode === 'DESTINATION') await page.getByRole('cell', { name, exact: true }).first().click();
     await expect(page.locator('.cform-section').first()).toBeVisible();
 }

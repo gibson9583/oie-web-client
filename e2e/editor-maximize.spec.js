@@ -21,7 +21,7 @@ test('transformer step editor has ONE grow affordance: the code view (no region 
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
     await page.goto(`/channels/${id}/edit`);
-    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
     await page.getByRole('button', { name: /^Edit Transformer/ }).click();
     await expect(page.locator('[data-editor-overtake]').first()).toBeVisible();
 
@@ -38,14 +38,14 @@ test('transformer step editor has ONE grow affordance: the code view (no region 
     const box = await overlay.boundingBox();
     const vp = page.viewportSize();
     expect(box.width).toBeGreaterThan(vp.width - 4);
-    await expect(overlay.getByRole('button', { name: 'Reference', exact: true })).toBeVisible();
-    await expect(overlay.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
+    await expect(overlay.getByRole('tab', { name: 'Reference', exact: true })).toBeVisible();
+    await expect(overlay.getByRole('tab', { name: 'Message Trees', exact: true })).toBeVisible();
 
     // Esc restores both the editor and the side panel to the transformer layout.
     await page.keyboard.press('Escape');
     await expect(page.locator('.ce-popout-overlay')).toHaveCount(0);
     await expect(page.locator('[data-editor-overtake]').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Reference', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Reference', exact: true })).toBeVisible();
 });
 
 test('(B) code template Maximize overtakes the library list, keeps the Context panel', async ({ page }) => {
@@ -74,7 +74,7 @@ test('(A) JavaScript Writer opens the code view with velocity variables', async 
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 
     await page.goto(`/channels/${id}/edit`);
-    await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+    await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
     await page.getByRole('cell', { name: 'JavaScript Writer', exact: true }).first().click();
     await expect(page.locator('.cform-section').first()).toBeVisible();
 
@@ -108,7 +108,7 @@ test('(A) channel scripts open the code view full-viewport even with the rail co
     await page.getByRole('button', { name: 'Hide navigation' }).click();
     await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
 
-    await page.getByRole('button', { name: 'Scripts', exact: true }).click();
+    await page.getByRole('tab', { name: 'Scripts', exact: true }).click();
     const editor = page.locator('.ce').first();
     await editor.hover();
     await editor.locator('.ce-pop-btn').click({ force: true });

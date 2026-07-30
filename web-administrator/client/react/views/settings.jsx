@@ -29,7 +29,7 @@ import { setTheme, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane, DataTableHost } from '../ui.jsx';
+import { RailPane, DataTableHost, useTabList } from '../ui.jsx';
 
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
 const CONFIGURATION_PROPERTY_CLASS = 'com.mirth.connect.util.ConfigurationProperty';
@@ -1835,6 +1835,10 @@ export function SettingsView({ query }) {
         setActive(i);
     }
 
+    // role=tablist + arrow-key navigation. requestTab may refuse (unsaved prompt),
+    // in which case the roving tab stop simply stays where it was.
+    const tabKeys = useTabList(defs.length, active, requestTab, { label: 'Settings sections' });
+
     // Clear the task spec the instant the active tab changes, so the pane never
     // shows the previous tab's buttons during the window before the new tab's
     // builder calls setTasks (which it does synchronously in its mount effect).
@@ -1857,15 +1861,16 @@ export function SettingsView({ query }) {
             </ViewTasks>
             <div className="view-body flush flex flex-col">
                 <div className="tabs-wrap flex flex-col flex-1 min-h-0 overflow-hidden">
-                    <div className="tabs">
+                    <div className="tabs" {...tabKeys.list}>
                         {defs.map((d, i) => (
                             <button key={d.label} className={'tab' + (i === active ? ' active' : '')}
+                                {...tabKeys.tab(i)}
                                 onClick={() => requestTab(i)}>
                                 {d.label}{i === active && dirty ? ' ●' : ''}
                             </button>
                         ))}
                     </div>
-                    <div className="tab-body flex flex-col flex-1 min-h-0">
+                    <div className="tab-body flex flex-col flex-1 min-h-0" {...tabKeys.panel}>
                         {/* Only the active tab is mounted; keyed by label so switching
                             tabs remounts (and reloads) it, matching vanilla tabs(). */}
                         <SettingsTab key={def.label} def={def} ctx={ctx} />

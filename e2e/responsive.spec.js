@@ -157,7 +157,7 @@ test('destination connector editor stacks the cform and left-aligns wait-for-pre
             exportData: { metadata: { enabled: true } } } },
     });
     await page.goto(`/channels/${CH}/edit`);
-    await page.getByRole('button', { name: 'Destinations', exact: true }).click();
+    await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
     // The connector cform stacks to one column (regression guard: the stacking rule
     // must win over the later base .cform-grid definition on source order).
     const grid = page.locator('.cform-grid').first();

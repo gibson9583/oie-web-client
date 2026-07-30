@@ -36,11 +36,11 @@ for (const c of CASES) {
         });
 
         await page.goto(`/channels/${id}/edit`);
-        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
 
         // Mount the connector panel — the step the existing round-trip test skips.
         const tab = c.mode === 'SOURCE' ? 'Source' : 'Destinations';
-        await page.getByRole('button', { name: tab, exact: true }).click();
+        await page.getByRole('tab', { name: tab, exact: true }).click();
         if (c.mode === 'DESTINATION') {
             // Select the destination row (its Type cell shows the transportName) so
             // its editor — and the connector panel — renders.
@@ -55,7 +55,7 @@ for (const c of CASES) {
         // (not `${channel.name} EDITED`) so the id-derived name + suffix can't exceed
         // the 40-char channel-name limit — the round-trip below only checks the
         // connector properties, not the name.
-        await page.getByRole('button', { name: 'Summary', exact: true }).click();
+        await page.getByRole('tab', { name: 'Summary', exact: true }).click();
         const nameField = page.locator('.panel input[type=text]').first();
         await expect(nameField).toHaveValue(channel.name);
         await nameField.fill('Edited Channel');
@@ -101,7 +101,7 @@ for (const c of CASES.filter((x) => x.edit)) {
 
         await page.goto(`/channels/${id}/edit`);
         const tab = c.mode === 'SOURCE' ? 'Source' : 'Destinations';
-        await page.getByRole('button', { name: tab, exact: true }).click();
+        await page.getByRole('tab', { name: tab, exact: true }).click();
         if (c.mode === 'DESTINATION') await page.getByRole('cell', { name: c.name, exact: true }).first().click();
         await expect(page.locator('.cform-section').first()).toBeVisible();
 
