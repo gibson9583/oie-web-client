@@ -19,6 +19,7 @@ import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
 import { h, icon, modal, toast, confirmDialog } from '@oie/web-ui';
+import { CommandPalette } from './command-palette.jsx';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
@@ -142,12 +143,49 @@ const OTHER_ACTIONS = [
        draggable. The rail renders them in its footer strip — see react/nav-rail.jsx. */
 ];
 
+/* Palette commands. Only the ones that mean something with no view mounted and
+   no selection: the create/import entry points (which are routes), the settings
+   sections (deep links), and the session actions. A view's selection-dependent
+   tasks stay in its task pane, where the selection lives. */
+const SETTINGS_TABS = [
+    ['Server', 'server'], ['Administrator', 'administrator'], ['Tags', 'tags'],
+    ['Configuration Map', 'configurationmap'], ['Database Tasks', 'databasetasks'],
+    ['Resources', 'resources'], ['Data Pruner', 'datapruner']
+];
+
+function registerCommands(plat) {
+    /* The wizard routes, which are reachable from anywhere. "New Channel" in the
+       Channels view is a chooser (classic vs guided) whose classic path builds a
+       channel object the view owns — reproducing that here would fork it, so the
+       palette offers the route it can honestly navigate to and says which it is. */
+    plat.registerCommand({ id: 'new-channel', label: 'New Channel (Wizard)', icon: 'plus',
+        section: 'Create', order: 0, task: 'doNewChannel', rbac: 'channel',
+        keywords: 'create add channel', path: '/channels/new/guided' });
+    plat.registerCommand({ id: 'new-alert', label: 'New Alert (Wizard)', icon: 'plus',
+        section: 'Create', order: 1, task: 'doNewAlert', rbac: 'alert',
+        keywords: 'create add alert', path: '/alerts/new/guided' });
+
+    SETTINGS_TABS.forEach(([label, tab], i) => plat.registerCommand({
+        id: 'settings-' + tab, label: 'Settings: ' + label, icon: 'settings', section: 'Settings',
+        order: i, task: 'doShowSettings', rbac: 'view', keywords: label,
+        path: '/settings?tab=' + tab
+    }));
+
+    plat.registerCommand({ id: 'toggle-theme', label: 'Toggle light/dark mode', icon: 'sun',
+        section: 'Session', order: 0, keywords: 'dark light theme',
+        run: () => store.setTheme(store.getState('theme') === 'light' ? 'dark' : 'light') });
+    plat.registerCommand({ id: 'customize-nav', label: 'Customize navigation', icon: 'settings',
+        section: 'Session', order: 1, keywords: 'rail sidebar reorder rename',
+        run: () => window.dispatchEvent(new CustomEvent('webadmin:customize-nav')) });
+}
+
 function registerViewRoutes(plat) {
     for (const route of VIEW_ROUTES) {
         if (route.nav) plat.registerNavItem(route.nav);
         plat.registerView(route.path, lazyView(route.load, route.pick), route.meta);
     }
     for (const action of OTHER_ACTIONS) plat.registerNavItem(action);
+    registerCommands(plat);
 }
 
 /* ---- engine bootstrap (once) — mirrors app.js startApp registration block ---- */
@@ -511,6 +549,7 @@ function AppShell({ user, onLogout }) {
                 </div>
                 <div className="rail-foot"><span id="rail-version">{railVersion}</span></div>
             </aside>
+            <CommandPalette />
             {/* Off-canvas drawer backdrop (phone/tablet only via CSS) — tap to close. */}
             {railCollapsed && <RailFlyout target={peek} />}
             <div className="rail-backdrop" onClick={() => store.setState('railCollapsed', true)} />

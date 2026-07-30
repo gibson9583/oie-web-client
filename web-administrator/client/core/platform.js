@@ -34,6 +34,7 @@ import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
+import { registerCommand } from './commands.js';
 
 /* ---- @oie/* plugin API contract version --------------------------------------
  * The version of the framework surface (the `platform` registries + the @oie/web-*
@@ -127,6 +128,9 @@ export const platform = {
     /* ---- extension points ---- */
 
     registerNavItem(item) { registries.navItems.push(item); },
+    /* Command-palette entry. Same shape as a nav item ({ id, label, icon, section,
+       task, rbac, path | run }); see core/commands.js. */
+    registerCommand(command) { return registerCommand(command); },
     registerView(path, handler, meta = {}) { router.register(path, handler, meta); },
     registerDashboardTab(tab) { registries.dashboardTabs.push(tab); },
     registerDashboardColumn(column) { registries.dashboardColumns.push(column); },
