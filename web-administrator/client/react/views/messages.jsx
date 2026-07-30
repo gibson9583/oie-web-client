@@ -2286,7 +2286,7 @@ export function MessagesView({ params, query }) {
                                 field) so it costs no slot in the criteria row. */}
                             <div className="field relative">
                                 <label>Text Search</label>
-                                <label className="check absolute right-0 top-0 gap-1 text-[11px] text-text-dim cursor-pointer"
+                                <label className="check msg-regex"
                                     title="Treat the text search as a regular expression">
                                     <input type="checkbox" checked={textRegex} onChange={(e) => setTextRegex(e.target.checked)} />
                                     Regex
@@ -2349,7 +2349,7 @@ export function MessagesView({ params, query }) {
                 {/* Wide: the "Search Criteria" heading is a real disclosure over the
                     inline criteria. Narrow: the same criteria move behind the Filters
                     button, where Radix owns Escape, outside-click and focus return. */}
-                <div ref={criteriaPanelRef} className="panel filter-collapse flex-none border-0 border-b border-line rounded-none">
+                <div ref={criteriaPanelRef} className="panel filter-collapse flex-none mx-[14px] mt-3 mb-3">
                     {narrowCriteria ? (
                         <div className="panel-header flex items-center gap-2">
                             <span className="criteria-heading inline-flex items-center gap-1.5">Search Criteria</span>

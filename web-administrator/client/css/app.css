@@ -985,6 +985,22 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     border-top: 1px solid var(--line);
 }
 
+/* Regex toggle, riding the Text Search label line so it costs no slot in the
+   criteria row. It has to match that line exactly: the label rule sets 10.5px
+   with a 15.2px line box, and the toggle was 11px in a 21px flex row — half a
+   step larger and three pixels higher than every label beside it. Shrinking the
+   box below the line height lets the row take the label's own height. */
+.check.msg-regex {
+    position: absolute;
+    right: 0;
+    top: 0;
+    gap: 5px;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+.check.msg-regex { height: 15px; }        /* the label rule's line box, 10.5px × 1.45 */
+.check.msg-regex input[type="checkbox"] { width: 12px; height: 12px; }
+
 /* ---- Message browser: channel picker in the criteria header ---------------------------- */
 
 /* Scope, not criterion: it sits on the heading row so it stays reachable while
@@ -2503,9 +2519,18 @@ input.grid-name::placeholder { color: var(--text-faint); }
     border: 0;
     padding: 0;
     font: inherit;
+    /* A <button> does not inherit these, so the heading came out sentence-case and
+       untracked while every other label on its row — including CHANNEL beside it —
+       took the panel header's treatment. */
+    text-transform: inherit;
+    letter-spacing: inherit;
     color: inherit;
     cursor: pointer;
 }
+
+/* Collapsed, the header's divider has nothing left to divide: the criteria body
+   is unmounted, so the rule reads as a stray line across the card. */
+.filter-collapse [data-state="closed"] > .panel-header { border-bottom: 0; }
 
 /* The Filters trigger only exists when the view has decided it is narrow, so it
    no longer needs a container query to hide itself when it isn't. */
