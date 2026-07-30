@@ -23,6 +23,7 @@
  */
 
 import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { flushSync } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { icon } from '@oie/web-ui';
 
@@ -52,11 +53,14 @@ export function openRadixDialog(opts = {}) {
         emit();
         if (opts.onClose) opts.onClose();
     };
-    dialogs = dialogs.concat({ id, opts, close, opener });
-    emit();
-    // `el` is part of the old contract but no caller reads it; null is honest
-    // here rather than handing back a node that isn't in the document yet.
-    return { close, el: null };
+    const entry = { id, opts, close, opener, node: null };
+    dialogs = dialogs.concat(entry);
+    /* Rendered SYNCHRONOUSLY so `el` is a real node by the time this returns.
+       Plugins built against the DOM factory do things like
+           const h = modal(...); h.el.style.width = '…';
+       on the very next line, and an async render would hand them null. */
+    try { flushSync(emit); } catch { emit(); }
+    return { close, get el() { return entry.node; } };
 }
 
 /* ---- rendering ---- */
@@ -97,7 +101,7 @@ function OneDialog({ entry }) {
                     from the dialog. */}
                 <Dialog.Overlay className="modal-overlay">
                     <Dialog.Content
-                        ref={contentRef}
+                        ref={(node) => { contentRef.current = node; entry.node = node; }}
                         className={'modal' + (opts.size ? ' ' + opts.size : '')}
                         /* Radix labels the dialog from its <Title>; `label` is the
                            escape hatch for dialogs whose title is a node, and it

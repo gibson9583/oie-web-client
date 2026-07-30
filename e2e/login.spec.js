@@ -134,7 +134,10 @@ test.describe('login', () => {
 test('an expired session explains itself below the login box, not in a dialog', async ({ page }) => {
     await mockEngine(page);
     await page.goto('/dashboard');
-    await expect(page.locator('.shell')).toBeVisible();
+    // Booting the app costs the bundle plus the plugin loads, which can outrun the
+    // default 5s on a loaded machine — and this test is about the notice, not boot
+    // speed. Same budget the engine-picker specs give the same assertion.
+    await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
 
     // Every subsequent call 401s: the app treats that as the session expiring.
     await mockEngine(page, {

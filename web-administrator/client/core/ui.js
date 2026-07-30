@@ -408,7 +408,7 @@ export function contextMenu(x, y, items, group) {
         // back to the first menu's opener on the way.
         closeContextMenu({ restore: false });
         openRendered = contextMenuRenderer({ x, y, items: visible });
-        return null;
+        return openRendered.el || null;
     }
     return domContextMenu(x, y, visible);
 }

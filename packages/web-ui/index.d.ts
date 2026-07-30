@@ -33,7 +33,24 @@ export function fmtDate(value: any): string;
 export function escapeHtml(s: string): string;
 
 export type ToastType = 'info' | 'success' | 'warn' | 'error';
-export function toast(message: string, type?: ToastType, timeout?: number): HTMLElement;
+/**
+ * `info`/`success` raise a corner toast; `warn`/`error` open an
+ * acknowledge-to-dismiss dialog instead, so a long engine exception cannot
+ * scroll away before it is read. Both return a {@link UiHandle}.
+ */
+export function toast(message: string, type?: ToastType, timeout?: number): UiHandle;
+
+/**
+ * What the transient-UI factories return.
+ *
+ * `el` is the rendered element and is available as soon as the call returns, so
+ * it can be measured or restyled immediately. `close()` dismisses it and runs
+ * the `onClose` callback, if one was given.
+ */
+export interface UiHandle {
+    close(): void;
+    el: HTMLElement;
+}
 
 /* ---- dialogs --------------------------------------------------------------- */
 
@@ -52,10 +69,7 @@ export interface ModalOptions {
     size?: string;
     onClose?: () => void;
 }
-export interface ModalHandle {
-    close(): void;
-    el: HTMLElement;
-}
+export interface ModalHandle extends UiHandle {}
 export function modal(options: ModalOptions): ModalHandle;
 
 export function confirmDialog(
@@ -97,8 +111,25 @@ export interface ContextMenuItem extends TaskRef {
     onClick?: () => void;
 }
 /** `'-'` renders a separator. */
-export function contextMenu(x: number, y: number, items: Array<ContextMenuItem | '-'>): HTMLElement;
-export function closeContextMenu(): void;
+export function contextMenu(
+    x: number, y: number, items: Array<ContextMenuItem | '-'>, group?: string
+): HTMLElement;
+/** `restore` (default true) hands focus back to whatever opened the menu. */
+export function closeContextMenu(options?: { restore?: boolean }): void;
+
+/* ---- renderers ---------------------------------------------------------------
+ * Host wiring. The application registers these at start-up so that modal(),
+ * toast() and contextMenu() render through its own component layer; with none
+ * registered, each falls back to building the DOM itself. Plugins call the
+ * factories above, not these.
+ */
+export function setDialogRenderer(fn: ((options: ModalOptions) => ModalHandle) | null): void;
+export function setToastRenderer(
+    fn: ((message: string, type: ToastType, timeout: number) => UiHandle) | null
+): void;
+export function setContextMenuRenderer(
+    fn: ((menu: { x: number; y: number; items: Array<ContextMenuItem | '-'> }) => { close(options?: { restore?: boolean }): void; el: HTMLElement }) | null
+): void;
 
 /* ---- tabs ------------------------------------------------------------------ */
 

@@ -188,8 +188,10 @@ Third-party libraries are loaded one of three ways. Big client libs that plugins
 also need are **vendored** to `client/vendor/*` and exposed through the page
 import map (`monaco-editor` for the code editor, `js-beautify` for Format
 Document, `qrcode-generator`, `@zip.js/zip.js`). App-bundle React deps are
-bundled by Vite (`react`, `react-router-dom`, and `@radix-ui/react-tabs`, used
-for the dashboard tab strip in `client/react/views/dashboard.jsx`). A plugin's
+bundled by Vite: `react`, `react-router-dom`, the `@radix-ui/*` primitives the
+shell and views are built on (tabs, dialog, dropdown-menu, popover, collapsible,
+radio-group, toast), and `react-day-picker` behind the date/time field
+(`client/react/date-time-field.jsx`, which compiles into its own lazy chunk). A plugin's
 own npm dependencies are bundled into its `web/plugin.js` by esbuild — e.g. the
 DICOM attachment viewer bundles [`dicom-parser`](https://github.com/cornerstonejs/dicomParser)
 (MIT) for parsing; pixel data is decoded with the browser's native codecs and

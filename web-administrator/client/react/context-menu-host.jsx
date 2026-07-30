@@ -16,6 +16,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import { flushSync } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { icon } from '@oie/web-ui';
 
@@ -39,9 +40,12 @@ export function openRadixContextMenu({ x, y, items }) {
         if (current && current.id === id) { current = null; emit(); }
         if (restore && opener && opener.isConnected && opener.focus) opener.focus();
     };
-    current = { id, x, y, items, close };
-    emit();
-    return { close };
+    const entry = { id, x, y, items, close, node: null };
+    current = entry;
+    // Synchronous for the same reason as the dialog: the DOM factory returned the
+    // menu element, so it has to be there when this returns.
+    try { flushSync(emit); } catch { emit(); }
+    return { close, get el() { return entry.node; } };
 }
 
 /* core/ui.js's icon() returns a DOM node, so it mounts by ref. */
@@ -64,7 +68,7 @@ function Menu({ entry }) {
                     style={{ position: 'fixed', left: x, top: y, width: 0, height: 0 }} />
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
-                <DropdownMenu.Content className="ctx-surface"
+                <DropdownMenu.Content ref={(node) => { entry.node = node; }} className="ctx-surface"
                     side="bottom" align="start" sideOffset={0} collisionPadding={8}
                     onCloseAutoFocus={(e) => {
                         // close() already put focus back on the opener; letting

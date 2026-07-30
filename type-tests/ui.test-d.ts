@@ -1,7 +1,7 @@
 /*
  * Type regression guard for @oie/web-ui.
  */
-import { h, DataTable, modal, buildForm, CHARSETS, field, textInput, taskButton, contextMenu } from '@oie/web-ui';
+import { h, DataTable, modal, buildForm, CHARSETS, field, textInput, taskButton, contextMenu, closeContextMenu, toast } from '@oie/web-ui';
 import type { TaskRef, ContextMenuItem } from '@oie/web-ui';
 import type { Column } from '@oie/web-ui';
 
@@ -17,6 +17,16 @@ function goodUsage() {
 
     const m = modal({ title: 'Hi', body: field('Name', textInput('')), buttons: [{ label: 'OK', onClick: () => true }] });
     m.close();
+    /* The transient-UI factories hand back a real node, renderer or not — an
+       existing plugin does `modal(...).el.style.width = …` on the next line.
+       Pinned here so the element can't quietly become nullable again. */
+    const modalEl: HTMLElement = m.el;
+    const t = toast('saved');
+    t.close();
+    const toastEl: HTMLElement = t.el;
+    const menuEl: HTMLElement = contextMenu(10, 10, [{ label: 'Open', onClick: () => {} }, '-']);
+    closeContextMenu({ restore: false });
+    void modalEl; void toastEl; void menuEl;
 
     buildForm(h('div'), {}, [{ key: 'x', label: 'X', type: 'select', options: CHARSETS }], () => {});
 

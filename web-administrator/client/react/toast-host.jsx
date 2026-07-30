@@ -16,6 +16,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
+import { flushSync } from 'react-dom';
 import * as Toast from '@radix-ui/react-toast';
 import { icon } from '@oie/web-ui';
 
@@ -30,15 +31,19 @@ const snapshot = () => toasts;
 export function showRadixToast(message, type = 'info', timeout = 4200) {
     const id = ++seq;
     const close = () => { toasts = toasts.filter((t) => t.id !== id); emit(); };
-    toasts = toasts.concat({ id, message: String(message), type, timeout, close });
-    emit();
-    return { close, el: null };
+    const entry = { id, message: String(message), type, timeout, close, node: null };
+    toasts = toasts.concat(entry);
+    // Synchronous, so `el` is a real node on return — the DOM factory handed one
+    // back and plugins may still restyle it on the next line.
+    try { flushSync(emit); } catch { emit(); }
+    return { close, get el() { return entry.node; } };
 }
 
 function OneToast({ entry }) {
     const name = (entry.type === 'error' || entry.type === 'warn') ? 'warning' : 'check';
     return (
         <Toast.Root
+            ref={(node) => { entry.node = node; }}
             className={'toast ' + entry.type}
             duration={entry.timeout}
             onOpenChange={(open) => { if (!open) entry.close(); }}>

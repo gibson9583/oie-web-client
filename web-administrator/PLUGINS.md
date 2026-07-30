@@ -333,13 +333,19 @@ const React = platform.React;          // the host's React — NOT an `import 'r
   `propertiesClass`, transmission `apply`/`sampleFrame`) is plain data/logic.
   Imperative helpers are fine to *call* from handlers —
   `platform.ui.modal/confirmDialog/toast`, `platform.api.*`.
+  > `modal()`, `toast()` and `contextMenu()` each return a handle: `close()`
+  > dismisses it, and `el` is the rendered element, available as soon as the
+  > call returns — so you can measure or restyle it straight away. The host
+  > supplies the focus trapping, dismissal and placement.
 - **Styling.** Use **Tailwind v4 utilities** (`bg-bg2`, `text-text-dim`,
   `text-accent`, `border-line`, `flex`, `gap-2`, `mt-[14px]`, …) — generated from
   the design-token CSS variables, so light/dark theming is automatic, no `dark:`
   variants — plus the app's **component classes** (`.btn`/`.btn-primary`,
   `.panel`/`.panel-header`/`.panel-body`, `.dt`, `.field`, `.tag`, `.pip`,
   `.modal`, `.toast`, `.view`, `.mono`, `.hint`, …). For a horizontal radio group
-  use `.radio-group.inline-row`.
+  use `.radio-group.inline-row`. A menu's look is `.ctx-surface`; `.ctx-menu`
+  only adds the coordinate placement the DOM menu does for itself, so style
+  against `.ctx-surface`.
   > **Separately-built plugins** (compiled in their own repo) can use the
   > component classes and the *common* utilities the host already emits, but the
   > host's Tailwind build only generates utilities it sees in **host** source —
