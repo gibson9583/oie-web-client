@@ -514,9 +514,9 @@ export function defaultPollProperties(version) {
  */
 
 export function successToast(message) {
-    const el = toast(message, 'success');
-    el.style.borderLeftColor = 'var(--ok)';
-    return el;
+    // The green rail comes from `.toast.success` in app.css — cornerToast already
+    // puts the type on the element, so there is nothing to restyle by hand.
+    return toast(message, 'success');
 }
 
 /* JSON null values become empty XML elements server-side, which XStream cannot

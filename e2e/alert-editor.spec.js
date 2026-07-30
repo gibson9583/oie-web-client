@@ -51,7 +51,7 @@ test('alert editor adds an action via the Add button and via right-click', async
 
     // Add a second action via the right-click menu.
     await actionRows.first().click({ button: 'right' });
-    await page.locator('.ctx-menu').getByText('Add Action').click();
+    await page.getByRole('menu').getByText('Add Action').click();
     await expect(actionRows).toHaveCount(2);
 });
 

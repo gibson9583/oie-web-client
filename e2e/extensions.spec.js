@@ -79,7 +79,7 @@ test('installing an extension forwards to the engine and prompts a restart', asy
     await page.getByRole('button', { name: 'Install Extension', exact: true }).click();
     await (await chooser).setFiles(STUB_ZIP);
 
-    await expect(page.getByText('installed — restart the engine to load it')).toBeVisible();
+    await expect(page.locator('.toast-msg', { hasText: 'installed — restart the engine to load it' })).toBeVisible();
 });
 
 test('Extensions shows Disable for an enabled extension and the two grids share one selection', async ({ page }) => {

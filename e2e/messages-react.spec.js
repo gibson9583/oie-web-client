@@ -153,7 +153,7 @@ test('status filter dropdown opens with the Swing statuses', async ({ page }) =>
     // chosen — open its checklist of the Swing statuses. Scope assertions to the
     // dropdown menu so they don't collide with the status tags in the table.
     await page.getByRole('button', { name: /^Any/ }).click();
-    const menu = page.locator('.ctx-menu');
+    const menu = page.getByRole('menu');
     await expect(menu).toBeVisible();
     await expect(menu.getByText('RECEIVED', { exact: true })).toBeVisible();
     await expect(menu.getByText('QUEUED', { exact: true })).toBeVisible();

@@ -39,7 +39,7 @@ test('alert editor adds an action via right-click', async ({ page }) => {
 
     await expect(page.getByText('No actions defined')).toBeVisible();
     await page.getByText('No actions defined').click({ button: 'right' });
-    await page.locator('.ctx-menu').getByText('Add Action').click();
+    await page.getByRole('menu').getByText('Add Action').click();
     await expect(page.getByText('No actions defined')).toHaveCount(0);
 });
 

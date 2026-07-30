@@ -31,7 +31,7 @@ test('system preferences are stored under the per-server, per-user key', async (
     // Dashboard refresh interval is the only number input on the tab.
     await page.locator('input[type=number]').fill('42');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByText('Preferences saved')).toBeVisible();
+    await expect(page.locator('.toast-msg', { hasText: 'Preferences saved' })).toBeVisible();
 
     const scoped = await page.evaluate(() => localStorage.getItem('webadmin-prefs:e2e-server-1:1'));
     expect(scoped).toContain('"dashboardRefreshSeconds":42');

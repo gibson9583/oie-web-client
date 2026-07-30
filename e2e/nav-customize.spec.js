@@ -132,7 +132,7 @@ test('customizing from a collapsed rail opens it, and closing gives the space ba
 
     // The right-click route opens it too.
     await page.locator('[data-nav-item="dashboard"]').click({ button: 'right' });
-    await page.locator('.ctx-menu').getByRole('menuitem', { name: /Customize navigation/ }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: /Customize navigation/ }).click();
     await expect(page.locator('.shell')).not.toHaveClass(/rail-collapsed/);
 });
 
@@ -258,7 +258,7 @@ test('right-click is the other way in, and can hide from the menu', async ({ pag
     await page.goto('/dashboard');
     await rail(page).locator('[data-nav-item="alerts"]').click({ button: 'right' });
 
-    const menu = page.locator('.ctx-menu');
+    const menu = page.getByRole('menu');
     await expect(menu).toHaveAttribute('role', 'menu');
     await expect(menu.getByRole('menuitem', { name: /Customize navigation/ })).toBeVisible();
     await expect(menu.getByRole('menuitem', { name: /Reset navigation to default/ })).toBeVisible();
@@ -269,7 +269,7 @@ test('right-click is the other way in, and can hide from the menu', async ({ pag
 
     // Reset from the menu puts everything back and clears the preference.
     await rail(page).locator('[data-nav-item="dashboard"]').click({ button: 'right' });
-    await page.locator('.ctx-menu').getByRole('menuitem', { name: /Reset navigation/ }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: /Reset navigation/ }).click();
     await expect(rail(page).locator('[data-nav-item="alerts"]')).toHaveCount(1);
     expect(await layoutPref(page)).toBeNull();
 });

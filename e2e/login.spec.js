@@ -165,5 +165,9 @@ test('an expired session explains itself below the login box, not in a dialog', 
     await page.locator('input[type=password]').fill('admin');
     await mockEngine(page);
     await page.getByRole('button', { name: 'Sign in' }).click();
+    // Wait for the shell rather than for the notice to vanish: a poll that was
+    // already in flight can still be settling, and "the form is gone" is the
+    // deterministic end state that proves the notice went with it.
+    await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.login-notice')).toHaveCount(0);
 });

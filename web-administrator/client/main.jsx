@@ -13,6 +13,17 @@ import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { App } from './react/shell.jsx';
 import { queryClient } from './react/queries.js';
+import { DialogHost, openRadixDialog } from './react/dialog-host.jsx';
+import { ToastHost, showRadixToast } from './react/toast-host.jsx';
+import { ContextMenuHost, openRadixContextMenu } from './react/context-menu-host.jsx';
+import { setDialogRenderer, setToastRenderer, setContextMenuRenderer } from '@oie/web-ui';
+
+// Every modal(), toast() and contextMenu() in the app and in plugins renders
+// through Radix from here on. Registered before the first render, so anything
+// raised during boot is caught too.
+setDialogRenderer(openRadixDialog);
+setToastRenderer(showRadixToast);
+setContextMenuRenderer(openRadixContextMenu);
 
 // StrictMode covers the SHELL tree only. The per-view and per-island roots that
 // react/mount.jsx creates are separate roots outside <App>, so they are NOT
@@ -22,6 +33,10 @@ createRoot(document.getElementById('app')).render(
     <StrictMode>
         <QueryClientProvider client={queryClient}>
             <App />
+            {/* Outside <App> so these survive the auth gate swapping the tree. */}
+            <DialogHost />
+            <ToastHost />
+            <ContextMenuHost />
         </QueryClientProvider>
     </StrictMode>
 );

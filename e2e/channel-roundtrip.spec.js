@@ -129,7 +129,7 @@ test('a conflicting save prompts "Channel Modified" and Overwrite retries with o
     await page.getByRole('button', { name: 'Overwrite', exact: true }).click();
     await expect.poll(() => puts.length, { timeout: 8000 }).toBe(2);
     expect(puts[1].override).toBe('true');
-    await expect(page.getByText('Saved RT Channel EDITED')).toBeVisible();
+    await expect(page.locator('.toast-msg', { hasText: 'Saved RT Channel EDITED' })).toBeVisible();
 });
 
 test('a channel with no stored last-modified saves once WITHOUT the guard (override=true, no prompt)', async ({ page }) => {
@@ -158,7 +158,7 @@ test('a channel with no stored last-modified saves once WITHOUT the guard (overr
     await nameField.fill('RT Channel EDITED');
     await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
 
-    await expect(page.getByText('Saved RT Channel EDITED')).toBeVisible();
+    await expect(page.locator('.toast-msg', { hasText: 'Saved RT Channel EDITED' })).toBeVisible();
     // Exactly one PUT, guard skipped, and NO "Channel Modified" prompt.
     expect(puts).toHaveLength(1);
     expect(puts[0].override).toBe('true');

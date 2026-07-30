@@ -51,6 +51,12 @@ test('New User is blocked (and not created) when the password violates the polic
     // Blocked: the violation is surfaced, the user is NOT created, modal stays open.
     await expect(page.getByText(/Password rejected/i)).toBeVisible();
     expect(createPosted).toBe(false);
+    /* Dismiss the rejection first: while it is up it is a modal OVER the New User
+       modal, so the dialog beneath is aria-hidden and genuinely not in the role
+       tree. Acknowledging it is also the real flow — then Create is still there
+       to try again with. */
+    await page.keyboard.press('Escape');
+    await expect(page.getByText(/Password rejected/i)).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create', exact: true })).toBeVisible();
 });
 
