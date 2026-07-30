@@ -11,7 +11,8 @@
  * criteria inputs.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import * as Popover from '@radix-ui/react-popover';
 import { h, icon, toast, confirmDialog, contextMenu, fmtDate, fmtNumber } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { toDisplayString } from '../../core/xstream.js';
@@ -20,6 +21,8 @@ import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
+/* Panel width below which the criteria fold into the Filters popover. */
+const CRITERIA_INLINE_MIN = 760;
 const LEVELS = ['INFORMATION', 'WARNING', 'ERROR'];
 const OUTCOMES = ['SUCCESS', 'FAILURE'];
 
@@ -180,15 +183,20 @@ export function EventsView() {
     const [serverId, setServerId] = useState('');
     const [attrSearch, setAttrSearch] = useState('');
     const [selected, setSelected] = useState(null);
-    // Narrow screens: the criteria collapse behind a "Filters" popover.
+    /* Narrow screens: the criteria collapse behind a "Filters" popover. Radix
+       positions and portals that popover, so it can't also be the inline block —
+       the threshold the container query used to apply is measured here instead,
+       and the criteria are rendered in one place or the other. */
     const [filtersOpen, setFiltersOpen] = useState(false);
     const filterRef = useRef(null);
-    useEffect(() => {
-        if (!filtersOpen) return;
-        const onDown = (e) => { if (filterRef.current && !filterRef.current.contains(e.target)) setFiltersOpen(false); };
-        document.addEventListener('mousedown', onDown);
-        return () => document.removeEventListener('mousedown', onDown);
-    }, [filtersOpen]);
+    const [narrow, setNarrow] = useState(false);
+    useLayoutEffect(() => {
+        const el = filterRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const ro = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width <= CRITERIA_INLINE_MIN));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     // Results + pager position — React state driving the controlled table and
     // the pager bar. `params` are the criteria of the LAST run search, so
@@ -311,23 +319,9 @@ export function EventsView() {
     const from = page.total === 0 ? 0 : page.offset + 1;
     const to = Math.min(page.offset + page.limit, page.total);
 
-    return (
-        <div className="view">
-            <ViewTasks>
-                <RailPane title="Event Tasks" paneKey="tasks:Event Tasks" group="event">
-                    <div className="taskbar" data-pane-title="Event Tasks">
-                        <TaskButton label="Search" icon="refresh" onClick={() => search()} />
-                        <TaskButton label="Export All Events" icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
-                    </div>
-                </RailPane>
-            </ViewTasks>
-            <div className="view-body flush flex flex-col">
-                <div ref={filterRef} className="flex-none py-2.5 px-3.5 panel overflow-visible mx-[14px] mt-3 mb-3 filter-collapse">
-                    <button className="btn filter-toggle" type="button" aria-haspopup="true" aria-expanded={filtersOpen}
-                        onClick={() => setFiltersOpen((o) => !o)}>
-                        <Icon name="filter" /><span>Filters</span><Icon name="chevD" size={14} />
-                    </button>
-                    <div className={'filter-popover' + (filtersOpen ? ' open' : '')}>
+    /* Defined once and mounted inline or in the popover — two homes, not two copies. */
+    const criteria = (
+        <>
                     <div className="form-row">
                         <Field label="Start Time"><input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
                         <Field label="End Time"><input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
@@ -365,7 +359,40 @@ export function EventsView() {
                         <Field label="Server Id"><input type="text" className="w-[230px]" value={serverId} onChange={(e) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
                         <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[190px]" value={attrSearch} onChange={(e) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
                     </div>
+        </>
+    );
+
+    return (
+        <div className="view">
+            <ViewTasks>
+                <RailPane title="Event Tasks" paneKey="tasks:Event Tasks" group="event">
+                    <div className="taskbar" data-pane-title="Event Tasks">
+                        <TaskButton label="Search" icon="refresh" onClick={() => search()} />
+                        <TaskButton label="Export All Events" icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
                     </div>
+                </RailPane>
+            </ViewTasks>
+            <div className="view-body flush flex flex-col">
+                <div ref={filterRef} className="flex-none py-2.5 px-3.5 panel overflow-visible mx-[14px] mt-3 mb-3 filter-collapse">
+                    {/* Radix owns the trigger state, Escape, outside-click and focus
+                        return; this used to be a mousedown listener with no Escape. */}
+                    {narrow ? (
+                        <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
+                            <Popover.Trigger asChild>
+                                <button className="btn filter-toggle" type="button">
+                                    <Icon name="filter" /><span>Filters</span><Icon name="chevD" size={14} />
+                                </button>
+                            </Popover.Trigger>
+                            <Popover.Portal>
+                                <Popover.Content className="filter-popover filter-popover-pop"
+                                    align="start" sideOffset={6} collisionPadding={12}>
+                                    {criteria}
+                                </Popover.Content>
+                            </Popover.Portal>
+                        </Popover.Root>
+                    ) : (
+                        <div className="filter-popover">{criteria}</div>
+                    )}
                 </div>
                 <div className="flex-1 overflow-auto min-h-0 flex flex-col oie-elev border border-line rounded-[10px] mx-[14px] mb-3">
                     <DataTableHost columns={COLUMNS} options={options} rows={events} />

@@ -30,7 +30,7 @@
  */
 
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, tabs, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
+import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
@@ -43,6 +43,7 @@ import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
+import { DomTabs } from '../dom-tabs.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton } from '../ui.jsx';
@@ -844,17 +845,27 @@ async function openDependenciesModal(channel, version, markDirty) {
             depSection('This channel is depended upon by:', 'dependent'));
     }
 
-    const tabbed = tabs([
-        { label: 'Code Template Libraries', render: renderLibrariesTab },
-        { label: 'Library Resources', render: renderResourcesTab },
-        { label: 'Deploy/Start Dependencies', render: renderDependenciesTab }
-    ]);
-    tabbed.el.style.height = '380px';
-    tabbed.el.querySelector('.tab-body').style.padding = '12px 4px';
+    /* The three panels are still built with h(); DomTabs takes the strip from
+       Radix while keeping tabs()' render-on-activation, which they rely on. */
+    const tabHost = h('div', { class: 'flex flex-col flex-1 overflow-hidden min-h-0' });
+    tabHost.style.height = '380px';
+    const unmountTabs = mountReact(tabHost, <DomTabs label="Channel dependency sections"
+        bodyStyle={{ padding: '12px 4px' }}
+        defs={[
+            { label: 'Code Template Libraries', render: renderLibrariesTab },
+            { label: 'Library Resources', render: renderResourcesTab },
+            { label: 'Deploy/Start Dependencies', render: renderDependenciesTab }
+        ]} />);
 
-    const depDialog = modal({
+    modal({
         title: 'Channel Dependencies',
-        body: tabbed.el,
+        body: tabHost,
+        // Wide enough for the three tab labels on one row, and no second
+        // scrollbar — the tabs manage their own inner scrolling (.modal-deps).
+        size: 'modal-deps',
+        // Out of the closing render pass: React will not unmount a root from
+        // inside one.
+        onClose: () => setTimeout(unmountTabs, 0),
         buttons: [
             { label: 'Cancel' },
             {
@@ -937,11 +948,6 @@ async function openDependenciesModal(channel, version, markDirty) {
             }
         ]
     });
-    // Wide enough that the three tab labels fit on one row (no scrollbar).
-    depDialog.el.style.width = 'min(620px, calc(100vw - 40px))';
-    // The fixed-height tabs manage their own inner scrolling, so the modal
-    // body itself must not add a second (vertical) scrollbar.
-    depDialog.el.querySelector('.modal-body').style.overflow = 'hidden';
 }
 
 /* Modal mirror of the Swing advanced queue settings dialog; edits a draft

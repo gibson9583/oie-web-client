@@ -192,6 +192,10 @@ function SegPill({ options, value, onChange, label }) {
    position:fixed and portaled to document.body so the (container-type) filter
    bar never becomes its containing block. */
 const TYPEAHEAD_MAX = 12;
+/* Filter-bar width below which the display controls fold into the View popover:
+   they need ~607px and the filter zone another ~240px, so they would wrap onto a
+   second row below roughly here. */
+const CONTROLS_INLINE_MIN = 880;
 
 function DashFilterBar({
     statuses, tags, countsText,
@@ -201,11 +205,23 @@ function DashFilterBar({
 }) {
     const [taOpen, setTaOpen] = useState(false);
     const [taIndex, setTaIndex] = useState(-1);
-    const [displayOpen, setDisplayOpen] = useState(false);
     const inputRef = useRef(null);
     const taRef = useRef(null);
-    const panelRef = useRef(null);
-    const btnRef = useRef(null);
+    const barRef = useRef(null);
+
+    /* Where the display controls live: inline in the bar, or behind the View
+       button as a popover. This used to be a container query, but a Radix popover
+       is positioned by Radix and portaled — it cannot also be an inline flex child
+       — so the same threshold is measured here and the controls are rendered in
+       one place or the other. The other .filterbar container queries are unaffected. */
+    const [narrow, setNarrow] = useState(false);
+    useLayoutEffect(() => {
+        const el = barRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const ro = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width <= CONTROLS_INLINE_MIN));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     /* Substring matches across channel names + tag names (already-picked chips
        excluded). Derived from live props, so a poll landing while the dropdown
@@ -248,29 +264,6 @@ function DashFilterBar({
         }
     }, [taIndex]);
 
-    // Close the "View" popover on any outside press (deferred so the opening
-    // click doesn't immediately close it) — or on Escape, which used to leave it
-    // open with no way back to the trigger.
-    useEffect(() => {
-        if (!displayOpen) return;
-        const onDown = (e) => {
-            if (!panelRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setDisplayOpen(false);
-        };
-        const onEsc = (e) => {
-            if (e.key !== 'Escape') return;
-            e.preventDefault();
-            setDisplayOpen(false);
-            btnRef.current?.focus();          // hand focus back to the View button
-        };
-        const t = setTimeout(() => document.addEventListener('mousedown', onDown), 0);
-        document.addEventListener('keydown', onEsc);
-        return () => {
-            clearTimeout(t);
-            document.removeEventListener('mousedown', onDown);
-            document.removeEventListener('keydown', onEsc);
-        };
-    }, [displayOpen]);
-
     const closeTypeahead = () => { setTaOpen(false); setTaIndex(-1); };
 
     const pickSuggestion = (item) => {
@@ -308,8 +301,41 @@ function DashFilterBar({
         }
     };
 
+    /* Defined once and mounted in whichever place `narrow` calls for — the popover
+       and the inline bar are two homes for the same controls, not two copies. */
+    const controls = (
+        <>
+            <SegPill value={viewMode} onChange={onViewMode} label="Row grouping" options={[
+                { value: 'group', icon: 'folder', title: 'Group view' },
+                { value: 'channel', icon: 'channels', title: 'Channel view' }
+            ]} />
+            <span className="inline-flex items-center gap-[5px]">
+                <span className="text-text-faint text-[11px]">Tags:</span>
+                <SegPill value={tagMode} onChange={onTagMode} label="Tag display" options={[
+                    { value: 'names', label: 'Names', title: 'Show tags as names' },
+                    { value: 'icons', label: 'Icons', title: 'Show tags as icons' },
+                    { value: 'off', label: 'Off', title: 'Hide tags' }
+                ]} />
+            </span>
+            <span className="inline-flex items-center gap-[5px]">
+                <span className="text-text-faint text-[11px]">Stats:</span>
+                <SegPill value={showStats ? 'on' : 'off'} onChange={(v) => onShowStats(v === 'on')} label="Statistics strip" options={[
+                    { value: 'on', label: 'On', title: 'Show stat cards' },
+                    { value: 'off', label: 'Off', title: 'Hide stat cards' }
+                ]} />
+            </span>
+            <span className="inline-flex items-center gap-[5px]">
+                <span className="text-text-faint text-[11px]">Range:</span>
+                <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v) => onLifetime(v === 'lifetime')} label="Statistics range" options={[
+                    { value: 'current', label: 'Current' },
+                    { value: 'lifetime', label: 'Lifetime' }
+                ]} />
+            </span>
+        </>
+    );
+
     return (
-        <div className="filterbar">
+        <div className="filterbar" ref={barRef}>
             <span className="flex items-center gap-2.5 flex-1 min-w-[220px]">
                 <label>Filter:</label>
                 {chips.length > 0 && (
@@ -348,43 +374,28 @@ function DashFilterBar({
                     onKeyDown={onKeyDown} />
                 <span className="whitespace-nowrap"><span className="counts">{countsText}</span></span>
             </span>
-            <button ref={btnRef} type="button" className="btn dash-options-btn"
-                aria-haspopup="true" aria-expanded={String(displayOpen)}
-                onClick={() => setDisplayOpen(o => !o)}>
-                <Icon name="eye" /><span>View</span><Icon name="chevD" />
-            </button>
-            {/* View / Tags / Statistics controls. Inline when the bar is wide; when
-                the bar gets too narrow (container query on .filterbar) they collapse
-                behind the "View" button and open as a popover. */}
-            <div ref={panelRef}
-                className={'dash-controls flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto' + (displayOpen ? ' open' : '')}>
-                <SegPill value={viewMode} onChange={onViewMode} label="Row grouping" options={[
-                    { value: 'group', icon: 'folder', title: 'Group view' },
-                    { value: 'channel', icon: 'channels', title: 'Channel view' }
-                ]} />
-                <span className="inline-flex items-center gap-[5px]">
-                    <span className="text-text-faint text-[11px]">Tags:</span>
-                    <SegPill value={tagMode} onChange={onTagMode} label="Tag display" options={[
-                        { value: 'names', label: 'Names', title: 'Show tags as names' },
-                        { value: 'icons', label: 'Icons', title: 'Show tags as icons' },
-                        { value: 'off', label: 'Off', title: 'Hide tags' }
-                    ]} />
-                </span>
-                <span className="inline-flex items-center gap-[5px]">
-                    <span className="text-text-faint text-[11px]">Stats:</span>
-                    <SegPill value={showStats ? 'on' : 'off'} onChange={(v) => onShowStats(v === 'on')} label="Statistics strip" options={[
-                        { value: 'on', label: 'On', title: 'Show stat cards' },
-                        { value: 'off', label: 'Off', title: 'Hide stat cards' }
-                    ]} />
-                </span>
-                <span className="inline-flex items-center gap-[5px]">
-                    <span className="text-text-faint text-[11px]">Range:</span>
-                    <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v) => onLifetime(v === 'lifetime')} label="Statistics range" options={[
-                        { value: 'current', label: 'Current' },
-                        { value: 'lifetime', label: 'Lifetime' }
-                    ]} />
-                </span>
-            </div>
+            {/* Radix owns the trigger's aria-haspopup/aria-expanded, Escape,
+                outside-click and focus return — all of which this bar used to
+                carry by hand. */}
+            {narrow ? (
+                <Popover.Root>
+                    <Popover.Trigger asChild>
+                        <button type="button" className="btn dash-options-btn">
+                            <Icon name="eye" /><span>View</span><Icon name="chevD" />
+                        </button>
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                        <Popover.Content className="dash-controls dash-controls-pop"
+                            align="end" sideOffset={4} collisionPadding={8}>
+                            {controls}
+                        </Popover.Content>
+                    </Popover.Portal>
+                </Popover.Root>
+            ) : (
+                <div className="dash-controls flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto">
+                    {controls}
+                </div>
+            )}
             {createPortal(
                 <div ref={taRef} id="dash-typeahead" role="listbox" aria-label="Filter suggestions"
                     className={'typeahead' + (taOpen && taItems.length ? '' : ' hidden')}>

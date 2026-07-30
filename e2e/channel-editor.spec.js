@@ -186,6 +186,39 @@ test.describe('Channel editor', () => {
         await expect(nameField).toHaveValue('Round Trip Channel');
     });
 
+    /* The Set Dependencies dialog had no coverage at all, which is how a broken
+       reference to the modal's DOM node survived in it. Its three panels are
+       still built with h(); only the strip is Radix, and it renders a panel on
+       activation and drops it on leave. */
+    test('Set Dependencies opens a three-tab dialog that swaps panels on switch', async ({ page }) => {
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+
+        const dialog = page.getByRole('dialog');
+        await expect(dialog.getByText('Channel Dependencies')).toBeVisible();
+
+        const list = dialog.getByRole('tablist', { name: 'Channel dependency sections' });
+        const libraries = list.getByRole('tab', { name: 'Code Template Libraries', exact: true });
+        await expect(libraries).toHaveAttribute('aria-selected', 'true');
+
+        // Only the active panel is in the document — that is tabs()' behaviour,
+        // which these panels depend on to redraw from the working model.
+        await expect(dialog.getByRole('tabpanel')).toHaveCount(1);
+
+        const deps = list.getByRole('tab', { name: 'Deploy/Start Dependencies', exact: true });
+        await deps.click();
+        await expect(deps).toHaveAttribute('aria-selected', 'true');
+        await expect(libraries).toHaveAttribute('aria-selected', 'false');
+        await expect(dialog.getByText('This channel depends upon:')).toBeVisible();
+        await expect(dialog.getByRole('tabpanel')).toHaveCount(1);
+
+        // Arrow keys work the strip, which the hand-written one also did — this
+        // is the guarantee that survives swapping the implementation.
+        await deps.focus();
+        await page.keyboard.press('Home');
+        await expect(libraries).toHaveAttribute('aria-selected', 'true');
+    });
+
     test('switching to Destinations shows the destination row', async ({ page }) => {
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
 

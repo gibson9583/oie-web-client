@@ -35,40 +35,41 @@ export function RailPane({
 }) {
     const k = paneKey || title;
     const [collapsed, setCollapsed] = useState(() => paneCollapsed.get(k) || false);
-    const toggle = () => { const next = !collapsed; setCollapsed(next); paneCollapsed.set(k, next); };
-    // Stable id so the header can point at the region it collapses.
-    const bodyId = 'rail-pane-' + String(k).replace(/[^a-zA-Z0-9_-]+/g, '-');
     const disclosure = !onHeaderClick;
+
+    /* A real <button>: Radix's Trigger wires aria-expanded/aria-controls and the
+       element itself brings Enter/Space, which the old div had to reimplement.
+       Preflight already strips a button's chrome, so .rail-pane-header only needed
+       a width/alignment line to look identical. */
+    const header = (
+        <button type="button" className="rail-pane-header"
+            aria-label={disclosure ? undefined : `Rename group ${title}`}
+            onClick={disclosure ? undefined : onHeaderClick}
+            draggable={headerDraggable || undefined}
+            onDragStart={onHeaderDragStart}
+            onDragEnd={onHeaderDragEnd}
+            onContextMenu={onHeaderContextMenu}>
+            {headerDraggable ? <span className="rail-grip" aria-hidden="true">⠿</span> : null}
+            {headerTitle !== undefined ? headerTitle : <span className="pane-title">{title}</span>}
+            {headerExtra}
+            {disclosure ? <span className="pane-chevron" aria-hidden="true">▲</span> : null}
+        </button>
+    );
+
     return (
-        <div className={'rail-pane' + (collapsed ? ' collapsed' : '') + (className ? ' ' + className : '')}
+        /* While customizing, the header renames instead of collapsing, so the pane
+           is pinned open and the header is not a Trigger at all — a disclosure that
+           doesn't disclose would be worse than none. */
+        <Collapsible.Root
+            open={disclosure ? !collapsed : true}
+            onOpenChange={(open) => { setCollapsed(!open); paneCollapsed.set(k, !open); }}
+            className={'rail-pane' + (collapsed ? ' collapsed' : '') + (className ? ' ' + className : '')}
             onDragOver={onPaneDragOver} onDrop={onPaneDrop}>
-            {/* A collapse that was pointer-only and announced nothing: role + state,
-                and Enter/Space so it can be worked from the keyboard. Kept as a div
-                (not a <button>) so the rail's header layout/CSS is untouched. */}
-            <div className="rail-pane-header" onClick={onHeaderClick || toggle}
-                role="button"
-                tabIndex={0}
-                aria-expanded={disclosure ? String(!collapsed) : undefined}
-                aria-controls={disclosure ? bodyId : undefined}
-                aria-label={disclosure ? undefined : `Rename group ${title}`}
-                draggable={headerDraggable || undefined}
-                onDragStart={onHeaderDragStart}
-                onDragEnd={onHeaderDragEnd}
-                onContextMenu={onHeaderContextMenu}
-                onKeyDown={(e) => {
-                    if (e.key !== 'Enter' && e.key !== ' ') return;
-                    e.preventDefault();
-                    (onHeaderClick || toggle)();
-                }}>
-                {headerDraggable ? <span className="rail-grip" aria-hidden="true">⠿</span> : null}
-                {headerTitle !== undefined ? headerTitle : <span className="pane-title">{title}</span>}
-                {headerExtra}
-                {disclosure ? <span className="pane-chevron" aria-hidden="true">▲</span> : null}
-            </div>
-            <div className="rail-pane-body" id={bodyId}>
+            {disclosure ? <Collapsible.Trigger asChild>{header}</Collapsible.Trigger> : header}
+            <Collapsible.Content className="rail-pane-body">
                 {group ? <TaskGroupContext.Provider value={group}>{children}</TaskGroupContext.Provider> : children}
-            </div>
-        </div>
+            </Collapsible.Content>
+        </Collapsible.Root>
     );
 }
 
