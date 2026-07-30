@@ -590,7 +590,10 @@ export function App() {
             // Swing's exportChannelOnError(): don't lose a dirty channel to a dead
             // session — stash it; the next login offers to resume.
             stashChannelDraft();
-            toast('Session expired — please sign in again', 'warn');
+            // NOT a toast: toast(msg,'warn') routes through detailModal, which put a
+            // blocking dialog over the login form. The login screen shows its own
+            // reason inline instead — nothing to dismiss before signing back in.
+            store.setState('loginNotice', 'Your session expired — please sign in again.');
             store.setState('user', null);
         });
         return () => { alive = false; off(); };
@@ -648,7 +651,8 @@ export function App() {
                 const accepted = await loginNotificationDialog(pub.loginNotificationMessage);
                 if (!accepted) {
                     await api.auth.logout().catch(() => {});
-                    toast('Login canceled — you must accept the notification to continue.', 'warn');
+                    // Inline on the login screen, like the other reasons we send someone back.
+                    store.setState('loginNotice', 'Sign-in canceled — the notification must be accepted to continue.');
                     return;
                 }
                 if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
@@ -717,7 +721,7 @@ export function App() {
             store.setPrefScope(null, null);
             resetSessionExpired();
             history.replaceState(null, '', '/');
-            toast('You were logged out due to inactivity.', 'warn');
+            store.setState('loginNotice', 'You were signed out after a period of inactivity.');
         });
         return () => stopIdleLogout();
          

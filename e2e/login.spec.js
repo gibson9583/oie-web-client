@@ -126,3 +126,44 @@ test.describe('login', () => {
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     });
 });
+
+// A session that dies mid-use drops you back to the login screen. The reason has to
+// arrive as text under the card — it used to come through toast(msg,'warn'), which
+// routes to detailModal, so a blocking dialog covered the form and had to be
+// dismissed before you could type your password.
+test('an expired session explains itself below the login box, not in a dialog', async ({ page }) => {
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.locator('.shell')).toBeVisible();
+
+    // Every subsequent call 401s: the app treats that as the session expiring.
+    await mockEngine(page, {
+        'GET /users/current': { __status: 401 },
+        'GET /channels/statuses': { __status: 401 },
+        'GET /server/status': { __status: 401 },
+    });
+    // No interaction needed: the dashboard's own poll is the call that 401s.
+
+    // Back at the login form, with the reason inline and nothing to dismiss.
+    await expect(page.locator('form.login-card, .login-card')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.login-notice')).toContainText(/session expired/i);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.modal-overlay')).toHaveCount(0);
+
+    // BELOW the card, not beside it: .login-stage is a centering flex row, so a bare
+    // sibling of the form lands next to it — the geometry is the actual requirement.
+    const card = await page.locator('.login-card').boundingBox();
+    const note = await page.locator('.login-notice').boundingBox();
+    expect(note.y).toBeGreaterThan(card.y + card.height - 1);
+    const cardMid = card.x + card.width / 2;
+    const noteMid = note.x + note.width / 2;
+    expect(Math.abs(cardMid - noteMid)).toBeLessThan(12);
+
+    // It is announced, not thrown at you, and typing clears it.
+    await expect(page.locator('.login-notice')).toHaveAttribute('role', 'status');
+    await page.getByPlaceholder('admin').fill('admin');
+    await page.locator('input[type=password]').fill('admin');
+    await mockEngine(page);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.locator('.login-notice')).toHaveCount(0);
+});
