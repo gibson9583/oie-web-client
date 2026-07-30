@@ -1733,7 +1733,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
 }
 /* Only what differs from a nav row: the active-customizing accent. */
 .rail-customize .rail-chrome.on { color: var(--accent); }
-.rail-collapsed .rail-customize .rail-label { display: none; }
+.rail-collapsed .rail .rail-customize .rail-label { display: none; }
 .rail-pane.collapsed .pane-chevron { transform: rotate(180deg); }
 
 /* Collapse animation. Radix publishes the measured height of the panel as
@@ -1857,35 +1857,40 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .rail-collapsed .rail { align-items: center; }
 /* No brand slot at all when collapsed: the wordmark is a banner lockup that
    cannot shrink to 56px legibly, and the topbar now owns that corner. */
-.rail-collapsed .rail-brand { display: none; }
-.rail-collapsed .rail-panes { padding: 4px 0 8px; width: 100%; }
+.rail-collapsed .rail .rail-brand { display: none; }
+.rail-collapsed .rail .rail-panes { padding: 4px 0 8px; width: 100%; }
 
-/* Section captions become hairlines: the grouping still reads as separation
+/* Everything below is scoped to `.rail` on purpose: `.rail-collapsed` is a SHELL
+   class, so an unscoped rule here also lands on the per-view task pane in the
+   content column — which is how that pane lost its "DASHBOARD TASKS" caption
+   whenever the nav was collapsed, despite being a different column entirely.
+
+   Section captions become hairlines: the grouping still reads as separation
    without room for "Design" to sit anywhere sensible. */
-.rail-collapsed .rail-pane-header { padding: 0; pointer-events: none; }
-.rail-collapsed .pane-title,
-.rail-collapsed .pane-chevron { display: none; }
-.rail-collapsed .rail-pane + .rail-pane { margin-top: 8px; padding-top: 8px; }
+.rail-collapsed .rail .rail-pane-header { padding: 0; pointer-events: none; }
+.rail-collapsed .rail .pane-title,
+.rail-collapsed .rail .pane-chevron { display: none; }
+.rail-collapsed .rail .rail-pane + .rail-pane { margin-top: 8px; padding-top: 8px; }
 
-.rail-collapsed .rail-item {
+.rail-collapsed .rail .rail-item {
     justify-content: center;
     padding: 9px 0;
     margin: 2px auto;
     width: 40px;
     border-radius: 8px;
 }
-.rail-collapsed .rail-item span { display: none; }
+.rail-collapsed .rail .rail-item span { display: none; }
 /* 24px: an icon carrying a nav item ALONE needs to read as a target, where the
    expanded rail's 15px is only a hint beside its label. The customize/logout rows
    are included because they live OUTSIDE .rail-pane — every rule scoped to the
    pane misses them, and they end up visibly smaller than everything above. */
-.rail-collapsed .rail-pane .rail-item svg,
-.rail-collapsed .rail-customize .rail-chrome svg { width: 24px; height: 24px; }
+.rail-collapsed .rail .rail-pane .rail-item svg,
+.rail-collapsed .rail .rail-customize .rail-chrome svg { width: 24px; height: 24px; }
 
 /* The Other pane's buttons carry their label as a bare text node, so there is no
    element to hide — font-size:0 collapses the text while the icons keep their
    explicit width/height. */
-.rail-collapsed .rail-pane-body .taskbar .btn {
+.rail-collapsed .rail .rail-pane-body .taskbar .btn {
     font-size: 0;
     justify-content: center;
     width: 40px;
@@ -1894,11 +1899,11 @@ input.grid-name::placeholder { color: var(--text-faint); }
     border-radius: 8px;
 }
 /* Match the nav items exactly — 20 next to 24 reads as a mistake, not a hierarchy. */
-.rail-collapsed .rail-pane-body .taskbar .btn svg { width: 24px; height: 24px; }
-.rail-collapsed .rail-pane-body .taskbar .sep { margin: 4px auto; width: 24px; }
+.rail-collapsed .rail .rail-pane-body .taskbar .btn svg { width: 24px; height: 24px; }
+.rail-collapsed .rail .rail-pane-body .taskbar .sep { margin: 4px auto; width: 24px; }
 
-.rail-collapsed .rail-foot { padding: 8px 0; text-align: center; }
-.rail-collapsed .rail-foot #rail-version { display: none; }
+.rail-collapsed .rail .rail-foot { padding: 8px 0; text-align: center; }
+.rail-collapsed .rail .rail-foot #rail-version { display: none; }
 
 /* Label flyout. MUST be position:fixed and live outside the rail: .rail scrolls
    (overflow-y:auto), and an absolutely positioned child of a scroll container is
