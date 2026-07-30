@@ -233,14 +233,20 @@ test('the dashboard segmented toggles are radiogroups and move on arrows', async
     await stats.getByRole('radio', { name: 'On' }).focus();
     await expect(stats.locator('[role="radio"]:not([tabindex="-1"])')).toHaveCount(1);
 
-    /* Radix's interaction model for a radio group: an arrow key moves FOCUS and
-       Space commits the choice. (The hand-rolled version selected on arrow; adopting
-       the component means taking its opinion, and this is the documented Radix one.) */
-    await page.keyboard.press('ArrowRight');
+    /* An arrow moves the choice, not just the focus — the APG model, and what the
+       hand-rolled strip did too.
+
+       The key is HELD rather than press()ed. Radix commits from the item's onFocus,
+       guarded by a document-level "an arrow is down" flag it clears on keyup, and
+       roving focus lands the item in an effect. press() releases instantly, so the
+       two race and the result differs between machines — it passed locally and
+       failed in CI. A real keypress is never that short. */
+    await page.keyboard.down('ArrowRight');
+    await page.waitForTimeout(50);
+    await page.keyboard.up('ArrowRight');
     await expect(stats.getByRole('radio', { name: 'Off' })).toBeFocused();
-    await expect(stats.getByRole('radio', { name: 'On' })).toHaveAttribute('aria-checked', 'true');
-    await page.keyboard.press('Space');
     await expect(stats.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true');
+    await expect(stats.getByRole('radio', { name: 'On' })).toHaveAttribute('aria-checked', 'false');
     // And the choice really took effect — the strip is closed.
     await expect.poll(async () => (await page.locator('.dash-kpis-wrap').boundingBox()).height).toBe(0);
 });
