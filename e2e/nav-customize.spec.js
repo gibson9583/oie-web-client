@@ -214,16 +214,23 @@ test('Alt+Arrow moves an item and hops groups at the edges', async ({ page }) =>
     const monitor = () => rail(page).locator('.rail-pane', { has: page.locator('.pane-title', { hasText: 'Monitor' }) })
         .locator('[data-nav-item]');
 
+    /* Move the first item down and the second takes its place. Both are read from
+       the rail rather than named, so the test stays about the MOVE and not about
+       which views happen to sit in Monitor. */
     await expect(monitor().first()).toHaveAttribute('data-nav-item', 'dashboard');
+    const second = await monitor().nth(1).getAttribute('data-nav-item');
     await rail(page).locator('[data-nav-item="dashboard"]').focus();
     await page.keyboard.press('Alt+ArrowDown');
-    await expect(monitor().first()).toHaveAttribute('data-nav-item', 'alerts');
+    await expect(monitor().first()).toHaveAttribute('data-nav-item', second);
 
-    // Off the end of the group and into the next one.
-    await rail(page).locator('[data-nav-item="events"]').focus();
+    /* Off the end of the group and into the next one. Which item is last is read
+       from the rail rather than named, so adding a view to Monitor doesn't turn
+       this into a test about that view. */
+    const lastId = await monitor().last().getAttribute('data-nav-item');
+    await rail(page).locator(`[data-nav-item="${lastId}"]`).focus();
     await page.keyboard.press('Alt+ArrowDown');
     const design = rail(page).locator('.rail-pane', { has: page.locator('.pane-title', { hasText: 'Design' }) });
-    await expect(design.locator('[data-nav-item="events"]')).toHaveCount(1);
+    await expect(design.locator(`[data-nav-item="${lastId}"]`)).toHaveCount(1);
 });
 
 test('a new group takes items and gives them back when deleted', async ({ page }) => {
