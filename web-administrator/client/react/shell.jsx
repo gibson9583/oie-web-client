@@ -71,13 +71,20 @@ const VIEW_ROUTES = [
         load: () => import('./views/channel-wizard.jsx'), pick: (m) => m.ChannelWizardView },
     { path: '/channels/:channelId/guided', meta: { title: 'Channel — Wizard' },
         load: () => import('./views/channel-wizard.jsx'), pick: (m) => m.ChannelWizardView },
+    /* Channel-less entry to the message browser: the same view, with its channel
+       picker as the way in. Registered BEFORE the parameterised route so
+       '/messages' cannot be read as a channel id. */
+    { path: '/messages', meta: { title: 'Messages' },
+        nav: { id: 'messages', label: 'Messages', icon: 'messages', path: '/messages',
+            section: 'Monitor', order: 1, task: 'doShowMessages' },
+        load: () => import('./views/messages.jsx'), pick: (m) => m.MessagesView },
     { path: '/messages/:channelId', meta: { title: 'Messages' },
         load: () => import('./views/messages.jsx'), pick: (m) => m.MessagesView },
     { path: '/events', meta: { title: 'Events' },
-        nav: { id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Monitor', order: 2, task: 'doShowEvents' },
+        nav: { id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Monitor', order: 3, task: 'doShowEvents' },
         load: () => import('./views/events.jsx'), pick: (m) => m.EventsView },
     { path: '/alerts', meta: { title: 'Alerts' },
-        nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Monitor', order: 1, task: 'doShowAlerts' },
+        nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Monitor', order: 2, task: 'doShowAlerts' },
         load: () => import('./views/alerts.jsx'), pick: (m) => m.AlertsList },
     { path: '/alerts/:alertId/edit', meta: { title: 'Edit Alert' },
         load: () => import('./views/alert-editor.jsx'), pick: (m) => m.AlertEditor },
