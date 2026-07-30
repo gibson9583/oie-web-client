@@ -52,6 +52,11 @@
 @source not "../dist/**";
 
 :root {
+    /* Tells the browser which way to paint the UI IT owns — the datetime-local
+       picker panel, scrollbars, spinners, autofill. Without it Chrome renders a
+       white calendar over the dark app, since it has no way to read our tokens. */
+    color-scheme: dark;
+
     --font-ui: 'Archivo', 'Avenir Next', 'Segoe UI', sans-serif;
     --font-mono: 'IBM Plex Mono', 'SF Mono', 'Consolas', monospace;
 
@@ -108,6 +113,7 @@
 /* Light theme: faithful to the classic Swing Administrator — blue sidebar and
    title strip, white panes, light gray data surfaces. */
 [data-theme="light"] {
+    color-scheme: light;
     --bg0: #e9edf2;
     --bg1: #f3f6f9;
     --bg2: #ffffff;
