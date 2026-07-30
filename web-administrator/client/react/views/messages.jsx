@@ -2212,10 +2212,10 @@ export function MessagesView({ params, query }) {
         <>
                         <div className="form-row">
                             <Field label="Start Date">
-                                <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                                <DateTimeField value={startDate} onChange={setStartDate} label="Start date" />
                             </Field>
                             <Field label="End Date">
-                                <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                                <DateTimeField value={endDate} onChange={setEndDate} label="End date" />
                             </Field>
                             <Field label="Status">
                                 <DropdownMenu.Root open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>

@@ -20,6 +20,7 @@ import { getPref } from '../../core/prefs.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { DateTimeField } from '../date-time-field.jsx';
 
 /* Panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
@@ -323,8 +324,8 @@ export function EventsView() {
     const criteria = (
         <>
                     <div className="form-row">
-                        <Field label="Start Time"><input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} /></Field>
-                        <Field label="End Time"><input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} /></Field>
+                        <Field label="Start Time"><DateTimeField value={start} onChange={setStart} label="Start time" /></Field>
+                        <Field label="End Time"><DateTimeField value={end} onChange={setEnd} label="End time" /></Field>
                         <Field label="Name"><input type="text" placeholder="Event name contains…" className="w-[190px]" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
                         <Field label="Level">
                             <div className="flex items-center gap-2">

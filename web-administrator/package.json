@@ -27,11 +27,12 @@
     "@radix-ui/react-tabs": "^1.1.21",
     "@radix-ui/react-toast": "^1.2.23",
     "@zip.js/zip.js": "^2.8.34",
+    "dicom-parser": "^1.8.21",
     "express": "^5.2.1",
     "js-beautify": "^2.0.3",
     "monaco-editor": "^0.56.0",
     "qrcode-generator": "2.0.4",
-    "dicom-parser": "^1.8.21"
+    "react-day-picker": "^10.0.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
