@@ -10,10 +10,9 @@ import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    useStoreKey, useTheme, useTimezone, useViewTitle, useRouteChange,
-    useServerIdentity, useRestartWatch, Icon
+    useStoreKey, useTheme, useTimezone, useViewTitle, useServerIdentity, useRestartWatch, Icon
 } from './bridges.jsx';
-import { RailPane } from './ui.jsx';
+import { NavRail } from './nav-rail.jsx';
 import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
@@ -119,11 +118,35 @@ function lazyView(load, pick) {
     };
 }
 
+/*
+ * The rail's bottom block. These were five inline buttons with no ids, which meant
+ * the layout preference could not name them — so they are declared like any nav
+ * item and simply carry an `action` instead of a `path`. That also makes rail
+ * ACTIONS a thing a plugin can contribute, not just views.
+ *
+ * `rbac: 'other'` keeps Swing's pane key: these are gated as the "other" group,
+ * while views are gated as "view".
+ */
+const OTHER_ACTIONS = [
+    { id: 'rest-api', label: 'View REST API', icon: 'apiDoc', section: 'Other', order: 0,
+        task: 'goToUserAPI', rbac: 'other', action: () => openApiDocs() },
+    { id: 'about', label: 'About', icon: 'info', section: 'Other', order: 1,
+        task: 'goToAbout', rbac: 'other', action: () => showAbout() },
+    { id: 'homepage', label: 'Visit homepage', icon: 'globe', section: 'Other', order: 2,
+        task: 'goToMirth', rbac: 'other', action: () => window.open(HOMEPAGE_URL, '_blank') },
+    { id: 'report-issue', label: 'Report issue', icon: 'bug', section: 'Other', order: 3,
+        task: 'doReportIssue', rbac: 'other', action: () => window.open(ISSUES_URL, '_blank') }
+    /* Logout is deliberately NOT here. It is chrome, like the customize control:
+       both must stay exactly where they are, so neither is hideable, renameable or
+       draggable. The rail renders them in its footer strip — see react/nav-rail.jsx. */
+];
+
 function registerViewRoutes(plat) {
     for (const route of VIEW_ROUTES) {
         if (route.nav) plat.registerNavItem(route.nav);
         plat.registerView(route.path, lazyView(route.load, route.pick), route.meta);
     }
+    for (const action of OTHER_ACTIONS) plat.registerNavItem(action);
 }
 
 /* ---- engine bootstrap (once) — mirrors app.js startApp registration block ---- */
@@ -205,17 +228,6 @@ async function showAbout() {
 
 /* ---- rail ---- */
 
-// Nav panes, grouped by section. `only`/`exclude` split the Engine pane (top)
-// from plugin panes (below the contextual task panes) — matching app.js order.
-const SECTION_ORDER = ['Monitor', 'Design', 'Manage'];
-
-/* 'Engine' was the single catch-all group before Run/Design/Manage, and plugins
-   built against that convention still declare it — the Community Store, which
-   ships from its own repo, is one. Without this they render a stray ENGINE
-   heading of their own. Manage is where an extension marketplace belongs, and is
-   the closest home for anything else that asked to sit with the app's views. */
-const LEGACY_SECTIONS = { Engine: 'Manage' };
-
 /* Label for a collapsed rail item. Portaled to <body> and position:fixed because
    .rail scrolls — an absolutely positioned child would be clipped by it, and would
    also pad its scrollWidth into a horizontal scrollbar. Shown on focus too, or the
@@ -229,84 +241,6 @@ function RailFlyout({ target }) {
             {target.label}
         </div>,
         document.body
-    );
-}
-
-function Nav({ only, exclude, collapsed, onPeek }) {
-    const current = useRouteChange();
-    const sections = new Map();
-    for (const item of platform.navItems()) {
-        const section = LEGACY_SECTIONS[item.section] || item.section || 'Plugins';
-        if (only && !only.includes(section)) continue;
-        if (exclude && exclude.includes(section)) continue;
-        // RBAC: hide a view the user isn't authorized for (Swing's "view" task pane).
-        if (item.task && !platform.checkTask('view', item.task)) continue;
-        if (!sections.has(section)) sections.set(section, []);
-        sections.get(section).push(item);
-    }
-    // Grouped by what you came to do rather than by build order. Anything a plugin
-    // introduces sorts after these, alphabetically, with Plugins last of all.
-    const rank = (s) => {
-        const i = SECTION_ORDER.indexOf(s);
-        return i >= 0 ? i : (s === 'Plugins' ? 900 : 500);
-    };
-    const ordered = [...sections.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-    return (
-        <>
-            {ordered.map((section) => (
-                <RailPane key={section} title={section} paneKey={section}>
-                    {sections.get(section).map((item) => {
-                        const active = current === item.path || current.startsWith(item.path + '/') ||
-                            (item.match && item.match(current));
-                        return (
-                            <button key={item.id || item.path}
-                                className={'rail-item' + (active ? ' active' : '')}
-                                title={collapsed ? item.label : undefined}
-                                aria-label={collapsed ? item.label : undefined}
-                                onMouseEnter={(e) => collapsed && onPeek({ el: e.currentTarget, label: item.label })}
-                                onMouseLeave={() => collapsed && onPeek(null)}
-                                onFocus={(e) => collapsed && onPeek({ el: e.currentTarget, label: item.label })}
-                                onBlur={() => collapsed && onPeek(null)}
-                                onClick={() => router.navigate(item.path)}>
-                                <Icon name={item.icon || 'puzzle'} size={15} />
-                                <span>{item.label}</span>
-                            </button>
-                        );
-                    })}
-                </RailPane>
-            ))}
-        </>
-    );
-}
-
-function OtherPane({ onLogout, collapsed, onPeek }) {
-    // RBAC: each "other" task can be hidden (Swing's otherPane). checkTask returns
-    // true unless an authorization plugin denies the (group, task). Re-render when
-    // the plugin set lands: an RBAC plugin's controller installs during
-    // loadPlugins(), after this pane's first paint (the nav gets this for free
-    // from the route change; this static pane needs the subscription).
-    useStoreKey('webPlugins');
-    const can = (task) => platform.checkTask('other', task);
-    // Same peek behaviour as the nav items when the rail is an icon strip.
-    const peek = (label) => (collapsed ? {
-        title: label,
-        'aria-label': label,
-        onMouseEnter: (e) => onPeek({ el: e.currentTarget, label }),
-        onMouseLeave: () => onPeek(null),
-        onFocus: (e) => onPeek({ el: e.currentTarget, label }),
-        onBlur: () => onPeek(null),
-    } : {});
-    return (
-        <RailPane title="Other" paneKey="Other" group="other">
-            <div className="taskbar">
-                {can('goToUserAPI') && <button className="btn" onClick={openApiDocs} {...peek('View REST API')}><Icon name="apiDoc" />View REST API</button>}
-                {can('goToAbout') && <button className="btn" onClick={showAbout} {...peek('About')}><Icon name="info" />About</button>}
-                {can('goToMirth') && <button className="btn" onClick={() => window.open(HOMEPAGE_URL, '_blank')} {...peek('Visit homepage')}><Icon name="globe" />Visit homepage</button>}
-                {can('doReportIssue') && <button className="btn" onClick={() => window.open(ISSUES_URL, '_blank')} {...peek('Report issue')}><Icon name="bug" />Report issue</button>}
-                <span className="sep" />
-                {can('doLogout') && <button className="btn" onClick={onLogout} {...peek('Logout')}><Icon name="logout" />Logout</button>}
-            </div>
-        </RailPane>
     );
 }
 
@@ -552,10 +486,12 @@ function AppShell({ user, onLogout }) {
                 {/* Navigation only. Per-view task panes portal into .view-tasks in the
                     content column instead (see below) — they change on every navigation,
                     and having them here pushed the nav around and off-screen. */}
+                {/* ONE list of groups, merged from the registry and the user's
+                    navLayout preference — so an item can be dragged between the
+                    app's groups, a plugin's section, the Other actions and groups
+                    the user invents. See react/nav-rail.jsx. */}
                 <div className="rail-panes">
-                    <Nav only={SECTION_ORDER} collapsed={railCollapsed} onPeek={setPeek} />
-                    <Nav exclude={SECTION_ORDER} collapsed={railCollapsed} onPeek={setPeek} />
-                    <OtherPane onLogout={onLogout} collapsed={railCollapsed} onPeek={setPeek} />
+                    <NavRail collapsed={railCollapsed} onPeek={setPeek} onLogout={onLogout} />
                 </div>
                 <div className="rail-foot"><span id="rail-version">{railVersion}</span></div>
             </aside>
