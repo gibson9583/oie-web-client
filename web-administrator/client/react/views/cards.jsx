@@ -318,8 +318,9 @@ function CardsView({ onToggleView }) {
                     </div>
                 </RailPane>
             </ViewTasks>
-            {/* Summary */}
-            <div className="flex flex-wrap gap-2.5 px-4 py-3 border-b border-line">
+            {/* Summary. No divider rule: these are cards on the dotted ground, and a
+                full-bleed border-b drew a hairline straight across it. */}
+            <div className="flex flex-wrap gap-2.5 px-[14px] pt-3 pb-2">
                 <StatCard label="Channels" value={fmt(all.length)} />
                 {STATE_ORDER.map((s) => (agg.states[s] ? (
                     <StatCard key={s} label={STATE_META[s].label} value={fmt(agg.states[s])} color={STATE_META[s].color}
@@ -335,13 +336,13 @@ function CardsView({ onToggleView }) {
             {/* Controls — two groups: filters (left) and display controls (right).
                 They sit on one line (spread apart) when there's room; when the row is
                 too narrow the display cluster drops to a left-aligned second line. */}
-            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-2.5 border-b border-line">
+            <div className="panel flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3.5 py-2.5 mx-[14px] mb-3 overflow-visible">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                     <div className="relative">
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-faint"><Icon name="search" size={14} /></span>
                         <input type="text" className="w-[220px] max-w-full !pl-7" placeholder="Filter channels & tags…" value={query} onChange={(e) => setQuery(e.target.value)} />
                     </div>
-                    <label className="flex items-center gap-2 text-[12px] text-text-dim">Group by
+                    <label className="flex items-center gap-2 text-[12px] text-text-dim whitespace-nowrap">Group by
                         <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
                             <option value="none">None</option>
                             <option value="group">Channel group</option>
