@@ -29,7 +29,8 @@ import { setTheme, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane, DataTableHost, useTabList } from '../ui.jsx';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { RailPane, DataTableHost } from '../ui.jsx';
 
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
 const CONFIGURATION_PROPERTY_CLASS = 'com.mirth.connect.util.ConfigurationProperty';
@@ -1823,9 +1824,25 @@ export function SettingsView({ query }) {
 
     const def = defs[active] || defs[0];
 
-    // Tab-switch guard: prompt if the current tab has unsaved changes.
+    /* Tab-switch guard: prompt if the current tab has unsaved changes.
+
+       Re-entrancy matters. Radix's automatic activation proposes a value on FOCUS
+       and again on CLICK, and while the prompt is open `active` deliberately has not
+       moved — so the second event proposes the same switch and would open a second
+       dialog. (A fast double-click could have done the same before Radix.) One
+       pending prompt at a time. */
+    const switchingRef = useRef(false);
     async function requestTab(i) {
-        if (i === active) return;
+        if (i === active || switchingRef.current) return;
+        switchingRef.current = true;
+        try {
+            await performTabSwitch(i);
+        } finally {
+            switchingRef.current = false;
+        }
+    }
+
+    async function performTabSwitch(i) {
         if (dirtyRef.current) {
             const choice = await promptSaveSettings();
             if (choice === 'cancel') return;
@@ -1835,9 +1852,9 @@ export function SettingsView({ query }) {
         setActive(i);
     }
 
-    // role=tablist + arrow-key navigation. requestTab may refuse (unsaved prompt),
-    // in which case the roving tab stop simply stays where it was.
-    const tabKeys = useTabList(defs.length, active, requestTab, { label: 'Settings sections' });
+    // Radix Tabs is CONTROLLED here: onValueChange only proposes. requestTab may
+    // refuse (the unsaved-changes prompt), and because `active` is ours the value
+    // simply stays where it was — no fighting the component.
 
     // Clear the task spec the instant the active tab changes, so the pane never
     // shows the previous tab's buttons during the window before the new tab's
@@ -1860,22 +1877,23 @@ export function SettingsView({ query }) {
                 <TasksPane title={title} items={items} />
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                <div className="tabs-wrap flex flex-col flex-1 min-h-0 overflow-hidden">
-                    <div className="tabs" {...tabKeys.list}>
+                <TabsPrimitive.Root value={String(active)}
+                    onValueChange={(v) => requestTab(Number(v))}
+                    className="tabs-wrap flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <TabsPrimitive.List className="tabs" aria-label="Settings sections">
                         {defs.map((d, i) => (
-                            <button key={d.label} className={'tab' + (i === active ? ' active' : '')}
-                                {...tabKeys.tab(i)}
-                                onClick={() => requestTab(i)}>
+                            <TabsPrimitive.Trigger key={d.label} value={String(i)}
+                                className={'tab' + (i === active ? ' active' : '')}>
                                 {d.label}{i === active && dirty ? ' ●' : ''}
-                            </button>
+                            </TabsPrimitive.Trigger>
                         ))}
-                    </div>
-                    <div className="tab-body flex flex-col flex-1 min-h-0" {...tabKeys.panel}>
+                    </TabsPrimitive.List>
+                    <TabsPrimitive.Content value={String(active)} className="tab-body flex flex-col flex-1 min-h-0">
                         {/* Only the active tab is mounted; keyed by label so switching
                             tabs remounts (and reloads) it, matching vanilla tabs(). */}
                         <SettingsTab key={def.label} def={def} ctx={ctx} />
-                    </div>
-                </div>
+                    </TabsPrimitive.Content>
+                </TabsPrimitive.Root>
             </div>
         </div>
     );

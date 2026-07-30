@@ -5,6 +5,9 @@ import { mockEngine } from './mock.js';
  * Top-right account menu (issue #8: the old chip was a logout-only control that
  * read as "go to profile", with "Sign out" visible only on hover). The chip now
  * opens an account menu whose items are always visible text — no hover needed.
+ *
+ * Located by role, not by class: this is a Radix DropdownMenu, which portals its
+ * own surface — as every menu in the app now does.
  */
 
 test.beforeEach(async ({ page }) => {
@@ -19,7 +22,7 @@ test('account chip opens a menu with the signed-in header and all items visible'
     await expect(chip).toContainText('admin');
 
     await chip.click();
-    const menu = page.locator('.ctx-menu');
+    const menu = page.getByRole('menu');
     await expect(menu).toBeVisible();
 
     // Non-interactive "signed in as" header.
@@ -29,7 +32,6 @@ test('account chip opens a menu with the signed-in header and all items visible'
     // Every action is real, always-visible text — not a hover-only tooltip. The
     // items are menuitems, not buttons: the menu carries role="menu", so an
     // explicit menuitem role on each child is what a screen reader is owed.
-    await expect(menu).toHaveAttribute('role', 'menu');
     for (const label of ['Edit Account', 'Change Password', 'Settings', 'Sign out']) {
         await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
     }
@@ -43,7 +45,7 @@ test('Sign out returns to the login screen', async ({ page }) => {
 
     await page.goto('/');
     await page.locator('button.user-chip').click();
-    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Sign out' }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Sign out' }).click();
 
     await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
     expect(loggedOut).toBe(true);
@@ -52,7 +54,7 @@ test('Sign out returns to the login screen', async ({ page }) => {
 test('Change Password opens the self-service modal for the current user', async ({ page }) => {
     await page.goto('/');
     await page.locator('button.user-chip').click();
-    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Change Password' }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Change Password' }).click();
 
     // Same modal the Users grid uses, scoped to the signed-in user.
     await expect(page.getByText('Change Password — admin')).toBeVisible();
@@ -61,7 +63,7 @@ test('Change Password opens the self-service modal for the current user', async 
 test('Settings jumps to the Administrator (user prefs) tab, not Server', async ({ page }) => {
     await page.goto('/');
     await page.locator('button.user-chip').click();
-    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Settings' }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Settings' }).click();
 
     await expect(page).toHaveURL(/\/settings\?tab=administrator/);
     // The Administrator tab is the active one (not the default Server tab).

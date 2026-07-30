@@ -30,6 +30,8 @@ import { TreeTable } from '../tree-table.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { iconPath } from '../../core/icons.js';
 import * as Tabs from '@radix-ui/react-tabs';   // shadcn/Radix dock tabs
+import * as RadioGroup from '@radix-ui/react-radio-group';
+import * as Popover from '@radix-ui/react-popover';
 import { CardsView } from './cards.jsx';
 
 // Loaded on demand. This dialog is the dashboard's ONLY use of the message
@@ -160,38 +162,26 @@ const DASH_DEFAULT_HIDDEN = ['type', 'port'];
 
 /* Segmented toggle — the single app-wide toggle style (.segpill: shadcn pill,
    same language as the tabs). Used for Tags / Stats / View / Current-Lifetime. */
+/* Single-choice display toggles (View / Tags / Stats / Range) — Radix RadioGroup.
+   RadioGroup rather than ToggleGroup deliberately: these are a mutually exclusive
+   choice, one always selected, and the ARIA radiogroup pattern says an arrow key
+   moves the selection. ToggleGroup only moves FOCUS on arrow and waits for Space,
+   which would have quietly changed how these toggles behave. */
 function SegPill({ options, value, onChange, label }) {
-    // A single-choice control: radiogroup + aria-checked, so the selected option is
-    // announced rather than living only in an `.on` class. Arrows move the choice
-    // (radiogroup convention) and the group is one tab stop, not one per option.
-    const ref = useRef(null);
-    const idx = options.findIndex((o) => o.value === value);
-    const move = (delta) => {
-        if (!options.length) return;
-        const to = (idx + delta + options.length) % options.length;
-        onChange(options[to].value);
-        const btns = ref.current ? ref.current.querySelectorAll('button') : [];
-        if (btns[to]) btns[to].focus();
-    };
     return (
-        <span className="segpill flex-none" ref={ref} role="radiogroup" aria-label={label}
-            onKeyDown={(e) => {
-                if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); move(1); }
-                else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
-            }}>
-            {options.map((opt, i) => (
-                <button key={opt.value} type="button" title={opt.title || opt.label || ''}
-                    role="radio"
-                    aria-checked={String(opt.value === value)}
+        <RadioGroup.Root value={value} aria-label={label} orientation="horizontal"
+            onValueChange={(v) => { if (v) onChange(v); }}
+            className="segpill flex-none">
+            {options.map((opt) => (
+                <RadioGroup.Item key={opt.value} value={opt.value}
+                    title={opt.title || opt.label || ''}
                     aria-label={opt.label ? undefined : (opt.title || undefined)}
-                    tabIndex={i === (idx < 0 ? 0 : idx) ? 0 : -1}
-                    className={opt.value === value ? 'on' : ''}
-                    onClick={() => onChange(opt.value)}>
+                    className={opt.value === value ? 'on' : ''}>
                     {opt.icon ? <Icon name={opt.icon} size={13} /> : null}
                     {opt.label || null}
-                </button>
+                </RadioGroup.Item>
             ))}
-        </span>
+        </RadioGroup.Root>
     );
 }
 

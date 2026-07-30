@@ -32,6 +32,9 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import * as Popover from '@radix-ui/react-popover';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import * as Collapsible from '@radix-ui/react-collapsible';
 import { h, toast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { messageStatusTag } from '@oie/web-api';
@@ -45,7 +48,8 @@ import { createCodeEditor, createColumnManager } from '@oie/web-ui';
 import { platform } from '../../core/platform.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane, TaskButton, useTabList } from '../ui.jsx';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 
@@ -938,20 +942,20 @@ async function exportAttachmentTask(platform, channelId, m) {
    first tab. */
 function DetailTabs({ defs }) {
     const [active, setActive] = useState(0);
-    const tabKeys = useTabList(defs.length, active, setActive, { label: 'Message sections' });
     if (!defs.length) return null;
     const current = defs[Math.min(active, defs.length - 1)];
     return (
-        <div className="flex-1 min-h-0 flex flex-col">
-            <div className="tabs flex-none" {...tabKeys.list}>
+        <TabsPrimitive.Root value={String(active)} onValueChange={(v) => setActive(Number(v))}
+            className="flex-1 min-h-0 flex flex-col">
+            <TabsPrimitive.List className="tabs flex-none" aria-label="Message sections">
                 {defs.map((def, i) => (
-                    <button key={def.label} className={'tab' + (i === active ? ' active' : '')}
-                        {...tabKeys.tab(i)}
-                        onClick={() => setActive(i)}>{def.label}</button>
+                    <TabsPrimitive.Trigger key={def.label} value={String(i)}
+                        className={'tab' + (i === active ? ' active' : '')}>{def.label}</TabsPrimitive.Trigger>
                 ))}
-            </div>
-            <div key={current.label} className="flex-1 min-h-0 overflow-auto">{current.node}</div>
-        </div>
+            </TabsPrimitive.List>
+            <TabsPrimitive.Content key={current.label} value={String(active)}
+                className="flex-1 min-h-0 overflow-auto">{current.node}</TabsPrimitive.Content>
+        </TabsPrimitive.Root>
     );
 }
 
@@ -2107,45 +2111,12 @@ export function MessagesView({ params, query }) {
 
     /* ---- status filter dropdown (imperative checklist over the trigger) ---- */
 
-    const statusBtnRef = useRef(null);
-    const statusMenuRef = useRef({ menu: null, dismiss: null });
+    const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
-    function closeStatusMenu() {
-        const s = statusMenuRef.current;
-        if (s.menu) {
-            s.menu.remove();
-            document.removeEventListener('mousedown', s.dismiss);
-            statusMenuRef.current = { menu: null, dismiss: null };
-        }
-    }
-    function toggleStatusMenu() {
-        if (statusMenuRef.current.menu) { closeStatusMenu(); return; }
-        const menu = h('div.ctx-menu', { class: 'min-w-[160px]' });
-        for (const s of STATUS_FILTER_ORDER) {
-            const cb = checkbox(s, statusSel.has(s), {
-                onChange: (e) => {
-                    const on = e.target.checked;
-                    setStatusSel(prev => { const next = new Set(prev); on ? next.add(s) : next.delete(s); return next; });
-                }
-            });
-            cb.el.style.padding = '5px 8px';
-            cb.el.style.display = 'flex';
-            menu.appendChild(cb.el);
-        }
-        menu.appendChild(h('div.ctx-sep'));
-        menu.appendChild(h('button.ctx-item', {
-            onClick: () => { setStatusSel(new Set()); closeStatusMenu(); }
-        }, 'Clear (Any)'));
-        document.body.appendChild(menu);
-        const r = statusBtnRef.current.getBoundingClientRect();
-        menu.style.left = r.left + 'px';
-        menu.style.top = (r.bottom + 4) + 'px';
-        const dismiss = (e) => {
-            if (!menu.contains(e.target) && !statusBtnRef.current?.contains(e.target)) closeStatusMenu();
-        };
-        statusMenuRef.current = { menu, dismiss };
-        setTimeout(() => document.addEventListener('mousedown', dismiss), 0);
-    }
+    /* The status filter is a checklist, not a list of commands, so its items are
+       Radix menuitemcheckboxes — announced with their checked state, and operable
+       with the arrows/type-ahead/Escape the hand-built version never had. */
+    function closeStatusMenu() { setStatusMenuOpen(false); }
 
     /* Reset clears every criterion (main bar + advanced) without running a search
        — matching Swing's resetSearchCriteria. The Current Search box keeps showing
@@ -2274,11 +2245,41 @@ export function MessagesView({ params, query }) {
                                 <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                             </Field>
                             <Field label="Status">
-                                <button ref={statusBtnRef} type="button" className="btn justify-between min-w-[132px] font-normal"
-                                    onClick={(e) => { e.stopPropagation(); toggleStatusMenu(); }}>
-                                    <span className="truncate">{statusLabel}</span>
-                                    <span className="text-text-faint ml-2">▾</span>
-                                </button>
+                                <DropdownMenu.Root open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>
+                                    <DropdownMenu.Trigger asChild>
+                                        <button type="button" className="btn justify-between min-w-[132px] font-normal">
+                                            <span className="truncate">{statusLabel}</span>
+                                            <span className="text-text-faint ml-2" aria-hidden="true">▾</span>
+                                        </button>
+                                    </DropdownMenu.Trigger>
+                                    <DropdownMenu.Portal>
+                                        <DropdownMenu.Content className="ctx-surface min-w-[160px]"
+                                            align="start" sideOffset={4} collisionPadding={8}>
+                                            {STATUS_FILTER_ORDER.map((st) => (
+                                                <DropdownMenu.CheckboxItem key={st} className="ctx-item"
+                                                    checked={statusSel.has(st)}
+                                                    /* Ticking one status shouldn't shut the list — you
+                                                       nearly always pick more than one. */
+                                                    onSelect={(e) => e.preventDefault()}
+                                                    onCheckedChange={(on) => setStatusSel((prev) => {
+                                                        const next = new Set(prev);
+                                                        on ? next.add(st) : next.delete(st);
+                                                        return next;
+                                                    })}>
+                                                    {/* The slot is always there — ItemIndicator itself
+                                                        unmounts when unchecked, which would shuffle the labels. */}
+                                                    <span className="ctx-check" aria-hidden="true">
+                                                        <DropdownMenu.ItemIndicator>✓</DropdownMenu.ItemIndicator>
+                                                    </span>
+                                                    {st}
+                                                </DropdownMenu.CheckboxItem>
+                                            ))}
+                                            <DropdownMenu.Separator className="ctx-sep" />
+                                            <DropdownMenu.Item className="ctx-item"
+                                                onSelect={() => setStatusSel(new Set())}>Clear (Any)</DropdownMenu.Item>
+                                        </DropdownMenu.Content>
+                                    </DropdownMenu.Portal>
+                                </DropdownMenu.Root>
                             </Field>
                             {/* The Regex checkbox rides on the label line (top-right of the
                                 field) so it costs no slot in the criteria row. */}

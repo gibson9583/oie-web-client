@@ -158,7 +158,51 @@ test('status filter dropdown opens with the Swing statuses', async ({ page }) =>
     await expect(menu.getByText('RECEIVED', { exact: true })).toBeVisible();
     await expect(menu.getByText('QUEUED', { exact: true })).toBeVisible();
     await expect(menu.getByText('PENDING', { exact: true })).toBeVisible();
-    await expect(menu.getByRole('button', { name: 'Clear (Any)' })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: 'Clear (Any)' })).toBeVisible();
+    // The statuses are a checklist, and say so — they used to be bare checkboxes
+    // inside a div that carried no menu semantics at all.
+    await expect(menu.getByRole('menuitemcheckbox', { name: 'QUEUED' })).toHaveAttribute('aria-checked', 'false');
+});
+
+test('the date criteria use the app\'s own picker, and keep the value shape', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 800 });
+    await page.goto(`/messages/${CID}`);
+
+    // No native datetime-local left: the browser's panel can't take the app's
+    // theme, and can't say which zone the value is read in.
+    await expect(page.locator('input[type="datetime-local"]')).toHaveCount(0);
+
+    const start = page.getByRole('button', { name: 'Start date' });
+    await start.click();
+    const pop = page.locator('.dtf-pop');
+    await expect(pop).toBeVisible();
+    await expect(pop.getByText(/^Entered in /)).toBeVisible();
+
+    // Pick a day, then type the time into the two spinners.
+    await pop.locator('.rdp-day_button', { hasText: /^15$/ }).first().click();
+    await pop.getByRole('textbox', { name: 'Hour' }).fill('9');
+    await pop.getByRole('textbox', { name: 'Hour' }).press('Enter');
+    await pop.getByRole('textbox', { name: 'Minute' }).fill('30');
+    await pop.getByRole('textbox', { name: 'Minute' }).press('Enter');
+    await expect(start).toContainText(/-15 09:30$/);
+
+    // Up/Down step the field and wrap, so a time can be dialled without typing.
+    await pop.getByRole('textbox', { name: 'Minute' }).press('ArrowUp');
+    await expect(start).toContainText(/-15 09:31$/);
+    await pop.getByRole('textbox', { name: 'Hour' }).fill('0');
+    await pop.getByRole('textbox', { name: 'Hour' }).press('Enter');
+    await pop.getByRole('textbox', { name: 'Hour' }).press('ArrowDown');
+    await expect(start).toContainText(/-15 23:31$/);
+
+    await page.keyboard.press('Escape');
+    await expect(pop).toHaveCount(0);
+    await expect(start).toBeFocused();
+
+    /* The point of the exercise: the field still produces the same
+       YYYY-MM-DDTHH:mm string the native input did, so everything downstream of
+       it — buildParams, toCalendarParam, the summary — is untouched. */
+    await page.locator('.panel.filter-collapse').getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByText(/Date Range: \d{4}-\d{2}-15 23:31 to/)).toBeVisible();
 });
 
 test('Send Message opens the editor dialog', async ({ page }) => {

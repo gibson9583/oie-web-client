@@ -357,7 +357,9 @@ export function contextMenu(x, y, items, group) {
     closeContextMenu({ restore: false });
     // Hand focus back where it came from on dismiss (the row, the task button).
     menuOpener = document.activeElement;
-    const menu = h('div.ctx-menu', { role: 'menu' });
+    // .ctx-surface is the shared menu look; .ctx-menu only adds the coordinate
+    // placement this menu does for itself (a Radix menu is placed by Radix).
+    const menu = h('div.ctx-menu.ctx-surface', { role: 'menu' });
     for (const item of items) {
         if (item === '-') { menu.appendChild(h('div.ctx-sep', { role: 'separator' })); continue; }
         if (item.hidden) continue;

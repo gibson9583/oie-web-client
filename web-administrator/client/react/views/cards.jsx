@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import api, { statePip, stateLabel } from '@oie/web-api';
+import * as RadioGroup from '@radix-ui/react-radio-group';
 import { toast, confirmDialog, contextMenu } from '@oie/web-ui';
 import { Icon } from '../bridges.jsx';
 import { ViewTasks } from '../mount.jsx';
@@ -352,19 +353,18 @@ function CardsView({ onToggleView }) {
                 </div>
                 <div className="flex items-center gap-2">
                     {/* Current vs. Lifetime statistics */}
-                    {/* Single choice: radiogroup + aria-checked, matching the
-                        dashboard's SegPill, so the selection is announced. */}
-                    <div className="segpill flex-none" role="radiogroup" aria-label="Statistics range">
-                        {[['Current', false], ['Lifetime', true]].map(([label, val]) => (
-                            <button key={label} type="button" onClick={() => setLifetime(val)}
-                                role="radio"
-                                aria-checked={String(lifetime === val)}
-                                tabIndex={lifetime === val ? 0 : -1}
-                                className={lifetime === val ? 'on' : ''}>
+                    {/* Radix RadioGroup, same as the dashboard's SegPill. */}
+                    <RadioGroup.Root value={lifetime ? 'lifetime' : 'current'}
+                        aria-label="Statistics range" orientation="horizontal"
+                        onValueChange={(v) => { if (v) setLifetime(v === 'lifetime'); }}
+                        className="segpill flex-none">
+                        {[['Current', 'current'], ['Lifetime', 'lifetime']].map(([label, val]) => (
+                            <RadioGroup.Item key={val} value={val}
+                                className={(lifetime ? 'lifetime' : 'current') === val ? 'on' : ''}>
                                 {label}
-                            </button>
+                            </RadioGroup.Item>
                         ))}
-                    </div>
+                    </RadioGroup.Root>
                     <button className={`btn btn-ghost btn-sm ${live ? 'text-accent' : ''}`} onClick={() => setLive((v) => !v)} title="Toggle auto-refresh">
                         <span className={`pip ${live ? 'ok' : ''} mr-1`} />{live ? 'Live' : 'Paused'}
                     </button>

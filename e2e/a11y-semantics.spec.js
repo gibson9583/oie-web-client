@@ -133,8 +133,15 @@ test('the settings tabs are a tablist with arrow-key navigation and one tab stop
 
     const server = page.getByRole('tab', { name: 'Server', exact: true });
     await expect(server).toHaveAttribute('aria-selected', 'true');
-    // Roving: the strip is one tab stop, not one per tab.
-    await expect(list.locator('[role="tab"][tabindex="0"]')).toHaveCount(1);
+    /* The strip is ONE tab stop, not one per tab. Radix expresses that by making the
+       LIST the tab stop and delegating focus to the selected trigger, rather than
+       putting tabindex=0 on the trigger — so assert the behaviour (tab into the strip,
+       land on the selected tab, and only that one is tabbable) rather than the
+       attribute an implementation happens to use. */
+    await expect(list).toHaveAttribute('tabindex', '0');
+    await list.focus();
+    await expect(server).toBeFocused();
+    await expect(list.locator('[role="tab"]:not([tabindex="-1"])')).toHaveCount(1);
 
     await server.focus();
     await page.keyboard.press('ArrowRight');
@@ -201,10 +208,19 @@ test('the dashboard segmented toggles are radiogroups and move on arrows', async
 
     const stats = page.getByRole('radiogroup', { name: 'Statistics strip' });
     await expect(stats.getByRole('radio', { name: 'On' })).toHaveAttribute('aria-checked', 'true');
-    await expect(stats.locator('[tabindex="0"]')).toHaveCount(1);
-
+    /* One tab stop for the group, not one per option — asserted as behaviour, because
+       Radix's roving focus establishes the tabbable item lazily (everything is -1
+       until focus enters, then the checked option takes it). */
     await stats.getByRole('radio', { name: 'On' }).focus();
+    await expect(stats.locator('[role="radio"]:not([tabindex="-1"])')).toHaveCount(1);
+
+    /* Radix's interaction model for a radio group: an arrow key moves FOCUS and
+       Space commits the choice. (The hand-rolled version selected on arrow; adopting
+       the component means taking its opinion, and this is the documented Radix one.) */
     await page.keyboard.press('ArrowRight');
+    await expect(stats.getByRole('radio', { name: 'Off' })).toBeFocused();
+    await expect(stats.getByRole('radio', { name: 'On' })).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Space');
     await expect(stats.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true');
     // And the choice really took effect — the strip is closed.
     await expect.poll(async () => (await page.locator('.dash-kpis-wrap').boundingBox()).height).toBe(0);

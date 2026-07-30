@@ -24,7 +24,8 @@ import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { getPref } from '../../core/prefs.js';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { mountReact, ViewTasks } from '../mount.jsx';
-import { RailPane, TaskButton, useTabList } from '../ui.jsx';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { useWizardModel, useWizardSteps, useLeaveGuard, WizardStepper, WizardHeader } from './wizard-frame.jsx';
 import { createEmbeddedEditor } from './filter-transformer.jsx';
@@ -335,18 +336,19 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
     const TABS = isDest ? ['Settings', 'Filter', 'Transformer', 'Response'] : ['Settings', 'Filter', 'Transformer'];
     const [tab, setTab] = useState('Settings');
     const settingsHostRef = useRef(null);   // focus/drop scope for the Destination Mappings rail
-    const tabKeys = useTabList(TABS.length, TABS.indexOf(tab), (i) => setTab(TABS[i]),
-        { label: isDest ? 'Destination sections' : 'Source sections' });
     return (
-        <div className="flex flex-col gap-4">
-            <div className="tabs overflow-x-auto" {...tabKeys.list}>
-                {TABS.map((t, i) => (
-                    <button key={t} type="button" className={`tab whitespace-nowrap ${tab === t ? 'active' : ''}`}
-                        {...tabKeys.tab(i)} onClick={() => setTab(t)}>{t}</button>
+        <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-4">
+            <TabsPrimitive.List className="tabs overflow-x-auto"
+                aria-label={isDest ? 'Destination sections' : 'Source sections'}>
+                {TABS.map((t) => (
+                    <TabsPrimitive.Trigger key={t} value={t}
+                        className={`tab whitespace-nowrap ${tab === t ? 'active' : ''}`}>{t}</TabsPrimitive.Trigger>
                 ))}
-            </div>
+            </TabsPrimitive.List>
 
-            {tab === 'Settings' && (
+            {/* Each body is its own Content, so Radix's triggers point at a real panel
+                rather than a dangling aria-controls. They mount on demand as before. */}
+            <TabsPrimitive.Content value="Settings">{tab === 'Settings' && (
                 <div className="flex flex-col gap-4">
                     <div>
                         <div className="cform-section-title mb-2">Connector type</div>
@@ -381,14 +383,22 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                         {isDest && <DestinationMappingsRail hostRef={settingsHostRef} />}
                     </div>
                 </div>
+            )}</TabsPrimitive.Content>
+
+            <TabsPrimitive.Content value="Filter">
+                {tab === 'Filter' && <EmbeddedElementEditor key={`f-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="filter" onChange={onChange} />}
+            </TabsPrimitive.Content>
+
+            <TabsPrimitive.Content value="Transformer">
+                {tab === 'Transformer' && <EmbeddedElementEditor key={`t-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="transformer" onChange={onChange} />}
+            </TabsPrimitive.Content>
+
+            {isDest && (
+                <TabsPrimitive.Content value="Response">
+                    {tab === 'Response' && <EmbeddedElementEditor key={`r-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="response" onChange={onChange} />}
+                </TabsPrimitive.Content>
             )}
-
-            {tab === 'Filter' && <EmbeddedElementEditor key={`f-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="filter" onChange={onChange} />}
-
-            {tab === 'Transformer' && <EmbeddedElementEditor key={`t-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="transformer" onChange={onChange} />}
-
-            {isDest && tab === 'Response' && <EmbeddedElementEditor key={`r-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="response" onChange={onChange} />}
-        </div>
+        </TabsPrimitive.Root>
     );
 }
 

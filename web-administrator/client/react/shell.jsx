@@ -12,12 +12,13 @@ import { createPortal } from 'react-dom';
 import {
     useStoreKey, useTheme, useTimezone, useViewTitle, useServerIdentity, useRestartWatch, Icon
 } from './bridges.jsx';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { NavRail } from './nav-rail.jsx';
 import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
-import { h, icon, modal, toast, contextMenu, confirmDialog } from '@oie/web-ui';
+import { h, icon, modal, toast, confirmDialog } from '@oie/web-ui';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
@@ -335,33 +336,48 @@ async function switchEngine(onLogout) {
    "go to profile" button — issue #8). The chip shows who's signed in; clicking
    opens an account menu with self-service Edit Account / Change Password, a
    jump to Administrator Settings, and Sign out. */
+/* Account menu — Radix DropdownMenu. It brings the trigger/menu wiring, focus
+   management, typeahead and Escape; we keep the RBAC gating (a task the user is not
+   authorized for renders nothing, exactly as the popup did) and the .ctx-menu skin
+   so it still looks like every other menu in the app. */
 function UserMenu({ user, onLogout }) {
-    const btnRef = useRef(null);
-    const openMenu = () => {
-        const me = store.getState('user') || user;
-        const config = store.getState('webadminConfig') || {};
-        const fullName = [me?.firstName, me?.lastName].filter(Boolean).join(' ');
-        const r = btnRef.current.getBoundingClientRect();
-        // Re-read the current user after a self-edit so the chip/status bar update.
-        const refreshMe = async () => {
-            try { const u = await api.auth.current(); if (u && u.username) store.setState('user', u); }
-            catch { /* keep current */ }
-        };
-        contextMenu(r.right, r.bottom + 4, [
-            { header: true, label: me?.username || 'user', sub: fullName || null },
-            '-',
-            { label: 'Edit Account', icon: 'edit', onClick: () => openEditUserModal(store.getState('user') || me, { onSaved: refreshMe }) },
-            { label: 'Change Password', icon: 'key', onClick: () => openChangePasswordModal(store.getState('user') || me) },
-            { label: 'Settings', icon: 'settings', task: 'doShowSettings', group: 'view', onClick: () => router.navigate('/settings?tab=administrator') },
-            '-',
-            { label: 'Switch Engine', icon: 'link', hidden: !engineChoiceAvailable(config), onClick: () => switchEngine(onLogout) },
-            { label: 'Sign out', icon: 'logout', task: 'doLogout', group: 'other', onClick: onLogout }
-        ], 'view');
+    const me = store.getState('user') || user;
+    const config = store.getState('webadminConfig') || {};
+    const fullName = [me?.firstName, me?.lastName].filter(Boolean).join(' ');
+    // Re-read the current user after a self-edit so the chip/status bar update.
+    const refreshMe = async () => {
+        try { const u = await api.auth.current(); if (u && u.username) store.setState('user', u); }
+        catch { /* keep current */ }
     };
+    const can = (group, task) => !task || platform.checkTask(group, task);
+    const item = (label, icon, onSelect) => (
+        <DropdownMenu.Item className="ctx-item" onSelect={onSelect}>
+            <Icon name={icon} />{label}
+        </DropdownMenu.Item>
+    );
     return (
-        <button className="user-chip" ref={btnRef} onClick={openMenu} aria-haspopup="menu" title="Account">
-            <Icon name="users" /><span>{user?.username || 'user'}</span><Icon name="chevD" size={14} />
-        </button>
+        <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+                <button className="user-chip" title="Account">
+                    <Icon name="users" /><span>{user?.username || 'user'}</span><Icon name="chevD" size={14} />
+                </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+                <DropdownMenu.Content className="ctx-surface" align="end" sideOffset={4} collisionPadding={8}>
+                    <DropdownMenu.Label className="ctx-head">
+                        <div className="ctx-head-name">{me?.username || 'user'}</div>
+                        {fullName ? <div className="ctx-head-sub">{fullName}</div> : null}
+                    </DropdownMenu.Label>
+                    <DropdownMenu.Separator className="ctx-sep" />
+                    {item('Edit Account', 'edit', () => openEditUserModal(store.getState('user') || me, { onSaved: refreshMe }))}
+                    {item('Change Password', 'key', () => openChangePasswordModal(store.getState('user') || me))}
+                    {can('view', 'doShowSettings') && item('Settings', 'settings', () => router.navigate('/settings?tab=administrator'))}
+                    <DropdownMenu.Separator className="ctx-sep" />
+                    {engineChoiceAvailable(config) && item('Switch Engine', 'link', () => switchEngine(onLogout))}
+                    {can('other', 'doLogout') && item('Sign out', 'logout', () => onLogout())}
+                </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+        </DropdownMenu.Root>
     );
 }
 
