@@ -225,3 +225,42 @@ test('Send Message opens the editor dialog from the dashboard task pane', async 
     await expect(page.locator('.modal-overlay')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Process Message', exact: true })).toBeVisible();
 });
+
+// Stats: On/Off SLIDES the KPI strip (a 0fr↔1fr grid track) rather than mounting
+// and unmounting it. Two things regress easily here: the closed strip has to take
+// up zero height — its own padding is why it can't be the collapsing grid item,
+// which cost a ~20px ghost gap above the table — and the transition has to still
+// be declared on the wrapper rather than lost to a refactor.
+test('the Stats toggle slides the KPI strip shut, leaving no gap above the table', async ({ page }) => {
+    // Wider than the default viewport: at 1280 the filter bar sits right at the
+    // 880px container wall, which folds the Stats toggle into the View popover.
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+
+    const wrap = page.locator('.dash-kpis-wrap');
+    const height = async () => (await wrap.boundingBox()).height;
+    // Scoped to the strip: "Received" is also a status-table column header.
+    const receivedCard = page.locator('.dash-kpi .k-lbl', { hasText: 'Received' });
+
+    // Stats default to On: the strip is open, and it animates rather than jumping.
+    await expect(receivedCard).toBeVisible();
+    expect(await height()).toBeGreaterThan(40);
+    // (Open also declares the deferred `overflow` step, hence the trailing "0s".)
+    expect(await wrap.evaluate((el) => getComputedStyle(el).transitionDuration)).toMatch(/^0\.22s/);
+
+    // Off → collapses to exactly zero (not to its padding) and is hidden from AT.
+    await page.getByTitle('Hide stat cards').click();
+    await expect.poll(height, { timeout: 3000 }).toBe(0);
+    await expect(wrap).toHaveAttribute('aria-hidden', 'true');
+    await expect(receivedCard).toBeHidden();
+
+    // On → back to full height, and the strip stops being clipped so the cards'
+    // shadows aren't cut off at rest.
+    // (`overflow` flips only once the slide has finished, hence the poll.)
+    await page.getByTitle('Show stat cards').click();
+    await expect.poll(height, { timeout: 3000 }).toBeGreaterThan(40);
+    await expect.poll(() => wrap.evaluate((el) => getComputedStyle(el).overflow), { timeout: 3000 })
+        .toBe('visible');
+});

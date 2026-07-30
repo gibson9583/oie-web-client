@@ -42,6 +42,7 @@ import { getPref } from '../../core/prefs.js';
 import { platform } from '@oie/web-shell';
 import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
+import { useInvalidate } from '../queries.js';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 
@@ -232,6 +233,10 @@ function RecipientControl({ row, index, tree, patchAction }) {
 export function AlertEditor({ params, query = {} }) {
     const alertId = params.alertId;
     const isNew = query.new === '1';
+    // The list's ['alerts'] cache outlives this view (30s staleTime), so a save has
+    // to mark it stale or the list we redirect back to repaints the pre-edit rows
+    // until its 5s poll happens to tick.
+    const invalidate = useInvalidate();
 
     // The model is a mutable object held in a ref (NOT immutable React state):
     // its identity is what saveModel() mutates and api.alerts.update sends.
@@ -279,6 +284,7 @@ export function AlertEditor({ params, query = {} }) {
             }
             store.setState('editingAlert', null);
             store.setState('navGuard', null);   // saved — don't prompt on the redirect
+            await invalidate('alerts');
             toast(isNew ? `Alert "${model.name}" created` : `Alert "${model.name}" saved`);
             router.navigate('/alerts');
         } catch (e) {
