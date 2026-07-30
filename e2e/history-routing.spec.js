@@ -25,7 +25,7 @@ test.describe('history-api routing', () => {
 
         await page.goto(`/channels/${id}/edit`);
 
-        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible({ timeout: 15_000 });
         await expect(page).toHaveURL(new RegExp(`/channels/${id}/edit$`));
         expect(page.url()).not.toContain('#');
 
@@ -75,7 +75,7 @@ test.describe('history-api routing', () => {
         // Cancel → stay put; the URL rolls back to the editor (no '#').
         await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         await expect(page).toHaveURL(new RegExp(`/channels/${id}/edit$`));
-        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
         expect(page.url()).not.toContain('#');
     });
 });

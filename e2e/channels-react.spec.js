@@ -47,8 +47,8 @@ test.describe('Channels React view', () => {
         await gotoChannels(page);
 
         // Both groups render as bracketed group rows (the tree, not a flat list).
-        await expect(page.getByRole('cell', { name: '[Demo Group]', exact: true })).toBeVisible();
-        await expect(page.getByRole('cell', { name: '[Default Group]', exact: true })).toBeVisible();
+        await expect(page.getByRole('gridcell', { name: '[Demo Group]', exact: true })).toBeVisible();
+        await expect(page.getByRole('gridcell', { name: '[Default Group]', exact: true })).toBeVisible();
 
         // The member channels are listed under their groups.
         await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
@@ -104,7 +104,7 @@ test.describe('Channels React view', () => {
         await expect(page.getByRole('button', { name: 'Export Group', exact: true })).toHaveCount(0);
 
         // Click the [Demo Group] row (not its twisty) → real-group tasks appear.
-        await page.getByRole('cell', { name: '[Demo Group]', exact: true }).click();
+        await page.getByRole('gridcell', { name: '[Demo Group]', exact: true }).click();
         await expect(page.getByRole('button', { name: 'Edit Group Details', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Delete Group', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Export Group', exact: true })).toBeVisible();

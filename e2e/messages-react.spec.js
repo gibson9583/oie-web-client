@@ -112,15 +112,15 @@ test('selection gates Remove/Reprocess Message', async ({ page }) => {
     await expect(page.getByRole('button', { name: 'Reprocess Message', exact: true })).toBeVisible();
 
     // Detail pane loaded the message content tabs (Raw is the first content tab).
-    await expect(page.getByRole('button', { name: 'Raw', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Mappings', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Raw', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Mappings', exact: true })).toBeVisible();
 });
 
 test('Mappings tab is a sortable table with a sticky header banner', async ({ page }) => {
     await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
     await page.getByText('12345', { exact: true }).click();
-    await page.getByRole('button', { name: 'Mappings', exact: true }).click();
+    await page.getByRole('tab', { name: 'Mappings', exact: true }).click();
 
     // Scope to the mappings table (its Scope/Variable/Value header is unique).
     const mappings = page.locator('table.dt').filter({

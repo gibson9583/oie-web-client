@@ -57,7 +57,7 @@ test('Settings opens on the Server tab with its task pane and loaded fields', as
     await expect(page).toHaveURL(/\/settings/);
 
     // The Server tab is active by default and populates from /server/settings.
-    await expect(page.getByRole('button', { name: 'Server', exact: true })).toHaveClass(/active/);
+    await expect(page.getByRole('tab', { name: 'Server', exact: true })).toHaveClass(/active/);
     const serverName = page.locator('.field', { has: page.getByText('Server name', { exact: true }) }).locator('input');
     await expect(serverName).toHaveValue('Primary Engine');
 
@@ -74,21 +74,21 @@ test('switching tabs swaps the task pane without a route change', async ({ page 
     await expect(page.getByRole('button', { name: 'Clear All Statistics', exact: true })).toBeVisible();
 
     // Administrator tab — localStorage-only prefs; Save + Restore Defaults, no Backup.
-    await page.getByRole('button', { name: 'Administrator', exact: true }).click();
+    await page.getByRole('tab', { name: 'Administrator', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Restore Defaults', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Backup Config', exact: true })).toHaveCount(0);
     await expect(page).toHaveURL(/\/settings/);   // no navigation
 
     // Configuration Map tab — Save + Import Map / Export Map; its row loads.
-    await page.getByRole('button', { name: 'Configuration Map', exact: true }).click();
+    await page.getByRole('tab', { name: 'Configuration Map', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Import Map', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Export Map', exact: true })).toBeVisible();
     // The loaded entry's key populates the first cell of the config-map grid.
     await expect(page.locator('table.dt tbody tr').first().locator('input').first()).toHaveValue('db.url');
 
     // Database Tasks tab — Refresh only, no Save (read/run only).
-    await page.getByRole('button', { name: 'Database Tasks', exact: true }).click();
+    await page.getByRole('tab', { name: 'Database Tasks', exact: true }).click();
     await expect(page.getByRole('cell', { name: 'Compact tables', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
@@ -96,7 +96,7 @@ test('switching tabs swaps the task pane without a route change', async ({ page 
 
 test('Tags tab gates the Remove Tag task on selection', async ({ page }) => {
     await page.goto('/settings');
-    await page.getByRole('button', { name: 'Tags', exact: true }).click();
+    await page.getByRole('tab', { name: 'Tags', exact: true }).click();
 
     // The loaded tag renders; the always-on Tag tasks are present.
     await expect(page.getByRole('cell', { name: 'Inbound', exact: true })).toBeVisible();
@@ -120,7 +120,7 @@ test('custom background color saves via the single-key preference endpoint (issu
 
     // Deep-link straight to the Administrator (user prefs) tab.
     await page.goto('/settings?tab=administrator');
-    await expect(page.getByRole('button', { name: 'Administrator', exact: true })).toHaveClass(/active/);
+    await expect(page.getByRole('tab', { name: 'Administrator', exact: true })).toHaveClass(/active/);
 
     // Switch the Background color override to Custom and pick a color.
     await page.locator('select', { hasText: 'Server Default' }).selectOption('custom');
@@ -149,7 +149,7 @@ test('unsaved settings edits prompt on tab switch and on leaving the view', asyn
     await env.fill('Prod-Edited');
 
     // Switching tabs prompts; Cancel stays put with the edit intact.
-    await page.getByRole('button', { name: 'Tags', exact: true }).click();
+    await page.getByRole('tab', { name: 'Tags', exact: true }).click();
     await expect(page.locator('.modal', { hasText: 'Unsaved Changes' })).toBeVisible();
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(env).toHaveValue('Prod-Edited');

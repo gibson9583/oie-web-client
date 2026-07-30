@@ -26,7 +26,7 @@ test('theme is stored under the per-server, per-user key (plus a global cache)',
 
 test('system preferences are stored under the per-server, per-user key', async ({ page }) => {
     await page.goto('/settings?tab=administrator');
-    await expect(page.getByRole('button', { name: 'Administrator', exact: true })).toHaveClass(/active/);
+    await expect(page.getByRole('tab', { name: 'Administrator', exact: true })).toHaveClass(/active/);
 
     // Dashboard refresh interval is the only number input on the tab.
     await page.locator('input[type=number]').fill('42');

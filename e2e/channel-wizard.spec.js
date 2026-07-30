@@ -39,7 +39,7 @@ test.describe('channel wizard', () => {
         await next(page).click();
 
         // Dependencies — code-template libraries + resources tabs.
-        await expect(page.getByRole('button', { name: 'Code Template Libraries', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Code Template Libraries', exact: true })).toBeVisible();
         await next(page).click();
 
         // Channel Options — the message-storage slider.
@@ -49,12 +49,12 @@ test.describe('channel wizard', () => {
 
         // Source — transport picker + Transformer tab.
         await expect(page.getByText('Connector type')).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Transformer', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Transformer', exact: true })).toBeVisible();
         await next(page).click();
 
         // Destinations — default Destination 1, with a Response tab.
         await expect(page.getByText('Destination 1')).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Response', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Response', exact: true })).toBeVisible();
         await next(page).click();
 
         // Scripts.
@@ -95,9 +95,9 @@ test.describe('channel wizard', () => {
 
         await page.locator('.view-body input').first().fill('Deps Channel');
         await next(page).click();   // Dependencies
-        await expect(page.getByRole('button', { name: 'Code Template Libraries', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Library Resources', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Deploy/Start Dependencies', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Code Template Libraries', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Library Resources', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Deploy/Start Dependencies', exact: true })).toBeVisible();
     });
 
     test('channel options expose the attachment handler and tags', async ({ page }) => {
@@ -128,7 +128,7 @@ test.describe('channel wizard', () => {
         await page.goto('/channels/new/guided');
         await page.locator('.view-body input').first().fill('Dep Picker');
         await next(page).click();   // Dependencies
-        await page.getByRole('button', { name: 'Deploy/Start Dependencies', exact: true }).click();
+        await page.getByRole('tab', { name: 'Deploy/Start Dependencies', exact: true }).click();
         await page.getByRole('button', { name: /Add channel/ }).first().click();
 
         // Modal with a filter that narrows the (potentially large) channel list.
@@ -150,10 +150,10 @@ test.describe('channel wizard', () => {
         await next(page).click();   // Channel Options
         await next(page).click();   // Source
 
-        await page.getByRole('button', { name: 'Transformer', exact: true }).click();
+        await page.getByRole('tab', { name: 'Transformer', exact: true }).click();
         // The real editor's right-hand reference panel proves the full view is embedded.
-        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
-        await expect(page.getByRole('button', { name: 'Message Templates', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Message Templates', exact: true })).toBeVisible();
 
         await page.getByRole('button', { name: /Add Step/ }).click();
         await expect(page.getByText('Mapper', { exact: true }).first()).toBeVisible();
@@ -185,8 +185,11 @@ test.describe('channel wizard', () => {
         await page.getByRole('button', { name: 'HTTP Sender', exact: true }).click();
         await next(page).click();   // attempt to advance — should be blocked
 
-        // Still on Destinations (its Response tab is present) and a validation message shows.
-        await expect(page.getByRole('button', { name: 'Response', exact: true })).toBeVisible();
+        // Still on Destinations (its Response tab is present) and a validation message
+        // shows. Located by class, not role: the validation opens a modal, and the
+        // page behind a modal is deliberately aria-hidden, so it is absent from the
+        // role tree while that warning is up.
+        await expect(page.locator('.tabs .tab', { hasText: 'Response' })).toBeVisible();
         await expect(page.getByText(/required/).first()).toBeVisible();
     });
 
@@ -203,8 +206,8 @@ test.describe('channel wizard', () => {
         await next(page).click();   // Source
 
         // Mount the embedded editor (its Message Trees rail proves it's live).
-        await page.getByRole('button', { name: 'Transformer', exact: true }).click();
-        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
+        await page.getByRole('tab', { name: 'Transformer', exact: true }).click();
+        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toBeVisible();
 
         // Leave via the nav rail — the WIZARD's guard must still prompt.
         await page.locator('button.rail-item', { hasText: 'Dashboard' }).click();
@@ -221,8 +224,8 @@ test.describe('channel wizard', () => {
         await next(page).click();   // Dependencies
         await next(page).click();   // Channel Options
         await next(page).click();   // Source
-        await page.getByRole('button', { name: 'Transformer', exact: true }).click();
-        await expect(page.getByRole('button', { name: 'Message Trees', exact: true })).toBeVisible();
+        await page.getByRole('tab', { name: 'Transformer', exact: true }).click();
+        await expect(page.getByRole('tab', { name: 'Message Trees', exact: true })).toBeVisible();
 
         // Unmount the embedded editor by jumping back to Basics — its cleanup
         // must not null out the wizard's guard on the way down.
@@ -314,7 +317,7 @@ test.describe('channel wizard', () => {
         // edits were silently discarded (no Save shown). Now it marks the wizard dirty →
         // the "Save Changes" task appears in the rail.
         await page.locator('.wiz-step', { hasText: 'Source' }).click();
-        await page.getByRole('button', { name: 'Transformer', exact: true }).click();
+        await page.getByRole('tab', { name: 'Transformer', exact: true }).click();
         await page.getByRole('button', { name: /Add Step/ }).click();
         await expect(page.locator('.taskbar').getByText('Save Changes')).toBeVisible();
     });

@@ -58,12 +58,12 @@ for (const c of CASES) {
         });
 
         await page.goto(`/channels/${id}/edit`);
-        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
 
         // Mount the connector panel — this triggers the connector's load-time
         // normalization (e.g. File's ensureSchemeProperties strips schemeProperties:null).
         const tab = c.mode === 'SOURCE' ? 'Source' : 'Destinations';
-        await page.getByRole('button', { name: tab, exact: true }).click();
+        await page.getByRole('tab', { name: tab, exact: true }).click();
         if (c.mode === 'DESTINATION') {
             // Select the destination row (its Type cell shows the transportName) so
             // its editor — and the connector panel — renders.
@@ -73,7 +73,7 @@ for (const c of CASES) {
 
         // Dirty the channel via the Summary Name (a short fixed name stays under the
         // 40-char channel-name limit), then Save.
-        await page.getByRole('button', { name: 'Summary', exact: true }).click();
+        await page.getByRole('tab', { name: 'Summary', exact: true }).click();
         const nameField = page.locator('.panel input[type=text]').first();
         await expect(nameField).toHaveValue(channel.name);
         await nameField.fill('Edited Channel');

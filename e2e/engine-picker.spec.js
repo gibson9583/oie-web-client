@@ -79,7 +79,7 @@ test.describe('engine picker', () => {
 
         await page.goto('/');
         await page.locator('button.user-chip').click();
-        await expect(page.locator('.ctx-menu').getByRole('button', { name: 'Switch Engine' })).toBeVisible();
+        await expect(page.locator('.ctx-menu').getByRole('menuitem', { name: 'Switch Engine' })).toBeVisible();
     });
 
     test('account menu hides Switch Engine with a single engine', async ({ page }) => {
@@ -89,7 +89,7 @@ test.describe('engine picker', () => {
         await page.goto('/');
         await page.locator('button.user-chip').click();
         await expect(page.locator('.ctx-menu')).toBeVisible();
-        await expect(page.locator('.ctx-menu').getByRole('button', { name: 'Switch Engine' })).toHaveCount(0);
+        await expect(page.locator('.ctx-menu').getByRole('menuitem', { name: 'Switch Engine' })).toHaveCount(0);
     });
 
     test('re-login to a different engine forces a full reload (no stale plugins)', async ({ page }) => {
@@ -111,7 +111,7 @@ test.describe('engine picker', () => {
 
         // Soft sign-out → back to the login screen (no reload yet).
         await page.locator('button.user-chip').click();
-        await page.locator('.ctx-menu').getByRole('button', { name: 'Sign out' }).click();
+        await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Sign out' }).click();
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
         expect(await page.evaluate(() => window.__survivedReload)).toBe(true);
 

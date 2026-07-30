@@ -33,10 +33,10 @@ for (const c of CASES) {
         });
 
         await page.goto(`/channels/${id}/edit`);
-        await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
 
         // Source tab → Edit Transformer / Edit Filter → the filter/transformer view.
-        await page.getByRole('button', { name: 'Source', exact: true }).click();
+        await page.getByRole('tab', { name: 'Source', exact: true }).click();
         const editLabel = c.kind === 'filter' ? /^Edit Filter/ : /^Edit Transformer/;
         await page.getByRole('button', { name: editLabel }).click();
 
@@ -78,8 +78,8 @@ test('accessor drop into a step editor field survives React control', async ({ p
     });
 
     await page.goto(`/channels/${id}/edit`);
-    await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Source', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible();
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
     await page.getByRole('button', { name: /^Edit Transformer/ }).click();
 
     const firstRow = page.locator('table.dt tbody tr').first();

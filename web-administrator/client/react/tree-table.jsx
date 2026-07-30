@@ -123,6 +123,71 @@ export function TreeTable({
         const s = internalCollapsed.current; if (s.has(key)) s.delete(key); else s.add(key); force();
     };
 
+    /* ---- keyboard: treegrid with ROW-level focus -----------------------------
+       The table is the app's primary surface and used to be mouse-only: no row
+       was focusable and no key did anything. Row focus (rather than cell focus)
+       is the variant that fits a Swing-parity table — one tab stop for the whole
+       grid, arrows walk rows, Right/Left open and close a branch.
+       Focus MOVES without selecting; Space selects, Enter activates (what a
+       double-click does). Keeping the two apart avoids firing a view's selection
+       side effects — task panes, dashboard:selection — on every arrow press. */
+    const bodyRef = useRef(null);
+    const [focusKey, setFocusKey] = useState(null);
+    const selectable = !!(onSelect || selectedKeys || selectedKey != null);
+
+    // The single tab stop: the focused row, else the first selected row, else the
+    // first row — so tabbing in lands somewhere meaningful.
+    const focusedRow = rows.some((r) => r.key === focusKey) ? focusKey : null;
+    const tabKey = focusedRow
+        ?? (rows.find((r) => (selectedKeys ? selectedKeys.has(r.key) : r.key === selectedKey)) || rows[0] || {}).key;
+
+    const focusIndex = (i) => {
+        if (!rows.length) return;
+        const n = Math.max(0, Math.min(i, rows.length - 1));
+        setFocusKey(rows[n].key);
+        const tr = bodyRef.current && bodyRef.current.children[n];
+        if (tr && tr.focus) tr.focus();
+    };
+
+    const onBodyKeyDown = (e) => {
+        const idx = rows.findIndex((r) => r.key === (focusedRow ?? tabKey));
+        if (idx < 0) return;
+        const row = rows[idx];
+        const expanded = row.expandable && !collapsed.has(row.key);
+        switch (e.key) {
+            case 'ArrowDown': focusIndex(idx + 1); break;
+            case 'ArrowUp': focusIndex(idx - 1); break;
+            case 'Home': focusIndex(0); break;
+            case 'End': focusIndex(rows.length - 1); break;
+            case 'ArrowRight':
+                // Closed branch opens; open branch steps into its first child.
+                if (row.expandable && !expanded) toggle(row.key);
+                else if (expanded) focusIndex(idx + 1);
+                else return;
+                break;
+            case 'ArrowLeft':
+                // Open branch closes; anything else walks out to its parent row.
+                if (expanded) toggle(row.key);
+                else {
+                    for (let j = idx - 1; j >= 0; j--) {
+                        if (rows[j].depth < row.depth) { focusIndex(j); break; }
+                    }
+                }
+                break;
+            case ' ':
+                if (!selectable) return;
+                onSelect && onSelect(row.node, e);
+                break;
+            case 'Enter':
+                if (onActivate) onActivate(row.node);
+                else if (selectable) onSelect && onSelect(row.node, e);
+                else return;
+                break;
+            default: return;
+        }
+        e.preventDefault();
+    };
+
     /* ---- column menu (right-click header): show/hide + Restore Default ---- */
     const headerMenu = (e) => {
         e.preventDefault();
@@ -179,7 +244,11 @@ export function TreeTable({
 
     return (
         <div className="dt-wrap" onContextMenu={(e) => { if (!e.target.closest('tr') && onEmptyContextMenu) onEmptyContextMenu(e); }}>
-            <table className="dt dt-resizable" style={{ tableLayout: 'fixed', width: '100%', minWidth: minTableWidth + 'px' }}>
+            {/* treegrid, not table: the rows are a selectable, expandable hierarchy,
+                and each <td> is a gridcell rather than a static cell. */}
+            <table className="dt dt-resizable" role="treegrid"
+                aria-multiselectable={selectedKeys ? 'true' : undefined}
+                style={{ tableLayout: 'fixed', width: '100%', minWidth: minTableWidth + 'px' }}>
                 <colgroup>
                     {visibleCols.map((c) => (
                         <col key={c.key}
@@ -190,15 +259,32 @@ export function TreeTable({
                 <thead>
                     <tr onContextMenu={headerMenu}>
                         {visibleCols.map((c) => (
-                            <th key={c.key} style={c.align === 'right' ? { textAlign: 'right' } : undefined}
+                            <th key={c.key} scope="col"
+                                style={c.align === 'right' ? { textAlign: 'right' } : undefined}
                                 className={c.sortValue ? 'sortable' : undefined}
+                                // Which way a column is sorted, and that it can be
+                                // sorted at all, was previously visual only.
+                                aria-sort={c.sortValue
+                                    ? (sort.key === c.key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none')
+                                    : undefined}
+                                // A sortable header is an activatable control, so it
+                                // needs to be reachable and operable by keyboard.
+                                tabIndex={c.sortValue ? 0 : undefined}
                                 draggable={!pinnedKeys.includes(c.key)}
                                 onDragStart={(e) => e.dataTransfer.setData('text/plain', c.key)}
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={(e) => { e.preventDefault(); onColDrop(e.dataTransfer.getData('text/plain'), c.key); }}
+                                onKeyDown={c.sortValue ? (e) => {
+                                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                                    e.preventDefault();
+                                    if (controlled) onSort(c.key);
+                                    else setInternalSort((s) => (s.key === c.key ? { key: c.key, dir: -s.dir } : { key: c.key, dir: 1 }));
+                                } : undefined}
                                 onClick={c.sortValue ? () => (controlled ? onSort(c.key) : setInternalSort((s) => (s.key === c.key ? { key: c.key, dir: -s.dir } : { key: c.key, dir: 1 }))) : undefined}>
                                 {c.label}
-                                {sort.key === c.key ? <span className="sort-arrow">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
+                                {/* Decorative: aria-sort carries the state, and leaving the
+                                    glyph exposed would append "▲" to the header's name. */}
+                                {sort.key === c.key ? <span className="sort-arrow" aria-hidden="true">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
                                 {c.key !== lastKey
                                     ? <div className="col-resize" onMouseDown={(e) => startResize(e, c.key)}
                                         onClick={(e) => e.stopPropagation()} />
@@ -207,7 +293,7 @@ export function TreeTable({
                         ))}
                     </tr>
                 </thead>
-                <tbody>
+                <tbody ref={bodyRef} onKeyDown={onBodyKeyDown}>
                     {rows.map(({ node, key, depth, expandable }) => {
                         const selected = selectedKeys ? selectedKeys.has(key) : (selectedKey != null && key === selectedKey);
                         const cls = ['', (expandable && autoGroupRow) ? 'group-row' : '', selected ? 'selected' : '',
@@ -215,6 +301,13 @@ export function TreeTable({
                         const drag = rowDraggable && rowDraggable(node);
                         return (
                             <tr key={key} className={cls || undefined}
+                                role="row"
+                                aria-level={depth + 1}
+                                aria-expanded={expandable ? String(!collapsed.has(key)) : undefined}
+                                aria-selected={selectable ? String(selected) : undefined}
+                                // Roving: one row in the tab order at a time.
+                                tabIndex={key === tabKey ? 0 : -1}
+                                onFocus={() => { if (key !== focusKey) setFocusKey(key); }}
                                 draggable={drag || undefined}
                                 onDragStart={drag ? (e) => { e.dataTransfer.setData('text/plain', key); e.dataTransfer.effectAllowed = 'move'; } : undefined}
                                 onDragOver={onRowDrop ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } : undefined}
@@ -239,10 +332,13 @@ export function TreeTable({
                                             <td key={c.key}>
                                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, paddingLeft: depth * 18 }}>
                                                     {expandable
-                                                        ? <span className="twisty" style={{ cursor: 'pointer' }}
+                                                        // aria-hidden: the row's aria-expanded already
+                                                        // carries the state; the glyph would only add
+                                                        // a stray "▸" to the announcement.
+                                                        ? <span className="twisty" aria-hidden="true" style={{ cursor: 'pointer' }}
                                                             onClick={(e) => { e.stopPropagation(); toggle(key); }}>
                                                             {collapsed.has(key) ? '▸' : '▾'}</span>
-                                                        : <span className="twisty" />}
+                                                        : <span className="twisty" aria-hidden="true" />}
                                                     {content}
                                                 </span>
                                             </td>

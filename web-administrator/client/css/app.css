@@ -680,6 +680,12 @@ table.dt td.mono { font-family: var(--font-mono); font-size: 11.5px; }
 table.dt tbody tr { cursor: default; transition: background 0.08s; }
 table.dt tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, var(--bg2)); }
 table.dt tbody tr.selected { background: var(--accent-glow); outline: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: -1px; }
+/* Keyboard row cursor for the treegrid (arrow keys move focus without selecting,
+   so the focused row needs a cue distinct from .selected). :focus-visible, so a
+   click doesn't leave a ring behind. */
+table.dt tbody tr:focus { outline: none; }
+table.dt tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+table.dt thead th.sortable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 table.dt tbody tr.group-row td {
     background: color-mix(in srgb, var(--accent) 7%, var(--bg1));
     font-weight: 640;
@@ -1021,6 +1027,9 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 }
 .ctx-menu .ctx-item svg { width: 14px; height: 14px; color: var(--text-dim); }
 .ctx-menu .ctx-item:hover { background: var(--bg3); }
+/* Keyboard cursor: the menu now takes focus on open and moves with the arrows, so
+   the focused item needs the same cue the pointer gets. */
+.ctx-menu .ctx-item:focus { outline: none; background: var(--bg3); box-shadow: 0 0 0 2px var(--accent-glow) inset; }
 .ctx-menu .ctx-item.danger { color: var(--err); }
 .ctx-menu .ctx-sep { height: 1px; background: var(--line); margin: 5px 4px; }
 .ctx-menu .ctx-head { padding: 4px 10px 7px; cursor: default; }

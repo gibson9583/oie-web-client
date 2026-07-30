@@ -29,7 +29,7 @@ test('column menu hides, persists, and restores a column', async ({ page }) => {
 
     // Hide Description via the header menu → it disappears from the grid.
     await openColumnMenu();
-    await page.locator('.ctx-menu').getByRole('button', { name: 'Description' }).click();
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Description' }).click();
     await expect(description()).toHaveCount(0);
 
     // The choice persists to localStorage across a reload.
@@ -39,12 +39,12 @@ test('column menu hides, persists, and restores a column', async ({ page }) => {
 
     // Restore Default brings every column back.
     await openColumnMenu();
-    await page.locator('.ctx-menu').getByRole('button', { name: 'Restore Default' }).click();
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: 'Restore Default' }).click();
     await expect(description()).toBeVisible();
 
     // Name is pinned — it must never appear as a hideable toggle.
     await openColumnMenu();
-    await expect(page.locator('.ctx-menu').getByRole('button', { name: 'Name', exact: true })).toHaveCount(0);
+    await expect(page.locator('.ctx-menu').getByRole('menuitem', { name: 'Name', exact: true })).toHaveCount(0);
 });
 
 test('right-clicking the empty channel list opens a context menu with New Channel', async ({ page }) => {
@@ -55,5 +55,5 @@ test('right-clicking the empty channel list opens a context menu with New Channe
 
     await expect(page.getByText('No channels')).toBeVisible();
     await page.locator('.dt-empty').click({ button: 'right' });
-    await expect(page.locator('.ctx-menu').getByRole('button', { name: 'New Channel', exact: true })).toBeVisible();
+    await expect(page.locator('.ctx-menu').getByRole('menuitem', { name: 'New Channel', exact: true })).toBeVisible();
 });

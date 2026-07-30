@@ -17,7 +17,7 @@ import * as oie from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { mountReact } from '../mount.jsx';
-import { CodeEditor } from '../ui.jsx';
+import { CodeEditor, useTabList } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
@@ -200,9 +200,17 @@ function PickerModal({ title, items, onAdd, onClose }) {
 // the channel. Library selections are held in `libState` (an orchestrator ref) so
 // they survive step changes and can be persisted after Create; resource toggles are
 // written straight onto the channel's resourceIds (saved with the channel).
+const DEP_TABS = [
+    ['libraries', 'Code Template Libraries'],
+    ['resources', 'Library Resources'],
+    ['deploy', 'Deploy/Start Dependencies']
+];
+
 export function DependenciesStep({ channel, libState, depState }) {
     const [, tick] = useReducer((x) => x + 1, 0);
     const [tab, setTab] = useState('libraries');
+    const tabKeys = useTabList(DEP_TABS.length, DEP_TABS.findIndex(([k]) => k === tab),
+        (i) => setTab(DEP_TABS[i][0]), { label: 'Dependency sections' });
     const [loaded, setLoaded] = useState(false);
     const [picker, setPicker] = useState(null);   // { kind, ids } when the channel picker is open
     const [libQuery, setLibQuery] = useState('');
@@ -318,10 +326,11 @@ export function DependenciesStep({ channel, libState, depState }) {
 
     return (
         <div className="flex flex-col gap-4 max-w-[820px]">
-            <div className="tabs overflow-x-auto">
-                <button type="button" className={`tab whitespace-nowrap ${tab === 'libraries' ? 'active' : ''}`} onClick={() => setTab('libraries')}>Code Template Libraries</button>
-                <button type="button" className={`tab whitespace-nowrap ${tab === 'resources' ? 'active' : ''}`} onClick={() => setTab('resources')}>Library Resources</button>
-                <button type="button" className={`tab whitespace-nowrap ${tab === 'deploy' ? 'active' : ''}`} onClick={() => setTab('deploy')}>Deploy/Start Dependencies</button>
+            <div className="tabs overflow-x-auto" {...tabKeys.list}>
+                {DEP_TABS.map(([key, text], i) => (
+                    <button key={key} type="button" className={`tab whitespace-nowrap ${tab === key ? 'active' : ''}`}
+                        {...tabKeys.tab(i)} onClick={() => setTab(key)}>{text}</button>
+                ))}
             </div>
 
             {!loaded && <div className="hint">Loading…</div>}
