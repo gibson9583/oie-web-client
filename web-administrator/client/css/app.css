@@ -1945,9 +1945,27 @@ input.grid-name::placeholder { color: var(--text-faint); }
        so a wider column would silently degrade the dashboard at normal sizes. */
     width: 176px;
     flex: none;
-    padding: 8px 8px 12px;
+    /* A card in the content area, not a slab bolted to the chrome. It carries
+       content colours by design (see the taskbar rules below), so it reads wrong
+       as a flat panel butted against the rail with a hairline: everything else on
+       this ground is rounded and elevated. Same language here.
+
+       Attached to the rail, not floating free of it: the left edge runs flush
+       into the nav and squares off there, so the pane reads as a shelf pulled out
+       of the navigation, while the three edges facing the content keep the card's
+       radius and elevation.
+
+       The 176px budget is the FOOTPRINT, not the box — the margin comes out of
+       the width so the column occupies exactly what it did before and the
+       dashboard's 880px container wall is untouched. */
+    width: 170px;
+    margin: 0 6px 0 0;
+    padding: 8px;
     background: var(--bg1);
-    border-right: 1px solid var(--line);
+    border: 1px solid var(--line);
+    border-left: 0;
+    border-radius: 0 10px 10px 0;
+    box-shadow: var(--elev);
     overflow-y: auto;
     scrollbar-width: thin;
 }
