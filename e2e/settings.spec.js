@@ -129,7 +129,7 @@ test('custom background color saves via the single-key preference endpoint (issu
     await picker.fill('#ff8800');
 
     await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByText('Preferences saved')).toBeVisible();
+    await expect(page.locator('.toast-msg', { hasText: 'Preferences saved' })).toBeVisible();
 
     // Swing writes this one key: PUT /users/{id}/preferences/backgroundColor with a
     // text/plain <awt-color> body. The whole-map PUT /users/{id}/preferences

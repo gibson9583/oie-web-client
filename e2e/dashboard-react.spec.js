@@ -151,7 +151,7 @@ test('stopping a non-queued destination connector warns instead of silently doin
 
     // Right-click the destination connector row → Stop Connector.
     await page.locator('tr', { hasText: 'Destination 1' }).first().click({ button: 'right' });
-    await page.locator('.ctx-menu').getByText('Stop Connector', { exact: true }).click();
+    await page.getByRole('menu').getByText('Stop Connector', { exact: true }).click();
 
     // Swing-parity warning; the connector is left running (no _stop POST).
     await expect(page.getByText(/queueing is not enabled/i)).toBeVisible();
@@ -169,7 +169,7 @@ test('stopping a queued destination connector stops it with no warning', async (
         (r) => /\/api\/channels\/c-conn\/connector\/1\/_stop$/.test(r.url()) && r.method() === 'POST'
     );
     await page.locator('tr', { hasText: 'Destination 1' }).first().click({ button: 'right' });
-    await page.locator('.ctx-menu').getByText('Stop Connector', { exact: true }).click();
+    await page.getByRole('menu').getByText('Stop Connector', { exact: true }).click();
 
     await stopReq;   // the connector WAS stopped
     await expect(page.getByText(/queueing is not enabled/i)).toHaveCount(0);

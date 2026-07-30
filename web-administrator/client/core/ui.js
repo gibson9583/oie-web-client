@@ -94,9 +94,22 @@ export function escapeHtml(s) {
 
 let toastHost = null;
 
+/* Rendered by Radix Toast when the app registers its renderer — same reason as
+   setDialogRenderer below: this module cannot import React. The DOM version
+   stays as the fallback. */
+let toastRenderer = null;
+
+/** Register the app's toast renderer. Pass null to fall back to the DOM one. */
+export function setToastRenderer(fn) { toastRenderer = fn; }
+
 /* Low-level corner toast: transient, non-blocking. Used for info/success and
    for feedback that must never steal focus (e.g. clipboard results). */
 function cornerToast(message, type = 'info', timeout = 4200) {
+    if (toastRenderer) return toastRenderer(message, type, timeout);
+    return domCornerToast(message, type, timeout);
+}
+
+function domCornerToast(message, type, timeout) {
     if (!toastHost) {
         // A polite live region, or none of this reaches a screen reader: these are
         // the app's only confirmation that a save/deploy/copy actually happened.
@@ -149,7 +162,23 @@ function focusable(root) {
 
 let modalSeq = 0;     // unique ids for aria-labelledby
 
-export function modal({ title, body, buttons = [], size = '', onClose, label }) {
+/* The app renders dialogs with Radix, but this module cannot import it: plugins
+   load core/ui.js as a URL module and resolve bare specifiers through the page
+   import map, which carries no `react` and no `@radix-ui/*`. So the app registers
+   its renderer here at boot and every modal() call — including confirmDialog,
+   promptDialog, detailModal and errorModal, which are built on this one — is
+   rendered by Radix without a single call site changing. The DOM implementation
+   below stays as the fallback for anything running without the React shell. */
+let dialogRenderer = null;
+
+/** Register the app's dialog renderer. Pass null to fall back to the DOM one. */
+export function setDialogRenderer(fn) { dialogRenderer = fn; }
+
+export function modal(opts) {
+    return dialogRenderer ? dialogRenderer(opts) : domModal(opts);
+}
+
+function domModal({ title, body, buttons = [], size = '', onClose, label }) {
     const overlay = h('div.modal-overlay');
     // The element to hand focus back to. Captured before the dialog mounts, so
     // dismissing returns the caret to whatever opened it (Swing does the same).
@@ -351,9 +380,40 @@ export function errorModal(title, error, meta) {
 let openMenu = null;
 let menuOpener = null;   // element focus returns to when the menu is dismissed
 
+/* Rendered by Radix DropdownMenu when the app registers its renderer — same
+   constraint as setDialogRenderer above: this module cannot import React. */
+let contextMenuRenderer = null;
+let openRendered = null;      // the registered renderer's handle for the open menu
+
+/** Register the app's context-menu renderer. Pass null for the DOM one. */
+export function setContextMenuRenderer(fn) { contextMenuRenderer = fn; }
+
+/* Which items actually appear. Shared by both renderers so RBAC and `hidden` are
+   decided in exactly one place. Separators are passed through as-is — collapsing
+   the ones left dangling by a filtered-out item would change existing menus. */
+function visibleMenuItems(items, group) {
+    return items.filter((item) => {
+        if (item === '-' || item.header) return true;
+        if (item.hidden) return false;
+        // RBAC: hide an item the user isn't authorized for (Swing's paired popup
+        // task). `group` (the task-pane key) may be set per item or for the menu.
+        return !(item.task && !checkTask(item.group || group, item.task));
+    });
+}
+
 export function contextMenu(x, y, items, group) {
-    // restore:false — replacing one menu with another must not bounce focus back
-    // to the first menu's opener on the way.
+    const visible = visibleMenuItems(items, group);
+    if (contextMenuRenderer) {
+        // restore:false — replacing one menu with another must not bounce focus
+        // back to the first menu's opener on the way.
+        closeContextMenu({ restore: false });
+        openRendered = contextMenuRenderer({ x, y, items: visible });
+        return null;
+    }
+    return domContextMenu(x, y, visible);
+}
+
+function domContextMenu(x, y, items) {
     closeContextMenu({ restore: false });
     // Hand focus back where it came from on dismiss (the row, the task button).
     menuOpener = document.activeElement;
@@ -362,7 +422,6 @@ export function contextMenu(x, y, items, group) {
     const menu = h('div.ctx-menu.ctx-surface', { role: 'menu' });
     for (const item of items) {
         if (item === '-') { menu.appendChild(h('div.ctx-sep', { role: 'separator' })); continue; }
-        if (item.hidden) continue;
         // Non-interactive heading row (e.g. the account menu's "signed in as").
         if (item.header) {
             menu.appendChild(h('div.ctx-head', { role: 'presentation' },
@@ -370,9 +429,6 @@ export function contextMenu(x, y, items, group) {
                 item.sub ? h('div.ctx-head-sub', item.sub) : null));
             continue;
         }
-        // RBAC: hide an item the user isn't authorized for (Swing's paired popup
-        // task). `group` (the task-pane key) may be set per item or for the menu.
-        if (item.task && !checkTask(item.group || group, item.task)) continue;
         menu.appendChild(h(`button.ctx-item${item.danger ? '.danger' : ''}`, {
             role: 'menuitem',
             // Roving focus: the menu is one stop, arrows move within it.
@@ -444,6 +500,7 @@ function dismissMenu(e) {
 }
 
 export function closeContextMenu({ restore = true } = {}) {
+    if (openRendered) { const handle = openRendered; openRendered = null; handle.close({ restore }); return; }
     if (!openMenu) return;
     openMenu.remove();
     openMenu = null;

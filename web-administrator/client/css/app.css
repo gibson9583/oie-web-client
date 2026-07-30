@@ -998,11 +998,21 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
+.toast.success { border-left-color: var(--ok); }
 .toast.error { border-left-color: var(--err); }
 .toast.warn { border-left-color: var(--warn); }
 .toast .toast-msg { white-space: pre-wrap; word-break: break-word; }
 
 @keyframes toast-in { from { opacity: 0; transform: translateX(24px); } }
+
+/* Radix renders the viewport as <ol> and each toast as <li>. */
+.toasts { list-style: none; margin: 0; padding: 0; }
+
+/* Swipe to dismiss: follow the pointer, then run out to the right. */
+.toast[data-swipe="move"] { transform: translateX(var(--radix-toast-swipe-move-x)); }
+.toast[data-swipe="cancel"] { transform: translateX(0); transition: transform 0.2s ease-out; }
+.toast[data-swipe="end"] { animation: toast-out 0.1s ease-out; }
+@keyframes toast-out { to { opacity: 0; transform: translateX(var(--radix-toast-swipe-end-x)); } }
 
 /* ---- Context menu ----------------------------------------------------------------------------------------- */
 

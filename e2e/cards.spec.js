@@ -89,8 +89,8 @@ test.describe('card view', () => {
         await mockEngine(page);
         await openCards(page);
         await page.getByText('Demo Stopped').click({ button: 'right' });
-        await expect(page.locator('.ctx-menu')).toBeVisible();
-        await expect(page.locator('.ctx-menu').getByText('Start')).toBeVisible();
+        await expect(page.getByRole('menu')).toBeVisible();
+        await expect(page.getByRole('menu').getByText('Start')).toBeVisible();
     });
 
     test('is an alternate of the classic table under one Dashboard nav item', async ({ page }) => {
