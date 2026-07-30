@@ -18,6 +18,10 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+/* react-day-picker's own stylesheet (calendar layout + its CSS variables), pulled
+   INTO the components layer: unlayered it would outrank every rule in this file,
+   including the token overrides for it further down. */
+@import "react-day-picker/style.css" layer(components);
 
 @theme inline {
     --color-bg0: var(--bg0);
@@ -1023,6 +1027,134 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .toast[data-swipe="cancel"] { transform: translateX(0); transition: transform 0.2s ease-out; }
 .toast[data-swipe="end"] { animation: toast-out 0.1s ease-out; }
 @keyframes toast-out { to { opacity: 0; transform: translateX(var(--radix-toast-swipe-end-x)); } }
+
+/* ---- Date + time field (react/date-time-field.jsx) ------------------------------------------ */
+
+/* The trigger stands in for the text input it replaced, so it has to match the
+   app's inputs exactly rather than look like a button. */
+.dtf-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-width: 168px;
+    padding: 5px 8px;
+    background: var(--bg1);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
+}
+.dtf-trigger:hover { border-color: var(--accent); }
+.dtf-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.dtf-trigger.empty .dtf-value { color: var(--text-faint); }
+.dtf-trigger svg { color: var(--text-dim); flex: none; }
+
+.dtf-pop {
+    z-index: 150;
+    background: var(--bg2);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    animation: fade-in 0.1s ease-out;
+}
+/* The clock sits UNDER the calendar, not beside it: once it stopped being two
+   tall scrolling columns it no longer filled a second column, and left the
+   popover half empty. */
+.dtf-body { display: flex; flex-direction: column; }
+.dtf-time {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 12px 8px;
+    border-top: 1px solid var(--line);
+}
+.dtf-time-head {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+/* Two spinners rather than two scrolling lists: sixty minutes needed a scrollbar
+   to be reachable, and a pair of them dominated the popover. */
+.dtf-clock { display: flex; align-items: center; gap: 4px; }
+/* flex:none, or the parts absorb the row's spare width and the two little number
+   fields stretch into slabs. */
+.dtf-part { display: inline-flex; flex-direction: column; align-items: stretch; gap: 2px; width: 52px; flex: none; }
+.dtf-colon { color: var(--text-faint); font-size: 15px; font-weight: 600; padding-bottom: 2px; }
+.dtf-num {
+    width: 100%;
+    padding: 5px 0;
+    background: var(--bg1);
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+.dtf-num:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+/* Redundant with Up/Down on the field, so they stay out of the tab order. */
+.dtf-step {
+    padding: 1px 0;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-faint);
+    font-size: 8px;
+    line-height: 1;
+    cursor: pointer;
+}
+.dtf-step:hover { background: var(--bg3); color: var(--text); }
+
+.dtf-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--line);
+    font-size: 11px;
+}
+.dtf-zone { color: var(--text-faint); }
+.dtf-actions { display: inline-flex; gap: 12px; }
+.dtf-link { border: 0; background: none; color: var(--accent); font: inherit; font-size: 11px; cursor: pointer; }
+.dtf-link:hover { text-decoration: underline; }
+
+/* react-day-picker, dressed in the app's tokens. Its own stylesheet ships the
+   layout and these variables; only the colours and sizing are ours. */
+.rdp-root {
+    --rdp-accent-color: var(--accent);
+    --rdp-accent-background-color: var(--bg3);
+    --rdp-today-color: var(--accent);
+    --rdp-day-height: 30px;
+    --rdp-day-width: 30px;
+    --rdp-day_button-height: 28px;
+    --rdp-day_button-width: 28px;
+    --rdp-day_button-border-radius: 5px;
+    --rdp-nav_button-height: 26px;
+    --rdp-nav_button-width: 26px;
+    --rdp-weekday-opacity: 1;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text);
+}
+.rdp-month_caption { font-size: 12.5px; font-weight: 660; }
+.rdp-weekday { color: var(--text-faint); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
+.rdp-day_button { color: var(--text-dim); }
+.rdp-day_button:hover { background: var(--bg3); color: var(--text); }
+.rdp-selected .rdp-day_button { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.rdp-today:not(.rdp-selected) .rdp-day_button { color: var(--accent); font-weight: 660; }
+.rdp-outside .rdp-day_button { color: var(--text-faint); }
+.rdp-chevron { fill: var(--text-dim); }
+.rdp-button_next:hover .rdp-chevron, .rdp-button_previous:hover .rdp-chevron { fill: var(--text); }
 
 /* ---- Context menu ----------------------------------------------------------------------------------------- */
 
