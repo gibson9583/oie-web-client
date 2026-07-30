@@ -205,6 +205,33 @@ test('the date criteria use the app\'s own picker, and keep the value shape', as
     await expect(page.getByText(/Date Range: \d{4}-\d{2}-15 23:31 to/)).toBeVisible();
 });
 
+test('the browser opens without a channel and the picker is the way in', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 800 });
+    await page.goto('/messages');
+
+    /* The criteria bar is there, led by the channel picker, but there is nothing
+       to search yet — and every task acts on a channel, so the pane stays empty
+       rather than offering actions that cannot run. */
+    const picker = page.locator('.filter-collapse select').first();
+    await expect(picker).toBeVisible();
+    await expect(picker).toHaveValue('');
+    await expect(page.locator('.dt-empty')).toContainText('Choose a channel');
+    await expect(page.locator('.view-tasks .taskbar')).toHaveCount(0);
+
+    // Choosing one moves the URL, so a search stays identified by its address.
+    await picker.selectOption(CID);
+    await expect(page).toHaveURL(new RegExp(`/messages/${CID}$`));
+    await expect(page.locator('.view-tasks .taskbar')).toHaveCount(1);
+    await expect(page.locator('.dt-empty')).toHaveCount(0);
+});
+
+test('a channel deep link preselects it in the picker', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 800 });
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+    await expect(page.locator('.filter-collapse select').first()).toHaveValue(CID);
+});
+
 test('Send Message opens the editor dialog', async ({ page }) => {
     await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();

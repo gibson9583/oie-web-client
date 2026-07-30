@@ -51,6 +51,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import * as router from '../../core/router.js';
 import { DateTimeField } from '../date-time-field.jsx';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
@@ -1698,6 +1699,9 @@ export function MessagesView({ params, query }) {
     /* ---- results + table state ---- */
     const [connectors, setConnectors] = useState([]);
     const [channelName, setChannelName] = useState(channelId);
+    /* Every channel, for the picker. The browser is reachable without one — the
+       bare /messages route — and the picker is how you choose. */
+    const [channelList, setChannelList] = useState([]);
     const [metaDataColumns, setMetaDataColumns] = useState([]);
     const [messages, setMessages] = useState([]);
     // shown: null = no search has completed yet (blank counts label, legacy
@@ -2168,19 +2172,23 @@ export function MessagesView({ params, query }) {
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            try {
-                const names = await api.channels.connectorNames(channelId);
-                if (!cancelled) setConnectors(connectorEntries(names));
-            } catch (e) {
-                toast(`Failed to load connectors: ${e.message}`, 'error');
+            if (channelId) {
+                try {
+                    const names = await api.channels.connectorNames(channelId);
+                    if (!cancelled) setConnectors(connectorEntries(names));
+                } catch (e) {
+                    toast(`Failed to load connectors: ${e.message}`, 'error');
+                }
+                try {
+                    const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
+                    if (!cancelled && cols.length) setMetaDataColumns(cols);
+                } catch { /* channel has no custom metadata columns */ }
             }
             try {
-                const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
-                if (!cancelled && cols.length) setMetaDataColumns(cols);
-            } catch { /* channel has no custom metadata columns */ }
-            try {
                 const map = await api.channels.idsAndNames();
-                const found = idNamePairs(map).find(c => c.id === channelId);
+                const pairs = idNamePairs(map);
+                if (!cancelled) setChannelList(pairs.slice().sort((a, b) => a.name.localeCompare(b.name)));
+                const found = pairs.find(c => c.id === channelId);
                 if (found && !cancelled) {
                     setChannelName(found.name);
                     // route:changed resets the banner to the static route title after
@@ -2191,9 +2199,10 @@ export function MessagesView({ params, query }) {
                     })));
                 }
             } catch { /* keep the channel id as the label */ }
-            if (!cancelled) searchRef.current(true);
+            // Nothing to search until a channel is chosen.
+            if (!cancelled && channelId) searchRef.current(true);
         })();
-        if (query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
+        if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
         return () => { cancelled = true; closeStatusMenu(); };
         // Build once; channelId is stable for the view's lifetime (route remount on change).
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2208,6 +2217,25 @@ export function MessagesView({ params, query }) {
     const hasSel = !!selected;
 
     /* Defined once and mounted inline or in the popover — two homes, not two copies. */
+    /* WHICH channel, as opposed to what to search for — so it belongs beside the
+       panel heading rather than in the criteria grid, and stays reachable while
+       the criteria are collapsed. Changing it navigates, keeping the URL the
+       thing that identifies a search and re-bootstrapping the view against the
+       new channel's connectors and metadata columns. */
+    const channelPicker = (
+        <label className="msg-channel">
+            <span>Channel</span>
+            <select value={channelId || ''} aria-label="Channel"
+                onChange={(e) => {
+                    const id = e.target.value;
+                    router.navigate(id ? `/messages/${id}` : '/messages');
+                }}>
+                <option value="">Select a channel…</option>
+                {channelList.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+        </label>
+    );
+
     const criteria = (
         <>
                         <div className="form-row">
@@ -2297,7 +2325,10 @@ export function MessagesView({ params, query }) {
 
     return (
         <div className="view">
-            <ViewTasks>
+            {/* Every task here acts on a channel (or a selection within one), so the
+                pane stays empty until one is chosen rather than offering actions
+                that cannot run. */}
+            {channelId && <ViewTasks>
                 <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
                     <div className="taskbar" data-pane-title="Message Tasks">
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
@@ -2311,7 +2342,7 @@ export function MessagesView({ params, query }) {
                         {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
                     </div>
                 </RailPane>
-            </ViewTasks>
+            </ViewTasks>}
             <div className="view-body flush flex flex-col h-full min-h-0">
                 {/* Wide: click the "Search Criteria" heading to collapse the criteria
                     in place. Narrow: they collapse into a "Filters" popover. */}
@@ -2322,6 +2353,7 @@ export function MessagesView({ params, query }) {
                     {narrowCriteria ? (
                         <div className="panel-header flex items-center gap-2">
                             <span className="criteria-heading inline-flex items-center gap-1.5">Search Criteria</span>
+                            {channelPicker}
                             <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
                                 <Popover.Trigger asChild>
                                     <button className="btn filter-toggle" type="button">
@@ -2346,6 +2378,7 @@ export function MessagesView({ params, query }) {
                                         Search Criteria
                                     </button>
                                 </Collapsible.Trigger>
+                                {channelPicker}
                             </div>
                             <Collapsible.Content className="panel-body filter-popover">
                                 {criteria}
@@ -2354,6 +2387,12 @@ export function MessagesView({ params, query }) {
                     )}
                 </div>
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[14px] pt-3 pb-3">
+                    {!channelId ? (
+                        <div className="dt-empty">
+                            <div className="empty-icon"><Icon name="messages" size={30} /></div>
+                            Choose a channel to search its messages.
+                        </div>
+                    ) : (
                     <ResultsTable
                         cols={visibleCols} mgr={mgr} rows={sortedMessages}
                         expandedIds={expandedIds} allExpanded={allExpanded}
@@ -2370,6 +2409,7 @@ export function MessagesView({ params, query }) {
                         onRowMenu={messageRowMenu}
                         onColumnMenu={openColumnMenu}
                         onColumnsChange={() => setColumnsRev(r => r + 1)} />
+                    )}
                 </div>
 
                 <div className="filterbar flex-none panel overflow-visible mx-[14px]">
