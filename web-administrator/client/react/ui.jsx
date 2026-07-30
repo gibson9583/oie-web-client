@@ -8,6 +8,8 @@
  */
 
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, createContext, useContext } from 'react';
+import * as Collapsible from '@radix-ui/react-collapsible';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { Icon } from './bridges.jsx';
 import { DataTable } from '@oie/web-ui';
 import { createCodeEditor } from '../core/codeeditor.js';
@@ -156,71 +158,40 @@ export const CodeEditor = forwardRef(function CodeEditor({ language, readOnly, d
 });
 
 /*
- * Tablist semantics + keyboard for the app's hand-rolled `.tabs` strips.
+ * Tabs — Radix, controlled.
  *
- * The dashboard dock is Radix and gets this for free; the other strips were bare
- * button rows — every tab its own Tab stop, arrows doing nothing, and no
- * announcement of which one was selected. Spread the returned props rather than
- * repeating the logic eight times:
+ * Radix owns the roles, the roving tabindex and the arrow/Home/End keys; we own
+ * the value, which is what lets a call site REFUSE a switch (settings prompts on
+ * unsaved changes): onValueChange proposes, and if the caller declines to move
+ * `active`, the controlled value simply stays put.
  *
- *   const t = useTabList(labels.length, active, setActive, { label: 'Settings' });
- *   <div className="tabs" {...t.list}>
- *     {labels.map((l, i) => <button className="tab" {...t.tab(i)}>{l}</button>)}
- *   </div>
- *   <div className="tab-body" {...t.panel}>…</div>
- *
- * Activation follows focus (the APG default for tabs): the arrow keys select as
- * they move. Every tab button is in the DOM regardless of which is active, so the
- * new tab can be focused synchronously — no deferred focus() to race a keystroke.
+ * Every panel stays MOUNTED via forceMount, so Monaco editors and scroll state
+ * inside survive a switch — matches the vanilla tabs(). Radix marks the inactive
+ * ones with `hidden` + data-state, and .tab-body > [role=tabpanel] in app.css
+ * turns the active one back into the flex column the height chain needs.
  */
-export function useTabList(count, active, onChange, { label = 'Tabs' } = {}) {
-    const stripRef = useRef(null);
-    const focusTab = (i) => {
-        const btns = stripRef.current ? stripRef.current.querySelectorAll('[role="tab"]') : [];
-        if (btns[i] && btns[i].focus) btns[i].focus();
-    };
-    const onKeyDown = (e) => {
-        let to = -1;
-        if (e.key === 'ArrowRight') to = (active + 1) % count;
-        else if (e.key === 'ArrowLeft') to = (active - 1 + count) % count;
-        else if (e.key === 'Home') to = 0;
-        else if (e.key === 'End') to = count - 1;
-        if (to < 0 || !count) return;
-        e.preventDefault();
-        onChange(to);
-        focusTab(to);
-    };
-    return {
-        list: { ref: stripRef, role: 'tablist', 'aria-label': label, onKeyDown },
-        // Roving tabindex: the strip is one tab stop, not one per tab.
-        tab: (i) => ({ role: 'tab', 'aria-selected': String(i === active), tabIndex: i === active ? 0 : -1 }),
-        panel: { role: 'tabpanel' }
-    };
-}
-
-/* Tabs (controlled). Every panel stays MOUNTED (inactive ones hidden via CSS) so
-   editors/state inside survive tab switches — matches the vanilla tabs(). */
 export function Tabs({ tabs, active, onActiveChange, label }) {
-    // flex-based height chain (not height:100%) so editors/content fill even when
-    // the parent's height is flex-computed — matches the vanilla tabs().
-    const t = useTabList(tabs.length, active, onActiveChange, { label });
+    const value = String(active);
     return (
-        <div className="tabs-wrap" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <div className="tabs" {...t.list}>
+        <TabsPrimitive.Root value={value} onValueChange={(v) => onActiveChange(Number(v))}
+            className="tabs-wrap"
+            style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <TabsPrimitive.List className="tabs" aria-label={label}>
                 {tabs.map((tb, i) => (
-                    <button key={i} className={'tab' + (i === active ? ' active' : '')}
-                        {...t.tab(i)}
-                        onClick={() => onActiveChange(i)}>{tb.label}</button>
+                    <TabsPrimitive.Trigger key={i} value={String(i)}
+                        className={'tab' + (i === active ? ' active' : '')}>
+                        {tb.label}
+                    </TabsPrimitive.Trigger>
                 ))}
-            </div>
+            </TabsPrimitive.List>
             <div className="tab-body" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 {tabs.map((tb, i) => (
-                    <div key={i} {...(i === active ? t.panel : { role: 'tabpanel', 'aria-hidden': 'true' })}
-                        style={{ flex: 1, minHeight: 0, display: i === active ? 'flex' : 'none', flexDirection: 'column' }}>
+                    <TabsPrimitive.Content key={i} value={String(i)} forceMount
+                        style={{ flex: 1, minHeight: 0, flexDirection: 'column' }}>
                         {tb.content}
-                    </div>
+                    </TabsPrimitive.Content>
                 ))}
             </div>
-        </div>
+        </TabsPrimitive.Root>
     );
 }

@@ -17,7 +17,8 @@ import * as oie from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { mountReact } from '../mount.jsx';
-import { CodeEditor, useTabList } from '../ui.jsx';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
@@ -209,8 +210,6 @@ const DEP_TABS = [
 export function DependenciesStep({ channel, libState, depState }) {
     const [, tick] = useReducer((x) => x + 1, 0);
     const [tab, setTab] = useState('libraries');
-    const tabKeys = useTabList(DEP_TABS.length, DEP_TABS.findIndex(([k]) => k === tab),
-        (i) => setTab(DEP_TABS[i][0]), { label: 'Dependency sections' });
     const [loaded, setLoaded] = useState(false);
     const [picker, setPicker] = useState(null);   // { kind, ids } when the channel picker is open
     const [libQuery, setLibQuery] = useState('');
@@ -325,16 +324,17 @@ export function DependenciesStep({ channel, libState, depState }) {
     };
 
     return (
-        <div className="flex flex-col gap-4 max-w-[820px]">
-            <div className="tabs overflow-x-auto" {...tabKeys.list}>
-                {DEP_TABS.map(([key, text], i) => (
-                    <button key={key} type="button" className={`tab whitespace-nowrap ${tab === key ? 'active' : ''}`}
-                        {...tabKeys.tab(i)} onClick={() => setTab(key)}>{text}</button>
+        <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-4 max-w-[820px]">
+            <TabsPrimitive.List className="tabs overflow-x-auto" aria-label="Dependency sections">
+                {DEP_TABS.map(([key, text]) => (
+                    <TabsPrimitive.Trigger key={key} value={key}
+                        className={`tab whitespace-nowrap ${tab === key ? 'active' : ''}`}>{text}</TabsPrimitive.Trigger>
                 ))}
-            </div>
+            </TabsPrimitive.List>
 
             {!loaded && <div className="hint">Loading…</div>}
 
+            <TabsPrimitive.Content value="libraries">
             {loaded && tab === 'libraries' && (
                 <div className="panel !mt-0">
                     <div className="panel-header flex flex-wrap items-center gap-2">
@@ -386,7 +386,9 @@ export function DependenciesStep({ channel, libState, depState }) {
                     </div>
                 </div>
             )}
+            </TabsPrimitive.Content>
 
+            <TabsPrimitive.Content value="resources">
             {loaded && tab === 'resources' && (
                 <div className="panel !mt-0">
                     <div className="panel-header">Library Resources</div>
@@ -406,7 +408,9 @@ export function DependenciesStep({ channel, libState, depState }) {
                     </div>
                 </div>
             )}
+            </TabsPrimitive.Content>
 
+            <TabsPrimitive.Content value="deploy">
             {loaded && tab === 'deploy' && (
                 <div className="panel !mt-0">
                     <div className="panel-header">Deploy / Start Dependencies</div>
@@ -417,6 +421,7 @@ export function DependenciesStep({ channel, libState, depState }) {
                     <div className="panel-body pt-0"><div className="hint">Dependencies control deploy/start order and are saved to the engine when you create the channel.</div></div>
                 </div>
             )}
+            </TabsPrimitive.Content>
 
             {picker && (
                 <PickerModal title="Add channels"
@@ -424,7 +429,7 @@ export function DependenciesStep({ channel, libState, depState }) {
                     onAdd={(chosen) => chosen.forEach((id) => addDep(picker.kind, id))}
                     onClose={() => setPicker(null)} />
             )}
-        </div>
+        </TabsPrimitive.Root>
     );
 }
 

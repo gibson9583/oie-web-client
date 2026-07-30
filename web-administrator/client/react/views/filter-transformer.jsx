@@ -51,7 +51,8 @@ import { REFERENCE_CATALOG } from '../../core/reference-catalog.js';
 import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane, TaskButton, useTabList } from '../ui.jsx';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 const KINDS = {
@@ -605,25 +606,25 @@ function RawElementFallback({ element, onReplace }) {
    survive tab switches; hidden-not-detached also keeps the Monaco host in the
    document, out of the route-change detached-editor sweep. */
 function BottomTabs({ tabs, active, onActive }) {
-    const tabKeys = useTabList(tabs.length, active, onActive, { label: 'Step editor sections' });
     return (
-        <div className="flex flex-col flex-1 overflow-hidden min-h-0">
-            <div className="tabs" {...tabKeys.list}>
+        <TabsPrimitive.Root value={String(active)} onValueChange={(v) => onActive(Number(v))}
+            className="flex flex-col flex-1 overflow-hidden min-h-0">
+            <TabsPrimitive.List className="tabs" aria-label="Step editor sections">
                 {tabs.map((t, i) => (
-                    <button key={t.label} className={'tab' + (i === active ? ' active' : '')}
-                        {...tabKeys.tab(i)}
-                        onClick={() => onActive(i)}>{t.label}</button>
+                    <TabsPrimitive.Trigger key={t.label} value={String(i)}
+                        className={'tab' + (i === active ? ' active' : '')}>{t.label}</TabsPrimitive.Trigger>
                 ))}
-            </div>
+            </TabsPrimitive.List>
             <div className="tab-body">
+                {/* forceMount: these panels hold code editors, which must not be torn
+                    down by a tab switch. app.css hides the inactive ones by data-state. */}
                 {tabs.map((t, i) => (
-                    <div key={t.label} className={t.className}
-                        style={{ display: i === active ? undefined : 'none' }}>
+                    <TabsPrimitive.Content key={t.label} value={String(i)} forceMount className={t.className}>
                         {t.node}
-                    </div>
+                    </TabsPrimitive.Content>
                 ))}
             </div>
-        </div>
+        </TabsPrimitive.Root>
     );
 }
 
@@ -1064,8 +1065,7 @@ function SidePanel({ ctx }) {
     const [active, setActive] = useState(0);
     const { isFilter } = ctx;
     const labels = isFilter ? ['Reference'] : ['Reference', 'Message Trees', 'Message Templates'];
-    const tabKeys = useTabList(labels.length, Math.min(active, labels.length - 1), setActive,
-        { label: 'Reference panel sections' });
+
     const label = labels[Math.min(active, labels.length - 1)];
     let body = null;
     if (label === 'Reference') {
@@ -1077,16 +1077,19 @@ function SidePanel({ ctx }) {
             connectorType={ctx.connectorType} channel={ctx.channel} commit={ctx.commit} />;
     }
     return (
-        <div className="flex flex-col flex-1 overflow-hidden min-h-0">
-            <div className="tabs" {...tabKeys.list}>
+        <TabsPrimitive.Root value={String(Math.min(active, labels.length - 1))}
+            onValueChange={(v) => setActive(Number(v))}
+            className="flex flex-col flex-1 overflow-hidden min-h-0">
+            <TabsPrimitive.List className="tabs" aria-label="Reference panel sections">
                 {labels.map((l, i) => (
-                    <button key={l} className={'tab' + (i === active ? ' active' : '')}
-                        {...tabKeys.tab(i)}
-                        onClick={() => setActive(i)}>{l}</button>
+                    <TabsPrimitive.Trigger key={l} value={String(i)}
+                        className={'tab' + (i === active ? ' active' : '')}>{l}</TabsPrimitive.Trigger>
                 ))}
-            </div>
-            <div className="tab-body">{body}</div>
-        </div>
+            </TabsPrimitive.List>
+            <TabsPrimitive.Content value={String(Math.min(active, labels.length - 1))} className="tab-body">
+                {body}
+            </TabsPrimitive.Content>
+        </TabsPrimitive.Root>
     );
 }
 

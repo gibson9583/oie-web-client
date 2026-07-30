@@ -44,7 +44,8 @@ import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { RailPane, TaskButton, useTabList } from '../ui.jsx';
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
@@ -2811,8 +2812,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }) {
     const pluginTabs = platform.channelTabs();
     const tabLabels = ['Summary', 'Source', 'Destinations', 'Scripts', ...pluginTabs.map(d => d.label)];
     const fill = activeTab === 'Destinations' || activeTab === 'Scripts';
-    const tabKeys = useTabList(tabLabels.length, tabLabels.indexOf(activeTab),
-        (i) => setActiveTab(tabLabels[i]), { label: 'Channel sections' });
+
 
     let body = null;
     if (activeTab === 'Summary') {
@@ -2837,15 +2837,15 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }) {
 
     return (
         <div className="view-body flex flex-col flex-1 min-h-0">
-            <div className="flex flex-col flex-1 overflow-hidden min-h-0">
-                <div className="tabs" {...tabKeys.list}>
-                    {tabLabels.map((label, i) => (
-                        <button key={label} className={'tab' + (label === activeTab ? ' active' : '')}
-                            {...tabKeys.tab(i)}
-                            onClick={() => setActiveTab(label)}>{label}</button>
+            <TabsPrimitive.Root value={activeTab} onValueChange={setActiveTab}
+                className="flex flex-col flex-1 overflow-hidden min-h-0">
+                <TabsPrimitive.List className="tabs" aria-label="Channel sections">
+                    {tabLabels.map((label) => (
+                        <TabsPrimitive.Trigger key={label} value={label}
+                            className={'tab' + (label === activeTab ? ' active' : '')}>{label}</TabsPrimitive.Trigger>
                     ))}
-                </div>
-                <div className="tab-body">
+                </TabsPrimitive.List>
+                <TabsPrimitive.Content value={activeTab} className="tab-body">
                     {/* 'fill' tabs (Destinations/Scripts) get a flex column the full
                         height of the tab body; others scroll naturally. */}
                     <div key={activeTab} className={fill
@@ -2853,8 +2853,8 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }) {
                         : 'py-3.5 px-0 overflow-auto'}>
                         {body}
                     </div>
-                </div>
-            </div>
+                </TabsPrimitive.Content>
+            </TabsPrimitive.Root>
         </div>
     );
 }

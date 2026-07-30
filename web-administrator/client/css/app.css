@@ -780,6 +780,14 @@ table.dt tbody tr.group-row td {
 }
 
 .tab-body { flex: 1; overflow: auto; }
+/* Radix Tabs.Content with forceMount keeps every panel MOUNTED (editors and scroll
+   state survive a switch) and marks them with data-state — it does NOT hide the
+   inactive ones for us. Both halves are needed: without the inactive rule all four
+   panels stay in the flex column and split the height between them (a 770px body
+   gave each editor 192px), and without the active rule the panel is display:block
+   and collapses the editor inside it. */
+.tab-body > [role="tabpanel"][data-state="inactive"] { display: none; }
+.tab-body > [role="tabpanel"][data-state="active"] { display: flex; }
 
 /* ---- Forms -------------------------------------------------------------------------------------- */
 
@@ -998,8 +1006,16 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 
 /* ---- Context menu ----------------------------------------------------------------------------------------- */
 
-.ctx-menu {
-    position: fixed;
+/* The menu SURFACE, split from its positioning: the DOM contextMenu() places
+   itself with position:fixed at an (x, y), while a Radix menu is placed by Radix
+   on a wrapper it owns — giving its content position:fixed too made it ignore that
+   placement and hang off the edge of the screen. Shared look, separate placement. */
+.ctx-surface {
+    /* Positioned + stacked: z-index only applies to a positioned element, and the
+       surface is portaled to <body>, so without this the app's own stacked panels
+       (KPI cards, the table's sticky header) paint straight over the menu.
+       `relative` does not disturb Radix, which positions the wrapper it owns. */
+    position: relative;
     z-index: 150;
     min-width: 190px;
     background: var(--bg2);
@@ -1009,8 +1025,14 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     padding: 5px;
     animation: fade-in 0.1s ease-out;
 }
+/* Placement only — always used WITH .ctx-surface, which carries the look. */
+.ctx-menu {
+    position: fixed;
+    z-index: 150;
+}
 
-.ctx-menu .ctx-item {
+.ctx-menu .ctx-item,
+.ctx-surface .ctx-item {
     display: flex;
     align-items: center;
     gap: 9px;
@@ -1025,16 +1047,33 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     text-align: left;
     cursor: pointer;
 }
-.ctx-menu .ctx-item svg { width: 14px; height: 14px; color: var(--text-dim); }
-.ctx-menu .ctx-item:hover { background: var(--bg3); }
+.ctx-menu .ctx-item svg,
+.ctx-surface .ctx-item svg { width: 14px; height: 14px; color: var(--text-dim); }
+.ctx-menu .ctx-item:hover,
+.ctx-surface .ctx-item:hover,
+.ctx-surface .ctx-item[data-highlighted] { background: var(--bg3); }
 /* Keyboard cursor: the menu now takes focus on open and moves with the arrows, so
    the focused item needs the same cue the pointer gets. */
-.ctx-menu .ctx-item:focus { outline: none; background: var(--bg3); box-shadow: 0 0 0 2px var(--accent-glow) inset; }
-.ctx-menu .ctx-item.danger { color: var(--err); }
-.ctx-menu .ctx-sep { height: 1px; background: var(--line); margin: 5px 4px; }
-.ctx-menu .ctx-head { padding: 4px 10px 7px; cursor: default; }
-.ctx-menu .ctx-head-name { font-weight: 600; color: var(--text); font-size: 12.5px; }
-.ctx-menu .ctx-head-sub { color: var(--text-dim); font-size: 11px; margin-top: 1px; }
+.ctx-menu .ctx-item:focus,
+.ctx-surface .ctx-item:focus { outline: none; background: var(--bg3); box-shadow: 0 0 0 2px var(--accent-glow) inset; }
+.ctx-menu .ctx-item.danger,
+.ctx-surface .ctx-item.danger { color: var(--err); }
+/* A disabled item still reads, it just can't be chosen. (`:disabled` is the DOM
+   menu's <button>; `[data-disabled]` is Radix's div.) */
+.ctx-menu .ctx-item:disabled,
+.ctx-surface .ctx-item[data-disabled] { opacity: 0.45; cursor: default; }
+.ctx-menu .ctx-sep,
+.ctx-surface .ctx-sep { height: 1px; background: var(--line); margin: 5px 4px; }
+/* Tick column for a checkbox menu — a fixed slot so the labels stay aligned
+   whether or not an item is checked. */
+.ctx-surface .ctx-check { width: 13px; flex: none; color: var(--accent); }
+.ctx-surface .ctx-item:has(.ctx-check) { gap: 6px; }
+.ctx-menu .ctx-head,
+.ctx-surface .ctx-head { padding: 4px 10px 7px; cursor: default; }
+.ctx-menu .ctx-head-name,
+.ctx-surface .ctx-head-name { font-weight: 600; color: var(--text); font-size: 12.5px; }
+.ctx-menu .ctx-head-sub,
+.ctx-surface .ctx-head-sub { color: var(--text-dim); font-size: 11px; margin-top: 1px; }
 
 /* ---- Code editor --------------------------------------------------------------------------------------------- */
 
