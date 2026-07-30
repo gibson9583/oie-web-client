@@ -11,6 +11,7 @@
 import { getLoginAuthenticator } from '../../core/login-auth.js';
 
 import { useState, useRef, useEffect } from 'react';
+import { useStoreKey } from '../bridges.jsx';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 
@@ -46,6 +47,9 @@ export function LoginForm({ onSuccess }) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    // Set by the shell when it drops us here (session expiry). Cleared on the first
+    // submit, so a failed sign-in shows its own error rather than both.
+    const notice = useStoreKey('loginNotice');
     const [submitting, setSubmitting] = useState(false);
 
     // Engine selection. `engines` from /webadmin/config.json; `sel` is the chosen
@@ -69,6 +73,7 @@ export function LoginForm({ onSuccess }) {
         if (busyRef.current) return;
         busyRef.current = true;
         setError('');
+        store.setState('loginNotice', null);
 
         // Point this session at the chosen engine before authenticating.
         if (showPicker) {
@@ -150,6 +155,9 @@ export function LoginForm({ onSuccess }) {
 
     return (
         <div className="login-stage">
+            {/* Column, so the notice sits UNDER the card: .login-stage is a centering
+                flex row, and a bare sibling of the form lands beside it instead. */}
+            <div className="login-column">
             <form className="login-card panel overflow-visible" onSubmit={submit}
                 onKeyDown={(e) => {
                     // Explicit Enter-to-submit so pressing Enter in a field logs in
@@ -199,6 +207,10 @@ export function LoginForm({ onSuccess }) {
                     {submitting ? 'Signing in…' : 'Sign in'}
                 </button>
             </form>
+            {/* Why you are back here (an expired session, a signed-out tab) — below the
+                card, quiet, and never a dialog: there is nothing to acknowledge. */}
+            {notice ? <div className="login-notice" role="status">{notice}</div> : null}
+            </div>
         </div>
     );
 }

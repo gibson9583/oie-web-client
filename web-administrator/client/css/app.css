@@ -1280,6 +1280,29 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .login-brand .brand-title { font-size: 15px; font-weight: 740; letter-spacing: 0.2em; text-align: center; }
 .login-brand .brand-sub { font-size: 9.5px; letter-spacing: 0.4em; color: var(--text-faint); }
 
+/* Card + notice as one centered column. The stage is a flex row whose centering
+   came from the card's own margin:auto, so that moves up here. */
+.login-column {
+    margin: auto;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: min(380px, calc(100vw - 40px));
+}
+
+/* Why you were returned to the login screen. Below the card, low-key: an expired
+   session is not an error the user made, and it must never be a dialog they have to
+   dismiss before they can type. */
+.login-notice {
+    max-width: 340px;
+    margin: 14px auto 0;
+    text-align: center;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+}
+
 .login-error {
     background: color-mix(in srgb, var(--err) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--err) 40%, transparent);
