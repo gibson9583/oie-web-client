@@ -55,6 +55,12 @@ test.describe('channel wizard', () => {
         // Destinations — default Destination 1, with a Response tab.
         await expect(page.getByText('Destination 1')).toBeVisible();
         await expect(page.getByRole('tab', { name: 'Response', exact: true })).toBeVisible();
+        /* Each row leads with its metadata id, as the classic editor's destination
+           table does — it is what queue/response references and the Destination
+           Mappings are written against, and the names truncate at this width. */
+        await expect(page.locator('.step-list .step-id')).toHaveText(['1']);
+        await page.getByRole('button', { name: 'Add', exact: true }).click();
+        await expect(page.locator('.step-list .step-id')).toHaveText(['1', '2']);
         await next(page).click();
 
         // Scripts.

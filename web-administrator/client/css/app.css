@@ -1734,6 +1734,16 @@ input.grid-name::placeholder { color: var(--text-faint); }
     justify-content: center;
     flex: none;
 }
+/* Destination metadata id in the wizard's list — the classic editor's "Id"
+   column, kept numeric and quiet so the name still leads the row. */
+.step-id {
+    flex: none;
+    min-width: 13px;
+    color: var(--text-faint);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
 .step-item .step-type { font-size: 10.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
 
 /* ---- Sidebar task panes (classic Administrator layout) ---------------------------------------------------------------------------------- */

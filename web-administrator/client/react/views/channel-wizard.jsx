@@ -448,8 +448,14 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
                 <div className="cform-section-title">Destinations</div>
                 <div className="step-list panel overflow-visible p-1.5 min-h-[140px]">
                     {dests.map((d, i) => (
-                        <div key={d.metaDataId} className={`step-item min-w-0 ${i === selected ? 'selected' : ''}`} onClick={() => onSelect(i)} title={`${d.name} — ${d.transportName}`}>
+                        <div key={d.metaDataId} className={`step-item min-w-0 ${i === selected ? 'selected' : ''}`} onClick={() => onSelect(i)}
+                            title={`${d.metaDataId}: ${d.name} — ${d.transportName}`}>
                             <div className="flex items-center gap-2 min-w-0">
+                                {/* The metadata id, as the classic editor's destination table
+                                    shows it: it is what response/queue references and the
+                                    Destination Mappings are written against, so it has to be
+                                    readable here too — the names truncate at this width. */}
+                                <span className="step-id">{d.metaDataId}</span>
                                 <Icon name={connectorIcon(d.transportName)} size={14} />
                                 <div className="flex-1 min-w-0 truncate">{d.name}</div>
                             </div>
