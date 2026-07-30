@@ -114,6 +114,28 @@ test('the customize row is labelled plainly and lines up with the nav items', as
     expect(Math.abs(navIcon.x - gearIcon.x)).toBeLessThan(1.5);
 });
 
+test('customizing from a collapsed rail opens it, and closing gives the space back', async ({ page }) => {
+    await page.goto('/dashboard');
+    await page.getByTitle('Hide navigation').click();
+    await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
+
+    // At 56px there are no labels or headings and nowhere for the grips, eyes and
+    // rename fields — so entering customize mode has to open the rail.
+    await gear(page).click();
+    await expect(page.locator('.shell')).not.toHaveClass(/rail-collapsed/);
+    await expect(rail(page).locator('.pane-title').first()).toBeVisible();
+    await expect(rail(page).locator('.rail-eye').first()).toBeVisible();
+
+    // Done gives the width back, because we were the ones who took it.
+    await gear(page).click();
+    await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
+
+    // The right-click route opens it too.
+    await page.locator('[data-nav-item="dashboard"]').click({ button: 'right' });
+    await page.locator('.ctx-menu').getByRole('menuitem', { name: /Customize navigation/ }).click();
+    await expect(page.locator('.shell')).not.toHaveClass(/rail-collapsed/);
+});
+
 test('collapsed, the chrome rows match the nav icons', async ({ page }) => {
     await page.goto('/dashboard');
     await page.getByTitle('Hide navigation').click();

@@ -23,6 +23,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { contextMenu } from '@oie/web-ui';
 import * as router from '../core/router.js';
+import * as store from '../core/store.js';
 import { getPref, setPrefs } from '../core/prefs.js';
 import { platform } from '@oie/web-shell';
 import {
@@ -67,12 +68,27 @@ export function NavRail({ collapsed, onPeek, onLogout }) {
         .filter((it) => !it.task || platform.checkTask(it.rbac || 'view', it.task));
     const groups = mergeNav(allowed, layout, MERGE_OPTS);
 
-    // Leaving customize mode should not leave a half-finished rename behind.
+    /* Customizing needs the expanded rail. At 56px there are no labels and no group
+       headings, and nowhere to put the grips, the eyes or a rename field — the icon
+       rail just gets cramped and unreadable. So entering customize mode opens the
+       rail, and leaving it gives the space back if we were the ones who took it (a
+       user who collapses it again mid-edit has said what they want). */
+    const borrowedWidthRef = useRef(false);
     useEffect(() => {
-        if (editing) return;
+        if (editing) {
+            if (collapsed) {
+                borrowedWidthRef.current = true;
+                store.setState('railCollapsed', false);
+            }
+            return;
+        }
         setRenamingGroup(null);
         setRenamingItem(null);
-    }, [editing]);
+        if (borrowedWidthRef.current) {
+            borrowedWidthRef.current = false;
+            store.setState('railCollapsed', true);
+        }
+    }, [editing, collapsed]);
 
     /* ---- edits ---- */
     const move = (itemId, toGroup, index) => apply(withMovedItem(layout, groups, itemId, toGroup, index));
