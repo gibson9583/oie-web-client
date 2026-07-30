@@ -985,6 +985,144 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     border-top: 1px solid var(--line);
 }
 
+/* ---- Command palette (react/command-palette.jsx) -------------------------------------- */
+
+/* Its own overlay rather than .modal-overlay: the palette hangs near the top of
+   the viewport, not centred, and it is lighter than a dialog scrim. */
+.cmdk-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 12vh 16px 16px;
+    background: rgba(4, 8, 11, 0.55);
+    backdrop-filter: blur(2px);
+    z-index: 160;
+    animation: fade-in 0.12s ease-out;
+}
+.cmdk {
+    width: min(560px, 100%);
+    max-height: min(60vh, 520px);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg2);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    animation: modal-in 0.14s ease-out;
+}
+/* Radix requires a title for the dialog's accessible name; this one is spoken,
+   not seen — the field's own label carries the visible affordance. */
+.cmdk-sr {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0;
+    clip-path: inset(50%);
+    overflow: hidden; white-space: nowrap;
+}
+
+.cmdk-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+}
+.cmdk-field svg { color: var(--text-faint); flex: none; }
+/* Seamless inside the palette: the global input rule gives every text field a
+   surface, border, radius and focus ring, which reads as a box within a box here.
+   The palette IS the field, so all of that comes off. */
+.cmdk-field input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+}
+.cmdk-field input::placeholder { color: var(--text-faint); }
+.cmdk-scope {
+    flex: none;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: var(--accent-glow);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.cmdk-list { overflow-y: auto; padding: 6px; scrollbar-width: thin; }
+.cmdk-group {
+    padding: 9px 9px 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+.cmdk-opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 9px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.cmdk-opt[aria-selected="true"] {
+    background: var(--bg3);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.cmdk-opt svg { color: var(--text-dim); flex: none; }
+.cmdk-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The matched characters, so the ranking shows its working. */
+.cmdk-label b { color: var(--accent); font-weight: 660; }
+.cmdk-hint {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-faint);
+}
+.cmdk-pip { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-faint); }
+.cmdk-pip.ok { background: var(--ok); }
+.cmdk-pip.warn { background: var(--warn); }
+.cmdk-pip.err { background: var(--err); }
+.cmdk-empty { padding: 26px 12px; text-align: center; color: var(--text-faint); font-size: 13px; }
+
+.cmdk-foot {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 8px 13px;
+    border-top: 1px solid var(--line);
+    background: var(--bg1);
+    font-size: 11px;
+    color: var(--text-faint);
+}
+.cmdk-foot span { display: inline-flex; align-items: center; gap: 5px; }
+.cmdk-foot .cmdk-grammar { margin-left: auto; gap: 4px; }
+.cmdk-foot kbd {
+    padding: 1px 5px;
+    background: var(--bg2);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--text-dim);
+}
+@media (max-width: 560px) {
+    .cmdk-overlay { padding-top: 6vh; }
+    .cmdk-foot .cmdk-grammar { display: none; }
+}
+
 /* ---- Toasts -------------------------------------------------------------------------------------------- */
 
 .toasts {
@@ -2862,6 +3000,18 @@ textarea:focus, select:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px var(--accent-glow);
     outline: none;
+}
+
+/* …except the command palette's field, which IS the surface — a ring inside the
+   panel reads as a box within a box. This has to sit out here beside the rule it
+   overrides: that one is unlayered, so it beats anything in @layer components no
+   matter how specific. */
+.cmdk-field input[type="text"],
+.cmdk-field input[type="text"]:focus {
+    border: 0;
+    box-shadow: none;
+    outline: none;
+    background: none;
 }
 
 /* Buttons → rounded-md, quiet border, subtle hover (size unchanged). */

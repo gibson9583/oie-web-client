@@ -40,6 +40,9 @@ export const PREF_DEFAULTS = {
     cardsGroupBy: 'none',
     // Card view: show Lifetime statistics (true) vs. Current (false).
     cardsLifetime: false,
+    // Command palette: ids of the last few entries run, most recent first. Shown
+    // when the palette opens with an empty query.
+    paletteRecent: [],
     // Per-user navigation layout: a SPARSE overlay on platform.navItems() holding
     // group order/renames/custom groups and per-item group/order/hidden/label.
     // null = untouched, so the rail is exactly what the app declares. The merge and
