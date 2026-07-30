@@ -113,3 +113,56 @@ test('a cold deep link to /alerts/:alertId/edit fetches and renders the alert', 
     await expect(page).toHaveURL(new RegExp(`/alerts/${AL}/edit$`));
     expect(page.url()).not.toContain('#');
 });
+
+// Saving redirects to the alerts list, which is a TanStack Query with a 30s
+// staleTime whose cache OUTLIVES this view — so unless the save invalidates
+// ['alerts'], the list repaints its pre-edit rows and only corrects itself
+// whenever its 5s background poll next ticks. The assertion window below is
+// deliberately shorter than that poll, so only invalidation can satisfy it.
+test('saving an alert leaves the list showing the new name, not the pre-edit one', async ({ page }) => {
+    const AL = 'al-1';
+    // One mutable server-side copy: the PUT updates it, and both the list and the
+    // single-alert GET are served from it (the latter also feeds the conflict
+    // baseline, which must match or the save prompts instead of writing).
+    let stored = {
+        '@version': '4.5.0', id: AL, name: 'Error Alert', enabled: true,
+        trigger: {
+            '@class': 'defaultTrigger',
+            alertChannels: {
+                newChannelSource: false, newChannelDestination: false,
+                enabledChannels: null, disabledChannels: null, partialChannels: null,
+            },
+            errorEventTypes: { errorEventType: ['ANY'] },
+            regex: '',
+        },
+        actionGroups: { alertActionGroup: [{ actions: null, subject: 's', template: 't' }] },
+        properties: null,
+    };
+    await mockEngine(page, {
+        'GET /alerts': () => ({ list: { alertModel: [
+            { id: AL, name: stored.name, enabled: true },
+            { id: 'al-2', name: 'Deploy Alert', enabled: false },
+        ] } }),
+        [`GET /alerts/${AL}`]: () => ({ alertModel: stored }),
+        [`PUT /alerts/${AL}`]: (req) => {
+            const body = JSON.parse(req.postData() || '{}');
+            if (body.alertModel) stored = body.alertModel;
+            return {};
+        },
+    });
+
+    // Reach the editor from the list, so the list's query is mounted and cached
+    // first — that cache is what goes stale.
+    await page.goto('/alerts');
+    await page.locator('tr', { hasText: 'Error Alert' }).first().click();
+    await page.getByRole('button', { name: 'Edit Alert', exact: true }).click();
+
+    const nameInput = page.locator('.view-body input[type=text]').first();
+    await expect(nameInput).toHaveValue('Error Alert', { timeout: 15_000 });
+    await nameInput.fill('Error Alert RENAMED');
+    await page.getByRole('button', { name: 'Save Alert', exact: true }).click();
+
+    await expect(page).toHaveURL(/\/alerts$/);
+    // The cell, not the save toast (which quotes the same name).
+    await expect(page.getByRole('cell', { name: 'Error Alert RENAMED' })).toBeVisible({ timeout: 2000 });
+});

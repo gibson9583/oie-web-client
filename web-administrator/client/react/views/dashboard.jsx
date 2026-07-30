@@ -1178,32 +1178,38 @@ function DashboardView({ onToggleView }) {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                {statuses.length > 0 && showStats && (() => {
+                {statuses.length > 0 && (() => {
                     const k = engineTotals(statuses, lifetime);
                     const fmt = (n) => n.toLocaleString();
                     const pct = (n, d) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
                     return (
-                        <div className="dash-kpis">
-                            <div className="dash-kpi">
-                                <div className="k-lbl">Received</div><div className="k-val">{fmt(k.RECEIVED)}</div>
-                                <div className="k-sub">{lifetime ? 'lifetime stats' : 'current stats'}</div>
+                        // Stays mounted when Stats is Off — the strip slides shut instead of
+                        // popping out, which needs both states in the DOM (.dash-kpis-wrap).
+                        <div className={`dash-kpis-wrap${showStats ? ' open' : ''}`} aria-hidden={!showStats}>
+                          <div className="dash-kpis-slide">
+                            <div className="dash-kpis">
+                                <div className="dash-kpi">
+                                    <div className="k-lbl">Received</div><div className="k-val">{fmt(k.RECEIVED)}</div>
+                                    <div className="k-sub">{lifetime ? 'lifetime stats' : 'current stats'}</div>
+                                </div>
+                                <div className="dash-kpi">
+                                    <div className="k-lbl">Filtered</div><div className="k-val">{fmt(k.FILTERED)}</div>
+                                    <div className="k-sub">{pct(k.FILTERED, k.RECEIVED)}% of received</div>
+                                </div>
+                                <div className="dash-kpi warn">
+                                    <div className="k-lbl">Queued</div><div className="k-val">{fmt(k.QUEUED)}</div>
+                                    <div className="k-sub">across {k.queuedChannels} channel{k.queuedChannels === 1 ? '' : 's'}</div>
+                                </div>
+                                <div className="dash-kpi good">
+                                    <div className="k-lbl">Sent</div><div className="k-val">{fmt(k.SENT)}</div>
+                                    <div className="k-sub">{pct(k.SENT, k.RECEIVED)}% delivered</div>
+                                </div>
+                                <div className="dash-kpi bad">
+                                    <div className="k-lbl">Errored</div><div className="k-val">{fmt(k.ERROR)}</div>
+                                    <div className="k-sub">{pct(k.ERROR, k.RECEIVED)}% error rate</div>
+                                </div>
                             </div>
-                            <div className="dash-kpi">
-                                <div className="k-lbl">Filtered</div><div className="k-val">{fmt(k.FILTERED)}</div>
-                                <div className="k-sub">{pct(k.FILTERED, k.RECEIVED)}% of received</div>
-                            </div>
-                            <div className="dash-kpi warn">
-                                <div className="k-lbl">Queued</div><div className="k-val">{fmt(k.QUEUED)}</div>
-                                <div className="k-sub">across {k.queuedChannels} channel{k.queuedChannels === 1 ? '' : 's'}</div>
-                            </div>
-                            <div className="dash-kpi good">
-                                <div className="k-lbl">Sent</div><div className="k-val">{fmt(k.SENT)}</div>
-                                <div className="k-sub">{pct(k.SENT, k.RECEIVED)}% delivered</div>
-                            </div>
-                            <div className="dash-kpi bad">
-                                <div className="k-lbl">Errored</div><div className="k-val">{fmt(k.ERROR)}</div>
-                                <div className="k-sub">{pct(k.ERROR, k.RECEIVED)}% error rate</div>
-                            </div>
+                          </div>
                         </div>
                     );
                 })()}

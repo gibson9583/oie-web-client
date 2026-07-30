@@ -815,6 +815,77 @@ textarea { font-family: var(--font-mono); font-size: 12px; resize: vertical; min
 
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%), linear-gradient(135deg, var(--text-dim) 50%, transparent 50%); background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 28px; }
 
+/* Checkbox + radio. These were the last OS-native controls (the whole treatment
+   was `accent-color`), which is why they read as foreign next to the token-drawn
+   fields: the browser's own corner radius and border grey, a 13px box against the
+   12.5px type scale, and no transition, so checking snapped. Drawn here from the
+   same tokens as the text inputs — so views, connector panels and plugin-built
+   markup all pick it up, with no JS and nothing for plugin authors to adopt.
+   Radios come along because `.check` wraps both (channel-editor Yes/No). */
+input[type=checkbox], input[type=radio] {
+    appearance: none;
+    position: relative;
+    flex: none;
+    width: 15px;
+    height: 15px;
+    /* Not var(--radius): 10px on a 15px box is a circle. */
+    border-radius: 4px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg2);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+input[type=radio] { border-radius: 50%; }
+input[type=checkbox]:hover:not(:disabled),
+input[type=radio]:hover:not(:disabled) { border-color: var(--accent); }
+input[type=checkbox]:checked, input[type=checkbox]:indeterminate {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+/* A radio keeps its track and takes an accent dot rather than filling solid:
+   "one of these" should not look like the same mark as "this is on". */
+input[type=radio]:checked { border-color: var(--accent); }
+input[type=checkbox]:disabled, input[type=radio]:disabled { cursor: not-allowed; }
+
+/* The glyph — a rotated 2px corner (tick), a bar (the :indeterminate tri-state
+   the code-template groups and channel tree rely on), a dot (radio). Faded and
+   scaled in, so the state change reads as a change rather than a repaint. */
+input[type=checkbox]::after, input[type=radio]::after {
+    content: '';
+    position: absolute;
+    opacity: 0;
+    transition: opacity 0.1s, transform 0.12s ease-out;
+}
+input[type=checkbox]::after {
+    left: 4px; top: 1.5px;
+    width: 5px; height: 8px;
+    border: 2px solid var(--accent-ink);
+    border-top: 0; border-left: 0;
+    transform: rotate(45deg) scale(0.7);
+}
+input[type=checkbox]:checked::after { opacity: 1; transform: rotate(45deg) scale(1); }
+input[type=checkbox]:indeterminate::after {
+    left: 2.5px; top: 5.5px;
+    width: 8px; height: 0;
+    border: 0; border-top: 2px solid var(--accent-ink);
+    opacity: 1; transform: none;
+}
+input[type=radio]::after {
+    left: 3.5px; top: 3.5px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: scale(0.4);
+}
+input[type=radio]:checked::after { opacity: 1; transform: scale(1); }
+
+/* The shared input:focus glow is sized for a full-width text field; on a 15px box
+   it reads as a halo. Keep a ring, but only for keyboard focus. */
+input[type=checkbox]:focus, input[type=radio]:focus { box-shadow: none; }
+input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
 .check {
     display: flex;
     align-items: center;
@@ -824,8 +895,6 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
     cursor: pointer;
     user-select: none;
 }
-
-.check input { width: auto; accent-color: var(--accent); }
 
 .radio-group { display: flex; flex-direction: column; gap: 6px; }
 .radio-group.inline-row { flex-direction: row; gap: 16px; flex-wrap: wrap; }
@@ -2160,9 +2229,34 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
 .dash-kpi.warn .k-val { color: var(--warn); }
 .dash-kpi.bad .k-val { color: var(--err); }
 
+/* Stats: On/Off slides the strip instead of popping it in and out. Same idiom as
+   the rail's collapse — animate a grid track (0fr → 1fr), so the open height is
+   still the content's own and no pixel value has to track the card padding.
+   The wrapper clips while closing; it goes back to `visible` only AFTER the open
+   finishes, so at rest the cards' shadows aren't cut off by the clip. */
+.dash-kpis-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    overflow: hidden;
+    transition: grid-template-rows 0.22s ease;
+}
+/* The collapsing item must carry NO padding of its own: a 0fr track still can't
+   shrink an item below its own padding, which would leave a ~20px ghost gap above
+   the table when closed. Hence the bare slide div wrapping the padded strip.
+   Clipped content still reports a box, so `visibility` also takes the strip out of
+   the a11y/visibility picture; it transitions as a step that lands at the END, so
+   the slide-shut is still fully painted. */
+.dash-kpis-wrap > .dash-kpis-slide { min-height: 0; visibility: hidden; transition: visibility 0.22s; }
+.dash-kpis-wrap.open > .dash-kpis-slide { visibility: visible; }
+.dash-kpis-wrap.open {
+    grid-template-rows: 1fr;
+    overflow: visible;
+    transition: grid-template-rows 0.22s ease, overflow 0s 0.22s allow-discrete;
+}
+
 .dash-content { padding: 0 14px 12px; }
-/* When the stat strip is hidden (Stats: Off), the table is the first element under the
-   topbar — give it the top gap the strip would otherwise provide, so it isn't flush. */
+/* With no deployed channels there is no stat strip at all, so the table is the first
+   element under the topbar — give it the top gap the strip would otherwise provide. */
 .dash-content:first-child { padding-top: 12px; }
 /* Card look painted directly onto the table's own scroll container — no extra
    wrapper, so the sticky header + sort/resize grabbers keep working. */

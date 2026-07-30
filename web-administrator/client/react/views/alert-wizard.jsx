@@ -13,6 +13,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
 import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
+import { useInvalidate } from '../queries.js';
 import { toast, saveFile } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
@@ -71,6 +72,7 @@ function AlertWizardInner({ alert, isNew }) {
     const savedRef = useRef(false);
     const bump = () => { dirtyRef.current = true; forceRender(); };
 
+    const invalidate = useInvalidate();   // the list's ['alerts'] cache — see saveAlert()
     const { step, setStep, maxStep, goStep } = useWizardSteps(isNew, STEPS.length);
     const [nameTouched, setNameTouched] = useState(!isNew);   // don't flag a blank name until touched
     const [saving, setSaving] = useState(false);
@@ -185,6 +187,9 @@ function AlertWizardInner({ alert, isNew }) {
                 if (!await confirmIfAlertChanged(alert.id, baselineRef.current)) return false;
                 await api.alerts.update(alert.id, alert);
             }
+            // The list caches ['alerts'] for 30s and outlives this view, so without
+            // this the alerts list repaints its pre-save rows on the way back.
+            await invalidate('alerts');
             savedRef.current = true;
             dirtyRef.current = false;
             return true;
