@@ -222,6 +222,24 @@ test('sets the channel-name banner title', async ({ page }) => {
     await expect(page.getByText('Channel Messages - Demo Started')).toBeVisible();
 });
 
+test('the Search Criteria heading is a keyboard-operable disclosure when wide', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 800 });
+    await page.goto(`/messages/${CID}`);
+
+    const heading = page.getByRole('button', { name: /Search Criteria/ });
+    await expect(heading).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.filter-popover')).toBeVisible();
+
+    // It used to be a click-only <span>: no role, no state, no way in from the keyboard.
+    await heading.focus();
+    await page.keyboard.press('Enter');
+    await expect(heading).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.filter-popover')).toBeHidden();
+    await page.keyboard.press('Enter');
+    await expect(heading).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.filter-popover')).toBeVisible();
+});
+
 test('filter criteria collapse into a Filters popover when narrow', async ({ page }) => {
     await page.setViewportSize({ width: 700, height: 800 });
     await page.goto(`/messages/${CID}`);

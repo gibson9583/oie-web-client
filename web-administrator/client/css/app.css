@@ -948,6 +948,10 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 }
 
 .modal.wide { width: min(900px, calc(100vw - 40px)); }
+/* Channel Dependencies: wide enough for its three tab labels on one row, and the
+   body must not add a second scrollbar over the tabs' own. */
+.modal.modal-deps { width: min(620px, calc(100vw - 40px)); }
+.modal.modal-deps .modal-body { overflow: hidden; }
 .modal.xwide { width: min(1200px, calc(100vw - 40px)); }
 
 @keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.99); } }
@@ -1612,6 +1616,15 @@ input.grid-name::placeholder { color: var(--text-faint); }
     display: flex;
     align-items: center;
     gap: 6px;
+    /* A <button> arrives with the UA's button chrome and shrink-wraps its text;
+       the header spans the pane, reads from the left, and paints nothing —
+       exactly like the div it replaced. */
+    appearance: none;
+    background: none;
+    border: 0;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
     padding: 7px 10px 4px;
     font-size: 10px;
     font-weight: 700;
@@ -1622,8 +1635,8 @@ input.grid-name::placeholder { color: var(--text-faint); }
     user-select: none;
 }
 .rail-pane-header:hover { color: var(--rail-fg); }
-/* The header is now keyboard-operable (role=button + Enter/Space), so it needs a
-   focus cue that reads against the rail's own gradient rather than the browser's. */
+/* The header is keyboard-operable, so it needs a focus cue that reads against the
+   rail's own gradient rather than the browser's. */
 .rail-pane-header:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
@@ -1722,7 +1735,6 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .rail-customize .rail-chrome.on { color: var(--accent); }
 .rail-collapsed .rail-customize .rail-label { display: none; }
 .rail-pane.collapsed .pane-chevron { transform: rotate(180deg); }
-.rail-pane.collapsed .rail-pane-body { display: none; }
 
 .rail-pane-body { padding: 1px 0 3px; }
 
@@ -2068,37 +2080,29 @@ input.grid-name::placeholder { color: var(--text-faint); }
    the nav rail throws off). container-type makes .filterbar the containing block for the
    absolute popover; the typeahead is moved to document.body so it stays viewport-fixed. */
 .filterbar { container-type: inline-size; position: relative; }
-.dash-options-btn { display: none; }
+/* Rendered only when the bar is too narrow for the controls inline — the
+   threshold is measured in JS now, because a Radix popover is portaled and
+   positioned by Radix and so cannot double as an inline flex child. */
+.dash-options-btn { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 .dash-options-btn svg:first-child { width: 14px; height: 14px; }
 .dash-options-btn svg:last-child { width: 12px; height: 12px; opacity: 0.7; }
 
-/* Collapse to the View menu below ~880px — the inline controls need ~607px and the
-   filter zone another ~240px, so they'd wrap into a second row below roughly there. */
-@container (max-width: 880px) {
-    .dash-options-btn { display: inline-flex !important; align-items: center; gap: 6px; margin-left: auto; }
-    /* !important beats the Tailwind `flex` utility on .dash-controls — utilities
-       outrank this @layer components block in Tailwind v4's layer order. */
-    .dash-controls {
-        display: none !important;
-        position: absolute;
-        top: calc(100% + 4px);
-        right: 8px;
-        z-index: 150;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 12px;
-        min-width: 210px;
-        margin-left: 0;
-        padding: 12px 14px;
-        background: var(--bg2);
-        border: 1px solid var(--line-strong);
-        border-radius: 6px;
-        box-shadow: var(--shadow);
-        animation: fade-in 0.1s ease-out;
-    }
-    .dash-controls.open { display: flex !important; }
-    .dash-controls .radio-group.inline-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+/* The same controls, stacked on the popover surface. Placement is Radix's. */
+.dash-controls-pop {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    z-index: 150;
+    min-width: 210px;
+    padding: 12px 14px;
+    background: var(--bg2);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    animation: fade-in 0.1s ease-out;
 }
+.dash-controls-pop .radio-group.inline-row { flex-direction: column; align-items: flex-start; gap: 6px; }
 
 /* Very narrow bar (phone): drop the secondary "N Groups, M Deployed Channels"
    count so the filter input and View button aren't crushed. The count is
@@ -2119,38 +2123,45 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .filter-toggle svg:last-child { width: 12px; height: 12px; opacity: 0.7; }
 /* Advanced criteria: hidden inline behind the Advanced toggle until opened. */
 .filter-advanced.adv-hidden { display: none; }
-/* Wide-mode collapse (message browser's "Search Criteria" heading). */
-.filter-popover.collapsed { display: none; }
-
-@container (max-width: 760px) {
-    .filter-toggle { display: inline-flex !important; align-items: center; gap: 6px; }
-    /* In the popover there's room to just show everything — drop the nested Advanced
-       toggle and always show the advanced fields (no menu-within-a-menu). */
-    .filter-adv-toggle { display: none !important; }
-    .filter-popover .filter-advanced { display: flex !important; }
-    .filter-popover {
-        display: none !important;
-        position: absolute;
-        top: calc(100% + 6px);
-        left: 12px;
-        z-index: 150;
-        width: min(320px, calc(100vw - 24px));
-        max-height: min(70vh, 460px);
-        overflow: auto;
-        padding: 14px;
-        background: var(--bg2);
-        border: 1px solid var(--line-strong);
-        border-radius: 6px;
-        box-shadow: var(--shadow);
-        animation: fade-in 0.1s ease-out;
-    }
-    .filter-popover.open { display: block !important; }
-    /* Stack the form-row fields vertically inside the popover. */
-    .filter-popover .form-row { flex-direction: column; align-items: stretch; gap: 10px; }
-    .filter-popover .form-row + .form-row { margin-top: 10px; }
-    .filter-popover .field { margin-bottom: 0; }
-    .filter-popover .field input, .filter-popover .field select { width: 100%; }
+/* The message browser's "Search Criteria" heading is a disclosure button; it
+   paints nothing of its own. (Radix unmounts the collapsed criteria, so the old
+   `.filter-popover.collapsed { display: none }` rule has nothing left to hide.) */
+.criteria-heading {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
 }
+
+/* The Filters trigger only exists when the view has decided it is narrow, so it
+   no longer needs a container query to hide itself when it isn't. */
+.filter-toggle { display: inline-flex; align-items: center; gap: 6px; }
+
+/* The criteria on the popover surface. Placement is Radix's; everything here is
+   the surface and the vertical stacking the narrow layout wants. */
+.filter-popover-pop {
+    z-index: 150;
+    width: min(320px, calc(100vw - 24px));
+    max-height: min(70vh, 460px);
+    overflow: auto;
+    padding: 14px;
+    background: var(--bg2);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    animation: fade-in 0.1s ease-out;
+}
+/* In the popover there's room to just show everything — drop the nested Advanced
+   toggle and always show the advanced fields (no menu-within-a-menu). */
+.filter-popover-pop .filter-adv-toggle { display: none; }
+.filter-popover-pop .filter-advanced { display: flex !important; }
+.filter-popover-pop .form-row { flex-direction: column; align-items: stretch; gap: 10px; }
+.filter-popover-pop .form-row + .form-row { margin-top: 10px; }
+.filter-popover-pop .field { margin-bottom: 0; }
+.filter-popover-pop .field input, .filter-popover-pop .field select { width: 100%; }
 .filterbar .check, .filterbar .radio-group label { font-size: 12px; color: var(--text-dim); display: inline-flex; align-items: center; gap: 5px; }
 
 .split-handle {

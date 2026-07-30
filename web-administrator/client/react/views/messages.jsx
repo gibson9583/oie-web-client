@@ -51,6 +51,10 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { DateTimeField } from '../date-time-field.jsx';
+
+/* Criteria-panel width below which the criteria fold into the Filters popover. */
+const CRITERIA_INLINE_MIN = 760;
 
 
 /* ---- XStream JSON normalization helpers -------------------------------------- */
@@ -2145,18 +2149,19 @@ export function MessagesView({ params, query }) {
 
     /* ---- filters popover (narrow layout) ---- */
 
-    const criteriaBodyRef = useRef(null);
-    const filtersBtnRef = useRef(null);
-    useEffect(() => {
-        if (!filtersOpen) return;
-        const onDown = (e) => {
-            if (!criteriaBodyRef.current?.contains(e.target) && !filtersBtnRef.current?.contains(e.target)) {
-                setFiltersOpen(false);
-            }
-        };
-        const t = setTimeout(() => document.addEventListener('mousedown', onDown), 0);
-        return () => { clearTimeout(t); document.removeEventListener('mousedown', onDown); };
-    }, [filtersOpen]);
+    /* Wide, the criteria are an inline block the "Search Criteria" heading
+       collapses; narrow, they move behind the Filters button as a popover. Radix
+       positions and portals a popover, so it cannot also be the inline block —
+       hence the threshold the container query used to apply is measured here. */
+    const criteriaPanelRef = useRef(null);
+    const [narrowCriteria, setNarrowCriteria] = useState(false);
+    useLayoutEffect(() => {
+        const el = criteriaPanelRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const ro = new ResizeObserver(([entry]) => setNarrowCriteria(entry.contentRect.width <= CRITERIA_INLINE_MIN));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     /* ---- bootstrap ---- */
 
@@ -2202,41 +2207,9 @@ export function MessagesView({ params, query }) {
     const totalStr = pager.total == null ? '?' : fmtNumber(pager.total);
     const hasSel = !!selected;
 
-    return (
-        <div className="view">
-            <ViewTasks>
-                <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
-                    <div className="taskbar" data-pane-title="Message Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
-                        <TaskButton label="Send Message" icon="send" primary task="doSendMessage" onClick={sendMessageTask} />
-                        <TaskButton label="Import Messages" icon="import" task="doImportMessages" onClick={importMessagesTask} />
-                        <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={exportResultsTask} />
-                        <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={removeAllTask} />
-                        <TaskButton label="Remove Results" icon="trash" danger task="doRemoveFilteredMessages" onClick={removeResultsTask} />
-                        {hasSel && <TaskButton label="Remove Message" icon="trash" danger task="doRemoveMessage" onClick={() => removeMessageTask()} />}
-                        <TaskButton label="Reprocess Results" icon="transform" task="doReprocessFilteredMessages" onClick={reprocessResultsTask} />
-                        {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
-                    </div>
-                </RailPane>
-            </ViewTasks>
-            <div className="view-body flush flex flex-col h-full min-h-0">
-                {/* Wide: click the "Search Criteria" heading to collapse the criteria
-                    in place. Narrow: they collapse into a "Filters" popover. */}
-                <div className="panel filter-collapse flex-none border-0 border-b border-line rounded-none">
-                    <div className="panel-header flex items-center gap-2">
-                        <span className="criteria-heading cursor-pointer inline-flex items-center gap-1.5"
-                            onClick={() => setCriteriaCollapsed(v => !v)}>
-                            <span className="cursor-pointer">{criteriaCollapsed ? '▸' : '▾'}</span>
-                            Search Criteria
-                        </span>
-                        <button ref={filtersBtnRef} className="btn filter-toggle" type="button"
-                            aria-haspopup="true" aria-expanded={String(filtersOpen)}
-                            onClick={() => setFiltersOpen(o => !o)}>
-                            <Icon name="filter" /><span>Filters</span><Icon name="chevD" />
-                        </button>
-                    </div>
-                    <div ref={criteriaBodyRef}
-                        className={'panel-body filter-popover' + (criteriaCollapsed ? ' collapsed' : '') + (filtersOpen ? ' open' : '')}>
+    /* Defined once and mounted inline or in the popover — two homes, not two copies. */
+    const criteria = (
+        <>
                         <div className="form-row">
                             <Field label="Start Date">
                                 <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -2319,9 +2292,67 @@ export function MessagesView({ params, query }) {
                             </button>
                         </div>
                         <div className="text-text-faint mt-1.5">{searchSummary}</div>
-                    </div>
-                </div>
+        </>
+    );
 
+    return (
+        <div className="view">
+            <ViewTasks>
+                <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
+                    <div className="taskbar" data-pane-title="Message Tasks">
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
+                        <TaskButton label="Send Message" icon="send" primary task="doSendMessage" onClick={sendMessageTask} />
+                        <TaskButton label="Import Messages" icon="import" task="doImportMessages" onClick={importMessagesTask} />
+                        <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={exportResultsTask} />
+                        <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={removeAllTask} />
+                        <TaskButton label="Remove Results" icon="trash" danger task="doRemoveFilteredMessages" onClick={removeResultsTask} />
+                        {hasSel && <TaskButton label="Remove Message" icon="trash" danger task="doRemoveMessage" onClick={() => removeMessageTask()} />}
+                        <TaskButton label="Reprocess Results" icon="transform" task="doReprocessFilteredMessages" onClick={reprocessResultsTask} />
+                        {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
+                    </div>
+                </RailPane>
+            </ViewTasks>
+            <div className="view-body flush flex flex-col h-full min-h-0">
+                {/* Wide: click the "Search Criteria" heading to collapse the criteria
+                    in place. Narrow: they collapse into a "Filters" popover. */}
+                {/* Wide: the "Search Criteria" heading is a real disclosure over the
+                    inline criteria. Narrow: the same criteria move behind the Filters
+                    button, where Radix owns Escape, outside-click and focus return. */}
+                <div ref={criteriaPanelRef} className="panel filter-collapse flex-none border-0 border-b border-line rounded-none">
+                    {narrowCriteria ? (
+                        <div className="panel-header flex items-center gap-2">
+                            <span className="criteria-heading inline-flex items-center gap-1.5">Search Criteria</span>
+                            <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
+                                <Popover.Trigger asChild>
+                                    <button className="btn filter-toggle" type="button">
+                                        <Icon name="filter" /><span>Filters</span><Icon name="chevD" />
+                                    </button>
+                                </Popover.Trigger>
+                                <Popover.Portal>
+                                    <Popover.Content className="panel-body filter-popover filter-popover-pop"
+                                        align="start" sideOffset={6} collisionPadding={12}>
+                                        {criteria}
+                                    </Popover.Content>
+                                </Popover.Portal>
+                            </Popover.Root>
+                        </div>
+                    ) : (
+                        <Collapsible.Root open={!criteriaCollapsed}
+                            onOpenChange={(open) => setCriteriaCollapsed(!open)}>
+                            <div className="panel-header flex items-center gap-2">
+                                <Collapsible.Trigger asChild>
+                                    <button type="button" className="criteria-heading inline-flex items-center gap-1.5">
+                                        <span aria-hidden="true">{criteriaCollapsed ? '▸' : '▾'}</span>
+                                        Search Criteria
+                                    </button>
+                                </Collapsible.Trigger>
+                            </div>
+                            <Collapsible.Content className="panel-body filter-popover">
+                                {criteria}
+                            </Collapsible.Content>
+                        </Collapsible.Root>
+                    )}
+                </div>
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[14px] pt-3 pb-3">
                     <ResultsTable
                         cols={visibleCols} mgr={mgr} rows={sortedMessages}
