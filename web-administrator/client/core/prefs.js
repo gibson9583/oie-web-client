@@ -39,7 +39,12 @@ export const PREF_DEFAULTS = {
     // Card view: remembered "group by" choice ('none' | 'group' | 'tag' | 'state').
     cardsGroupBy: 'none',
     // Card view: show Lifetime statistics (true) vs. Current (false).
-    cardsLifetime: false
+    cardsLifetime: false,
+    // Per-user navigation layout: a SPARSE overlay on platform.navItems() holding
+    // group order/renames/custom groups and per-item group/order/hidden/label.
+    // null = untouched, so the rail is exactly what the app declares. The merge and
+    // every edit live in core/nav-layout.js; see react/nav-rail.jsx for the UI.
+    navLayout: null
 };
 
 let cache = null;

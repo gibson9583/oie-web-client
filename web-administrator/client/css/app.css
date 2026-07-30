@@ -1550,14 +1550,116 @@ input.grid-name::placeholder { color: var(--text-faint); }
     user-select: none;
 }
 .rail-pane-header:hover { color: var(--rail-fg); }
+/* The header is now keyboard-operable (role=button + Enter/Space), so it needs a
+   focus cue that reads against the rail's own gradient rather than the browser's. */
+.rail-pane-header:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    border-radius: 4px;
+    color: var(--rail-fg);
+}
 
 .rail-pane-header .pane-chevron { margin-left: auto; transition: transform 0.15s; font-size: 9px; opacity: 0.7; }
+
+/* ── nav customization (react/nav-rail.jsx) ─────────────────────────────────────
+   Affordances exist only while customizing: the rail is the most-clicked surface
+   in the app, and permanent drag handles turn every mis-click into a reorder. */
+.rail-row { display: flex; align-items: center; }
+.rail-row .rail-item { flex: 1; min-width: 0; }
+.rail-row:hover .rail-eye { opacity: 1; }
+.rail-item .rail-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-item .rail-grip,
+.rail-pane-header .rail-grip { cursor: grab; opacity: 0.45; font-size: 11px; flex: none; letter-spacing: 0; }
+.rail-item.rail-hidden { opacity: 0.5; }
+.rail-item.rail-hidden .rail-label { text-decoration: line-through; }
+
+/* A control beside the nav button, never inside it: an interactive element nested
+   in a button is invalid, and this rail just had its semantics cleaned up. */
+.rail-eye {
+    appearance: none;
+    background: none;
+    border: 0;
+    color: var(--rail-fg-dim);
+    cursor: pointer;
+    padding: 4px 12px 4px 2px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.75;
+    transition: opacity 0.12s, color 0.12s;
+}
+.rail-eye:hover { color: var(--rail-fg); opacity: 1; }
+.rail-eye:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; opacity: 1; }
+
+.rail-pane-tools { display: inline-flex; gap: 2px; margin-left: auto; }
+.rail-tool {
+    appearance: none;
+    background: none;
+    border: 0;
+    color: var(--rail-fg-dim);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.rail-tool:hover { color: var(--rail-fg); background: rgba(255, 255, 255, 0.12); }
+.rail-tool:focus-visible { outline: 1px solid var(--accent); }
+
+/* Inline rename, for both a group heading and an item. */
+.rail-name-input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    color: var(--rail-fg);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 1px 5px;
+    width: 100%;
+}
+.rail-pane-header .rail-name-input {
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.rail-editing .rail-pane { outline: 1px dashed color-mix(in srgb, var(--rail-fg-dim) 40%, transparent); outline-offset: -2px; border-radius: 4px; }
+.rail-editing .rail-item { cursor: grab; }
+.rail-drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+.rail-drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+.rail-pane.rail-drop-into { outline: 1px solid var(--accent); }
+.rail-empty-slot {
+    color: var(--rail-fg-dim);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    padding: 7px 16px;
+    opacity: 0.75;
+}
+
+/* The entry point + the controls that appear with it. Chrome, so it sits below
+   every group and outside the layout the user is editing. */
+.rail-customize {
+    border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    margin-top: 10px;
+    padding-top: 4px;
+}
+/* Only what differs from a nav row: the active-customizing accent. */
+.rail-customize .rail-chrome.on { color: var(--accent); }
+.rail-collapsed .rail-customize .rail-label { display: none; }
 .rail-pane.collapsed .pane-chevron { transform: rotate(180deg); }
 .rail-pane.collapsed .rail-pane-body { display: none; }
 
 .rail-pane-body { padding: 1px 0 3px; }
 
-.rail-pane .rail-item {
+/* The customize footer rows are nav rows in every visual respect, so they share
+   this rule rather than restating it: when they were given their own padding and
+   font-size they came out 8px right of everything else, half a pixel smaller and a
+   weight lighter. */
+.rail-pane .rail-item,
+.rail-customize .rail-chrome {
     padding: 5px 10px;
     border-left: 0;
     font-size: 12.5px;
@@ -1568,8 +1670,10 @@ input.grid-name::placeholder { color: var(--text-faint); }
     margin: 1px 0;
     color: var(--rail-fg-dim);
 }
-.rail-pane .rail-item svg { width: 15px; height: 15px; }
-.rail-pane .rail-item:hover {
+.rail-pane .rail-item svg,
+.rail-customize .rail-chrome svg { width: 15px; height: 15px; }
+.rail-pane .rail-item:hover,
+.rail-customize .rail-chrome:hover {
     background: color-mix(in srgb, var(--rail-fg) 10%, transparent);
     color: var(--rail-fg);
 }
@@ -1658,8 +1762,11 @@ input.grid-name::placeholder { color: var(--text-faint); }
 }
 .rail-collapsed .rail-item span { display: none; }
 /* 24px: an icon carrying a nav item ALONE needs to read as a target, where the
-   expanded rail's 15px is only a hint beside its label. */
-.rail-collapsed .rail-pane .rail-item svg { width: 24px; height: 24px; }
+   expanded rail's 15px is only a hint beside its label. The customize/logout rows
+   are included because they live OUTSIDE .rail-pane — every rule scoped to the
+   pane misses them, and they end up visibly smaller than everything above. */
+.rail-collapsed .rail-pane .rail-item svg,
+.rail-collapsed .rail-customize .rail-chrome svg { width: 24px; height: 24px; }
 
 /* The Other pane's buttons carry their label as a bare text node, so there is no
    element to hide — font-size:0 collapses the text while the icons keep their
