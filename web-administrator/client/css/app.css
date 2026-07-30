@@ -1736,7 +1736,37 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .rail-collapsed .rail-customize .rail-label { display: none; }
 .rail-pane.collapsed .pane-chevron { transform: rotate(180deg); }
 
-.rail-pane-body { padding: 1px 0 3px; }
+/* Collapse animation. Radix publishes the measured height of the panel as
+   --radix-collapsible-content-height while it opens or closes, which is the only
+   way to animate to `auto`. The padding is animated too — with box-sizing:
+   border-box a height of 0 still leaves the padding visible — and it is held in
+   variables so the keyframes and the rule can't drift apart.
+
+   Height and padding only, deliberately: a transform would make this pane the
+   containing block for the collapsed rail's position:fixed flyout labels, and an
+   opacity would fade them with it. */
+.rail-pane-body {
+    --pane-pad-t: 1px;
+    --pane-pad-b: 3px;
+    padding: var(--pane-pad-t) 0 var(--pane-pad-b);
+    overflow: hidden;
+}
+@keyframes rail-pane-expand {
+    from { height: 0; padding-top: 0; padding-bottom: 0; }
+    to { height: var(--radix-collapsible-content-height); padding-top: var(--pane-pad-t); padding-bottom: var(--pane-pad-b); }
+}
+@keyframes rail-pane-collapse {
+    from { height: var(--radix-collapsible-content-height); padding-top: var(--pane-pad-t); padding-bottom: var(--pane-pad-b); }
+    to { height: 0; padding-top: 0; padding-bottom: 0; }
+}
+.rail-pane-body[data-state="open"] { animation: rail-pane-expand 0.18s cubic-bezier(0.33, 1, 0.68, 1); }
+.rail-pane-body[data-state="closed"] { animation: rail-pane-collapse 0.16s cubic-bezier(0.32, 0, 0.67, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+    .rail-pane-body[data-state="open"],
+    .rail-pane-body[data-state="closed"] { animation: none; }
+    .rail-pane-header .pane-chevron { transition: none; }
+}
 
 /* The customize footer rows are nav rows in every visual respect, so they share
    this rule rather than restating it: when they were given their own padding and
@@ -1944,7 +1974,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
 }
 .view-tasks .pane-chevron { color: var(--text-faint); }
 
-.view-tasks .rail-pane-body { padding: 0; }
+.view-tasks .rail-pane-body { --pane-pad-t: 0px; --pane-pad-b: 0px; padding: 0; }
 .view-tasks .rail-pane-body .taskbar {
     flex-direction: column;
     align-items: stretch;
