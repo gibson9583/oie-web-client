@@ -23,7 +23,7 @@ import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
 import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
-import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
+import { getPref, setPrefs, resetPrefs, DASHBOARD_REFRESH_SECONDS } from '../../core/prefs.js';
 import { checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { setTheme, setTableDensity, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
@@ -675,7 +675,7 @@ function AdministratorTab({ ctx }) {
         const f = formRef.current;
         if (!f) return;
         setPrefs({
-            dashboardRefreshSeconds: Math.max(1, parseInt(f.dashRefresh, 10) || 5),
+            dashboardRefreshSeconds: Math.max(1, parseInt(f.dashRefresh, 10) || DASHBOARD_REFRESH_SECONDS),
             messagePageSize: Number(f.msgPageSize) || 20,
             eventPageSize: Number(f.evtPageSize) || 20,
             formatMessages: f.formatMsgs,

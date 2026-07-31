@@ -12,9 +12,25 @@ import { scopedKey } from './store.js';
 const BASE_KEY = 'webadmin-prefs';
 const storageKey = () => scopedKey(BASE_KEY);
 
+/*
+ * The dashboard's poll interval, in seconds — Swing's default, and deliberately
+ * the same number.
+ *
+ * The status poll fetches EVERY deployed channel's statuses on every tick, so its
+ * cost is the channel count times the rate. At five seconds a thousand-channel
+ * engine was being asked for the whole board twelve times a minute, per open
+ * dashboard; the Swing client has always asked three times a minute
+ * (StatusUpdater's DEFAULT_INTERVAL_TIME), and its own tooltip tells operators to
+ * raise it further for "slower servers with more channels".
+ *
+ * Anyone who wants the faster board still has the preference on Settings →
+ * Administrator, which is exactly how the desktop client offers it.
+ */
+export const DASHBOARD_REFRESH_SECONDS = 20;
+
 export const PREF_DEFAULTS = {
     // System Preferences
-    dashboardRefreshSeconds: 5,
+    dashboardRefreshSeconds: DASHBOARD_REFRESH_SECONDS,
     messagePageSize: 20,
     eventPageSize: 20,
     formatMessages: true,        // pretty-print XML/JSON in the message browser by default

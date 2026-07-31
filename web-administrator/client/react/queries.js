@@ -12,7 +12,7 @@
 
 import { QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@oie/web-api';
-import { getPref } from '../core/prefs.js';
+import { getPref, DASHBOARD_REFRESH_SECONDS } from '../core/prefs.js';
 
 // ONE shared client for the whole app. The strangler mounts each view in its own
 // React root (react/mount.jsx), so every mount point must wrap with this same
@@ -41,12 +41,12 @@ export function useAlerts() {
     return useQuery({
         queryKey: ['alerts'],
         queryFn: async () => (await api.alerts.list()).filter((a) => a && a.id),
-        refetchInterval: () => Math.max(1, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000
+        refetchInterval: () => Math.max(1, Number(getPref('dashboardRefreshSeconds')) || DASHBOARD_REFRESH_SECONDS) * 1000
     });
 }
 
 /** The dashboard auto-refresh interval preference, in ms (min clamp per caller). */
-const dashIntervalMs = (min = 1) => Math.max(min, Number(getPref('dashboardRefreshSeconds')) || 5) * 1000;
+const dashIntervalMs = (min = 1) => Math.max(min, Number(getPref('dashboardRefreshSeconds')) || DASHBOARD_REFRESH_SECONDS) * 1000;
 
 /** Deployed channel statuses (the card/dashboard grid). Polls on the dashboard
  *  interval while `live`; pass live=false to pause. Undeployed channels excluded. */
