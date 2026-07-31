@@ -192,10 +192,16 @@ function SegPill({ options, value, onChange, label }) {
    position:fixed and portaled to document.body so the (container-type) filter
    bar never becomes its containing block. */
 const TYPEAHEAD_MAX = 12;
-/* Filter-bar width below which the display controls fold into the View popover:
-   they need ~607px and the filter zone another ~240px, so they would wrap onto a
-   second row below roughly here. */
-const CONTROLS_INLINE_MIN = 880;
+/* Filter-bar content width below which the display controls fold into the View
+   popover.
+
+   Measured, not estimated: the controls now occupy ~870px, so at the old 880 they
+   went inline the moment there was technically room and squeezed the filter input
+   to 41px — it did not recover its full 340px until ~1250. (The old figure of
+   ~607px predates the segmented toggles, the chip host and the counts.) The
+   threshold is the point where the filter still gets the ~240px the bar was
+   designed around; below it, folded-and-usable beats inline-and-crushed. */
+const CONTROLS_INLINE_MIN = 1120;
 
 function DashFilterBar({
     statuses, tags, countsText,
