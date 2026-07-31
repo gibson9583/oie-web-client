@@ -25,7 +25,7 @@ import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs } from '../../core/prefs.js';
 import { checkImportVersionFromDoc } from '../../core/import-guard.js';
-import { setTheme, getState, setState } from '../../core/store.js';
+import { setTheme, setTableDensity, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
@@ -649,6 +649,7 @@ function AdministratorTab({ ctx }) {
             newAlertDefault: builderValue(getPref('newAlertDefault')),
             showViewSwitch: getPref('showViewSwitch') !== false,
             theme: document.documentElement.dataset.theme || 'light',
+            tableDensity: getPref('tableDensity') || 'normal',
             bgMode: 'default',
             bgColor: '#2a75b2'
         });
@@ -683,9 +684,11 @@ function AdministratorTab({ ctx }) {
             exportLibrariesWithChannels: f.exportLibs,
             newChannelDefault: f.newChannelDefault,
             newAlertDefault: f.newAlertDefault,
-            showViewSwitch: f.showViewSwitch
+            showViewSwitch: f.showViewSwitch,
+            tableDensity: f.tableDensity
         });
         setTheme(f.theme);
+        setTableDensity(f.tableDensity);   // takes effect now, like the theme
         // Persist the per-user color override (or clear it) and re-tint live.
         // Swing (SettingsPanelAdministrator.doSave) writes this as a single
         // preference: setUserPreference(id, "backgroundColor", <awt-color xml>).
@@ -791,6 +794,51 @@ function AdministratorTab({ ctx }) {
             <div className="panel">
                 <div className="panel-header">User Preferences</div>
                 <div className="panel-body">
+                    {/* The pending choices, before Save applies them to the app.
+                        Theme and density are plain data attributes, and the app's own
+                        rules key off them without needing :root — so the very CSS that
+                        dresses the app dresses this sample, with no second set of
+                        styles to drift. It sits ABOVE the controls because this panel
+                        is the last on a long tab: below them it fell off the fold, and
+                        a preview you have to scroll to is one nobody sees change. */}
+                    <div className="pref-preview" data-theme={form.theme}
+                        data-table-density={form.tableDensity}
+                        style={form.bgMode === 'custom' ? { '--rail-bg': form.bgColor } : undefined}>
+                        <div className="pref-preview-label">Preview</div>
+                        <div className="pref-preview-frame">
+                            <div className="pref-preview-rail">
+                                <span className="pref-preview-brand" /><span /><span /><span />
+                            </div>
+                            <table className="dt">
+                                <thead>
+                                    <tr><th>Status</th><th>Name</th><th>Received</th></tr>
+                                </thead>
+                                <tbody>
+                                    {[
+                                        ['ok', 'Started', 'Demo Channel', '48,316'],
+                                        ['ok', 'Started', 'HL7 Inbound', '12,004'],
+                                        ['warn', 'Paused', 'DICOM Sender', '1,204'],
+                                        ['ok', 'Started', 'Web Demonstration', '860'],
+                                        ['err', 'Stopped', 'Example - Validate XSD', '0'],
+                                        ['ok', 'Started', 'Global Router', '9,431'],
+                                        ['ok', 'Started', 'File Drop', '77'],
+                                    ].map(([pip, state, name, count]) => (
+                                        <tr key={name}>
+                                            <td><span className={'pip ' + pip} /> {state}</td>
+                                            <td>{name}</td><td>{count}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <PrefRow label="Table density">
+                        <select value={form.tableDensity} onChange={(e) => patch({ tableDensity: e.target.value })}>
+                            <option value="compact">Compact</option>
+                            <option value="normal">Normal</option>
+                            <option value="wide">Wide</option>
+                        </select>
+                    </PrefRow>
                     <PrefRow label="Theme">
                         <select value={form.theme} onChange={(e) => patch({ theme: e.target.value })}>
                             <option value="light">Light</option>

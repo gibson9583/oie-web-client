@@ -80,6 +80,18 @@ export function initTheme() {
     state.theme = theme;
 }
 
+/* ---- table density ---- */
+
+export const TABLE_DENSITIES = ['compact', 'normal', 'wide'];
+
+/* On <html> so it also reaches grids rendered inside dialogs, which Radix portals
+   outside the app tree. */
+export function setTableDensity(density) {
+    const value = TABLE_DENSITIES.includes(density) ? density : 'normal';
+    document.documentElement.dataset.tableDensity = value;
+    setState('tableDensity', value);
+}
+
 /* ---- left nav (rail) collapse ---- */
 
 // Phone/tablet: the rail is an off-canvas drawer that starts closed (content

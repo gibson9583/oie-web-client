@@ -614,6 +614,9 @@ async function establishPrefScope(user) {
     try { id = await api.server.id(); } catch { /* fall back to the un-scoped key */ }
     store.setPrefScope(id, user && user.id);
     store.reapplyScopedSettings();
+    // Density lives in the prefs store, so it can only be applied once the scope is
+    // known — unlike the theme, which is mirrored to localStorage for boot.
+    store.setTableDensity(getPref('tableDensity'));
 }
 
 export function App() {
