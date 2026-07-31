@@ -2884,6 +2884,16 @@ export function ChannelEditorView({ params, query }) {
         let alive = true;
         api.channels.get(params.channelId).then((loaded) => {
             if (!alive) return;
+            /* An id the engine doesn't know is NOT an error response: it answers 200
+               with an empty body, so this resolves with nothing. Without this check
+               the view proceeded to build an editor around null and threw on the
+               first field read — a stale bookmark or a deleted channel took out the
+               whole view instead of reporting it. */
+            if (!loaded || !loaded.id) {
+                toast(`Channel ${params.channelId} was not found.`, 'error');
+                setReady(false);
+                return;
+            }
             store.setState('editingChannel', loaded);
             setReady(true);
         }).catch((e) => { if (alive) { toast(e.message, 'error'); setReady(false); } });
