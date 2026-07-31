@@ -339,7 +339,7 @@ const DETAIL_TONE = { err: 'var(--err)', warn: 'var(--warn)', ok: 'var(--ok)', i
 export function detailModal({ title, badge, meta, sections = [], copy } = {}) {
     const preClass = 'mono m-0 whitespace-pre-wrap [word-break:break-word] overflow-x-hidden '
         + 'overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px] '
-        + 'max-h-[50vh] text-[12px]';
+        + 'max-h-[50vh] text-[11px]';
     const tone = badge ? (DETAIL_TONE[badge.tone] || 'var(--text)') : null;
     const badgeEl = badge
         ? h('span.tag', { class: 'font-[650]', style: { color: tone, borderColor: tone } },
@@ -349,8 +349,8 @@ export function detailModal({ title, badge, meta, sections = [], copy } = {}) {
     return modal({
         title,
         size: 'wide',
-        body: h('div', { class: 'flex flex-col gap-2 min-w-[620px] max-w-[80vw]' },
-            (badge || meta) ? h('div', { class: 'flex gap-[14px] items-center flex-wrap' },
+        body: h('div', { class: 'flex flex-col gap-2 min-w-[558px] max-w-[80vw]' },
+            (badge || meta) ? h('div', { class: 'flex gap-[13px] items-center flex-wrap' },
                 badgeEl, meta ? h('span.mono.text-text-faint', String(meta)) : null) : null,
             ...sections.flatMap(s => [
                 s.label ? h('div', { class: 'font-semibold' }, s.label) : null,

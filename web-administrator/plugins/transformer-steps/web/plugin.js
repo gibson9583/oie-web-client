@@ -184,7 +184,7 @@ function makeIteratorEditor(isRule) {
           }
         }
       )
-    ))), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint pt-2.5 px-0 pb-0 text-[11px]" }, `Child ${childNoun}s appear nested under this Iterator in the ${childNoun} list. Add a ${childNoun} while a child is selected, or right-click a ${childNoun} and choose "Assign To Iterator".`));
+    ))), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint pt-2.5 px-0 pb-0 text-[10px]" }, `Child ${childNoun}s appear nested under this Iterator in the ${childNoun} list. Add a ${childNoun} while a child is selected, or right-click a ${childNoun} and choose "Assign To Iterator".`));
   }
   return {
     label: "Iterator",
@@ -398,10 +398,10 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
   )), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Destinations" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: selectAll }, "Select All"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: deselectAll }, "Deselect All")), /* @__PURE__ */ React.createElement(
     "div",
     {
-      className: "dt-wrap border border-line rounded max-h-[180px]",
+      className: "dt-wrap border border-line rounded max-h-[162px]",
       style: listDisabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
     },
-    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "w-[42px]" }), /* @__PURE__ */ React.createElement("th", null, "Name"), /* @__PURE__ */ React.createElement("th", { className: "w-[70px]" }, "Id"))), /* @__PURE__ */ React.createElement("tbody", null, dests.length ? dests.map((d) => {
+    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "w-[38px]" }), /* @__PURE__ */ React.createElement("th", null, "Name"), /* @__PURE__ */ React.createElement("th", { className: "w-[63px]" }, "Id"))), /* @__PURE__ */ React.createElement("tbody", null, dests.length ? dests.map((d) => {
       const id = String(d.metaDataId);
       return /* @__PURE__ */ React.createElement("tr", { key: id }, /* @__PURE__ */ React.createElement("td", { className: "text-center" }, /* @__PURE__ */ React.createElement(
         "input",
@@ -437,7 +437,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
   )), /* @__PURE__ */ React.createElement(
     "div",
     {
-      className: "dt-wrap border border-line rounded max-h-[180px]",
+      className: "dt-wrap border border-line rounded max-h-[162px]",
       style: !valuesEnabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
     },
     /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, values.length ? values.map((v, i) => /* @__PURE__ */ React.createElement(

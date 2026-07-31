@@ -87,7 +87,7 @@ export function register(platform) {
     const StateCell = (state) => state
         ? (
             <span className="status-cell">
-                <span className="w-[7px] h-[7px] rounded-full inline-block" style={{ background: dotColor(state) }} />
+                <span className="w-[6px] h-[6px] rounded-full inline-block" style={{ background: dotColor(state) }} />
                 {state}
             </span>
         )

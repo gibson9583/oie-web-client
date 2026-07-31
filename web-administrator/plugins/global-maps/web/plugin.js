@@ -39,10 +39,10 @@ function register(platform2) {
       size: "wide",
       body: h(
         "div",
-        { class: "flex flex-col gap-2 min-w-[620px]" },
+        { class: "flex flex-col gap-2 min-w-[558px]" },
         h(
           "div",
-          { class: "flex gap-[14px] flex-wrap text-[12px]" },
+          { class: "flex gap-[13px] flex-wrap text-[11px]" },
           h("span.mono.text-text-faint", `Server ${row.serverId}`),
           h("span.mono", row.channel),
           h("span.mono", { class: "font-[650]" }, row.key)
@@ -133,7 +133,7 @@ function register(platform2) {
           /* @__PURE__ */ React.createElement("td", { className: "mono text-text-faint" }, r.serverId),
           /* @__PURE__ */ React.createElement("td", null, r.channel),
           /* @__PURE__ */ React.createElement("td", { className: "mono font-semibold" }, r.key),
-          /* @__PURE__ */ React.createElement("td", { className: "mono text-[12px]" }, value)
+          /* @__PURE__ */ React.createElement("td", { className: "mono text-[11px]" }, value)
         );
       });
     }

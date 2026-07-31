@@ -485,7 +485,7 @@ const wsSender = {
           const current = String(p.operation ?? "");
           if (!ops.includes(current)) ops.unshift(current || WS_DEFAULT_OPERATION);
           const combo = select(ops.map((o) => ({ value: o, label: o })), current, {
-            class: "w-[320px]",
+            class: "w-[288px]",
             onChange: (e) => {
               p.operation = e.target.value;
               const index = info ? info.operations.indexOf(e.target.value) : -1;

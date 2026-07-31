@@ -20,6 +20,7 @@ import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
 import { h, icon, modal, toast, confirmDialog } from '@oie/web-ui';
 import { CommandPalette } from './command-palette.jsx';
+import { getPref } from '../core/prefs.js';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
@@ -266,7 +267,7 @@ async function showAbout() {
     modal({
         title: 'About Open Integration Engine',
         body: h('div',
-            h('div.flex.items-center.gap-2.mb-[14px]', h('img', { src: '/assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
+            h('div.flex.items-center.gap-2.mb-[13px]', h('img', { src: '/assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
             entries.length ? kv : h('div.text-text-dim', `Web Administrator v${(store.getState('webadminConfig') || {}).version || ''} — engine v${store.getState('serverVersion') || '?'}`)),
         buttons: [{ label: 'Close', primary: true }]
     });

@@ -602,7 +602,7 @@ export function register(platform) {
                         </svg>
                     </div>
                     <div>Failed to load</div>
-                    <div className="text-text-faint mt-[14px]">{errorMessage}</div>
+                    <div className="text-text-faint mt-[13px]">{errorMessage}</div>
                 </div>
             );
         }
@@ -654,11 +654,11 @@ export function register(platform) {
                                 {scheduleType === 'INTERVAL' && (
                                     <Field label="Interval" hint="Must be between 1 and 24 hours when converted to milliseconds.">
                                         <div className="flex items-center gap-2">
-                                            <input type="number" min="0" step="any" className="max-w-[120px]"
+                                            <input type="number" min="0" step="any" className="max-w-[108px]"
                                                 value={freqValue} disabled={!enabled}
                                                 onInput={(e) => { setFreqValue(e.target.value); setScheduleDirty(true); }}
                                                 onChange={(e) => { setFreqValue(e.target.value); setScheduleDirty(true); }} />
-                                            <select className="max-w-[140px]" value={freqUnit} disabled={!enabled}
+                                            <select className="max-w-[126px]" value={freqUnit} disabled={!enabled}
                                                 onChange={(e) => { setFreqUnit(e.target.value); setScheduleDirty(true); }}>
                                                 <option value="milliseconds">milliseconds</option>
                                                 <option value="seconds">seconds</option>
@@ -670,7 +670,7 @@ export function register(platform) {
                                 )}
                                 {scheduleType === 'TIME' && (
                                     <Field label="Time" hint="Prune once a day at this time of day.">
-                                        <input type="time" className="max-w-[140px]" value={pollTime} disabled={!enabled}
+                                        <input type="time" className="max-w-[126px]" value={pollTime} disabled={!enabled}
                                             onInput={(e) => { setPollTime(e.target.value); setScheduleDirty(true); }}
                                             onChange={(e) => { setPollTime(e.target.value); setScheduleDirty(true); }} />
                                     </Field>
@@ -712,13 +712,13 @@ export function register(platform) {
                                                 </tbody>
                                             </table>
                                         </div>
-                                        <div className="mt-[8px]">
+                                        <div className="mt-[7px]">
                                             <button type="button" className="btn btn-sm" disabled={!enabled}
                                                 onClick={() => { setCronJobs([...cronJobs, { expression: '', description: '' }]); setScheduleDirty(true); }}>
                                                 Add
                                             </button>
                                         </div>
-                                        <div className="hint mt-[6px]">
+                                        <div className="hint mt-[5px]">
                                             Quartz cron expressions with at least 6 fields (seconds minutes hours day-of-month month day-of-week [year]).
                                         </div>
                                     </div>
@@ -770,7 +770,7 @@ export function register(platform) {
                         </div>
 
                         {hasArchiver ? (
-                            <div className="form-grid mt-[12px]">
+                            <div className="form-grid mt-[11px]">
                                 <Field label="Content">
                                     <select value={contentKey} disabled={!archiveEnabled}
                                         onChange={(e) => {
@@ -845,12 +845,12 @@ export function register(platform) {
                                         </Field>
                                     </div>
                                     {/* Draggable template-variable list (Swing MessageExportPanel). */}
-                                    <div className="border border-line rounded-[4px] py-1 min-w-[180px] max-w-[230px] bg-bg1 overflow-auto self-stretch"
+                                    <div className="border border-line rounded-[4px] py-1 min-w-[162px] max-w-[207px] bg-bg1 overflow-auto self-stretch"
                                         style={{ opacity: archiveEnabled ? 1 : 0.5 }}
                                         title="Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one">
                                         {ARCHIVE_VARS.map((v) => (
                                             <div key={v.label} draggable={archiveEnabled}
-                                                className="py-[3px] px-3 text-[12px] select-none cursor-grab hover:bg-bg2"
+                                                className="py-[3px] px-3 text-[11px] select-none cursor-grab hover:bg-bg2"
                                                 onClick={() => archiveEnabled && insertArchiveVar(lastVarTargetRef.current || rootInputRef.current, v.token)}
                                                 onDragStart={(ev) => {
                                                     ev.dataTransfer.clearData();
@@ -864,7 +864,7 @@ export function register(platform) {
                                 </div>
                             </div>
                         ) : (
-                            <div className="hint mt-[12px]">
+                            <div className="hint mt-[11px]">
                                 Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged.
                             </div>
                         )}

@@ -332,7 +332,7 @@ function register(platform2) {
         return /* @__PURE__ */ React.createElement("div", { className: "cform" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section" }, /* @__PURE__ */ React.createElement("div", { className: "cform-grid" }, /* @__PURE__ */ React.createElement(CformRow, { label: "Token Location" }, /* @__PURE__ */ React.createElement(
           "select",
           {
-            className: "w-[160px]",
+            className: "w-[144px]",
             value: entry.tokenLocation == null ? "" : String(entry.tokenLocation),
             onChange: (e) => {
               entry.tokenLocation = e.target.value;
@@ -355,7 +355,7 @@ function register(platform2) {
     return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Authentication Type"), /* @__PURE__ */ React.createElement(
       "select",
       {
-        className: "w-[220px]",
+        className: "w-[198px]",
         value: type,
         onChange: (e) => {
           setAuthType(properties, e.target.value);

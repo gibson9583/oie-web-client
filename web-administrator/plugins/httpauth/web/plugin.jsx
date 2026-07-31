@@ -346,7 +346,7 @@ export function register(platform) {
                 return (
                     <div className="cform"><div className="cform-section"><div className="cform-grid">
                         <CformRow label="Token Location">
-                            <select className="w-[160px]" value={entry.tokenLocation == null ? '' : String(entry.tokenLocation)}
+                            <select className="w-[144px]" value={entry.tokenLocation == null ? '' : String(entry.tokenLocation)}
                                 onChange={(e) => { entry.tokenLocation = e.target.value; onChange(); }}>
                                 <option value="HEADER">Request Header</option>
                                 <option value="QUERY">Query Parameter</option>
@@ -377,7 +377,7 @@ export function register(platform) {
             <div>
                 <div className="field">
                     <label>Authentication Type</label>
-                    <select className="w-[220px]" value={type}
+                    <select className="w-[198px]" value={type}
                         onChange={(e) => { setAuthType(properties, e.target.value); onChange(); force(); }}>
                         {AUTH_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>

@@ -124,8 +124,8 @@ function hostPathField(onChange) {
       const slash = host.indexOf("/");
       const hostPart = slash === -1 ? host : host.slice(0, slash);
       const pathPart = slash === -1 ? "" : host.slice(slash + 1);
-      const hostInput = textInput(hostPart, { class: "w-[220px]" });
-      const pathInput = textInput(pathPart, { class: "flex-1 min-w-[160px]" });
+      const hostInput = textInput(hostPart, { class: "w-[198px]" });
+      const pathInput = textInput(pathPart, { class: "flex-1 min-w-[144px]" });
       const recompose = () => {
         p.host = hostInput.value + "/" + pathInput.value;
         onChange();
@@ -134,7 +134,7 @@ function hostPathField(onChange) {
       pathInput.addEventListener("input", recompose);
       return h(
         "div",
-        { class: "flex items-center gap-[6px]" },
+        { class: "flex items-center gap-[5px]" },
         h("span", { class: "text-[var(--muted,#888)] whitespace-nowrap" }, schemePrefix(p)),
         hostInput,
         h("span", "/"),
@@ -399,7 +399,7 @@ function afterProcessingBlock(properties, onChange) {
     full: true,
     render: (p) => {
       let lastInput = null;
-      const grid = h("div", { class: "grid grid-cols-[max-content_1fr_max-content] gap-y-[6px] gap-x-3 items-center" });
+      const grid = h("div", { class: "grid grid-cols-[max-content_1fr_max-content] gap-y-[5px] gap-x-3 items-center" });
       const insertVar = (v) => {
         const input = lastInput;
         if (!input || input.disabled) return;
@@ -497,11 +497,11 @@ function afterProcessingBlock(properties, onChange) {
           grid.appendChild(h("div.cform-control", { class: "col-[2]", style: { gridRow: String(i + 1) } }, ctrl));
         });
         const listBox = h("div", {
-          class: "col-[3] self-stretch border border-line rounded-[4px] py-1 px-0 min-w-[150px] bg-bg1 overflow-auto",
+          class: "col-[3] self-stretch border border-line rounded-[4px] py-1 px-0 min-w-[135px] bg-bg1 overflow-auto",
           style: { gridRow: `1 / ${rows.length + 1}` }
         }, FILE_NAME_VARS.map((v) => {
           const item = h("div", {
-            class: "py-[3px] px-3 cursor-grab font-mono text-[12px] select-none",
+            class: "py-[3px] px-3 cursor-grab font-mono text-[11px] select-none",
             title: `Drag into a Move-to / Error field, or click to insert into the last-focused one`,
             onClick: () => insertVar(v)
           }, v);

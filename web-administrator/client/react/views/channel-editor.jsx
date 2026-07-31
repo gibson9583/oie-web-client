@@ -263,7 +263,7 @@ function openAttachmentPropsModal(ap, markDirty) {
     function renderIdentityEditor() {
         const map = entriesToObj(ap.properties);
         return field('Attachment MIME Type', textInput(String(map['identity.mimetype'] ?? ''), {
-            class: 'max-w-[260px]',
+            class: 'max-w-[234px]',
             placeholder: 'text/plain',
             onInput: (e) => {
                 map['identity.mimetype'] = e.target.value;
@@ -419,7 +419,7 @@ function openDataTypesModal(channel, version, markDirty) {
                     onChange: (e) => { e.target.checked ? bulkSel.add(row) : bulkSel.delete(row); }
                 });
                 tbody.appendChild(h('tr',
-                    h('td', { class: 'w-[36px]' }, cb.el),
+                    h('td', { class: 'w-[32px]' }, cb.el),
                     h('td', row.label),
                     h('td.text-text-faint', dtLabelOf(row.draft.inboundDataType)),
                     h('td.text-text-faint', dtLabelOf(row.draft.outboundDataType))));
@@ -505,7 +505,7 @@ function openDataTypesModal(channel, version, markDirty) {
                 }
             }, 'Apply to Selected Connectors');
             panelsHost.appendChild(h('div', { class: 'col-[1/-1] flex gap-4 items-center' },
-                h('span.text-text-faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Apply:'),
+                h('span.text-text-faint', { class: 'text-[10px] uppercase tracking-[0.08em]' }, 'Apply:'),
                 sideToggle('inbound', 'Inbound'), sideToggle('outbound', 'Outbound'), applyBtn));
             panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties', bulkRow));
             panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties', bulkRow));
@@ -521,8 +521,8 @@ function openDataTypesModal(channel, version, markDirty) {
             onChange: () => { if (input.checked) { bulkMode = isBulk; renderAll(); } } });
         return h('label.check', input, label);
     }
-    const modeBar = h('div', { class: 'flex gap-[18px] items-center mb-2.5' },
-        h('span.text-text-faint', { class: 'text-[11px] uppercase tracking-[0.08em]' }, 'Editing:'),
+    const modeBar = h('div', { class: 'flex gap-[16px] items-center mb-2.5' },
+        h('span.text-text-faint', { class: 'text-[10px] uppercase tracking-[0.08em]' }, 'Editing:'),
         modeRadio('Single Edit', false),
         modeRadio('Bulk Edit', true));
 
@@ -586,12 +586,12 @@ async function openDependenciesModal(channel, version, markDirty) {
     /* ---- shared link/tree helpers ---- */
 
     const link = (label, onClick) => {
-        const a = h('a', { href: '#', class: 'text-accent underline cursor-pointer text-[12px] whitespace-nowrap' }, label);
+        const a = h('a', { href: '#', class: 'text-accent underline cursor-pointer text-[11px] whitespace-nowrap' }, label);
         a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
         return a;
     };
-    const linkSep = () => h('span.text-text-faint', { class: 'text-[12px]' }, '|');
-    const treeBox = () => h('div', { class: 'flex-1 min-h-[110px] overflow-auto border border-line rounded-[4px] bg-bg1' });
+    const linkSep = () => h('span.text-text-faint', { class: 'text-[11px]' }, '|');
+    const treeBox = () => h('div', { class: 'flex-1 min-h-[99px] overflow-auto border border-line rounded-[4px] bg-bg1' });
     const SEL_BG = 'color-mix(in srgb, var(--accent) 16%, transparent)';
 
     /* ===== Tab 1: Code Template Libraries (CodeTemplateLibrariesPanel) ===== */
@@ -604,7 +604,7 @@ async function openDependenciesModal(channel, version, markDirty) {
 
     function renderLibrariesTab() {
         const tree = treeBox();
-        const desc = h('div', { class: 'h-[88px] overflow-auto border border-line rounded-[4px] py-1.5 px-2 text-[11.5px] text-text-dim bg-bg1' });
+        const desc = h('div', { class: 'h-[79px] overflow-auto border border-line rounded-[4px] py-1.5 px-2 text-[10.5px] text-text-dim bg-bg1' });
         const setDesc = (t) => { clear(desc); desc.appendChild(h('span', { class: 'italic' }, t && String(t).trim() ? String(t) : 'No description.')); };
         setDesc('');
         function draw() {
@@ -613,7 +613,7 @@ async function openDependenciesModal(channel, version, markDirty) {
             for (const lib of libraries) {
                 const templates = api.asList(lib.codeTemplates, 'codeTemplate').filter(t => t && typeof t === 'object');
                 const open = libExpanded.has(lib.id);
-                const tw = h('span', { class: 'w-[14px] text-center text-text-dim select-none', style: { cursor: templates.length ? 'pointer' : 'default' } }, templates.length ? (open ? '▾' : '▸') : '');
+                const tw = h('span', { class: 'w-[13px] text-center text-text-dim select-none', style: { cursor: templates.length ? 'pointer' : 'default' } }, templates.length ? (open ? '▾' : '▸') : '');
                 if (templates.length) tw.addEventListener('click', () => { open ? libExpanded.delete(lib.id) : libExpanded.add(lib.id); draw(); });
                 const box = h('input', { type: 'checkbox' });
                 box.checked = !!libChecked.get(lib.id);
@@ -622,7 +622,7 @@ async function openDependenciesModal(channel, version, markDirty) {
                 name.addEventListener('click', () => setDesc(lib.description));
                 tree.appendChild(h('div', { class: 'flex items-center gap-1 py-0.5 px-2' }, tw, box, name));
                 if (open) for (const t of templates) {
-                    const row = h('div', { class: 'pt-0.5 pr-2 pb-0.5 pl-[44px] cursor-pointer text-[12px]' }, t.name || '(unnamed)');
+                    const row = h('div', { class: 'pt-0.5 pr-2 pb-0.5 pl-[40px] cursor-pointer text-[11px]' }, t.name || '(unnamed)');
                     row.addEventListener('click', () => setDesc((t.properties && t.properties.description) || t.description));
                     tree.appendChild(row);
                 }
@@ -688,7 +688,7 @@ async function openDependenciesModal(channel, version, markDirty) {
             clear(resTable);
             const isRoot = selectedKey === 'channel';
             const enabled = isCtxKey(selectedKey);
-            resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-1 px-2 font-semibold text-[11px] border-b border-line sticky top-0 bg-bg1' }, h('span'), h('span', 'Name'), h('span', 'Type')));
+            resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-1 px-2 font-semibold text-[10px] border-b border-line sticky top-0 bg-bg1' }, h('span'), h('span', 'Name'), h('span', 'Type')));
             if (!resources.length) { resTable.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'No library resources')); return; }
             for (const r of resources) {
                 const box = h('input', { type: 'checkbox', disabled: !enabled });
@@ -699,20 +699,20 @@ async function openDependenciesModal(channel, version, markDirty) {
                     if (isRoot) resourceTargets.forEach(t => apply(t.key)); else apply(selectedKey);
                     drawTable();
                 });
-                resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-[3px] px-2 items-center' }, box, h('span.truncate', r.name), h('span.text-text-faint', { class: 'text-[11px]' }, r.type)));
+                resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-[3px] px-2 items-center' }, box, h('span.truncate', r.name), h('span.text-text-faint', { class: 'text-[10px]' }, r.type)));
             }
         }
         function drawTree() {
             clear(ctxTree);
             const node = (label, key, depth, opts = {}) => {
-                const row = h('div', { class: 'flex items-center gap-1 text-[12px] cursor-pointer', style: { padding: `3px 8px 3px ${8 + depth * 16}px`, color: opts.grey ? 'var(--text-dim)' : 'inherit', background: key === selectedKey ? SEL_BG : 'transparent' } }, opts.twisty || h('span', { class: 'w-[12px]' }), h('span', label));
+                const row = h('div', { class: 'flex items-center gap-1 text-[11px] cursor-pointer', style: { padding: `3px 8px 3px ${8 + depth * 16}px`, color: opts.grey ? 'var(--text-dim)' : 'inherit', background: key === selectedKey ? SEL_BG : 'transparent' } }, opts.twisty || h('span', { class: 'w-[11px]' }), h('span', label));
                 row.addEventListener('click', () => { selectedKey = key; drawTree(); drawTable(); });
                 ctxTree.appendChild(row);
             };
             node('Channel', 'channel', 0);
             for (const t of resourceTargets) {
                 const open = ctxExpanded.has(t.key);
-                const tw = h('span', { class: 'w-[12px] cursor-pointer text-text-dim select-none' }, t.leaves.length ? (open ? '▾' : '▸') : '');
+                const tw = h('span', { class: 'w-[11px] cursor-pointer text-text-dim select-none' }, t.leaves.length ? (open ? '▾' : '▸') : '');
                 tw.addEventListener('click', (e) => { e.stopPropagation(); open ? ctxExpanded.delete(t.key) : ctxExpanded.add(t.key); drawTree(); });
                 node(t.label, t.key, 1, { twisty: tw });
                 if (open) for (const leaf of t.leaves) node(leaf, `${t.key}::${leaf}`, 2, { grey: true });
@@ -749,7 +749,7 @@ async function openDependenciesModal(channel, version, markDirty) {
 
     function openAddDialog(kind, allowed, onAdd) {
         const checks = new Map();
-        const listEl = h('div', { class: 'max-h-[220px] overflow-auto border border-line rounded-[4px] py-1.5 px-2' });
+        const listEl = h('div', { class: 'max-h-[198px] overflow-auto border border-line rounded-[4px] py-1.5 px-2' });
         function drawList() {
             clear(listEl);
             if (!allowed.length) { listEl.appendChild(h('div.text-text-faint', 'No channels available')); return; }
@@ -799,9 +799,9 @@ async function openDependenciesModal(channel, version, markDirty) {
             const key = path + id;
             const isTop = depth === 0;
             const open = expanded.has(key);
-            const tw = h('span', { class: 'w-[12px] text-text-dim select-none', style: { cursor: kids.length ? 'pointer' : 'default' } }, kids.length ? (open ? '▾' : '▸') : '');
+            const tw = h('span', { class: 'w-[11px] text-text-dim select-none', style: { cursor: kids.length ? 'pointer' : 'default' } }, kids.length ? (open ? '▾' : '▸') : '');
             if (kids.length) tw.addEventListener('click', (e) => { e.stopPropagation(); open ? expanded.delete(key) : expanded.add(key); draw(); });
-            const row = h('div', { class: 'flex items-center gap-1 text-[12px]', style: { padding: `3px 8px 3px ${8 + depth * 16}px`, cursor: isTop ? 'pointer' : 'default', color: isTop ? 'inherit' : 'var(--text-dim)', background: (isTop && selected === id) ? SEL_BG : 'transparent' } }, tw, h('span', channelNameOf(id)));
+            const row = h('div', { class: 'flex items-center gap-1 text-[11px]', style: { padding: `3px 8px 3px ${8 + depth * 16}px`, cursor: isTop ? 'pointer' : 'default', color: isTop ? 'inherit' : 'var(--text-dim)', background: (isTop && selected === id) ? SEL_BG : 'transparent' } }, tw, h('span', channelNameOf(id)));
             if (isTop) row.addEventListener('click', () => { selected = id; draw(); });
             tree.appendChild(row);
             if (open && !path.includes('>' + id + '>')) for (const k of kids) drawNode(k, depth + 1, key + '>');
@@ -831,7 +831,7 @@ async function openDependenciesModal(channel, version, markDirty) {
         draw();
         return h('div', { class: 'flex flex-col min-h-0 flex-1' },
             h('div', { class: 'flex justify-between items-center mb-1' },
-                h('label', { class: 'font-semibold text-[12px]' }, title),
+                h('label', { class: 'font-semibold text-[11px]' }, title),
                 h('div', { class: 'flex gap-1.5 items-center' },
                     link('Expand All', () => { collectPaths().forEach(p => expanded.add(p)); draw(); }), linkSep(),
                     link('Collapse All', () => { expanded.clear(); draw(); }))),
@@ -1172,7 +1172,7 @@ function TagsField({ tagState, channel, version, markDirty }) {
         return () => { stale = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    if (!loaded) return <span className="text-text-faint text-[11.5px]">Loading tags…</span>;
+    if (!loaded) return <span className="text-text-faint text-[10.5px]">Loading tags…</span>;
 
     const dlId = 'channel-tags-list';
     // Commit on the NATIVE 'change' event only (Enter / blur / datalist pick) —
@@ -1195,12 +1195,12 @@ function TagsField({ tagState, channel, version, markDirty }) {
         });
     };
     return (
-        <div className="flex flex-wrap gap-[5px] items-center">
+        <div className="flex flex-wrap gap-[4px] items-center">
             {[...tagState.assigned].sort((a, b) => a.localeCompare(b)).map(name => {
                 const tag = tagState.all.find(t => t.name === name);
                 return (
                     <span key={name}
-                        className="inline-flex items-center gap-1 py-px px-1.5 rounded-[10px] border border-line text-[11.5px]"
+                        className="inline-flex items-center gap-1 py-px px-1.5 rounded-[9px] border border-line text-[10.5px]"
                         style={{ background: tagChipBg(tag && tag.backgroundColor) }}>
                         {name}
                         <span className="cursor-pointer text-text-dim" title="Remove tag"
@@ -1208,7 +1208,7 @@ function TagsField({ tagState, channel, version, markDirty }) {
                     </span>
                 );
             })}
-            <input ref={addRef} list={dlId} placeholder="Add tag…" className="w-[130px]" />
+            <input ref={addRef} list={dlId} placeholder="Add tag…" className="w-[117px]" />
             <datalist id={dlId}>
                 {tagState.all.filter(t => !tagState.assigned.has(t.name)).map(t => <option key={t.name} value={t.name} />)}
             </datalist>
@@ -1252,13 +1252,13 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                     <div>
                         <div className="field">
                             <label>Name</label>
-                            <input ref={nameRef} type="text" className="max-w-[360px]" value={channel.name ?? ''}
+                            <input ref={nameRef} type="text" className="max-w-[324px]" value={channel.name ?? ''}
                                 onChange={(e) => { channel.name = e.target.value; markDirty(); }} />
                         </div>
                         <div className="form-row mb-3">
                             <div className="field">
                                 <label>Initial State</label>
-                                <select className="w-[170px]" value={props.initialState || 'STARTED'}
+                                <select className="w-[153px]" value={props.initialState || 'STARTED'}
                                     onChange={(e) => { props.initialState = e.target.value; markDirty(); }}>
                                     {INITIAL_STATES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
                                 </select>
@@ -1266,7 +1266,7 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                             <div className="field">
                                 <label>Attachment</label>
                                 <div className="flex gap-1.5 items-center">
-                                    <select className="w-[180px]" value={ap.type || 'None'}
+                                    <select className="w-[162px]" value={ap.type || 'None'}
                                         onChange={(e) => {
                                             const def = typeOptions.find(t => t.value === e.target.value);
                                             ap.type = def.value;
@@ -1296,7 +1296,7 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                             <label>Tags</label>
                             <TagsField tagState={tagState} channel={channel} version={version} markDirty={markDirty} />
                         </div>
-                        <div className="flex flex-wrap gap-y-1.5 gap-x-[18px] mt-0 mx-0 mb-1">
+                        <div className="flex flex-wrap gap-y-1.5 gap-x-[16px] mt-0 mx-0 mb-1">
                             <label className="check">
                                 <input type="checkbox" checked={metadata.enabled !== false}
                                     onChange={(e) => { metadata.enabled = e.target.checked; markDirty(); }} />
@@ -1313,7 +1313,7 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                                 Store Attachments
                             </label>
                         </div>
-                        <div className="text-[#d00] text-[11px] mt-0.5 mx-0 mb-0">{attachWarn}</div>
+                        <div className="text-[#d00] text-[10px] mt-0.5 mx-0 mb-0">{attachWarn}</div>
                         <div className="flex flex-wrap gap-2 mt-3">
                             <button className="btn" onClick={() => openDataTypesModal(channel, version, markDirty)}>
                                 <Icon name="transform" />Set Data Types
@@ -1392,24 +1392,24 @@ function MessageStoragePanel({ channel, markDirty }) {
                 <div className="flex gap-4">
                     <div className="flex gap-1.5">
                         <input type="range" min="1" max="5" step="1"
-                            className="[writing-mode:vertical-lr] [direction:rtl] h-[150px] w-[22px] p-0"
+                            className="[writing-mode:vertical-lr] [direction:rtl] h-[135px] w-[20px] p-0"
                             value={String(STORAGE_SLIDER.indexOf(mode) + 1)}
                             onChange={(e) => {
                                 props.messageStorageMode = STORAGE_SLIDER[Number(e.target.value) - 1];
                                 markDirty(); bump();
                             }} />
-                        <div className="flex flex-col justify-between h-[150px] text-[11px] text-text-dim">
+                        <div className="flex flex-col justify-between h-[135px] text-[10px] text-text-dim">
                             <div>Development</div><div>Production</div><div>Raw</div><div>Metadata</div><div>Disabled</div>
                         </div>
                     </div>
-                    <div className="flex flex-col gap-[5px] flex-1 min-w-0">
-                        <div className="font-bold text-[14px]">{info.label}</div>
-                        <div className="text-[12px]">{info.content}</div>
-                        <div className="text-[12px]">{info.meta}</div>
-                        <div className="text-[12px]">Durable Message Delivery: <span className="font-semibold" style={{ color: info.dc }}>{info.durable}</span></div>
-                        <div className="flex items-center gap-2 text-[12px]">
+                    <div className="flex flex-col gap-[4px] flex-1 min-w-0">
+                        <div className="font-bold text-[12.5px]">{info.label}</div>
+                        <div className="text-[11px]">{info.content}</div>
+                        <div className="text-[11px]">{info.meta}</div>
+                        <div className="text-[11px]">Durable Message Delivery: <span className="font-semibold" style={{ color: info.dc }}>{info.durable}</span></div>
+                        <div className="flex items-center gap-2 text-[11px]">
                             <span>Performance:</span>
-                            <div className="h-2 w-[180px] bg-bg3 border border-line rounded-[3px] overflow-hidden">
+                            <div className="h-2 w-[162px] bg-bg3 border border-line rounded-[3px] overflow-hidden">
                                 <div className="h-full bg-accent opacity-75 [transition:width_0.2s_ease]"
                                     style={{ width: Math.max(0, Math.min(100, perf)) + '%' }} />
                             </div>
@@ -1417,7 +1417,7 @@ function MessageStoragePanel({ channel, markDirty }) {
                         <div className="flex flex-wrap gap-y-1 gap-x-3.5 mt-1">{[box(STORAGE_CHECKS[0]), box(STORAGE_CHECKS[1]), box(STORAGE_CHECKS[2])]}</div>
                         <div className="flex flex-wrap gap-y-1 gap-x-3.5">{[box(STORAGE_CHECKS[3]), box(STORAGE_CHECKS[4])]}</div>
                         {box(STORAGE_CHECKS[5])}
-                        <div className="text-[#d00] text-[11px] min-h-3.5">{queued ? 'Disable destination queueing before using this mode' : ''}</div>
+                        <div className="text-[#d00] text-[10px] min-h-3.5">{queued ? 'Disable destination queueing before using this mode' : ''}</div>
                     </div>
                 </div>
             </div>
@@ -1436,7 +1436,7 @@ function PruningPanel({ channel, markDirty }) {
     // Uncontrolled + keyed on the enabled state: re-seeds from the model when
     // the radio toggles, and the clamp never overwrites the text mid-edit.
     const daysInput = (key) => (
-        <input key={`${key}:${pruning[key] == null}`} type="number" min={1} className="w-[90px]"
+        <input key={`${key}:${pruning[key] == null}`} type="number" min={1} className="w-[81px]"
             disabled={pruning[key] == null}
             defaultValue={pruning[key] ?? ''}
             onChange={(e) => { pruning[key] = Math.max(1, Number(e.target.value) || 1); markDirty(); }} />
@@ -1547,7 +1547,7 @@ function MetaDataColumnsPanel({ channel, markDirty }) {
                 {!columns.length
                     ? <div className="text-text-faint">No custom metadata columns</div>
                     : (
-                        <div className="grid grid-cols-[minmax(160px,1fr)_130px_minmax(160px,1fr)_70px] gap-y-1 gap-x-1.5 items-center max-w-[760px]">
+                        <div className="grid grid-cols-[minmax(160px,1fr)_130px_minmax(160px,1fr)_70px] gap-y-1 gap-x-1.5 items-center max-w-[684px]">
                             <label>Column Name</label><label>Type</label><label>Variable Mapping</label><span />
                             {columns.map((col, i) => (
                                 <FragmentRow key={i} col={col} commit={commit}
@@ -2024,12 +2024,12 @@ function DestEditor({ dest, channel, version, engineTypes, markDirty, syncRows }
 
 function MappingsRail({ onInsert, dragRef }) {
     return (
-        <div className="panel dest-mappings w-[240px] flex-[0_0_240px] flex flex-col self-stretch mt-0">
+        <div className="panel dest-mappings w-[216px] flex-[0_0_240px] flex flex-col self-stretch mt-0">
             <div className="panel-header">Destination Mappings</div>
             <div className="overflow-auto flex-1 py-1 px-0">
                 {DESTINATION_MAPPINGS.map(([label, token]) => (
                     <div key={token} draggable title={token}
-                        className="py-[3px] px-3 cursor-pointer text-[12px] truncate hover:bg-bg3"
+                        className="py-[3px] px-3 cursor-pointer text-[11px] truncate hover:bg-bg3"
                         onClick={() => onInsert(token)}
                         onDragStart={(e) => {
                             dragRef.current = token;
@@ -2367,7 +2367,7 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
             onDragOver={onMappingDragOver} onDrop={onMappingDrop}>
             <div className="flex-auto min-w-0 flex flex-col min-h-0" onFocus={trackFocus}>
                 <div className="panel flex-none"><div className="panel-body flush" ref={tableHostRef} /></div>
-                <div className="mt-[14px] flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
+                <div className="mt-[13px] flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
                     <DestEditor dest={selectedDest()} channel={channel} version={version}
                         engineTypes={engineTypes} markDirty={markDirty}
                         syncRows={() => tableRef.current && tableRef.current.setRows(dests())} />
@@ -2427,7 +2427,7 @@ function ScriptsTab({ channel, markDirty }) {
         <div className="flex flex-col flex-1 min-h-0 gap-2.5">
             <div className="form-row items-center">
                 <label className="m-0">Script:</label>
-                <select className="w-[180px]" value={current.key}
+                <select className="w-[162px]" value={current.key}
                     onChange={(e) => {
                         const editor = editorRef.current;
                         if (editor) channel[currentRef.current.key] = editor.getValue();
@@ -2615,7 +2615,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }) {
                 title: 'Cannot Save Channel',
                 body: h('div',
                     h('p', 'Please fix the following before saving:'),
-                    h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
+                    h('ul', { class: 'mt-2 mx-0 mb-0 pl-[16px]' }, problems.map(p => h('li', p)))),
                 buttons: [{ label: 'OK' }]
             });
             return false;
@@ -2715,7 +2715,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }) {
             title: 'Validation Errors',
             body: h('div',
                 h('p', 'Please fix the following:'),
-                h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
+                h('ul', { class: 'mt-2 mx-0 mb-0 pl-[16px]' }, problems.map(p => h('li', p)))),
             buttons: [{ label: 'OK' }]
         });
     }

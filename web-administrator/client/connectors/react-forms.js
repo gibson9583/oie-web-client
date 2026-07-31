@@ -433,7 +433,7 @@ function PollSettings({ properties, onChange }) {
     {
       type: "number",
       min: 0,
-      className: "w-[110px]",
+      className: "w-[99px]",
       value: Math.round(Number(p.pollingFrequency ?? 5e3) / unitMs(freqUnit)),
       onChange: (e) => {
         p.pollingFrequency = (parseInt(e.target.value, 10) || 0) * unitMs(freqUnit);
@@ -512,7 +512,7 @@ function PollSettings({ properties, onChange }) {
   ))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => {
     cron.push({ expression: "", description: "" });
     tick();
-  } }, "Add Cron Job"))), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "\xA0"), /* @__PURE__ */ React.createElement("div", { className: "min-h-[34px] flex items-center" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+  } }, "Add Cron Job"))), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "\xA0"), /* @__PURE__ */ React.createElement("div", { className: "min-h-[31px] flex items-center" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "checkbox",
@@ -568,7 +568,7 @@ function PollAdvancedSettings({ p, pollingType, onChange }) {
       type: "number",
       min,
       max,
-      className: "w-[70px]",
+      className: "w-[63px]",
       value,
       onChange: (e) => {
         apply(parseInt(e.target.value, 10) || 0);
@@ -598,7 +598,7 @@ function PollAdvancedSettings({ p, pollingType, onChange }) {
         notify();
       }
     }
-  ), "Monthly"))), weekly ? /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Days of Week"), /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row min-h-[34px] items-center" }, POLL_DAYS.map((d) => /* @__PURE__ */ React.createElement("label", { className: "check", key: d.idx, title: d.title }, /* @__PURE__ */ React.createElement(
+  ), "Monthly"))), weekly ? /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Days of Week"), /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row min-h-[31px] items-center" }, POLL_DAYS.map((d) => /* @__PURE__ */ React.createElement("label", { className: "check", key: d.idx, title: d.title }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "checkbox",
@@ -674,7 +674,7 @@ function TransmissionModePanel({ properties, onChange }) {
     "select",
     {
       value: tm.pluginPointName,
-      className: "w-[180px]",
+      className: "w-[162px]",
       onChange: (e) => {
         tm.pluginPointName = e.target.value;
         const m = modeOf();
@@ -693,7 +693,7 @@ function TransmissionModePanel({ properties, onChange }) {
       onClick: openSettings
     },
     /* @__PURE__ */ React.createElement(Icon, { name: "settings" })
-  ))), /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Sample Frame:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint text-[12px]" }, sample))))));
+  ))), /* @__PURE__ */ React.createElement("label", { className: "cform-label" }, "Sample Frame:"), /* @__PURE__ */ React.createElement("div", { className: "cform-control" }, /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint text-[11px]" }, sample))))));
 }
 export {
   ConnectorForm,

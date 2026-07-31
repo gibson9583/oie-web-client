@@ -542,7 +542,7 @@ function register(platform2) {
           strokeLinejoin: "round"
         },
         /* @__PURE__ */ React.createElement("path", { d: "M12 3l9 16H3zM12 10v4M12 17.5v.5" })
-      )), /* @__PURE__ */ React.createElement("div", null, "Failed to load"), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint mt-[14px]" }, errorMessage));
+      )), /* @__PURE__ */ React.createElement("div", null, "Failed to load"), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint mt-[13px]" }, errorMessage));
     }
     const attachmentsEnabled = archiveEnabled && contentKey === "xml";
     const passwordSectionEnabled = archiveEnabled && compressKey === "zip";
@@ -569,7 +569,7 @@ function register(platform2) {
         type: "number",
         min: "0",
         step: "any",
-        className: "max-w-[120px]",
+        className: "max-w-[108px]",
         value: freqValue,
         disabled: !enabled,
         onInput: (e) => {
@@ -584,7 +584,7 @@ function register(platform2) {
     ), /* @__PURE__ */ React.createElement(
       "select",
       {
-        className: "max-w-[140px]",
+        className: "max-w-[126px]",
         value: freqUnit,
         disabled: !enabled,
         onChange: (e) => {
@@ -600,7 +600,7 @@ function register(platform2) {
       "input",
       {
         type: "time",
-        className: "max-w-[140px]",
+        className: "max-w-[126px]",
         value: pollTime,
         disabled: !enabled,
         onInput: (e) => {
@@ -645,7 +645,7 @@ function register(platform2) {
         }
       },
       "Delete"
-    ))))))), /* @__PURE__ */ React.createElement("div", { className: "mt-[8px]" }, /* @__PURE__ */ React.createElement(
+    ))))))), /* @__PURE__ */ React.createElement("div", { className: "mt-[7px]" }, /* @__PURE__ */ React.createElement(
       "button",
       {
         type: "button",
@@ -657,7 +657,7 @@ function register(platform2) {
         }
       },
       "Add"
-    )), /* @__PURE__ */ React.createElement("div", { className: "hint mt-[6px]" }, "Quartz cron expressions with at least 6 fields (seconds minutes hours day-of-month month day-of-week [year])."))) : /* @__PURE__ */ React.createElement("div", { className: "hint" }, "The polling schedule (pollingProperties) could not be parsed; it will be preserved unchanged."))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Prune Settings"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Block Size" }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "hint mt-[5px]" }, "Quartz cron expressions with at least 6 fields (seconds minutes hours day-of-month month day-of-week [year])."))) : /* @__PURE__ */ React.createElement("div", { className: "hint" }, "The polling schedule (pollingProperties) could not be parsed; it will be preserved unchanged."))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Prune Settings"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Block Size" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -686,7 +686,7 @@ function register(platform2) {
         onInput: (e) => setArchiverBlockSize(e.target.value),
         onChange: (e) => setArchiverBlockSize(e.target.value)
       }
-    ))), hasArchiver ? /* @__PURE__ */ React.createElement("div", { className: "form-grid mt-[12px]" }, /* @__PURE__ */ React.createElement(Field, { label: "Content" }, /* @__PURE__ */ React.createElement(
+    ))), hasArchiver ? /* @__PURE__ */ React.createElement("div", { className: "form-grid mt-[11px]" }, /* @__PURE__ */ React.createElement(Field, { label: "Content" }, /* @__PURE__ */ React.createElement(
       "select",
       {
         value: contentKey,
@@ -812,7 +812,7 @@ function register(platform2) {
     ))), /* @__PURE__ */ React.createElement(
       "div",
       {
-        className: "border border-line rounded-[4px] py-1 min-w-[180px] max-w-[230px] bg-bg1 overflow-auto self-stretch",
+        className: "border border-line rounded-[4px] py-1 min-w-[162px] max-w-[207px] bg-bg1 overflow-auto self-stretch",
         style: { opacity: archiveEnabled ? 1 : 0.5 },
         title: "Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one"
       },
@@ -821,7 +821,7 @@ function register(platform2) {
         {
           key: v.label,
           draggable: archiveEnabled,
-          className: "py-[3px] px-3 text-[12px] select-none cursor-grab hover:bg-bg2",
+          className: "py-[3px] px-3 text-[11px] select-none cursor-grab hover:bg-bg2",
           onClick: () => archiveEnabled && insertArchiveVar(lastVarTargetRef.current || rootInputRef.current, v.token),
           onDragStart: (ev) => {
             ev.dataTransfer.clearData();
@@ -831,7 +831,7 @@ function register(platform2) {
         },
         v.label
       ))
-    ))) : /* @__PURE__ */ React.createElement("div", { className: "hint mt-[12px]" }, "Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged."))));
+    ))) : /* @__PURE__ */ React.createElement("div", { className: "hint mt-[11px]" }, "Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged."))));
   }
   platform2.registerSettingsPanel({
     label: "Data Pruner",

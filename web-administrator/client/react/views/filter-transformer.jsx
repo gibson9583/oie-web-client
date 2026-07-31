@@ -430,7 +430,7 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
             {isFilter && (
                 <td>
                     {idx === 0 ? '' : (
-                        <select className="w-[70px]" value={el.operator === 'OR' ? 'OR' : 'AND'}
+                        <select className="w-[63px]" value={el.operator === 'OR' ? 'OR' : 'AND'}
                             onClick={stop} onMouseDown={stop}
                             onChange={(e) => { el.operator = e.target.value; onCommit(); }}>
                             <option value="AND">AND</option>
@@ -467,7 +467,7 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
                 <div className="empty-icon"><Icon name={isFilter ? 'filter' : 'transform'} size={30} /></div>
                 <div>{`No ${kind.noun}s Configured`}</div>
                 {canEdit && (
-                    <div className="mt-[16px] flex items-center justify-center gap-2">
+                    <div className="mt-[14px] flex items-center justify-center gap-2">
                         <button className="btn btn-primary" type="button" onClick={onAdd}>
                             <Icon name="plus" size={14} />{`Add New ${kind.noun}`}
                         </button>
@@ -483,11 +483,11 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
         <table className="dt">
             <thead>
                 <tr>
-                    <th className="w-[64px]">Enabled</th>
-                    <th className="w-[36px]">#</th>
-                    {isFilter && <th className="w-[90px]">Operator</th>}
+                    <th className="w-[58px]">Enabled</th>
+                    <th className="w-[32px]">#</th>
+                    {isFilter && <th className="w-[81px]">Operator</th>}
                     <th>Name</th>
-                    <th className="w-[180px]">Type</th>
+                    <th className="w-[162px]">Type</th>
                 </tr>
             </thead>
             <tbody>
@@ -748,7 +748,7 @@ function ReferenceTab({ dragRef, channelId, getElements }) {
             <div className="field">
                 <input type="text" placeholder="Filter…" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
-            <div className="border border-line rounded overflow-auto flex-1 min-h-[120px]">
+            <div className="border border-line rounded overflow-auto flex-1 min-h-[108px]">
                 {visible.length
                     ? visible.map((en, i) => (
                         <ReferenceRow key={`${en.category}:${en.name}:${i}`} dragRef={dragRef}
@@ -757,11 +757,11 @@ function ReferenceTab({ dragRef, channelId, getElements }) {
                     ))
                     : <div className="text-text-faint p-2.5 text-center">No matches</div>}
             </div>
-            <div className="font-semibold text-[11px] uppercase tracking-[0.04em] mt-3 mx-0 mb-1">Available Variables</div>
-            <div className="border border-line rounded overflow-auto max-h-[140px]">
+            <div className="font-semibold text-[10px] uppercase tracking-[0.04em] mt-3 mx-0 mb-1">Available Variables</div>
+            <div className="border border-line rounded overflow-auto max-h-[126px]">
                 {availableVars.length
                     ? availableVars.map(v => <ReferenceRow key={v} dragRef={dragRef} name={v} dropText={v} />)
-                    : <div className="text-text-faint py-2 px-2.5 text-[11px]">(no variables defined by steps yet)</div>}
+                    : <div className="text-text-faint py-2 px-2.5 text-[10px]">(no variables defined by steps yet)</div>}
             </div>
         </div>
     );
@@ -957,9 +957,9 @@ function TreeNode({ node, depth, side, isFilter, dragRef, force, onAddStep }) {
                     onClick={hasKids ? (e) => { e.stopPropagation(); setOpen(o => !o); } : undefined}>
                     {hasKids ? '▸' : ''}
                 </span>
-                <span className="mono text-[11.5px] text-accent">{node.label}</span>
+                <span className="mono text-[10.5px] text-accent">{node.label}</span>
                 {node.value !== null && node.value !== ''
-                    ? <span className="text-text-faint truncate text-[11.5px] min-w-0">{node.value}</span>
+                    ? <span className="text-text-faint truncate text-[10.5px] min-w-0">{node.value}</span>
                     : null}
             </div>
             {hasKids && (
@@ -1024,13 +1024,13 @@ function TreeSection({ title, side, varName, openByDefault, target, isFilter, dr
             </div>
             <div className="tree py-1 px-0" style={{ display: open ? undefined : 'none' }}>
                 {parse.status === 'empty' && (
-                    <div className="text-text-faint py-1 px-3 text-[12px]">(no template — set one on the Message Templates tab)</div>
+                    <div className="text-text-faint py-1 px-3 text-[11px]">(no template — set one on the Message Templates tab)</div>
                 )}
                 {parse.status === 'parsing' && (
-                    <div className="text-text-faint py-1 px-3 text-[12px]">Parsing…</div>
+                    <div className="text-text-faint py-1 px-3 text-[11px]">Parsing…</div>
                 )}
                 {parse.status === 'failed' && (
-                    <div className="text-text-faint py-1 px-3 text-[12px]">
+                    <div className="text-text-faint py-1 px-3 text-[11px]">
                         {`Could not build the message tree — the engine could not serialize this ${dtLabel} template.`}
                     </div>
                 )}
@@ -1050,7 +1050,7 @@ function TreesTab({ target, isFilter, dragRef, onAddStep }) {
                 target={target} isFilter={isFilter} dragRef={dragRef} onAddStep={onAddStep} />
             <TreeSection title="Outbound Message Template" side="outbound" varName="tmp" openByDefault={false}
                 target={target} isFilter={isFilter} dragRef={dragRef} onAddStep={onAddStep} />
-            <div className="text-text-faint py-2 px-3 text-[11px]">
+            <div className="text-text-faint py-2 px-3 text-[10px]">
                 Drag a node into a script editor or template field to insert its accessor at the drop point.
             </div>
         </div>
@@ -1203,7 +1203,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }) {
                 title: 'Cannot Save Channel',
                 body: h('div',
                     h('p', 'Fix the following before saving — the engine would reject this channel:'),
-                    h('ul', { class: 'mt-2 mx-0 mb-0 pl-[18px]' }, problems.map(p => h('li', p)))),
+                    h('ul', { class: 'mt-2 mx-0 mb-0 pl-[16px]' }, problems.map(p => h('li', p)))),
                 buttons: [{ label: 'OK' }]
             });
             return;
@@ -1792,7 +1792,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }) {
                     code view can hide it and let the editor fill the column while
                     the right reference panel stays put. */}
                 <div className="split-a split vertical flex-1 min-w-0">
-                    <div className="split-a h-[40%] flex-none p-[14px] pb-2" data-editor-overtake="">
+                    <div className="split-a h-[40%] flex-none p-[13px] pb-2" data-editor-overtake="">
                         {/* Fills the pane so right-clicking anywhere in the step
                             area (not just on a row) opens the context menu. */}
                         <div className="min-h-full panel overflow-auto" onContextMenu={gridContextMenu}>
@@ -1835,7 +1835,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }) {
                 {/* Wide enough to show the full tab bar (Reference / Message Trees /
                     Message Templates) without horizontal scrolling. The side panel
                     root mounts into an unmanaged child of this wrapper. */}
-                <div className="split-b flex-none w-[460px] flex flex-col min-h-0 border-l border-line" ref={sideWrapRef} />
+                <div className="split-b flex-none w-[414px] flex flex-col min-h-0 border-l border-line" ref={sideWrapRef} />
             </div>
         </div>
     );

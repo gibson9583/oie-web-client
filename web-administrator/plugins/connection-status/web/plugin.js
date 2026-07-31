@@ -60,7 +60,7 @@ function register(platform2) {
     if (s.includes("wait")) return "var(--warn)";
     return "var(--busy)";
   };
-  const StateCell = (state) => state ? /* @__PURE__ */ React.createElement("span", { className: "status-cell" }, /* @__PURE__ */ React.createElement("span", { className: "w-[7px] h-[7px] rounded-full inline-block", style: { background: dotColor(state) } }), state) : "";
+  const StateCell = (state) => state ? /* @__PURE__ */ React.createElement("span", { className: "status-cell" }, /* @__PURE__ */ React.createElement("span", { className: "w-[6px] h-[6px] rounded-full inline-block", style: { background: dotColor(state) } }), state) : "";
   platform2.registerDashboardColumn({
     id: "connection",
     label: "Connection",

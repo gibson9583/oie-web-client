@@ -682,7 +682,7 @@ export function AlertEditor({ params, query = {} }) {
         render: (n) => {
             if (n.kind === 'connector') {
                 return (
-                    <span className="inline-flex items-center gap-[7px]">
+                    <span className="inline-flex items-center gap-[6px]">
                         {pip(n.c.enabled ? 'ok' : 'err', () => { n.c.enabled = !n.c.enabled; touchTree(); })}
                         <span>{n.c.name}</span>
                     </span>
@@ -691,7 +691,7 @@ export function AlertEditor({ params, query = {} }) {
             // Channel pip: green all-on, red all-off, amber mixed; clicking it
             // toggles the whole channel (mixed -> fully enabled).
             return (
-                <span className="inline-flex items-center gap-[7px]">
+                <span className="inline-flex items-center gap-[6px]">
                     {pip(channelPipState(n.node), () => { setChannelNode(n.node, channelPipState(n.node) !== 'ok'); touchTree(); })}
                     <span>{n.node.name}</span>
                 </span>
@@ -743,8 +743,8 @@ export function AlertEditor({ params, query = {} }) {
                             <>
                                 {/* ---- top row: name + enabled ---- */}
                                 <div className="flex items-center gap-3 mb-3.5">
-                                    <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Alert Name:</label>
-                                    <input ref={nameRef} type="text" className="flex-1 max-w-[560px]" value={form.name}
+                                    <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Alert Name:</label>
+                                    <input ref={nameRef} type="text" className="flex-1 max-w-[504px]" value={form.name}
                                         onChange={(e) => patchForm({ name: e.target.value })} />
                                     <label className="check">
                                         <input type="checkbox" checked={form.enabled}
@@ -772,7 +772,7 @@ export function AlertEditor({ params, query = {} }) {
                                     <div className="panel m-0 flex flex-col min-h-0">
                                         <div className="panel-header">Regex (optional)</div>
                                         <div className="panel-body flex-1 flex min-h-0">
-                                            <textarea className="flex-1 resize-none min-h-[180px] font-mono"
+                                            <textarea className="flex-1 resize-none min-h-[162px] font-mono"
                                                 placeholder="Only trigger when the error matches this regular expression (leave blank to match any error)"
                                                 value={form.regex} onChange={(e) => patchForm({ regex: e.target.value })} />
                                         </div>
@@ -789,13 +789,13 @@ export function AlertEditor({ params, query = {} }) {
                                             </div>
                                             {tree.includeConnectors
                                                 ? <div className="flex gap-2.5 justify-end">
-                                                    <span title="Expand all nodes below." className="text-accent cursor-pointer underline text-[12px]"
+                                                    <span title="Expand all nodes below." className="text-accent cursor-pointer underline text-[11px]"
                                                         onClick={() => setAllExpanded(true)}>Expand All</span>
-                                                    <span title="Collapse all nodes below." className="text-accent cursor-pointer underline text-[12px]"
+                                                    <span title="Collapse all nodes below." className="text-accent cursor-pointer underline text-[11px]"
                                                         onClick={() => setAllExpanded(false)}>Collapse All</span>
                                                 </div>
                                                 : null}
-                                            <div className="tree flex-1 min-h-0 max-h-[320px] overflow-auto">
+                                            <div className="tree flex-1 min-h-0 max-h-[288px] overflow-auto">
                                                 <TreeTable
                                                     data={treeData()}
                                                     columns={channelColumns}
@@ -841,7 +841,7 @@ export function AlertEditor({ params, query = {} }) {
                                                                 <tbody>
                                                                     {form.actionRows.map((row, i) => (
                                                                         <tr key={i}>
-                                                                            <td className="w-[120px]">
+                                                                            <td className="w-[108px]">
                                                                                 {/* Switching protocol clears the recipient and swaps the editor (combo vs text). */}
                                                                                 <select value={row.protocol}
                                                                                     onChange={(e) => patchAction(i, { protocol: e.target.value, recipient: '' })}>
@@ -849,7 +849,7 @@ export function AlertEditor({ params, query = {} }) {
                                                                                 </select>
                                                                             </td>
                                                                             <td><RecipientControl row={row} index={i} tree={tree} patchAction={patchAction} /></td>
-                                                                            <td className="w-[40px] text-right">
+                                                                            <td className="w-[36px] text-right">
                                                                                 <button type="button" className="icon-btn" title="Remove action"
                                                                                     onClick={() => removeAction(i)}><Icon name="trash" /></button>
                                                                             </td>
@@ -860,7 +860,7 @@ export function AlertEditor({ params, query = {} }) {
                                                         </div>
                                                     )}
                                             </div>
-                                            <div className="mt-[14px]"><TaskButton label="Add" icon="plus" onClick={addAction} /></div>
+                                            <div className="mt-[13px]"><TaskButton label="Add" icon="plus" onClick={addAction} /></div>
                                         </div>
                                     </div>
                                     <div className="panel m-0 flex flex-col min-h-0">
@@ -874,7 +874,7 @@ export function AlertEditor({ params, query = {} }) {
                                             </div>
                                             <div className="field flex-1 flex min-h-0 mb-0">
                                                 <label>Template</label>
-                                                <textarea ref={templateRef} rows={8} className="flex-1 resize-none min-h-[140px]"
+                                                <textarea ref={templateRef} rows={8} className="flex-1 resize-none min-h-[126px]"
                                                     value={form.template}
                                                     onFocus={() => { lastFocusedRef.current = 'template'; }}
                                                     onChange={(e) => patchForm({ template: e.target.value })} />

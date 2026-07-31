@@ -137,17 +137,17 @@ function Field({ label, children }) {
 function EventDetail({ event, username }) {
     if (!event) return <div className="dt-empty">Select an event to view its details.</div>;
     const kv = (label, value) => (
-        <span className="flex items-center gap-[5px]">
-            <span className="text-text-faint text-[10.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
-            <span className="mono font-mono text-[12px]">{value}</span>
+        <span className="flex items-center gap-[4px]">
+            <span className="text-text-faint text-[9.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
+            <span className="mono font-mono text-[11px]">{value}</span>
         </span>
     );
     const attributes = mapEntries(event.attributes)
         .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '');
-    const valueClass = 'whitespace-pre-wrap [word-break:break-word] font-mono text-[11.5px]';
+    const valueClass = 'whitespace-pre-wrap [word-break:break-word] font-mono text-[10.5px]';
     return (
         <>
-            <div className="flex flex-wrap items-center gap-[18px] py-2 px-3.5 border-b border-line flex-none">
+            <div className="flex flex-wrap items-center gap-[16px] py-2 px-3.5 border-b border-line flex-none">
                 {kv('Id', displayValue(event.id))}
                 {kv('Level', displayValue(event.level))}
                 {kv('Outcome', displayValue(event.outcome))}
@@ -326,7 +326,7 @@ export function EventsView() {
                     <div className="form-row">
                         <Field label="Start Time"><DateTimeField value={start} onChange={setStart} label="Start time" /></Field>
                         <Field label="End Time"><DateTimeField value={end} onChange={setEnd} label="End time" /></Field>
-                        <Field label="Name"><input type="text" placeholder="Event name contains…" className="w-[190px]" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Name"><input type="text" placeholder="Event name contains…" className="w-[171px]" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
                         <Field label="Level">
                             <div className="flex items-center gap-2">
                                 {LEVELS.map((l) => (
@@ -355,10 +355,10 @@ export function EventsView() {
                     {/* Always rendered; hidden inline behind the Advanced toggle when wide,
                         but always shown inside the Filters popover (no menu-in-a-menu). */}
                     <div className={'form-row mt-2 filter-advanced' + (advancedOpen ? '' : ' adv-hidden')}>
-                        <Field label="User Id"><input type="number" min="0" className="w-[90px]" value={userId} onChange={(e) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label="IP Address"><input type="text" className="w-[130px]" value={ip} onChange={(e) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label="Server Id"><input type="text" className="w-[230px]" value={serverId} onChange={(e) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[190px]" value={attrSearch} onChange={(e) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="User Id"><input type="number" min="0" className="w-[81px]" value={userId} onChange={(e) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="IP Address"><input type="text" className="w-[117px]" value={ip} onChange={(e) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Server Id"><input type="text" className="w-[207px]" value={serverId} onChange={(e) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[171px]" value={attrSearch} onChange={(e) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
                     </div>
         </>
     );
@@ -374,7 +374,7 @@ export function EventsView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
-                <div ref={filterRef} className="flex-none py-2.5 px-3.5 panel overflow-visible mx-[14px] mt-3 mb-3 filter-collapse">
+                <div ref={filterRef} className="flex-none py-2.5 px-3.5 panel overflow-visible mx-[13px] mt-3 mb-3 filter-collapse">
                     {/* Radix owns the trigger state, Escape, outside-click and focus
                         return; this used to be a mousedown listener with no Escape. */}
                     {narrow ? (
@@ -395,18 +395,18 @@ export function EventsView() {
                         <div className="filter-popover">{criteria}</div>
                     )}
                 </div>
-                <div className="flex-1 overflow-auto min-h-0 flex flex-col oie-elev border border-line rounded-[10px] mx-[14px] mb-3">
+                <div className="flex-1 overflow-auto min-h-0 flex flex-col oie-elev border border-line rounded-[9px] mx-[13px] mb-3">
                     <DataTableHost columns={COLUMNS} options={options} rows={events} />
                 </div>
-                <div className="filterbar panel overflow-visible mx-[14px] mb-3">
+                <div className="filterbar panel overflow-visible mx-[13px] mb-3">
                     <button className="btn" disabled={page.offset <= 0}
                         onClick={() => runSearch(page.params ?? {}, Math.max(0, page.offset - page.limit), page.limit)}>Prev</button>
                     <button className="btn" disabled={page.offset + page.limit >= page.total}
                         onClick={() => runSearch(page.params ?? {}, page.offset + page.limit, page.limit)}>Next</button>
                     <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(page.total)}`}</span>
                 </div>
-                <div className="split-handle mx-[14px] my-1" data-orient="v" data-resize="next" />
-                <div className="flex-none h-[35%] min-h-[48px] overflow-auto panel mx-[14px] mb-3">
+                <div className="split-handle mx-[13px] my-1" data-orient="v" data-resize="next" />
+                <div className="flex-none h-[35%] min-h-[43px] overflow-auto panel mx-[13px] mb-3">
                     <EventDetail event={selected} username={username} />
                 </div>
             </div>

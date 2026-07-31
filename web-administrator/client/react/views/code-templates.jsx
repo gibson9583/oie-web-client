@@ -674,8 +674,8 @@ export function CodeTemplatesView() {
                     When maximized, the top pane (data-editor-overtake) is hidden so the
                     editor fills the column; the right Context panel stays. */}
                 <div className={'split vertical flex-1 min-w-0' + (editorMax ? ' is-editor-max' : '')}>
-                    <div className="split-a h-[320px] flex-none flex flex-col min-h-0" data-editor-overtake>
-                        <div className="flex-1 min-h-0 overflow-auto oie-tablecard px-[14px] pt-3">
+                    <div className="split-a h-[288px] flex-none flex flex-col min-h-0" data-editor-overtake>
+                        <div className="flex-1 min-h-0 overflow-auto oie-tablecard px-[13px] pt-3">
                             <TreeTable
                                 data={treeData}
                                 columns={treeColumns()}
@@ -699,16 +699,16 @@ export function CodeTemplatesView() {
                                 pinnedKeys={['name']}
                                 emptyText="No code template libraries" />
                         </div>
-                        <div className="filterbar flex-none panel overflow-visible mx-[14px] my-2">
+                        <div className="filterbar flex-none panel overflow-visible mx-[13px] my-2">
                             <span className="counts">{countsText}</span>
                             <span className="ml-auto inline-flex items-center gap-1.5">
                                 <label>Filter:</label>
-                                <input type="text" placeholder="Filter…" className="max-w-[260px]" value={filterText}
+                                <input type="text" placeholder="Filter…" className="max-w-[234px]" value={filterText}
                                     onChange={(e) => setFilterText(e.target.value)} />
                             </span>
                         </div>
                     </div>
-                    <div className="split-handle mx-[14px]" data-orient="v" data-resize="prev" data-editor-overtake />
+                    <div className="split-handle mx-[13px]" data-orient="v" data-resize="prev" data-editor-overtake />
                     <div className="split-b flex flex-col min-h-0">
                         <div className="flex flex-col flex-1 min-h-0 py-3.5 px-4 overflow-auto">
                             <EditorPane found={found} kind={selected && selected.kind}
@@ -833,17 +833,17 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }) {
             </div>
             <div className="flex flex-1 min-h-0">
                 <div className="flex flex-col flex-1 min-h-0 mr-3.5">
-                    <div className="mb-2.5 text-[12px] text-text-dim">
+                    <div className="mb-2.5 text-[11px] text-text-dim">
                         <span className="font-[650]">Summary: </span>{summaryText}
                     </div>
-                    <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5">Description</label>
-                    <textarea className="flex-1 min-h-[120px] resize-none" value={library.description || ''}
+                    <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5">Description</label>
+                    <textarea className="flex-1 min-h-[108px] resize-none" value={library.description || ''}
                         onChange={(e) => { library.description = e.target.value; markDirty(); }} />
                 </div>
-                <div className="w-[300px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
+                <div className="w-[270px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
                     <div className="flex items-baseline justify-between mb-2">
-                        <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Channels</label>
-                        <span className="text-[11px]">
+                        <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Channels</label>
+                        <span className="text-[10px]">
                             <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAllChannels(true); }}>Select All</a>
                             <span className="text-text-faint my-0 mx-1.5">|</span>
                             <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAllChannels(false); }}>Deselect All</a>
@@ -910,7 +910,7 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
             <div className="flex flex-1 min-h-0">
                 <div className="flex flex-col flex-1 min-h-0 mr-3.5">
                     <div className="flex items-center mb-1.5">
-                        <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Code</label>
+                        <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Code</label>
                         <button type="button" className="icon-btn ml-auto"
                             title={maximized ? 'Restore editor (Esc)' : 'Maximize editor'}
                             onClick={onToggleMax}>
@@ -962,10 +962,10 @@ function ContextPanel({ template, markDirty }) {
     const setAll = (on) => apply(on ? new Set(ALL_CONTEXTS) : new Set());
 
     return (
-        <div className="w-[260px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
+        <div className="w-[234px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
             <div className="flex items-baseline justify-between mb-2">
-                <label className="text-[11px] font-[650] tracking-[0.08em] uppercase text-text-dim">Context</label>
-                <span className="text-[11px]">
+                <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Context</label>
+                <span className="text-[10px]">
                     <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAll(true); }}>Select All</a>
                     <span className="text-text-faint my-0 mx-1.5">|</span>
                     <a href="#" className="text-accent" onClick={(e) => { e.preventDefault(); setAll(false); }}>Deselect All</a>
