@@ -1867,6 +1867,13 @@ function FilterTransformerView({ params, kindName }) {
         let alive = true;
         api.channels.get(params.channelId).then((loaded) => {
             if (!alive) return;
+            // Same as the channel editor: an unknown id resolves with an empty body
+            // rather than rejecting, so an unchecked load builds on nothing.
+            if (!loaded || !loaded.id) {
+                toast(`Channel ${params.channelId} was not found.`, 'error');
+                setReady(false);
+                return;
+            }
             store.setState('editingChannel', loaded);
             store.setState('editingChannelNew', false);
             setReady(true);

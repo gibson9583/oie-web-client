@@ -219,6 +219,30 @@ test.describe('Channel editor', () => {
         await expect(libraries).toHaveAttribute('aria-selected', 'true');
     });
 
+    /* A stale bookmark or a deleted channel. The engine does not 404 an unknown
+       id — it answers 200 with an empty body — so this used to resolve, build an
+       editor around nothing and throw on the first field read, taking out the
+       whole view. */
+    test('a deep link to a channel that no longer exists reports it, and does not crash', async ({ page }) => {
+        const errors = [];
+        page.on('pageerror', (e) => errors.push(e.message));
+
+        await page.goto('/channels/no-such-channel/edit');
+        await expect(page.locator('.dt-empty')).toHaveText('Channel not loaded');
+        await expect(page.getByText('This view failed to load.')).toHaveCount(0);
+        expect(errors).toEqual([]);
+
+        // The rest of the app is still usable — the rail is intact.
+        await expect(page.locator('.rail-nav [data-nav-item="channels"]')).toBeVisible();
+
+        // The sub-editors deep-link the same way and shared the same flaw.
+        for (const route of ['filter/0', 'transformer/0', 'response/1']) {
+            await page.goto(`/channels/no-such-channel/${route}`);
+            await expect(page.locator('.dt-empty')).toHaveText('Channel not loaded');
+        }
+        expect(errors).toEqual([]);
+    });
+
     test('switching to Destinations shows the destination row', async ({ page }) => {
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
 
