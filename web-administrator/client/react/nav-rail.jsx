@@ -360,7 +360,7 @@ export function NavRail({ collapsed, onPeek, onLogout }) {
                     id="rail-customize" aria-pressed={String(editing)}
                     onClick={() => setEditing((v) => !v)}
                     {...peek(editing ? 'Done' : 'Customize')}>
-                    <Icon name={editing ? 'check' : 'settings'} size={15} />
+                    <Icon name={editing ? 'check' : 'sliders'} size={15} />
                     <span className="rail-label">{editing ? 'Done' : 'Customize'}</span>
                 </button>
                 {/* Sign-out is chrome too, and last: it must be in the same place
