@@ -2285,7 +2285,15 @@ input.grid-name::placeholder { color: var(--text-faint); }
    are included because they live OUTSIDE .rail-pane — every rule scoped to the
    pane misses them, and they end up visibly smaller than everything above. */
 .rail-collapsed .rail .rail-pane .rail-item svg,
-.rail-collapsed .rail .rail-customize .rail-chrome svg { width: 22px; height: 22px; }
+.rail-collapsed .rail .rail-customize .rail-chrome svg {
+    width: 22px;
+    height: 22px;
+    /* Thinner to compensate for the size. Stroke width is set on the 24-unit
+       viewBox, so it renders proportionally: 1.7 is 1.06px at the expanded rail's
+       15px, but 1.56px at 22 — half again as heavy, which is why these read bold
+       beside everything else. 1.4 brings them back to ~1.28px. */
+    stroke-width: 1.4;
+}
 
 /* The Other pane's buttons carry their label as a bare text node, so there is no
    element to hide — font-size:0 collapses the text while the icons keep their
