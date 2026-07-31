@@ -17,6 +17,7 @@ import { DialogHost, openRadixDialog } from './react/dialog-host.jsx';
 import { ToastHost, showRadixToast } from './react/toast-host.jsx';
 import { ContextMenuHost, openRadixContextMenu } from './react/context-menu-host.jsx';
 import { setDialogRenderer, setToastRenderer, setContextMenuRenderer } from '@oie/web-ui';
+import { ErrorBoundary } from './react/error-boundary.jsx';
 
 // Every modal(), toast() and contextMenu() in the app and in plugins renders
 // through Radix from here on. Registered before the first render, so anything
@@ -29,10 +30,18 @@ setContextMenuRenderer(openRadixContextMenu);
 // react/mount.jsx creates are separate roots outside <App>, so they are NOT
 // double-invoked by this — wrapping them too is a much riskier step, because the
 // islands lean on mountReact's synchronous first render (see mount.jsx).
+// The boundary wraps <App> only. This is the root that owns the rail, topbar and
+// the outlet every view mounts into, so a throw here really does leave an empty
+// page — the one case where a full-page report is the right fallback. The dialog,
+// toast and context-menu hosts sit outside it deliberately: they are what the
+// fallback would need in order to say anything, and a boundary around them could
+// not render its own report.
 createRoot(document.getElementById('app')).render(
     <StrictMode>
         <QueryClientProvider client={queryClient}>
-            <App />
+            <ErrorBoundary label="The administrator failed to start">
+                <App />
+            </ErrorBoundary>
             {/* Outside <App> so these survive the auth gate swapping the tree. */}
             <DialogHost />
             <ToastHost />

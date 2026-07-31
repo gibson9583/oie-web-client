@@ -727,6 +727,50 @@ table.dt tbody tr.group-row td {
 .dt-empty .empty-icon { opacity: 0.45; margin-bottom: 9px; }
 .dt-empty .empty-icon svg { width: 27px; height: 27px; }
 
+/* ---- Error boundary fallback ----------------------------------------------------------------- */
+
+/* What a root shows instead of going blank. Sized to whatever region it replaces:
+   the view variant fills the outlet, .compact suits a hosted island. */
+.view-error {
+    margin: auto;
+    max-width: 560px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    border: 1px solid color-mix(in srgb, var(--err) 42%, transparent);
+    background: color-mix(in srgb, var(--err) 7%, transparent);
+    border-radius: var(--radius);
+}
+
+.view-error.compact {
+    margin: 11px;
+    padding: 13px;
+    gap: 8px;
+}
+
+.view-error-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 600;
+    color: var(--err);
+}
+
+.view-error-msg {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text-dim);
+    /* A thrown message can be a whole stack line — wrap it rather than stretch
+       the card, and cap it so the actions stay reachable. */
+    word-break: break-word;
+    max-height: 8.5em;
+    overflow: auto;
+}
+
+.view-error-actions { display: flex; gap: 7px; }
+
 /* ---- Tabs ------------------------------------------------------------------------------------ */
 
 /* Tabs — single app-wide style: a shadcn segmented control (pill container with

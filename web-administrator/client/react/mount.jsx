@@ -23,6 +23,7 @@ import { createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './queries.js';
+import { ErrorBoundary } from './error-boundary.jsx';
 
 // The rail element React views portal their task panes into. Set by the shell
 // on mount, read when each view mounts.
@@ -31,7 +32,10 @@ export function setReactTasksHost(el) { reactTasksHostEl = el; }
 
 const TasksHostContext = createContext(null);
 
-// Wrap a React component as a core/router.js view handler.
+// Wrap a React component as a core/router.js view handler. The boundary is inside
+// the providers so the fallback keeps the Query client (its Retry remounts the
+// view, which will refetch), and outside <Component> so a throw during the view's
+// own first render is caught rather than escaping to an empty outlet.
 export function reactView(Component) {
     return ({ params, query }) => {
         const el = document.createElement('div');
@@ -40,7 +44,9 @@ export function reactView(Component) {
         flushSync(() => root.render(
             <QueryClientProvider client={queryClient}>
                 <TasksHostContext.Provider value={reactTasksHostEl}>
-                    <Component params={params} query={query} />
+                    <ErrorBoundary label="This view failed to render">
+                        <Component params={params} query={query} />
+                    </ErrorBoundary>
                 </TasksHostContext.Provider>
             </QueryClientProvider>
         ));
@@ -55,10 +61,15 @@ export function reactView(Component) {
 // flushSync makes the first render synchronous so the DOM exists before the
 // caller measures/returns. Call the returned teardown when rebuilding/clearing
 // the host so the React root doesn't leak.
-export function mountReact(hostEl, element) {
+// `label` names the island in the fallback and in the console line — pass the
+// panel/tab it hosts when the caller knows it, since these roots are usually
+// plugin code and the report is what identifies whose.
+export function mountReact(hostEl, element, { label = 'This panel failed to render' } = {}) {
     const root = createRoot(hostEl);
     flushSync(() => root.render(
-        <QueryClientProvider client={queryClient}>{element}</QueryClientProvider>
+        <QueryClientProvider client={queryClient}>
+            <ErrorBoundary label={label} compact>{element}</ErrorBoundary>
+        </QueryClientProvider>
     ));
     return () => root.unmount();
 }
