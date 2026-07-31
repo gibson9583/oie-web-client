@@ -10,7 +10,8 @@ import * as React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    useStoreKey, useTheme, useTimezone, useViewTitle, useServerIdentity, useRestartWatch, Icon
+    useStoreKey, useTheme, useTimezone, useViewTitle, useServerIdentity, useConnectionStatus,
+    useRestartWatch, Icon
 } from './bridges.jsx';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { NavRail } from './nav-rail.jsx';
@@ -293,12 +294,25 @@ function RailFlyout({ target }) {
 
 /* ---- topbar ---- */
 
+/* Pip colours for the connection states. The status bar is the one place that
+   reports connection health, so this lives with it rather than being shared. */
+const CONN_PIP = { ok: 'ok', offline: 'err', unreachable: 'warn', reconnecting: 'busy' };
+
+/*
+ * Identity only: which engine this window is pointed at. Deliberately says nothing
+ * about whether that engine is answering — a pip here as well as in the status bar
+ * was the same fact twice, and the two bars are close enough together that the
+ * repetition read as noise rather than emphasis.
+ *
+ * Note the split that makes this work: WHICH engine is stable, so it belongs in the
+ * bar you stop reading after the first glance; whether it is UP changes, so it
+ * belongs in the bar you look at when something seems wrong.
+ */
 function ServerChip({ info }) {
-    if (!info) return <div className="server-chip"><span className="pip ok" /><span>…</span></div>;
-    if (info.error) return <div className="server-chip"><span className="pip err" /><span>engine unreachable</span></div>;
-    const { version, settings } = info;
-    const text = `${settings?.environmentName ? settings.environmentName + ' · ' : ''}${settings?.serverName || 'engine'} · v${version}`;
-    return <div className="server-chip"><span className="pip ok" /><span>{text}</span></div>;
+    if (!info) return <div className="server-chip"><span>…</span></div>;
+    if (info.error) return <div className="server-chip"><span>engine details unavailable</span></div>;
+    const identity = `${info.settings?.environmentName ? info.settings.environmentName + ' · ' : ''}${info.settings?.serverName || 'engine'} · v${info.version}`;
+    return <div className="server-chip"><span>{identity}</span></div>;
 }
 
 function TopBar({ user, onLogout, serverInfo }) {
@@ -429,7 +443,7 @@ function UserMenu({ user, onLogout }) {
 
 /* ---- status bar ---- */
 
-function StatusBar({ user, serverInfo }) {
+function StatusBar({ user, serverInfo, conn }) {
     const config = useStoreKey('webadminConfig') || {};
     const [clock, setClock] = useState('');
     useEffect(() => {
@@ -442,13 +456,39 @@ function StatusBar({ user, serverInfo }) {
     }, []);
     const engine = currentEngineLabel(config) || '/api';
     let left = 'Connecting…';
-    if (serverInfo && !serverInfo.error) {
+    // Live connection state outranks the one-shot identity fetch: the identity is
+    // from load time, whereas this is how the last request actually went.
+    if (conn.state === 'offline') {
+        left = 'No network connection — showing the last data received';
+    } else if (conn.state === 'reconnecting') {
+        left = `Reconnecting to ${engine}…`;
+    } else if (conn.state === 'unreachable') {
+        left = `Engine unreachable at ${engine}` + (conn.retryIn != null ? ` — retrying in ${conn.retryIn}s` : '');
+    } else if (serverInfo && !serverInfo.error) {
         const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
         left = `Connected to: ${engine} as ${user?.username || ''}` + (name ? ` (${name})` : '');
     } else if (serverInfo && serverInfo.error) {
         left = `Engine unreachable at ${engine}`;
     }
-    return <footer className="statusbar"><span>{left}</span><span className="ml-auto">{clock}</span></footer>;
+    /* Still waiting on the first identity fetch: pulse rather than claim a state. */
+    const pip = conn.state === 'ok' && !serverInfo ? 'busy' : CONN_PIP[conn.state];
+    /* Retrying by hand used to be a click on the topbar chip. Connection state lives
+       here now, so the affordance follows it rather than disappearing — the backoff
+       reaches 30s between attempts, which is a long time to wait once you know the
+       engine is back. Offline is excluded: there is nothing to retry against. */
+    const canRetry = conn.state === 'unreachable';
+    return (
+        <footer className="statusbar">
+            <span>
+                <span className={'pip ' + pip} aria-hidden="true" />
+                {canRetry
+                    ? <button type="button" className="status-text status-retry" onClick={conn.retryNow}
+                        title="Retry the connection now instead of waiting for the countdown.">{left}</button>
+                    : <span className="status-text">{left}</span>}
+            </span>
+            <span className="ml-auto">{clock}</span>
+        </footer>
+    );
 }
 
 /* ---- restart banner ---- */
@@ -484,6 +524,7 @@ function AppShell({ user, onLogout }) {
     const outletRef = useRef(null);
     const reactTasksRef = useRef(null);
     const serverInfo = useServerIdentity();
+    const conn = useConnectionStatus();
 
     // Hand core/router.js the React outlet, start the engine once, then route.
     useEffect(() => {
@@ -573,7 +614,7 @@ function AppShell({ user, onLogout }) {
                     <main ref={outletRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }} />
                 </div>
             </div>
-            <StatusBar user={user} serverInfo={serverInfo} />
+            <StatusBar user={user} serverInfo={serverInfo} conn={conn} />
         </div>
     );
 }

@@ -40,6 +40,59 @@ export function onSessionExpired(fn) {
 /* Call after a successful re-login so the next 401 fires again. */
 export function resetSessionExpired() { sessionExpiredFired = false; }
 
+/* ---- engine reachability ----------------------------------------------------
+ * Observed from the traffic the app already makes — deliberately NOT a heartbeat.
+ * A poll would keep resetting the ENGINE's own session inactivity timeout, which
+ * is the same reason core/idle-logout.js runs its check loop without any network
+ * call. So this only ever reports on requests some view actually asked for.
+ *
+ * "Reachable" means the engine answered, whatever it said: a 500 is an engine
+ * with an opinion, and a 401 is an expired session (onSessionExpired's job, and a
+ * different message to the user). Only a rejected fetch — DNS, refused connection,
+ * dropped socket — or a gateway status, where the proxy is telling us the upstream
+ * never answered, counts as unreachable.
+ */
+
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+
+const connectionListeners = [];
+let engineReachable = true;
+
+/** Subscribe to reachability changes. Returns an unsubscribe (see onSessionExpired). */
+export function onConnectionChange(fn) {
+    connectionListeners.push(fn);
+    return () => {
+        const i = connectionListeners.indexOf(fn);
+        if (i >= 0) connectionListeners.splice(i, 1);
+    };
+}
+
+/** True while engine requests are getting answers. */
+export function isEngineReachable() { return engineReachable; }
+
+function setReachable(next) {
+    if (next === engineReachable) return;
+    engineReachable = next;
+    for (const fn of connectionListeners.slice()) {
+        try { fn(next); } catch { /* a bad listener must not break the request */ }
+    }
+}
+
+/*
+ * The single send path for every verb below. Wrapping fetch (rather than handle)
+ * is what makes a network failure observable at all: a rejected fetch never
+ * reaches handle().
+ */
+function send(url, init, opts) {
+    return fetch(url, init).then(
+        (response) => {
+            setReachable(!GATEWAY_STATUSES.has(response.status));
+            return handle(response, opts);
+        },
+        (err) => { setReachable(false); throw err; }
+    );
+}
+
 function headers(contentType) {
     const h = {
         // Prefer JSON, but accept anything — several endpoints (/server/version,
@@ -169,9 +222,9 @@ function qs(params) {
 const enc = encodeURIComponent;
 
 export function get(path, params, opts) {
-    return fetch(BASE + path + qs(params), {
+    return send(BASE + path + qs(params), {
         method: 'GET', headers: headers(), credentials: 'same-origin'
-    }).then(r => handle(r, opts));
+    }, opts);
 }
 
 export function post(path, body, { params, contentType = 'application/json', wrapKey, raw, noAuthHandler } = {}) {
@@ -179,12 +232,12 @@ export function post(path, body, { params, contentType = 'application/json', wra
     if (body !== undefined && body !== null && typeof body !== 'string' && !(body instanceof FormData)) {
         payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
     }
-    return fetch(BASE + path + qs(params), {
+    return send(BASE + path + qs(params), {
         method: 'POST',
         headers: body instanceof FormData ? headers() : headers(contentType),
         credentials: 'same-origin',
         body: payload ?? null
-    }).then(r => handle(r, { raw, noAuthHandler }));
+    }, { raw, noAuthHandler });
 }
 
 export function put(path, body, { params, contentType = 'application/json', wrapKey, raw } = {}) {
@@ -192,9 +245,9 @@ export function put(path, body, { params, contentType = 'application/json', wrap
     if (body !== undefined && body !== null && typeof body !== 'string') {
         payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
     }
-    return fetch(BASE + path + qs(params), {
+    return send(BASE + path + qs(params), {
         method: 'PUT', headers: headers(contentType), credentials: 'same-origin', body: payload ?? null
-    }).then(r => handle(r, { raw }));
+    }, { raw });
 }
 
 /* ---- Raw XML content negotiation -------------------------------------------
@@ -204,14 +257,14 @@ export function put(path, body, { params, contentType = 'application/json', wrap
    (de)serialization so import/export round-trips are byte-faithful. */
 
 export function getXml(path, params) {
-    return fetch(BASE + path + qs(params), {
+    return send(BASE + path + qs(params), {
         method: 'GET',
         headers: {
             'Accept': 'application/xml',
             'X-Requested-With': 'OpenIntegrationEngine-WebAdmin'
         },
         credentials: 'same-origin'
-    }).then(r => handle(r, { raw: true }));
+    }, { raw: true });
 }
 
 export function postXml(path, xml, params) {
@@ -223,9 +276,9 @@ export function putXml(path, xml, params) {
 }
 
 export function del(path, params) {
-    return fetch(BASE + path + qs(params), {
+    return send(BASE + path + qs(params), {
         method: 'DELETE', headers: headers(), credentials: 'same-origin'
-    }).then(handle);
+    });
 }
 
 /* When the engine returns a singleton or missing list, normalize to an array.

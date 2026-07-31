@@ -6,12 +6,12 @@
  * seam: one shared framework instance, React just observes it.
  */
 
-import { useSyncExternalStore, useState, useEffect, useReducer } from 'react';
+import { useSyncExternalStore, useState, useEffect, useReducer, useCallback, useRef } from 'react';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { timezoneMode, cycleTimezone, resolvedAbbr, onTimezoneChange } from '../core/timezone.js';
 import { iconPath } from '../core/icons.js';
-import api from '@oie/web-api';
+import api, { onConnectionChange, isEngineReachable } from '@oie/web-api';
 
 /* ---- store ---- */
 
@@ -248,6 +248,89 @@ export function useServerIdentity() {
         return () => { alive = false; };
     }, []);
     return info;
+}
+
+/* ---- connection status (the topbar chip's pip) ----------------------------
+ * Four states, from two independent signals:
+ *
+ *   offline       the BROWSER has no network — nothing else is worth saying
+ *   unreachable   the browser is online but engine requests are failing
+ *   reconnecting  a recovery probe is in flight
+ *   ok            requests are getting answers
+ *
+ * The offline/unreachable split is the point: they look identical on a frozen
+ * screen and call for completely different responses.
+ *
+ * Failure is observed passively, from traffic the app already makes (see
+ * core/api.js). Only RECOVERY is polled, because nothing else would reveal it —
+ * and by then the engine session is likely gone anyway, so the probe cannot be
+ * accused of holding one open. Backoff keeps a long outage cheap.
+ */
+
+const PROBE_BASE_SECONDS = 3;
+const PROBE_MAX_SECONDS = 30;
+
+export function useConnectionStatus() {
+    const [online, setOnline] = useState(() => (typeof navigator === 'undefined' || navigator.onLine !== false));
+    const [reachable, setReachable] = useState(isEngineReachable);
+    const [probing, setProbing] = useState(false);
+    const [retryIn, setRetryIn] = useState(null);
+    // Bumped after every probe so the countdown effect re-arms for the next round.
+    const [round, setRound] = useState(0);
+    const attemptRef = useRef(0);
+
+    useEffect(() => onConnectionChange(setReachable), []);
+
+    useEffect(() => {
+        const up = () => setOnline(true);
+        const down = () => setOnline(false);
+        window.addEventListener('online', up);
+        window.addEventListener('offline', down);
+        return () => {
+            window.removeEventListener('online', up);
+            window.removeEventListener('offline', down);
+        };
+    }, []);
+
+    /* Any answer at all flips reachability through core/api.js's send(), so the
+       probe deliberately ignores its own result — including a 401, which means the
+       engine is up and the session expired, and is onSessionExpired's story to tell. */
+    const probe = useCallback(async () => {
+        setProbing(true);
+        try { await api.server.version(); } catch { /* the listener already recorded it */ }
+        setProbing(false);
+        setRound((n) => n + 1);
+    }, []);
+
+    useEffect(() => {
+        if (reachable) { attemptRef.current = 0; setRetryIn(null); return; }
+        if (!online) { setRetryIn(null); return; }   // no point probing a dead NIC
+
+        const delay = Math.min(PROBE_MAX_SECONDS, PROBE_BASE_SECONDS * 2 ** attemptRef.current);
+        attemptRef.current += 1;
+        let left = delay;
+        setRetryIn(left);
+        const timer = setInterval(() => {
+            left -= 1;
+            if (left > 0) { setRetryIn(left); return; }
+            clearInterval(timer);
+            setRetryIn(null);
+            probe();
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [reachable, online, round, probe]);
+
+    // Coming back onto the network is worth an immediate look rather than a wait.
+    useEffect(() => {
+        if (online && !reachable) { attemptRef.current = 0; probe(); }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [online]);
+
+    const state = !online ? 'offline'
+        : probing ? 'reconnecting'
+            : reachable ? 'ok' : 'unreachable';
+
+    return { state, retryIn, retryNow: probe };
 }
 
 /* ---- engine restart watch (ported from app.js initRestartWatch) ---- */

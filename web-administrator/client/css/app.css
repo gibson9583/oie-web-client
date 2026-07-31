@@ -392,6 +392,7 @@ code, pre, .mono { font-family: var(--font-mono); }
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--topbar-fg);
+    white-space: nowrap;
 }
 
 .user-chip {
@@ -2713,8 +2714,28 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
 /* ---- Responsive: tablet & phone -------------------------------------------------------- */
 
 /* Status bar: ellipsis the connection string instead of shoving the clock off-screen. */
-.statusbar > span:first-child { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The left cell holds a status pip beside the text, so it is a flex row and the
+   ellipsis moves onto the text itself — on the cell it would clip the pip instead. */
+.statusbar > span:first-child { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 7px; }
+.statusbar .status-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .statusbar > .ml-auto { flex: none; }
+
+/* Retry-now, while the engine is unreachable. A button, but it has to sit in a
+   10px mono strip without becoming a control — so it inherits everything and
+   announces itself on hover instead. */
+.statusbar .status-retry {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+.statusbar .status-retry:hover { color: var(--text); text-decoration-style: solid; }
 
 /* Full-height blocks: prefer dynamic viewport units (mobile browser-toolbar 100vh trap). */
 @supports (height: 100dvh) {
