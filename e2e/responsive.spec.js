@@ -78,12 +78,14 @@ test.describe('responsive — phone (375px)', () => {
     });
 });
 
-test('dashboard controls stay inline (no View button) at desktop width', async ({ page }) => {
-    // "Desktop" now has to account for the task column beside the content: rail 216
-    // + tasks 176 leaves the filterbar under the 880px container width at 1280, so
-    // the controls correctly fold into the View menu there. 1440 is the first
-    // common width with room for them inline.
-    await page.setViewportSize({ width: 1440, height: 900 });
+test('dashboard controls go inline only when the filter still has room', async ({ page }) => {
+    /* The controls fold until the bar can hold them AND leave the filter the
+       ~240px it is designed around. That is ~1120px of bar, which needs roughly a
+       1600px window once the rail and task column are paid for.
+
+       This used to assert inline at 1440, which was measurably wrong: the controls
+       went inline the moment they technically fitted and squeezed the filter to
+       121px there — and to 41px just above the old threshold. */
     await mockEngine(page);
     await page.goto('/dashboard');
     await expect(page.locator('.dash-options-btn')).toBeHidden();
