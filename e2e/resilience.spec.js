@@ -170,8 +170,13 @@ test.describe('connection status in the status bar', () => {
         // A stopped engine: the fetch is refused, which never reaches a status code.
         await page.route('**/api/**', (route) => route.abort('connectionrefused'));
 
-        // The dashboard's own poll is what discovers this — no heartbeat of ours.
-        await expect(page.locator('.statusbar')).toContainText('Engine unreachable', { timeout: 20_000 });
+        /* Discovery rides on requests the app already makes — there is no heartbeat
+           of ours. Refresh rather than waiting on the background poll: the poll is
+           the real-world path but fires on the user's dashboard interval (20s by
+           default, and configurable), which would make this a race against a
+           preference rather than a test of the behaviour. */
+        await page.getByRole('button', { name: 'Refresh' }).first().click();
+        await expect(page.locator('.statusbar')).toContainText('Engine unreachable', { timeout: 15_000 });
         // warn, not err: the browser is fine, so this is not the same fault as offline.
         await expect(barPip(page)).toHaveClass(/\bwarn\b/);
         // Retrying by hand moved here from the chip; it must still be reachable.
@@ -184,7 +189,8 @@ test.describe('connection status in the status bar', () => {
         await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
 
         await page.route('**/api/**', (route) => route.abort('connectionrefused'));
-        await expect(page.locator('.statusbar')).toContainText('Engine unreachable', { timeout: 20_000 });
+        await page.getByRole('button', { name: 'Refresh' }).first().click();
+        await expect(page.locator('.statusbar')).toContainText('Engine unreachable', { timeout: 15_000 });
 
         // Engine back. The backoff probe should notice without anyone clicking.
         await page.unroute('**/api/**');

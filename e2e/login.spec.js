@@ -145,13 +145,24 @@ test('an expired session explains itself below the login box, not in a dialog', 
         'GET /channels/statuses': { __status: 401 },
         'GET /server/status': { __status: 401 },
     });
-    // No interaction needed: the dashboard's own poll is the call that 401s.
+    /* Any engine call will do; Refresh is the explicit one. This used to lean on the
+       dashboard's background poll, which meant the test was quietly racing the
+       user's refresh-interval preference — it fires on that cadence (20s by
+       default), not on a fixed timer this spec can rely on. */
+    await page.getByRole('button', { name: 'Refresh' }).first().click();
 
     // Back at the login form, with the reason inline and nothing to dismiss.
     await expect(page.locator('form.login-card, .login-card')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.login-notice')).toContainText(/session expired/i);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.modal-overlay')).toHaveCount(0);
+
+    /* The card animates in (login-in, 0.4s, translateY(16px)), so measure only once
+       it has landed — mid-flight the card still sits low and the notice reads as
+       being above it. This spec used to get the wait for free by waiting on a
+       background poll; nothing should depend on that accident. */
+    await page.locator('.login-card').evaluate(
+        (el) => Promise.all(el.getAnimations().map((a) => a.finished)));
 
     // BELOW the card, not beside it: .login-stage is a centering flex row, so a bare
     // sibling of the form lands next to it — the geometry is the actual requirement.
