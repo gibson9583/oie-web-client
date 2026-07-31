@@ -40,6 +40,9 @@ export const PREF_DEFAULTS = {
     cardsGroupBy: 'none',
     // Card view: show Lifetime statistics (true) vs. Current (false).
     cardsLifetime: false,
+    // 'compact' | 'normal' | 'wide' — row height in the data grids only. Named for
+    // what it changes: forms and editors keep the baseline either way.
+    tableDensity: 'normal',
     // Command palette: ids of the last few entries run, most recent first. Shown
     // when the palette opens with an empty query.
     paletteRecent: [],

@@ -106,6 +106,14 @@
     --radius: 9px;
     --rail-w: 194px;
     --rail-w-icons: 50px;
+
+    /* Row density (Settings → Administrator). Only the grids move: they are where
+       the vertical space goes and where an operator watching a channel list wants
+       more rows. Forms and editors keep the baseline — cramming them to win rows on
+       the dashboard would be a bad trade, and it is the reason this is one scoped
+       control rather than a global "density". */
+    --row-pad-y: 5px;
+    --head-pad-y: 7px;
     --topbar-h: 43px;
     --shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
     /* Soft, layered card elevation — lifts panels off the ground. Distinct from
@@ -113,6 +121,11 @@
     --elev: 0 1px 2px rgba(0, 0, 0, 0.28), 0 6px 18px rgba(0, 0, 0, 0.34);
     --grid-dot: rgba(133, 158, 178, 0.05);
 }
+
+/* A wide spread on purpose. At 2/5/9 the compact step was a single row's worth of
+   difference — real, but not enough to feel like a choice. */
+[data-table-density="compact"] { --row-pad-y: 1px; --head-pad-y: 4px; }
+[data-table-density="wide"]    { --row-pad-y: 11px; --head-pad-y: 12px; }
 
 /* Light theme: faithful to the classic Swing Administrator — blue sidebar and
    title strip, white panes, light gray data surfaces. */
@@ -649,7 +662,10 @@ table.dt th {
     top: 0;
     z-index: 2;
     text-align: left;
-    padding: 8px 12px;
+    padding: var(--head-pad-y) 11px;
+    /* Held at 10px rather than following the type scale down: uppercase at 0.18em
+       tracking reads a size smaller than it is, and these are the labels you scan a
+       dense grid by. */
     font-size: 10px;
     font-weight: 650;
     letter-spacing: 0.18em;
@@ -678,7 +694,7 @@ table.dt th .sort-arrow { color: var(--accent); margin-left: 4px; }
 .col-resize:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 table.dt td {
-    padding: 6px 12px;
+    padding: var(--row-pad-y) 11px;
     border-bottom: 1px solid var(--line);
     vertical-align: middle;
     white-space: nowrap;
@@ -1032,6 +1048,56 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     .msg-channel span { display: none; }
     .msg-channel select { min-width: 117px; }
 }
+
+/* ---- Settings: user-preference preview ------------------------------------------------- */
+
+/* A sample of the app under the PENDING theme, density and background — the real
+   choices only reach the app on Save, so this is where you see them first. It
+   carries data-theme and data-table-density itself, which is why neither of those
+   rules is scoped to :root. */
+.pref-preview {
+    margin: 0 0 14px;
+    padding: 11px;
+    background: var(--bg0);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+}
+.pref-preview-label {
+    margin-bottom: 8px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+}
+/* Fixed height, and the row list overflows it. That is the point: density is
+   really a question of HOW MANY ROWS FIT, and a couple of sample rows growing a
+   few pixels each reads as no change at all. Here the answer changes visibly —
+   more rows at compact, fewer at wide — and the panel never jumps height. */
+.pref-preview-frame {
+    display: flex;
+    height: 138px;
+    overflow: hidden;
+    background: var(--bg1);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+}
+/* A few strokes standing in for the rail, so the background colour has somewhere
+   to show — it is the rail and topbar the setting actually tints. */
+.pref-preview-rail {
+    flex: none;
+    width: 54px;
+    padding: 8px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    background: var(--chrome-texture), var(--rail-bg);
+}
+.pref-preview-rail span { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--rail-fg) 42%, transparent); }
+.pref-preview-rail .pref-preview-brand { height: 7px; background: color-mix(in srgb, var(--rail-fg) 72%, transparent); }
+.pref-preview-frame .dt { flex: 1; min-width: 0; }
+.pref-preview-frame .dt th { position: static; }   /* no sticky inside a sample */
 
 /* ---- Command palette (react/command-palette.jsx) -------------------------------------- */
 
