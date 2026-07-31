@@ -65,9 +65,14 @@ test('the collapsed hamburger shares the icon column\'s centre line', async ({ p
     await page.getByRole('button', { name: 'Hide navigation' }).click();
     await expect(page.locator('.shell')).toHaveClass(/rail-collapsed/);
     /* The class lands before the width does — the rail animates 194px → 50px, and
-       measuring mid-transition reads the icons half a rail out of position. */
+       measuring mid-transition reads the icons out of position by however far the
+       animation still has to go. Wait for the SETTLED width (the icon rail's own
+       token), not merely a narrow one: a loose bound like "< 80" is still true at
+       74px, which is twelve pixels of drift and an intermittent failure. */
+    const railWidth = await page.evaluate(() =>
+        parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rail-w-icons')));
     await expect.poll(async () => (await page.locator('.rail').boundingBox())?.width ?? 0)
-        .toBeLessThan(80);
+        .toBeLessThanOrEqual(railWidth + 0.5);
 
     const ham = await centreOf('.rail-toggle');
     const icon = await centreOf('.rail-nav [data-nav-item] svg');
