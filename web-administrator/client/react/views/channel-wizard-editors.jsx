@@ -51,13 +51,13 @@ export function DataTypeBar({ holder, version, connectorType, onChange }) {
             <div className="panel-body flex flex-col gap-3">
                 <div className="flex flex-wrap gap-4">
                     <label className="flex flex-col gap-1">
-                        <span className="text-text-dim text-[12px]">Inbound</span>
+                        <span className="text-text-dim text-[11px]">Inbound</span>
                         <select value={holder.inboundDataType} onChange={(e) => setType('inbound', e.target.value)}>
                             {types.map((t) => <option key={t.name} value={t.name}>{t.label}</option>)}
                         </select>
                     </label>
                     <label className="flex flex-col gap-1">
-                        <span className="text-text-dim text-[12px]">Outbound</span>
+                        <span className="text-text-dim text-[11px]">Outbound</span>
                         <select value={holder.outboundDataType} onChange={(e) => setType('outbound', e.target.value)}>
                             {types.map((t) => <option key={t.name} value={t.name}>{t.label}</option>)}
                         </select>
@@ -178,8 +178,8 @@ function PickerModal({ title, items, onAdd, onClose }) {
                 <div className="modal-header">{title}<button type="button" className="icon-btn" onClick={onClose} title="Close">✕</button></div>
                 <div className="modal-body flex flex-col gap-2">
                     <input type="text" autoFocus placeholder="Filter…" value={q} onChange={(e) => setQ(e.target.value)} />
-                    <div className="border border-line rounded-md overflow-auto max-h-[320px]">
-                        {filtered.length === 0 && <div className="p-2 text-text-faint text-[12px]">No matches.</div>}
+                    <div className="border border-line rounded-md overflow-auto max-h-[288px]">
+                        {filtered.length === 0 && <div className="p-2 text-text-faint text-[11px]">No matches.</div>}
                         {filtered.map((it) => (
                             <label key={it.id} className="flex items-center gap-2 py-1.5 px-2 hover:bg-bg1 cursor-pointer">
                                 <input type="checkbox" checked={sel.has(it.id)} onChange={() => toggle(it.id)} />
@@ -305,8 +305,8 @@ export function DependenciesStep({ channel, libState, depState }) {
         return (
             <div className="flex flex-col gap-2">
                 <div className="cform-section-title">{title}</div>
-                <div className="step-list min-h-[70px] max-h-[220px] overflow-auto">
-                    {ids.length === 0 && <div className="p-2 text-text-faint text-[12px]">None</div>}
+                <div className="step-list min-h-[63px] max-h-[198px] overflow-auto">
+                    {ids.length === 0 && <div className="p-2 text-text-faint text-[11px]">None</div>}
                     {ids.map((id) => (
                         <div key={id} className="step-item flex items-center gap-2 min-w-0" title={nameOf(id)}>
                             <span className="flex-1 min-w-0 truncate">{nameOf(id)}</span>
@@ -324,7 +324,7 @@ export function DependenciesStep({ channel, libState, depState }) {
     };
 
     return (
-        <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-4 max-w-[820px]">
+        <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-4 max-w-[738px]">
             <TabsPrimitive.List className="tabs overflow-x-auto" aria-label="Dependency sections">
                 {DEP_TABS.map(([key, text]) => (
                     <TabsPrimitive.Trigger key={key} value={key}
@@ -351,7 +351,7 @@ export function DependenciesStep({ channel, libState, depState }) {
                     <div className="panel-body flex flex-col gap-1.5">
                         {libraries.length === 0 && <div className="hint">No code template libraries on this engine.</div>}
                         {libraries.length > 6 && <input type="text" placeholder="Filter libraries…" value={libQuery} onChange={(e) => setLibQuery(e.target.value)} />}
-                        <div className="flex flex-col border border-line rounded-md max-h-[340px] overflow-auto divide-y divide-line">
+                        <div className="flex flex-col border border-line rounded-md max-h-[306px] overflow-auto divide-y divide-line">
                         {libraries.filter((lib) => !libQuery.trim() || String(lib.name || '').toLowerCase().includes(libQuery.trim().toLowerCase())).map((lib) => {
                             const templates = api.asList(lib.codeTemplates, 'codeTemplate').filter((t) => t && typeof t === 'object');
                             const open = expanded.has(lib.id);
@@ -366,14 +366,14 @@ export function DependenciesStep({ channel, libState, depState }) {
                                         <input type="checkbox" checked={!!st.checked.get(lib.id)} onChange={(e) => toggleLib(lib.id, e.target.checked)} />
                                         <span className="min-w-0 flex-1">
                                             <span className="font-medium">{lib.name || '(unnamed library)'}</span>
-                                            <span className="text-text-faint text-[11.5px]"> · {templates.length} template{templates.length === 1 ? '' : 's'}</span>
+                                            <span className="text-text-faint text-[10.5px]"> · {templates.length} template{templates.length === 1 ? '' : 's'}</span>
                                             {lib.description ? <span className="block hint">{lib.description}</span> : null}
                                         </span>
                                     </label>
                                     {open && templates.length > 0 && (
-                                        <div className="flex flex-col pl-[46px] pr-2.5 pb-2 gap-0.5">
+                                        <div className="flex flex-col pl-[41px] pr-2.5 pb-2 gap-0.5">
                                             {templates.map((t, i) => (
-                                                <div key={t.id || i} className="flex items-center gap-2 text-[12px] text-text-dim">
+                                                <div key={t.id || i} className="flex items-center gap-2 text-[11px] text-text-dim">
                                                     <Icon name="code" size={12} /><span className="truncate">{t.name || '(unnamed template)'}</span>
                                                 </div>
                                             ))}
@@ -395,12 +395,12 @@ export function DependenciesStep({ channel, libState, depState }) {
                     <div className="panel-body flex flex-col gap-1.5">
                         {resources.length === 0 && <div className="hint">No library resources on this engine (besides the Default Resource, which always applies).</div>}
                         {resources.length > 6 && <input type="text" placeholder="Filter resources…" value={resQuery} onChange={(e) => setResQuery(e.target.value)} />}
-                        <div className="flex flex-col border border-line rounded-md max-h-[340px] overflow-auto divide-y divide-line">
+                        <div className="flex flex-col border border-line rounded-md max-h-[306px] overflow-auto divide-y divide-line">
                         {resources.filter((r) => !resQuery.trim() || r.name.toLowerCase().includes(resQuery.trim().toLowerCase())).map((r) => (
                             <label key={r.id} className="flex items-center gap-2 px-2.5 py-2 hover:bg-bg1 cursor-pointer">
                                 <input type="checkbox" checked={!!resObj[r.id]} onChange={(e) => toggleRes(r.id, r.name, e.target.checked)} />
                                 <span className="font-medium">{r.name}</span>
-                                {r.type ? <span className="text-text-faint text-[11.5px]">· {r.type}</span> : null}
+                                {r.type ? <span className="text-text-faint text-[10.5px]">· {r.type}</span> : null}
                             </label>
                         ))}
                         </div>
@@ -493,7 +493,7 @@ export function QueueSettings({ connector, onChange }) {
 
     const col = (label, control) => (
         <div className="flex flex-col gap-1.5">
-            <div className="text-[11px] uppercase tracking-wide text-text-faint font-semibold">{label}</div>
+            <div className="text-[10px] uppercase tracking-wide text-text-faint font-semibold">{label}</div>
             {control}
         </div>
     );
@@ -517,7 +517,7 @@ export function QueueSettings({ connector, onChange }) {
                     {col('Advanced Queue Settings', (
                         <div className="flex items-center gap-2.5 flex-wrap">
                             <button type="button" className="btn btn-sm" onClick={() => setOpen(!open)}>Advanced Queue Settings</button>
-                            <span className="text-text-faint text-[12px]">{retries} {retries === 1 ? 'retry' : 'retries'}</span>
+                            <span className="text-text-faint text-[11px]">{retries} {retries === 1 ? 'retry' : 'retries'}</span>
                         </div>
                     ))}
                     {col('Validate Response', radios(`${nm}-vr`, YN, YESNO(dcp.validateResponse), (v) => set('validateResponse', v)))}
@@ -525,10 +525,10 @@ export function QueueSettings({ connector, onChange }) {
                 </div>
                 {open && (
                     <div className="border-t border-line pt-3 grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                        <label className="flex items-center gap-3"><span className="w-[150px] text-text-dim text-[12px]">Retry count</span><input type="number" className="w-[90px]" value={dcp.retryCount ?? '0'} onChange={(e) => num('retryCount', e.target.value)} /></label>
-                        <label className="flex items-center gap-3"><span className="w-[150px] text-text-dim text-[12px]">Retry interval (ms)</span><input type="number" className="w-[110px]" value={dcp.retryIntervalMillis ?? '10000'} onChange={(e) => num('retryIntervalMillis', e.target.value)} /></label>
-                        <label className="flex items-center gap-3"><span className="w-[150px] text-text-dim text-[12px]">Queue threads</span><input type="number" className="w-[90px]" value={dcp.threadCount ?? '1'} onChange={(e) => num('threadCount', e.target.value)} /></label>
-                        <label className="flex items-center gap-3"><span className="w-[150px] text-text-dim text-[12px]">Queue buffer size</span><input type="number" className="w-[110px]" value={dcp.queueBufferSize ?? '1000'} onChange={(e) => num('queueBufferSize', e.target.value)} /></label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Retry count</span><input type="number" className="w-[81px]" value={dcp.retryCount ?? '0'} onChange={(e) => num('retryCount', e.target.value)} /></label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Retry interval (ms)</span><input type="number" className="w-[99px]" value={dcp.retryIntervalMillis ?? '10000'} onChange={(e) => num('retryIntervalMillis', e.target.value)} /></label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Queue threads</span><input type="number" className="w-[81px]" value={dcp.threadCount ?? '1'} onChange={(e) => num('threadCount', e.target.value)} /></label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Queue buffer size</span><input type="number" className="w-[99px]" value={dcp.queueBufferSize ?? '1000'} onChange={(e) => num('queueBufferSize', e.target.value)} /></label>
                         <label className="flex items-center gap-2"><input type="checkbox" checked={YESNO(dcp.rotate)} disabled={mode === 'never'} onChange={(e) => set('rotate', e.target.checked)} />Rotate queue on failure</label>
                         <label className="flex items-center gap-2"><input type="checkbox" checked={YESNO(dcp.regenerateTemplate)} onChange={(e) => set('regenerateTemplate', e.target.checked)} />Regenerate template on retry</label>
                     </div>
@@ -597,19 +597,19 @@ function StorageSlider({ value, onChange }) {
                     style={{ width: `calc((100% - 0.5rem) / ${n})`, left: `calc(0.25rem + ${di} * (100% - 0.5rem) / ${n})` }} />
                 {display.map((m, i) => (
                     <button key={m.value} type="button" onClick={() => onChange(m.value)}
-                        className={`relative z-10 flex-1 border-0 bg-transparent py-1.5 rounded-lg text-[12px] font-semibold cursor-pointer transition-colors ${i === di ? 'text-white' : 'text-text-dim hover:text-text'}`}>
+                        className={`relative z-10 flex-1 border-0 bg-transparent py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${i === di ? 'text-white' : 'text-text-dim hover:text-text'}`}>
                         {m.label}
                     </button>
                 ))}
             </div>
             <div className="flex items-center gap-3">
-                <span className="text-[11px] text-text-faint w-[100px]">Higher performance</span>
+                <span className="text-[10px] text-text-faint w-[90px]">Higher performance</span>
                 <div className="relative flex-1 h-1.5 rounded-full bg-bg1 overflow-hidden">
                     <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${fill}%` }} />
                 </div>
-                <span className="text-[11px] text-text-faint w-[74px] text-right">More storage</span>
+                <span className="text-[10px] text-text-faint w-[67px] text-right">More storage</span>
             </div>
-            <div className="text-[12px] text-text-dim">{display[di].desc}</div>
+            <div className="text-[11px] text-text-dim">{display[di].desc}</div>
         </div>
     );
 }
@@ -661,23 +661,23 @@ function AttachmentHandler({ channel, version }) {
         <div className="panel !mt-0">
             <div className="panel-header flex items-center gap-3">
                 <span>Attachments</span>
-                <label className="ml-auto normal-case font-normal flex items-center gap-2 text-[12px]">
+                <label className="ml-auto normal-case font-normal flex items-center gap-2 text-[11px]">
                     <input type="checkbox" checked={p.storeAttachments === true} onChange={(e) => { p.storeAttachments = e.target.checked; tick(); }} />Store attachments
                 </label>
             </div>
             {p.storeAttachments && (
             <div className="panel-body flex flex-col gap-3">
                 <label className="flex flex-wrap items-center gap-3">
-                    <span className="w-[140px] text-text-dim text-[12px]">Attachment handler</span>
-                    <select className="w-[200px]" value={ap.type || 'None'} onChange={(e) => setType(e.target.value)}>
+                    <span className="w-[126px] text-text-dim text-[11px]">Attachment handler</span>
+                    <select className="w-[180px]" value={ap.type || 'None'} onChange={(e) => setType(e.target.value)}>
                         {ATTACHMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                         {!known && ap.type ? <option value={ap.type}>{ap.type} (custom)</option> : null}
                     </select>
                 </label>
                 {ap.type === 'Entire Message' && (
                     <label className="flex flex-wrap items-center gap-3">
-                        <span className="w-[140px] text-text-dim text-[12px]">MIME type</span>
-                        <input type="text" className="flex-1 min-w-[160px]" placeholder="e.g. text/plain"
+                        <span className="w-[126px] text-text-dim text-[11px]">MIME type</span>
+                        <input type="text" className="flex-1 min-w-[144px]" placeholder="e.g. text/plain"
                             value={map['identity.mimetype'] || ''} onChange={(e) => setMap({ ...map, 'identity.mimetype': e.target.value })} />
                     </label>
                 )}
@@ -687,14 +687,14 @@ function AttachmentHandler({ channel, version }) {
                 )}
                 {ap.type === 'Regex' && (
                     <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-text-faint">
-                            <span className="flex-1">Regex pattern</span><span className="flex-1">MIME type</span><span className="w-[30px] flex-none" />
+                        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-text-faint">
+                            <span className="flex-1">Regex pattern</span><span className="flex-1">MIME type</span><span className="w-[27px] flex-none" />
                         </div>
                         {regexRows().map((r, i, arr) => (
                             <div key={i} className="flex items-center gap-2">
                                 <input type="text" className="flex-1 min-w-0" value={r.pattern} onChange={(e) => setRegexRows(arr.map((x, idx) => idx === i ? { ...x, pattern: e.target.value } : x))} />
                                 <input type="text" className="flex-1 min-w-0" value={r.mimetype} onChange={(e) => setRegexRows(arr.map((x, idx) => idx === i ? { ...x, mimetype: e.target.value } : x))} />
-                                <button type="button" className="btn btn-sm btn-danger w-[30px] flex-none justify-center" onClick={() => setRegexRows(arr.length > 1 ? arr.filter((_, idx) => idx !== i) : [{ pattern: '', mimetype: '' }])}><Icon name="trash" size={12} /></button>
+                                <button type="button" className="btn btn-sm btn-danger w-[27px] flex-none justify-center" onClick={() => setRegexRows(arr.length > 1 ? arr.filter((_, idx) => idx !== i) : [{ pattern: '', mimetype: '' }])}><Icon name="trash" size={12} /></button>
                             </div>
                         ))}
                         <div><button type="button" className="btn btn-sm" onClick={() => setRegexRows([...regexRows(), { pattern: '', mimetype: '' }])}><Icon name="plus" size={12} />Add pattern</button></div>
@@ -779,7 +779,7 @@ function ChannelTags({ channel, version }) {
                 {!s.loaded && <div className="hint">Loading tags…</div>}
                 {s.loaded && (
                     <div className="flex flex-wrap items-center gap-1.5">
-                        {assigned.length === 0 && <span className="text-text-faint text-[12px]">No tags.</span>}
+                        {assigned.length === 0 && <span className="text-text-faint text-[11px]">No tags.</span>}
                         {assigned.map((name) => {
                             const tag = s.all.find((t) => t.name === name);
                             return (
@@ -789,7 +789,7 @@ function ChannelTags({ channel, version }) {
                                 </span>
                             );
                         })}
-                        <input type="text" list="wiz-tag-list" placeholder="Add tag…" className="w-[140px]"
+                        <input type="text" list="wiz-tag-list" placeholder="Add tag…" className="w-[126px]"
                             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(e.target.value); e.target.value = ''; } }}
                             onChange={(e) => { if (e.target.value && suggestions.includes(e.target.value)) { addTag(e.target.value); e.target.value = ''; } }} />
                         <datalist id="wiz-tag-list">{suggestions.map((n) => <option key={n} value={n} />)}</datalist>
@@ -828,7 +828,7 @@ export function ChannelSettings({ channel, version }) {
             <div className="panel !mt-0">
                 <div className="panel-header">General</div>
                 <div className="panel-body grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                    <label className="flex items-center gap-3"><span className="w-[140px] text-text-dim text-[12px]">Initial state</span>
+                    <label className="flex items-center gap-3"><span className="w-[126px] text-text-dim text-[11px]">Initial state</span>
                         <select value={p.initialState || 'STARTED'} onChange={(e) => { p.initialState = e.target.value; tick(); }}>
                             <option value="STARTED">Started</option><option value="PAUSED">Paused</option><option value="STOPPED">Stopped</option>
                         </select>
@@ -869,9 +869,9 @@ export function ChannelSettings({ channel, version }) {
                             <label className="flex items-center gap-2">
                                 <input type="radio" name="prune-meta" checked={prune.pruneMetaDataDays != null}
                                     onChange={() => { prune.pruneMetaDataDays = Number(prune.pruneMetaDataDays) || 30; tick(); }} />Prune older than
-                                <input type="number" min="1" className="w-[80px]" disabled={prune.pruneMetaDataDays == null}
+                                <input type="number" min="1" className="w-[72px]" disabled={prune.pruneMetaDataDays == null}
                                     value={prune.pruneMetaDataDays ?? ''} onChange={(e) => { prune.pruneMetaDataDays = Math.max(1, Number(e.target.value) || 1); tick(); }} />
-                                <span className="text-text-dim text-[12px]">days</span>
+                                <span className="text-text-dim text-[11px]">days</span>
                             </label>
                         </div>
                         <div className="flex flex-col gap-2">
@@ -883,9 +883,9 @@ export function ChannelSettings({ channel, version }) {
                             <label className="flex items-center gap-2">
                                 <input type="radio" name="prune-content" checked={prune.pruneContentDays != null}
                                     onChange={() => { prune.pruneContentDays = Number(prune.pruneContentDays) || 30; tick(); }} />Prune older than
-                                <input type="number" min="1" className="w-[80px]" disabled={prune.pruneContentDays == null}
+                                <input type="number" min="1" className="w-[72px]" disabled={prune.pruneContentDays == null}
                                     value={prune.pruneContentDays ?? ''} onChange={(e) => { prune.pruneContentDays = Math.max(1, Number(e.target.value) || 1); tick(); }} />
-                                <span className="text-text-dim text-[12px]">days</span>
+                                <span className="text-text-dim text-[11px]">days</span>
                             </label>
                         </div>
                     </div>
@@ -905,23 +905,23 @@ export function ChannelSettings({ channel, version }) {
                 <div className="panel-body flex flex-col gap-2">
                     {columns.length === 0 && <div className="hint">No custom columns. Add one to capture a value into the message metadata.</div>}
                     {columns.length > 0 && (
-                        <div className="flex items-center gap-2 px-0.5 text-[11px] uppercase tracking-wide text-text-faint">
+                        <div className="flex items-center gap-2 px-0.5 text-[10px] uppercase tracking-wide text-text-faint">
                             <span className="flex-1">Column name</span>
-                            <span className="w-[130px] flex-none">Type</span>
+                            <span className="w-[117px] flex-none">Type</span>
                             <span className="flex-1">Mapping variable</span>
-                            <span className="w-[30px] flex-none" />
+                            <span className="w-[27px] flex-none" />
                         </div>
                     )}
                     {columns.map((c, i) => (
                         <div key={i} className="flex items-center gap-2">
                             <input type="text" className="flex-1 min-w-0" placeholder="e.g. patientId" value={c.name || ''}
                                 onChange={(e) => { columns[i] = { ...c, name: e.target.value }; setCols([...columns]); }} />
-                            <select className="w-[130px] flex-none" value={c.type || 'STRING'} onChange={(e) => { columns[i] = { ...c, type: e.target.value }; setCols([...columns]); }}>
+                            <select className="w-[117px] flex-none" value={c.type || 'STRING'} onChange={(e) => { columns[i] = { ...c, type: e.target.value }; setCols([...columns]); }}>
                                 {META_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                             </select>
                             <input type="text" className="flex-1 min-w-0" placeholder="e.g. mirth_patientId" value={c.mappingName || ''}
                                 onChange={(e) => { columns[i] = { ...c, mappingName: e.target.value }; setCols([...columns]); }} />
-                            <button type="button" className="btn btn-sm btn-danger w-[30px] flex-none justify-center" onClick={() => setCols(columns.filter((_, idx) => idx !== i))}><Icon name="trash" size={13} /></button>
+                            <button type="button" className="btn btn-sm btn-danger w-[27px] flex-none justify-center" onClick={() => setCols(columns.filter((_, idx) => idx !== i))}><Icon name="trash" size={13} /></button>
                         </div>
                     ))}
                     <div><button type="button" className="btn btn-sm" onClick={() => setCols([...columns, { name: '', type: 'STRING', mappingName: '' }])}><Icon name="plus" size={13} />Add column</button></div>

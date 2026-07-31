@@ -41,14 +41,14 @@ export function register(platform) {
 
         if (state.status === 'loading') {
             return (
-                <div className="mt-[14px]">
-                    <div className="text-text-faint text-[11px] mb-1">Loading PDF…</div>
+                <div className="mt-[13px]">
+                    <div className="text-text-faint text-[10px] mb-1">Loading PDF…</div>
                 </div>
             );
         }
         if (state.status === 'error') {
             return (
-                <div className="mt-[14px]">
+                <div className="mt-[13px]">
                     <div className="text-text-faint">{`Could not load PDF: ${state.message}`}</div>
                 </div>
             );
@@ -56,11 +56,11 @@ export function register(platform) {
         // Sandbox the attacker-controlled PDF: opaque origin, no scripts, no
         // top-frame navigation (render-only) via an empty sandbox attribute.
         return (
-            <div className="mt-[14px]">
+            <div className="mt-[13px]">
                 <iframe
                     sandbox=""
                     src={state.src}
-                    className="w-full h-[640px] border border-[var(--bg3)] rounded-[4px]"
+                    className="w-full h-[576px] border border-[var(--bg3)] rounded-[4px]"
                 />
             </div>
         );

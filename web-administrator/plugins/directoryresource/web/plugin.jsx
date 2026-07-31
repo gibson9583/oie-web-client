@@ -61,7 +61,7 @@ export function register(platform) {
             return <div className="text-text-faint">No libraries loaded</div>;
         }
         return (
-            <ul className="m-0 pl-[18px] max-h-[180px] overflow-auto font-mono text-[12px]">
+            <ul className="m-0 pl-[16px] max-h-[162px] overflow-auto font-mono text-[11px]">
                 {state.libs.map((l, i) => <li key={`${i}-${l}`}>{l}</li>)}
             </ul>
         );

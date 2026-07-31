@@ -333,7 +333,7 @@ export function ExtensionsView() {
                             <div className="dt-empty">
                                 <div className="empty-icon"><Icon name="warning" size={30} /></div>
                                 <div>Failed to load</div>
-                                <div className="text-text-faint mt-[14px]">{loadError}</div>
+                                <div className="text-text-faint mt-[13px]">{loadError}</div>
                             </div>
                         ) : (
                             <DataTableHost columns={connColumns} options={connOptions} rows={connectors}

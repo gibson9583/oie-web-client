@@ -87,7 +87,7 @@ export function AlertsList() {
             h('div', h('div', { class: 'font-semibold' }, title), h('div.hint', desc)));
         const m = modal({
             title: 'New Alert',
-            body: h('div', { class: 'flex flex-col gap-2.5 min-w-[440px]' },
+            body: h('div', { class: 'flex flex-col gap-2.5 min-w-[396px]' },
                 card('classic', 'edit', 'Classic editor', 'The full editor — all options on one screen.'),
                 card('guided', 'wand', 'Wizard', 'A step-by-step guided builder: basics, trigger, channels, actions.'),
                 h('label', { class: 'flex items-center gap-2 mt-2 text-text-dim' },
@@ -234,7 +234,7 @@ export function AlertsList() {
                         <div className="dt-empty">
                             <div className="empty-icon"><Icon name="alerts" size={30} /></div>
                             <div>No Alerts Configured</div>
-                            <div className="mt-[16px] flex items-center justify-center gap-2">
+                            <div className="mt-[14px] flex items-center justify-center gap-2">
                                 {platform.checkTask('alert', 'doNewAlert') && (
                                     <button type="button" className="btn btn-primary" onClick={newTask}>
                                         <Icon name="plus" size={14} />Create Alert

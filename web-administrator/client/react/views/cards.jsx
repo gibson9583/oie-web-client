@@ -49,9 +49,9 @@ const fmt = (n) => (Number(n) || 0).toLocaleString();
 function StatCard({ label, value, color, active, onClick, small }) {
     return (
         <button type="button" onClick={onClick} disabled={!onClick}
-            className={`panel !mt-0 text-left px-3.5 py-2.5 flex flex-col gap-0.5 min-w-[120px] ${onClick ? 'cursor-pointer hover:border-accent' : 'cursor-default'} ${active ? 'border-accent bg-[var(--accent-glow)]' : ''}`}>
+            className={`panel !mt-0 text-left px-3.5 py-2.5 flex flex-col gap-0.5 min-w-[108px] ${onClick ? 'cursor-pointer hover:border-accent' : 'cursor-default'} ${active ? 'border-accent bg-[var(--accent-glow)]' : ''}`}>
             <span className={`${small ? 'text-lg' : 'text-2xl'} font-semibold tabular-nums`} style={{ color: color || 'var(--text)' }}>{value}</span>
-            <span className="text-[11px] uppercase tracking-wide text-text-faint">{label}</span>
+            <span className="text-[10px] uppercase tracking-wide text-text-faint">{label}</span>
         </button>
     );
 }
@@ -79,17 +79,17 @@ function ChannelCard({ status, tags, selected, onSelect, onOpen, onMenu, lifetim
                 <span className={`pip ${statePip(status.state)} mt-1.5 flex-none`} />
                 <div className="min-w-0 flex-1">
                     <div className="font-medium truncate" title={status.name}>{status.name}</div>
-                    <div className="text-[11px] text-text-faint">{stateLabel(status.state)}</div>
+                    <div className="text-[10px] text-text-faint">{stateLabel(status.state)}</div>
                 </div>
             </div>
-            <div className="px-3 h-[18px] overflow-hidden flex gap-1">
-                {tags.map((t, i) => <span key={i} className="tag !py-0 !text-[10px]" style={{ background: tagRgb(t, 0.26) }}>{t.name}</span>)}
+            <div className="px-3 h-[16px] overflow-hidden flex gap-1">
+                {tags.map((t, i) => <span key={i} className="tag !py-0 !text-[9px]" style={{ background: tagRgb(t, 0.26) }}>{t.name}</span>)}
             </div>
             <div className="grid grid-cols-4 border-t border-line divide-x divide-line text-center">
                 {[['Received', s.RECEIVED, ''], ['Sent', s.SENT, ''], ['Queued', s.QUEUED, s.QUEUED ? 'text-warn' : ''], ['Errored', s.ERROR, s.ERROR ? 'text-err' : '']].map(([label, val, cls]) => (
                     <div key={label} className="py-1.5">
-                        <div className={`text-[13px] font-semibold tabular-nums ${cls}`}>{fmt(val)}</div>
-                        <div className="text-[10px] text-text-faint uppercase tracking-wide">{label}</div>
+                        <div className={`text-[11.5px] font-semibold tabular-nums ${cls}`}>{fmt(val)}</div>
+                        <div className="text-[9px] text-text-faint uppercase tracking-wide">{label}</div>
                     </div>
                 ))}
             </div>
@@ -320,13 +320,13 @@ function CardsView({ onToggleView }) {
             </ViewTasks>
             {/* Summary. No divider rule: these are cards on the dotted ground, and a
                 full-bleed border-b drew a hairline straight across it. */}
-            <div className="flex flex-wrap gap-2.5 px-[14px] pt-3 pb-2">
+            <div className="flex flex-wrap gap-2.5 px-[13px] pt-3 pb-2">
                 <StatCard label="Channels" value={fmt(all.length)} />
                 {STATE_ORDER.map((s) => (agg.states[s] ? (
                     <StatCard key={s} label={STATE_META[s].label} value={fmt(agg.states[s])} color={STATE_META[s].color}
                         active={stateFilter === s} onClick={() => toggleState(s)} small />
                 ) : null))}
-                <div className="flex-1 min-w-[8px]" />
+                <div className="flex-1 min-w-[7px]" />
                 <StatCard label="Received" value={fmt(agg.totals.RECEIVED)} small />
                 <StatCard label="Sent" value={fmt(agg.totals.SENT)} small />
                 <StatCard label="Queued" value={fmt(agg.totals.QUEUED)} color={agg.totals.QUEUED ? 'var(--warn)' : undefined} small />
@@ -336,13 +336,13 @@ function CardsView({ onToggleView }) {
             {/* Controls — two groups: filters (left) and display controls (right).
                 They sit on one line (spread apart) when there's room; when the row is
                 too narrow the display cluster drops to a left-aligned second line. */}
-            <div className="panel flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3.5 py-2.5 mx-[14px] mb-3 overflow-visible">
+            <div className="panel flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3.5 py-2.5 mx-[13px] mb-3 overflow-visible">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                     <div className="relative">
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-faint"><Icon name="search" size={14} /></span>
-                        <input type="text" className="w-[220px] max-w-full !pl-7" placeholder="Filter channels & tags…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                        <input type="text" className="w-[198px] max-w-full !pl-7" placeholder="Filter channels & tags…" value={query} onChange={(e) => setQuery(e.target.value)} />
                     </div>
-                    <label className="flex items-center gap-2 text-[12px] text-text-dim whitespace-nowrap">Group by
+                    <label className="flex items-center gap-2 text-[11px] text-text-dim whitespace-nowrap">Group by
                         <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
                             <option value="none">None</option>
                             <option value="group">Channel group</option>
@@ -369,7 +369,7 @@ function CardsView({ onToggleView }) {
                     <button className={`btn btn-ghost btn-sm ${live ? 'text-accent' : ''}`} onClick={() => setLive((v) => !v)} title="Toggle auto-refresh">
                         <span className={`pip ${live ? 'ok' : ''} mr-1`} />{live ? 'Live' : 'Paused'}
                     </button>
-                    <span className="text-[12px] text-text-faint whitespace-nowrap">{filtered.length} of {all.length}</span>
+                    <span className="text-[11px] text-text-faint whitespace-nowrap">{filtered.length} of {all.length}</span>
                 </div>
             </div>
 
@@ -393,7 +393,7 @@ function CardsView({ onToggleView }) {
                                     onClick={(e) => { e.stopPropagation(); setCollapsed((c) => { const n = new Set(c); if (n.has(sec.key)) n.delete(sec.key); else n.add(sec.key); return n; }); }}>
                                     <Icon name={open ? 'chevD' : 'chevR'} size={14} />
                                     <span className="font-semibold">{sec.label}</span>
-                                    <span className="text-text-faint text-[12px]">{sec.members.length}</span>
+                                    <span className="text-text-faint text-[11px]">{sec.members.length}</span>
                                 </div>
                                 {open && (
                                     <>

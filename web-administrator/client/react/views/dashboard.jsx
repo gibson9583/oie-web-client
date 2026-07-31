@@ -315,23 +315,23 @@ function DashFilterBar({
                 { value: 'group', icon: 'folder', title: 'Group view' },
                 { value: 'channel', icon: 'channels', title: 'Channel view' }
             ]} />
-            <span className="inline-flex items-center gap-[5px]">
-                <span className="text-text-faint text-[11px]">Tags:</span>
+            <span className="inline-flex items-center gap-[4px]">
+                <span className="text-text-faint text-[10px]">Tags:</span>
                 <SegPill value={tagMode} onChange={onTagMode} label="Tag display" options={[
                     { value: 'names', label: 'Names', title: 'Show tags as names' },
                     { value: 'icons', label: 'Icons', title: 'Show tags as icons' },
                     { value: 'off', label: 'Off', title: 'Hide tags' }
                 ]} />
             </span>
-            <span className="inline-flex items-center gap-[5px]">
-                <span className="text-text-faint text-[11px]">Stats:</span>
+            <span className="inline-flex items-center gap-[4px]">
+                <span className="text-text-faint text-[10px]">Stats:</span>
                 <SegPill value={showStats ? 'on' : 'off'} onChange={(v) => onShowStats(v === 'on')} label="Statistics strip" options={[
                     { value: 'on', label: 'On', title: 'Show stat cards' },
                     { value: 'off', label: 'Off', title: 'Hide stat cards' }
                 ]} />
             </span>
-            <span className="inline-flex items-center gap-[5px]">
-                <span className="text-text-faint text-[11px]">Range:</span>
+            <span className="inline-flex items-center gap-[4px]">
+                <span className="text-text-faint text-[10px]">Range:</span>
                 <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v) => onLifetime(v === 'lifetime')} label="Statistics range" options={[
                     { value: 'current', label: 'Current' },
                     { value: 'lifetime', label: 'Lifetime' }
@@ -342,7 +342,7 @@ function DashFilterBar({
 
     return (
         <div className="filterbar" ref={barRef}>
-            <span className="flex items-center gap-2.5 flex-1 min-w-[220px]">
+            <span className="flex items-center gap-2.5 flex-1 min-w-[198px]">
                 <label>Filter:</label>
                 {chips.length > 0 && (
                     <span className="filter-chip-host gap-1 flex-wrap" style={{ display: 'inline-flex' }}>
@@ -351,12 +351,12 @@ function DashFilterBar({
                             const tag = isTag ? tags.find(t => String(t.name) === chip.value) : null;
                             return (
                                 <span key={chip.kind + ':' + chip.value}
-                                    className="tag inline-flex items-center gap-1 py-px pr-1 pl-[7px]"
+                                    className="tag inline-flex items-center gap-1 py-px pr-1 pl-[6px]"
                                     style={{ background: isTag ? (tagRgb(tag, 0.25) || 'var(--bg3)') : 'var(--bg3)' }}>
                                     <Icon name={isTag ? 'tag' : 'server'} size={12} />
                                     <span>{chip.value}</span>
                                     <button title="Remove"
-                                        className="appearance-none border-none cursor-pointer text-inherit text-[14px] leading-none py-0 px-px"
+                                        className="appearance-none border-none cursor-pointer text-inherit text-[12.5px] leading-none py-0 px-px"
                                         style={{ background: 'none', fontFamily: 'inherit' }}
                                         onClick={() => removeChip(chip)}>×</button>
                                 </span>
@@ -531,10 +531,10 @@ function DashboardView({ onToggleView }) {
         modal({
             title: 'Clear Statistics',
             body: h('div',
-                h('div.mb-[14px]', `Clear the selected statistics for ${ids.length} channel(s)? This cannot be undone.`),
+                h('div.mb-[13px]', `Clear the selected statistics for ${ids.length} channel(s)? This cannot be undone.`),
                 h('div', { class: 'flex flex-col gap-1.5' },
                     received.el, filtered.el, sent.el, errored.el),
-                h('div.hint.mt-[14px]', 'Queued statistics cannot be cleared.')),
+                h('div.hint.mt-[13px]', 'Queued statistics cannot be cleared.')),
             buttons: [
                 { label: 'Cancel' },
                 {
@@ -1204,7 +1204,7 @@ function DashboardView({ onToggleView }) {
             <div className="dt-empty">
                 <div className="empty-icon"><Icon name="dashboard" size={30} /></div>
                 <div>No deployed channels</div>
-                <div className="text-text-faint mt-[14px]">Deploy a channel from the Channels view to see it here.</div>
+                <div className="text-text-faint mt-[13px]">Deploy a channel from the Channels view to see it here.</div>
             </div>
         )
         : 'Contacting engine…';

@@ -148,7 +148,14 @@ test('collapsed, the chrome rows match the nav icons', async ({ page }) => {
     const outIcon = await page.locator('#rail-logout svg').first().boundingBox();
     expect(Math.round(gearIcon.width)).toBe(Math.round(navIcon.width));
     expect(Math.round(outIcon.width)).toBe(Math.round(navIcon.width));
-    expect(Math.round(navIcon.width)).toBe(24);
+    /* And they are the LARGER collapsed size, not the expanded rail's hint-sized
+       icon — an icon carrying a nav item alone has to read as a target. Compared
+       against the expanded rail rather than a literal, so it survives a change to
+       the type and spacing scale. */
+    await page.getByTitle('Show navigation').click();
+    const expanded = await rail(page).locator('.rail-pane .rail-item svg').first().boundingBox();
+    expect(navIcon.width).toBeGreaterThan(expanded.width);
+    await page.getByTitle('Hide navigation').click();
 
     // Labels are gone at 56px; the flyout carries the name instead.
     await expect(page.locator('#rail-customize .rail-label')).toBeHidden();

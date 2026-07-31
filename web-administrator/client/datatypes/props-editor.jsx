@@ -132,7 +132,7 @@ function FieldControl({ groupObj, f, notify }) {
     }
 }
 
-const GROUP_LABEL_CLASS = 'font-semibold text-[12px] uppercase tracking-[0.04em] text-[var(--text-dim,inherit)] border-b border-line pt-2.5 px-0 pb-1 mb-2';
+const GROUP_LABEL_CLASS = 'font-semibold text-[11px] uppercase tracking-[0.04em] text-[var(--text-dim,inherit)] border-b border-line pt-2.5 px-0 pb-1 mb-2';
 
 /* Unknown/plugin data types: raw JSON editor over the properties object. */
 function RawProperties({ typeName, props, onReplace }) {

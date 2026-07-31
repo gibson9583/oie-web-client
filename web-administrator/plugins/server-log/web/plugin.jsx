@@ -122,15 +122,15 @@ function showDetail(item) {
     modal({
         title: 'Server Log Entry',
         size: 'wide',
-        body: h('div', { class: 'flex flex-col gap-2 min-w-[620px]' },
-            h('div', { class: 'flex gap-[14px] items-center flex-wrap' },
+        body: h('div', { class: 'flex flex-col gap-2 min-w-[558px]' },
+            h('div', { class: 'flex gap-[13px] items-center flex-wrap' },
                 levelTagDom(item.level),
                 h('span.mono.text-text-faint', formatLogDate(item.date)),
                 h('span.mono', scopeLabel(item))),
             h('div', { class: 'font-semibold' }, 'Message'),
             h('pre', { class: preClass + ' max-h-[30vh]' }, String(item.message ?? '')),
             stack ? h('div', { class: 'font-semibold' }, 'Stack Trace') : null,
-            stack ? h('pre', { class: preClass + ' max-h-[60vh] text-[12px]' }, String(item.throwableInformation)) : null),
+            stack ? h('pre', { class: preClass + ' max-h-[60vh] text-[11px]' }, String(item.throwableInformation)) : null),
         buttons: [
             { label: 'Copy', onClick: () => { copyText(fullText(item)); return false; } },
             { label: 'Close', primary: true }
@@ -144,9 +144,9 @@ function LogRow({ item }) {
     return (
         <tr className="cursor-pointer" title="Double-click for the full entry"
             onDoubleClick={() => showDetail(item)}>
-            <td className="mono text-text-faint whitespace-nowrap text-[12px] w-[178px]">{formatLogDate(item.date)}</td>
-            <td className="whitespace-nowrap w-[84px]"><LevelTag level={item.level} style={{ verticalAlign: 'middle' }} /></td>
-            <td className="max-w-0 truncate text-[12px]">{restText(item)}</td>
+            <td className="mono text-text-faint whitespace-nowrap text-[11px] w-[160px]">{formatLogDate(item.date)}</td>
+            <td className="whitespace-nowrap w-[76px]"><LevelTag level={item.level} style={{ verticalAlign: 'middle' }} /></td>
+            <td className="max-w-0 truncate text-[11px]">{restText(item)}</td>
         </tr>
     );
 }
@@ -231,7 +231,7 @@ function ServerLogTab() {
         setItems(prev => prev.length > n ? prev.slice(0, n) : prev);
     }
 
-    const btnClass = 'py-[1px] px-1.5 h-[22px] leading-none';
+    const btnClass = 'py-[1px] px-1.5 h-[20px] leading-none';
 
     // Same header-sort convention as the core tables: click toggles direction
     // on the current column, else sorts the new column ascending.
@@ -265,8 +265,8 @@ function ServerLogTab() {
                 <table className="dt server-log w-full">
                     <thead>
                         <tr>
-                            {headerTh('timestamp', 'Timestamp', 'w-[178px]')}
-                            {headerTh('level', 'Level', 'w-[84px]')}
+                            {headerTh('timestamp', 'Timestamp', 'w-[160px]')}
+                            {headerTh('level', 'Level', 'w-[76px]')}
                             {headerTh('message', 'Message')}
                         </tr>
                     </thead>
@@ -282,9 +282,9 @@ function ServerLogTab() {
                 </table>
             </div>
             {/* thin sticky bottom toolbar: pause | clear | … | Log Size */}
-            <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[12px] z-[2] bg-bg2 border-t border-[var(--bg3)]">
+            <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]">
                 <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={togglePause}>
-                    <span className="text-[13px] leading-none">{paused ? '⏵' : '⏸'}</span>
+                    <span className="text-[11.5px] leading-none">{paused ? '⏵' : '⏸'}</span>
                 </button>
                 <button className={"icon-btn " + btnClass} title="Clear the displayed log" onClick={clearLog}>
                     <span className="text-err font-bold">✕</span>
@@ -292,7 +292,7 @@ function ServerLogTab() {
                 <span className="flex-1" />
                 <label className="text-text-faint mr-0.5">Log Size:</label>
                 <input type="number" min="1" max="99999" value={sizeText}
-                    className="w-[60px] h-[22px] py-0 px-1 text-[12px]"
+                    className="w-[54px] h-[20px] py-0 px-1 text-[11px]"
                     onChange={(e) => setSizeText(e.target.value)}
                     onBlur={applySize}
                     onKeyDown={(e) => { if (e.key === 'Enter') applySize(); }} />

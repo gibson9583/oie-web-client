@@ -292,9 +292,9 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
         // Default all checked = send to all destinations, like the Swing client.
         input: h('input', { type: 'checkbox', checked: true })
     }));
-    const destTable = h('div.dt-wrap', { class: 'max-h-[140px] overflow-auto' },
+    const destTable = h('div.dt-wrap', { class: 'max-h-[126px] overflow-auto' },
         h('table.dt',
-            h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[90px]' }, 'Included'))),
+            h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[81px]' }, 'Included'))),
             h('tbody', destRows.map(d => {
                 const c = connectors.find(x => x.metaDataId === d.metaDataId);
                 return h('tr',
@@ -333,7 +333,7 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
         return row;
     }
 
-    const mapTable = h('div.dt-wrap', { class: 'max-h-[140px] overflow-auto' },
+    const mapTable = h('div.dt-wrap', { class: 'max-h-[126px] overflow-auto' },
         h('table.dt',
             h('thead', h('tr', h('th', { class: 'w-[40%]' }, 'Variable'), h('th', 'Value'))),
             mapTbody));
@@ -359,9 +359,9 @@ export async function openSendMessageDialog(platform, channelId, onSent) {
             editor.el,
             fileButtons,
             destRows.length ? h('div',
-                h('div.mt-[14px]', 'Send to the following destination(s):'),
+                h('div.mt-[13px]', 'Send to the following destination(s):'),
                 h('div', { class: 'mt-1.5' }, destTable)) : null,
-            h('div.mt-[14px]', 'Include the following source map variables:'),
+            h('div.mt-[13px]', 'Include the following source map variables:'),
             h('div', { class: 'mt-1.5' }, mapTable),
             mapButtons),
         buttons: [
@@ -728,7 +728,7 @@ function ContentView({ content, dataType, responseEnvelope }) {
             )}
             {/* flex:1 so the box always fills the pane — a stable text area even
                 when the body is empty (e.g. a Response with no payload). */}
-            <pre className="content-pre flex-1 min-h-[120px] max-h-none m-2.5" ref={preRef} />
+            <pre className="content-pre flex-1 min-h-[108px] max-h-none m-2.5" ref={preRef} />
         </div>
     );
 }
@@ -790,7 +790,7 @@ function MappingsTable({ cm }) {
             <tbody>
                 {view.map((r, i) => (
                     <tr key={i}>
-                        <td className="w-[120px]">{r.scope}</td>
+                        <td className="w-[108px]">{r.scope}</td>
                         <td className="mono w-[30%]">{r.variable}</td>
                         <td className="mono whitespace-pre-wrap break-all">{r.value}</td>
                     </tr>
@@ -853,17 +853,17 @@ function AttachmentFallback({ channelId, message, attachment }) {
         }
     };
     return (
-        <div className="mt-[14px]">
+        <div className="mt-[13px]">
             <dl className="kv">
                 <dt>Id</dt><dd>{displayValue(attachment.id)}</dd>
                 <dt>Type</dt><dd>{displayValue(attachment.type)}</dd>
             </dl>
-            <div className="mt-[14px] flex gap-2">
+            <div className="mt-[13px] flex gap-2">
                 <button className="btn" onClick={fetchContent}><Icon name="eye" />Fetch Content</button>
                 <TaskButton label="Export" icon="export" task="doExportAttachment" group="message"
                     onClick={() => exportAttachment(channelId, message, attachment)} />
             </div>
-            {content != null && <pre className="content-pre mt-[14px]">{content}</pre>}
+            {content != null && <pre className="content-pre mt-[13px]">{content}</pre>}
         </div>
     );
 }
@@ -904,7 +904,7 @@ function AttachmentList({ platform, channelId, message }) {
         }
         if (viewer && viewer.component) {
             blocks.push(
-                <div className="mt-[14px]" key={`v:${displayValue(attachment.id)}`}>
+                <div className="mt-[13px]" key={`v:${displayValue(attachment.id)}`}>
                     <PluginSlot def={viewer} ctx={{ attachment, channelId, messageId: message.messageId, platform }} />
                 </div>);
         } else {
@@ -1002,7 +1002,7 @@ function ConnectorTabs({ message, cm, channelId, platform }) {
                 <div className="p-2.5 overflow-auto">
                     {errorDefs.map(([label, content]) => (
                         <div key={label}>
-                            <div className="text-text-faint mt-[14px]">{label}</div>
+                            <div className="text-text-faint mt-[13px]">{label}</div>
                             <pre className="content-pre">{content}</pre>
                         </div>
                     ))}
@@ -1033,7 +1033,7 @@ function ConnectorTabs({ message, cm, channelId, platform }) {
    no status pill or connector dropdown. */
 function DetailBody({ detail, channelId, platform }) {
     if (detail.status === 'empty') {
-        return <div className="text-text-faint flex-none py-[9px] px-3.5">Select a message to view its contents.</div>;
+        return <div className="text-text-faint flex-none py-[8px] px-3.5">Select a message to view its contents.</div>;
     }
     if (detail.status === 'loading') {
         return <div className="py-3 px-3.5"><Loading text="Loading message…" /></div>;
@@ -1078,9 +1078,9 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
         const input = h('input', { type: 'checkbox', checked: isConnChecked(c.metaDataId) });
         connRows.push({ key: c.metaDataId, input });
         connTbody.appendChild(h('tr',
-            h('td', { class: 'w-[50px]' }, c.metaDataId === null ? '--' : String(c.metaDataId)),
+            h('td', { class: 'w-[45px]' }, c.metaDataId === null ? '--' : String(c.metaDataId)),
             h('td', c.name),
-            h('td', { class: 'text-center w-[90px]' }, input)));
+            h('td', { class: 'text-center w-[81px]' }, input)));
     }
     const setAllConn = (v) => connRows.forEach(r => { r.input.checked = v; });
     const connBlock = h('div',
@@ -1088,13 +1088,13 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
             h('a', { class: 'link-btn', onClick: () => setAllConn(true) }, 'Select All'),
             h('span.text-text-faint', '|'),
             h('a', { class: 'link-btn', onClick: () => setAllConn(false) }, 'Deselect All')),
-        h('div.dt-wrap', { class: 'max-h-[150px] overflow-auto' },
+        h('div.dt-wrap', { class: 'max-h-[135px] overflow-auto' },
             h('table.dt',
                 h('thead', h('tr', h('th', 'Id'), h('th', 'Current Connector Name'), h('th', 'Included'))),
                 connTbody)));
 
     /* ---- id / numeric ranges (stacked "label: min – max" rows) ---- */
-    const num = (value) => h('input', { type: 'number', value, class: 'flex-1 min-w-0 max-w-[150px]' });
+    const num = (value) => h('input', { type: 'number', value, class: 'flex-1 min-w-0 max-w-[135px]' });
     const inputs = {
         minMessageId: num(adv.minMessageId), maxMessageId: num(adv.maxMessageId),
         minOriginalId: num(adv.minOriginalId), maxOriginalId: num(adv.maxOriginalId),
@@ -1102,7 +1102,7 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
         minSendAttempts: num(adv.minSendAttempts), maxSendAttempts: num(adv.maxSendAttempts),
         serverId: h('input', { type: 'text', value: adv.serverId, class: 'flex-1' })
     };
-    const lbl = (text) => h('label', { class: 'w-[110px] flex-none text-right text-text-dim' }, text);
+    const lbl = (text) => h('label', { class: 'w-[99px] flex-none text-right text-text-dim' }, text);
     const rangeRow = (label, a, b) => h('div', { class: 'flex items-center gap-2 mb-2' },
         lbl(label), a, h('span.text-text-faint', '–'), b);
     const singleRow = (label, el) => h('div', { class: 'flex items-center gap-2 mb-2' },
@@ -1131,7 +1131,7 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
             sel(rows[Math.min(i, rows.length - 1)] ?? null);
         });
         const el = (onNew) => h('div', { class: 'flex gap-2 items-start' },
-            h('div.dt-wrap', { class: 'flex-1 max-h-[150px] overflow-auto' },
+            h('div.dt-wrap', { class: 'flex-1 max-h-[135px] overflow-auto' },
                 h('table.dt', h('thead', h('tr', head.map(l => h('th', l)))), tbody)),
             h('div', { class: 'flex flex-col gap-1.5' },
                 h('button.btn', { onClick: onNew }, 'New'), delBtn));
@@ -1167,7 +1167,7 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }) {
         };
         row.tr = h('tr', { onMousedown: () => ms.sel(row) },
             h('td', row.column), h('td', row.operator), h('td', row.value),
-            h('td', { class: 'text-center w-[90px]' }, row.ignoreCase));
+            h('td', { class: 'text-center w-[81px]' }, row.ignoreCase));
         ms.rows.push(row);
         ms.tbody.appendChild(row.tr);
         ms.sel(row);
@@ -1259,9 +1259,9 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
             h('a', { class: 'link-btn', onClick: () => setAll(true) }, 'Select All'),
             h('span.text-text-faint', '|'),
             h('a', { class: 'link-btn', onClick: () => setAll(false) }, 'Deselect All')),
-        h('div.dt-wrap', { class: 'max-h-[160px] overflow-auto' },
+        h('div.dt-wrap', { class: 'max-h-[144px] overflow-auto' },
             h('table.dt',
-                h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[90px]' }, 'Included'))),
+                h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[81px]' }, 'Included'))),
                 h('tbody', destRows.map(d => h('tr',
                     h('td', d.name || `Destination ${d.metaDataId}`),
                     h('td', { class: 'text-center' }, d.input))))))) : null;
@@ -1271,10 +1271,10 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
         size: 'wide',
         body: h('div',
             isResults ? h('div', {
-                class: 'text-err mb-2.5 text-[12.5px]'
+                class: 'text-err mb-2.5 text-[11px]'
             }, h('b', 'Warning: '), `This will reprocess all ${fmtNumber(total)} result(s) for the current search criteria, including those not listed on the current page.`) : null,
             overwrite.el,
-            destRows.length ? h('div.mt-[14px]', 'Reprocess through the following destinations:') : null,
+            destRows.length ? h('div.mt-[13px]', 'Reprocess through the following destinations:') : null,
             destTable),
         buttons: [
             { label: 'Cancel' },
@@ -1426,7 +1426,7 @@ function exportResultsDialog({ channelId, total, lastParams }) {
         const p = s + token.length;
         patternInput.focus(); patternInput.setSelectionRange(p, p);
     };
-    const varList = h('div.tree', { class: 'max-h-[150px] overflow-auto border border-[var(--border)] rounded-[4px] p-1' },
+    const varList = h('div.tree', { class: 'max-h-[135px] overflow-auto border border-[var(--border)] rounded-[4px] p-1' },
         FILE_PATTERN_VARS.map(([label, token]) => h('div.tree-node', {
             title: `Insert ${token}`, draggable: 'true', class: 'cursor-grab',
             onClick: () => insertToken(token),
@@ -1475,9 +1475,9 @@ function exportResultsDialog({ channelId, total, lastParams }) {
     const dlg = modal({
         title: 'Export Results',
         size: 'wide',
-        body: h('div', { class: 'flex flex-wrap gap-[18px]' },
-            h('div', { class: 'flex-1 min-w-[260px] flex flex-col gap-2' }, grid, status, barWrap),
-            h('div', { class: 'w-full sm:w-[200px] min-w-0 flex flex-col' },
+        body: h('div', { class: 'flex flex-wrap gap-[16px]' },
+            h('div', { class: 'flex-1 min-w-[234px] flex flex-col gap-2' }, grid, status, barWrap),
+            h('div', { class: 'w-full sm:w-[180px] min-w-0 flex flex-col' },
                 h('label', { class: 'block mb-0.5' }, 'Variables:'),
                 varList)),
         buttons: [
@@ -2248,13 +2248,13 @@ export function MessagesView({ params, query }) {
                             <Field label="Status">
                                 <DropdownMenu.Root open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>
                                     <DropdownMenu.Trigger asChild>
-                                        <button type="button" className="btn justify-between min-w-[132px] font-normal">
+                                        <button type="button" className="btn justify-between min-w-[119px] font-normal">
                                             <span className="truncate">{statusLabel}</span>
                                             <span className="text-text-faint ml-2" aria-hidden="true">▾</span>
                                         </button>
                                     </DropdownMenu.Trigger>
                                     <DropdownMenu.Portal>
-                                        <DropdownMenu.Content className="ctx-surface min-w-[160px]"
+                                        <DropdownMenu.Content className="ctx-surface min-w-[144px]"
                                             align="start" sideOffset={4} collisionPadding={8}>
                                             {STATUS_FILTER_ORDER.map((st) => (
                                                 <DropdownMenu.CheckboxItem key={st} className="ctx-item"
@@ -2291,7 +2291,7 @@ export function MessagesView({ params, query }) {
                                     <input type="checkbox" checked={textRegex} onChange={(e) => setTextRegex(e.target.checked)} />
                                     Regex
                                 </label>
-                                <input type="text" placeholder="Search message content…" className="w-[220px]"
+                                <input type="text" placeholder="Search message content…" className="w-[198px]"
                                     value={textSearch} onChange={(e) => setTextSearch(e.target.value)}
                                     onKeyDown={(e) => { if (e.key === 'Enter') runSearch(true); }} />
                             </div>
@@ -2316,7 +2316,7 @@ export function MessagesView({ params, query }) {
                             <button className="btn" onClick={openAdvanced}
                                 title={advOn ? 'Advanced filter applied — press Search to run it' : undefined}>
                                 <Icon name="filter" />Advanced…
-                                {advOn && <span className="inline-block w-[7px] h-[7px] ml-[7px] rounded-full bg-accent" />}
+                                {advOn && <span className="inline-block w-[6px] h-[6px] ml-[6px] rounded-full bg-accent" />}
                             </button>
                         </div>
                         <div className="text-text-faint mt-1.5">{searchSummary}</div>
@@ -2349,7 +2349,7 @@ export function MessagesView({ params, query }) {
                 {/* Wide: the "Search Criteria" heading is a real disclosure over the
                     inline criteria. Narrow: the same criteria move behind the Filters
                     button, where Radix owns Escape, outside-click and focus return. */}
-                <div ref={criteriaPanelRef} className="panel filter-collapse flex-none mx-[14px] mt-3 mb-3">
+                <div ref={criteriaPanelRef} className="panel filter-collapse flex-none mx-[13px] mt-3 mb-3">
                     {narrowCriteria ? (
                         <div className="panel-header flex items-center gap-2">
                             <span className="criteria-heading inline-flex items-center gap-1.5">Search Criteria</span>
@@ -2386,7 +2386,7 @@ export function MessagesView({ params, query }) {
                         </Collapsible.Root>
                     )}
                 </div>
-                <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[14px] pt-3 pb-3">
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[13px] pt-3 pb-3">
                     {!channelId ? (
                         <div className="dt-empty">
                             <div className="empty-icon"><Icon name="messages" size={30} /></div>
@@ -2412,7 +2412,7 @@ export function MessagesView({ params, query }) {
                     )}
                 </div>
 
-                <div className="filterbar flex-none panel overflow-visible mx-[14px]">
+                <div className="filterbar flex-none panel overflow-visible mx-[13px]">
                     <button className="btn" disabled={pager.offset <= 0}
                         onClick={() => { offsetRef.current = 0; runSearch(false); }}>« First</button>
                     <button className="btn" disabled={pager.offset <= 0}
@@ -2434,8 +2434,8 @@ export function MessagesView({ params, query }) {
                     <button className="btn" disabled={pager.total != null || countBusy} onClick={doCount}>Count</button>
                 </div>
 
-                <div className="split-handle mx-[14px]" data-orient="v" data-resize="next" />
-                <div ref={detailPaneRef} className="flex-none h-[36px] overflow-hidden flex flex-col panel mx-[14px] mb-3">
+                <div className="split-handle mx-[13px]" data-orient="v" data-resize="next" />
+                <div ref={detailPaneRef} className="flex-none h-[32px] overflow-hidden flex flex-col panel mx-[13px] mb-3">
                     <DetailBody detail={detail} channelId={channelId} platform={platform} />
                 </div>
             </div>

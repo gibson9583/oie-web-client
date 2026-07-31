@@ -253,13 +253,13 @@ function AlertWizardInner({ alert, isNew }) {
                 <div className="wiz-pane" key={step}>
                     {/* ---- Basics ---- */}
                     {stepName === 'Basics' && (
-                        <div className="panel !mt-0 max-w-[640px]">
+                        <div className="panel !mt-0 max-w-[576px]">
                             <div className="panel-body flex flex-col gap-4">
                                 <label className="flex flex-col gap-1">
                                     <span className="text-text-dim">Alert name</span>
                                     <input autoFocus type="text" className={`w-full ${nErr ? 'cform-invalid' : ''}`} value={alert.name}
                                         placeholder="My Alert" onChange={(e) => { alert.name = e.target.value; setNameTouched(true); bump(); }} />
-                                    {nErr ? <span className="text-err text-[11px]">{nErr}</span> : null}
+                                    {nErr ? <span className="text-err text-[10px]">{nErr}</span> : null}
                                 </label>
                                 <label className="flex items-center gap-2">
                                     <input type="checkbox" checked={alert.enabled === true} onChange={(e) => { alert.enabled = e.target.checked; bump(); }} />
@@ -272,7 +272,7 @@ function AlertWizardInner({ alert, isNew }) {
 
                     {/* ---- Trigger ---- */}
                     {stepName === 'Trigger' && (
-                        <div className="flex flex-col gap-4 max-w-[720px]">
+                        <div className="flex flex-col gap-4 max-w-[648px]">
                             <div className="panel !mt-0">
                                 <div className="panel-header">Error types</div>
                                 <div className="panel-body grid sm:grid-cols-2 gap-x-6 gap-y-2">
@@ -290,7 +290,7 @@ function AlertWizardInner({ alert, isNew }) {
                                     <textarea className={`w-full ${regexError() ? 'cform-invalid' : ''}`} rows={3} value={trigger.regex || ''}
                                         placeholder="Only trigger when the error matches this regular expression (leave blank to match any error)"
                                         onChange={(e) => { trigger.regex = e.target.value; bump(); }} />
-                                    {regexError() ? <span className="text-err text-[11px]">{regexError()}</span> : null}
+                                    {regexError() ? <span className="text-err text-[10px]">{regexError()}</span> : null}
                                 </div>
                             </div>
                         </div>
@@ -298,12 +298,12 @@ function AlertWizardInner({ alert, isNew }) {
 
                     {/* ---- Channels ---- */}
                     {stepName === 'Channels' && (
-                        <div className="panel !mt-0 max-w-[720px]">
+                        <div className="panel !mt-0 max-w-[648px]">
                             <div className="panel-header">Channels to watch</div>
                             <div className="panel-body flex flex-col gap-2">
                                 {data.channels.length > 6 && <input type="text" placeholder="Filter channels…" value={chFilter} onChange={(e) => setChFilter(e.target.value)} />}
-                                <div className="flex flex-col border border-line rounded-md max-h-[320px] overflow-auto divide-y divide-line">
-                                    {channels.length === 0 && <div className="p-2 text-text-faint text-[12px]">No channels.</div>}
+                                <div className="flex flex-col border border-line rounded-md max-h-[288px] overflow-auto divide-y divide-line">
+                                    {channels.length === 0 && <div className="p-2 text-text-faint text-[11px]">No channels.</div>}
                                     {channels.map((c) => (
                                         <label key={c.id} className="flex items-center gap-2 px-2.5 py-2 hover:bg-bg1 cursor-pointer" title={c.name}>
                                             <input type="checkbox" checked={enabledChannels.has(c.id)} onChange={(e) => setChannel(c.id, e.target.checked)} />
@@ -322,21 +322,21 @@ function AlertWizardInner({ alert, isNew }) {
 
                     {/* ---- Actions ---- */}
                     {stepName === 'Actions' && (
-                        <div className="flex flex-col gap-4 max-w-[820px]">
+                        <div className="flex flex-col gap-4 max-w-[738px]">
                             <div className="panel !mt-0">
                                 <div className="panel-header">Notifications</div>
                                 <div className="panel-body flex flex-col gap-2">
                                     {actionList().length === 0 && <div className="hint">No actions yet — add one to send a notification when the alert fires.</div>}
                                     {actionList().length > 0 && (
-                                        <div className="flex items-center gap-2 px-0.5 text-[11px] uppercase tracking-wide text-text-faint">
-                                            <span className="w-[160px] flex-none">Protocol</span><span className="flex-1">Recipient</span><span className="w-[30px] flex-none" />
+                                        <div className="flex items-center gap-2 px-0.5 text-[10px] uppercase tracking-wide text-text-faint">
+                                            <span className="w-[144px] flex-none">Protocol</span><span className="flex-1">Recipient</span><span className="w-[27px] flex-none" />
                                         </div>
                                     )}
                                     {actionList().map((a, i) => {
                                         const opts = data.recipients[a.protocol];
                                         return (
                                             <div key={i} className="flex items-center gap-2">
-                                                <select className="w-[160px] flex-none" value={a.protocol} onChange={(e) => patchAction(i, { protocol: e.target.value, recipient: '' })}>
+                                                <select className="w-[144px] flex-none" value={a.protocol} onChange={(e) => patchAction(i, { protocol: e.target.value, recipient: '' })}>
                                                     {data.protocols.map((p) => <option key={p} value={p}>{p}</option>)}
                                                 </select>
                                                 {Array.isArray(opts) ? (
@@ -347,7 +347,7 @@ function AlertWizardInner({ alert, isNew }) {
                                                 ) : (
                                                     <input type="text" className="flex-1 min-w-0" placeholder="Recipient (e.g. name@example.com)" value={a.recipient || ''} onChange={(e) => patchAction(i, { recipient: e.target.value })} />
                                                 )}
-                                                <button type="button" className="btn btn-sm btn-danger w-[30px] flex-none justify-center" onClick={() => removeAction(i)}><Icon name="trash" size={13} /></button>
+                                                <button type="button" className="btn btn-sm btn-danger w-[27px] flex-none justify-center" onClick={() => removeAction(i)}><Icon name="trash" size={13} /></button>
                                             </div>
                                         );
                                     })}
@@ -360,19 +360,19 @@ function AlertWizardInner({ alert, isNew }) {
                                     <div className="panel-header">Message</div>
                                     <div className="panel-body flex flex-col gap-3">
                                         <label className="flex flex-col gap-1">
-                                            <span className="text-text-dim text-[12px]">Subject</span>
+                                            <span className="text-text-dim text-[11px]">Subject</span>
                                             <input type="text" className="w-full" value={grp.subject || ''} onFocus={() => { focusedRef.current = 'subject'; }} onChange={(e) => { grp.subject = e.target.value; bump(); }} />
                                         </label>
                                         <label className="flex flex-col gap-1">
-                                            <span className="text-text-dim text-[12px]">Template</span>
+                                            <span className="text-text-dim text-[11px]">Template</span>
                                             <textarea className="w-full" rows={8} value={grp.template || ''} onFocus={() => { focusedRef.current = 'template'; }} onChange={(e) => { grp.template = e.target.value; bump(); }} />
                                         </label>
                                     </div>
                                 </div>
-                                <div className="panel !mt-0 w-full lg:w-[240px] flex-none">
+                                <div className="panel !mt-0 w-full lg:w-[216px] flex-none">
                                     <div className="panel-header">Variables</div>
                                     <div className="panel-body flex flex-col gap-2">
-                                        <div className="border border-line rounded overflow-auto max-h-[360px] min-h-[120px]">
+                                        <div className="border border-line rounded overflow-auto max-h-[324px] min-h-[108px]">
                                             {ALERT_VARIABLES.map((v) => (
                                                 <div key={v} role="button" draggable
                                                     onDragStart={(e) => { e.dataTransfer.setData('text/plain', `\${${v}}`); e.dataTransfer.effectAllowed = 'copy'; }}
@@ -391,11 +391,11 @@ function AlertWizardInner({ alert, isNew }) {
 
                     {/* ---- Review ---- */}
                     {stepName === 'Review' && (
-                        <div className="panel !mt-0 max-w-[820px]">
+                        <div className="panel !mt-0 max-w-[738px]">
                             {warnings().length > 0 && (
                                 <div className="panel-body pb-0">
                                     {warnings().map((w, i) => (
-                                        <div key={i} className="flex items-center gap-2 text-[12px] text-amber"><Icon name="warning" size={13} />{w}</div>
+                                        <div key={i} className="flex items-center gap-2 text-[11px] text-amber"><Icon name="warning" size={13} />{w}</div>
                                     ))}
                                 </div>
                             )}
@@ -408,10 +408,10 @@ function AlertWizardInner({ alert, isNew }) {
                                     ['Channels', enabledNames.length ? enabledNames.join(', ') : (ac.newChannelSource || ac.newChannelDestination ? 'New channels only' : 'None')],
                                     ['Actions', actionList().length ? actionList().map((a) => `${a.protocol} → ${recipientLabel(a.protocol, a.recipient) || '(none)'}`).join(', ') : 'None'],
                                     ['Subject', grp.subject ? grp.subject : '(none)'],
-                                    ['Template', grp.template ? <pre className="whitespace-pre-wrap font-mono text-[12px] max-h-[160px] overflow-auto m-0">{grp.template}</pre> : '(none)']
+                                    ['Template', grp.template ? <pre className="whitespace-pre-wrap font-mono text-[11px] max-h-[144px] overflow-auto m-0">{grp.template}</pre> : '(none)']
                                 ].map(([label, value]) => (
                                     <div key={label} className="flex gap-4 py-2 border-b border-line">
-                                        <div className="w-[160px] flex-none text-text-dim">{label}</div>
+                                        <div className="w-[144px] flex-none text-text-dim">{label}</div>
                                         <div className="flex-1 min-w-0">{value}</div>
                                     </div>
                                 ))}

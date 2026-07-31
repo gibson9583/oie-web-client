@@ -87,16 +87,23 @@ test('dashboard controls go inline only when the filter still has room', async (
        went inline the moment they technically fitted and squeezed the filter to
        121px there — and to 41px just above the old threshold. */
     await mockEngine(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/dashboard');
+    await expect(page.locator('.dash-options-btn')).toBeVisible();
+
+    await page.setViewportSize({ width: 1600, height: 900 });
     await expect(page.locator('.dash-options-btn')).toBeHidden();
     await expect(page.locator('.dash-controls').getByText('Range:')).toBeVisible();
+    // Inline means inline AND usable — the filter keeps its width.
+    const filter = await page.getByRole('combobox').boundingBox();
+    expect(filter.width).toBeGreaterThan(240);
 });
 
 test('collapsing the rail wins back enough width for the inline dashboard controls', async ({ page }) => {
-    // The flip side of the task column: at 1280 the controls start folded, and
+    // The flip side of the task column: at 1440 the controls start folded, and
     // collapsing the rail to the icon strip hands back the ~160px that restores
     // them. This is the escape hatch for the width the column costs.
-    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.setViewportSize({ width: 1440, height: 900 });
     await mockEngine(page);
     await page.goto('/dashboard');
     await expect(page.locator('.dash-options-btn')).toBeVisible();

@@ -70,7 +70,7 @@ export function listenerAddressField(hostKey, label = 'Listener Address') {
             // "Specific" stays selected even before an address is typed.
             let mode = String(getPath(p, hostKey) ?? '0.0.0.0') === '0.0.0.0' ? 'all' : 'specific';
             const input = textInput(String(getPath(p, hostKey) ?? ''), {
-                class: 'w-[200px]',
+                class: 'w-[180px]',
                 onInput: (e) => { setPath(p, hostKey, e.target.value); ctx.onChange(); }
             });
             const sync = () => { input.disabled = mode === 'all'; input.style.opacity = mode === 'all' ? '0.5' : '1'; };
@@ -84,7 +84,7 @@ export function listenerAddressField(hostKey, label = 'Listener Address') {
             allRadio.addEventListener('change', () => setMode('all'));
             specRadio.addEventListener('change', () => setMode('specific'));
             sync();
-            return h('div', { class: 'flex items-center gap-[14px] flex-wrap' },
+            return h('div', { class: 'flex items-center gap-[13px] flex-wrap' },
                 h('label.check', allRadio, 'All interfaces'),
                 h('label.check', specRadio, 'Specific interface:'),
                 input);
@@ -647,7 +647,7 @@ function abbrevFor(hex) {
 
 export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     const mllp = !!opts.mllp;
-    const hexInput = (val) => textInput(String(val || ''), { class: 'w-[120px] font-mono' });
+    const hexInput = (val) => textInput(String(val || ''), { class: 'w-[108px] font-mono' });
     const startInput = hexInput(tm.startOfMessageBytes);
     const endInput = hexInput(tm.endOfMessageBytes);
     let lastFocused = startInput;
@@ -655,15 +655,15 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     endInput.addEventListener('focus', () => { lastFocused = endInput; });
 
     const abbrevList = h('div', {
-        class: 'max-h-[280px] overflow-auto border border-[var(--bg3)] rounded-[4px] p-1 min-w-[110px]'
+        class: 'max-h-[252px] overflow-auto border border-[var(--bg3)] rounded-[4px] p-1 min-w-[99px]'
     }, Object.entries(CONTROL_ABBR).map(([hex, abbr]) => h('div.tree-node', {
         title: `Insert 0x${hex}`,
-        class: 'cursor-pointer font-mono text-[12px]',
+        class: 'cursor-pointer font-mono text-[11px]',
         onClick: () => { lastFocused.value = (lastFocused.value || '') + hex; lastFocused.focus(); if (lastFocused.oninput) lastFocused.oninput(); }
     }, `<${abbr}>`)));
 
     const hexRow = (label, input, abbrevEl) => h('div.flex', { class: 'items-center gap-1.5 mb-2' },
-        h('label', { class: 'min-w-[160px]' }, label), h('span.mono.text-text-faint', '0x'), input, abbrevEl || null);
+        h('label', { class: 'min-w-[144px]' }, label), h('span.mono.text-text-faint', '0x'), input, abbrevEl || null);
 
     const leftRows = [
         h('div', { class: 'font-[650] mb-2' }, mllp ? 'MLLP Settings' : 'Basic Settings'),
@@ -678,7 +678,7 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     if (mllp) {
         const ackInput = hexInput(tm.ackBytes != null ? tm.ackBytes : '06');
         const nackInput = hexInput(tm.nackBytes != null ? tm.nackBytes : '15');
-        const retryInput = textInput(String(tm.maxRetries != null ? tm.maxRetries : '2'), { class: 'w-[80px]' });
+        const retryInput = textInput(String(tm.maxRetries != null ? tm.maxRetries : '2'), { class: 'w-[72px]' });
         const ackAbbrev = h('span.mono.text-text-faint', abbrevFor(ackInput.value));
         const nackAbbrev = h('span.mono.text-text-faint', abbrevFor(nackInput.value));
         ackInput.addEventListener('focus', () => { lastFocused = ackInput; });
@@ -692,7 +692,7 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
         const ackRow = hexRow('Commit ACK Bytes:', ackInput, ackAbbrev);
         const nackRow = hexRow('Commit NACK Bytes:', nackInput, nackAbbrev);
         const retryRow = h('div.flex', { class: 'items-center gap-1.5 mb-2' },
-            h('label', { class: 'min-w-[160px]' }, 'Max Retry Count:'), retryInput);
+            h('label', { class: 'min-w-[144px]' }, 'Max Retry Count:'), retryInput);
         const setV2Enabled = (on) => {
             [ackInput, nackInput, retryInput].forEach((el) => { el.disabled = !on; });
             [ackRow, nackRow, retryRow].forEach((r) => { r.style.opacity = on ? '1' : '0.5'; });
@@ -703,7 +703,7 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
 
         leftRows.push(
             h('div.flex', { class: 'items-center gap-1.5 mb-2' },
-                h('label', { class: 'min-w-[160px]' }, 'Use MLLPv2:'),
+                h('label', { class: 'min-w-[144px]' }, 'Use MLLPv2:'),
                 h('label.check', v2Yes, 'Yes'), h('label.check', v2No, 'No')),
             ackRow, nackRow, retryRow);
 
@@ -721,9 +721,9 @@ export function frameModeSettingsDialog(tm, onChange, opts = {}) {
     modal({
         title: mllp ? 'MLLP Settings' : 'Transmission Mode Settings',
         size: 'wide',
-        body: h('div', { class: 'flex flex-wrap gap-[18px]' },
-            h('div', { class: 'flex-1 min-w-[240px]' }, leftRows),
-            h('div', { class: 'min-w-[200px]' }, h('div', { class: 'font-[650] mb-2' }, 'Byte Abbreviations'), abbrevList)),
+        body: h('div', { class: 'flex flex-wrap gap-[16px]' },
+            h('div', { class: 'flex-1 min-w-[216px]' }, leftRows),
+            h('div', { class: 'min-w-[180px]' }, h('div', { class: 'font-[650] mb-2' }, 'Byte Abbreviations'), abbrevList)),
         buttons: [
             { label: 'Cancel' },
             {

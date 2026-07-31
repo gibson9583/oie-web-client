@@ -469,7 +469,7 @@ function PollSettings({ properties, onChange }) {
                 <div className="field">
                     <label>Polling Frequency</label>
                     <div className="flex items-center gap-2">
-                        <input type="number" min={0} className="w-[110px]"
+                        <input type="number" min={0} className="w-[99px]"
                             value={Math.round((Number(p.pollingFrequency ?? 5000)) / unitMs(freqUnit))}
                             onChange={(e) => { p.pollingFrequency = (parseInt(e.target.value, 10) || 0) * unitMs(freqUnit); notify(); }} />
                         <select value={freqUnit} onChange={(e) => {
@@ -526,7 +526,7 @@ function PollSettings({ properties, onChange }) {
                 {/* Empty label spacer so the checkbox drops to the control row,
                     aligning with the Schedule Type / Frequency inputs alongside. */}
                 <label>&nbsp;</label>
-                <div className="min-h-[34px] flex items-center">
+                <div className="min-h-[31px] flex items-center">
                     <label className="check">
                         <input type="checkbox" checked={asBool(p.pollOnStart)}
                             onChange={(e) => { p.pollOnStart = e.target.checked; notify(); }} />
@@ -592,7 +592,7 @@ function PollAdvancedSettings({ p, pollingType, onChange }) {
     const rangeEnabled = timeEnabled && !allDay;
 
     const numField = (value, min, max, apply) => (
-        <input type="number" min={min} max={max} className="w-[70px]" value={value}
+        <input type="number" min={min} max={max} className="w-[63px]" value={value}
             onChange={(e) => { apply(parseInt(e.target.value, 10) || 0); notify(); }} />
     );
 
@@ -625,7 +625,7 @@ function PollAdvancedSettings({ p, pollingType, onChange }) {
                         {weekly ? (
                             <div className="field">
                                 <label>Days of Week</label>
-                                <div className="radio-group inline-row min-h-[34px] items-center">
+                                <div className="radio-group inline-row min-h-[31px] items-center">
                                     {POLL_DAYS.map((d) => (
                                         <label className="check" key={d.idx} title={d.title}>
                                             <input type="checkbox" checked={!asBool(inactive[d.idx])}
@@ -717,7 +717,7 @@ export function TransmissionModePanel({ properties, onChange }) {
                         <label className="cform-label">Transmission Mode:</label>
                         <div className="cform-control">
                             <div className="flex gap-1.5 items-center">
-                                <select value={tm.pluginPointName} className="w-[180px]"
+                                <select value={tm.pluginPointName} className="w-[162px]"
                                     onChange={(e) => {
                                         tm.pluginPointName = e.target.value;
                                         const m = modeOf();
@@ -734,7 +734,7 @@ export function TransmissionModePanel({ properties, onChange }) {
                             </div>
                         </div>
                         <label className="cform-label">Sample Frame:</label>
-                        <div className="cform-control"><span className="mono text-text-faint text-[12px]">{sample}</span></div>
+                        <div className="cform-control"><span className="mono text-text-faint text-[11px]">{sample}</span></div>
                     </div>
                 </div>
             </div>

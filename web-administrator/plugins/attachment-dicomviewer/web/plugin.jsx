@@ -218,10 +218,10 @@ export function register(platform) {
         }, [state.status, frame, win, state.kind]);
 
         if (state.status === 'loading') {
-            return <div className="mt-[14px]"><div className="text-text-faint text-[11px]">Loading DICOM…</div></div>;
+            return <div className="mt-[13px]"><div className="text-text-faint text-[10px]">Loading DICOM…</div></div>;
         }
         if (state.status === 'error') {
-            return <div className="mt-[14px]"><div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div></div>;
+            return <div className="mt-[13px]"><div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div></div>;
         }
 
         const { bytes, info, meta, kind, tsName } = state;
@@ -237,18 +237,18 @@ export function register(platform) {
         ));
 
         return (
-            <div className="mt-[14px] flex flex-col gap-3">
+            <div className="mt-[13px] flex flex-col gap-3">
                 <div className="font-semibold">
                     {`DICOM object — ${info.cols}×${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ''} — ${bytes.length.toLocaleString()} bytes`}
                 </div>
 
                 {renders ? (
                     <div className="flex flex-col gap-2">
-                        <div className="border border-line rounded-[6px] bg-black inline-block overflow-auto max-h-[60vh] max-w-full self-start">
+                        <div className="border border-line rounded-[5px] bg-black inline-block overflow-auto max-h-[60vh] max-w-full self-start">
                             <canvas ref={canvasRef}
                                 style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', imageRendering: 'pixelated', display: 'block' }} />
                         </div>
-                        <div className="flex items-center gap-4 flex-wrap text-[12px]">
+                        <div className="flex items-center gap-4 flex-wrap text-[11px]">
                             {info.numFrames > 1 && (
                                 <span className="inline-flex items-center gap-1.5">
                                     <button className="btn btn-sm" disabled={frame <= 0} onClick={() => setFrame(f => Math.max(0, f - 1))}>‹</button>
@@ -259,7 +259,7 @@ export function register(platform) {
                             <span className="inline-flex items-center gap-1.5">
                                 <span className="text-text-faint">Zoom</span>
                                 <input type="range" min="0.25" max="8" step="0.25" value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} />
-                                <span className="mono w-[42px]">{`${Math.round(zoom * 100)}%`}</span>
+                                <span className="mono w-[38px]">{`${Math.round(zoom * 100)}%`}</span>
                             </span>
                             {grayscale && win && (
                                 <>
@@ -278,7 +278,7 @@ export function register(platform) {
                         </div>
                     </div>
                 ) : (
-                    <div className="text-text-faint text-[12px]">
+                    <div className="text-text-faint text-[11px]">
                         {`This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM — click Save DICOM to open it in a full viewer.`}
                     </div>
                 )}

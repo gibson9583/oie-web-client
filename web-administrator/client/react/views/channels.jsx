@@ -100,7 +100,7 @@ function promptImportLibraries(channelName, count) {
             body: h('div',
                 h('div', { class: 'mb-2.5' },
                     `Channel "${channelName}" has code template librar${plural} included with it. Would you like to import ${them}?`),
-                h('label', { class: 'flex items-center gap-1.5 text-[12px]' },
+                h('label', { class: 'flex items-center gap-1.5 text-[11px]' },
                     always, 'Always choose this option by default in the future (may be changed in Settings)')),
             onClose: () => resolve('cancel'),
             buttons: [
@@ -137,10 +137,10 @@ function promptExportLibraries(names) {
             title: 'Export Channel',
             body: h('div',
                 h('div', { class: 'mb-1.5' }, 'The following code template libraries are linked to this channel:'),
-                h('div', { class: 'border border-line rounded-[4px] bg-bg1 py-1.5 px-2.5 max-h-[140px] overflow-auto' },
-                    h('ul', { class: 'm-0 pl-[18px]' }, names.map(n => h('li', n)))),
+                h('div', { class: 'border border-line rounded-[4px] bg-bg1 py-1.5 px-2.5 max-h-[126px] overflow-auto' },
+                    h('ul', { class: 'm-0 pl-[16px]' }, names.map(n => h('li', n)))),
                 h('div', { class: 'mt-2.5 mx-0 mb-2' }, 'Do you wish to include these libraries in the channel export?'),
-                h('label', { class: 'flex items-center gap-1.5 text-[12px]' },
+                h('label', { class: 'flex items-center gap-1.5 text-[11px]' },
                     always, 'Always choose this option by default in the future (may be changed in Settings)')),
             onClose: () => resolve('cancel'),
             buttons: [
@@ -394,7 +394,7 @@ export function ChannelsView() {
 
     function descriptionCell(text) {
         return (
-            <span className="inline-block max-w-[320px] truncate align-bottom">
+            <span className="inline-block max-w-[288px] truncate align-bottom">
                 {firstLine(text)}
             </span>
         );
@@ -796,7 +796,7 @@ export function ChannelsView() {
             h('div', h('div', { class: 'font-semibold' }, title), h('div.hint', desc)));
         const m = modal({
             title: 'New Channel',
-            body: h('div', { class: 'flex flex-col gap-2.5 min-w-[440px]' },
+            body: h('div', { class: 'flex flex-col gap-2.5 min-w-[396px]' },
                 card('classic', 'edit', 'Classic editor', 'The full tabbed editor — every option on one screen.'),
                 card('guided', 'wand', 'Wizard', 'A step-by-step guided builder: dependencies, options, source, destinations, filters and transforms.'),
                 h('label', { class: 'flex items-center gap-2 mt-2 text-text-dim' },
@@ -1285,7 +1285,7 @@ export function ChannelsView() {
                     region (a flex child wouldn't grow on the main axis); this
                     leaves clickable empty space below a short tree for
                     click-to-clear, matching the legacy flex:1 grid host. */}
-                <div className="oie-tablecard flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)] px-[14px] pt-3 pb-3" onClick={onEmptyClick}>
+                <div className="oie-tablecard flex-1 min-h-0 grid grid-rows-[minmax(0,1fr)] px-[13px] pt-3 pb-3" onClick={onEmptyClick}>
                     <TreeTable
                         data={treeData}
                         columns={treeColumns()}
@@ -1311,11 +1311,11 @@ export function ChannelsView() {
                             <>
                                 <div className="empty-icon"><Icon name="channels" size={30} /></div>
                                 <div>No channels</div>
-                                <div className="text-text-faint mt-[14px]">Create a channel with &quot;New Channel&quot; in the Channels Tasks pane.</div>
+                                <div className="text-text-faint mt-[13px]">Create a channel with &quot;New Channel&quot; in the Channels Tasks pane.</div>
                             </>
                         )} />
                 </div>
-                <div className="filterbar panel overflow-visible mx-[14px] mb-3">
+                <div className="filterbar panel overflow-visible mx-[13px] mb-3">
                     <label>Filter:</label>
                     <input type="text" placeholder="Enter channel tag or name" value={filterText}
                         onChange={(e) => setFilterText(e.target.value)} />

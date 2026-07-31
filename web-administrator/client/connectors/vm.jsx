@@ -88,11 +88,11 @@ function channelControlNode(properties, platform, onChange) {
 
     const field = textInput(properties.channelId === 'none' ? '' : (properties.channelId ?? ''), {
         placeholder: '<None>', title: "The destination channel's unique global id.",
-        class: 'w-[250px]'
+        class: 'w-[225px]'
     });
     const combo = select([{ value: NONE_LABEL, label: NONE_LABEL }], NONE_LABEL, {
         title: 'Select the channel to which messages accepted by this destination\'s filter should be written, or none to not write the message at all.',
-        class: 'w-[250px]'
+        class: 'w-[225px]'
     });
 
     // Reverse-sync the combo selection to whatever the field text holds, matching
@@ -195,7 +195,7 @@ function mapVariablesTable(properties, onChange) {
     function paint() {
         clear(wrap);
         const table = h('div', { class: 'flex flex-col gap-1' });
-        table.appendChild(h('div', { className: 'cform-label', class: 'font-semibold text-[12px]' }, 'Map Variable'));
+        table.appendChild(h('div', { className: 'cform-label', class: 'font-semibold text-[11px]' }, 'Map Variable'));
         rows.forEach((value, i) => {
             const input = textInput(value, {
                 placeholder: 'Map Variable', class: 'flex-1',

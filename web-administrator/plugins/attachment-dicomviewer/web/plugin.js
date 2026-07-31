@@ -894,10 +894,10 @@ function register(platform2) {
       }
     }, [state.status, frame, win, state.kind]);
     if (state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[14px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, "Loading DICOM\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px]" }, "Loading DICOM\u2026"));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[14px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load DICOM: ${state.message}`));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load DICOM: ${state.message}`));
     }
     const { bytes, info, meta, kind, tsName } = state;
     const renders = kind === "raw" || kind === "jpeg";
@@ -908,13 +908,13 @@ function register(platform2) {
       () => new Blob([bytes], { type: "application/dicom" })
     );
     const metaRows = META.filter(([tag]) => meta[tag]).map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { className: "font-semibold pr-4" }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, meta[tag])));
-    return /* @__PURE__ */ React.createElement("div", { className: "mt-[14px] flex flex-col gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "font-semibold" }, `DICOM object \u2014 ${info.cols}\xD7${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ""} \u2014 ${bytes.length.toLocaleString()} bytes`), renders ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ React.createElement("div", { className: "border border-line rounded-[6px] bg-black inline-block overflow-auto max-h-[60vh] max-w-full self-start" }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px] flex flex-col gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "font-semibold" }, `DICOM object \u2014 ${info.cols}\xD7${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ""} \u2014 ${bytes.length.toLocaleString()} bytes`), renders ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ React.createElement("div", { className: "border border-line rounded-[5px] bg-black inline-block overflow-auto max-h-[60vh] max-w-full self-start" }, /* @__PURE__ */ React.createElement(
       "canvas",
       {
         ref: canvasRef,
         style: { transform: `scale(${zoom})`, transformOrigin: "top left", imageRendering: "pixelated", display: "block" }
       }
-    )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-4 flex-wrap text-[12px]" }, info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame <= 0, onClick: () => setFrame((f) => Math.max(0, f - 1)) }, "\u2039"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, `Frame ${frame + 1} / ${info.numFrames}`), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame >= info.numFrames - 1, onClick: () => setFrame((f) => Math.min(info.numFrames - 1, f + 1)) }, "\u203A")), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Zoom"), /* @__PURE__ */ React.createElement("input", { type: "range", min: "0.25", max: "8", step: "0.25", value: zoom, onChange: (e) => setZoom(parseFloat(e.target.value)) }), /* @__PURE__ */ React.createElement("span", { className: "mono w-[42px]" }, `${Math.round(zoom * 100)}%`)), grayscale && win && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Level"), /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-4 flex-wrap text-[11px]" }, info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame <= 0, onClick: () => setFrame((f) => Math.max(0, f - 1)) }, "\u2039"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, `Frame ${frame + 1} / ${info.numFrames}`), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame >= info.numFrames - 1, onClick: () => setFrame((f) => Math.min(info.numFrames - 1, f + 1)) }, "\u203A")), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Zoom"), /* @__PURE__ */ React.createElement("input", { type: "range", min: "0.25", max: "8", step: "0.25", value: zoom, onChange: (e) => setZoom(parseFloat(e.target.value)) }), /* @__PURE__ */ React.createElement("span", { className: "mono w-[38px]" }, `${Math.round(zoom * 100)}%`)), grayscale && win && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Level"), /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "range",
@@ -934,7 +934,7 @@ function register(platform2) {
         value: win.w,
         onChange: (e) => setWin((w) => ({ ...w, w: parseFloat(e.target.value) }))
       }
-    ))))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[12px]" }, `This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.`), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, renders && /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => {
+    ))))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, `This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.`), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, renders && /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => {
       try {
         setPopUrl(canvasRef.current && canvasRef.current.toDataURL());
       } catch {

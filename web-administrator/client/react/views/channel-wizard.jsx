@@ -195,7 +195,7 @@ function EmbeddedElementEditor({ channel, metaDataId, kind, onChange }) {
                 {t && <button type="button" className="btn btn-sm" onClick={t.exportElements}><Icon name="export" size={13} />Export</button>}
                 {t && <button type="button" className="btn btn-sm" onClick={t.validateElements}><Icon name="check" size={13} />Validate</button>}
             </div>
-            <div ref={hostRef} className="flex flex-col h-[640px] border border-line rounded-md overflow-hidden" />
+            <div ref={hostRef} className="flex flex-col h-[576px] border border-line rounded-md overflow-hidden" />
         </div>
     );
 }
@@ -306,10 +306,10 @@ function DestinationMappingsRail({ hostRef }) {
     };
 
     return (
-        <div className="panel !mt-0 w-full lg:w-[240px] flex-none self-stretch">
+        <div className="panel !mt-0 w-full lg:w-[216px] flex-none self-stretch">
             <div className="panel-header">Destination Mappings</div>
             <div className="panel-body flex flex-col gap-2">
-                <div className="border border-line rounded overflow-auto max-h-[360px] min-h-[120px]">
+                <div className="border border-line rounded overflow-auto max-h-[324px] min-h-[108px]">
                     {DESTINATION_MAPPINGS.map(([label, token]) => (
                         <div key={token} role="button" draggable title={token}
                             onDragStart={(e) => {
@@ -406,13 +406,13 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
 
 function BasicsStep({ channel, types, inbound, outbound, onChange, onNameChange, onInbound, onOutbound, nameError }) {
     return (
-        <div className="panel !mt-0 max-w-[720px]">
+        <div className="panel !mt-0 max-w-[648px]">
             <div className="panel-body flex flex-col gap-4">
                 <label className="flex flex-col gap-1">
                     <span className="text-text-dim">Channel name</span>
                     <input autoFocus className={`w-full ${nameError ? 'cform-invalid' : ''}`} value={channel.name}
                         placeholder="My Channel" onChange={(e) => { channel.name = e.target.value; onNameChange(); }} />
-                    {nameError ? <span className="text-err text-[11px]">{nameError}</span> : null}
+                    {nameError ? <span className="text-err text-[10px]">{nameError}</span> : null}
                 </label>
                 <label className="flex flex-col gap-1">
                     <span className="text-text-dim">Description</span>
@@ -444,9 +444,9 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
     const sel = dests[selected] || dests[0];
     return (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
-            <div className="w-full lg:w-[240px] flex-none flex flex-col gap-2">
+            <div className="w-full lg:w-[216px] flex-none flex flex-col gap-2">
                 <div className="cform-section-title">Destinations</div>
-                <div className="step-list panel overflow-visible p-1.5 min-h-[140px]">
+                <div className="step-list panel overflow-visible p-1.5 min-h-[126px]">
                     {dests.map((d, i) => (
                         <div key={d.metaDataId} className={`step-item min-w-0 ${i === selected ? 'selected' : ''}`} onClick={() => onSelect(i)}
                             title={`${d.metaDataId}: ${d.name} — ${d.transportName}`}>
@@ -472,7 +472,7 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
                 {sel && (
                     <>
                         <label className="flex items-center gap-3">
-                            <span className="w-[120px] text-text-dim">Destination name</span>
+                            <span className="w-[108px] text-text-dim">Destination name</span>
                             <input className="flex-1" value={sel.name} onChange={(e) => onRename(sel, e.target.value)} />
                         </label>
                         <ConnectorTabs key={sel.metaDataId} channel={channel} connector={sel} mode="DESTINATION" version={version} onChange={onChange} destIndex={selected} />
@@ -486,7 +486,7 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
 function ReviewLine({ label, value }) {
     return (
         <div className="flex gap-4 py-2 border-b border-line">
-            <div className="w-[160px] flex-none text-text-dim">{label}</div>
+            <div className="w-[144px] flex-none text-text-dim">{label}</div>
             <div className="flex-1 min-w-0">{value}</div>
         </div>
     );
@@ -525,7 +525,7 @@ function ReviewStep({ channel, inbound, outbound }) {
     const tags = api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag').map((t) => t && t.name).filter(Boolean);
     const attType = channel.properties && channel.properties.attachmentProperties && channel.properties.attachmentProperties.type;
     return (
-        <div className="panel !mt-0 max-w-[820px]">
+        <div className="panel !mt-0 max-w-[738px]">
             <div className="panel-body">
                 <ReviewLine label="Name" value={channel.name || <span className="text-err">(required)</span>} />
                 {channel.description ? <ReviewLine label="Description" value={channel.description} /> : null}

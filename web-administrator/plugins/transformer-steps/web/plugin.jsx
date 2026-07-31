@@ -275,7 +275,7 @@ function makeIteratorEditor(isRule) {
 
                 {/* Children are managed in the main element list (nested under this
                     Iterator), matching the Swing tree-table — not edited here. */}
-                <div className="text-text-faint pt-2.5 px-0 pb-0 text-[11px]">
+                <div className="text-text-faint pt-2.5 px-0 pb-0 text-[10px]">
                     {`Child ${childNoun}s appear nested under this Iterator in the ${childNoun} list. `
                         + `Add a ${childNoun} while a child is selected, or right-click a ${childNoun} and choose "Assign To Iterator".`}
                 </div>
@@ -478,15 +478,15 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                         <button type="button" className="btn btn-sm" disabled={listDisabled} onClick={deselectAll}>Deselect All</button>
                     </div>
                     <div
-                        className="dt-wrap border border-line rounded max-h-[180px]"
+                        className="dt-wrap border border-line rounded max-h-[162px]"
                         style={listDisabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
                     >
                         <table className="dt">
                             <thead>
                                 <tr>
-                                    <th className="w-[42px]"></th>
+                                    <th className="w-[38px]"></th>
                                     <th>Name</th>
-                                    <th className="w-[70px]">Id</th>
+                                    <th className="w-[63px]">Id</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -545,7 +545,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                         >Delete</button>
                     </div>
                     <div
-                        className="dt-wrap border border-line rounded max-h-[180px]"
+                        className="dt-wrap border border-line rounded max-h-[162px]"
                         style={!valuesEnabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
                     >
                         <table className="dt">
