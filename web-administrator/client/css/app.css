@@ -106,6 +106,10 @@
     --radius: 9px;
     --rail-w: 194px;
     --rail-w-icons: 50px;
+    /* Named so the collapsed hamburger can be centred on the icon column from
+       these two alone, rather than from a measured constant. */
+    --rail-toggle-size: 31px;
+    --topbar-pad-x: 16px;
 
     /* Row density (Settings → Administrator). Only the grids move: they are where
        the vertical space goes and where an operator watching a channel list wants
@@ -356,7 +360,7 @@ code, pre, .mono { font-family: var(--font-mono); }
     display: flex;
     align-items: center;
     gap: 13px;
-    padding: 0 16px;
+    padding: 0 var(--topbar-pad-x);
     /* The topbar and the rail are ONE surface. They used to run different
        gradients — the rail vertical, the topbar horizontal — so they agreed at a
        single point and showed a seam everywhere else, in both themes. Painting
@@ -449,8 +453,19 @@ code, pre, .mono { font-family: var(--font-mono); }
    bigger svg gets flex-shrunk on the main axis (width collapses, height doesn't) — the
    real reason earlier width tweaks did nothing. `flex-shrink:0` + a roomier padding-free
    button fixes it. `.icon-btn.rail-toggle svg` outranks `.icon-btn svg` (avoids ordering). */
-.icon-btn.rail-toggle { width: 31px; height: 31px; padding: 0; }
+.icon-btn.rail-toggle { width: var(--rail-toggle-size); height: var(--rail-toggle-size); padding: 0; }
 .icon-btn.rail-toggle svg { width: 22px; height: 22px; flex-shrink: 0; }
+
+/* Collapsed, the rail is a bare icon column and the hamburger sits directly above
+   it — so it has to share that column's centre line, not the topbar's own padding.
+   (Expanded there is nothing to line up with: the topbar starts after the rail.)
+   The equal-and-opposite right margin holds everything after the button still, so
+   toggling the rail moves the hamburger alone and not the view title with it. */
+.shell.rail-collapsed .icon-btn.rail-toggle {
+    --rail-toggle-nudge: calc(var(--topbar-pad-x) - (var(--rail-w-icons) - var(--rail-toggle-size)) / 2);
+    margin-left: calc(-1 * var(--rail-toggle-nudge));
+    margin-right: var(--rail-toggle-nudge);
+}
 
 /* ---- Content / views --------------------------------------------------------- */
 
