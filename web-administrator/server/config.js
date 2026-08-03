@@ -27,6 +27,14 @@
  *                        PEM key + cert (and optional passphrase) to serve the UI
  *                        over HTTPS directly. Both key and cert required to enable;
  *                        default is plain HTTP (terminate TLS at a reverse proxy).
+ *   WEBADMIN_SKIN        The deployment's branding skin: a directory holding a
+ *                        skin.css that re-declares design tokens for both theme
+ *                        modes (see THEMING.md). Served at /webadmin/skin/ and
+ *                        always loaded — it restyles what Light/Dark mean rather
+ *                        than adding Theme choices.
+ *   WEBADMIN_DEFAULT_THEME
+ *                        The mode users get before choosing: "light" or "dark"
+ *                        (default "light").
  */
 
 'use strict';
@@ -67,7 +75,17 @@ const defaults = {
     // (plain HTTP) — most deployments terminate TLS at a reverse proxy. Set
     // { key, cert, passphrase? } (PEM file paths, relative to the app root or
     // absolute) to serve HTTPS directly; both key and cert are required.
-    tls: null
+    tls: null,
+    // The deployment's branding skin: a directory (relative to the app root, or
+    // absolute) whose skin.css re-declares design tokens for BOTH theme modes —
+    // THEMING.md is the token contract, skins/portal-example and
+    // skins/ledger-example the worked examples. Always loaded when set: it
+    // restyles what Light/Dark mean rather than adding Theme choices. Served at
+    // /webadmin/skin/ (fonts and images beside skin.css are served with it).
+    skin: null,
+    // The mode users see before choosing: "light" or "dark". A user's own
+    // choice always wins.
+    defaultTheme: null
 };
 
 function load() {
@@ -93,6 +111,10 @@ function load() {
     if (process.env.WEBADMIN_DEV_MODE) config.devMode = process.env.WEBADMIN_DEV_MODE === 'true';
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES) config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
+    if (process.env.WEBADMIN_SKIN) config.skin = process.env.WEBADMIN_SKIN;
+    if (process.env.WEBADMIN_DEFAULT_THEME) config.defaultTheme = process.env.WEBADMIN_DEFAULT_THEME;
+    config.skin = config.skin ? path.resolve(ROOT, String(config.skin)) : null;
+    config.defaultTheme = config.defaultTheme === 'dark' ? 'dark' : (config.defaultTheme === 'light' ? 'light' : null);
 
     // Optional built-in TLS (config.json "tls" or the env vars below). Enabled only
     // when BOTH key and cert are given; paths resolve against the app root. Off →

@@ -10,5 +10,7 @@
     "pluginDirs": [],
     "trustedProxies": [],
     "codeTemplateCompletions": true,
-    "tls": null
+    "tls": null,
+    "skin": null,
+    "defaultTheme": null
 }

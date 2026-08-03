@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 48" width="360" height="48">
+  <!-- Portal example brand, for dark surfaces (rail; dark-mode login card). -->
+  <rect x="4" y="6" width="36" height="36" rx="8" fill="#34d399"/>
+  <path d="M14 33 V15 h8.5 a6.5 6.5 0 0 1 0 13 H14" fill="none" stroke="#042116" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="54" y="33" font-family="system-ui, 'Segoe UI', sans-serif" font-size="21" font-weight="650" letter-spacing="7" fill="#eef2f5">PORTAL</text>
+</svg>

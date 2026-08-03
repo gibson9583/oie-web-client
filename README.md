@@ -116,6 +116,8 @@ machine-specific paths), with environment-variable overrides. Start from
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy). Loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` (HTTP) | Serve the UI over **HTTPS** directly — set `{ "key", "cert", "passphrase"? }` to PEM file paths (both key and cert required). Off by default; see [Serving over HTTPS](#serving-over-https) |
+| `skin` | `WEBADMIN_SKIN` | `null` | The deployment's branding skin: a directory whose `skin.css` re-declares the design tokens for **both** theme modes. Always loaded when set — it restyles what Light/Dark mean rather than adding Theme choices. See `web-administrator/THEMING.md`; worked examples in `web-administrator/skins/` |
+| `defaultTheme` | `WEBADMIN_DEFAULT_THEME` | `null` (light) | The mode users get before choosing one: `light` or `dark`. A user's own choice always wins |
 
 ### Deployment modes
 

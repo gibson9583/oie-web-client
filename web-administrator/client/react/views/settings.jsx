@@ -27,7 +27,7 @@ import { getPref, setPrefs, resetPrefs, DASHBOARD_REFRESH_SECONDS } from '../../
 import { checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { setTheme, setTableDensity, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
-import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
+import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, resolveEnvColor, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, DataTableHost } from '../ui.jsx';
@@ -453,8 +453,11 @@ function ServerTab({ ctx }) {
     if (!form) return <div className="loading-block"><div className="spinner" />Loading…</div>;
 
     /* Live preview of the rail + topbar tint in both light and dark mode
-       (Swing's color-chooser Preview panel), updating as the color changes. */
-    const previewColor = hexToColor(form.bgColor, 255);
+       (Swing's color-chooser Preview panel), updating as the color changes.
+       Routed through resolveEnvColor, the SAME substitution the live app makes:
+       the server-default color previews as whatever --env-default-color means
+       here — classic blue on stock, a skin's own choice (often no tint). */
+    const previewColor = resolveEnvColor(hexToColor(form.bgColor, 255));
     const miniPreview = (dark) => {
         const v = environmentColorVars(previewColor, dark);
         const surf = dark ? darkSurfaceTint(previewColor) : null;
@@ -500,7 +503,9 @@ function ServerTab({ ctx }) {
                     </Field>
                     <div className="field span-2">
                         <label>Preview</label>
-                        <div className="flex gap-3.5 flex-wrap">{miniPreview(false)}{miniPreview(true)}</div>
+                        {previewColor
+                            ? <div className="flex gap-3.5 flex-wrap">{miniPreview(false)}{miniPreview(true)}</div>
+                            : <div className="hint">This deployment's skin declares the default color as no tint (--env-default-color: none) — its own chrome shows as-is. Pick any other color to tint environments distinctly.</div>}
                     </div>
                     <Field label="Enable Auto Logout">
                         <YesNo value={form.autoLogout} onChange={(v) => patch({ autoLogout: v })} />
@@ -648,7 +653,7 @@ function AdministratorTab({ ctx }) {
             newChannelDefault: builderValue(getPref('newChannelDefault')),
             newAlertDefault: builderValue(getPref('newAlertDefault')),
             showViewSwitch: getPref('showViewSwitch') !== false,
-            theme: document.documentElement.dataset.theme || 'light',
+            theme: getState('theme') || document.documentElement.dataset.theme || 'light',
             tableDensity: getPref('tableDensity') || 'normal',
             bgMode: 'default',
             bgColor: '#2a75b2'
@@ -840,6 +845,9 @@ function AdministratorTab({ ctx }) {
                         </select>
                     </PrefRow>
                     <PrefRow label="Theme">
+                        {/* Light/Dark only, even under a deployment skin — the skin
+                            restyles what BOTH of these mean (THEMING.md), it is not
+                            a third option. */}
                         <select value={form.theme} onChange={(e) => patch({ theme: e.target.value })}>
                             <option value="light">Light</option>
                             <option value="dark">Dark</option>

@@ -145,55 +145,105 @@ function hexHsl(hex) {
     return rgbToHsl((n >> 16) & 255, (n >> 8) & 255, n & 255);
 }
 
-/* The dark theme's neutral surfaces (mirrors the :root dark tokens in app.css).
-   In dark mode these get recolored to the chosen environment HUE so the main area
-   harmonizes with the tinted rail/topbar instead of staying steel-blue. */
-const DARK_SURFACE_TOKENS = {
-    '--bg0': '#0c1116', '--bg1': '#111922', '--bg2': '#16212c', '--bg3': '#1c2a38',
-    '--line': '#233140', '--line-strong': '#2f4254', '--pane-bg': '#16212c', '--statusbar-bg': '#111922'
-};
+/* The dark theme's neutral surface tokens. In dark mode these get recolored to
+   the chosen environment HUE so the main area harmonizes with the tinted
+   rail/topbar. Values are read LIVE from the cascade (app tokens or an active
+   skin's — THEMING.md), so an env color shifts the palette the deployment
+   actually uses rather than resurrecting the stock one. */
+const DARK_SURFACE_TOKEN_NAMES = ['--bg0', '--bg1', '--bg2', '--bg3', '--line', '--line-strong', '--pane-bg', '--statusbar-bg'];
+
+/* The server default defaultAdministratorBackgroundColor (OIE blue, 0x2A75B2).
+   Every unconfigured engine carries it, so it is a placeholder rather than a
+   chosen environment marker — the OPTIONAL --env-default-color token decides
+   what it means. Undeclared (stock), it tints as-is: the classic look. A skin
+   typically declares `none` so its own chrome stands on server-default
+   engines. A deliberately configured color always tints. */
+const SERVER_DEFAULT_COLOR = { red: 42, green: 117, blue: 178 };
+export function isServerDefaultColor(c) {
+    return !!(c && Number(c.red) === SERVER_DEFAULT_COLOR.red
+        && Number(c.green) === SERVER_DEFAULT_COLOR.green
+        && Number(c.blue) === SERVER_DEFAULT_COLOR.blue);
+}
+
+/* The effective environment color for a reported engine color. The server
+   default is interpreted through the OPTIONAL --env-default-color token: absent
+   (stock declares nothing), the reported color tints as-is — the classic look;
+   `none` → no tint, a skin's own chrome stands; a hex → tint with that instead.
+   Anything unparseable falls back to the reported color. Shared by the live
+   tint and the settings preview so the two can never disagree. */
+export function resolveEnvColor(colorObj) {
+    const valid = colorObj && typeof colorObj === 'object' && colorObj.red !== undefined;
+    if (!valid) return null;
+    if (!isServerDefaultColor(colorObj)) return colorObj;
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--env-default-color').trim();
+    if (v === 'none') return null;
+    const m = v.match(/^#([0-9a-fA-F]{6})$/);
+    if (!m) return colorObj;
+    const n = parseInt(m[1], 16);
+    return { red: (n >> 16) & 255, green: (n >> 8) & 255, blue: n & 255, alpha: 255 };
+}
+
+/* The current cascade's value for each dark-surface token (skin-aware). Only
+   plain hex values participate — the hue-shift math needs them, and that is how
+   the app and the example skins declare surfaces. Callers must clear any inline
+   tint BEFORE reading, or the tint would feed back into itself. */
+function liveSurfaceValues() {
+    const cs = getComputedStyle(document.documentElement);
+    const out = {};
+    for (const tok of DARK_SURFACE_TOKEN_NAMES) {
+        const v = cs.getPropertyValue(tok).trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) out[tok] = v;
+    }
+    return out;
+}
 
 /* Recolor each dark surface to the env color's hue, KEEPING its lightness (so text
    contrast is unchanged) and scaling the tint by the env color's own saturation.
-   The tint ramps in by chroma so a near-gray pick stays neutral (the default dark
-   palette). Returns null (no tint) for an invalid or low-chroma color. Exported so
-   the settings preview can show the same tinted surface the live app uses. */
-export function darkSurfaceTint(colorObj) {
+   The tint ramps in by chroma so a near-gray pick stays neutral. Returns null (no
+   tint) for an invalid or low-chroma color. Exported so the settings preview can
+   show the same tinted surface the live app uses. */
+export function darkSurfaceTint(colorObj, base = liveSurfaceValues()) {
     if (!colorObj || typeof colorObj !== 'object' || colorObj.red === undefined) return null;
     const [h, s] = rgbToHsl(Number(colorObj.red) || 0, Number(colorObj.green) || 0, Number(colorObj.blue) || 0);
     const strength = Math.max(0, Math.min(1, (s - 0.06) / 0.34));   // 0 below ~0.06 sat, full by 0.40
     if (strength <= 0) return null;
     const out = {};
-    for (const tok in DARK_SURFACE_TOKENS) {
-        const [, ts, tl] = hexHsl(DARK_SURFACE_TOKENS[tok]);
+    for (const tok in base) {
+        const [, ts, tl] = hexHsl(base[tok]);
         out[tok] = hslToHex(h, ts * strength, tl);
     }
     return out;
 }
 
 export function applyEnvironmentColor(colorObj) {
+    // Keep the RAW reported color; the server-default substitution resolves per
+    // application, so a skin's per-mode --env-default-color lands on every
+    // theme toggle.
     lastEnvColor = (colorObj && typeof colorObj === 'object' && colorObj.red !== undefined) ? colorObj : null;
     const root = document.documentElement;
     const dark = (root.dataset.theme || 'light') === 'dark';
-    const v = lastEnvColor && environmentColorVars(lastEnvColor, dark);
+
+    // Clear the previous tint FIRST, so the live-token reads below see the
+    // cascade (including an active skin), never an earlier tint feeding back.
+    ENV_COLOR_VARS.forEach((p) => root.style.removeProperty(p));
+    DARK_SURFACE_TOKEN_NAMES.forEach((p) => root.style.removeProperty(p));
+    const effective = resolveEnvColor(lastEnvColor);
+    if (!effective) return;
 
     // Rail / topbar chrome.
-    if (!v) {
-        ENV_COLOR_VARS.forEach((p) => root.style.removeProperty(p));
-    } else {
+    const v = environmentColorVars(effective, dark);
+    if (v) {
         root.style.setProperty('--rail-bg', v.railBg);
         root.style.setProperty('--rail-fg', v.fg);
         root.style.setProperty('--rail-fg-dim', v.fgDim);
         root.style.setProperty('--topbar-fg', v.fg);
     }
 
-    // Main surfaces: tint the neutral dark palette toward the env hue (dark mode
-    // only; light mode and the no-color case keep the default tokens).
-    const surf = lastEnvColor && dark ? darkSurfaceTint(lastEnvColor) : null;
+    // Main surfaces: tint the active dark palette toward the env hue (dark mode
+    // only; light mode keeps the cascade's surfaces).
+    const surf = dark ? darkSurfaceTint(effective) : null;
     if (surf) {
         for (const tok in surf) root.style.setProperty(tok, surf[tok]);
-    } else {
-        Object.keys(DARK_SURFACE_TOKENS).forEach((p) => root.style.removeProperty(p));
     }
 }
 

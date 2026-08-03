@@ -1,0 +1,108 @@
+/* ============================================================================
+   Example skin — "portal": a neutral slate UI with an emerald accent.
+
+   A skin is a stylesheet of design-token RE-DECLARATIONS. It loads after the
+   app's own stylesheet, so anything declared here wins on source order — no
+   !important, no selectors into the app's DOM. THEMING.md documents every
+   token; this file is a worked example that rebrands both themes.
+
+   Point the server at the directory containing this file:
+
+       config.json:  "skin": "skins/portal-example"
+       or:           WEBADMIN_SKIN=skins/portal-example npm start
+
+   Any fonts or images placed beside this file are served with it and can be
+   referenced relatively (url("brand.woff2") → /webadmin/skin/brand.woff2).
+   ========================================================================== */
+
+:root {
+    /* Server-default engines carry no environment signal - let this skin's
+       own chrome stand for them. A deliberately configured engine color still
+       tints (hue-shifting THIS skin's surfaces in dark mode). */
+    --env-default-color: none;
+
+    /* Typography. The UI face carries most of the rebrand; a system stack is
+       shown here — a portal would @font-face its brand font in this file and
+       name it first. */
+    --font-ui: system-ui, 'Segoe UI', 'Helvetica Neue', sans-serif;
+
+    /* Brand accent (buttons, links, selection, focus). --accent-ink is the text
+       color ON the accent — keep the pair readable together. --accent-glow is
+       the accent at low alpha, used for selection washes and focus rings. */
+    --accent: #34d399;
+    --accent-press: #10b981;
+    --accent-ink: #042116;
+    --accent-glow: rgba(52, 211, 153, 0.16);
+
+    /* Dark surfaces, deepest (page ground) to lightest (raised panels). Neutral
+       slate in place of the stock steel-blue. */
+    --bg0: #0f1214;
+    --bg1: #16191c;
+    --bg2: #1c2024;
+    --bg3: #24292e;
+    --line: #2b3138;
+    --line-strong: #3a424b;
+
+    --text: #e2e6ea;
+    --text-dim: #97a0a9;
+    --text-faint: #646d76;
+
+    /* Chrome (navigation rail + top bar + status bar). Plain colors are fine —
+       the stock skin's gradient is not required. NOTE: when an engine sets an
+       environment background color (Settings → Server), that tint is applied at
+       runtime OVER these values; the skin provides the defaults. */
+    --rail-bg: #14181b;
+    --rail-fg: #d3dae0;
+    --rail-fg-dim: #7d8891;
+    --pane-bg: #1c2024;
+    --topbar-fg: #eef2f5;
+    --statusbar-bg: #16191c;
+    --chrome-texture: none;
+
+    /* Geometry: a slightly squarer look. Layout tokens (rail widths, bar
+       heights) are left alone — they are layout, not brand. */
+    --radius: 6px;
+
+    /* Branding. The art ships with the skin, referenced by ABSOLUTE path — a
+       url() in a custom property resolves where var() substitutes it (the app
+       stylesheet), not against this file. The rail is dark in both modes → one
+       rail file; the login card flips with the theme → a per-mode pair (the
+       light value is re-declared in the [data-theme="light"] block below). */
+    --brand-rail: url('/webadmin/skin/brand-dark.svg');
+    --brand-login: url('/webadmin/skin/brand-dark.svg');
+    --brand-login-h: 36px;
+    --brand-sub: 'INTEGRATION CONSOLE';
+
+    /* Status colors (--ok/--warn/--err/--idle/--busy) are deliberately NOT
+       overridden: operators read channel state by them. Recolor only with care
+       for contrast and red/green conventions. */
+}
+
+[data-theme="light"] {
+    --accent: #059669;
+    --accent-press: #047857;
+    --accent-ink: #ffffff;
+    --accent-glow: rgba(5, 150, 105, 0.13);
+
+    --bg0: #eef0f2;
+    --bg1: #f6f8f9;
+    --bg2: #ffffff;
+    --bg3: #e7ebee;
+    --line: #d5dbe0;
+    --line-strong: #b6c0c9;
+
+    --text: #22292f;
+    --text-dim: #55616c;
+    --text-faint: #87929c;
+
+    --rail-bg: #123f31;
+    --rail-fg: #eef7f3;
+    --rail-fg-dim: #a8c8bc;
+    --pane-bg: #fbfdfc;
+    --topbar-fg: #ffffff;
+    --statusbar-bg: #e2e7ea;
+    --chrome-texture: none;
+
+    --brand-login: url('/webadmin/skin/brand-light.svg');
+    --brand-login-h: 36px;
+}

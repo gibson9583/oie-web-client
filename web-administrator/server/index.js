@@ -19,6 +19,7 @@ const { load } = require('./config');
 const { createApiProxy } = require('./proxy');
 const { installPluginRoutes } = require('./plugin-install');
 const plugins = require('./plugins');
+const skin = require('./skin');
 
 const config = load();
 const app = express();
@@ -106,7 +107,9 @@ app.get('/webadmin/config.json', (req, res) => {
         engines: config.engines.map((e) => ({ name: e.name })),
         devMode: !!config.devMode,
         version: require('../package.json').version,
-        codeTemplateCompletions: config.codeTemplateCompletions !== false
+        codeTemplateCompletions: config.codeTemplateCompletions !== false,
+        // The mode users get before choosing one ('light' | 'dark' | null).
+        defaultTheme: config.defaultTheme || null
     });
 });
 
@@ -120,6 +123,13 @@ app.get('/webadmin/config.json', (req, res) => {
 // rather than cache immutably.
 app.use('/vendor/monaco', express.static(path.join(clientDir, 'vendor', 'monaco'),
     { maxAge: '1d', dotfiles: 'deny' }));
+
+// --- Skin (optional deployment branding) --------------------------------------
+// config.skin serves at /webadmin/skin/ and its skin.css is linked into the
+// shell AFTER the app stylesheet — it restyles what Light/Dark mean rather than
+// adding Theme choices (THEMING.md is the contract). Registered before the
+// frontend so the static mounts can't shadow the route.
+const skinDir = skin.install(app, config);
 
 // --- Plugins -----------------------------------------------------------------
 // Registered BEFORE the frontend so /plugins/* and /webadmin/plugins.json take
@@ -135,7 +145,10 @@ async function start() {
             configFile: path.join(config.root, 'vite.config.mjs'),
             root: clientDir,
             server: { middlewareMode: true },
-            appType: 'spa'   // Vite serves/transforms index.html for unmatched GETs
+            appType: 'spa',   // Vite serves/transforms index.html for unmatched GETs
+            // Vite owns index.html on this path, so the skin link (see the
+            // production serveShell) goes in through its HTML transform instead.
+            plugins: skinDir ? [{ name: 'webadmin-skin', transformIndexHtml: (html) => skin.injectLink(html) }] : []
         });
         // The shell + framework modules (/app.js, /core/*.js, /connectors/*.js,
         // /css/*) are transformed and HMR-served by Vite. Plugin imports of
@@ -162,6 +175,7 @@ async function start() {
             html = html.replace('<script type="importmap"', `<script type="importmap" nonce="${res.locals.cspNonce}"`);
             const preloads = plugins.preloadLinks(config).join('\n  ');
             if (preloads) html = html.replace('</head>', `  ${preloads}\n</head>`);
+            if (skinDir) html = skin.injectLink(html);
             res.type('html').send(html);
         };
         // The raw file must never bypass the nonce injection: register the shell

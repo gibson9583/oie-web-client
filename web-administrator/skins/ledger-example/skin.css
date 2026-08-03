@@ -1,0 +1,103 @@
+/* ============================================================================
+   Example skin — "Ledger": how far the token contract stretches.
+
+   Where the stock skin is a dark control room (graphite, glow, sans, rounded),
+   this one is a paper ledger: warm paper and ink, serif type, ZERO corner
+   radius, hard offset shadows instead of soft blurs, and a flat ink rail with
+   fine ruled lines. Same tokens, opposite character — nothing here touches a
+   component or a layout; it is design-token re-declarations only (THEMING.md).
+
+   Its light mode is the hero (paper); its dark mode is the same ledger at
+   night — warm blacks and cream ink, not the stock blue-graphite.
+   ========================================================================== */
+
+:root {
+    /* Server-default engines carry no environment signal - let this skin's
+       own chrome stand for them. A deliberately configured engine color still
+       tints (hue-shifting THIS skin's surfaces in dark mode). */
+    --env-default-color: none;
+
+    /* Editorial type: a serif UI face and a typewriter mono. */
+    --font-ui: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+    --font-mono: 'Courier Prime', 'Courier New', monospace;
+
+    /* Dark mode: the ledger at night — warm blacks, cream ink. */
+    --bg0: #171310;
+    --bg1: #1e1914;
+    --bg2: #251f19;
+    --bg3: #2e2720;
+    --line: #3b332a;
+    --line-strong: #55483b;
+
+    --text: #d8cdbb;
+    --text-dim: #a3947f;
+    --text-faint: #6e6355;
+
+    /* Oxblood accent, brightened for dark ground. */
+    --accent: #c05a41;
+    --accent-press: #a84b35;
+    --accent-ink: #f6efe2;
+    --accent-glow: rgba(192, 90, 65, 0.18);
+
+    /* Chrome: flat ink with a fine ruled texture, in BOTH modes. */
+    --rail-bg: #211b15;
+    --rail-fg: #e9dfc9;
+    --rail-fg-dim: #a3947f;
+    --pane-bg: #251f19;
+    --topbar-fg: #f0e7d4;
+    --statusbar-bg: #1e1914;
+    --chrome-texture: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0, 0, 0, 0.10) 3px 4px);
+
+    /* The shape change: no rounding anywhere, and hard offset shadows in place
+       of the stock soft blurs — print, not glass. */
+    --radius: 0px;
+    --shadow: 5px 5px 0 rgba(23, 19, 16, 0.55);
+    --elev: 2px 2px 0 rgba(23, 19, 16, 0.45);
+    --grid-dot: rgba(216, 205, 187, 0.05);
+
+    /* Branding: the wordmark ships with the skin. ABSOLUTE paths — a url() in a
+       custom property resolves where var() substitutes it (the app stylesheet),
+       not here. Cream art for ink surfaces; paper art in the light block. */
+    --brand-rail: url('/webadmin/skin/brand-dark.svg');
+    --brand-rail-h: 28px;
+    --brand-login: url('/webadmin/skin/brand-dark.svg');
+    --brand-login-h: 44px;
+    --brand-sub: 'RECORDS OF EXCHANGE';
+
+    /* Status pips are left stock (see THEMING.md): operators read state by
+       them, and this skin changes character, not signal colors. */
+}
+
+[data-theme="light"] {
+    --bg0: #e5decf;
+    --bg1: #efe9db;
+    --bg2: #f8f4ea;
+    --bg3: #e9e1d0;
+    --line: #c2b59e;
+    --line-strong: #97876c;
+
+    --text: #2b2620;
+    --text-dim: #5c5346;
+    --text-faint: #8b8071;
+
+    --accent: #8a3c2a;
+    --accent-press: #6f2f21;
+    --accent-ink: #f8f4ea;
+    --accent-glow: rgba(138, 60, 42, 0.13);
+
+    /* Ink rail over paper pages. */
+    --rail-bg: #2b2620;
+    --rail-fg: #efe9db;
+    --rail-fg-dim: #a3947f;
+    --pane-bg: #f8f4ea;
+    --topbar-fg: #f3ede0;
+    --statusbar-bg: #e9e1d0;
+    --chrome-texture: repeating-linear-gradient(0deg, transparent 0 3px, rgba(0, 0, 0, 0.08) 3px 4px);
+
+    --shadow: 5px 5px 0 rgba(43, 38, 32, 0.30);
+    --elev: 2px 2px 0 rgba(43, 38, 32, 0.22);
+    --grid-dot: rgba(43, 38, 32, 0.06);
+
+    --brand-login: url('/webadmin/skin/brand-light.svg');
+    --brand-login-h: 44px;
+}

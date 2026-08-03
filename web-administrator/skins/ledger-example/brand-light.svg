@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 56" width="360" height="56">
+  <!-- Ledger example brand, for paper surfaces (light-mode login card). -->
+  <line x1="20" y1="8" x2="340" y2="8" stroke="#8a3c2a" stroke-width="3"/>
+  <line x1="20" y1="13" x2="340" y2="13" stroke="#8a3c2a" stroke-width="1"/>
+  <text x="180" y="40" text-anchor="middle" font-family="'Iowan Old Style', 'Palatino Linotype', Georgia, serif" font-size="26" font-weight="600" letter-spacing="10" fill="#2b2620">LEDGER</text>
+  <line x1="20" y1="49" x2="340" y2="49" stroke="#8a3c2a" stroke-width="1"/>
+</svg>
