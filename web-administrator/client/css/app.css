@@ -103,6 +103,26 @@
     --topbar-fg: #e4edf5;
     --statusbar-bg: #111922;
 
+    /* A skin MAY declare --env-default-color to reinterpret the engine's SERVER
+       DEFAULT background color (OIE blue, #2A75B2 — what every unconfigured
+       engine reports): `none` lets the skin's own chrome stand on such engines,
+       a color tints them with that instead. Deliberately NOT declared here —
+       absent the token, the reported color tints as-is (the classic look), and
+       a DELIBERATELY configured engine color always tints regardless. See
+       THEMING.md and bridges.jsx resolveEnvColor. */
+
+    /* Branding (THEMING.md). Image tokens paint the brand slots, so a skin
+       rebrands by re-declaring them with ABSOLUTE /webadmin/skin/ paths —
+       a url() in a custom property resolves where var() substitutes it (this
+       stylesheet), NOT against the skin file that declared it.
+       --brand-login is per-theme (the stock art has a light and a dark variant);
+       --brand-rail is not (the rail is a dark surface in both themes). */
+    --brand-rail: url('/assets/oie_logo_banner_text_white.svg');
+    --brand-rail-h: 24px;
+    --brand-login: url('/assets/oie_white_logo_banner_text_215x30.png');
+    --brand-login-h: 24px;
+    --brand-sub: 'WEB ADMINISTRATOR';
+
     --radius: 9px;
     --rail-w: 194px;
     --rail-w-icons: 50px;
@@ -159,6 +179,8 @@
     --pane-bg: #fbfcfe;
     --topbar-fg: #ffffff;
     --statusbar-bg: #dde4ea;
+    --brand-login: url('/assets/oie_logo_bottom_text.svg');
+    --brand-login-h: 108px;
     --shadow: 0 8px 28px rgba(29, 41, 53, 0.18);
     --elev: 0 1px 2px rgba(29, 41, 53, 0.06), 0 6px 18px rgba(29, 41, 53, 0.10);
     --grid-dot: rgba(29, 41, 53, 0.045);
@@ -201,7 +223,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: min(5px, var(--radius)); border: 2px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--text-faint); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
@@ -284,6 +306,14 @@ code, pre, .mono { font-family: var(--font-mono); }
     height: var(--topbar-h);
     flex: none;
     box-sizing: border-box;
+}
+
+/* Token-painted brand slot: the expanded rail's banner (a skin re-declares
+   --brand-rail / --brand-rail-h — THEMING.md). */
+.rail-brand-img {
+    flex: 1;
+    height: var(--brand-rail-h);
+    background: var(--brand-rail) left center / contain no-repeat;
 }
 
 .rail-brand .brand-mark {
@@ -801,7 +831,7 @@ table.dt tbody tr.group-row td {
     max-width: calc(100% - 28px);
     background: color-mix(in srgb, var(--text) 3.5%, transparent);
     border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-    border-radius: 8px;
+    border-radius: min(8px, var(--radius));
     overflow-x: auto;
     overflow-y: hidden;
 }
@@ -815,7 +845,7 @@ table.dt tbody tr.group-row td {
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     white-space: nowrap;
 }
 
@@ -838,7 +868,7 @@ table.dt tbody tr.group-row td {
     display: inline-flex;
     gap: 2px;
     padding: 3px;
-    border-radius: 7px;
+    border-radius: min(7px, var(--radius));
     background: color-mix(in srgb, var(--text) 3.5%, transparent);
     border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
 }
@@ -846,7 +876,7 @@ table.dt tbody tr.group-row td {
     appearance: none;
     border: 0;
     background: transparent;
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     padding: 4px 10px;
     font: inherit;
     font-size: 10.5px;
@@ -929,7 +959,7 @@ input[type=checkbox], input[type=radio] {
     width: 14px;
     height: 14px;
     /* Not var(--radius): 10px on a 15px box is a circle. */
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     border: 1px solid var(--line-strong);
     background: var(--bg2);
     cursor: pointer;
@@ -1120,7 +1150,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     padding: 11px;
     background: var(--bg0);
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: min(8px, var(--radius));
     color: var(--text);
 }
 .pref-preview-label {
@@ -1141,7 +1171,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     overflow: hidden;
     background: var(--bg1);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: min(6px, var(--radius));
 }
 /* A few strokes standing in for the rail, so the background colour has somewhere
    to show — it is the rail and topbar the setting actually tints. */
@@ -1154,7 +1184,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     gap: 7px;
     background: var(--chrome-texture), var(--rail-bg);
 }
-.pref-preview-rail span { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--rail-fg) 42%, transparent); }
+.pref-preview-rail span { height: 5px; border-radius: min(3px, var(--radius)); background: color-mix(in srgb, var(--rail-fg) 42%, transparent); }
 .pref-preview-rail .pref-preview-brand { height: 7px; background: color-mix(in srgb, var(--rail-fg) 72%, transparent); }
 .pref-preview-frame .dt { flex: 1; min-width: 0; }
 .pref-preview-frame .dt th { position: static; }   /* no sticky inside a sample */
@@ -1182,7 +1212,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     flex-direction: column;
     background: var(--bg2);
     border: 1px solid var(--line-strong);
-    border-radius: 9px;
+    border-radius: min(9px, var(--radius));
     box-shadow: var(--shadow);
     overflow: hidden;
     animation: modal-in 0.14s ease-out;
@@ -1225,7 +1255,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .cmdk-scope {
     flex: none;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     background: var(--accent-glow);
     color: var(--accent);
     font-family: var(--font-mono);
@@ -1246,7 +1276,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     align-items: center;
     gap: 9px;
     padding: 6px 8px;
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     font-size: 11.5px;
     cursor: pointer;
 }
@@ -1287,7 +1317,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     padding: 1px 4px;
     background: var(--bg2);
     border: 1px solid var(--line-strong);
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     font-family: var(--font-mono);
     font-size: 9.5px;
     color: var(--text-dim);
@@ -1370,7 +1400,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     z-index: 150;
     background: var(--bg2);
     border: 1px solid var(--line-strong);
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     box-shadow: var(--shadow);
     animation: fade-in 0.1s ease-out;
 }
@@ -1405,7 +1435,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     padding: 4px 0;
     background: var(--bg1);
     border: 1px solid var(--line-strong);
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     color: var(--text);
     font: inherit;
     font-size: 13.5px;
@@ -1417,7 +1447,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .dtf-step {
     padding: 1px 0;
     border: 0;
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     background: none;
     color: var(--text-faint);
     font-size: 7px;
@@ -1450,7 +1480,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     --rdp-day-width: 30px;
     --rdp-day_button-height: 28px;
     --rdp-day_button-width: 28px;
-    --rdp-day_button-border-radius: 5px;
+    --rdp-day_button-border-radius: min(5px, var(--radius));
     --rdp-nav_button-height: 26px;
     --rdp-nav_button-width: 26px;
     --rdp-weekday-opacity: 1;
@@ -1484,7 +1514,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     min-width: 171px;
     background: var(--bg2);
     border: 1px solid var(--line-strong);
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     box-shadow: var(--shadow);
     padding: 4px;
     animation: fade-in 0.1s ease-out;
@@ -1503,7 +1533,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     width: 100%;
     padding: 6px 9px;
     border: 0;
-    border-radius: 3px;
+    border-radius: min(3px, var(--radius));
     background: none;
     color: var(--text);
     font: inherit;
@@ -1722,7 +1752,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 /* ---- Trees (code template libraries, channel groups) ---------------------------------------------------------------- */
 
 .tree { font-size: 11px; }
-.tree .tree-node { display: flex; align-items: center; gap: 6px; padding: 4px 9px; cursor: pointer; border-radius: 3px; }
+.tree .tree-node { display: flex; align-items: center; gap: 6px; padding: 4px 9px; cursor: pointer; border-radius: min(3px, var(--radius)); }
 .tree .tree-node:hover { background: var(--bg2); }
 .tree .tree-node.selected { background: var(--accent-glow); color: var(--accent); }
 .tree .tree-node .twisty { width: 13px; flex: none; color: var(--text-faint); transition: transform 0.12s; }
@@ -1760,7 +1790,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     flex: none;
     background: var(--bg1);
     border: 1px solid var(--line-strong);
-    border-radius: 7px;
+    border-radius: min(7px, var(--radius));
     box-shadow: var(--shadow);
     padding: 31px 31px 25px;
     position: relative;
@@ -1774,11 +1804,15 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     position: absolute;
     inset: -1px -1px auto -1px;
     height: 3px;
-    border-radius: 7px 7px 0 0;
+    border-radius: min(7px, var(--radius)) min(7px, var(--radius)) 0 0;
     background: linear-gradient(90deg, transparent, var(--accent), transparent);
 }
 
 .login-brand { display: flex; flex-direction: column; align-items: center; gap: 11px; margin-bottom: 25px; }
+/* Token-painted brand slots: the login card's logo and wordmark (a skin
+   re-declares --brand-login / --brand-login-h / --brand-sub — THEMING.md). */
+.login-brand .login-logo { width: 100%; height: var(--brand-login-h); background: var(--brand-login) center / contain no-repeat; }
+.login-brand .brand-sub::after { content: var(--brand-sub); }
 .login-brand .brand-mark { width: 41px; height: 41px; color: var(--accent); filter: drop-shadow(0 0 12px var(--accent-glow)); }
 .login-brand .brand-title { font-size: 13.5px; font-weight: 740; letter-spacing: 0.2em; text-align: center; }
 .login-brand .brand-sub { font-size: 8.5px; letter-spacing: 0.4em; color: var(--text-faint); }
@@ -1816,10 +1850,6 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     margin-bottom: 13px;
 }
 
-
-/* Official logo variants per theme */
-[data-theme="light"] .logo-on-dark { display: none !important; }
-:root:not([data-theme="light"]) .logo-on-light, html:not([data-theme="light"]) .logo-on-light { display: none !important; }
 
 /* ---- Message content viewer ------------------------------------------------------------------------------------------------ */
 
@@ -1874,7 +1904,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .tok-hl7-seg { color: var(--accent); font-weight: 700; }
 .tok-hl7-sep { color: var(--text-faint); }
 .tok-hl7-field { position: relative; cursor: default; }
-.tok-hl7-field:hover { background: var(--accent-glow); border-radius: 2px; }
+.tok-hl7-field:hover { background: var(--accent-glow); border-radius: min(2px, var(--radius)); }
 .tok-hl7-field[data-tooltip]:hover::after {
     content: attr(data-tooltip);
     position: absolute;
@@ -1885,7 +1915,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     color: var(--text);
     border: 1px solid var(--line-strong);
     padding: 3px 7px;
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     font-size: 10px;
     font-weight: 400;
     font-style: normal;
@@ -1948,7 +1978,7 @@ input.grid-name {
     color: inherit;
     font: inherit;
     padding: 2px 4px;
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
 }
 input.grid-name:hover { border-color: var(--line); }
 input.grid-name:focus {
@@ -1972,7 +2002,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
 
 .progress {
     height: 7px;
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     background: var(--bg3);
     overflow: hidden;
     border: 1px solid var(--line);
@@ -2100,7 +2130,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
 .rail-pane-header:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     color: var(--rail-fg);
 }
 
@@ -2147,7 +2177,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     font-size: 10px;
     letter-spacing: 0;
     padding: 1px 4px;
-    border-radius: 3px;
+    border-radius: min(3px, var(--radius));
 }
 .rail-tool:hover { color: var(--rail-fg); background: rgba(255, 255, 255, 0.12); }
 .rail-tool:focus-visible { outline: 1px solid var(--accent); }
@@ -2160,7 +2190,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     color: var(--rail-fg);
     background: rgba(0, 0, 0, 0.3);
     border: 1px solid var(--accent);
-    border-radius: 3px;
+    border-radius: min(3px, var(--radius));
     padding: 1px 4px;
     width: 100%;
 }
@@ -2170,7 +2200,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     text-transform: uppercase;
 }
 
-.rail-editing .rail-pane { outline: 1px dashed color-mix(in srgb, var(--rail-fg-dim) 40%, transparent); outline-offset: -2px; border-radius: 4px; }
+.rail-editing .rail-pane { outline: 1px dashed color-mix(in srgb, var(--rail-fg-dim) 40%, transparent); outline-offset: -2px; border-radius: min(4px, var(--radius)); }
 .rail-editing .rail-item { cursor: grab; }
 .rail-drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .rail-drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -2240,7 +2270,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     /* Medium weight: regular-weight light text vibrates / thins out on a
        saturated environment-color rail; 500 keeps it crisp without looking bold. */
     font-weight: 500;
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     margin: 1px 0;
     color: var(--rail-fg-dim);
 }
@@ -2258,7 +2288,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     font-weight: 640;
     box-shadow: inset 2px 0 0 var(--rail-fg);
 }
-.rail-pane-body .taskbar .btn { border-radius: 5px; margin: 1px 0; padding: 4px 9px; }
+.rail-pane-body .taskbar .btn { border-radius: min(5px, var(--radius)); margin: 1px 0; padding: 4px 9px; }
 
 /* Taskbars relocated into a sidebar pane render vertically as task links. */
 .rail-pane-body .taskbar {
@@ -2337,7 +2367,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     padding: 8px 0;
     margin: 2px auto;
     width: 36px;
-    border-radius: 7px;
+    border-radius: min(7px, var(--radius));
 }
 .rail-collapsed .rail .rail-item span { display: none; }
 /* 24px: an icon carrying a nav item ALONE needs to read as a target, where the
@@ -2364,7 +2394,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     width: 36px;
     margin: 2px auto;
     padding: 8px 0;
-    border-radius: 7px;
+    border-radius: min(7px, var(--radius));
 }
 /* Match the nav items exactly — 20 next to 24 reads as a mistake, not a hierarchy. */
 .rail-collapsed .rail .rail-pane-body .taskbar .btn svg { width: 22px; height: 22px; }
@@ -2620,7 +2650,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     padding: 11px 13px;
     background: var(--bg2);
     border: 1px solid var(--line-strong);
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     box-shadow: var(--shadow);
     animation: fade-in 0.1s ease-out;
 }
@@ -2681,7 +2711,7 @@ input.grid-name::placeholder { color: var(--text-faint); }
     padding: 13px;
     background: var(--bg2);
     border: 1px solid var(--line-strong);
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     box-shadow: var(--shadow);
     animation: fade-in 0.1s ease-out;
 }
@@ -2843,7 +2873,7 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
     overflow-y: auto;
     background: var(--bg2);
     border: 1px solid var(--line-strong);
-    border-radius: 4px;
+    border-radius: min(4px, var(--radius));
     box-shadow: var(--shadow);
     padding: 4px;
     animation: fade-in 0.1s ease-out;
@@ -2855,7 +2885,7 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
     gap: 8px;
     width: 100%;
     padding: 5px 9px;
-    border-radius: 3px;
+    border-radius: min(3px, var(--radius));
     color: var(--text);
     font-size: 11px;
     cursor: pointer;
@@ -2933,7 +2963,7 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
     border-color: var(--err) !important;
     background: color-mix(in srgb, var(--err) 12%, var(--bg2)) !important;
 }
-.radio-group.cform-invalid { outline: 1px solid var(--err); outline-offset: 3px; border-radius: 5px; }
+.radio-group.cform-invalid { outline: 1px solid var(--err); outline-offset: 3px; border-radius: min(5px, var(--radius)); }
 
 /* Destination connector header row: "Connector Type: [select]  [x] Wait for previous".
    The checkbox is pushed to the right on a wide row, but once the row is narrow
@@ -3163,7 +3193,7 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
 
 /* Status pips / badges → shadcn badge */
 .dash-shadcn .tag {
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
     border: 1px solid var(--sh-border);
     padding: 1px 6px;
     font-size: 10px;
@@ -3198,13 +3228,13 @@ textarea:focus-visible,
 .dt th.sortable:focus-visible {
     outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
     outline-offset: 1px;
-    border-radius: 5px;
+    border-radius: min(5px, var(--radius));
 }
 
 /* Text inputs / selects / textareas → shadcn field (subtle border + ring). */
 input[type="text"], input[type="search"], input[type="number"],
 input[type="password"], input[type="email"], input[type="url"], textarea, select {
-    border-radius: 6px;
+    border-radius: min(6px, var(--radius));
 }
 input[type="text"]:focus, input[type="search"]:focus, input[type="number"]:focus,
 input[type="password"]:focus, input[type="email"]:focus, input[type="url"]:focus,
@@ -3227,7 +3257,7 @@ textarea:focus, select:focus {
 }
 
 /* Buttons → rounded-md, quiet border, subtle hover (size unchanged). */
-.btn { border-radius: 6px; }
+.btn { border-radius: min(6px, var(--radius)); }
 
 /* Cards / panels → quiet shadcn card. */
 .panel { border-radius: var(--radius); }
@@ -3241,4 +3271,4 @@ textarea:focus, select:focus {
 }
 
 /* Badges / tags → shadcn badge shape (rounded-md). */
-.tag { border-radius: 5px; }
+.tag { border-radius: min(5px, var(--radius)); }

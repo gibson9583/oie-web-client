@@ -168,11 +168,11 @@ export function LoginForm({ onSuccess }) {
                     }
                 }}>
                 <div className="login-brand">
-                    <span>
-                        <img className="logo-on-light block w-[108px]" src="/assets/oie_logo_bottom_text.svg" alt="Open Integration Engine" />
-                        <img className="logo-on-dark block w-[169px]" src="/assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine" />
-                    </span>
-                    <div className="brand-sub">WEB ADMINISTRATOR</div>
+                    {/* Both painted by tokens (a skin re-declares --brand-login /
+                        --brand-sub — THEMING.md); the stock --brand-login swaps art
+                        per theme, which the old per-theme <img> pair did in JSX. */}
+                    <span className="login-logo" role="img" aria-label="Open Integration Engine" />
+                    <div className="brand-sub" />
                 </div>
                 {error ? <div className="login-error">{error}</div> : null}
                 {showPicker ? (

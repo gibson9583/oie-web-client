@@ -212,7 +212,11 @@ function startEngine() {
 
         try {
             const res = await fetch('/webadmin/config.json');
-            if (res.ok) store.setState('webadminConfig', await res.json());
+            if (res.ok) {
+                const cfg = await res.json();
+                store.setState('webadminConfig', cfg);
+                store.applyConfigTheme(cfg);   // deployment default, unless the user chose
+            }
         } catch { /* optional */ }
 
         // Warm Monaco in the background; air-gapped installs keep the baseline editor.
@@ -579,14 +583,12 @@ function AppShell({ user, onLogout }) {
         <div className={'shell' + (railCollapsed ? ' rail-collapsed' : '')}>
             <aside className="rail">
                 <div className="rail-brand">
-                    {/* Pre-whitened vector logo — NO CSS filter (the filter softened it; copying
-                        the img grabbed the clean source, which is why it looked fine copied but off
-                        in the bar). Crisp at any DPI on the dark/blue rail. Dropped entirely when
-                        collapsed: it is a banner lockup, illegible at 56px, and its inline width
-                        would beat any CSS that tried to hide it. */}
+                    {/* Painted by the --brand-rail token (a skin swaps the art —
+                        THEMING.md). The stock art is a pre-whitened vector, NO CSS
+                        filter (a filter softened it). Dropped entirely when
+                        collapsed: it is a banner lockup, illegible at 56px. */}
                     {!railCollapsed && (
-                        <img src="/assets/oie_logo_banner_text_white.svg" alt="Open Integration Engine"
-                            style={{ width: '100%', height: 'auto', display: 'block' }} />
+                        <span className="rail-brand-img" role="img" aria-label="Open Integration Engine" />
                     )}
                 </div>
                 {/* Navigation only. Per-view task panes portal into .view-tasks in the
@@ -681,7 +683,11 @@ export function App() {
             // so the login screen can render the engine picker if there's a choice.
             try {
                 const res = await fetch('/webadmin/config.json');
-                if (res.ok && alive) store.setState('webadminConfig', await res.json());
+                if (res.ok && alive) {
+                    const cfg = await res.json();
+                    store.setState('webadminConfig', cfg);
+                    store.applyConfigTheme(cfg);   // deployment default on the login screen too
+                }
             } catch { /* optional */ }
             try {
                 const u = await api.auth.current();

@@ -29,11 +29,20 @@ test.describe('history-api routing', () => {
         await expect(page).toHaveURL(new RegExp(`/channels/${id}/edit$`));
         expect(page.url()).not.toContain('#');
 
-        // Assets must resolve absolutely (/assets/…), not relative to the deep path
-        // (/channels/<id>/assets/…) — the rail logo actually loads.
-        const logo = page.locator('.rail-brand img');
+        // Assets must resolve absolutely, not relative to the deep path
+        // (/channels/<id>/…) — the rail logo (the --brand-rail token painting the
+        // .rail-brand-img slot) actually loads. Asserted on the URL shape, not a
+        // specific directory: a deployment skin points the token at
+        // /webadmin/skin/ instead of /assets/, and both are equally valid here.
+        const logo = page.locator('.rail-brand-img');
         await expect(logo).toBeVisible();
-        expect(await logo.evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+        const bgUrl = await logo.evaluate((el) => {
+            const m = getComputedStyle(el).backgroundImage.match(/url\("(.+?)"\)/);
+            return m ? m[1] : null;
+        });
+        expect(new URL(bgUrl).pathname).not.toContain('/channels/');
+        const status = await page.evaluate((u) => fetch(u).then((r) => r.status), bgUrl);
+        expect(status).toBe(200);
     });
 
     test('in-app navigation pushes clean URLs and Back/Forward work (popstate)', async ({ page }) => {
