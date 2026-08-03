@@ -154,8 +154,17 @@ export function CodeTemplatesView() {
     const [dirty, setDirty] = useState(false);
     const dirtyRef = useRef(false);
     const [filterText, setFilterText] = useState('');
-    const [focusName, setFocusName] = useState(false);   // focus the Name field after creating
     const [collapsed, setCollapsed] = useState(() => new Set());   // collapsed library keys ('library:<id>')
+    /* After creating, focus + select the new row's inline name input so typing
+       replaces the numbered default — same feel as naming a new destination.
+       Effect-driven (post-commit, synchronous): a deferred focus() can land
+       mid-keystroke and steal the caret. */
+    const [nameNewest, setNameNewest] = useState(0);
+    useEffect(() => {
+        if (!nameNewest) return;
+        const input = document.querySelector('tbody tr.selected input.grid-name');
+        if (input) { input.focus(); input.select(); }
+    }, [nameNewest]);
 
     function markDirty() {
         dirtyRef.current = true;
@@ -212,9 +221,26 @@ export function CodeTemplatesView() {
             key: c.key, label: c.label, align: c.align, tree: c.key === 'name', mono: c.key === 'id',
             render: (n) => {
                 switch (c.key) {
-                    case 'name': return n.kind === 'library'
-                        ? <TreeLabel icon="folder" label={n.lib.name || '(unnamed library)'} />
-                        : <TreeLabel icon="file" label={n.tpl.name || '(unnamed template)'} />;
+                    /* The SELECTED row's name edits INLINE, like a transformer
+                       step's: click a row and type — the input mutates the model
+                       live, with click/dblclick stopped so the row doesn't
+                       hijack the caret. Unselected rows stay plain text (it
+                       keeps the tree selectable/searchable). An empty name is a
+                       legal state — it renders empty; only DUPLICATE names can
+                       actually fail, and saveAll catches those. */
+                    case 'name': {
+                        const obj = n.kind === 'library' ? n.lib : n.tpl;
+                        const isSel = selected && selected.kind === n.kind && selected.id === n.id;
+                        const stop = (e) => e.stopPropagation();
+                        return <TreeLabel icon={n.kind === 'library' ? 'folder' : 'file'} label={
+                            isSel
+                                ? <input className="grid-name" type="text" value={obj.name || ''}
+                                    aria-label={n.kind === 'library' ? 'Library name' : 'Code template name'}
+                                    onClick={stop} onMouseDown={stop} onDoubleClick={stop}
+                                    onChange={(e) => { obj.name = e.target.value; markDirty(); }} />
+                                : (obj.name || '')
+                        } />;
+                    }
                     case 'id': return n.kind === 'library' ? (n.lib.id || '') : (n.tpl.id || '');
                     case 'description': return n.kind === 'library' ? (n.lib.description || '') : templateDescription(n.tpl);
                     case 'revision': return String((n.kind === 'library' ? n.lib.revision : n.tpl.revision) ?? '');
@@ -300,13 +326,24 @@ export function CodeTemplatesView() {
 
     /* ---- tasks --------------------------------------------------------------------- */
 
+    /* Numbered default names, like a new destination's ("Destination 1"): the
+       entry is created immediately and renamed INLINE in the tree — no dialog.
+       Uniqueness matters because the engine enforces unique library and
+       template names (with a raw 500); saveAll validates before any request. */
+    function nextName(base, taken) {
+        for (let n = 1; ; n++) {
+            const name = `${base} ${n}`;
+            if (!taken.has(name)) return name;
+        }
+    }
+
     function newLibrary() {
-        // No name prompt — create the library and select it with the empty Name
-        // field focused (the library editor focuses it when focusNewName is set).
+        const taken = new Set(entriesNowRef.current.map(en => String(en.library.name || '').trim()));
+        const name = nextName('Library', taken);
         const library = {
             '@version': store.getState('serverVersion') || '4.5.2',
             id: uuid(),
-            name: '',
+            name,
             revision: 0,
             description: '',
             includeNewChannels: false,
@@ -316,7 +353,7 @@ export function CodeTemplatesView() {
         };
         setEntries(prev => [...prev, { library, templates: [] }]);
         setSelected({ kind: 'library', id: library.id });
-        setFocusName(true);
+        setNameNewest(n => n + 1);
         dirtyRef.current = true;
         setDirty(true);
     }
@@ -330,13 +367,16 @@ export function CodeTemplatesView() {
             toast('Select a library first', 'warn');
             return;
         }
+        // Template names are unique across ALL libraries (the engine enforces it).
+        const taken = new Set(entriesNowRef.current.flatMap(en => en.templates.map(t => String(t.name || '').trim())));
+        const name = nextName('Template', taken);
         const v = store.getState('serverVersion') || '4.5.2';
         const template = {
             // '@version' is required: the engine migrates every write and
             // 500s when it's absent.
             '@version': v,
             id: uuid(),
-            name: 'New Code Template',
+            name,
             revision: 0,
             contextSet: { delegate: { contextType: [...CONNECTOR_CONTEXTS] } },
             properties: { '@class': PROPERTIES_CLASS, '@version': v, type: 'FUNCTION', code: DEFAULT_CODE }
@@ -352,7 +392,7 @@ export function CodeTemplatesView() {
             return next;
         });
         setSelected({ kind: 'template', id: template.id });
-        setFocusName(true);
+        setNameNewest(n => n + 1);
         markDirty();
     }
 
@@ -402,6 +442,24 @@ export function CodeTemplatesView() {
             if (overwrite) return saveAll(true);
             toast('Save cancelled — Refresh to load the latest code templates', 'warn');
         };
+        // The engine enforces UNIQUE library and template names (an empty name is
+        // legal, but two of them collide like any other duplicate) — and answers
+        // only with a raw 500. Catch it here instead, selecting the offender so
+        // the fix is one click away.
+        {
+            const libNames = new Set();
+            const tplNames = new Set();
+            for (const entry of entriesNowRef.current) {
+                const lname = String(entry.library.name || '').trim();
+                if (libNames.has(lname)) { toast(`There is already a library named “${lname}”.`, 'error'); setSelected({ kind: 'library', id: entry.library.id }); return; }
+                libNames.add(lname);
+                for (const template of entry.templates) {
+                    const tname = String(template.name || '').trim();
+                    if (tplNames.has(tname)) { toast(`There is already a code template named “${tname}”.`, 'error'); setSelected({ kind: 'template', id: template.id }); return; }
+                    tplNames.add(tname);
+                }
+            }
+        }
         try {
             const v = store.getState('serverVersion') || '4.5.2';
             const libraries = entriesNowRef.current;
@@ -609,6 +667,7 @@ export function CodeTemplatesView() {
         target.templates.push(template);
         setCollapsed(prev => { const next = new Set(prev); next.delete('library:' + targetId); return next; });
         setSelected({ kind: 'template', id: template.id });
+        setNameNewest(n => n + 1);
         markDirty();
     }
 
@@ -723,8 +782,6 @@ export function CodeTemplatesView() {
                             <EditorPane found={found} kind={selected && selected.kind}
                                 entries={entries}
                                 markDirty={markDirty}
-                                focusName={focusName}
-                                onFocusConsumed={() => setFocusName(false)}
                                 onMoveTemplate={moveTemplate}
                                 maximized={editorMax}
                                 onToggleMax={() => setEditorMax((m) => !m)} />
@@ -739,7 +796,7 @@ export function CodeTemplatesView() {
 /* The editor pane. Branches on the current selection into the declarative
    library / template editors. Keyed on the selected id so per-selection state
    (channel filter, focus) resets when the selection changes. */
-function EditorPane({ found, kind, entries, markDirty, focusName, onFocusConsumed, onMoveTemplate, maximized, onToggleMax }) {
+function EditorPane({ found, kind, entries, markDirty, onMoveTemplate, maximized, onToggleMax }) {
     if (!found) {
         return (
             <div className="dt-empty">
@@ -749,34 +806,17 @@ function EditorPane({ found, kind, entries, markDirty, focusName, onFocusConsume
         );
     }
     if (kind === 'library') {
-        return <LibraryEditor key={'lib:' + found.entry.library.id} entry={found.entry}
-            markDirty={markDirty} focusName={focusName} onFocusConsumed={onFocusConsumed} />;
+        return <LibraryEditor key={'lib:' + found.entry.library.id} entry={found.entry} markDirty={markDirty} />;
     }
     return <TemplateEditor key={'tpl:' + found.template.id} entry={found.entry} template={found.template}
-        entries={entries} markDirty={markDirty} focusName={focusName} onFocusConsumed={onFocusConsumed}
+        entries={entries} markDirty={markDirty}
         onMoveTemplate={onMoveTemplate} maximized={maximized} onToggleMax={onToggleMax} />;
-}
-
-/* Focuses + selects the Name input once, when the editor opens for a
-   just-created library/template. */
-function useFocusName(focusName, onFocusConsumed) {
-    const ref = useRef(null);
-    useEffect(() => {
-        if (focusName) {
-            onFocusConsumed();
-            ref.current?.focus();
-            ref.current?.select();
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-    return ref;
 }
 
 /* The library editor: Name / Include New Channels, the type-count summary +
    Description, and the Channels checkbox list (Swing's right-hand panel). */
-function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }) {
+function LibraryEditor({ entry, markDirty }) {
     const { library } = entry;
-    const nameRef = useFocusName(focusName, onFocusConsumed);
     const [channels, setChannels] = useState(null);   // null = loading
     const [chError, setChError] = useState(null);
     const [chFilter, setChFilter] = useState('');
@@ -829,7 +869,7 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }) {
             <div className="form-grid mb-3">
                 <div className="field">
                     <label>Name</label>
-                    <input ref={nameRef} type="text" value={library.name || ''}
+                    <input type="text" value={library.name || ''}
                         onChange={(e) => { library.name = e.target.value; markDirty(); }} />
                 </div>
                 <div className="field justify-end">
@@ -880,8 +920,7 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }) {
     );
 }
 
-function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocusConsumed, onMoveTemplate, maximized, onToggleMax }) {
-    const nameRef = useFocusName(focusName, onFocusConsumed);
+function TemplateEditor({ entry, template, entries, markDirty, onMoveTemplate, maximized, onToggleMax }) {
     if (!template.properties || typeof template.properties !== 'object') {
         template.properties = { '@class': PROPERTIES_CLASS, type: 'FUNCTION', code: '' };
     }
@@ -894,7 +933,7 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
                 <div className="form-grid mb-3">
                     <div className="field">
                         <label>Name</label>
-                        <input ref={nameRef} type="text" value={template.name || ''}
+                        <input type="text" value={template.name || ''}
                             onChange={(e) => { template.name = e.target.value; markDirty(); }} />
                     </div>
                     <div className="field">
@@ -903,7 +942,7 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
                         <select value={entry.library.id}
                             onChange={(e) => onMoveTemplate(entry, template, e.target.value)}>
                             {entries.map((en) => (
-                                <option key={en.library.id} value={en.library.id}>{en.library.name || '(unnamed library)'}</option>
+                                <option key={en.library.id} value={en.library.id}>{en.library.name || ''}</option>
                             ))}
                         </select>
                     </div>

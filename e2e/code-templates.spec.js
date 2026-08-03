@@ -86,9 +86,12 @@ test('creating a library or template reveals the new entry in the scrolled tree'
         return { ok: r.top >= p.top - 1 && r.bottom <= p.bottom + 1 };
     });
 
-    // A new library lands at the very bottom of the long list — and is revealed.
+    // A new library lands at the very bottom of the long list — and is revealed,
+    // with its inline name input focused for immediate renaming.
     await page.getByRole('button', { name: 'New Library', exact: true }).click();
     await expect.poll(revealed).toMatchObject({ ok: true });
+    await expect(page.locator('tbody tr.selected input.grid-name')).toHaveValue('Library 1');
+    await expect(page.locator('tbody tr.selected input.grid-name')).toBeFocused();
 
     // Collapse the first library, then create a template inside it: the library
     // must re-expand and the new template row be revealed.
@@ -100,5 +103,40 @@ test('creating a library or template reveals the new entry in the scrolled tree'
     await page.getByRole('button', { name: 'New Code Template', exact: true }).click();
     await expect(firstRow).toHaveAttribute('aria-expanded', 'true');
     await expect.poll(revealed).toMatchObject({ ok: true });
-    await expect(page.locator('tbody tr.selected')).toContainText('New Code Template');
+    // Fixture templates occupy 'Template 0'..'Template 24' — the generator finds
+    // the first free number.
+    await expect(page.locator('tbody tr.selected input.grid-name')).toHaveValue('Template 25');
+});
+
+/* Names edit INLINE in the tree (like destination names / transformer steps):
+   creation lands a numbered default with the input focused so typing replaces
+   it. An empty name is legal; only DUPLICATES can fail on the engine, and save
+   catches those — with the offender selected — instead of letting the engine
+   answer with a raw 500. */
+test('names edit inline; save refuses duplicates, allows empty', async ({ page }) => {
+    await page.goto('/code-templates');
+    await expect(page.getByText('Demo Library', { exact: true })).toBeVisible();
+
+    // Create → numbered default, focused and selected: typing replaces it, and
+    // the editor pane's own Name field mirrors the same object.
+    await page.getByRole('button', { name: 'New Library', exact: true }).click();
+    const treeName = page.locator('tbody tr.selected input.grid-name');
+    await expect(treeName).toHaveValue('Library 1');
+    await expect(treeName).toBeFocused();
+    await page.keyboard.type('Second Library');
+    await expect(treeName).toHaveValue('Second Library');
+    await expect(page.getByText('2 Libraries, 1 Code Template', { exact: true })).toBeVisible();
+
+    // Save refuses a DUPLICATE name (rename collides with Demo Library).
+    await treeName.fill('Demo Library');
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await expect(page.getByText('There is already a library named “Demo Library”.')).toBeVisible();
+    await page.getByRole('button', { name: 'Close', exact: true }).last().click();
+
+    // An EMPTY name is legal — the save goes through (mocked PUTs accept) and
+    // the empty-named row renders empty, without any placeholder text.
+    await treeName.fill('');
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await expect(page.getByText('Code templates saved', { exact: false })).toBeVisible();
+    await expect(page.getByText('(unnamed library)')).toHaveCount(0);
 });

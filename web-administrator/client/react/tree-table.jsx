@@ -160,6 +160,9 @@ export function TreeTable({
     };
 
     const onBodyKeyDown = (e) => {
+        // A cell can host a form field (the code-templates tree edits names
+        // inline) — its keystrokes are typing, not grid navigation.
+        if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
         const idx = rows.findIndex((r) => r.key === (focusedRow ?? tabKey));
         if (idx < 0) return;
         const row = rows[idx];
