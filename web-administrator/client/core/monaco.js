@@ -19,7 +19,7 @@
 import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
-import { getActiveCompletions } from './script-completions.js';
+import { getActiveCompletions, getActiveLibs, onActiveLibsChange } from './script-completions.js';
 
 // Where the server serves the vendored Monaco worker bundles. The editor bundle
 // itself is imported via the 'monaco-editor' specifier (import map / Vite).
@@ -257,6 +257,30 @@ function setup(monaco) {
         jsDefaults.addExtraLib(USER_API_DTS, 'ts:mirth-userapi.d.ts');
         jsDefaults.addExtraLib(MIRTH_GLOBALS_DTS, 'ts:mirth-globals.d.ts');
         jsDefaults.addExtraLib(RHINO_INTEROP_DTS, 'ts:rhino-interop.d.ts');
+        // The channel's in-scope code templates, as real extra libs: the language
+        // service then infers each template's whole shape, so a template that
+        // builds a namespace object (lib.strings.pad = function …) gets member
+        // completion after every dot — the scoped provider below can only offer
+        // top-level function names. One lib PER template, so a file the TS parser
+        // can't read (E4X literals) mutes only its own contributions. Synced
+        // whenever an editor's scope changes (script-completions setActiveScope);
+        // the engine compiles the same code into the script's runtime scope, so
+        // what completes here is what exists at run time.
+        const templateLibs = new Map();   // path -> { code, disposable }
+        const syncTemplateLibs = (libs) => {
+            const want = new Map(libs.map((l) => [`ts:code-template-${l.id}.js`, l.code]));
+            for (const [path, had] of templateLibs) {
+                if (!want.has(path)) { had.disposable.dispose(); templateLibs.delete(path); }
+            }
+            for (const [path, code] of want) {
+                const had = templateLibs.get(path);
+                if (had && had.code === code) continue;
+                if (had) had.disposable.dispose();
+                templateLibs.set(path, { code, disposable: jsDefaults.addExtraLib(code, path) });
+            }
+        };
+        syncTemplateLibs(getActiveLibs());   // a scope may have been set before Monaco loaded
+        onActiveLibsChange(syncTemplateLibs);
         // The TS formatter reflows E4X XML literals as if they were JSX
         // (e.g. <p/> → <p />), corrupting valid Rhino code — and the engine
         // doesn't auto-format scripts anyway. Turn the formatter off (Format
