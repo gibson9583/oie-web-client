@@ -531,18 +531,21 @@ function AppShell({ user, onLogout }) {
         setReactTasksHost(reactTasksRef.current);
         let cancelled = false;
         (async () => {
-            await startEngine();
+            // The engine timezone resolves BEFORE the first route mounts, so the view
+            // renders its timestamps in the right zone from the start. Loading it
+            // after and remounting the view to restamp would tear the view down
+            // mid-boot — a click landing in that gap is silently eaten. Riding
+            // alongside startEngine, it costs boot no extra round trip.
+            await Promise.all([
+                startEngine(),
+                import('../core/timezone.js').then((tz) => tz.loadServerTimezone()).catch(() => {}),
+            ]);
             if (cancelled) return;
             router.setOutlet(outletRef.current);
             // Land on the dashboard for a bare root URL; a deep link (refresh /
             // bookmark of /channels/x/edit) is left intact for the router to match.
             if (router.currentPath() === '/') history.replaceState(null, '', '/dashboard');
             router.start();
-            // Restamp current view once the engine timezone resolves (skip if a
-            // view holds unsaved state behind a nav guard).
-            import('../core/timezone.js').then((tz) => tz.loadServerTimezone()).then(() => {
-                if (typeof store.getState('navGuard') !== 'function') router.navigate(router.currentPath());
-            });
         })();
         return () => { cancelled = true; };
     }, []);
