@@ -25,7 +25,7 @@
  *                parents kept if they or a descendant match.
  */
 
-import { useReducer, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { createColumnManager, contextMenu } from '@oie/web-ui';
 import { Icon } from './bridges.jsx';
 
@@ -134,6 +134,16 @@ export function TreeTable({
     const bodyRef = useRef(null);
     const [focusKey, setFocusKey] = useState(null);
     const selectable = !!(onSelect || selectedKeys || selectedKey != null);
+
+    /* A selection the VIEW makes (a just-created or just-imported entry, appended
+       at the bottom) can land outside the pane's scroll viewport. Reveal it when
+       selectedKey changes: block 'nearest' makes a click on an already-visible
+       row a no-op, so only offscreen selections actually move the pane. */
+    useEffect(() => {
+        if (selectedKey == null) return;
+        const row = bodyRef.current && bodyRef.current.querySelector('tr.selected');
+        if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+    }, [selectedKey]);
 
     // The single tab stop: the focused row, else the first selected row, else the
     // first row — so tabbing in lands somewhere meaningful.

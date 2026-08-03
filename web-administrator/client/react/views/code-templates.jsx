@@ -342,6 +342,15 @@ export function CodeTemplatesView() {
             properties: { '@class': PROPERTIES_CLASS, '@version': v, type: 'FUNCTION', code: DEFAULT_CODE }
         };
         entry.templates.push(template);
+        // A collapsed library would swallow the new row entirely — expand it so
+        // the selection exists to be revealed (TreeTable scrolls it into view).
+        setCollapsed(prev => {
+            const key = `library:${entry.library.id}`;
+            if (!prev.has(key)) return prev;
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+        });
         setSelected({ kind: 'template', id: template.id });
         setFocusName(true);
         markDirty();
