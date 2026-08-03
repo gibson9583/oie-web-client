@@ -138,6 +138,15 @@ test('an expired session explains itself below the login box, not in a dialog', 
     // default 5s on a loaded machine — and this test is about the notice, not boot
     // speed. Same budget the engine-picker specs give the same assertion.
     await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+    /* Wait for the dashboard's DATA too, not just the shell: on a starved machine
+       the mount-time queries are still in flight when the shell first paints, and
+       swapping the mocks under them hands a BOOT query the 401 — the session
+       expires and the login card replaces the dashboard before the click below
+       ever finds its Refresh button (CI failed exactly this way, both attempts:
+       "waiting for locator", never resolved). With the board rendered, the next
+       call on any 401-able path is the status poll, a full interval away — the
+       click is the only caller left. Same gate the resilience specs use. */
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
 
     // Every subsequent call 401s: the app treats that as the session expiring.
     await mockEngine(page, {
