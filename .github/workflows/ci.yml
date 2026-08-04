@@ -49,20 +49,26 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Rebuild the generated connector + plugin bundles
+      - name: Rebuild the generated twins, plugin bundles, and package declarations
         working-directory: web-administrator
         run: |
-          node tools/build-connectors.mjs
+          node tools/build-core.mjs
+          node tools/build-server.mjs
           node tools/build-plugins.mjs
-      - name: Fail if the generated .js drifted from its .jsx source
+          npm run gen:types
+      - name: Fail if any generated artifact drifted from its TypeScript source
         run: |
           if ! git diff --exit-code -- \
+              'web-administrator/client/core/*.js' \
               'web-administrator/client/connectors/*.js' \
-              'web-administrator/plugins/*/web/plugin.js'; then
-            echo "::error::Generated .js differs from its .jsx source. The .jsx is the"
-            echo "::error::source of truth — never edit the sibling .js by hand. Run"
-            echo "::error::'npm run build' (or the build-connectors/build-plugins tools)"
-            echo "::error::and commit the regenerated .js."
+              'web-administrator/server/*.js' \
+              'web-administrator/plugins/*/web/plugin.js' \
+              'packages/*/types' 'packages/*/index.d.ts'; then
+            echo "::error::A generated artifact differs from its TypeScript source. The"
+            echo "::error::.ts/.tsx is the source of truth — never edit the generated .js"
+            echo "::error::or packages/*/types by hand. Run 'npm run build' (or the"
+            echo "::error::build-core/build-server/build-plugins tools + gen:types) and"
+            echo "::error::commit the regenerated files."
             exit 1
           fi
 

@@ -142,7 +142,7 @@ async function start() {
         // Vite is ESM-only, so load it dynamically; it only matters in dev.
         const { createServer } = await import('vite');
         const vite = await createServer({
-            configFile: path.join(config.root, 'vite.config.mjs'),
+            configFile: path.join(config.root, 'vite.config.ts'),
             root: clientDir,
             server: { middlewareMode: true },
             appType: 'spa'   // Vite serves/transforms index.html for unmatched GETs
