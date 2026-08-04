@@ -1,0 +1,390 @@
+/*
+ * Engine model helpers.
+ *
+ * The engine serializes its Java model with XStream, so the JSON we receive
+ * has some conventions to deal with:
+ *   - "@class"/"@version" keys are XML attributes and MUST round-trip on save
+ *   - polymorphic collections (filter rules, transformer steps) arrive as an
+ *     object keyed by Java class name: { "com.x.JavaScriptStep": {...}|[...] }
+ *   - single-element lists arrive as a bare object instead of an array
+ */
+
+import type { OieObject, WireChannel, WireConnector, XStreamElements } from './wire-types.js';
+
+/** A polymorphic filter rule / transformer step, tagged with its Java `__type`. */
+export interface Element {
+    __type: string;
+    [key: string]: any;
+}
+
+export function uuid(): string {
+    if (crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+}
+
+/* ---- polymorphic element collections (filter rules / transformer steps) ---- */
+
+/**
+ * Flatten a class-keyed element map into an ordered array, tagging each entry
+ * with `__type` (its Java class) and sorting by `sequenceNumber`. Accepts `''`
+ * because that is what an EMPTY collection looks like on the wire.
+ */
+export function elementsToArray(elements: XStreamElements | OieObject | '' | null | undefined): Element[] {
+    if (!elements || typeof elements !== 'object') return [];
+    const out: Element[] = [];
+    for (const [type, value] of Object.entries(elements)) {
+        if (type.startsWith('@')) continue;
+        for (const item of Array.isArray(value) ? value : [value]) {
+            if (item && typeof item === 'object') out.push({ __type: type, ...item });
+        }
+    }
+    out.sort((a, b) => Number(a.sequenceNumber ?? 0) - Number(b.sequenceNumber ?? 0));
+    return out;
+}
+
+export function arrayToElements(items: Element[]): OieObject | null {
+    if (!items || !items.length) return null;
+    const elements: Record<string, OieObject[]> = {};
+    items.forEach((item, index) => {
+        const { __type, ...rest } = item;
+        rest.sequenceNumber = String(index);
+        // Attribute keys ('@class'/'@version') MUST be the first keys: the
+        // engine converts this JSON to XML and cannot place an attribute after
+        // child elements, and its reorder fallback does not descend into arrays
+        // (these objects live in arrays). Out-of-order attributes either drop
+        // the element or fail the whole channel ("Cannot read attribute").
+        const ordered: OieObject = {};
+        for (const k of Object.keys(rest)) if (k.startsWith('@')) ordered[k] = rest[k];
+        for (const k of Object.keys(rest)) if (!k.startsWith('@')) ordered[k] = rest[k];
+        (elements[__type] = elements[__type] || []).push(ordered);
+    });
+    return elements;
+}
+
+/* ---- channel / connector state ------------------------------------------------ */
+
+export const CHANNEL_STATES: string[] = ['STARTED', 'STARTING', 'STOPPED', 'STOPPING', 'PAUSED', 'PAUSING', 'UNDEPLOYED', 'DEPLOYING', 'UNDEPLOYING', 'SYNCING', 'UNKNOWN'];
+
+export function statePip(state: string): 'ok' | 'warn' | 'err' | 'busy' | '' {
+    switch (state) {
+        case 'STARTED': return 'ok';
+        case 'PAUSED': return 'warn';
+        case 'STOPPED': return 'err';
+        case 'STARTING': case 'STOPPING': case 'PAUSING':
+        case 'DEPLOYING': case 'UNDEPLOYING': case 'SYNCING': return 'busy';
+        default: return '';
+    }
+}
+
+export function stateLabel(state: string | null | undefined): string {
+    if (!state) return 'Unknown';
+    return state.charAt(0) + state.slice(1).toLowerCase();
+}
+
+export const MESSAGE_STATUSES: string[] = ['RECEIVED', 'FILTERED', 'TRANSFORMED', 'SENT', 'QUEUED', 'ERROR', 'PENDING'];
+
+export function messageStatusTag(status: string): 'accent' | 'red' | 'blue' | 'amber' | '' {
+    switch (status) {
+        case 'SENT': case 'TRANSFORMED': return 'accent';
+        case 'ERROR': return 'red';
+        case 'QUEUED': case 'PENDING': return 'blue';
+        case 'FILTERED': return 'amber';
+        default: return '';
+    }
+}
+
+/* Data types are no longer listed here — each ships as a web plugin
+   (plugins/datatype-*) and is read from the platform registry via
+   datatypes/index.js (dataTypeDef / dataTypeList). */
+
+/* ---- filter / transformer element types ---------------------------------------------- */
+
+export const STEP_TYPES: Record<string, { label: string }> = {
+    'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': { label: 'JavaScript' },
+    'com.mirth.connect.plugins.mapper.MapperStep': { label: 'Mapper' },
+    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': { label: 'Message Builder' },
+    'com.mirth.connect.plugins.xsltstep.XsltStep': { label: 'XSLT Step' },
+    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': { label: 'Destination Set Filter' },
+    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': { label: 'External Script' },
+    'com.mirth.connect.model.IteratorStep': { label: 'Iterator' }
+};
+
+export const RULE_TYPES: Record<string, { label: string }> = {
+    'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': { label: 'JavaScript' },
+    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': { label: 'Rule Builder' },
+    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': { label: 'External Script' },
+    'com.mirth.connect.model.IteratorRule': { label: 'Iterator' }
+};
+
+export function elementTypeLabel(type: string): string {
+    const known = STEP_TYPES[type] || RULE_TYPES[type];
+    if (known) return known.label;
+    return type.split('.').pop() ?? type;
+}
+
+/* ---- new-channel factory ----------------------------------------------------------------
+ * Builds a complete default channel (Channel Reader source → one Channel
+ * Writer destination, Raw data types) matching the engine's serialized model.
+ * `version` should be the engine version string (fetched at login) so the
+ * server-side migration accepts the object as current.
+ */
+
+const DEFAULT_RESOURCE = {
+    '@class': 'linked-hash-map',
+    entry: [{ string: ['Default Resource', '[Default Resource]'] }]
+};
+
+function rawDataTypeProperties(version: string): OieObject {
+    return {
+        '@class': 'com.mirth.connect.plugins.datatypes.raw.RawDataTypeProperties',
+        '@version': version,
+        batchProperties: {
+            '@class': 'com.mirth.connect.plugins.datatypes.raw.RawBatchProperties',
+            '@version': version,
+            splitType: 'JavaScript',
+            batchScript: null
+        }
+    };
+}
+
+export function emptyTransformer(version: string): OieObject {
+    return {
+        '@version': version,
+        elements: null,
+        inboundDataType: 'RAW',
+        outboundDataType: 'RAW',
+        inboundProperties: rawDataTypeProperties(version),
+        outboundProperties: rawDataTypeProperties(version)
+    };
+}
+
+export function emptyFilter(version: string): OieObject {
+    return { '@version': version, elements: null };
+}
+
+export function defaultSourceConnector(version: string): OieObject {
+    return {
+        '@version': version,
+        metaDataId: 0,
+        name: 'sourceConnector',
+        properties: {
+            '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties',
+            '@version': version,
+            pluginProperties: null,
+            sourceConnectorProperties: {
+                '@version': version,
+                responseVariable: 'None',
+                respondAfterProcessing: true,
+                processBatch: false,
+                firstResponse: false,
+                processingThreads: 1,
+                resourceIds: DEFAULT_RESOURCE,
+                queueBufferSize: 1000
+            }
+        },
+        transformer: emptyTransformer(version),
+        filter: emptyFilter(version),
+        transportName: 'Channel Reader',
+        mode: 'SOURCE',
+        enabled: true,
+        waitForPrevious: true
+    };
+}
+
+export function defaultDestinationConnector(version: string, metaDataId: number = 1, name: string = 'Destination 1'): OieObject {
+    return {
+        '@version': version,
+        metaDataId,
+        name,
+        properties: {
+            '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties',
+            '@version': version,
+            pluginProperties: null,
+            destinationConnectorProperties: {
+                '@version': version,
+                queueEnabled: false,
+                sendFirst: false,
+                retryIntervalMillis: 10000,
+                regenerateTemplate: false,
+                retryCount: 0,
+                rotate: false,
+                includeFilterTransformer: false,
+                threadCount: 1,
+                threadAssignmentVariable: null,
+                validateResponse: false,
+                resourceIds: DEFAULT_RESOURCE,
+                queueBufferSize: 1000,
+                reattachAttachments: true
+            },
+            channelId: 'none',
+            channelTemplate: '${message.encodedData}',
+            mapVariables: null
+        },
+        transformer: emptyTransformer(version),
+        responseTransformer: emptyTransformer(version),
+        filter: emptyFilter(version),
+        transportName: 'Channel Writer',
+        mode: 'DESTINATION',
+        enabled: true,
+        waitForPrevious: true
+    };
+}
+
+export function newChannel(name: string, version: string): OieObject {
+    return {
+        '@version': version,
+        id: uuid(),
+        nextMetaDataId: 2,
+        name: name || 'New Channel',
+        description: '',
+        revision: 0,
+        sourceConnector: defaultSourceConnector(version),
+        destinationConnectors: { connector: [defaultDestinationConnector(version)] },
+        preprocessingScript: '// Modify the message variable below to pre process data\nreturn message;',
+        postprocessingScript: '// This script executes once after a message has been processed\n// Responses returned from here will be stored as "Postprocessor" in the response map\nreturn;',
+        deployScript: '// This script executes once when the channel is deployed\n// You only have access to the globalMap and globalChannelMap here to persist data\nreturn;',
+        undeployScript: '// This script executes once when the channel is undeployed\n// You only have access to the globalMap and globalChannelMap here to persist data\nreturn;',
+        properties: {
+            '@version': version,
+            clearGlobalChannelMap: true,
+            messageStorageMode: 'DEVELOPMENT',
+            encryptData: false,
+            encryptAttachments: false,
+            encryptCustomMetaData: false,
+            removeContentOnCompletion: false,
+            removeOnlyFilteredOnCompletion: false,
+            removeAttachmentsOnCompletion: false,
+            initialState: 'STARTED',
+            // Engine ChannelProperties default is true (Swing parity) — attachment
+            // handlers only actually keep their extracted attachments when this is on.
+            storeAttachments: true,
+            // Default custom metadata columns, matching the engine's
+            // ServerSettings.defaultMetaDataColumns (SOURCE + TYPE).
+            metaDataColumns: {
+                metaDataColumn: [
+                    { name: 'SOURCE', type: 'STRING', mappingName: 'mirth_source' },
+                    { name: 'TYPE', type: 'STRING', mappingName: 'mirth_type' }
+                ]
+            },
+            attachmentProperties: { '@version': version, type: 'None', properties: null },
+            resourceIds: DEFAULT_RESOURCE
+        },
+        exportData: {
+            metadata: {
+                enabled: true,
+                pruningSettings: { archiveEnabled: true }
+            }
+        }
+    };
+}
+
+/* ---- misc -------------------------------------------------------------------------------- */
+
+/**
+ * The destination connectors of a channel, flattened out of whichever XStream
+ * shape the engine produced (`{connector: X}`, `{connector: [X]}`, a bare
+ * connector, or absent). Always use this instead of reading the field.
+ */
+export function destinationsOf(channel: WireChannel | OieObject | null | undefined): WireConnector[] {
+    if (!channel || !channel.destinationConnectors) return [];
+    const list = channel.destinationConnectors.connector ?? channel.destinationConnectors;
+    return Array.isArray(list) ? list : (list ? [list] : []);
+}
+
+export function setDestinations(channel: OieObject, destinations: OieObject[]): void {
+    channel.destinationConnectors = { connector: destinations };
+}
+
+/* ---- transformer template base64 codec --------------------------------------
+   The engine annotates Transformer.inboundTemplate / outboundTemplate with its
+   Base64StringConverter: those two fields are ALWAYS serialized as
+   { '@encoding': 'base64', '$': <base64 of the UTF-8 text> } to preserve exact
+   bytes — XML normalizes CR, so an HL7 template's '\r' segment separators would
+   otherwise be lost (verified: sending plaintext drops the CR). We therefore
+   decode these fields to plain strings on read and re-encode on write, so the
+   round-trip is byte-faithful and the rest of the app sees ordinary strings.
+   Standard base64 via the platform's atob/btoa (UTF-8 through TextEncoder/Decoder). */
+const TEMPLATE_KEYS = ['inboundTemplate', 'outboundTemplate'] as const;
+
+function b64DecodeUtf8(b64: unknown): string {
+    const bin = atob(String(b64).replace(/\s+/g, ''));
+    return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+
+function b64EncodeUtf8(str: string): string {
+    const bytes = new TextEncoder().encode(String(str));
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+}
+
+function transformersOf(channel: unknown): OieObject[] {
+    const ch = (channel && typeof channel === 'object') ? channel as OieObject : null;
+    const out: OieObject[] = [];
+    if (ch && ch.sourceConnector && ch.sourceConnector.transformer) {
+        out.push(ch.sourceConnector.transformer);
+    }
+    for (const d of destinationsOf(ch)) {
+        if (d && d.transformer) out.push(d.transformer);
+        if (d && d.responseTransformer) out.push(d.responseTransformer);
+    }
+    return out;
+}
+
+/** Decode the base64-wrapped template fields of every transformer to plain text. */
+export function decodeChannelTemplates<T>(channel: T): T {
+    for (const t of transformersOf(channel)) {
+        for (const k of TEMPLATE_KEYS) {
+            const v = t[k];
+            if (v && typeof v === 'object' && String(v['@encoding'] || '').toLowerCase() === 'base64') {
+                try { t[k] = b64DecodeUtf8(v.$ ?? ''); } catch { t[k] = ''; }
+            }
+        }
+    }
+    return channel;
+}
+
+/** Re-encode plain-text template fields to the engine's base64 wrapper form. */
+export function encodeChannelTemplates<T>(channel: T): T {
+    for (const t of transformersOf(channel)) {
+        for (const k of TEMPLATE_KEYS) {
+            const v = t[k];
+            if (typeof v === 'string' && v !== '') {
+                t[k] = { '@encoding': 'base64', '$': b64EncodeUtf8(v) };
+            }
+        }
+    }
+    return channel;
+}
+
+/* Structural validation run before any create/save/deploy so the web admin can
+   never persist a channel the engine would fail to deploy (e.g. a connector
+   with null properties). Returns an array of human-readable problems; empty
+   means OK. A connector's properties must be an object carrying its '@class'
+   (the polymorphic type the engine needs to construct the connector). */
+function connectorProblems(connector: unknown, label: unknown, problems: string[]): void {
+    if (!connector || typeof connector !== 'object') {
+        problems.push(`${label} is missing`);
+        return;
+    }
+    const c = connector as OieObject;
+    if (!c.transportName) problems.push(`${label} type is not set`);
+    const p = c.properties;
+    if (!p || typeof p !== 'object' || !p['@class']) {
+        problems.push(`${label} has no connector settings (properties are missing)`);
+    }
+}
+
+export function validateChannel(channel: OieObject | null | undefined): string[] {
+    const problems: string[] = [];
+    if (!channel || typeof channel !== 'object') return ['Channel is empty'];
+    if (!channel.name || !String(channel.name).trim()) problems.push('Channel name is required');
+    connectorProblems(channel.sourceConnector, 'Source connector', problems);
+    const dests = destinationsOf(channel);
+    if (!dests.length) problems.push('At least one destination connector is required');
+    dests.forEach((d, i) => connectorProblems(d, d && (d.name || `Destination ${d.metaDataId ?? i + 1}`), problems));
+    return problems;
+}
