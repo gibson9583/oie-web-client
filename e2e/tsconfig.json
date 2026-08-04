@@ -1,0 +1,14 @@
+{
+  "//": "Strict type-check of the Playwright e2e suite (Playwright transpiles the specs itself; this project is check-only, run via `npm run typecheck`).",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["*.ts", "../playwright.config.ts"]
+}
