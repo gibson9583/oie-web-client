@@ -1,4 +1,4 @@
-// web-administrator/plugins/datatype-hl7v3/web/plugin.tsx
+// plugins/datatype-hl7v3/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.hl7v3";

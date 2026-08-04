@@ -1,4 +1,4 @@
-// web-administrator/plugins/server-log/web/plugin.tsx
+// plugins/server-log/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var DEFAULT_LOG_SIZE = 100;

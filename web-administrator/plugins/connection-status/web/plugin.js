@@ -1,4 +1,4 @@
-// web-administrator/plugins/connection-status/web/plugin.tsx
+// plugins/connection-status/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 function register(platform2) {

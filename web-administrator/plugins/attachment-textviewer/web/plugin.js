@@ -1,4 +1,4 @@
-// web-administrator/plugins/attachment-textviewer/web/plugin.tsx
+// plugins/attachment-textviewer/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var TEXT_RE = /^text\/|xml|json|hl7|html|csv|plain|x-www-form/i;

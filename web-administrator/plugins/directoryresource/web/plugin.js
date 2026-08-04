@@ -1,4 +1,4 @@
-// web-administrator/plugins/directoryresource/web/plugin.tsx
+// plugins/directoryresource/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var DIRECTORY_RESOURCE_CLASS = "com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties";

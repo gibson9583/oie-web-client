@@ -1,4 +1,4 @@
-// web-administrator/plugins/datatype-xml/web/plugin.tsx
+// plugins/datatype-xml/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.xml";
