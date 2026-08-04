@@ -32,7 +32,7 @@ function jmsConnectorDefaults() {
     };
 }
 
-const usingJndi = (p) => asBool(p.useJndi);
+const usingJndi = (p: any) => asBool(p.useJndi);
 
 /* ---- Connection Templates (Swing JmsTemplateListModel + /connectors/jms/templates) ----
    ActiveMQ + JBoss are predefined/read-only; user templates persist server-side.
@@ -40,7 +40,7 @@ const usingJndi = (p) => asBool(p.useJndi);
    connection-properties map); Load leaves credentials/destination untouched,
    matching JmsConnectorPanel.loadTemplateButtonActionPerformed. */
 const TEMPLATE_CLASS = 'com.mirth.connect.connectors.jms.JmsConnectorProperties';
-const PREDEFINED_TEMPLATES = {
+const PREDEFINED_TEMPLATES: Record<string, any> = {
     'ActiveMQ': {
         useJndi: false, jndiProviderUrl: '', jndiInitialContextFactory: '', jndiConnectionFactoryName: '',
         connectionFactoryClass: 'org.apache.activemq.ActiveMQConnectionFactory',
@@ -60,16 +60,16 @@ const PREDEFINED_TEMPLATES = {
     }
 };
 const PREDEFINED_NAMES = Object.keys(PREDEFINED_TEMPLATES);
-const isPredefined = (name) => Object.prototype.hasOwnProperty.call(PREDEFINED_TEMPLATES, name);
-const cloneMap = (m) => (m && typeof m === 'object' ? JSON.parse(JSON.stringify(m)) : { '@class': 'linked-hash-map' });
+const isPredefined = (name: any) => Object.prototype.hasOwnProperty.call(PREDEFINED_TEMPLATES, name);
+const cloneMap = (m: any) => (m && typeof m === 'object' ? JSON.parse(JSON.stringify(m)) : { '@class': 'linked-hash-map' });
 
 /* Server templates fetched once and cached for the editor's lifetime; the cache
    is invalidated on save/delete so the dropdown reflects the change. */
-let templatesPromise = null;
+let templatesPromise: any = null;
 function loadServerTemplates() {
     if (!templatesPromise) {
         templatesPromise = api.get('/connectors/jms/templates')
-            .then((list) => (list && typeof list === 'object' && !Array.isArray(list) ? list : {}))
+            .then((list: any) => (list && typeof list === 'object' && !Array.isArray(list) ? list : {}))
             .catch(() => ({}));   // servlet absent / unreachable -> predefined only
     }
     return templatesPromise;
@@ -78,19 +78,19 @@ function loadServerTemplates() {
 /* "Connection Templates" control: a template dropdown + Load / Save / Delete. */
 function connectionTemplatesField() {
     let selected = '';          // persists across form repaints (field built once)
-    let serverTemplates = {};
+    let serverTemplates: Record<string, any> = {};
     return {
         label: 'Connection Template', type: 'custom', span: true,
-        render: (p, ctx) => {
+        render: (p: any, ctx: any) => {
             const wrap = h('div', { class: 'flex items-center gap-1.5 flex-wrap' });
-            const names = () => [...PREDEFINED_NAMES, ...Object.keys(serverTemplates).filter((n) => !isPredefined(n))];
-            const templateFor = (name) => (isPredefined(name) ? PREDEFINED_TEMPLATES[name] : serverTemplates[name]);
+            const names = () => [...PREDEFINED_NAMES, ...Object.keys(serverTemplates).filter((n: any) => !isPredefined(n))];
+            const templateFor = (name: any) => (isPredefined(name) ? PREDEFINED_TEMPLATES[name] : serverTemplates[name]);
 
             function paint() {
                 clear(wrap);
                 const sel = select(
-                    [{ value: '', label: '— Select a template —' }, ...names().map((n) => ({ value: n, label: n }))],
-                    selected, { onChange: (e) => { selected = e.target.value; paint(); } });
+                    [{ value: '', label: '— Select a template —' }, ...names().map((n: any) => ({ value: n, label: n }))],
+                    selected, { onChange: (e: any) => { selected = e.target.value; paint(); } });
                 sel.style.width = '240px';
                 wrap.append(
                     sel,
@@ -148,7 +148,7 @@ function connectionTemplatesField() {
             }
 
             paint();
-            loadServerTemplates().then((list) => { serverTemplates = list; paint(); });
+            loadServerTemplates().then((list: any) => { serverTemplates = list; paint(); });
             return wrap;
         }
     };
@@ -160,9 +160,9 @@ function jmsConnectionFields() {
         { section: 'Connection Settings' },
         connectionTemplatesField(),
         { key: 'useJndi', label: 'Use JNDI', type: 'radio', options: YES_NO, refresh: true },
-        { key: 'jndiProviderUrl', label: 'Provider URL', type: 'text', width: '420px', disabled: (p) => !usingJndi(p) },
-        { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', type: 'text', width: '420px', disabled: (p) => !usingJndi(p) },
-        { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', type: 'text', width: '320px', disabled: (p) => !usingJndi(p) },
+        { key: 'jndiProviderUrl', label: 'Provider URL', type: 'text', width: '420px', disabled: (p: any) => !usingJndi(p) },
+        { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', type: 'text', width: '420px', disabled: (p: any) => !usingJndi(p) },
+        { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', type: 'text', width: '320px', disabled: (p: any) => !usingJndi(p) },
         { key: 'connectionFactoryClass', label: 'Connection Factory Class', type: 'text', width: '420px', disabled: usingJndi },
         { key: 'connectionProperties', label: 'Connection Properties', type: 'keyvalue' },
         { key: 'username', label: 'Username', type: 'text', width: '220px' },
@@ -171,7 +171,7 @@ function jmsConnectionFields() {
 }
 
 const jmsListener = {
-    defaults(version) {
+    defaults(version: any) {
         return Object.assign({
             '@class': 'com.mirth.connect.connectors.jms.JmsReceiverProperties',
             '@version': version,
@@ -182,7 +182,7 @@ const jmsListener = {
             durableTopic: false
         }, jmsConnectorDefaults());
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 ...jmsConnectionFields(),
@@ -198,9 +198,9 @@ const jmsListener = {
                         { value: false, label: 'Queue' },
                         { value: true, label: 'Topic' }
                     ],
-                    append: (p, ctx) => checkbox('Durable', asBool(p.durableTopic), {
+                    append: (p: any, ctx: any) => checkbox('Durable', asBool(p.durableTopic), {
                         disabled: !asBool(p.topic),
-                        onChange: (e) => { p.durableTopic = e.target.checked; ctx.onChange(); ctx.repaint(); }
+                        onChange: (e: any) => { p.durableTopic = e.target.checked; ctx.onChange(); ctx.repaint(); }
                     }).el
                 },
                 { key: 'destinationName', label: 'Destination Name', type: 'text', width: '320px' },
@@ -214,20 +214,20 @@ const jmsListener = {
     // when JNDI -> provider URL / initial context factory / connection factory name required;
     // when not JNDI -> connection factory class required, plus client ID required only when the
     // destination is a durable Topic; destination name always required.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'jndiProviderUrl', label: 'Provider URL', when: usingJndi },
             { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', when: usingJndi },
             { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', when: usingJndi },
-            { key: 'connectionFactoryClass', label: 'Connection Factory Class', when: (p) => !usingJndi(p) },
-            { key: 'clientId', label: 'Client ID', when: (p) => !usingJndi(p) && asBool(p.topic) && asBool(p.durableTopic) },
+            { key: 'connectionFactoryClass', label: 'Connection Factory Class', when: (p: any) => !usingJndi(p) },
+            { key: 'clientId', label: 'Client ID', when: (p: any) => !usingJndi(p) && asBool(p.topic) && asBool(p.durableTopic) },
             { key: 'destinationName', label: 'Destination Name' }
         ]);
     }
 };
 
 const jmsSender = {
-    defaults(version) {
+    defaults(version: any) {
         return Object.assign({
             '@class': 'com.mirth.connect.connectors.jms.JmsDispatcherProperties',
             '@version': version,
@@ -236,7 +236,7 @@ const jmsSender = {
             template: '${message.encodedData}'
         }, jmsConnectorDefaults());
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 ...jmsConnectionFields(),
@@ -256,18 +256,18 @@ const jmsSender = {
     // when JNDI -> provider URL / initial context factory / connection factory name required;
     // when not JNDI -> connection factory class required; destination name always required.
     // (The durable-topic client ID requirement is listener-only.)
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'jndiProviderUrl', label: 'Provider URL', when: usingJndi },
             { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', when: usingJndi },
             { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', when: usingJndi },
-            { key: 'connectionFactoryClass', label: 'Connection Factory Class', when: (p) => !usingJndi(p) },
+            { key: 'connectionFactoryClass', label: 'Connection Factory Class', when: (p: any) => !usingJndi(p) },
             { key: 'destinationName', label: 'Destination Name' }
         ]);
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('JMS Listener', 'SOURCE', jmsListener);
     platform.registerConnectorPanel('JMS Sender', 'DESTINATION', jmsSender);
 }

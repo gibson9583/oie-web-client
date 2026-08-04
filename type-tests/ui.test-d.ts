@@ -21,10 +21,14 @@ function goodUsage() {
        existing plugin does `modal(...).el.style.width = …` on the next line.
        Pinned here so the element can't quietly become nullable again. */
     const modalEl: HTMLElement = m.el;
+    /* toast returns the registered renderer's handle in the real app, or the
+       bare DOM node from the fallback renderer — the union is the truthful
+       contract (core/ui.ts cornerToast). */
     const t = toast('saved');
-    t.close();
-    const toastEl: HTMLElement = t.el;
-    const menuEl: HTMLElement = contextMenu(10, 10, [{ label: 'Open', onClick: () => {} }, '-']);
+    const toastEl: HTMLElement = t instanceof HTMLElement ? t : t.el;
+    if (!(t instanceof HTMLElement)) t.close();
+    /* null when a registered context-menu renderer returns no element. */
+    const menuEl: HTMLElement | null = contextMenu(10, 10, [{ label: 'Open', onClick: () => {} }, '-']);
     closeContextMenu({ restore: false });
     void modalEl; void toastEl; void menuEl;
 
@@ -46,7 +50,7 @@ function badUsage() {
     const cols: Column[] = [{ key: 'k', label: 'K' }];
     // @ts-expect-error selectable only accepts 'single' | 'multi' | false
     new DataTable(cols, { selectable: 'yes' });
-    // @ts-expect-error modal requires a title
+    // A title-less modal is legal (detailModal builds one); body alone suffices.
     modal({ body: h('div') });
 }
 

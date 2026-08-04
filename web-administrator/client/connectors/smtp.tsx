@@ -18,8 +18,8 @@ import { React } from './react-platform.js';
 import { h, clear, textInput, icon } from '@oie/web-ui';
 import { ConnectorForm, connectorTestButton, asBool, YES_NO, defaultDestinationProperties, CHARSETS, requireFields } from './react-forms.js';
 
-const usingAuth = (p) => asBool(p.authentication);
-const usingLocalBinding = (p) => asBool(p.overrideLocalBinding);
+const usingAuth = (p: any) => asBool(p.authentication);
+const usingLocalBinding = (p: any) => asBool(p.overrideLocalBinding);
 
 /* SMTP attachments are a single java.util.ArrayList of
  * com.mirth.connect.connectors.smtp.Attachment objects (name/content/mimeType),
@@ -27,23 +27,23 @@ const usingLocalBinding = (p) => asBool(p.overrideLocalBinding);
  * setAttachments/getAttachments 3-column (Name/Content/MIME type) table editor. */
 const ATTACHMENT_CLASS = 'com.mirth.connect.connectors.smtp.Attachment';
 
-function attachmentEntries(list) {
+function attachmentEntries(list: any) {
     if (!list || typeof list !== 'object') return [];
     const value = list[ATTACHMENT_CLASS];
     if (value === null || value === undefined || value === '') return [];
-    return (Array.isArray(value) ? value : [value]).map((a) => ({
+    return (Array.isArray(value) ? value : [value]).map((a: any) => ({
         name: String((a && a.name) ?? ''),
         content: String((a && a.content) ?? ''),
         mimeType: String((a && a.mimeType) ?? '')
     }));
 }
 
-function writeAttachments(list, rows) {
+function writeAttachments(list: any, rows: any) {
     const target = list && typeof list === 'object' ? list : {};
     if (!target['@class']) target['@class'] = 'java.util.ArrayList';
-    const clean = rows.filter((r) => r.name !== '' || r.content !== '' || r.mimeType !== '');
+    const clean = rows.filter((r: any) => r.name !== '' || r.content !== '' || r.mimeType !== '');
     if (clean.length) {
-        target[ATTACHMENT_CLASS] = clean.map((r) => ({ name: r.name, content: r.content, mimeType: r.mimeType }));
+        target[ATTACHMENT_CLASS] = clean.map((r: any) => ({ name: r.name, content: r.content, mimeType: r.mimeType }));
     } else {
         delete target[ATTACHMENT_CLASS];
     }
@@ -55,7 +55,7 @@ function writeAttachments(list, rows) {
  * "Use List:" variable mode), the rows and New button are greyed and the whole
  * block is dimmed — matching Swing useAttachmentsVariableFieldsEnabled() which
  * setEnabled(false) on the table + New/Delete but keeps it VISIBLE. */
-function attachmentsTable(properties, onChange, disabled) {
+function attachmentsTable(properties: any, onChange: any, disabled: any) {
     const wrap = h('div', disabled ? { class: 'opacity-60' } : {});
     const rows = attachmentEntries(properties.attachments);
     const commit = () => {
@@ -64,11 +64,11 @@ function attachmentsTable(properties, onChange, disabled) {
     };
     function paint() {
         clear(wrap);
-        rows.forEach((row, i) => {
+        rows.forEach((row: any, i: number) => {
             wrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
-                textInput(row.name, { placeholder: 'Name', disabled, class: 'flex-1', onInput: (e) => { row.name = e.target.value; commit(); } }),
-                textInput(row.content, { placeholder: 'Content', disabled, class: 'flex-[2]', onInput: (e) => { row.content = e.target.value; commit(); } }),
-                textInput(row.mimeType, { placeholder: 'MIME type', disabled, class: 'flex-1', onInput: (e) => { row.mimeType = e.target.value; commit(); } }),
+                textInput(row.name, { placeholder: 'Name', disabled, class: 'flex-1', onInput: (e: any) => { row.name = e.target.value; commit(); } }),
+                textInput(row.content, { placeholder: 'Content', disabled, class: 'flex-[2]', onInput: (e: any) => { row.content = e.target.value; commit(); } }),
+                textInput(row.mimeType, { placeholder: 'MIME type', disabled, class: 'flex-1', onInput: (e: any) => { row.mimeType = e.target.value; commit(); } }),
                 h('button.icon-btn', { type: 'button', title: 'Remove', disabled, onClick: disabled ? null : () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
         });
         wrap.appendChild(h('button.btn', { type: 'button', disabled, onClick: disabled ? null : () => { rows.push({ name: '', content: '', mimeType: '' }); paint(); } }, 'New'));
@@ -78,7 +78,7 @@ function attachmentsTable(properties, onChange, disabled) {
 }
 
 const smtpSender = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.smtp.SmtpDispatcherProperties',
             '@version': version,
@@ -111,7 +111,7 @@ const smtpSender = {
             isUseAttachmentsVariable: false
         };
     },
-    component({ properties, channel, onChange }) {
+    component({ properties, channel, onChange }: any) {
         return (
             <div>
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
@@ -119,8 +119,8 @@ const smtpSender = {
                     { key: 'smtpHost', label: 'SMTP Host', type: 'text', width: '200px', append: () => connectorTestButton({ label: 'Send Test Email', icon: 'mail', path: '/connectors/smtp/_sendTestEmail', channel, properties }) },
                     { key: 'smtpPort', label: 'SMTP Port', type: 'number', width: '90px' },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: (p) => !usingLocalBinding(p) },
-                    { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', disabled: (p) => !usingLocalBinding(p) },
+                    { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: (p: any) => !usingLocalBinding(p) },
+                    { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', disabled: (p: any) => !usingLocalBinding(p) },
                     { key: 'timeout', label: 'Send Timeout (ms)', type: 'number', width: '120px' },
                     { key: 'encryption', label: 'Encryption', type: 'radio', options: [
                         { value: 'none', label: 'None' },
@@ -128,8 +128,8 @@ const smtpSender = {
                         { value: 'SSL', label: 'SSL' }
                     ] },
                     { key: 'authentication', label: 'Use Authentication', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'username', label: 'Username', type: 'text', width: '220px', disabled: (p) => !usingAuth(p) },
-                    { key: 'password', label: 'Password', type: 'password', width: '220px', disabled: (p) => !usingAuth(p) },
+                    { key: 'username', label: 'Username', type: 'text', width: '220px', disabled: (p: any) => !usingAuth(p) },
+                    { key: 'password', label: 'Password', type: 'password', width: '220px', disabled: (p: any) => !usingAuth(p) },
                     { section: 'Email Settings' },
                     { key: 'to', label: 'To', type: 'text', tooltip: 'The name of the mailbox (person, usually) to which the email should be sent.' },
                     { key: 'from', label: 'From', type: 'text', width: '220px' },
@@ -143,8 +143,8 @@ const smtpSender = {
                     ] },
                     // Swing useHeadersVariableFieldsEnabled() greys BOTH the table and the
                     // variable field (setEnabled) — both stay VISIBLE. Grey-both, not swap.
-                    { key: 'headers', type: 'keyvalue', mapShape: 'string', disabled: (p) => asBool(p.isUseHeadersVariable) },
-                    { key: 'headersVariable', label: 'Map Variable', type: 'text', width: '320px', disabled: (p) => !asBool(p.isUseHeadersVariable) },
+                    { key: 'headers', type: 'keyvalue', mapShape: 'string', disabled: (p: any) => asBool(p.isUseHeadersVariable) },
+                    { key: 'headersVariable', label: 'Map Variable', type: 'text', width: '320px', disabled: (p: any) => !asBool(p.isUseHeadersVariable) },
                     { key: 'isUseAttachmentsVariable', label: 'Attachments', type: 'radio', refresh: true, options: [
                         { value: false, label: 'Use Table' },
                         { value: true, label: 'Use List:' }
@@ -153,8 +153,8 @@ const smtpSender = {
                     // variable field (setEnabled) — both stay VISIBLE. Grey-both, not swap. The
                     // 'custom' branch doesn't propagate disabled, so derive it inside render().
                     { type: 'custom', label: '', span: true,
-                        render: (p) => attachmentsTable(p, onChange, asBool(p.isUseAttachmentsVariable)) },
-                    { key: 'attachmentsVariable', label: 'List Variable', type: 'text', width: '320px', disabled: (p) => !asBool(p.isUseAttachmentsVariable) }
+                        render: (p: any) => attachmentsTable(p, onChange, asBool(p.isUseAttachmentsVariable)) },
+                    { key: 'attachmentsVariable', label: 'List Variable', type: 'text', width: '320px', disabled: (p: any) => !asBool(p.isUseAttachmentsVariable) }
                 ]} />
             </div>
         );
@@ -163,7 +163,7 @@ const smtpSender = {
     // From are always required. Local Address (Swing checks length() <= 3) and
     // Local Port are required when Override Local Binding is on. The headers/
     // attachments variable is required when the matching Use Map/Use List mode is on.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'smtpHost', label: 'SMTP Host' },
             { key: 'smtpPort', label: 'SMTP Port' },
@@ -172,12 +172,12 @@ const smtpSender = {
             { key: 'timeout', label: 'Send Timeout' },
             { key: 'to', label: 'To' },
             { key: 'from', label: 'From' },
-            { key: 'headersVariable', label: 'Headers Map Variable', when: (p) => asBool(p.isUseHeadersVariable) },
-            { key: 'attachmentsVariable', label: 'Attachments List Variable', when: (p) => asBool(p.isUseAttachmentsVariable) }
+            { key: 'headersVariable', label: 'Headers Map Variable', when: (p: any) => asBool(p.isUseHeadersVariable) },
+            { key: 'attachmentsVariable', label: 'Attachments List Variable', when: (p: any) => asBool(p.isUseAttachmentsVariable) }
         ]);
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('SMTP Sender', 'DESTINATION', smtpSender);
 }

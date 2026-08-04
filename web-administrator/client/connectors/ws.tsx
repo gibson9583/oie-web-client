@@ -33,10 +33,10 @@ import {
 // and force-resets className/method text on selection. Mirrored here as a derived
 // (unpersisted) radio that gates classNameField + the Method display.
 const WS_DEFAULT_CLASSNAME = 'com.mirth.connect.connectors.ws.DefaultAcceptMessage';
-const wsIsDefaultClassName = (p) => String(p.className ?? '') === WS_DEFAULT_CLASSNAME;
+const wsIsDefaultClassName = (p: any) => String(p.className ?? '') === WS_DEFAULT_CLASSNAME;
 
 // Generated WSDL URL display: http(s)://<server>:<port>/services/<serviceName>?wsdl.
-function wsdlUrlDisplay(p) {
+function wsdlUrlDisplay(p: any) {
     const listener = p.listenerConnectorProperties || {};
     const rawHost = String(listener.host ?? '').trim();
     const host = !rawHost || rawHost === '0.0.0.0' ? window.location.hostname : rawHost;
@@ -44,7 +44,7 @@ function wsdlUrlDisplay(p) {
 }
 
 const wsListener = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.ws.WebServiceReceiverProperties',
             '@version': version,
@@ -56,7 +56,7 @@ const wsListener = {
             soapBinding: 'DEFAULT'
         };
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Listener Settings' },
@@ -73,10 +73,10 @@ const wsListener = {
                     // radio sticks — Swing keeps the default text but tracks the radio in its
                     // own ButtonGroup, which the web has no property to persist.
                     type: 'custom', label: 'Web Service', refresh: true,
-                    render: (p, ctx) => {
+                    render: (p: any, ctx: any) => {
                         const name = `ws-classname-source-${++uidCounter}`;
                         const isDefault = wsIsDefaultClassName(p);
-                        const mk = (label, checked, onSelect) => h('label.check',
+                        const mk = (label: any, checked: any, onSelect: any) => h('label.check',
                             h('input', { type: 'radio', name, checked, onChange: onSelect }), label);
                         return h('div.radio-group.inline-row',
                             mk('Default service', isDefault, () => { p.className = WS_DEFAULT_CLASSNAME; onChange(); ctx.repaint(); }),
@@ -93,14 +93,14 @@ const wsListener = {
                 { type: 'display', label: 'WSDL URL', compute: wsdlUrlDisplay, width: '420px' },
                 {
                     type: 'display', label: 'Method', width: '320px',
-                    compute: (p) => wsIsDefaultClassName(p) ? 'String acceptMessage(String message)' : '<Custom Web Service Methods>'
+                    compute: (p: any) => wsIsDefaultClassName(p) ? 'String acceptMessage(String message)' : '<Custom Web Service Methods>'
                 }
             ]} />
         );
     },
     // Swing ListenerSettingsPanel.checkProperties: Local Address + Local Port always
     // required. WebServiceListener.checkProperties: Service Class Name + Service Name.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'listenerConnectorProperties.host', label: 'Local Address' },
             { key: 'listenerConnectorProperties.port', label: 'Local Port' },
@@ -114,21 +114,21 @@ const wsListener = {
 
 const WS_DEFAULT_OPERATION = 'Press Get Operations';
 
-const isTrue = (v) => v === true || v === 'true';
-const usingAuth = (p) => isTrue(p.useAuthentication);
+const isTrue = (v: any) => v === true || v === 'true';
+const usingAuth = (p: any) => isTrue(p.useAuthentication);
 
-function asArray(value) {
+function asArray(value: any) {
     if (value === null || value === undefined || value === '') return [];
     return Array.isArray(value) ? value : [value];
 }
 
 /* XStream List<String>: { '@class': 'java.util.ArrayList', string: [...] } */
-function stringList(list) {
+function stringList(list: any) {
     if (!list || typeof list !== 'object') return [];
-    return asArray(list.string).map((v) => String(v ?? ''));
+    return asArray(list.string).map((v: any) => String(v ?? ''));
 }
 
-function writeStringList(list, values) {
+function writeStringList(list: any, values: any) {
     const target = list && typeof list === 'object' ? list : {};
     if (!target['@class']) target['@class'] = 'java.util.ArrayList';
     if (values.length) target.string = values;
@@ -138,19 +138,19 @@ function writeStringList(list, values) {
 
 /* The first non-attribute, non-'string' key of a map entry holds the value
    object (its key is the value's class name, e.g. '...DefinitionPortMap'). */
-function entryValue(entry) {
+function entryValue(entry: any) {
     for (const key of Object.keys(entry)) {
         if (key !== 'string' && !key.startsWith('@')) return entry[key];
     }
     return null;
 }
 
-function entryKey(entry) {
+function entryKey(entry: any) {
     return Array.isArray(entry.string) ? String(entry.string[0] ?? '') : String(entry.string ?? '');
 }
 
 /* DefinitionServiceMap -> Map(service -> Map(port -> { operations, actions, locationURI })) */
-function parseDefinitionMap(def) {
+function parseDefinitionMap(def: any) {
     const services = new Map();
     if (!def || typeof def !== 'object') return services;
     for (const entry of asArray(def.map && def.map.entry)) {
@@ -172,7 +172,7 @@ function parseDefinitionMap(def) {
 }
 
 /* Form-urlencoded body shared by _isWsdlCached/_getDefinition/_generateEnvelope/_getSoapAction. */
-function wsFormBody(properties, channel, extra) {
+function wsFormBody(properties: any, channel: any, extra?: any) {
     const form = new URLSearchParams({
         channelId: channel ? channel.id : '',
         channelName: channel && channel.name !== undefined ? channel.name : '',
@@ -180,7 +180,7 @@ function wsFormBody(properties, channel, extra) {
         username: properties.username ?? '',
         password: properties.password ?? ''
     });
-    for (const [key, value] of Object.entries(extra || {})) form.set(key, value);
+    for (const [key, value] of Object.entries(extra || {})) form.set(key, String(value));
     return form.toString();
 }
 
@@ -193,8 +193,8 @@ function wsFormBody(properties, channel, extra) {
    object verbatim by reference, so a clone is built fresh at CLICK time (not at
    render time, to capture in-progress edits) — hence a small DOM button that
    posts the clone directly rather than connectorTestButton({ properties:{...} }). */
-function wsTestConnectionButton(properties, channel, wsdlUrl) {
-    const btn = taskButton('Test Connection', 'link', async () => {
+function wsTestConnectionButton(properties: any, channel: any, wsdlUrl: any) {
+    const btn: any = taskButton('Test Connection', 'link', async () => {
         const target = wsdlUrl ? properties.wsdlUrl : properties.locationURI;
         if (!String(target ?? '').trim()) {
             toast(wsdlUrl ? 'WSDL URL is blank.' : 'Location URI is blank.', 'warn');
@@ -221,36 +221,36 @@ function wsTestConnectionButton(properties, channel, wsdlUrl) {
 let uidCounter = 0;
 
 /* Editable text input with datalist suggestions (combo box stand-in). */
-function comboInput(value, options, { placeholder, onInput, onCommit } = {}) {
+function comboInput(value: any, options: any, { placeholder, onInput, onCommit }: any = {}) {
     const id = `ws-list-${++uidCounter}`;
     return h('div',
         h('input', { type: 'text', value: value ?? '', list: id, placeholder, onInput, onChange: onCommit }),
-        h('datalist', { id }, options.map((o) => h('option', { value: o }))));
+        h('datalist', { id }, options.map((o: any) => h('option', { value: o }))));
 }
 
-function attachmentsTable(properties, onChange, disabled) {
+function attachmentsTable(properties: any, onChange: any, disabled: any) {
     const wrap = h('div');
     const names = stringList(properties.attachmentNames);
     const contents = stringList(properties.attachmentContents);
     const types = stringList(properties.attachmentTypes);
-    const rows = [];
+    const rows: any[] = [];
     for (let i = 0; i < Math.max(names.length, contents.length, types.length); i++) {
         rows.push([names[i] ?? '', contents[i] ?? '', types[i] ?? '']);
     }
     const commit = () => {
-        const clean = rows.filter((r) => r[0] !== '' || r[1] !== '' || r[2] !== '');
-        properties.attachmentNames = writeStringList(properties.attachmentNames, clean.map((r) => r[0]));
-        properties.attachmentContents = writeStringList(properties.attachmentContents, clean.map((r) => r[1]));
-        properties.attachmentTypes = writeStringList(properties.attachmentTypes, clean.map((r) => r[2]));
+        const clean = rows.filter((r: any) => r[0] !== '' || r[1] !== '' || r[2] !== '');
+        properties.attachmentNames = writeStringList(properties.attachmentNames, clean.map((r: any) => r[0]));
+        properties.attachmentContents = writeStringList(properties.attachmentContents, clean.map((r: any) => r[1]));
+        properties.attachmentTypes = writeStringList(properties.attachmentTypes, clean.map((r: any) => r[2]));
         onChange();
     };
     function paint() {
         clear(wrap);
-        rows.forEach((row, i) => {
+        rows.forEach((row: any, i: number) => {
             wrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
-                textInput(row[0], { placeholder: 'ID', disabled, class: 'flex-1', onInput: (e) => { row[0] = e.target.value; commit(); } }),
-                textInput(row[1], { placeholder: 'Content', disabled, class: 'flex-[2]', onInput: (e) => { row[1] = e.target.value; commit(); } }),
-                textInput(row[2], { placeholder: 'MIME Type', disabled, class: 'flex-1', onInput: (e) => { row[2] = e.target.value; commit(); } }),
+                textInput(row[0], { placeholder: 'ID', disabled, class: 'flex-1', onInput: (e: any) => { row[0] = e.target.value; commit(); } }),
+                textInput(row[1], { placeholder: 'Content', disabled, class: 'flex-[2]', onInput: (e: any) => { row[1] = e.target.value; commit(); } }),
+                textInput(row[2], { placeholder: 'MIME Type', disabled, class: 'flex-1', onInput: (e: any) => { row[2] = e.target.value; commit(); } }),
                 h('button.icon-btn', { type: 'button', title: 'Remove', disabled, onClick: () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
         });
         wrap.appendChild(h('button.btn', { type: 'button', disabled, onClick: () => { rows.push(['', '', '']); paint(); } }, 'Add'));
@@ -260,7 +260,7 @@ function attachmentsTable(properties, onChange, disabled) {
 }
 
 const wsSender = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.ws.WebServiceDispatcherProperties',
             '@version': version,
@@ -290,7 +290,7 @@ const wsSender = {
             wsdlDefinitionMap: { map: { '@class': 'linked-hash-map' } }
         };
     },
-    component({ properties, channel, onChange }) {
+    component({ properties, channel, onChange }: any) {
         // `services` is derived LIVE from properties.wsdlDefinitionMap inside each
         // field's render() (called on every ConnectorForm repaint) and inside the
         // handlers — so after getOperations rewrites the definition map and
@@ -304,14 +304,14 @@ const wsSender = {
             return ports ? ports.get(String(properties.port ?? '')) : undefined;
         };
 
-        async function getOperations(btn, repaint) {
+        async function getOperations(btn: any, repaint: any) {
             if (!String(properties.wsdlUrl ?? '').trim()) {
                 toast('WSDL URL is blank', 'warn');
                 return;
             }
             // Swing getOperationsButtonActionPerformed confirms before replacing
             // an existing service/port/location/operation set.
-            const hasOps = [properties.service, properties.port, properties.locationURI].some((v) => String(v ?? '').trim())
+            const hasOps = [properties.service, properties.port, properties.locationURI].some((v: any) => String(v ?? '').trim())
                 || (String(properties.operation ?? '') && properties.operation !== WS_DEFAULT_OPERATION);
             if (hasOps && !(await confirmDialog('Get Operations',
                 'This will replace your current service, port, location URI, and operation list. Press OK to continue.'))) return;
@@ -346,7 +346,7 @@ const wsSender = {
             }
         }
 
-        async function generateEnvelope(btn, repaint) {
+        async function generateEnvelope(btn: any, repaint: any) {
             const operation = String(properties.operation ?? '');
             if (!String(properties.wsdlUrl ?? '').trim()) {
                 toast('WSDL URL is blank', 'warn');
@@ -401,10 +401,10 @@ const wsSender = {
                 { section: 'Web Service Sender Settings' },
                 {
                     type: 'custom', label: 'WSDL URL', span: true,
-                    render: (p, ctx) => {
+                    render: (p: any, ctx: any) => {
                         const input = textInput(p.wsdlUrl ?? '', {
                             class: 'flex-1',
-                            onInput: (e) => { p.wsdlUrl = e.target.value; onChange(); }
+                            onInput: (e: any) => { p.wsdlUrl = e.target.value; onChange(); }
                         });
                         const getOpsBtn = taskButton('Get Operations', 'refresh', () => getOperations(getOpsBtn, ctx.repaint));
                         // Swing testConnectionButtonActionPerformed(true): blanks locationURI
@@ -415,17 +415,17 @@ const wsSender = {
                 },
                 {
                     type: 'custom', label: 'Service', width: '320px',
-                    render: (p, ctx) => comboInput(p.service, [...getServices().keys()], {
-                        onInput: (e) => { p.service = e.target.value; onChange(); },
+                    render: (p: any, ctx: any) => comboInput(p.service, [...getServices().keys()], {
+                        onInput: (e: any) => { p.service = e.target.value; onChange(); },
                         onCommit: () => ctx.repaint()
                     })
                 },
                 {
                     type: 'custom', label: 'Port / Endpoint', width: '320px',
-                    render: (p, ctx) => {
+                    render: (p: any, ctx: any) => {
                         const ports = getServices().get(String(p.service ?? ''));
                         return comboInput(p.port, ports ? [...ports.keys()] : [], {
-                            onInput: (e) => { p.port = e.target.value; onChange(); },
+                            onInput: (e: any) => { p.port = e.target.value; onChange(); },
                             onCommit: () => {
                                 const info = currentPortInfo();
                                 if (info && info.locationURI) { p.locationURI = info.locationURI; onChange(); }
@@ -439,11 +439,11 @@ const wsSender = {
                     // The second Test Connection button blanks wsdlUrl on a copy so only the
                     // Location URI is tested (testConnectionButtonActionPerformed(false)).
                     type: 'custom', label: 'Location URI', span: true,
-                    render: (p) => {
+                    render: (p: any) => {
                         const info = currentPortInfo();
                         const combo = comboInput(p.locationURI, info && info.locationURI ? [info.locationURI] : [], {
                             placeholder: 'Optional override of the endpoint address',
-                            onInput: (e) => { p.locationURI = e.target.value; onChange(); }
+                            onInput: (e: any) => { p.locationURI = e.target.value; onChange(); }
                         });
                         combo.style.flex = '1';
                         const testBtn = wsTestConnectionButton(p, channel, false);
@@ -453,10 +453,10 @@ const wsSender = {
                 { key: 'socketTimeout', label: 'Socket Timeout (ms)', type: 'number', width: '120px', tooltip: '0 = no timeout' },
                 {
                     key: 'useAuthentication', label: 'Authentication', type: 'radio', options: YES_NO, refresh: true,
-                    onSet: (p, v) => { if (!v) { p.username = ''; p.password = ''; } }
+                    onSet: (p: any, v: any) => { if (!v) { p.username = ''; p.password = ''; } }
                 },
-                { key: 'username', label: 'Username', type: 'text', width: '220px', disabled: (p) => !usingAuth(p) },
-                { key: 'password', label: 'Password', type: 'password', width: '220px', disabled: (p) => !usingAuth(p) },
+                { key: 'username', label: 'Username', type: 'text', width: '220px', disabled: (p: any) => !usingAuth(p) },
+                { key: 'password', label: 'Password', type: 'password', width: '220px', disabled: (p: any) => !usingAuth(p) },
                 // Swing initLayout order: invocationOneWayRadio then invocationTwoWayRadio
                 // (One-Way, Two-Way left-to-right). Match that option order.
                 { key: 'oneWay', label: 'Invocation Type', type: 'radio', options: [
@@ -469,14 +469,14 @@ const wsSender = {
                     // The button is disabled until real operations are loaded
                     // (updateGenerateEnvelopeButtonEnabled -> !isDefaultOperations()).
                     type: 'custom', label: 'Operation', span: true,
-                    render: (p, ctx) => {
+                    render: (p: any, ctx: any) => {
                         const info = currentPortInfo();
                         const ops = info ? [...info.operations] : [];
                         const current = String(p.operation ?? '');
                         if (!ops.includes(current)) ops.unshift(current || WS_DEFAULT_OPERATION);
-                        const combo = select(ops.map((o) => ({ value: o, label: o })), current, {
+                        const combo = select(ops.map((o: any) => ({ value: o, label: o })), current, {
                             class: 'w-[288px]',
-                            onChange: (e) => {
+                            onChange: (e: any) => {
                                 p.operation = e.target.value;
                                 const index = info ? info.operations.indexOf(e.target.value) : -1;
                                 p.soapAction = (index >= 0 && index < (info.actions || []).length) ? (info.actions[index] ?? '') : '';
@@ -484,7 +484,7 @@ const wsSender = {
                                 ctx.repaint();
                             }
                         });
-                        const btn = taskButton('Generate Envelope', 'code', () => generateEnvelope(btn, ctx.repaint), {
+                        const btn: any = taskButton('Generate Envelope', 'code', () => generateEnvelope(btn, ctx.repaint), {
                             title: 'Regenerates the SOAP Envelope from the cached WSDL schema and populates the SOAP Action, if available'
                         });
                         if (!current || current === WS_DEFAULT_OPERATION) btn.disabled = true;
@@ -498,8 +498,8 @@ const wsSender = {
                     { value: false, label: 'Use Table' },
                     { value: true, label: 'Use Map' }
                 ] },
-                { key: 'headersVariable', label: 'Headers Map Variable', type: 'text', width: '220px', disabled: (p) => !isTrue(p.isUseHeadersVariable) },
-                { key: 'headers', label: 'Headers', type: 'keyvalue', mapShape: 'list', disabled: (p) => isTrue(p.isUseHeadersVariable) },
+                { key: 'headersVariable', label: 'Headers Map Variable', type: 'text', width: '220px', disabled: (p: any) => !isTrue(p.isUseHeadersVariable) },
+                { key: 'headers', label: 'Headers', type: 'keyvalue', mapShape: 'list', disabled: (p: any) => isTrue(p.isUseHeadersVariable) },
                 { section: 'Attachments' },
                 { key: 'useMtom', label: 'Use MTOM', type: 'radio', options: YES_NO, refresh: true },
                 {
@@ -507,7 +507,7 @@ const wsSender = {
                     // when MTOM=No (useMtomNoRadioActionPerformed). The source radio,
                     // variable field, and table are gated on useMtom + the sub-selection.
                     key: 'isUseAttachmentsVariable', label: 'Attachments Source', type: 'radio', refresh: true,
-                    disabled: (p) => !isTrue(p.useMtom),
+                    disabled: (p: any) => !isTrue(p.useMtom),
                     options: [
                         { value: false, label: 'Use Table' },
                         { value: true, label: 'Use List' }
@@ -515,11 +515,11 @@ const wsSender = {
                 },
                 {
                     key: 'attachmentsVariable', label: 'Attachments List Variable', type: 'text', width: '220px',
-                    disabled: (p) => !(isTrue(p.useMtom) && isTrue(p.isUseAttachmentsVariable))
+                    disabled: (p: any) => !(isTrue(p.useMtom) && isTrue(p.isUseAttachmentsVariable))
                 },
                 {
                     type: 'custom', label: 'Attachments', span: true,
-                    render: (p) => attachmentsTable(p, onChange, !(isTrue(p.useMtom) && !isTrue(p.isUseAttachmentsVariable)))
+                    render: (p: any) => attachmentsTable(p, onChange, !(isTrue(p.useMtom) && !isTrue(p.isUseAttachmentsVariable)))
                 }
             ]} />
         );
@@ -529,20 +529,20 @@ const wsSender = {
     // "Use Map" is selected; Attachments List Variable required when MTOM + "Use List".
     // (DestinationSettingsPanel.checkProperties returns true — no destination-level
     // required fields.)
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'wsdlUrl', label: 'WSDL URL' },
             { key: 'service', label: 'Service' },
             { key: 'port', label: 'Port / Endpoint' },
             { key: 'socketTimeout', label: 'Socket Timeout (ms)' },
             { key: 'envelope', label: 'SOAP Envelope' },
-            { key: 'headersVariable', label: 'Headers Map Variable', when: (p) => asBool(p.isUseHeadersVariable) },
-            { key: 'attachmentsVariable', label: 'Attachments List Variable', when: (p) => asBool(p.useMtom) && asBool(p.isUseAttachmentsVariable) }
+            { key: 'headersVariable', label: 'Headers Map Variable', when: (p: any) => asBool(p.isUseHeadersVariable) },
+            { key: 'attachmentsVariable', label: 'Attachments List Variable', when: (p: any) => asBool(p.useMtom) && asBool(p.isUseAttachmentsVariable) }
         ]);
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('Web Service Listener', 'SOURCE', wsListener);
     platform.registerConnectorPanel('Web Service Sender', 'DESTINATION', wsSender);
 }

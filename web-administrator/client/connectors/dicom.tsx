@@ -27,7 +27,7 @@ const TLS_OPTIONS = [
 // Swing tlsNoRadioActionPerformed greys (setEnabled(false)) the whole keystore /
 // client-auth / accept-ssl-v2 block when TLS = "No TLS"; the 3DES/AES/Without
 // handlers re-enable it. Fields stay visible, just disabled.
-const tlsDisabled = (p) => p.tls === 'notls';
+const tlsDisabled = (p: any) => p.tls === 'notls';
 
 /* TLS / keystore fields shared by listener and sender (same Java fields). */
 function tlsFields() {
@@ -56,11 +56,11 @@ function tlsFields() {
 //   - nativeData=Yes disables defts AND forces defts=No.
 //   - defts is enabled only when bigEndian=No AND nativeData=No.
 //   - bigEndian / nativeData are disabled when defts=Yes.
-const deftsLocked = (p) => asBool(p.bigEndian) || asBool(p.nativeData);
-const transferSyntaxLocked = (p) => asBool(p.defts);
+const deftsLocked = (p: any) => asBool(p.bigEndian) || asBool(p.nativeData);
+const transferSyntaxLocked = (p: any) => asBool(p.defts);
 
 const dicomListener = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.dimse.DICOMReceiverProperties',
             '@version': version,
@@ -99,7 +99,7 @@ const dicomListener = {
             trustStorePW: ''
         };
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Connection Settings' },
@@ -122,17 +122,17 @@ const dicomListener = {
                 {
                     key: 'bigEndian', label: 'Accept Explict VR Big Endian', type: 'radio', options: YES_NO, refresh: true,
                     disabled: transferSyntaxLocked,
-                    onSet: (p) => { if (asBool(p.bigEndian)) p.defts = false; }
+                    onSet: (p: any) => { if (asBool(p.bigEndian)) p.defts = false; }
                 },
                 {
                     key: 'defts', label: 'Only Accept Default Transfer Syntax', type: 'radio', options: YES_NO, refresh: true,
                     disabled: deftsLocked,
-                    onSet: (p) => { if (asBool(p.defts)) { p.bigEndian = false; p.nativeData = false; } }
+                    onSet: (p: any) => { if (asBool(p.defts)) { p.bigEndian = false; p.nativeData = false; } }
                 },
                 {
                     key: 'nativeData', label: 'Only Uncompressed Pixel Data', type: 'radio', options: YES_NO, refresh: true,
                     disabled: transferSyntaxLocked,
-                    onSet: (p) => { if (asBool(p.nativeData)) p.defts = false; }
+                    onSet: (p: any) => { if (asBool(p.nativeData)) p.defts = false; }
                 },
                 { key: 'tcpDelay', label: 'TCP Delay', type: 'radio', options: YES_NO },
                 { key: 'dest', label: 'Store Received Objects in Directory', type: 'text', width: '320px' },
@@ -142,7 +142,7 @@ const dicomListener = {
     },
     // DICOMListener.checkProperties has no required fields; the shared
     // ListenerSettingsPanel.checkProperties requires Listener Address + Listener Port.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'listenerConnectorProperties.host', label: 'Listener Address' },
             { key: 'listenerConnectorProperties.port', label: 'Listener Port' }
@@ -151,7 +151,7 @@ const dicomListener = {
 };
 
 const dicomSender = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.dimse.DICOMDispatcherProperties',
             '@version': version,
@@ -195,7 +195,7 @@ const dicomSender = {
             trustStorePW: ''
         };
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Connection Settings' },
@@ -239,7 +239,7 @@ const dicomSender = {
     },
     // DICOMSender.checkProperties: Remote Host, Remote Port, and Template are required
     // (host also enforces a minimum length, skipped here as a numeric/format check).
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'host', label: 'Remote Host' },
             { key: 'port', label: 'Remote Port' },
@@ -248,7 +248,7 @@ const dicomSender = {
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('DICOM Listener', 'SOURCE', dicomListener);
     platform.registerConnectorPanel('DICOM Sender', 'DESTINATION', dicomSender);
 }

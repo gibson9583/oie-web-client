@@ -1,0 +1,12 @@
+{
+  "//": "Emits the @oie/web-ui type declarations from the pkg-ui barrel's import graph into packages/web-ui/types/ (run via `npm run gen:types`). The graph spans client/core and client/connectors, so rootDir is client/ and the output mirrors those subdirectories.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "client",
+    "outDir": "../packages/web-ui/types"
+  },
+  "include": ["client/core/pkg-ui.ts", "client/core/vendor-modules.d.ts"]
+}

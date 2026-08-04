@@ -13,15 +13,15 @@ import { h, clear, select, textInput, icon } from '@oie/web-ui';
 import { ConnectorForm, mapEntries, defaultSourceProperties, defaultDestinationProperties } from './react-forms.js';
 
 /* XStream List<String>: { '@class': 'java.util.ArrayList', string: [...] } */
-function asArray(value) {
+function asArray(value: any) {
     if (value === null || value === undefined || value === '') return [];
     return Array.isArray(value) ? value : [value];
 }
-function stringList(list) {
+function stringList(list: any) {
     if (!list || typeof list !== 'object') return [];
-    return asArray(list.string).map((v) => String(v ?? ''));
+    return asArray(list.string).map((v: any) => String(v ?? ''));
 }
-function writeStringList(list, values) {
+function writeStringList(list: any, values: any) {
     const target = list && typeof list === 'object' ? list : {};
     if (!target['@class']) target['@class'] = 'java.util.ArrayList';
     if (values.length) target.string = values;
@@ -30,7 +30,7 @@ function writeStringList(list, values) {
 }
 
 const channelReader = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties',
             '@version': version,
@@ -54,8 +54,8 @@ const channelReader = {
 
 /* Channel id→name map is fetched once and cached for the editor's lifetime so a
    form repaint (after picking a channel) reuses it instead of re-fetching. */
-let channelNamesPromise = null;
-function loadChannelNames(platform) {
+let channelNamesPromise: any = null;
+function loadChannelNames(platform: any) {
     if (!channelNamesPromise) channelNamesPromise = platform.api.channels.idsAndNames();
     return channelNamesPromise;
 }
@@ -81,10 +81,10 @@ const NOT_FOUND_LABEL = '<Channel Not Found>';
        only when the field holds a map variable or an unknown id — never as an option.
    Combo option order matches Swing: '<None>' first, then channels sorted
    alpha-numerically by NAME (Collections.sort on channelNameArray). */
-function channelControlNode(properties, platform, onChange) {
+function channelControlNode(properties: any, platform: any, onChange: any) {
     const wrap = h('div', { class: 'flex items-center gap-1.5' });
     // channelList: name -> id, used to resolve the combo selection and reverse-sync.
-    let channelList = [];
+    let channelList: any[] = [];
 
     const field = textInput(properties.channelId === 'none' ? '' : (properties.channelId ?? ''), {
         placeholder: '<None>', title: "The destination channel's unique global id.",
@@ -101,7 +101,7 @@ function channelControlNode(properties, platform, onChange) {
     // else -> <Channel Not Found>.
     function syncCombo() {
         const text = String(field.value ?? '');
-        let selection;
+        let selection: any;
         if (text.trim() === '') {
             selection = NONE_LABEL;
         } else {
@@ -138,7 +138,7 @@ function channelControlNode(properties, platform, onChange) {
     // channel name resolves to its id. Synthetic labels are non-selectable no-ops.
     combo.addEventListener('change', () => {
         const name = combo.value;
-        let id = null;
+        let id: any = null;
         if (name === NONE_LABEL) id = '';
         else {
             const match = channelList.find(([n]) => n === name);
@@ -155,12 +155,12 @@ function channelControlNode(properties, platform, onChange) {
     wrap.appendChild(field);
     wrap.appendChild(combo);
 
-    loadChannelNames(platform).then((map) => {
+    loadChannelNames(platform).then((map: any) => {
         // mapEntries yields [channelId, channelName]; build the name->id list and
         // sort by NAME (alpha-numeric) to match Collections.sort(channelNameArray).
         channelList = mapEntries(map)
             .map(([id, name]) => [name, id])
-            .sort((a, b) => a[0].localeCompare(b[0]));
+            .sort((a: any, b: any) => a[0].localeCompare(b[0]));
         clear(combo);
         // '<None>' first, then sorted channel names. No synthetic <Map Variable>/
         // <Channel Not Found> options — syncCombo adds one transiently (hidden) only
@@ -178,17 +178,17 @@ function channelControlNode(properties, platform, onChange) {
    the destination channel's message; per the Swing tooltip, only the bare key is
    entered (no "${}" syntax). Each row carries its own inline Delete next to the
    variable; a New button below appends a row. */
-function mapVariablesTable(properties, onChange) {
+function mapVariablesTable(properties: any, onChange: any) {
     const wrap = h('div');
     const rows = stringList(properties.mapVariables);
     const commit = () => {
-        properties.mapVariables = writeStringList(properties.mapVariables, rows.filter((v) => v !== ''));
+        properties.mapVariables = writeStringList(properties.mapVariables, rows.filter((v: any) => v !== ''));
         onChange();
     };
     function uniqueName() {
         for (let i = 1; i <= rows.length + 1; i++) {
             const name = 'Variable ' + i;
-            if (!rows.some((v) => v.toLowerCase() === name.toLowerCase())) return name;
+            if (!rows.some((v: any) => v.toLowerCase() === name.toLowerCase())) return name;
         }
         return 'Variable ' + (rows.length + 1);
     }
@@ -196,10 +196,10 @@ function mapVariablesTable(properties, onChange) {
         clear(wrap);
         const table = h('div', { class: 'flex flex-col gap-1' });
         table.appendChild(h('div', { className: 'cform-label', class: 'font-semibold text-[11px]' }, 'Map Variable'));
-        rows.forEach((value, i) => {
+        rows.forEach((value: any, i: number) => {
             const input = textInput(value, {
                 placeholder: 'Map Variable', class: 'flex-1',
-                onInput: (e) => { rows[i] = e.target.value; commit(); }
+                onInput: (e: any) => { rows[i] = e.target.value; commit(); }
             });
             const delBtn = h('button.icon-btn', {
                 type: 'button', title: 'Delete',
@@ -219,7 +219,7 @@ function mapVariablesTable(properties, onChange) {
 }
 
 const channelWriter = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties',
             '@version': version,
@@ -230,7 +230,7 @@ const channelWriter = {
             mapVariables: { '@class': 'java.util.ArrayList' }
         };
     },
-    component({ properties, platform, onChange }) {
+    component({ properties, platform, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Channel Writer Settings' },
@@ -252,7 +252,7 @@ const channelWriter = {
     validate() { return []; }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('Channel Reader', 'SOURCE', channelReader);
     platform.registerConnectorPanel('Channel Writer', 'DESTINATION', channelWriter);
 }

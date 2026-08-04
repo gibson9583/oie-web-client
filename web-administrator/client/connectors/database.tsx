@@ -21,8 +21,8 @@ const DRIVER_DEFAULT = 'Please Select One';
    dropdown picks up edits. Caching here means a form repaint (e.g. toggling a
    refresh field) reuses the list instead of re-fetching — matching the
    imperative panel, which fetched once at field creation + on wrench-save. */
-let driversPromise = null;
-function loadDrivers(platform) {
+let driversPromise: any = null;
+function loadDrivers(platform: any) {
     if (!driversPromise) driversPromise = platform.api.server.databaseDrivers();
     return driversPromise;
 }
@@ -31,7 +31,7 @@ function loadDrivers(platform) {
    generateUpdateConnectionString). Pure client-side string building from the
    driver/url/username/password fields — no server call — matching the engine
    character-for-character so the generated JavaScript is identical. */
-function generateConnectionString(p) {
+function generateConnectionString(p: any) {
     return 'var dbConn;\n' +
         '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
         (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
@@ -43,7 +43,7 @@ function generateConnectionString(p) {
 /* Reader post-process connection boilerplate (DatabaseReader.generateUpdateConnectionString).
    The leading comment varies with the post-process mode (each row vs once) and an
    extra note is added when results are aggregated. updateMode: UPDATE_EACH=3. */
-function generateUpdateConnectionString(p) {
+function generateUpdateConnectionString(p: any) {
     let s = '';
     if (Number(p.updateMode) === 3) {
         s += '// This update script will be executed once for every result returned from the above query.\n';
@@ -64,7 +64,7 @@ function generateUpdateConnectionString(p) {
 
 /* Writer connection boilerplate (DatabaseWriter.generateConnectionString) — like
    the reader's but with no leading comment and no "return result" line. */
-function generateWriterConnectionString(p) {
+function generateWriterConnectionString(p: any) {
     return 'var dbConn;\n' +
         '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
         (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
@@ -77,12 +77,12 @@ function generateWriterConnectionString(p) {
 /* "Insert URL Template" button (Swing insertURLTemplateButton): fills the URL
    field with the selected driver's JDBC URL template, confirming first when a
    URL is already present (matching insertURLTemplateButtonActionPerformed). */
-function insertUrlTemplateButton(properties, platform, onChange) {
+function insertUrlTemplateButton(properties: any, platform: any, onChange: any) {
     return h('button.btn', {
         type: 'button', class: 'ml-1.5',
         onClick: async () => {
             const drivers = await loadDrivers(platform).catch(() => []);
-            const d = drivers.find((x) => x && String(x.className) === String(properties.driver));
+            const d = drivers.find((x: any) => x && String(x.className) === String(properties.driver));
             const template = d && d.template ? String(d.template) : '';
             if (!template) { toast('The selected driver has no URL template.', 'warn'); return; }
             if (properties.url && !(await confirmDialog('Insert URL Template',
@@ -96,7 +96,7 @@ function insertUrlTemplateButton(properties, platform, onChange) {
 /* The Driver <select> DOM node, populated asynchronously from the cached drivers
    list (falling back to a free-text input on error). Mirrors the imperative
    driverSelectField; the wrench append opens the drivers modal. */
-function driverControlNode(properties, platform, onChange) {
+function driverControlNode(properties: any, platform: any, onChange: any) {
     const wrap = h('div', { class: 'flex items-center gap-1.5' });
     const wrench = h('button.icon-btn', {
         type: 'button', title: 'View and manage the list of database JDBC drivers',
@@ -104,24 +104,24 @@ function driverControlNode(properties, platform, onChange) {
         onClick: () => openDriversModal(() => { driversPromise = null; refresh(); })
     }, icon('settings'));
 
-    function rebuild(control) {
+    function rebuild(control: any) {
         clear(wrap);
         wrap.appendChild(control);
         wrap.appendChild(wrench);
     }
 
     function refresh() {
-        loadDrivers(platform).then((drivers) => {
+        loadDrivers(platform).then((drivers: any) => {
             const options = [{ value: DRIVER_DEFAULT, label: DRIVER_DEFAULT }];
             for (const d of drivers) {
                 if (d && d.className) options.push({ value: d.className, label: d.name || d.className });
             }
             const current = properties.driver;
-            if (current && !options.some((o) => o.value === current)) {
+            if (current && !options.some((o: any) => o.value === current)) {
                 options.push({ value: current, label: current });
             }
             const sel = select(options, properties.driver ?? DRIVER_DEFAULT, {
-                onChange: (e) => { properties.driver = e.target.value; onChange(); }
+                onChange: (e: any) => { properties.driver = e.target.value; onChange(); }
             });
             sel.style.width = '220px';
             rebuild(sel);
@@ -129,7 +129,7 @@ function driverControlNode(properties, platform, onChange) {
             // Engine unreachable: fall back to a free-text driver-class input.
             const input = textInput(properties.driver ?? '', {
                 placeholder: 'org.postgresql.Driver',
-                onChange: (e) => { properties.driver = e.target.value; onChange(); }
+                onChange: (e: any) => { properties.driver = e.target.value; onChange(); }
             });
             input.style.width = '220px';
             rebuild(input);
@@ -140,7 +140,7 @@ function driverControlNode(properties, platform, onChange) {
     const initial = select(
         [{ value: properties.driver ?? DRIVER_DEFAULT, label: properties.driver ?? DRIVER_DEFAULT }],
         properties.driver ?? DRIVER_DEFAULT,
-        { onChange: (e) => { properties.driver = e.target.value; onChange(); } });
+        { onChange: (e: any) => { properties.driver = e.target.value; onChange(); } });
     initial.style.width = '220px';
     rebuild(initial);
     refresh();
@@ -151,23 +151,23 @@ function driverControlNode(properties, platform, onChange) {
    Class, JDBC URL Template, Select with Limit Query, Legacy Driver Classes) with
    Add/Remove, persisted via PUT /server/databaseDrivers. Mirrors the Swing
    DatabaseDriversDialog. `onSaved` lets the connector refresh its dropdown. */
-async function openDriversModal(onSaved) {
-    let model;
+async function openDriversModal(onSaved: any) {
+    let model: any;
     try {
         const drivers = await api.server.databaseDrivers();
-        model = drivers.map((d) => ({
+        model = drivers.map((d: any) => ({
             name: d.name || '', className: d.className || '', template: d.template || '',
             selectLimit: d.selectLimit || '',
             alt: api.asList(d.alternativeClassNames, 'string').map(String).filter(Boolean).join(', ')
         }));
-    } catch (e) {
+    } catch (e: any) {
         toast(`Could not load drivers: ${e.message}`, 'error');
         return;
     }
 
     const tbody = h('tbody');
-    function rowEl(d) {
-        const cell = (key, ph, w) => {
+    function rowEl(d: any) {
+        const cell = (key: any, ph: any, w: any) => {
             const inp = textInput(d[key], { placeholder: ph, style: { width: w, maxWidth: '100%' } });
             inp.addEventListener('input', () => { d[key] = inp.value; });
             return h('td', { class: 'py-0.5 px-1' }, inp);
@@ -184,7 +184,7 @@ async function openDriversModal(onSaved) {
     function renderRows() {
         clear(tbody);
         if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'text-text-faint p-3' }, 'No drivers — click Add.')));
-        else model.forEach((d) => tbody.appendChild(rowEl(d)));
+        else model.forEach((d: any) => tbody.appendChild(rowEl(d)));
     }
     renderRows();
 
@@ -206,9 +206,9 @@ async function openDriversModal(onSaved) {
                 label: 'Save', primary: true,
                 onClick: async () => {
                     const payload = model
-                        .filter((d) => d.name.trim() || d.className.trim())
-                        .map((d) => {
-                            const alt = d.alt.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+                        .filter((d: any) => d.name.trim() || d.className.trim())
+                        .map((d: any) => {
+                            const alt = d.alt.split(/[,\n]/).map((s: any) => s.trim()).filter(Boolean);
                             return {
                                 name: d.name.trim(),
                                 className: d.className.trim(),
@@ -222,7 +222,7 @@ async function openDriversModal(onSaved) {
                         await api.server.setDatabaseDrivers(payload);
                         toast('Database drivers saved');
                         onSaved && onSaved();
-                    } catch (e) {
+                    } catch (e: any) {
                         toast(`Save failed: ${e.message}`, 'error');
                         return false;
                     }
@@ -233,7 +233,7 @@ async function openDriversModal(onSaved) {
 }
 
 const databaseReader = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties',
             '@version': version,
@@ -257,14 +257,14 @@ const databaseReader = {
             encoding: 'DEFAULT_ENCODING'
         };
     },
-    component({ properties, platform, onChange }) {
+    component({ properties, platform, onChange }: any) {
         return (
             <div>
                 <PollSection properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
                     { section: 'Connection Settings' },
                     { type: 'custom', label: 'Driver', render: () => driverControlNode(properties, platform, onChange) },
-                    { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p, ctx) => insertUrlTemplateButton(p, platform, ctx.onChange) },
+                    { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p: any, ctx: any) => insertUrlTemplateButton(p, platform, ctx.onChange) },
                     { key: 'username', label: 'Username', type: 'text', width: '220px' },
                     { key: 'password', label: 'Password', type: 'password', width: '220px' },
                     { section: 'Database Reader Settings' },
@@ -273,7 +273,7 @@ const databaseReader = {
                         // Yes fills the Select + Post-Process editors with the connection
                         // boilerplate (and switches them to JavaScript); No clears them back to SQL.
                         key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true,
-                        onSet: (p, v) => {
+                        onSet: (p: any, v: any) => {
                             if (asBool(v)) {
                                 p.select = generateConnectionString(p);
                                 p.update = generateUpdateConnectionString(p);
@@ -284,42 +284,42 @@ const databaseReader = {
                         }
                     },
                     // Swing useScriptYes/No: Keep Connection Open is disabled in JavaScript mode.
-                    { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, disabled: (p) => asBool(p.useScript) },
+                    { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, disabled: (p: any) => asBool(p.useScript) },
                     // Swing aggregateResultsActionPerformed(true): forces Cache Results=Yes and disables it.
                     {
                         key: 'aggregateResults', label: 'Aggregate Results', type: 'radio', options: YES_NO, refresh: true,
-                        onSet: (p) => { if (asBool(p.aggregateResults)) p.cacheResults = true; }
+                        onSet: (p: any) => { if (asBool(p.aggregateResults)) p.cacheResults = true; }
                     },
                     // Swing: Cache Results enabled only when Use JavaScript=No AND Aggregate Results=No.
-                    { key: 'cacheResults', label: 'Cache Results', type: 'radio', options: YES_NO, refresh: true, disabled: (p) => asBool(p.useScript) || asBool(p.aggregateResults) },
+                    { key: 'cacheResults', label: 'Cache Results', type: 'radio', options: YES_NO, refresh: true, disabled: (p: any) => asBool(p.useScript) || asBool(p.aggregateResults) },
                     // Swing: Fetch Size enabled only when Use JavaScript=No AND Cache Results=No (aggregate forces cache=Yes).
-                    { key: 'fetchSize', label: 'Fetch Size', type: 'number', width: '110px', disabled: (p) => asBool(p.useScript) || asBool(p.cacheResults) || asBool(p.aggregateResults) },
+                    { key: 'fetchSize', label: 'Fetch Size', type: 'number', width: '110px', disabled: (p: any) => asBool(p.useScript) || asBool(p.cacheResults) || asBool(p.aggregateResults) },
                     { key: 'retryCount', label: '# of Retries on Error', type: 'number', width: '110px' },
                     { key: 'retryInterval', label: 'Retry Interval (ms)', type: 'number', width: '120px' },
                     { key: 'encoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px' },
                     { section: 'Query' },
                     {
                         // Swing flips selectSQLLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
-                        key: 'select', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
-                        language: (p) => asBool(p.useScript) ? 'javascript' : 'sql',
+                        key: 'select', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                        language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql',
                         tooltip: 'SQL select statement, or a JavaScript script when "Use JavaScript" is Yes'
                     },
                     {
                         // Swing option labels (UPDATE_NEVER=1, UPDATE_EACH=3, UPDATE_ONCE=2);
                         // runPostProcessSQLLabel flips 'SQL'<->'Script' on Use JavaScript.
-                        key: 'updateMode', label: (p) => asBool(p.useScript) ? 'Run Post-Process Script' : 'Run Post-Process SQL', type: 'radio', refresh: true,
+                        key: 'updateMode', label: (p: any) => asBool(p.useScript) ? 'Run Post-Process Script' : 'Run Post-Process SQL', type: 'radio', refresh: true,
                         // Swing aggregateResultsActionPerformed relabels the per-message
                         // options to per-row when Aggregate Results = Yes.
-                        options: (p) => asBool(p.aggregateResults)
+                        options: (p: any) => asBool(p.aggregateResults)
                             ? [{ value: 1, label: 'Never' }, { value: 3, label: 'For each row' }, { value: 2, label: 'Once for all rows' }]
                             : [{ value: 1, label: 'Never' }, { value: 3, label: 'After each message' }, { value: 2, label: 'Once after all messages' }]
                     },
                     {
                         // Swing updateNeverActionPerformed keeps this editor VISIBLE but disabled at Never.
                         // The `code` field now honours `disabled`, so match Swing: grey it out (not hide it).
-                        key: 'update', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
-                        language: (p) => asBool(p.useScript) ? 'javascript' : 'sql',
-                        disabled: (p) => Number(p.updateMode) === 1
+                        key: 'update', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                        language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql',
+                        disabled: (p: any) => Number(p.updateMode) === 1
                     }
                 ]} />
             </div>
@@ -328,18 +328,18 @@ const databaseReader = {
     // Swing DatabaseReader.checkProperties: URL required unless Use JavaScript; the
     // SQL/JavaScript select is always required; the post-process SQL/script is
     // required unless Run Post-Process = Never (UPDATE_NEVER = 1); Driver required.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
-            { key: 'url', label: 'URL', when: (p) => !asBool(p.useScript) },
+            { key: 'url', label: 'URL', when: (p: any) => !asBool(p.useScript) },
             { key: 'select', label: 'SQL' },
-            { key: 'update', label: 'Post-Process SQL', when: (p) => Number(p.updateMode) !== 1 },
+            { key: 'update', label: 'Post-Process SQL', when: (p: any) => Number(p.updateMode) !== 1 },
             { key: 'driver', label: 'Driver' }
         ]);
     }
 };
 
 const databaseWriter = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties',
             '@version': version,
@@ -354,12 +354,12 @@ const databaseWriter = {
             useScript: false
         };
     },
-    component({ properties, platform, onChange }) {
+    component({ properties, platform, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Connection Settings' },
                 { type: 'custom', label: 'Driver', render: () => driverControlNode(properties, platform, onChange) },
-                { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p, ctx) => insertUrlTemplateButton(p, platform, ctx.onChange) },
+                { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p: any, ctx: any) => insertUrlTemplateButton(p, platform, ctx.onChange) },
                 { key: 'username', label: 'Username', type: 'text', width: '220px' },
                 { key: 'password', label: 'Password', type: 'password', width: '220px' },
                 { section: 'Query' },
@@ -368,28 +368,28 @@ const databaseWriter = {
                     // Yes fills it with the connection boilerplate (and switches to JavaScript);
                     // No clears it back to SQL.
                     key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true,
-                    onSet: (p, v) => { p.query = asBool(v) ? generateWriterConnectionString(p) : ''; }
+                    onSet: (p: any, v: any) => { p.query = asBool(v) ? generateWriterConnectionString(p) : ''; }
                 },
                 {
                     // Swing flips sqlLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
-                    key: 'query', label: (p) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
-                    language: (p) => asBool(p.useScript) ? 'javascript' : 'sql'
+                    key: 'query', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                    language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql'
                 }
             ]} />
         );
     },
     // Swing DatabaseWriter.checkProperties: URL required unless Use JavaScript; the
     // SQL/JavaScript query is always required; Driver required (must not be blank).
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
-            { key: 'url', label: 'URL', when: (p) => !asBool(p.useScript) },
+            { key: 'url', label: 'URL', when: (p: any) => !asBool(p.useScript) },
             { key: 'query', label: 'SQL' },
             { key: 'driver', label: 'Driver' }
         ]);
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('Database Reader', 'SOURCE', databaseReader);
     platform.registerConnectorPanel('Database Writer', 'DESTINATION', databaseWriter);
 }
