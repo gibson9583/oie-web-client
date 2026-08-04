@@ -1,3 +1,5 @@
-/* Database connector — web admin plugin (ConnectorSettingsPanel equivalent).
-   Panels live in the shared client connector library (/connectors/database.js). */
-export { register } from '/connectors/database.js';
+// web-administrator/plugins/connector-database/web/plugin.ts
+import { register } from "/connectors/database.js";
+export {
+  register
+};

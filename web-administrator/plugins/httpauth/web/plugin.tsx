@@ -18,6 +18,7 @@
  * onChange() to mark the channel dirty, matching the imperative version.
  */
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 import { DESTINATION_MAPPINGS } from '@oie/web-ui';
 const React = platform.React;
 
@@ -30,7 +31,7 @@ const AUTH_TYPE_OPTIONS = [
     { value: 'OAUTH2_VERIFICATION', label: 'OAuth 2.0 Token Verification' }
 ];
 
-const AUTH_CLASSES = {
+const AUTH_CLASSES: Record<string, string> = {
     NONE: 'com.mirth.connect.plugins.httpauth.NoneHttpAuthProperties',
     BASIC: 'com.mirth.connect.plugins.httpauth.basic.BasicHttpAuthProperties',
     DIGEST: 'com.mirth.connect.plugins.httpauth.digest.DigestHttpAuthProperties',
@@ -49,11 +50,11 @@ const DEFAULT_AUTH_SCRIPT = '// Return an AuthenticationResult object to authent
     + '// You have access to the source map here.\n\n'
     + 'return AuthenticationResult.Success();';
 
-function asBool(value) {
+function asBool(value: any) {
     return value === true || value === 'true';
 }
 
-function findAuthEntry(properties) {
+function findAuthEntry(properties: any) {
     const pp = properties.pluginProperties;
     if (!pp || typeof pp !== 'object') return null;
     for (const [key, value] of Object.entries(pp)) {
@@ -66,12 +67,12 @@ function findAuthEntry(properties) {
     return null;
 }
 
-function currentAuthType(properties) {
+function currentAuthType(properties: any) {
     const state = findAuthEntry(properties);
     return state ? String(state.entry.authType) : 'NONE';
 }
 
-function defaultAuthProperties(type, version) {
+function defaultAuthProperties(type: any, version: any) {
     const base = { '@version': version, authType: type };
     switch (type) {
         case 'BASIC':
@@ -111,7 +112,7 @@ function defaultAuthProperties(type, version) {
 
 /* Replace the httpauth entry with a fresh properties object of the new type
    (other pluginProperties entries are preserved). */
-function setAuthType(properties, type) {
+function setAuthType(properties: any, type: any) {
     const state = findAuthEntry(properties);
     if (state && String(state.entry.authType) === type) return;
     if (!state && type === 'NONE') return;
@@ -124,8 +125,8 @@ function setAuthType(properties, type) {
 
 /* ---- XStream linked-hash-map (credentials/properties) helpers ----
    Map<String,String> { '@class': 'linked-hash-map', entry: [{ string: [k, v] }] }. */
-function mapRows(map) {
-    const out = [];
+function mapRows(map: any) {
+    const out: any[] = [];
     if (!map || typeof map !== 'object') return out;
     let entries = map.entry;
     if (entries === null || entries === undefined || entries === '') return out;
@@ -138,21 +139,21 @@ function mapRows(map) {
     return out;
 }
 
-function writeMapRows(rows) {
-    const target = { '@class': 'linked-hash-map' };
-    const clean = rows.filter(([k]) => k !== '' && k !== null && k !== undefined);
-    if (clean.length) target.entry = clean.map(([k, v]) => ({ string: [k, v] }));
+function writeMapRows(rows: any) {
+    const target: any = { '@class': 'linked-hash-map' };
+    const clean = rows.filter(([k]: any) => k !== '' && k !== null && k !== undefined);
+    if (clean.length) target.entry = clean.map(([k, v]: any) => ({ string: [k, v] }));
     return target;
 }
 
-export function register(platform) {
+export function register(platform: Platform) {
 
     /* CodeMirror/Monaco island: mounts platform.createCodeEditor's .el into a
        ref'd div and pushes edits back through onChange. (Same code editor the
        imperative buildForm 'code' field used.) */
-    function CodeField({ value, language, minHeight, onChange }) {
-        const hostRef = React.useRef(null);
-        const editorRef = React.useRef(null);
+    function CodeField({ value, language, minHeight, onChange }: any) {
+        const hostRef = React.useRef(null as any);
+        const editorRef = React.useRef(null as any);
         const onChangeRef = React.useRef(onChange);
         onChangeRef.current = onChange;
         React.useEffect(() => {
@@ -163,12 +164,12 @@ export function register(platform) {
                 popoutable: true,   // dedicated full-screen code view
                 popoutTitle: 'Script',
                 popoutVars: DESTINATION_MAPPINGS,   // connector settings context
-                onChange: (v) => onChangeRef.current(v)
+                onChange: (v: any) => onChangeRef.current(v)
             });
             editorRef.current = editor;
             if (hostRef.current) hostRef.current.appendChild(editor.el);
             return () => {
-                if (editor.destroy) editor.destroy();
+                if ((editor as any).destroy) (editor as any).destroy();
                 if (hostRef.current) hostRef.current.replaceChildren();
             };
             // Mount once; the editor owns its own value after mount.
@@ -179,23 +180,23 @@ export function register(platform) {
 
     /* Key/value table over a linked-hash-map (credentials user/password, custom
        properties). Mutates entry[key] in place and notifies. */
-    function KeyValueField({ entry, fieldKey, onChange }) {
+    function KeyValueField({ entry, fieldKey, onChange }: any) {
         const [rows, setRows] = React.useState(() => mapRows(entry[fieldKey]));
-        const commit = (next) => {
+        const commit = (next: any) => {
             entry[fieldKey] = writeMapRows(next);
             setRows(next);
             onChange();
         };
         return (
             <div>
-                {rows.map((row, i) => (
+                {rows.map((row: any, i: any) => (
                     <div key={i} className="flex gap-1.5 mb-1.5">
                         <input type="text" placeholder="Name" className="flex-1" value={row[0]}
-                            onInput={(e) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }}
-                            onChange={(e) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }} />
+                            onInput={(e: any) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }}
+                            onChange={(e: any) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }} />
                         <input type="text" placeholder="Value" className="flex-[2]" value={row[1]}
-                            onInput={(e) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }}
-                            onChange={(e) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }} />
+                            onInput={(e: any) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }}
+                            onChange={(e: any) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }} />
                         <button type="button" className="icon-btn" title="Remove"
                             onClick={() => { const next = rows.slice(); next.splice(i, 1); commit(next); }}>
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
@@ -213,7 +214,7 @@ export function register(platform) {
 
     /* Checkbox group over an XStream enum set ({ '@class': 'linked-hash-set',
        <enum FQCN>: [names] }); preserves canonical option order when writing. */
-    function EnumSetField({ entry, fieldKey, elementClass, options, onChange }) {
+    function EnumSetField({ entry, fieldKey, elementClass, options, onChange }: any) {
         const read = () => {
             const set = entry[fieldKey];
             let values = set && typeof set === 'object' ? set[elementClass] : null;
@@ -222,20 +223,20 @@ export function register(platform) {
             return values.map(String);
         };
         const [selected, setSelected] = React.useState(read);
-        const toggle = (optValue, checked) => {
-            let next = selected.filter(v => v !== optValue);
+        const toggle = (optValue: any, checked: any) => {
+            let next = selected.filter((v: any) => v !== optValue);
             if (checked) next.push(optValue);
-            const ordered = options.map(o => o.value).filter(v => next.includes(v));
+            const ordered = options.map((o: any) => o.value).filter((v: any) => next.includes(v));
             entry[fieldKey] = { '@class': 'linked-hash-set', [elementClass]: ordered };
             setSelected(ordered);
             onChange();
         };
         return (
             <div className="radio-group inline-row">
-                {options.map(opt => (
+                {options.map((opt: any) => (
                     <label className="check" key={opt.value}>
                         <input type="checkbox" checked={selected.includes(opt.value)}
-                            onChange={(e) => toggle(opt.value, e.target.checked)} />
+                            onChange={(e: any) => toggle(opt.value, e.target.checked)} />
                         {opt.label}
                     </label>
                 ))}
@@ -243,7 +244,7 @@ export function register(platform) {
         );
     }
 
-    function CformRow({ label, top, children }) {
+    function CformRow({ label, top, children }: any) {
         return (
             <React.Fragment>
                 <label className={'cform-label' + (top ? ' top' : '')}>{label ? `${label}:` : ''}</label>
@@ -252,22 +253,22 @@ export function register(platform) {
         );
     }
 
-    function TextRow({ label, entry, fieldKey, width, placeholder, onChange }) {
+    function TextRow({ label, entry, fieldKey, width, placeholder, onChange }: any) {
         return (
             <CformRow label={label}>
                 <input type="text" placeholder={placeholder} style={{ width: width || '320px' }}
                     value={entry[fieldKey] == null ? '' : String(entry[fieldKey])}
-                    onInput={(e) => { entry[fieldKey] = e.target.value; onChange(); }}
-                    onChange={(e) => { entry[fieldKey] = e.target.value; onChange(); }} />
+                    onInput={(e: any) => { entry[fieldKey] = e.target.value; onChange(); }}
+                    onChange={(e: any) => { entry[fieldKey] = e.target.value; onChange(); }} />
             </CformRow>
         );
     }
 
     /* Credentials (table/variable) sub-form shared by BASIC + DIGEST. */
-    function CredentialFields({ entry, onChange }) {
+    function CredentialFields({ entry, onChange }: any) {
         const [useVar, setUseVar] = React.useState(asBool(entry.isUseCredentialsVariable));
         const name = React.useMemo(() => 'httpauth-cred-' + Math.random().toString(36).slice(2), []);
-        const setUse = (v) => { entry.isUseCredentialsVariable = v; setUseVar(v); onChange(); };
+        const setUse = (v: any) => { entry.isUseCredentialsVariable = v; setUseVar(v); onChange(); };
         return (
             <React.Fragment>
                 <CformRow label="Use Credentials">
@@ -296,7 +297,7 @@ export function register(platform) {
     /* Per-type editor rendered below the Authentication Type select. Operates on
        the auth entry object itself (its keys are not reachable by dot path from
        the receiver properties — FQCN keys contain dots). */
-    function AuthEditor({ entry, onChange }) {
+    function AuthEditor({ entry, onChange }: any) {
         switch (String(entry.authType)) {
             case 'BASIC':
                 return (
@@ -328,7 +329,7 @@ export function register(platform) {
                     <div className="cform"><div className="cform-section"><div className="cform-grid">
                         <CformRow label="Script" top>
                             <CodeField value={entry.script} language="javascript" minHeight="200px"
-                                onChange={(v) => { entry.script = v; onChange(); }} />
+                                onChange={(v: any) => { entry.script = v; onChange(); }} />
                         </CformRow>
                     </div></div></div>
                 );
@@ -347,7 +348,7 @@ export function register(platform) {
                     <div className="cform"><div className="cform-section"><div className="cform-grid">
                         <CformRow label="Token Location">
                             <select className="w-[144px]" value={entry.tokenLocation == null ? '' : String(entry.tokenLocation)}
-                                onChange={(e) => { entry.tokenLocation = e.target.value; onChange(); }}>
+                                onChange={(e: any) => { entry.tokenLocation = e.target.value; onChange(); }}>
                                 <option value="HEADER">Request Header</option>
                                 <option value="QUERY">Query Parameter</option>
                             </select>
@@ -366,8 +367,8 @@ export function register(platform) {
        { connector, onChange } (+ getEntry/setEntry/propertiesClass/channel/platform
        which this panel does not need — it edits connector.properties directly,
        the same object getEntry/setEntry read/write). */
-    function HttpAuthPanel({ connector, onChange }) {
-        const [, force] = React.useReducer((x) => x + 1, 0);
+    function HttpAuthPanel({ connector, onChange }: any) {
+        const [, force] = React.useReducer((x: any) => x + 1, 0);
         if (!connector || !connector.properties) return null;
         const properties = connector.properties;
         const type = currentAuthType(properties);
@@ -378,7 +379,7 @@ export function register(platform) {
                 <div className="field">
                     <label>Authentication Type</label>
                     <select className="w-[198px]" value={type}
-                        onChange={(e) => { setAuthType(properties, e.target.value); onChange(); force(); }}>
+                        onChange={(e: any) => { setAuthType(properties, e.target.value); onChange(); force(); }}>
                         {AUTH_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                 </div>
@@ -394,11 +395,11 @@ export function register(platform) {
         title: 'Authentication',
         // A truthy fqcn so the channel editor renders this panel; the auth type
         // (and thus the stored class) is managed inside the component via pluginProperties.
-        propertiesClass: (transportName, mode, connector) =>
+        propertiesClass: (transportName: any, mode: any, connector: any) =>
             AUTH_CLASSES[currentAuthType((connector && connector.properties) || {})] || AUTH_CLASSES.NONE,
         // Engine parity: HttpAuthConnectorPropertiesPlugin.isConnectorPropertiesPluginSupported
         // attaches to these source listeners.
-        isSupported: (transportName, mode) => mode === 'SOURCE' && [
+        isSupported: (transportName: any, mode: any) => mode === 'SOURCE' && [
             'HTTP Listener', 'Web Service Listener', 'FHIR Listener', 'Health Data Hub Listener'
         ].includes(transportName),
         component: HttpAuthPanel

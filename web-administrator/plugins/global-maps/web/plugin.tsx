@@ -15,11 +15,12 @@
  */
 
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const GLOBAL_MAP_LABEL = '<Global Map>';
 
-export function register(platform) {
+export function register(platform: Platform) {
     const { h, modal } = platform.ui;
     const api = platform.api;
 
@@ -27,8 +28,8 @@ export function register(platform) {
        bare object. Each entry is either {string:[k,v]} (string→string pair)
        or {<keyType>:k, <valueType>:v} — including {null:null, map:{...}} for
        the global map's null key. */
-    function mapEntries(value) {
-        const out = [];
+    function mapEntries(value: any) {
+        const out: any[] = [];
         for (const entry of api.asList(value?.entry)) {
             if (entry === null || typeof entry !== 'object') continue;
             const keys = Object.keys(entry);
@@ -45,7 +46,7 @@ export function register(platform) {
 
     /* Values are serialized with XStream ("<string>THIS</string>") — show the
        payload, not the wrapper. */
-    function displayValue(value) {
+    function displayValue(value: any) {
         if (value === null || value === undefined) return '';
         const s = String(value);
         if (s.trim().startsWith('<')) {
@@ -53,7 +54,7 @@ export function register(platform) {
                 const parsed = api.parseBody(s);
                 if (parsed === null || parsed === undefined) return s;
                 return typeof parsed === 'object' ? JSON.stringify(parsed, null, 1) : String(parsed);
-            } catch (e) { /* show raw */ }
+            } catch (e: any) { /* show raw */ }
         }
         return s;
     }
@@ -61,7 +62,7 @@ export function register(platform) {
     /* Click-to-view full value — imperative dialog via platform.ui.modal. The
        modal body is built with platform.ui.h (an imperative helper, not the
        React tree), matching the original. */
-    function showValue(row) {
+    function showValue(row: any) {
         modal({
             title: 'Global Map Value',
             size: 'wide',
@@ -89,12 +90,12 @@ export function register(platform) {
             { set: { string: channelIds } },
             { params: { includeGlobalMap: true } });
 
-        const rows = [];
+        const rows: any[] = [];
         for (const [serverId, serverMaps] of mapEntries(all)) {
             for (const [channelId, map] of mapEntries(serverMaps)) {
                 const isGlobal = channelId === null || channelId === undefined || channelId === 'null';
                 const chId = isGlobal ? null : String(channelId);
-                const channel = isGlobal ? GLOBAL_MAP_LABEL : (idsAndNames.get(chId) || chId);
+                const channel = isGlobal ? GLOBAL_MAP_LABEL : (idsAndNames.get(chId as string) || chId);
                 for (const [k, v] of mapEntries(map)) {
                     rows.push({ serverId: String(serverId), channelId: chId, channel, key: String(k), value: displayValue(v) });
                 }
@@ -105,28 +106,28 @@ export function register(platform) {
 
     /* Dashboard tab component. Owns its data fetch + 10s poll; filters rows to
        the dashboard selection on every render (global map always shows). */
-    function GlobalMapsTab({ selection }) {
-        const [rows, setRows] = React.useState([]);
-        const [error, setError] = React.useState(null);
+    function GlobalMapsTab({ selection }: any) {
+        const [rows, setRows] = React.useState([] as any[]);
+        const [error, setError] = React.useState(null as any);
         const mountedRef = React.useRef(true);
 
         // Selected channel ids from the dashboard selection above (a single
         // connector row carries metaDataId but still a channelId).
         const selectedIds = React.useMemo(
-            () => new Set((selection || []).map(s => String(s.channelId))),
+            () => new Set((selection || []).map((s: any) => String(s.channelId))),
             [selection]);
 
         // Fetch once on mount and poll every 10s; self-stops on unmount.
         React.useEffect(() => {
             mountedRef.current = true;
-            let timer = null;
+            let timer: any = null;
             const refresh = async () => {
                 try {
                     const next = await fetchRows();
                     if (!mountedRef.current) return;
                     setRows(next);
                     setError(null);
-                } catch (e) {
+                } catch (e: any) {
                     if (!mountedRef.current) return;
                     setError(e.message);
                 }
@@ -138,20 +139,20 @@ export function register(platform) {
 
         // Global map always shows; channel maps filter to the dashboard
         // selection (all channels when nothing is selected).
-        const filtered = rows.filter(r =>
+        const filtered = rows.filter((r: any) =>
             r.channelId === null || !selectedIds.size || selectedIds.has(String(r.channelId)));
 
         // Click-to-sort by any column (default = fetch order until a header is clicked).
         const [sort, setSort] = React.useState({ key: null, dir: 1 });
         const sorted = React.useMemo(() => {
             if (!sort.key) return filtered;
-            const val = (r) => String((sort.key === 'channel' ? r.channel : r[sort.key]) ?? '').toLowerCase();
-            return [...filtered].sort((a, b) => val(a).localeCompare(val(b)) * sort.dir);
+            const val = (r: any) => String((sort.key === 'channel' ? r.channel : r[sort.key]) ?? '').toLowerCase();
+            return [...filtered].sort((a: any, b: any) => val(a).localeCompare(val(b)) * sort.dir);
         }, [filtered, sort]);
-        const toggleSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
-        const arrow = (key) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
+        const toggleSort = (key: any) => setSort((s: any) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+        const arrow = (key: any) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
 
-        let body;
+        let body: any;
         if (error) {
             body = (
                 <tr><td colSpan={4} className="text-text-faint p-3">
@@ -165,7 +166,7 @@ export function register(platform) {
                 </td></tr>
             );
         } else {
-            body = sorted.map((r, i) => {
+            body = sorted.map((r: any, i: any) => {
                 const value = r.value.replace(/\s+/g, ' ').trim();
                 return (
                     <tr key={`${r.serverId}|${r.channelId}|${r.key}|${i}`}

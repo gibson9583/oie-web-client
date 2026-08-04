@@ -1,4 +1,4 @@
-// plugins/transformer-steps/web/plugin.jsx
+// web-administrator/plugins/transformer-steps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var SCOPES = [
@@ -444,7 +444,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
       "tr",
       {
         key: i,
-        className: selValue === i ? "selected" : null,
+        className: selValue === i ? "selected" : void 0,
         onClick: () => setSelValue(i)
       },
       /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(

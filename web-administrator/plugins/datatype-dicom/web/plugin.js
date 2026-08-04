@@ -1,4 +1,4 @@
-// plugins/datatype-dicom/web/plugin.jsx
+// web-administrator/plugins/datatype-dicom/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.dicom";

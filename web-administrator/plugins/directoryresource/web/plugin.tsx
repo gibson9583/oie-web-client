@@ -22,16 +22,17 @@
  * Libraries: GET /extensions/directoryresource/resources/{id}/libraries.
  */
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
 
-export function register(platform) {
+export function register(platform: Platform) {
 
     /* Loaded libraries list — GET .../resources/{id}/libraries. Fetched on mount
        (and when the resource id changes); same logic as the imperative
        loadLibraries(). */
-    function LoadedLibraries({ entry, api }) {
+    function LoadedLibraries({ entry, api }: any) {
         const [state, setState] = React.useState({ phase: 'loading', libs: [] });
         const id = entry.obj.id;
         React.useEffect(() => {
@@ -40,10 +41,10 @@ export function register(platform) {
             (async () => {
                 try {
                     const raw = await api.get(`/extensions/directoryresource/resources/${encodeURIComponent(id)}/libraries`);
-                    const libs = api.asList(raw, 'string').map(String).filter(s => s !== '');
+                    const libs = api.asList(raw, 'string').map(String).filter((s: any) => s !== '');
                     if (cancelled) return;
                     setState({ phase: 'ready', libs });
-                } catch (e) {
+                } catch (e: any) {
                     if (cancelled) return;
                     setState({ phase: 'error', libs: [] });
                 }
@@ -62,13 +63,13 @@ export function register(platform) {
         }
         return (
             <ul className="m-0 pl-[16px] max-h-[162px] overflow-auto font-mono text-[11px]">
-                {state.libs.map((l, i) => <li key={`${i}-${l}`}>{l}</li>)}
+                {state.libs.map((l: any, i: any) => <li key={`${i}-${l}`}>{l}</li>)}
             </ul>
         );
     }
 
     /* Directory settings editor. ctx (props): { entry, locked, platform, refreshTable }. */
-    function DirectoryDetail({ entry, locked, platform, refreshTable }) {
+    function DirectoryDetail({ entry, locked, platform, refreshTable }: any) {
         const obj = entry.obj;
         // Local mirrors so controlled inputs re-render; writes go straight to obj.
         const [name, setName] = React.useState(obj.name || '');
@@ -81,31 +82,31 @@ export function register(platform) {
                 <div className="field">
                     <label>Name</label>
                     <input type="text" value={name} disabled={locked}
-                        onInput={(e) => { obj.name = e.target.value; setName(e.target.value); }}
-                        onChange={(e) => { obj.name = e.target.value; setName(e.target.value); }}
+                        onInput={(e: any) => { obj.name = e.target.value; setName(e.target.value); }}
+                        onChange={(e: any) => { obj.name = e.target.value; setName(e.target.value); }}
                         onBlur={() => { if (refreshTable) refreshTable(); }} />
                     {locked ? <div className="hint">The Default Resource cannot be renamed</div> : null}
                 </div>
                 <div className="field">
                     <label>Directory</label>
                     <input type="text" value={directory} disabled={locked}
-                        onInput={(e) => { obj.directory = e.target.value; setDirectory(e.target.value); }}
-                        onChange={(e) => { obj.directory = e.target.value; setDirectory(e.target.value); }} />
+                        onInput={(e: any) => { obj.directory = e.target.value; setDirectory(e.target.value); }}
+                        onChange={(e: any) => { obj.directory = e.target.value; setDirectory(e.target.value); }} />
                     {locked ? <div className="hint">The Default Resource directory cannot be changed</div> : null}
                 </div>
                 <div className="field">
                     <label>Subdirectories</label>
                     <label className="check">
                         <input type="checkbox" checked={recursion}
-                            onChange={(e) => { obj.directoryRecursion = e.target.checked; setRecursion(e.target.checked); }} />
+                            onChange={(e: any) => { obj.directoryRecursion = e.target.checked; setRecursion(e.target.checked); }} />
                         Include All Subdirectories
                     </label>
                 </div>
                 <div className="field span-2">
                     <label>Description</label>
                     <textarea value={description}
-                        onInput={(e) => { obj.description = e.target.value; setDescription(e.target.value); }}
-                        onChange={(e) => { obj.description = e.target.value; setDescription(e.target.value); }} />
+                        onInput={(e: any) => { obj.description = e.target.value; setDescription(e.target.value); }}
+                        onChange={(e: any) => { obj.description = e.target.value; setDescription(e.target.value); }} />
                 </div>
                 <div className="field span-2">
                     <label>Loaded Libraries</label>
@@ -124,8 +125,8 @@ export function register(platform) {
         /* New directory resource. ctx: { version, containerIsArray } — version
            mirrors an existing entry so the engine doesn't migrate from scratch;
            the @class is only needed for the array-shaped container. */
-        create({ version, containerIsArray }) {
-            const obj = {};
+        create({ version, containerIsArray }: any) {
+            const obj: any = {};
             if (version) obj['@version'] = version;
             if (containerIsArray) obj['@class'] = DIRECTORY_RESOURCE_CLASS;
             obj.pluginPointName = 'Directory Resource';

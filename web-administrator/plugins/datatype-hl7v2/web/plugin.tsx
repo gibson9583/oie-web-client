@@ -22,20 +22,21 @@
  */
 
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const PKG = 'com.mirth.connect.plugins.datatypes.hl7v2';
 
-const text = (key, label, def, hint) => ({ key, label, type: 'text', default: def, hint });
-const bool = (key, label, def, hint) => ({ key, label, type: 'checkbox', default: def, hint });
-const opt = (key, label, options, def, hint) => ({ key, label, type: 'select', options, default: def, hint });
-const code = (key, label, def, hint) => ({ key, label, type: 'code', default: def, hint });
+const text = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'text', default: def, hint });
+const bool = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'checkbox', default: def, hint });
+const opt = (key: any, label: any, options: any, def: any, hint?: any) => ({ key, label, type: 'select', options, default: def, hint });
+const code = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'code', default: def, hint });
 
 const BATCH_SCRIPT_HINT = 'JavaScript that splits the batch and returns the next message. ' +
     "Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. " +
     'Only used when Process Batch is enabled in the connector.';
 
-const DEF = {
+const DEF: any = {
     name: 'HL7V2', label: 'HL7 v2.x', order: 10,
     propertiesClass: `${PKG}.HL7v2DataTypeProperties`,
     groups: [
@@ -107,16 +108,16 @@ const DEF = {
 
 // Same builder the core registry uses: '@class'/'@version' on the root and on
 // every group, each field seeded with its default.
-DEF.defaults = (version) => {
-    const props = { '@class': DEF.propertiesClass, '@version': version };
+DEF.defaults = (version: any) => {
+    const props: any = { '@class': DEF.propertiesClass, '@version': version };
     for (const group of DEF.groups) {
-        const obj = { '@class': group.class, '@version': version };
+        const obj: any = { '@class': group.class, '@version': version };
         for (const f of group.fields) obj[f.key] = f.default ?? null;
         props[group.key] = obj;
     }
     return props;
 };
 
-export function register(platform) {
+export function register(platform: Platform) {
     platform.registerDataType(DEF.name, DEF);
 }

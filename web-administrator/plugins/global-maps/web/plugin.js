@@ -1,4 +1,4 @@
-// plugins/global-maps/web/plugin.jsx
+// web-administrator/plugins/global-maps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var GLOBAL_MAP_LABEL = "<Global Map>";

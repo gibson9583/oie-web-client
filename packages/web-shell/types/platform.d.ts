@@ -154,7 +154,7 @@ export interface ConnectorPropertiesPanel {
     /** The JSON key inside `connector.properties.pluginProperties` (FQCN or a resolver). */
     propertiesClass: string | ((transportName: string, mode: ConnectorMode, connector: OieObject) => string);
     isSupported(transportName: string, mode: ConnectorMode, connector?: OieObject): boolean;
-    defaults(version: string, transportName?: string, mode?: ConnectorMode, connector?: OieObject): OieObject;
+    defaults?(version: string, transportName?: string, mode?: ConnectorMode, connector?: OieObject): OieObject;
     component: PluginComponent<{
         getEntry(): OieObject | null;
         setEntry(entry: OieObject | null): void;

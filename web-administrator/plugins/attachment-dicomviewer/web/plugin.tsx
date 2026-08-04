@@ -13,10 +13,11 @@
  * `component` that receives { attachment, channelId, messageId, platform } as props.
  */
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 import dicomParser from 'dicom-parser';
 const React = platform.React;
 
-function typeOf(att) {
+function typeOf(att: any) {
     const t = att && att.type;
     return String(typeof t === 'string' ? t : (t && (t._ || t.$)) || '').trim();
 }
@@ -32,7 +33,7 @@ const META = [
    baseline/extended the browser decodes; the rest are named-but-unsupported (yet). */
 const UNCOMPRESSED = new Set(['1.2.840.10008.1.2', '1.2.840.10008.1.2.1', '1.2.840.10008.1.2.2']);
 const JPEG_BASELINE = new Set(['1.2.840.10008.1.2.4.50', '1.2.840.10008.1.2.4.51']);
-const COMPRESSED_NAMES = {
+const COMPRESSED_NAMES: Record<string, string> = {
     '1.2.840.10008.1.2.5': 'RLE Lossless',
     '1.2.840.10008.1.2.4.57': 'JPEG Lossless',
     '1.2.840.10008.1.2.4.70': 'JPEG Lossless (SV1)',
@@ -42,7 +43,7 @@ const COMPRESSED_NAMES = {
     '1.2.840.10008.1.2.4.91': 'JPEG 2000'
 };
 
-function first(str) {
+function first(str: any) {
     // WindowCenter/Width may be multi-valued ("40\\400"); take the first.
     if (str == null || str === '') return null;
     const v = parseFloat(String(str).split('\\')[0]);
@@ -50,7 +51,7 @@ function first(str) {
 }
 
 /* Pull the image attributes we need for decode + windowing. */
-function imageInfo(ds) {
+function imageInfo(ds: any) {
     const rows = ds.uint16('x00280010') || 0;
     const cols = ds.uint16('x00280011') || 0;
     const spp = ds.uint16('x00280002') || 1;
@@ -67,7 +68,7 @@ function imageInfo(ds) {
 }
 
 /* Read one uncompressed frame's samples as a typed array (Int16/Uint16/Uint8). */
-function readFrame(ds, bytes, info, frame) {
+function readFrame(ds: any, bytes: any, info: any, frame: any) {
     const el = ds.elements.x7fe00010;
     if (!el) return null;
     const perPixel = info.spp;
@@ -83,7 +84,7 @@ function readFrame(ds, bytes, info, frame) {
 }
 
 /* Grayscale render with window/level (+ rescale + MONOCHROME1 inversion). */
-function renderGray(canvas, raw, info, wc, ww) {
+function renderGray(canvas: any, raw: any, info: any, wc: any, ww: any) {
     const { rows, cols, slope, intercept, photometric } = info;
     const img = canvas.getContext('2d').createImageData(cols, rows);
     const data = img.data;
@@ -104,7 +105,7 @@ function renderGray(canvas, raw, info, wc, ww) {
 }
 
 /* RGB render (8-bit, interleaved or planar). */
-function renderRGB(canvas, raw, info) {
+function renderRGB(canvas: any, raw: any, info: any) {
     const { rows, cols, planar } = info;
     const n = rows * cols;
     const img = canvas.getContext('2d').createImageData(cols, rows);
@@ -120,7 +121,7 @@ function renderRGB(canvas, raw, info) {
 }
 
 /* Extract encapsulated JPEG frame bytes and let the browser decode + draw it. */
-async function drawJpegFrame(canvas, ds, bytes, info, frame) {
+async function drawJpegFrame(canvas: any, ds: any, bytes: any, info: any, frame: any) {
     const el = ds.elements.x7fe00010;
     const frameBytes = dicomParser.readEncapsulatedImageFrame(ds, el, frame);
     const bitmap = await createImageBitmap(new Blob([frameBytes], { type: 'image/jpeg' }));
@@ -129,15 +130,15 @@ async function drawJpegFrame(canvas, ds, bytes, info, frame) {
     bitmap.close && bitmap.close();
 }
 
-export function register(platform) {
+export function register(platform: Platform) {
 
-    function DicomViewer({ attachment, channelId, messageId, platform }) {
+    function DicomViewer({ attachment, channelId, messageId, platform }: any) {
         const [state, setState] = React.useState({ status: 'loading' });
         const [frame, setFrame] = React.useState(0);
-        const [win, setWin] = React.useState(null);   // { c, w } window center/width
+        const [win, setWin] = React.useState(null as any);   // { c, w } window center/width
         const [zoom, setZoom] = React.useState(1);
-        const [popUrl, setPopUrl] = React.useState(null);   // fullscreen pop-out image
-        const canvasRef = React.useRef(null);
+        const [popUrl, setPopUrl] = React.useState(null as any);   // fullscreen pop-out image
+        const canvasRef = React.useRef(null as any);
 
         // Load + parse the object once.
         React.useEffect(() => {
@@ -151,12 +152,12 @@ export function register(platform) {
                     // raw attachment.
                     const msg = await platform.api.messages.get(channelId, messageId);
                     const entries = platform.api.asList(msg?.connectorMessages?.entry ?? msg?.connectorMessages);
-                    const cms = entries.map((e) => e.connectorMessage ?? e).filter(Boolean);
-                    const cm = cms.find((c) => String(c.metaDataId) === '0') || cms[0];
+                    const cms = entries.map((e: any) => e.connectorMessage ?? e).filter(Boolean);
+                    const cm = cms.find((c: any) => String(c.metaDataId) === '0') || cms[0];
                     if (!cm) throw new Error('no connector message found for this message');
                     const b64 = String(await platform.api.messages.getDicom(channelId, messageId, cm) ?? '').replace(/\s+/g, '');
                     if (!b64) throw new Error('the reassembled DICOM is empty');
-                    let bin;
+                    let bin: any;
                     try { bin = atob(b64); } catch { throw new Error('the attachment content is not valid Base64'); }
                     const bytes = new Uint8Array(bin.length);
                     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -169,12 +170,12 @@ export function register(platform) {
                         throw new Error('not a valid DICOM object (missing the DICM header) — the message content may not be raw binary DICOM');
                     }
 
-                    let ds;
+                    let ds: any;
                     try { ds = dicomParser.parseDicom(bytes); }
-                    catch (pe) { throw new Error('could not parse the DICOM dataset' + (pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : '')); }
+                    catch (pe: any) { throw new Error('could not parse the DICOM dataset' + (pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : '')); }
                     const ts = (ds.string('x00020010') || '').trim();
                     const info = imageInfo(ds);
-                    const meta = {};
+                    const meta: any = {};
                     for (const [tag] of META) { const v = ds.string(tag); if (v) meta[tag] = v.trim(); }
 
                     const kind = UNCOMPRESSED.has(ts) ? 'raw'
@@ -184,7 +185,7 @@ export function register(platform) {
                     if (cancelled) return;
                     setWin(info.wc != null && info.ww != null ? { c: info.wc, w: info.ww } : null);
                     setState({ status: 'ready', bytes, ds, ts, info, meta, kind, tsName: COMPRESSED_NAMES[ts] || ts });
-                } catch (e) {
+                } catch (e: any) {
                     if (!cancelled) setState({ status: 'error', message: e.message });
                 }
             })();
@@ -251,14 +252,14 @@ export function register(platform) {
                         <div className="flex items-center gap-4 flex-wrap text-[11px]">
                             {info.numFrames > 1 && (
                                 <span className="inline-flex items-center gap-1.5">
-                                    <button className="btn btn-sm" disabled={frame <= 0} onClick={() => setFrame(f => Math.max(0, f - 1))}>‹</button>
+                                    <button className="btn btn-sm" disabled={frame <= 0} onClick={() => setFrame((f: any) => Math.max(0, f - 1))}>‹</button>
                                     <span className="mono">{`Frame ${frame + 1} / ${info.numFrames}`}</span>
-                                    <button className="btn btn-sm" disabled={frame >= info.numFrames - 1} onClick={() => setFrame(f => Math.min(info.numFrames - 1, f + 1))}>›</button>
+                                    <button className="btn btn-sm" disabled={frame >= info.numFrames - 1} onClick={() => setFrame((f: any) => Math.min(info.numFrames - 1, f + 1))}>›</button>
                                 </span>
                             )}
                             <span className="inline-flex items-center gap-1.5">
                                 <span className="text-text-faint">Zoom</span>
-                                <input type="range" min="0.25" max="8" step="0.25" value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} />
+                                <input type="range" min="0.25" max="8" step="0.25" value={zoom} onChange={(e: any) => setZoom(parseFloat(e.target.value))} />
                                 <span className="mono w-[38px]">{`${Math.round(zoom * 100)}%`}</span>
                             </span>
                             {grayscale && win && (
@@ -266,12 +267,12 @@ export function register(platform) {
                                     <span className="inline-flex items-center gap-1.5">
                                         <span className="text-text-faint">Level</span>
                                         <input type="range" min={info.intercept} max={info.intercept + 4096 * info.slope} step="1"
-                                            value={win.c} onChange={e => setWin(w => ({ ...w, c: parseFloat(e.target.value) }))} />
+                                            value={win.c} onChange={(e: any) => setWin((w: any) => ({ ...w, c: parseFloat(e.target.value) }))} />
                                     </span>
                                     <span className="inline-flex items-center gap-1.5">
                                         <span className="text-text-faint">Window</span>
                                         <input type="range" min="1" max={Math.max(2, 4096 * info.slope)} step="1"
-                                            value={win.w} onChange={e => setWin(w => ({ ...w, w: parseFloat(e.target.value) }))} />
+                                            value={win.w} onChange={(e: any) => setWin((w: any) => ({ ...w, w: parseFloat(e.target.value) }))} />
                                     </span>
                                 </>
                             )}
@@ -298,7 +299,7 @@ export function register(platform) {
                     <div className="fixed inset-0 z-[2000] bg-black/90 flex flex-col items-center justify-center p-4 cursor-zoom-out"
                         onClick={() => setPopUrl(null)}>
                         <img src={popUrl} alt="DICOM" className="max-w-[95vw] max-h-[88vh] object-contain"
-                            style={{ imageRendering: 'pixelated' }} onClick={(e) => e.stopPropagation()} />
+                            style={{ imageRendering: 'pixelated' }} onClick={(e: any) => e.stopPropagation()} />
                         <button className="btn mt-3" onClick={() => setPopUrl(null)}>Close</button>
                     </div>
                 )}
@@ -311,7 +312,7 @@ export function register(platform) {
         // Reassembles the WHOLE message DICOM, so render once for all of a
         // message's pixel-data attachments (Swing DICOMViewer.handleMultiple).
         handleMultiple: true,
-        canHandle: (att) => /dicom|dcm/i.test(typeOf(att)),
+        canHandle: (att: any) => /dicom|dcm/i.test(typeOf(att)),
         component: DicomViewer
     });
 }
