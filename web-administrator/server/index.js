@@ -86,6 +86,16 @@ app.use((req, res, next) => {
     next();
 });
 
+// --- /api cache posture ------------------------------------------------------
+// Nothing under /api may reach the browser's disk cache: engine responses carry
+// channel configs (connector passwords) and message content (PHI), and the
+// cache is a plaintext file under the profile that outlives logout on a shared
+// workstation. Proxied engine responses get this forced in server/proxy.js
+// (forceNoStore — writeHead would override a value set here); this middleware
+// covers everything else under /api: the local _webadmin routes below and the
+// proxy's engine-unreachable error path.
+app.use('/api', (req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+
 // --- Web-admin plugin install/uninstall (engine-gated) -----------------------
 // Local /api/_webadmin/* routes, registered BEFORE the proxy so they're handled
 // here (the engine has no such path) while the /api session cookie still flows.

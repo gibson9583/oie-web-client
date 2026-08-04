@@ -108,6 +108,24 @@ const PROXY_FWD_HEADERS = [
     'x-proxied-https', 'forwarded', 'x-real-ip'
 ];
 
+// Engine responses cross this proxy into a browser whose HTTP disk cache is a
+// plaintext file under the profile directory — it survives logout and browser
+// exit, and channel configs carry connector passwords while the message browser
+// carries PHI. The engine sends no cache directives on authenticated 200s, so
+// without this the browser writes them to disk. Forced (not defaulted) because
+// the proxy is the trust boundary for the browser hop: no /api response benefits
+// from disk caching, and the guarantee must not depend on what an upstream
+// engine version sends. Must go in the headers passed to writeHead — a value set
+// via res.setHeader loses to writeHead's on conflict. Mutates `headers`; pure +
+// exported for testing.
+function forceNoStore(headers) {
+    headers['cache-control'] = 'no-store';
+    // Contradictory legacy hints; no-store must stand alone.
+    delete headers['expires'];
+    delete headers['pragma'];
+    return headers;
+}
+
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
 // Forwarded / X-Real-IP headers unless the immediate peer is trusted. Pure +
@@ -195,6 +213,7 @@ function createApiProxy(config) {
             for (const [name, value] of Object.entries(upstreamRes.headers)) {
                 if (!HOP_BY_HOP.has(name.toLowerCase())) resHeaders[name] = value;
             }
+            forceNoStore(resHeaders);
             // Reconcile the engine's session cookie with THIS connection's scheme as
             // it crosses our origin. Add SameSite=Lax (CSRF defense-in-depth). When
             // the front is HTTPS, add Secure. When the front is plain HTTP, STRIP any
@@ -284,4 +303,4 @@ function engineRequest(engine, { method, path: reqPath, headers, body }) {
     });
 }
 
-module.exports = { createApiProxy, resolveForwardedFor, isTrustedPeer, sanitizeForwardHeaders, resolveEngine, engineRequest };
+module.exports = { createApiProxy, resolveForwardedFor, isTrustedPeer, sanitizeForwardHeaders, forceNoStore, resolveEngine, engineRequest };
