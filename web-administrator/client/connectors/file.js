@@ -285,11 +285,7 @@ function ensureSchemeProperties(properties) {
   }
 }
 function onSchemeChange(properties) {
-  if (SCHEME_PROPERTY_CLASSES[properties.scheme]) {
-    ensureSchemeProperties(properties);
-  } else {
-    properties.schemeProperties = null;
-  }
+  ensureSchemeProperties(properties);
   if (properties.scheme === "WEBDAV") properties.passive = false;
   applyAnonymous(properties);
 }

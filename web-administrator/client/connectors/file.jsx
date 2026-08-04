@@ -337,11 +337,11 @@ function ensureSchemeProperties(properties) {
    Swing performs — WEBDAV forces Passive Mode=No, and the Anonymous radios are
    re-applied (forcing username/password defaults). */
 function onSchemeChange(properties) {
-    if (SCHEME_PROPERTY_CLASSES[properties.scheme]) {
-        ensureSchemeProperties(properties);
-    } else {
-        properties.schemeProperties = null;
-    }
+    // ensureSchemeProperties handles both directions: it builds the concrete
+    // subclass for FTP/SFTP/S3/SMB and DELETES the key for FILE/WEBDAV. It must
+    // never be set to null here — a scheme change only repaints the form, so the
+    // mount-time cleanup won't run again before a save PUTs the poison payload.
+    ensureSchemeProperties(properties);
     if (properties.scheme === 'WEBDAV') properties.passive = false;
     applyAnonymous(properties);
 }
