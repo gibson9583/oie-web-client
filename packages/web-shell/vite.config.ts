@@ -16,6 +16,6 @@ function externalLayers(map) {
 }
 export default defineConfig({
     plugins: [externalLayers({ '@oie/web-api': ['api.js', 'oie.js'], '@oie/web-ui': ['ui.js', 'columns.js', 'codeeditor.js'] })],
-    build: { outDir: 'dist', emptyOutDir: true, lib: { entry: 'index.js', formats: ['es'], fileName: () => 'index.js' },
+    build: { outDir: 'dist', emptyOutDir: true, lib: { entry: 'index.ts', formats: ['es'], fileName: () => 'index.js' },
         rollupOptions: { external: ['@oie/web-api', '@oie/web-ui'] } }
 });

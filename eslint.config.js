@@ -59,7 +59,7 @@ export default [
 
     // Shell app + framework source — browser runtime.
     {
-        files: ['web-administrator/client/**/*.js', 'packages/*/index.js'],
+        files: ['web-administrator/client/**/*.js'],
         languageOptions: {
             ecmaVersion: 'latest',
             sourceType: 'module',
