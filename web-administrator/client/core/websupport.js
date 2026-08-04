@@ -3,13 +3,13 @@ import { get } from "./api.js";
 let resolved = null;
 async function probe() {
   try {
-    await get("/webplugins", { noAuthHandler: true });
+    await get("/webplugins", void 0, { noAuthHandler: true });
     return "";
   } catch (e) {
     if (e && e.status === 401) throw e;
   }
   try {
-    await get("/extensions/websupport/webplugins", { noAuthHandler: true });
+    await get("/extensions/websupport/webplugins", void 0, { noAuthHandler: true });
     return "/extensions/websupport";
   } catch (e) {
     if (e && e.status === 401) throw e;
