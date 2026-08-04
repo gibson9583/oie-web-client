@@ -19,14 +19,14 @@ let resolved: Promise<string | null> | null = null;
 
 async function probe(): Promise<string | null> {
     try {
-        await get('/webplugins', { noAuthHandler: true });
+        await get('/webplugins', undefined, { noAuthHandler: true });
         return '';
     } catch (e) {
         // 401 means "not logged in yet", not "endpoint missing" — don't cache that.
         if (e && (e as { status?: unknown }).status === 401) throw e;
     }
     try {
-        await get('/extensions/websupport/webplugins', { noAuthHandler: true });
+        await get('/extensions/websupport/webplugins', undefined, { noAuthHandler: true });
         return '/extensions/websupport';
     } catch (e) {
         if (e && (e as { status?: unknown }).status === 401) throw e;
