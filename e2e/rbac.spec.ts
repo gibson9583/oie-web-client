@@ -21,7 +21,7 @@ async function installRbacPlugin(page: any, denyExpr: any) {
     // dynamically-imported module URLs, and a bare `entry.js` glob would miss it.
     await page.route('**/plugins/test-rbac/entry.js*', (route: any) => route.fulfill({
         status: 200, contentType: 'application/javascript',
-        body: `export function register(p: any){ p.setAuthorizationController({ checkTask:(g,t)=> !(${denyExpr}) }); }`,
+        body: `export function register(p){ p.setAuthorizationController({ checkTask:(g,t)=> !(${denyExpr}) }); }`,
     }));
 }
 

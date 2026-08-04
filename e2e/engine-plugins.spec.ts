@@ -29,7 +29,7 @@ test('loads and registers a plugin served by the engine over /api/webplugins', a
     await page.route('**/api/webplugins/demoeng/web/plugin.js*', (route) => route.fulfill({
         status: 200,
         contentType: 'text/javascript',
-        body: "export function register(platform: any){ window.__demoEngLoaded = true; platform.registerNavItem({ id: 'demo-eng', label: 'Demo Engine Plugin', icon: 'puzzle', path: '/demo-eng', section: 'Plugins' }); }"
+        body: "export function register(platform){ window.__demoEngLoaded = true; platform.registerNavItem({ id: 'demo-eng', label: 'Demo Engine Plugin', icon: 'puzzle', path: '/demo-eng', section: 'Plugins' }); }"
     }));
 
     await page.goto('/dashboard');
@@ -50,7 +50,7 @@ test('loads an engine plugin that declares a compatible @oie apiMin', async ({ p
     });
     await page.route('**/api/webplugins/okplug/web/plugin.js*', (route) => route.fulfill({
         status: 200, contentType: 'text/javascript',
-        body: "export function register(platform: any){ window.__okLoaded=true; platform.registerNavItem({id:'ok-plug',label:'Compatible Plugin',icon:'puzzle',path:'/ok-plug',section:'Plugins'}); }"
+        body: "export function register(platform){ window.__okLoaded=true; platform.registerNavItem({id:'ok-plug',label:'Compatible Plugin',icon:'puzzle',path:'/ok-plug',section:'Plugins'}); }"
     }));
     await page.goto('/dashboard');
     await expect.poll(() => page.evaluate(() => (window as any).__okLoaded === true)).toBe(true);
@@ -68,7 +68,7 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
     // If the gate works, this module is never imported (its code never runs).
     await page.route('**/api/webplugins/newplug/web/plugin.js*', (route) => route.fulfill({
         status: 200, contentType: 'text/javascript',
-        body: "export function register(platform: any){ window.__newLoaded=true; platform.registerNavItem({id:'new-plug',label:'Too New Plugin',icon:'puzzle',path:'/new-plug',section:'Plugins'}); }"
+        body: "export function register(platform){ window.__newLoaded=true; platform.registerNavItem({id:'new-plug',label:'Too New Plugin',icon:'puzzle',path:'/new-plug',section:'Plugins'}); }"
     }));
     await page.goto('/dashboard');
     // Give load a beat, then assert the incompatible plugin did NOT execute or register
