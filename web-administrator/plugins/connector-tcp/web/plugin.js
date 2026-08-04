@@ -1,3 +1,5 @@
-/* TCP connector — web admin plugin (ConnectorSettingsPanel equivalent). Panels
-   live in the shared client connector library (/connectors/tcp.js). */
-export { register } from '/connectors/tcp.js';
+// web-administrator/plugins/connector-tcp/web/plugin.ts
+import { register } from "/connectors/tcp.js";
+export {
+  register
+};

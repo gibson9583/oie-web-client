@@ -34,9 +34,9 @@ var require_zlib = __commonJS({
   }
 });
 
-// ../node_modules/dicom-parser/dist/dicomParser.min.js
+// node_modules/dicom-parser/dist/dicomParser.min.js
 var require_dicomParser_min = __commonJS({
-  "../node_modules/dicom-parser/dist/dicomParser.min.js"(exports, module) {
+  "node_modules/dicom-parser/dist/dicomParser.min.js"(exports, module) {
     !(function(e, t) {
       "object" == typeof exports && "object" == typeof module ? module.exports = t(require_zlib()) : "function" == typeof define && define.amd ? define("dicom-parser", ["zlib"], t) : "object" == typeof exports ? exports["dicom-parser"] = t(require_zlib()) : e.dicomParser = t(e.zlib);
     })(exports, function(r) {
@@ -690,7 +690,7 @@ var require_dicomParser_min = __commonJS({
   }
 });
 
-// plugins/attachment-dicomviewer/web/plugin.jsx
+// web-administrator/plugins/attachment-dicomviewer/web/plugin.tsx
 var import_dicom_parser = __toESM(require_dicomParser_min());
 import { platform } from "@oie/web-shell";
 var React = platform.React;

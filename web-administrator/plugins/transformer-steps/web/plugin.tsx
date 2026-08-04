@@ -30,6 +30,7 @@
  */
 
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const SCOPES = [
@@ -65,7 +66,7 @@ const CONDITION_USES_VALUES = new Set(['EQUALS', 'NOT_EQUAL', 'CONTAINS', 'NOT_C
    client. The editor's validateAll runs these before returning to the channel.
    (JavaScript step/rule have no field check — their script is syntax-validated
    through the engine's Rhino compiler instead.) */
-const isBlank = (v) => v == null || String(v).trim() === '';
+const isBlank = (v: any) => v == null || String(v).trim() === '';
 
 /* ---- XStream list helpers ----------------------------------------------------
  * List<String>  round-trips as { string: [...] }  ('' when empty — an empty
@@ -73,14 +74,14 @@ const isBlank = (v) => v == null || String(v).trim() === '';
  * List<Integer> round-trips as { int: [...] }.
  */
 
-function stringListToLines(value) {
+function stringListToLines(value: any) {
     if (!value || typeof value !== 'object') return [];
     const list = value.string;
     if (list === null || list === undefined) return [];
     return (Array.isArray(list) ? list : [list]).map(v => String(v ?? ''));
 }
 
-function linesToStringList(text) {
+function linesToStringList(text: any) {
     const lines = String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
     return lines.length ? { string: lines } : '';
 }
@@ -89,15 +90,15 @@ function linesToStringList(text) {
    Reads the List<Integer> shape ({ int: [...] } | '' | array); writes it back
    ordered by the destination list so the model round-trips deterministically
    (and stays compatible with step-script's reader). */
-function checkedIdSet(value) {
+function checkedIdSet(value: any) {
     if (!value || typeof value !== 'object') return new Set();
     const list = value.int;
     if (list === null || list === undefined) return new Set();
     return new Set((Array.isArray(list) ? list : [list]).map(v => String(v)));
 }
 
-function idSetToMetaData(set, destinations) {
-    const ordered = destinations.map(d => String(d.metaDataId)).filter(id => set.has(id));
+function idSetToMetaData(set: any, destinations: any) {
+    const ordered = destinations.map((d: any) => String(d.metaDataId)).filter((id: any) => set.has(id));
     // Preserve any checked ids that aren't in the current destination list.
     for (const id of set) if (!ordered.includes(id)) ordered.push(id);
     return ordered.length ? { int: ordered } : '';
@@ -106,8 +107,8 @@ function idSetToMetaData(set, destinations) {
 /* DestinationSetFilter values <-> an array of strings (List<String>). Unlike
    linesToStringList this does NOT drop blanks — the values table keeps empty
    rows the user is still typing into; '' stands in for an empty list. */
-function stringArrayToList(arr) {
-    return arr.length ? { string: arr.map(s => String(s ?? '')) } : '';
+function stringArrayToList(arr: any) {
+    return arr.length ? { string: arr.map((s: any) => String(s ?? '')) } : '';
 }
 
 /* ---- JSX form helpers --------------------------------------------------------
@@ -117,7 +118,7 @@ function stringArrayToList(arr) {
  *   select(options, value, ...) -> <select>{<option/>...}</select>
  */
 
-function Field({ label, hint, children }) {
+function Field({ label, hint, children }: any) {
     return (
         <div className="field">
             <label>{label}</label>
@@ -127,10 +128,10 @@ function Field({ label, hint, children }) {
     );
 }
 
-function Select({ options, value, onChange }) {
+function Select({ options, value, onChange }: any) {
     return (
         <select value={value} onChange={onChange}>
-            {options.map((opt) => {
+            {options.map((opt: any) => {
                 const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
                 return <option key={String(o.value)} value={o.value}>{o.label}</option>;
             })}
@@ -142,16 +143,16 @@ function Select({ options, value, onChange }) {
  * place (matching the imperative plugin), then call the host's onChange(); this
  * tick makes the controlled inputs reflect the mutation immediately. */
 function useRerender() {
-    const [, force] = React.useReducer((x) => x + 1, 0);
+    const [, force] = React.useReducer((x: any) => x + 1, 0);
     return force;
 }
 
 /* Imperative code-editor island: platform.createCodeEditor builds a DOM editor;
  * we mount it once into a ref'd host and let its own onChange write through to
  * `element` + call the host onChange — the same wiring as the original. */
-function CodeEditorIsland({ value, minHeight, fill, onChange }) {
-    const hostRef = React.useRef(null);
-    const editorRef = React.useRef(null);
+function CodeEditorIsland({ value, minHeight, fill, onChange }: any) {
+    const hostRef = React.useRef(null as any);
+    const editorRef = React.useRef(null as any);
 
     React.useEffect(() => {
         const editor = platform.createCodeEditor({
@@ -179,20 +180,20 @@ function CodeEditorIsland({ value, minHeight, fill, onChange }) {
 
 /* Shared editors for the script/scriptPath step+rule types. */
 
-function ScriptEditor({ element, onChange }) {
+function ScriptEditor({ element, onChange }: any) {
     return (
         <Field label="Script">
             <CodeEditorIsland
                 value={element.script ?? ''}
                 minHeight="260px"
                 fill
-                onChange={(value) => { element.script = value; onChange(); }}
+                onChange={(value: any) => { element.script = value; onChange(); }}
             />
         </Field>
     );
 }
 
-function ScriptPathEditor({ element, onChange }) {
+function ScriptPathEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <Field
@@ -203,7 +204,7 @@ function ScriptPathEditor({ element, onChange }) {
                 type="text"
                 placeholder="/opt/scripts/example.js"
                 value={element.scriptPath ?? ''}
-                onChange={(e) => { element.scriptPath = e.target.value; onChange(); force(); }}
+                onChange={(e: any) => { element.scriptPath = e.target.value; onChange(); force(); }}
             />
         </Field>
     );
@@ -222,11 +223,11 @@ function emptyIteratorProperties() {
     return { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '' };
 }
 
-function makeIteratorEditor(isRule) {
+function makeIteratorEditor(isRule: any) {
     const type = isRule ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
     const childNoun = isRule ? 'rule' : 'step';
 
-    function IteratorEditor({ element, onChange }) {
+    function IteratorEditor({ element, onChange }: any) {
         const force = useRerender();
         if (!element.properties || typeof element.properties !== 'object') {
             element.properties = emptyIteratorProperties();
@@ -244,14 +245,14 @@ function makeIteratorEditor(isRule) {
                             type="text"
                             placeholder="msg['OBX']"
                             value={props.target ?? ''}
-                            onChange={(e) => { props.target = e.target.value; onChange(); force(); }}
+                            onChange={(e: any) => { props.target = e.target.value; onChange(); force(); }}
                         />
                     </Field>
                     <Field label="Index Variable">
                         <input
                             type="text"
                             value={props.indexVariable ?? 'i'}
-                            onChange={(e) => { props.indexVariable = e.target.value; onChange(); force(); }}
+                            onChange={(e: any) => { props.indexVariable = e.target.value; onChange(); force(); }}
                         />
                     </Field>
                     <div className="span-2">
@@ -263,7 +264,7 @@ function makeIteratorEditor(isRule) {
                                 rows={3}
                                 placeholder="msg['OBX']"
                                 value={stringListToLines(props.prefixSubstitutions).join('\n')}
-                                onChange={(e) => {
+                                onChange={(e: any) => {
                                     props.prefixSubstitutions = linesToStringList(e.target.value);
                                     onChange();
                                     force();
@@ -291,7 +292,7 @@ function makeIteratorEditor(isRule) {
             ...(isRule ? { operator: 'AND' } : null),
             properties: emptyIteratorProperties()
         }),
-        validate: (el) => {
+        validate: (el: any) => {
             const p = el.properties || {};
             let m = '';
             if (isBlank(p.target)) m += 'The iteration target expression cannot be blank.\n';
@@ -304,7 +305,7 @@ function makeIteratorEditor(isRule) {
 
 /* ---- per-type editor components ---------------------------------------------- */
 
-function MapperEditor({ element, onChange }) {
+function MapperEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <div className="form-grid">
@@ -312,14 +313,14 @@ function MapperEditor({ element, onChange }) {
                 <input
                     type="text"
                     value={element.variable ?? ''}
-                    onChange={(e) => { element.variable = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.variable = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <Field label="Add to">
                 <Select
                     options={SCOPES}
                     value={element.scope || 'CHANNEL'}
-                    onChange={(e) => { element.scope = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.scope = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <div className="span-2">
@@ -327,7 +328,7 @@ function MapperEditor({ element, onChange }) {
                     <input
                         type="text"
                         value={element.mapping ?? ''}
-                        onChange={(e) => { element.mapping = e.target.value; onChange(); force(); }}
+                        onChange={(e: any) => { element.mapping = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
@@ -336,7 +337,7 @@ function MapperEditor({ element, onChange }) {
                     <input
                         type="text"
                         value={element.defaultValue ?? ''}
-                        onChange={(e) => { element.defaultValue = e.target.value; onChange(); force(); }}
+                        onChange={(e: any) => { element.defaultValue = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
@@ -344,7 +345,7 @@ function MapperEditor({ element, onChange }) {
     );
 }
 
-function MessageBuilderEditor({ element, onChange }) {
+function MessageBuilderEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <div className="form-grid">
@@ -354,7 +355,7 @@ function MessageBuilderEditor({ element, onChange }) {
                         type="text"
                         placeholder="tmp['MSH']['MSH.3']['MSH.3.1']"
                         value={element.messageSegment ?? ''}
-                        onChange={(e) => { element.messageSegment = e.target.value; onChange(); force(); }}
+                        onChange={(e: any) => { element.messageSegment = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
@@ -363,7 +364,7 @@ function MessageBuilderEditor({ element, onChange }) {
                     <input
                         type="text"
                         value={element.mapping ?? ''}
-                        onChange={(e) => { element.mapping = e.target.value; onChange(); force(); }}
+                        onChange={(e: any) => { element.mapping = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
@@ -372,7 +373,7 @@ function MessageBuilderEditor({ element, onChange }) {
                     <input
                         type="text"
                         value={element.defaultValue ?? ''}
-                        onChange={(e) => { element.defaultValue = e.target.value; onChange(); force(); }}
+                        onChange={(e: any) => { element.defaultValue = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
@@ -380,7 +381,7 @@ function MessageBuilderEditor({ element, onChange }) {
     );
 }
 
-function XsltEditor({ element, onChange }) {
+function XsltEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <>
@@ -390,14 +391,14 @@ function XsltEditor({ element, onChange }) {
                         type="text"
                         placeholder="msg"
                         value={element.sourceXml ?? ''}
-                        onChange={(e) => { element.sourceXml = e.target.value; onChange(); force(); }}
+                        onChange={(e: any) => { element.sourceXml = e.target.value; onChange(); force(); }}
                     />
                 </Field>
                 <Field label="Result Variable">
                     <input
                         type="text"
                         value={element.resultVariable ?? ''}
-                        onChange={(e) => { element.resultVariable = e.target.value; onChange(); force(); }}
+                        onChange={(e: any) => { element.resultVariable = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
@@ -405,7 +406,7 @@ function XsltEditor({ element, onChange }) {
                 <CodeEditorIsland
                     value={element.template ?? ''}
                     minHeight="220px"
-                    onChange={(value) => { element.template = value; onChange(); }}
+                    onChange={(value: any) => { element.template = value; onChange(); }}
                 />
             </Field>
         </>
@@ -418,7 +419,7 @@ function XsltEditor({ element, onChange }) {
    compatible. metaDataIds is stored as the List<Integer> of CHECKED ids and
    values as a List<String>, in the same wire shape the model loaded with — a
    loaded element the user only renames round-trips untouched. */
-function DestinationSetFilterEditor({ element, onChange, destinations }) {
+function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const force = useRerender();
     const [selValue, setSelValue] = React.useState(-1);
 
@@ -432,8 +433,8 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
     const valuesEnabled = CONDITION_USES_VALUES.has(condition);
 
     // ---- destination checkbox list ----
-    const setChecked = (next) => { element.metaDataIds = idSetToMetaData(next, dests); onChange(); force(); };
-    const toggleId = (id, on) => {
+    const setChecked = (next: any) => { element.metaDataIds = idSetToMetaData(next, dests); onChange(); force(); };
+    const toggleId = (id: any, on: any) => {
         const next = new Set(checked);
         if (on) next.add(String(id)); else next.delete(String(id));
         setChecked(next);
@@ -442,9 +443,9 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
     const deselectAll = () => setChecked(new Set());
 
     // ---- values table ----
-    const setValues = (arr) => { element.values = stringArrayToList(arr); onChange(); force(); };
+    const setValues = (arr: any) => { element.values = stringArrayToList(arr); onChange(); force(); };
     const newValue = () => { setValues([...values, '']); setSelValue(values.length); };
-    const editValue = (i, v) => { const next = values.slice(); next[i] = v; setValues(next); };
+    const editValue = (i: any, v: any) => { const next = values.slice(); next[i] = v; setValues(next); };
     const deleteSelected = () => {
         if (selValue < 0 || selValue >= values.length) return;
         const next = values.slice();
@@ -459,7 +460,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                 <Select
                     options={BEHAVIORS}
                     value={behavior}
-                    onChange={(e) => { element.behavior = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.behavior = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <Field label="Field">
@@ -467,7 +468,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                     type="text"
                     placeholder="msg['PID']['PID.3']['PID.3.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={(e) => { element.field = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
                 />
             </Field>
 
@@ -490,7 +491,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {dests.length ? dests.map((d) => {
+                                {dests.length ? dests.map((d: any) => {
                                     const id = String(d.metaDataId);
                                     return (
                                         <tr key={id}>
@@ -499,7 +500,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                                                     type="checkbox"
                                                     checked={checked.has(id)}
                                                     disabled={listDisabled}
-                                                    onChange={(e) => toggleId(id, e.target.checked)}
+                                                    onChange={(e: any) => toggleId(id, e.target.checked)}
                                                 />
                                             </td>
                                             <td>{d.name || `Destination ${id}`}</td>
@@ -518,7 +519,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
             <div className="span-2 mt-2">
                 <Field label="Condition">
                     <div className="radio-group inline-row">
-                        {CONDITIONS.map((opt) => (
+                        {CONDITIONS.map((opt: any) => (
                             <label className="check" key={opt.value}>
                                 <input
                                     type="radio"
@@ -551,10 +552,10 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                         <table className="dt">
                             <thead><tr><th>Value</th></tr></thead>
                             <tbody>
-                                {values.length ? values.map((v, i) => (
+                                {values.length ? values.map((v: any, i: any) => (
                                     <tr
                                         key={i}
-                                        className={selValue === i ? 'selected' : null}
+                                        className={selValue === i ? 'selected' : undefined}
                                         onClick={() => setSelValue(i)}
                                     >
                                         <td>
@@ -563,7 +564,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
                                                 value={v}
                                                 disabled={!valuesEnabled}
                                                 onFocus={() => setSelValue(i)}
-                                                onChange={(e) => editValue(i, e.target.value)}
+                                                onChange={(e: any) => editValue(i, e.target.value)}
                                             />
                                         </td>
                                     </tr>
@@ -579,7 +580,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
     );
 }
 
-function RuleBuilderEditor({ element, onChange }) {
+function RuleBuilderEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <div className="form-grid">
@@ -588,14 +589,14 @@ function RuleBuilderEditor({ element, onChange }) {
                     type="text"
                     placeholder="msg['MSH']['MSH.9']['MSH.9.1'].toString()"
                     value={element.field ?? ''}
-                    onChange={(e) => { element.field = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <Field label="Condition">
                 <Select
                     options={CONDITIONS}
                     value={element.condition || 'EXISTS'}
-                    onChange={(e) => { element.condition = e.target.value; onChange(); force(); }}
+                    onChange={(e: any) => { element.condition = e.target.value; onChange(); force(); }}
                 />
             </Field>
             <div className="span-2">
@@ -605,7 +606,7 @@ function RuleBuilderEditor({ element, onChange }) {
                         placeholder="One value per line"
                         title="Only used by Equals / Not Equal / Contains / Not Contain"
                         value={stringListToLines(element.values).join('\n')}
-                        onChange={(e) => { element.values = linesToStringList(e.target.value); onChange(); force(); }}
+                        onChange={(e: any) => { element.values = linesToStringList(e.target.value); onChange(); force(); }}
                     />
                 </Field>
             </div>
@@ -615,7 +616,7 @@ function RuleBuilderEditor({ element, onChange }) {
 
 /* ---- registration ----------------------------------------------------------- */
 
-export function register(platform) {
+export function register(platform: Platform) {
 
     /* ---- transformer steps ---- */
 
@@ -636,7 +637,7 @@ export function register(platform) {
             name: '', enabled: true,
             variable: '', mapping: '', defaultValue: '', replacements: '', scope: 'CHANNEL'
         }),
-        validate: (el) => isBlank(el.variable) ? 'The variable name cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.variable) ? 'The variable name cannot be blank.' : '',
         component: MapperEditor
     });
 
@@ -647,7 +648,7 @@ export function register(platform) {
             name: '', enabled: true,
             messageSegment: '', mapping: '', defaultValue: '', replacements: ''
         }),
-        validate: (el) => isBlank(el.messageSegment) ? 'The message segment value cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.messageSegment) ? 'The message segment value cannot be blank.' : '',
         component: MessageBuilderEditor
     });
 
@@ -659,7 +660,7 @@ export function register(platform) {
             sourceXml: '', resultVariable: '', template: '',
             useCustomFactory: false, customFactory: ''
         }),
-        validate: (el) => {
+        validate: (el: any) => {
             let m = '';
             if (isBlank(el.sourceXml)) m += 'The source XML string cannot be blank.\n';
             if (isBlank(el.resultVariable)) m += 'The result variable cannot be blank.\n';
@@ -678,7 +679,7 @@ export function register(platform) {
             name: '', enabled: true,
             behavior: 'REMOVE', metaDataIds: '', field: '', condition: 'EXISTS', values: ''
         }),
-        validate: (el) => isBlank(el.field) ? 'The field cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.field) ? 'The field cannot be blank.' : '',
         component: DestinationSetFilterEditor
     });
 
@@ -689,7 +690,7 @@ export function register(platform) {
             name: '', enabled: true,
             scriptPath: ''
         }),
-        validate: (el) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
         component: ScriptPathEditor
     });
 
@@ -714,7 +715,7 @@ export function register(platform) {
             name: '', enabled: true, operator: 'AND',
             field: '', condition: 'EXISTS', values: ''
         }),
-        validate: (el) => isBlank(el.field) ? 'The field cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.field) ? 'The field cannot be blank.' : '',
         component: RuleBuilderEditor
     });
 
@@ -725,7 +726,7 @@ export function register(platform) {
             name: '', enabled: true, operator: 'AND',
             scriptPath: ''
         }),
-        validate: (el) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
         component: ScriptPathEditor
     });
 

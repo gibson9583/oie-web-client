@@ -1,4 +1,4 @@
-// plugins/mllpmode/web/plugin.jsx
+// web-administrator/plugins/mllpmode/web/plugin.tsx
 import { frameModeSampleFrame, frameModeSettingsDialog } from "@oie/web-ui";
 function register(platform) {
   platform.registerTransmissionMode("MLLP", {

@@ -1,4 +1,4 @@
-// plugins/attachment-pdfviewer/web/plugin.jsx
+// web-administrator/plugins/attachment-pdfviewer/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 function typeOf(att) {

@@ -10,19 +10,20 @@
  * props and returns JSX.
  */
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const TEXT_RE = /^text\/|xml|json|hl7|html|csv|plain|x-www-form/i;
 
-function typeOf(att) {
+function typeOf(att: any) {
     const t = att && att.type;
     return String(typeof t === 'string' ? t : (t && (t._ || t.$)) || '').trim();
 }
 
-export function register(platform) {
+export function register(platform: Platform) {
 
     // ctx (props): { attachment, channelId, messageId, platform }
-    function TextViewer({ attachment, channelId, messageId, platform }) {
+    function TextViewer({ attachment, channelId, messageId, platform }: any) {
         const [state, setState] = React.useState({ status: 'loading' });
 
         React.useEffect(() => {
@@ -39,10 +40,10 @@ export function register(platform) {
                         const bytes = new Uint8Array(bin.length);
                         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
                         text = new TextDecoder().decode(bytes);
-                    } catch (e) { /* not Base64 — show as-is */ }
+                    } catch (e: any) { /* not Base64 — show as-is */ }
                     if (cancelled) return;
                     setState({ status: 'ready', text });
-                } catch (e) {
+                } catch (e: any) {
                     if (cancelled) return;
                     setState({ status: 'error', message: e.message });
                 }
@@ -75,7 +76,7 @@ export function register(platform) {
 
     platform.registerAttachmentViewer({
         id: 'textviewer',
-        canHandle: (att) => TEXT_RE.test(typeOf(att)),
+        canHandle: (att: any) => TEXT_RE.test(typeOf(att)),
         component: TextViewer
     });
 }

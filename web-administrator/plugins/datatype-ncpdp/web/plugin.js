@@ -1,4 +1,4 @@
-// plugins/datatype-ncpdp/web/plugin.jsx
+// web-administrator/plugins/datatype-ncpdp/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.ncpdp";

@@ -8,18 +8,19 @@
  */
 
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const PKG = 'com.mirth.connect.plugins.datatypes.dicom';
 
-const DEF = {
+const DEF: any = {
     name: 'DICOM', label: 'DICOM', order: 90,
     propertiesClass: `${PKG}.DICOMDataTypeProperties`,
     groups: []
 };
 
-DEF.defaults = (version) => ({ '@class': DEF.propertiesClass, '@version': version });
+DEF.defaults = (version: any) => ({ '@class': DEF.propertiesClass, '@version': version });
 
-export function register(platform) {
+export function register(platform: Platform) {
     platform.registerDataType(DEF.name, DEF);
 }

@@ -1,0 +1,22 @@
+{
+  "//": "Strict type-check of the bundled first-party plugin sources (plugins/*/web/plugin.tsx|ts). Emit is esbuild (tools/build-plugins.mjs, bundled); this project is check-only, run via `npm run typecheck`.",
+  "extends": "./tsconfig.json",
+  "include": [
+    "plugins/*/web/*.ts",
+    "plugins/*/web/*.tsx",
+    "client/core/vendor-modules.d.ts"
+  ],
+  "compilerOptions": {
+    "paths": {
+      "/core/*": [
+        "./client/core/*"
+      ],
+      "/connectors/*": [
+        "./client/connectors/*"
+      ],
+      "/datatypes/*": [
+        "./client/datatypes/*"
+      ]
+    }
+  }
+}

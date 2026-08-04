@@ -19,6 +19,7 @@
  */
 
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const DEFAULT_LOG_SIZE = 100;
@@ -29,19 +30,19 @@ const { h, modal, toast } = platform.ui;
 
 /* Date arrives as an XStream java.util.Date — a {time} object, an epoch
    number, or a string. Normalize to "yyyy-MM-dd HH:mm:ss.SSS". */
-function formatLogDate(value) {
+function formatLogDate(value: any) {
     if (value === null || value === undefined || value === '') return '';
     let millis = value;
     if (typeof value === 'object') millis = value.time ?? value.timestamp ?? null;
     const d = millis !== null && !isNaN(Number(millis)) ? new Date(Number(millis)) : new Date(String(value));
     if (isNaN(d.getTime())) return String(value);
-    const p = (x, n = 2) => String(x).padStart(n, '0');
+    const p = (x: any, n = 2) => String(x).padStart(n, '0');
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
         `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 }
 
 /* Severity → token color (shared by the JSX row pill and the modal pill). */
-function levelColor(level) {
+function levelColor(level: any) {
     const lvl = String(level || '').toUpperCase();
     return lvl === 'ERROR' || lvl === 'FATAL' ? 'var(--err)'
         : lvl === 'WARN' ? 'var(--warn)'
@@ -50,21 +51,21 @@ function levelColor(level) {
 }
 
 /* JSX severity pill (used in the log rows). */
-function LevelTag({ level, style }) {
+function LevelTag({ level, style }: any) {
     const lvl = String(level || '').toUpperCase();
     const color = levelColor(level);
     return <span className="tag font-[650]" style={{ color, borderColor: color, ...style }}>{lvl || '—'}</span>;
 }
 
 /* DOM severity pill (used inside the imperative detail modal via platform.ui.h). */
-function levelTagDom(level) {
+function levelTagDom(level: any) {
     const lvl = String(level || '').toUpperCase();
     const color = levelColor(level);
     return h('span.tag', { class: 'font-[650]', style: { color, borderColor: color } }, lvl || '—');
 }
 
 /* (category) or (category:lineNumber) — Swing ServerLogItem.toString. */
-function scopeLabel(item) {
+function scopeLabel(item: any) {
     const cat = String(item.category ?? '').trim();
     const line = String(item.lineNumber ?? '').trim();
     if (!cat) return '';
@@ -73,7 +74,7 @@ function scopeLabel(item) {
 
 /* Raw epoch millis for the Timestamp column's sort (same normalization as
    formatLogDate). */
-function logDateMillis(value) {
+function logDateMillis(value: any) {
     if (value === null || value === undefined || value === '') return 0;
     let millis = value;
     if (typeof value === 'object') millis = value.time ?? value.timestamp ?? null;
@@ -83,17 +84,17 @@ function logDateMillis(value) {
 }
 
 /* Severity rank for the Level column's sort (severity order, not alphabetical). */
-const LEVEL_RANK = { FATAL: 5, ERROR: 4, WARN: 3, INFO: 2, DEBUG: 1, TRACE: 0 };
+const LEVEL_RANK: Record<string, number> = { FATAL: 5, ERROR: 4, WARN: 3, INFO: 2, DEBUG: 1, TRACE: 0 };
 
 /* The one-line remainder of an entry: scope + message + collapsed stack trace. */
-function restText(item) {
+function restText(item: any) {
     const stack = item.throwableInformation && String(item.throwableInformation).trim();
     return (`${scopeLabel(item)}: ${item.message ?? ''}`
         + (stack ? '  ' + stack : '')).replace(/\s+/g, ' ').trim();
 }
 
 /* The full single-string form Swing renders for one entry. */
-function fullText(item) {
+function fullText(item: any) {
     let s = `[${formatLogDate(item.date)}]  ${String(item.level || '').toUpperCase()}  (${String(item.category ?? '')}`;
     const line = String(item.lineNumber ?? '').trim();
     if (line) s += ':' + line;
@@ -104,18 +105,18 @@ function fullText(item) {
     return s;
 }
 
-function copyText(text) {
+function copyText(text: any) {
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text);
             toast('Copied to clipboard');
             return;
         }
-    } catch (e) { /* fall through */ }
+    } catch (e: any) { /* fall through */ }
     toast('Clipboard unavailable', 'warn');
 }
 
-function showDetail(item) {
+function showDetail(item: any) {
     const stack = item.throwableInformation && String(item.throwableInformation).trim();
     // Theme tokens (not hardcoded colors) so the modal works in dark mode.
     const preClass = 'm-0 whitespace-pre-wrap [word-break:break-word] overflow-x-hidden overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]';
@@ -140,7 +141,7 @@ function showDetail(item) {
 
 /* One log row: Timestamp | Level | Message (scope, message + trace on one
    line, truncated with an ellipsis). */
-function LogRow({ item }) {
+function LogRow({ item }: any) {
     return (
         <tr className="cursor-pointer" title="Double-click for the full entry"
             onDoubleClick={() => showDetail(item)}>
@@ -153,22 +154,22 @@ function LogRow({ item }) {
 
 /* The polled Server Log tab. Owns its fetch loop (useEffect) + state. */
 function ServerLogTab() {
-    const [items, setItems] = React.useState([]);     // newest first
+    const [items, setItems] = React.useState([] as any[]);     // newest first
     const [paused, setPaused] = React.useState(false);
     const [logSize, setLogSize] = React.useState(DEFAULT_LOG_SIZE);
     const [sizeText, setSizeText] = React.useState(String(DEFAULT_LOG_SIZE));
-    const [error, setError] = React.useState(null);
+    const [error, setError] = React.useState(null as any);
     // Column sort — timestamp-desc is the classic newest-first default.
     const [sort, setSort] = React.useState({ key: 'timestamp', dir: -1 });
 
     // Refs so the single poll loop reads live values without re-arming on
     // every state change (closures stay correct across the setTimeout chain).
     const itemsRef = React.useRef(items);
-    const lastLogIdRef = React.useRef(null);
+    const lastLogIdRef = React.useRef(null as any);
     const pausedRef = React.useRef(paused);
     const logSizeRef = React.useRef(logSize);
     const aliveRef = React.useRef(true);
-    const timerRef = React.useRef(null);
+    const timerRef = React.useRef(null as any);
 
     itemsRef.current = items;
     pausedRef.current = paused;
@@ -186,14 +187,14 @@ function ServerLogTab() {
                 const fresh = api.asList(raw, 'serverLogItem');
                 if (fresh.length) {
                     // Server returns items with id > lastLogId; show newest first.
-                    fresh.sort((a, b) => Number(b.id) - Number(a.id));
+                    fresh.sort((a: any, b: any) => Number(b.id) - Number(a.id));
                     lastLogIdRef.current = Number(fresh[0].id);
-                    setItems(prev => fresh.concat(prev).slice(0, logSizeRef.current));
+                    setItems((prev: any) => fresh.concat(prev).slice(0, logSizeRef.current));
                     setError(null);
                 } else {
                     setError(null);   // reachable + empty: clear any prior error
                 }
-            } catch (e) {
+            } catch (e: any) {
                 if (!itemsRef.current.length) setError(e.message);
             }
         }
@@ -210,7 +211,7 @@ function ServerLogTab() {
     }, [poll]);
 
     function togglePause() {
-        setPaused(prev => {
+        setPaused((prev: any) => {
             const next = !prev;
             pausedRef.current = next;
             if (!next) poll();   // resume immediately
@@ -228,21 +229,21 @@ function ServerLogTab() {
         logSizeRef.current = n;
         setLogSize(n);
         setSizeText(String(n));
-        setItems(prev => prev.length > n ? prev.slice(0, n) : prev);
+        setItems((prev: any) => prev.length > n ? prev.slice(0, n) : prev);
     }
 
     const btnClass = 'py-[1px] px-1.5 h-[20px] leading-none';
 
     // Same header-sort convention as the core tables: click toggles direction
     // on the current column, else sorts the new column ascending.
-    function handleSort(key) {
-        setSort(s => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+    function handleSort(key: any) {
+        setSort((s: any) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
     }
     const sortedItems = React.useMemo(() => {
-        const val = (item) => sort.key === 'timestamp' ? logDateMillis(item.date)
+        const val = (item: any) => sort.key === 'timestamp' ? logDateMillis(item.date)
             : sort.key === 'level' ? (LEVEL_RANK[String(item.level || '').toUpperCase()] ?? -1)
                 : restText(item).toLowerCase();
-        return [...items].sort((a, b) => {
+        return [...items].sort((a: any, b: any) => {
             const va = val(a), vb = val(b);
             const cmp = (typeof va === 'number' && typeof vb === 'number')
                 ? va - vb : String(va).localeCompare(String(vb));
@@ -251,7 +252,7 @@ function ServerLogTab() {
         });
     }, [items, sort]);
 
-    const headerTh = (key, label, extra = '') => (
+    const headerTh = (key: any, label: any, extra = '') => (
         <th className={'sortable sticky top-0 z-[1] bg-bg2 text-left ' + extra} onClick={() => handleSort(key)}>
             {label}
             {sort.key === key ? <span className="sort-arrow">{sort.dir > 0 ? '▲' : '▼'}</span> : null}
@@ -276,7 +277,7 @@ function ServerLogTab() {
                         ) : !items.length ? (
                             <tr><td colSpan={3} className="text-text-faint p-3">No server log entries yet.</td></tr>
                         ) : (
-                            sortedItems.map(item => <LogRow key={item.id} item={item} />)
+                            sortedItems.map((item: any) => <LogRow key={item.id} item={item} />)
                         )}
                     </tbody>
                 </table>
@@ -293,9 +294,9 @@ function ServerLogTab() {
                 <label className="text-text-faint mr-0.5">Log Size:</label>
                 <input type="number" min="1" max="99999" value={sizeText}
                     className="w-[54px] h-[20px] py-0 px-1 text-[11px]"
-                    onChange={(e) => setSizeText(e.target.value)}
+                    onChange={(e: any) => setSizeText(e.target.value)}
                     onBlur={applySize}
-                    onKeyDown={(e) => { if (e.key === 'Enter') applySize(); }} />
+                    onKeyDown={(e: any) => { if (e.key === 'Enter') applySize(); }} />
                 <button className={"icon-btn " + btnClass} title="Apply log size" onClick={applySize}>
                     <span className="text-ok font-bold">✓</span>
                 </button>
@@ -304,7 +305,7 @@ function ServerLogTab() {
     );
 }
 
-export function register(platform) {
+export function register(platform: Platform) {
     platform.registerDashboardTab({
         id: 'server-log',
         label: 'Server Log',

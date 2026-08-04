@@ -10,17 +10,18 @@
  * props and returns JSX.
  */
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
-function typeOf(att) {
+function typeOf(att: any) {
     const t = att && att.type;
     return String(typeof t === 'string' ? t : (t && (t._ || t.$)) || '').trim();
 }
 
-export function register(platform) {
+export function register(platform: Platform) {
 
     // ctx (props): { attachment, channelId, messageId, platform }
-    function PdfViewer({ attachment, channelId, messageId, platform }) {
+    function PdfViewer({ attachment, channelId, messageId, platform }: any) {
         const [state, setState] = React.useState({ status: 'loading' });
 
         React.useEffect(() => {
@@ -31,7 +32,7 @@ export function register(platform) {
                     const b64 = String(full?.content ?? '').replace(/\s+/g, '');
                     if (cancelled) return;
                     setState({ status: 'ready', src: `data:application/pdf;base64,${b64}` });
-                } catch (e) {
+                } catch (e: any) {
                     if (cancelled) return;
                     setState({ status: 'error', message: e.message });
                 }
@@ -68,7 +69,7 @@ export function register(platform) {
 
     platform.registerAttachmentViewer({
         id: 'pdfviewer',
-        canHandle: (att) => /pdf/i.test(typeOf(att)),
+        canHandle: (att: any) => /pdf/i.test(typeOf(att)),
         component: PdfViewer
     });
 }

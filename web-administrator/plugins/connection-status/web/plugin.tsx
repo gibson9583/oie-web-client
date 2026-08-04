@@ -11,9 +11,10 @@
  * the same as the original imperative plugin; only the rendering is React/JSX.
  */
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
-export function register(platform) {
+export function register(platform: Platform) {
     const { fmtNumber } = platform.ui;
 
     /* connectorStates is a Map<"channelId_metaDataId", Object[]> where the
@@ -22,12 +23,12 @@ export function register(platform) {
        cells read it (kicked off lazily on the first cell() call). */
     let states = new Map();
     let polling = false;
-    let lastError = null;
+    let lastError: any = null;
 
-    function stateOf(value) {
+    function stateOf(value: any) {
         // value may be ['black', 'Idle'], {string: ['black','Idle']}, or similar.
-        const flat = [];
-        (function walk(v) {
+        const flat: any[] = [];
+        (function walk(v: any) {
             if (v === null || v === undefined) return;
             if (Array.isArray(v)) { v.forEach(walk); return; }
             if (typeof v === 'object') { Object.values(v).forEach(walk); return; }
@@ -63,7 +64,7 @@ export function register(platform) {
             }
             states = next;
             lastError = null;
-        } catch (e) {
+        } catch (e: any) {
             lastError = e.message;
         }
     }
@@ -75,7 +76,7 @@ export function register(platform) {
         setInterval(poll, 5000);
     }
 
-    const dotColor = (state) => {
+    const dotColor = (state: any) => {
         const s = state.toLowerCase();
         if (!s || s === 'idle') return 'var(--idle)';
         if (s.includes('connect') || s.includes('receiv') || s.includes('send') || s.includes('read') || s.includes('writ') || s.includes('poll')) return 'var(--ok)';
@@ -84,7 +85,7 @@ export function register(platform) {
     };
 
     // Cell content for a connection state (JSX): a colored dot + the state label.
-    const StateCell = (state) => state
+    const StateCell = (state: any) => state
         ? (
             <span className="status-cell">
                 <span className="w-[6px] h-[6px] rounded-full inline-block" style={{ background: dotColor(state) }} />
@@ -98,11 +99,11 @@ export function register(platform) {
         label: 'Connection',
         order: 10,
         // Channel-level: show the source connector (metaDataId 0) state.
-        cell(status) {
+        cell(status: any) {
             ensurePolling();
             return StateCell(states.get(`${status.channelId}_0`) || '');
         },
-        connectorCell(child) {
+        connectorCell(child: any) {
             ensurePolling();
             return StateCell(states.get(`${child.channelId}_${child.metaDataId}`) || '');
         }
@@ -110,9 +111,9 @@ export function register(platform) {
 
     /* ---- Connection Log tab ---------------------------------------------------- */
 
-    function ConnectionLogTab({ selection }) {
-        const [items, setItems] = React.useState([]);
-        const [error, setError] = React.useState(null);
+    function ConnectionLogTab({ selection }: any) {
+        const [items, setItems] = React.useState([] as any[]);
+        const [error, setError] = React.useState(null as any);
 
         // selection is the dashboard's current selection (array of rows). A
         // single connector row carries metaDataId, scoping the log to it.
@@ -121,7 +122,7 @@ export function register(platform) {
         const metaDataId = sel && sel.metaDataId != null ? Number(sel.metaDataId) : null;
 
         React.useEffect(() => {
-            let timer = null;
+            let timer: any = null;
             let cancelled = false;
 
             async function refresh() {
@@ -137,7 +138,7 @@ export function register(platform) {
                     if (cancelled) return;
                     setItems(next);
                     setError(null);
-                } catch (e) {
+                } catch (e: any) {
                     if (cancelled) return;
                     setItems([]);
                     setError(e.message);
@@ -155,14 +156,14 @@ export function register(platform) {
         const sorted = React.useMemo(() => {
             if (!sort.key) return items;
             const num = sort.key === 'logId';
-            const val = (it) => (num ? (Number(it[sort.key]) || 0) : String(it[sort.key] ?? '').toLowerCase());
-            return [...items].sort((a, b) => {
-                const va = val(a), vb = val(b);
+            const val = (it: any) => (num ? (Number(it[sort.key]) || 0) : String(it[sort.key] ?? '').toLowerCase());
+            return [...items].sort((a: any, b: any) => {
+                const va: any = val(a), vb: any = val(b);
                 return (num ? va - vb : va.localeCompare(vb)) * sort.dir;
             });
         }, [items, sort]);
-        const toggleSort = (key) => setSort((s) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
-        const arrow = (key) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
+        const toggleSort = (key: any) => setSort((s: any) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
+        const arrow = (key: any) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
 
         return (
             <div className="dt-wrap h-full">
@@ -178,7 +179,7 @@ export function register(platform) {
                         </tr>
                     </thead>
                     <tbody>
-                        {sorted.map((item, i) => (
+                        {sorted.map((item: any, i: any) => (
                             <tr key={item.logId != null ? `log-${item.logId}` : `row-${i}`}>
                                 <td className="mono">{fmtNumber(item.logId)}</td>
                                 <td className="mono">{String(item.dateAdded ?? '')}</td>

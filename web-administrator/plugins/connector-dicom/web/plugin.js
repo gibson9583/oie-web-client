@@ -1,3 +1,5 @@
-/* DICOM connector — web admin plugin (ConnectorSettingsPanel equivalent).
-   Panels live in the shared client connector library (/connectors/dicom.js). */
-export { register } from '/connectors/dicom.js';
+// web-administrator/plugins/connector-dicom/web/plugin.ts
+import { register } from "/connectors/dicom.js";
+export {
+  register
+};

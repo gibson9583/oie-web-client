@@ -1,4 +1,5 @@
-/* Document Writer connector — web admin plugin (ConnectorSettingsPanel
-   equivalent). Panel lives in the shared client connector library
-   (/connectors/doc.js). */
-export { register } from '/connectors/doc.js';
+// web-administrator/plugins/connector-document/web/plugin.ts
+import { register } from "/connectors/doc.js";
+export {
+  register
+};

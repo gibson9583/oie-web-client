@@ -1,3 +1,4 @@
+import type { Platform } from '@oie/web-shell';
 /*
  * MLLP transmission mode — web admin plugin (mllpmode TransmissionModePlugin
  * equivalent, React-bundle authoring). Registers the MLLP framing mode for
@@ -17,14 +18,14 @@
  */
 import { frameModeSampleFrame, frameModeSettingsDialog } from '@oie/web-ui';
 
-export function register(platform) {
+export function register(platform: Platform) {
     platform.registerTransmissionMode('MLLP', {
         label: 'MLLP',
         order: 10,
         // Applied when MLLP is selected from the Transmission Mode dropdown. MLLP
         // serializes as MLLPModeProperties (a FrameModeProperties subclass) and
         // carries the extra MLLPv2 fields — see MLLPModeProperties defaults.
-        apply(tm) {
+        apply(tm: any) {
             tm['@class'] = 'com.mirth.connect.plugins.mllpmode.MLLPModeProperties';
             tm.pluginPointName = 'MLLP';
             tm.startOfMessageBytes = '0B';
@@ -35,6 +36,6 @@ export function register(platform) {
             tm.maxRetries = '2';
         },
         sampleFrame: frameModeSampleFrame,
-        openSettings: (tm, onChange) => frameModeSettingsDialog(tm, onChange, { mllp: true })
+        openSettings: (tm: any, onChange: any) => frameModeSettingsDialog(tm, onChange, { mllp: true })
     });
 }

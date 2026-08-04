@@ -22,6 +22,7 @@
  * unchanged from the imperative version.
  */
 import { platform } from '@oie/web-shell';
+import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const PRUNER_STATUS_ORDER = ['currentState', 'currentProcess', 'lastProcess', 'nextProcess', 'isRunning'];
@@ -32,7 +33,7 @@ const PRUNER_STATUS_ORDER = ['currentState', 'currentProcess', 'lastProcess', 'n
    Every untouched child element (pollOnStart, pollConnectorPropertiesAdvanced, and
    any unknown/plugin-added field) round-trips verbatim. */
 
-function childEl(root, name) {
+function childEl(root: any, name: any) {
     if (!root) return null;
     for (const c of root.children) if (c.tagName === name) return c;
     return null;
@@ -40,7 +41,7 @@ function childEl(root, name) {
 // value null/undefined -> remove element (represents a null field); otherwise
 // create-or-update the element's text (empty string yields an empty element,
 // matching how the Swing panel always writes String fields such as rootFolder).
-function setChild(doc, root, name, value) {
+function setChild(doc: any, root: any, name: any, value: any) {
     let el = childEl(root, name);
     if (value === null || value === undefined) {
         if (el) root.removeChild(el);
@@ -49,11 +50,11 @@ function setChild(doc, root, name, value) {
     if (!el) { el = doc.createElement(name); root.appendChild(el); }
     el.textContent = String(value);
 }
-const elText = (el) => (el ? el.textContent : '');
-const elBool = (el) => (el ? (el.textContent || '').trim() === 'true' : false);
+const elText = (el: any) => (el ? el.textContent : '');
+const elBool = (el: any) => (el ? (el.textContent || '').trim() === 'true' : false);
 
-const UNIT_MS = { milliseconds: 1, seconds: 1000, minutes: 60000, hours: 3600000 };
-function msToFreq(ms) {
+const UNIT_MS: Record<string, number> = { milliseconds: 1, seconds: 1000, minutes: 60000, hours: 3600000 };
+function msToFreq(ms: any) {
     if (ms > 0 && ms % 3600000 === 0) return { val: ms / 3600000, unit: 'hours' };
     if (ms > 0 && ms % 60000 === 0) return { val: ms / 60000, unit: 'minutes' };
     if (ms > 0 && ms % 1000 === 0) return { val: ms / 1000, unit: 'seconds' };
@@ -112,19 +113,19 @@ const ARCHIVE_VARS = [
 ];
 const ARCHIVE_VAR_MIME = 'application/x-oie-archivevar';
 
-export function register(platform) {
+export function register(platform: Platform) {
     const { taskButton, toast, confirmDialog } = platform.ui;
     const api = platform.api;
 
-    function labelCase(key) {
+    function labelCase(key: any) {
         const s = String(key || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2');
         return s.charAt(0).toUpperCase() + s.slice(1);
     }
 
     /* ---- XStream java.util.Properties / map round-tripping (verbatim) ---- */
 
-    function propsToList(raw) {
-        const list = [];
+    function propsToList(raw: any) {
+        const list: any[] = [];
         if (!raw || typeof raw !== 'object') return list;
         if (raw.property !== undefined) {
             for (const p of api.asList(raw.property)) {
@@ -152,12 +153,12 @@ export function register(platform) {
         return list;
     }
 
-    function listToProps(list) {
-        return { property: list.map(p => ({ '@name': p.name, $: String(p.value ?? '') })) };
+    function listToProps(list: any) {
+        return { property: list.map((p: any) => ({ '@name': p.name, $: String(p.value ?? '') })) };
     }
 
-    function statusPairs(raw) {
-        const pairs = [];
+    function statusPairs(raw: any) {
+        const pairs: any[] = [];
         if (raw && typeof raw === 'object' && raw.entry !== undefined) {
             for (const e of api.asList(raw.entry)) {
                 if (!e || typeof e !== 'object') continue;
@@ -171,7 +172,7 @@ export function register(platform) {
                 pairs.push([k, String(v ?? '')]);
             }
         }
-        pairs.sort((a, b) => {
+        pairs.sort((a: any, b: any) => {
             const ia = PRUNER_STATUS_ORDER.indexOf(a[0]), ib = PRUNER_STATUS_ORDER.indexOf(b[0]);
             return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
         });
@@ -181,7 +182,7 @@ export function register(platform) {
     /* ---- small inline UI atoms (JSX equivalents of the ui.js builders) ---- */
 
     // Yes/No inline radio group (matches yesNo()/.radio-group.inline-row markup).
-    function YesNo({ value, onChange, disabled }) {
+    function YesNo({ value, onChange, disabled }: any) {
         const name = React.useMemo(() => 'datapruner-rg-' + Math.random().toString(36).slice(2), []);
         return (
             <div className="radio-group inline-row">
@@ -197,7 +198,7 @@ export function register(platform) {
         );
     }
 
-    function Field({ label, hint, children }) {
+    function Field({ label, hint, children }: any) {
         return (
             <div className="field">
                 <label>{label}</label>
@@ -207,13 +208,13 @@ export function register(platform) {
         );
     }
 
-    function Loading({ text = 'Loading…' }) {
+    function Loading({ text = 'Loading…' }: any) {
         return <div className="loading-block"><div className="spinner" />{text}</div>;
     }
 
     /* ---- main panel component (ctx as props: { platform, setTasks }) ---- */
 
-    function DataPrunerPanel({ platform, setTasks, setSave, markDirty, markClean }) {
+    function DataPrunerPanel({ platform, setTasks, setSave, markDirty, markClean }: any) {
         const [phase, setPhase] = React.useState('loading');     // loading | ready | error
         const [errorMessage, setErrorMessage] = React.useState('');
         const [statusState, setStatusState] = React.useState({ phase: 'loading', pairs: [], message: '' });
@@ -223,8 +224,8 @@ export function register(platform) {
         const propListRef = React.useRef([]);
         // Parsed schedule / archiver docs: { doc, root } — only the exposed
         // child elements are mutated on save; everything else round-trips.
-        const scheduleRef = React.useRef(null);
-        const archiverRef = React.useRef(null);
+        const scheduleRef = React.useRef(null as any);
+        const archiverRef = React.useRef(null as any);
 
         // Form field state (controlled inputs).
         const [enabled, setEnabled] = React.useState(false);
@@ -234,14 +235,14 @@ export function register(platform) {
         const [archiveEnabled, setArchiveEnabled] = React.useState(false);
         const [archiverBlockSize, setArchiverBlockSize] = React.useState('');
         // null when includeAttachments isn't the trivial <boolean> shape (preserved verbatim).
-        const [includeAttachments, setIncludeAttachments] = React.useState(null);
+        const [includeAttachments, setIncludeAttachments] = React.useState(null as any);
 
         // Schedule controls (only meaningful when scheduleRef has a parsed doc).
         const [scheduleType, setScheduleType] = React.useState('INTERVAL');
         const [freqValue, setFreqValue] = React.useState('');
         const [freqUnit, setFreqUnit] = React.useState('minutes');
         const [pollTime, setPollTime] = React.useState('00:00');       // TIME: "HH:MM" (24h)
-        const [cronJobs, setCronJobs] = React.useState([]);            // CRON: [{ expression, description }]
+        const [cronJobs, setCronJobs] = React.useState([] as any[]);            // CRON: [{ expression, description }]
         const [scheduleDirty, setScheduleDirty] = React.useState(false);
         const [hasSchedule, setHasSchedule] = React.useState(false);
 
@@ -256,14 +257,14 @@ export function register(platform) {
         const [filePattern, setFilePattern] = React.useState('');
         // Refs for the Root Path / File Pattern inputs so a dragged/clicked
         // template variable inserts at the caret of the last-focused field.
-        const rootInputRef = React.useRef(null);
-        const patternInputRef = React.useRef(null);
-        const lastVarTargetRef = React.useRef(null);
+        const rootInputRef = React.useRef(null as any);
+        const patternInputRef = React.useRef(null as any);
+        const lastVarTargetRef = React.useRef(null as any);
 
         // Insert `token` at the caret of `input` (a Root Path / File Pattern
         // field), updating the matching state and restoring the caret after the
         // controlled re-render.
-        const insertArchiveVar = (input, token) => {
+        const insertArchiveVar = (input: any, token: any) => {
             if (!input || input.disabled) return;
             const setter = input === rootInputRef.current ? setRootFolder : setFilePattern;
             const s = input.selectionStart ?? input.value.length;
@@ -276,13 +277,13 @@ export function register(platform) {
                 try { input.setSelectionRange(pos, pos); } catch { /* detached */ }
             });
         };
-        const onArchiveVarDragOver = (ev) => {
+        const onArchiveVarDragOver = (ev: any) => {
             if (!ev.currentTarget.disabled && Array.from(ev.dataTransfer.types).includes(ARCHIVE_VAR_MIME)) {
                 ev.preventDefault();
                 ev.dataTransfer.dropEffect = 'copy';
             }
         };
-        const onArchiveVarDrop = (ev) => {
+        const onArchiveVarDrop = (ev: any) => {
             const token = ev.dataTransfer.getData(ARCHIVE_VAR_MIME);
             if (!token || ev.currentTarget.disabled) return;
             ev.preventDefault();
@@ -295,18 +296,18 @@ export function register(platform) {
         // Data Pruner settings on leave). A snapshot of the saved/loaded form;
         // dirty = the live values differ from it.
         const dirtyRef = React.useRef(false);
-        const cleanRef = React.useRef(null);
+        const cleanRef = React.useRef(null as any);
         const snapshot = () => JSON.stringify([enabled, blockSize, pruneEvents, maxEventAge,
             archiveEnabled, archiverBlockSize, includeAttachments, contentKey, encrypt, compressKey,
             passwordEnabled, password, encryptionType, rootFolder, filePattern,
             scheduleType, freqValue, freqUnit, pollTime, cronJobs]);
 
-        const getProp = (name, dflt = '') => {
-            const p = propListRef.current.find(x => x.name === name);
+        const getProp = (name: any, dflt = '') => {
+            const p = propListRef.current.find((x: any) => x.name === name);
             return p === undefined ? dflt : String(p.value ?? '');
         };
-        const setProp = (name, value) => {
-            const p = propListRef.current.find(x => x.name === name);
+        const setProp = (name: any, value: any) => {
+            const p = propListRef.current.find((x: any) => x.name === name);
             if (p) p.value = value;
             else propListRef.current.push({ name, value });
         };
@@ -320,10 +321,10 @@ export function register(platform) {
             scheduleRef.current = null;
             const xml = getProp('pollingProperties');
             if (!xml || xml.trim() === '' || xml.trim()[0] !== '<') return false;
-            let doc = null;
+            let doc: any = null;
             try {
                 doc = new DOMParser().parseFromString(xml, 'text/xml');
-            } catch (e) {
+            } catch (e: any) {
                 return false;
             }
             if (!doc || doc.querySelector('parsererror')) return false;
@@ -343,7 +344,7 @@ export function register(platform) {
             const minute = parseInt(elText(childEl(root, 'pollingMinute')), 10) || 0;
             setPollTime(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
 
-            const jobs = [];
+            const jobs: any[] = [];
             const cronEl = childEl(root, 'cronJobs');
             if (cronEl) {
                 for (const cp of cronEl.children) {
@@ -366,10 +367,10 @@ export function register(platform) {
             archiverRef.current = null;
             const xml = getProp('archiverOptions');
             if (!xml || xml.trim() === '' || xml.trim()[0] !== '<') return false;
-            let doc = null;
+            let doc: any = null;
             try {
                 doc = new DOMParser().parseFromString(xml, 'text/xml');
-            } catch (e) {
+            } catch (e: any) {
                 return false;
             }
             if (!doc || doc.querySelector('parsererror')) return false;
@@ -423,7 +424,7 @@ export function register(platform) {
             try {
                 const raw = await api.get('/extensions/datapruner/status');
                 setStatusState({ phase: 'ready', pairs: statusPairs(raw), message: '' });
-            } catch (e) {
+            } catch (e: any) {
                 setStatusState({ phase: 'error', pairs: [], message: `Status unavailable: ${e.message}` });
             }
         }
@@ -432,7 +433,7 @@ export function register(platform) {
             setPhase('loading');
             try {
                 propListRef.current = propsToList(await api.extensions.properties('Data Pruner'));
-            } catch (e) {
+            } catch (e: any) {
                 toast(`Failed to load Data Pruner properties: ${e.message}`, 'error');
                 setErrorMessage(String(e.message || e));
                 setPhase('error');
@@ -519,7 +520,7 @@ export function register(platform) {
                 dirtyRef.current = false;
                 markClean();
                 return true;
-            } catch (e) {
+            } catch (e: any) {
                 toast(`Save failed: ${e.message}`, 'error');
                 return false;
             }
@@ -530,7 +531,7 @@ export function register(platform) {
                 try {
                     await api.post('/extensions/datapruner/_start');
                     toast('Data Pruner started');
-                } catch (e) {
+                } catch (e: any) {
                     toast(`Start failed: ${e.message}`, 'error');
                 }
                 refreshStatus();
@@ -541,7 +542,7 @@ export function register(platform) {
             try {
                 await api.post('/extensions/datapruner/_stop');
                 toast('Stop requested');
-            } catch (e) {
+            } catch (e: any) {
                 toast(`Stop failed: ${e.message}`, 'error');
             }
             refreshStatus();
@@ -609,8 +610,8 @@ export function register(platform) {
 
         const attachmentsEnabled = archiveEnabled && contentKey === 'xml';
         const passwordSectionEnabled = archiveEnabled && compressKey === 'zip';
-        const updateCronJob = (idx, key, value) => {
-            setCronJobs(cronJobs.map((job, i) => (i === idx ? { ...job, [key]: value } : job)));
+        const updateCronJob = (idx: any, key: any, value: any) => {
+            setCronJobs(cronJobs.map((job: any, i: any) => (i === idx ? { ...job, [key]: value } : job)));
             setScheduleDirty(true);
         };
 
@@ -623,7 +624,7 @@ export function register(platform) {
                         {statusState.phase === 'error' && <div className="text-text-faint">{statusState.message}</div>}
                         {statusState.phase === 'ready' && (
                             statusState.pairs.length
-                                ? <dl className="kv">{statusState.pairs.map(([k, v], i) => (
+                                ? <dl className="kv">{statusState.pairs.map(([k, v]: any, i: any) => (
                                     <React.Fragment key={`${k}-${i}`}>
                                         <dt>{labelCase(k)}</dt>
                                         <dd>{v}</dd>
@@ -645,7 +646,7 @@ export function register(platform) {
                             <div className="form-grid">
                                 <Field label="Schedule Type">
                                     <select value={scheduleType} disabled={!enabled}
-                                        onChange={(e) => { setScheduleType(e.target.value); setScheduleDirty(true); }}>
+                                        onChange={(e: any) => { setScheduleType(e.target.value); setScheduleDirty(true); }}>
                                         <option value="INTERVAL">Interval</option>
                                         <option value="TIME">Time</option>
                                         <option value="CRON">Cron</option>
@@ -656,10 +657,10 @@ export function register(platform) {
                                         <div className="flex items-center gap-2">
                                             <input type="number" min="0" step="any" className="max-w-[108px]"
                                                 value={freqValue} disabled={!enabled}
-                                                onInput={(e) => { setFreqValue(e.target.value); setScheduleDirty(true); }}
-                                                onChange={(e) => { setFreqValue(e.target.value); setScheduleDirty(true); }} />
+                                                onInput={(e: any) => { setFreqValue(e.target.value); setScheduleDirty(true); }}
+                                                onChange={(e: any) => { setFreqValue(e.target.value); setScheduleDirty(true); }} />
                                             <select className="max-w-[126px]" value={freqUnit} disabled={!enabled}
-                                                onChange={(e) => { setFreqUnit(e.target.value); setScheduleDirty(true); }}>
+                                                onChange={(e: any) => { setFreqUnit(e.target.value); setScheduleDirty(true); }}>
                                                 <option value="milliseconds">milliseconds</option>
                                                 <option value="seconds">seconds</option>
                                                 <option value="minutes">minutes</option>
@@ -671,8 +672,8 @@ export function register(platform) {
                                 {scheduleType === 'TIME' && (
                                     <Field label="Time" hint="Prune once a day at this time of day.">
                                         <input type="time" className="max-w-[126px]" value={pollTime} disabled={!enabled}
-                                            onInput={(e) => { setPollTime(e.target.value); setScheduleDirty(true); }}
-                                            onChange={(e) => { setPollTime(e.target.value); setScheduleDirty(true); }} />
+                                            onInput={(e: any) => { setPollTime(e.target.value); setScheduleDirty(true); }}
+                                            onChange={(e: any) => { setPollTime(e.target.value); setScheduleDirty(true); }} />
                                     </Field>
                                 )}
                                 {scheduleType === 'CRON' && (
@@ -685,25 +686,25 @@ export function register(platform) {
                                                 </thead>
                                                 <tbody>
                                                     {cronJobs.length === 0 && (
-                                                        <tr><td colSpan="3" className="text-text-faint">No cron jobs defined.</td></tr>
+                                                        <tr><td colSpan={3} className="text-text-faint">No cron jobs defined.</td></tr>
                                                     )}
-                                                    {cronJobs.map((job, idx) => (
+                                                    {cronJobs.map((job: any, idx: any) => (
                                                         <tr key={idx}>
                                                             <td>
                                                                 <input type="text" className="w-full" value={job.expression}
                                                                     disabled={!enabled} placeholder="0 0 */1 * * ?"
-                                                                    onInput={(e) => updateCronJob(idx, 'expression', e.target.value)}
-                                                                    onChange={(e) => updateCronJob(idx, 'expression', e.target.value)} />
+                                                                    onInput={(e: any) => updateCronJob(idx, 'expression', e.target.value)}
+                                                                    onChange={(e: any) => updateCronJob(idx, 'expression', e.target.value)} />
                                                             </td>
                                                             <td>
                                                                 <input type="text" className="w-full" value={job.description}
                                                                     disabled={!enabled}
-                                                                    onInput={(e) => updateCronJob(idx, 'description', e.target.value)}
-                                                                    onChange={(e) => updateCronJob(idx, 'description', e.target.value)} />
+                                                                    onInput={(e: any) => updateCronJob(idx, 'description', e.target.value)}
+                                                                    onChange={(e: any) => updateCronJob(idx, 'description', e.target.value)} />
                                                             </td>
                                                             <td>
                                                                 <button type="button" className="btn btn-sm btn-danger" disabled={!enabled}
-                                                                    onClick={() => { setCronJobs(cronJobs.filter((_, i) => i !== idx)); setScheduleDirty(true); }}>
+                                                                    onClick={() => { setCronJobs(cronJobs.filter((_: any, i: any) => i !== idx)); setScheduleDirty(true); }}>
                                                                     Delete
                                                                 </button>
                                                             </td>
@@ -738,8 +739,8 @@ export function register(platform) {
                         <div className="form-grid">
                             <Field label="Block Size">
                                 <input type="number" min="50" value={blockSize}
-                                    onInput={(e) => setBlockSize(e.target.value)}
-                                    onChange={(e) => setBlockSize(e.target.value)} />
+                                    onInput={(e: any) => setBlockSize(e.target.value)}
+                                    onChange={(e: any) => setBlockSize(e.target.value)} />
                             </Field>
                             <div className="field">
                                 <label>Prune Events</label>
@@ -747,8 +748,8 @@ export function register(platform) {
                             </div>
                             <Field label="Prune Event Age (days)">
                                 <input type="number" min="1" value={maxEventAge} disabled={!pruneEvents}
-                                    onInput={(e) => setMaxEventAge(e.target.value)}
-                                    onChange={(e) => setMaxEventAge(e.target.value)} />
+                                    onInput={(e: any) => setMaxEventAge(e.target.value)}
+                                    onChange={(e: any) => setMaxEventAge(e.target.value)} />
                             </Field>
                         </div>
                     </div>
@@ -764,8 +765,8 @@ export function register(platform) {
                             </div>
                             <Field label="Archiver Block Size">
                                 <input type="number" min="1" value={archiverBlockSize} disabled={!archiveEnabled}
-                                    onInput={(e) => setArchiverBlockSize(e.target.value)}
-                                    onChange={(e) => setArchiverBlockSize(e.target.value)} />
+                                    onInput={(e: any) => setArchiverBlockSize(e.target.value)}
+                                    onChange={(e: any) => setArchiverBlockSize(e.target.value)} />
                             </Field>
                         </div>
 
@@ -773,7 +774,7 @@ export function register(platform) {
                             <div className="form-grid mt-[11px]">
                                 <Field label="Content">
                                     <select value={contentKey} disabled={!archiveEnabled}
-                                        onChange={(e) => {
+                                        onChange={(e: any) => {
                                             const key = e.target.value;
                                             setContentKey(key);
                                             if (key !== 'xml' && includeAttachments !== null) setIncludeAttachments(false);
@@ -788,7 +789,7 @@ export function register(platform) {
                                     <label>Encrypt</label>
                                     <label className="inline-flex items-center gap-2">
                                         <input type="checkbox" checked={encrypt} disabled={!archiveEnabled}
-                                            onChange={(e) => { setEncrypt(e.target.checked); setArchiverDirty(true); }} />
+                                            onChange={(e: any) => { setEncrypt(e.target.checked); setArchiverDirty(true); }} />
                                         Encrypt exported content
                                     </label>
                                 </div>
@@ -796,12 +797,12 @@ export function register(platform) {
                                     <div className="field">
                                         <label>Include Attachments</label>
                                         <YesNo value={includeAttachments} disabled={!attachmentsEnabled}
-                                            onChange={(v) => { setIncludeAttachments(v); setArchiverDirty(true); }} />
+                                            onChange={(v: any) => { setIncludeAttachments(v); setArchiverDirty(true); }} />
                                     </div>
                                 )}
                                 <Field label="Compression">
                                     <select value={compressKey} disabled={!archiveEnabled}
-                                        onChange={(e) => { setCompressKey(e.target.value); setArchiverDirty(true); }}>
+                                        onChange={(e: any) => { setCompressKey(e.target.value); setArchiverDirty(true); }}>
                                         {COMPRESS_OPTIONS.map(o => (
                                             <option key={o.key} value={o.key}>{o.label}</option>
                                         ))}
@@ -810,18 +811,18 @@ export function register(platform) {
                                 <div className="field">
                                     <label>Password Protect</label>
                                     <YesNo value={passwordEnabled} disabled={!passwordSectionEnabled}
-                                        onChange={(v) => { setPasswordEnabled(v); setArchiverDirty(true); }} />
+                                        onChange={(v: any) => { setPasswordEnabled(v); setArchiverDirty(true); }} />
                                 </div>
                                 <Field label="Password">
                                     <input type="password" value={password}
                                         disabled={!passwordSectionEnabled || !passwordEnabled}
-                                        onInput={(e) => { setPassword(e.target.value); setArchiverDirty(true); }}
-                                        onChange={(e) => { setPassword(e.target.value); setArchiverDirty(true); }} />
+                                        onInput={(e: any) => { setPassword(e.target.value); setArchiverDirty(true); }}
+                                        onChange={(e: any) => { setPassword(e.target.value); setArchiverDirty(true); }} />
                                 </Field>
                                 <Field label="Encryption">
                                     <select value={encryptionType}
                                         disabled={!passwordSectionEnabled || !passwordEnabled}
-                                        onChange={(e) => { setEncryptionType(e.target.value); setArchiverDirty(true); }}>
+                                        onChange={(e: any) => { setEncryptionType(e.target.value); setArchiverDirty(true); }}>
                                         {ENCRYPTION_OPTIONS.map(o => (
                                             <option key={o.value} value={o.value}>{o.label}</option>
                                         ))}
@@ -833,26 +834,26 @@ export function register(platform) {
                                             <input ref={rootInputRef} type="text" value={rootFolder} disabled={!archiveEnabled}
                                                 onFocus={() => { lastVarTargetRef.current = rootInputRef.current; }}
                                                 onDragOver={onArchiveVarDragOver} onDrop={onArchiveVarDrop}
-                                                onInput={(e) => { setRootFolder(e.target.value); setArchiverDirty(true); }}
-                                                onChange={(e) => { setRootFolder(e.target.value); setArchiverDirty(true); }} />
+                                                onInput={(e: any) => { setRootFolder(e.target.value); setArchiverDirty(true); }}
+                                                onChange={(e: any) => { setRootFolder(e.target.value); setArchiverDirty(true); }} />
                                         </Field>
                                         <Field label="File Pattern">
                                             <input ref={patternInputRef} type="text" value={filePattern} disabled={!archiveEnabled}
                                                 onFocus={() => { lastVarTargetRef.current = patternInputRef.current; }}
                                                 onDragOver={onArchiveVarDragOver} onDrop={onArchiveVarDrop}
-                                                onInput={(e) => { setFilePattern(e.target.value); setArchiverDirty(true); }}
-                                                onChange={(e) => { setFilePattern(e.target.value); setArchiverDirty(true); }} />
+                                                onInput={(e: any) => { setFilePattern(e.target.value); setArchiverDirty(true); }}
+                                                onChange={(e: any) => { setFilePattern(e.target.value); setArchiverDirty(true); }} />
                                         </Field>
                                     </div>
                                     {/* Draggable template-variable list (Swing MessageExportPanel). */}
                                     <div className="border border-line rounded-[4px] py-1 min-w-[162px] max-w-[207px] bg-bg1 overflow-auto self-stretch"
                                         style={{ opacity: archiveEnabled ? 1 : 0.5 }}
                                         title="Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one">
-                                        {ARCHIVE_VARS.map((v) => (
+                                        {ARCHIVE_VARS.map((v: any) => (
                                             <div key={v.label} draggable={archiveEnabled}
                                                 className="py-[3px] px-3 text-[11px] select-none cursor-grab hover:bg-bg2"
                                                 onClick={() => archiveEnabled && insertArchiveVar(lastVarTargetRef.current || rootInputRef.current, v.token)}
-                                                onDragStart={(ev) => {
+                                                onDragStart={(ev: any) => {
                                                     ev.dataTransfer.clearData();
                                                     ev.dataTransfer.setData(ARCHIVE_VAR_MIME, v.token);
                                                     ev.dataTransfer.effectAllowed = 'copy';
