@@ -28,10 +28,14 @@ your plugin shares the shell's single API/session instance. The bundled
 `dist/` here exists for build-time resolution and standalone use; never assume
 a second copy is created at runtime.
 
-The package ships hand-authored TypeScript declarations (`index.d.ts`) for the
-full method surface. Engine model objects are typed loosely (`OieObject`) —
-precise per-type modeling is a separate effort (generating the API from the Java
-definitions).
+The package ships TypeScript declarations **generated from the client's
+TypeScript sources** (`index.d.ts` re-exports `types/`, emitted by
+`npm run gen:types -w oie-web-administrator`), so the published types are the
+same ones the implementation compiles against. Engine model objects come from
+the engine's OpenAPI spec (`types/oie-schema.d.ts`, regenerated with
+`gen:schema`); the wire shapes (`WireChannel`, `XStreamList`,
+`XStreamElements`, ...) are declared in `core/wire-types.ts` and re-exported
+here.
 
 ## License
 
