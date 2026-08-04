@@ -5,7 +5,7 @@
  * resolveForwardedFor (trusted-peer X-Forwarded-For).
  */
 const assert = require('assert');
-const { resolveEngine, resolveForwardedFor, isTrustedPeer, sanitizeForwardHeaders } = require('./proxy.js');
+const { resolveEngine, resolveForwardedFor, isTrustedPeer, sanitizeForwardHeaders, forceNoStore } = require('./proxy.js');
 
 let failures = 0;
 function test(name, fn) {
@@ -103,6 +103,25 @@ test('sanitizeForwardHeaders: trusted fronting proxy keeps the forwarding header
     assert.strictEqual(h['x-forwarded-proto'], 'https');
     assert.strictEqual(h['x-real-ip'], '203.0.113.7');
     assert.strictEqual(h['x-forwarded-for'], '203.0.113.7, 127.0.0.1');
+});
+
+test('forceNoStore: engine responses without cache directives get no-store (browser would disk-cache them)', () => {
+    const h = { 'content-type': 'application/json' };
+    forceNoStore(h);
+    assert.strictEqual(h['cache-control'], 'no-store');
+    assert.strictEqual(h['content-type'], 'application/json');   // other headers untouched
+});
+
+test('forceNoStore: overrides upstream cache headers rather than only filling in missing ones', () => {
+    const h = {
+        'cache-control': 'public, max-age=3600',
+        'expires': 'Thu, 01 Jan 2026 00:00:00 GMT',
+        'pragma': 'cache'
+    };
+    forceNoStore(h);
+    assert.strictEqual(h['cache-control'], 'no-store');
+    assert.strictEqual(h['expires'], undefined);
+    assert.strictEqual(h['pragma'], undefined);
 });
 
 if (failures) { console.error(`\n${failures} test(s) failed`); process.exit(1); }
