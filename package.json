@@ -20,6 +20,10 @@
     "gen:userapi": "node web-administrator/tools/gen-userapi.mjs"
   },
   "devDependencies": {
+    "@babel/core": "^8.0.1",
+    "@babel/eslint-parser": "^8.0.1",
+    "@babel/plugin-syntax-jsx": "^8.0.1",
+    "@babel/preset-typescript": "^8.0.1",
     "@playwright/test": "^1.62.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.2",
