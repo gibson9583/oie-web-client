@@ -1,0 +1,15 @@
+{
+  "//": "Strict type-check of the TypeScript core modules (the @oie/web-api data layer). Run via `npm run typecheck`. No JS is emitted here — the served .js siblings come from tools/build-core.mjs, and the published @oie/web-api declarations from tsconfig.types.json.",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": [],
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["client/core/*.ts"]
+}
