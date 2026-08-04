@@ -44,6 +44,13 @@ function clean(node) {
 }
 clean(spec);
 
-const out = join(here, 'oie-schema.d.ts');
-writeFileSync(out, astToString(await openapiTS(spec)), 'utf8');
-console.log(`Wrote ${out} from ${src}`);
+// Two identical copies: the canonical one beside the TypeScript core sources
+// that import it, and the published one shipped with the package.
+const text = astToString(await openapiTS(spec));
+for (const out of [
+    join(here, '..', '..', 'web-administrator', 'client', 'core', 'oie-schema.d.ts'),
+    join(here, 'oie-schema.d.ts'),
+]) {
+    writeFileSync(out, text, 'utf8');
+    console.log(`Wrote ${out} from ${src}`);
+}
