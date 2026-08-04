@@ -1,0 +1,27 @@
+{
+  "//": "Strict type-check of the bundled React shell + views (client/react, client/datatypes, client/main.tsx). Vite compiles these natively (automatic JSX runtime); this project is check-only, run via `npm run typecheck`. Standalone (not extends): the base config pins the classic JSX factory for the raw-served modules, which react-jsx forbids.",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "lib": [
+      "es2022",
+      "dom",
+      "dom.iterable"
+    ],
+    "types": [],
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "client/main.tsx",
+    "client/react/**/*.ts",
+    "client/react/**/*.tsx",
+    "client/datatypes/*.ts",
+    "client/datatypes/*.tsx",
+    "client/core/vendor-modules.d.ts"
+  ]
+}

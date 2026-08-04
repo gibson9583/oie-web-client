@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc -p type-tests/tsconfig.json && tsc -p web-administrator/tsconfig.json && tsc -p web-administrator/tsconfig.server.json --noEmit && tsc -p web-administrator/tsconfig.plugins.json",
+    "typecheck": "tsc -p type-tests/tsconfig.json && tsc -p web-administrator/tsconfig.json && tsc -p web-administrator/tsconfig.server.json --noEmit && tsc -p web-administrator/tsconfig.plugins.json && tsc -p web-administrator/tsconfig.views.json",
     "pree2e": "npm run build -w web-administrator",
     "e2e": "playwright test",
     "e2e:live": "E2E_LIVE=1 playwright test --project=live",
@@ -24,6 +24,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "eslint": "^10.8.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",

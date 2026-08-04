@@ -1,0 +1,415 @@
+/*
+ * Events view — criteria bar → paginated results table → resizable detail pane,
+ * fully declarative: results and pager position are React state and the table
+ * is a controlled <DataTableHost rows={...}>. The XStream normalization,
+ * level/outcome tags, calendar-param formatting and the subtle buildParams/
+ * countParams engine quirks are reused VERBATIM.
+ *
+ * Search is an explicit command (criteria + Search button), not reactive server
+ * state — so it stays a plain async call, not a query hook. Each search runs
+ * with EXPLICIT (params, offset, limit) args, so pagination can never race the
+ * criteria inputs.
+ */
+
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import * as Popover from '@radix-ui/react-popover';
+import { h, icon, toast, confirmDialog, contextMenu, fmtDate, fmtNumber } from '@oie/web-ui';
+import api from '@oie/web-api';
+import { toDisplayString } from '../../core/xstream.js';
+import { getPref } from '../../core/prefs.js';
+import { ViewTasks } from '../mount.jsx';
+import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
+import { Icon } from '../bridges.jsx';
+import { DateTimeField } from '../date-time-field.jsx';
+
+/* Panel width below which the criteria fold into the Filters popover. */
+const CRITERIA_INLINE_MIN = 760;
+const LEVELS = ['INFORMATION', 'WARNING', 'ERROR'];
+const OUTCOMES = ['SUCCESS', 'FAILURE'];
+
+
+/* ---- XStream normalization + display helpers (reused verbatim) ---- */
+
+const displayValue = (v: any) => toDisplayString(v);
+
+function mapEntries(map: any) {
+    if (!map || typeof map !== 'object') return [];
+    if (map.entry === undefined) {
+        return Object.entries(map).filter(([k]) => !k.startsWith('@')).map(([k, v]) => [k, displayValue(v)]);
+    }
+    const out: any[] = [];
+    for (const entry of api.asList(map.entry)) {
+        if (!entry || typeof entry !== 'object') continue;
+        if (Array.isArray(entry.string) && Object.keys(entry).length === 1) {
+            out.push([displayValue(entry.string[0]), displayValue(entry.string[1])]);
+            continue;
+        }
+        const values: any[] = [];
+        for (const [k, v] of Object.entries(entry)) {
+            if (k.startsWith('@')) continue;
+            if (Array.isArray(v)) values.push(...v); else values.push(v);
+        }
+        if (values.length >= 2) out.push([displayValue(values[0]), displayValue(values[1])]);
+        else if (values.length === 1) out.push([displayValue(values[0]), '']);
+    }
+    return out;
+}
+
+function eventAttr(event: any, key: any) {
+    for (const [k, v] of mapEntries(event && event.attributes)) {
+        if (k === key) return v == null ? '' : String(v).trim();
+    }
+    return '';
+}
+function eventChannelId(event: any) {
+    const channel = eventAttr(event, 'channel');
+    const i = channel.indexOf('id='), c = channel.indexOf(',');
+    return (i !== -1 && c !== -1) ? channel.slice(i + 3, c) : '';
+}
+function eventChannelName(event: any) {
+    const channel = eventAttr(event, 'channel');
+    const i = channel.indexOf('name='), b = channel.indexOf(']');
+    return (i !== -1 && b !== -1) ? channel.slice(i + 5, b) : '';
+}
+function eventChannelIdWithMessageId(event: any) {
+    const id = eventChannelId(event);
+    const msg = eventAttr(event, 'messageId');
+    return id ? (msg ? `${id} - ${msg}` : id) : '';
+}
+
+function normalizeEvents(rows: any) {
+    if (rows.length === 1 && rows[0] && typeof rows[0] === 'object'
+            && rows[0].id === undefined && rows[0].event !== undefined) {
+        return api.asList(rows[0].event);
+    }
+    return rows.filter((r: any) => r && typeof r === 'object');
+}
+
+function levelTag(level: any) {
+    if (level === 'ERROR') return h('span.tag.red', icon('warning', 11), 'ERROR');
+    if (level === 'WARNING') return h('span.tag.amber', icon('warning', 11), 'WARNING');
+    return h('span.tag.blue', icon('info', 11), level || '');
+}
+function outcomeTag(outcome: any) {
+    if (outcome === 'SUCCESS') {
+        return h('span.tag', { class: 'text-ok border-[color-mix(in_srgb,var(--ok)_40%,transparent)] bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]' }, icon('check', 11), 'SUCCESS');
+    }
+    if (outcome === 'FAILURE') return h('span.tag.red', icon('x', 11), 'FAILURE');
+    return h('span.tag', outcome || '');
+}
+
+function toCalendarParam(datetimeLocal: any) {
+    if (!datetimeLocal) return null;
+    const d = new Date(datetimeLocal);
+    if (isNaN(d.getTime())) return null;
+    const pad = (n: any, w = 2) => String(n).padStart(w, '0');
+    const offsetMinutes = -d.getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const abs = Math.abs(offsetMinutes);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+        `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+        `.${pad(d.getMilliseconds(), 3)}${sign}${pad(Math.floor(abs / 60))}${pad(abs % 60)}`;
+}
+
+function toCount(value: any) {
+    if (value && typeof value === 'object') value = value.long ?? value.int ?? value.integer ?? 0;
+    return Number(value) || 0;
+}
+
+function shortError(e: any) {
+    let msg = String((e && e.message) || e || 'Unknown error');
+    if (msg.includes('<')) msg = msg.replace(/<[^>]*>/g, ' ');
+    msg = msg.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    if (msg.length > 180) msg = msg.slice(0, 180) + '…';
+    if (!msg) msg = 'Unknown error';
+    return (e && e.status) ? `${msg} (HTTP ${e.status})` : msg;
+}
+
+/* ---- small React form helpers ---- */
+
+function Field({ label, children }: any) {
+    return <div className="field"><label>{label}</label>{children}</div>;
+}
+
+/* ---- detail pane ---- */
+
+function EventDetail({ event, username }: any) {
+    if (!event) return <div className="dt-empty">Select an event to view its details.</div>;
+    const kv = (label: any, value: any) => (
+        <span className="flex items-center gap-[4px]">
+            <span className="text-text-faint text-[9.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
+            <span className="mono font-mono text-[11px]">{value}</span>
+        </span>
+    );
+    const attributes = mapEntries(event.attributes)
+        .filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== '');
+    const valueClass = 'whitespace-pre-wrap [word-break:break-word] font-mono text-[10.5px]';
+    return (
+        <>
+            <div className="flex flex-wrap items-center gap-[16px] py-2 px-3.5 border-b border-line flex-none">
+                {kv('Id', displayValue(event.id))}
+                {kv('Level', displayValue(event.level))}
+                {kv('Outcome', displayValue(event.outcome))}
+                {kv('User', username(event.userId))}
+                {kv('IP', displayValue(event.ipAddress))}
+            </div>
+            {attributes.length
+                ? <table className="dt">
+                    <thead><tr><th className="w-[1%]">Name</th><th>Value</th></tr></thead>
+                    <tbody>{attributes.map(([k, v], i) => (
+                        <tr key={i}>
+                            <td className="whitespace-nowrap align-top font-semibold">{k}</td>
+                            <td className={"mono " + valueClass}>{v}</td>
+                        </tr>
+                    ))}</tbody>
+                </table>
+                : <div className="text-text-faint py-3 px-3.5">This event has no attributes.</div>}
+        </>
+    );
+}
+
+/* ---- view ---- */
+
+export function EventsView() {
+    const [start, setStart] = useState('');
+    const [end, setEnd] = useState('');
+    const [name, setName] = useState('');
+    const [levels, setLevels] = useState<any>({ INFORMATION: true, WARNING: true, ERROR: true });
+    const [outcome, setOutcome] = useState('');
+    const [pageSize, setPageSize] = useState(Number(getPref('eventPageSize')) || 20);
+    const [advancedOpen, setAdvancedOpen] = useState(false);
+    const [userId, setUserId] = useState('');
+    const [ip, setIp] = useState('');
+    const [serverId, setServerId] = useState('');
+    const [attrSearch, setAttrSearch] = useState('');
+    const [selected, setSelected] = useState<any>(null);
+    /* Narrow screens: the criteria collapse behind a "Filters" popover. Radix
+       positions and portals that popover, so it can't also be the inline block —
+       the threshold the container query used to apply is measured here instead,
+       and the criteria are rendered in one place or the other. */
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const filterRef = useRef<any>(null);
+    const [narrow, setNarrow] = useState(false);
+    useLayoutEffect(() => {
+        const el = filterRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const ro = new ResizeObserver(([entry]) => setNarrow(entry.contentRect.width <= CRITERIA_INLINE_MIN));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    // Results + pager position — React state driving the controlled table and
+    // the pager bar. `params` are the criteria of the LAST run search, so
+    // Prev/Next page through those, not whatever is typed now (classic behavior).
+    const [events, setEvents] = useState([] as any[]);
+    const [page, setPage] = useState<any>({ offset: 0, limit: Number(getPref('eventPageSize')) || 20, total: 0, params: null });
+
+    // Best-effort id -> username cache. A ref (not state) because the table's
+    // column renderers are captured once by DataTableHost at mount; when the
+    // names land, the rows are re-set (fresh identity) to repaint with them.
+    const usernamesRef = useRef<any>({});
+    // The table's mount-captured context menu needs the LATEST search closure.
+    const searchRef = useRef<any>(null);
+
+    function username(uid: any) {
+        if (uid === null || uid === undefined || uid === '') return '';
+        if (String(uid) === '0') return 'System';   // engine's own (no logged-in user)
+        return usernamesRef.current[String(uid)] ?? String(uid);
+    }
+
+    /* Optional criteria are OMITTED when unset (qs() drops ''/null/undefined).
+       Level: a strict subset is sent as repeated params; none/all = no filter. */
+    function buildParams() {
+        const params: any = {};
+        if (name.trim()) params.name = name.trim();
+        const ls = LEVELS.filter((l: any) => (levels as any)[l]);
+        if (ls.length > 0 && ls.length < LEVELS.length) params.level = ls;
+        if (outcome) params.outcome = outcome;
+        const s = toCalendarParam(start);
+        const e = toCalendarParam(end);
+        if (s) params.startDate = s;
+        if (e) params.endDate = e;
+        if (userId.trim() !== '') params.userId = userId.trim();
+        if (ip.trim()) params.ipAddress = ip.trim();
+        if (serverId.trim()) params.serverId = serverId.trim();
+        if (attrSearch.trim()) params.attributeSearch = attrSearch.trim();
+        return params;
+    }
+    // The count path 500s on an empty level set ("EVENT_LEVEL IN ()"); always send one.
+    const countParams = (params: any) => ({ ...params, level: params.level ?? LEVELS });
+
+    async function runSearch(params: any, offset: any, limit: any) {
+        let rows: any[] = [];
+        let total = 0;
+        try {
+            const [raw, count] = await Promise.all([
+                api.events.search({ ...params, offset, limit }),
+                api.events.count(countParams(params))
+            ]);
+            rows = normalizeEvents(raw);
+            total = toCount(count);
+        } catch (e: any) {
+            toast(`Event search failed: ${shortError(e)}`, 'error');
+        }
+        setEvents(rows);
+        setPage({ offset, limit, total, params });
+        // Keep the selection when the same event is still in the new page.
+        setSelected((prev: any) => (prev ? rows.find(r => String(r.id) === String(prev.id)) ?? null : null));
+    }
+
+    // A NEW search snapshots the criteria at click time; Prev/Next re-run the
+    // snapshot at a different offset.
+    const search = () => runSearch(buildParams(), 0, Number(pageSize) || 20);
+
+    async function exportAllEvents() {
+        if (!await confirmDialog('Export All Events',
+            'Export all events to a file in the exports directory on the server?', { okLabel: 'Export' })) return;
+        try {
+            const path = await api.post('/events/_export', null, { raw: true });
+            toast(`Events exported on the server to: ${String(path || '').trim()}`);
+        } catch (e: any) {
+            toast(`Export failed: ${shortError(e)}`, 'error');
+        }
+    }
+
+    // Re-point the mount-captured table callbacks at this render's search closure.
+    searchRef.current = search;
+
+    const COLUMNS = useRef([
+        { key: 'level', label: 'Level', width: '120px', render: (e: any) => levelTag(e.level) },
+        { key: 'eventTime', label: 'Date & Time', width: '160px', className: 'mono', sortValue: (e: any) => fmtDate(e.eventTime), render: (e: any) => fmtDate(e.eventTime) },
+        { key: 'name', label: 'Name' },
+        { key: 'serverId', label: 'Server ID', width: '150px', className: 'mono text-text-faint', render: (e: any) => displayValue(e.serverId) },
+        { key: 'userId', label: 'User', width: '110px', sortValue: (e: any) => username(e.userId), render: (e: any) => username(e.userId) },
+        { key: 'outcome', label: 'Outcome', width: '110px', render: (e: any) => outcomeTag(e.outcome) },
+        { key: 'ipAddress', label: 'IP Address', className: 'mono', width: '130px' },
+        { key: 'channelMsgId', label: 'Channel ID - Message ID', className: 'mono', defaultHidden: true, sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
+        { key: 'channelName', label: 'Channel Name', defaultHidden: true, sortValue: eventChannelName, render: eventChannelName },
+        { key: 'patientId', label: 'Patient ID', defaultHidden: true, sortValue: (e: any) => eventAttr(e, 'patientId'), render: (e: any) => eventAttr(e, 'patientId') }
+    ]).current;
+
+    const options = useRef({
+        selectable: 'single',
+        rowKey: (e: any) => String(e.id),
+        emptyText: 'No events found',
+        // Resizable + reorderable + show/hide columns (persisted), like the dashboard.
+        columnsKey: 'events',
+        onSelect: (rows: any) => setSelected(rows.length ? rows[0] : null),
+        onContextMenu: (row: any, ev: any) => {
+            setSelected(row);
+            contextMenu(ev.clientX, ev.clientY, [
+                { label: 'Refresh', icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current() },
+                { label: 'Export All Events', icon: 'export', task: 'doExportAllEvents', group: 'event', onClick: () => exportAllEvents() }
+            ]);
+        }
+    }).current;
+
+    // Initial load + best-effort username map.
+    useEffect(() => {
+        api.users.list().then((users: any) => {
+            for (const u of users) if (u && u.id !== undefined) usernamesRef.current[String(u.id)] = displayValue(u.username || u.id);
+            // Names landed after the first page rendered: re-set the rows (fresh
+            // identity) so the mount-captured User column repaints with them.
+            setEvents(prev => prev.slice());
+        }).catch(() => { /* keep raw ids */ });
+        searchRef.current();
+    }, []);
+
+    const enterSearch = (e: any) => { if (e.key === 'Enter') search(); };
+    const from = page.total === 0 ? 0 : page.offset + 1;
+    const to = Math.min(page.offset + page.limit, page.total);
+
+    /* Defined once and mounted inline or in the popover — two homes, not two copies. */
+    const criteria = (
+        <>
+                    <div className="form-row">
+                        <Field label="Start Time"><DateTimeField value={start} onChange={setStart} label="Start time" /></Field>
+                        <Field label="End Time"><DateTimeField value={end} onChange={setEnd} label="End time" /></Field>
+                        <Field label="Name"><input type="text" placeholder="Event name contains…" className="w-[171px]" value={name} onChange={(e: any) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Level">
+                            <div className="flex items-center gap-2">
+                                {LEVELS.map((l: any) => (
+                                    <label key={l} className="check">
+                                        <input type="checkbox" checked={(levels as any)[l]} onChange={(e: any) => setLevels((p: any) => ({ ...p, [l]: e.target.checked }))} />
+                                        {l.charAt(0) + l.slice(1).toLowerCase()}
+                                    </label>
+                                ))}
+                            </div>
+                        </Field>
+                        <Field label="Outcome">
+                            <select value={outcome} onChange={(e: any) => setOutcome(e.target.value)}>
+                                <option value="">Any</option>
+                                {OUTCOMES.map((o: any) => <option key={o} value={o}>{o}</option>)}
+                            </select>
+                        </Field>
+                        <Field label="Page Size">
+                            <select value={pageSize} onChange={(e: any) => setPageSize(Number(e.target.value))}>
+                                {[20, 50, 100].map((n: any) => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                        </Field>
+                        <button className={'btn filter-adv-toggle' + (advancedOpen ? ' btn-primary' : '')} title="Show advanced search criteria"
+                            onClick={() => setAdvancedOpen((o: any) => !o)}><Icon name="filter" />Advanced</button>
+                        <TaskButton label="Search" icon="search" primary onClick={() => { search(); setFiltersOpen(false); }} />
+                    </div>
+                    {/* Always rendered; hidden inline behind the Advanced toggle when wide,
+                        but always shown inside the Filters popover (no menu-in-a-menu). */}
+                    <div className={'form-row mt-2 filter-advanced' + (advancedOpen ? '' : ' adv-hidden')}>
+                        <Field label="User Id"><input type="number" min="0" className="w-[81px]" value={userId} onChange={(e: any) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="IP Address"><input type="text" className="w-[117px]" value={ip} onChange={(e: any) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Server Id"><input type="text" className="w-[207px]" value={serverId} onChange={(e: any) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[171px]" value={attrSearch} onChange={(e: any) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
+                    </div>
+        </>
+    );
+
+    return (
+        <div className="view">
+            <ViewTasks>
+                <RailPane title="Event Tasks" paneKey="tasks:Event Tasks" group="event">
+                    <div className="taskbar" data-pane-title="Event Tasks">
+                        <TaskButton label="Search" icon="refresh" onClick={() => search()} />
+                        <TaskButton label="Export All Events" icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
+                    </div>
+                </RailPane>
+            </ViewTasks>
+            <div className="view-body flush flex flex-col">
+                <div ref={filterRef} className="flex-none py-2.5 px-3.5 panel overflow-visible mx-[13px] mt-3 mb-3 filter-collapse">
+                    {/* Radix owns the trigger state, Escape, outside-click and focus
+                        return; this used to be a mousedown listener with no Escape. */}
+                    {narrow ? (
+                        <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
+                            <Popover.Trigger asChild>
+                                <button className="btn filter-toggle" type="button">
+                                    <Icon name="filter" /><span>Filters</span><Icon name="chevD" size={14} />
+                                </button>
+                            </Popover.Trigger>
+                            <Popover.Portal>
+                                <Popover.Content className="filter-popover filter-popover-pop"
+                                    align="start" sideOffset={6} collisionPadding={12}>
+                                    {criteria}
+                                </Popover.Content>
+                            </Popover.Portal>
+                        </Popover.Root>
+                    ) : (
+                        <div className="filter-popover">{criteria}</div>
+                    )}
+                </div>
+                <div className="flex-1 overflow-auto min-h-0 flex flex-col oie-elev border border-line rounded-[9px] mx-[13px] mb-3">
+                    <DataTableHost columns={COLUMNS} options={options} rows={events} />
+                </div>
+                <div className="filterbar panel overflow-visible mx-[13px] mb-3">
+                    <button className="btn" disabled={page.offset <= 0}
+                        onClick={() => runSearch(page.params ?? {}, Math.max(0, page.offset - page.limit), page.limit)}>Prev</button>
+                    <button className="btn" disabled={page.offset + page.limit >= page.total}
+                        onClick={() => runSearch(page.params ?? {}, page.offset + page.limit, page.limit)}>Next</button>
+                    <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(page.total)}`}</span>
+                </div>
+                <div className="split-handle mx-[13px] my-1" data-orient="v" data-resize="next" />
+                <div className="flex-none h-[35%] min-h-[43px] overflow-auto panel mx-[13px] mb-3">
+                    <EventDetail event={selected} username={username} />
+                </div>
+            </div>
+        </div>
+    );
+}
