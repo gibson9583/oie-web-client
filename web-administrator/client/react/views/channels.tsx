@@ -437,7 +437,7 @@ export function ChannelsView() {
         // A channel is out of sync (needs redeploy) when its saved revision is
         // ahead of the deployed one OR its code templates changed since deploy —
         // so the delta can read 0 yet still be flagged (matches the engine).
-        const ctChanged = !status && (status.codeTemplatesChanged === true || status.codeTemplatesChanged === 'true');
+        const ctChanged = !!status && (status.codeTemplatesChanged === true || status.codeTemplatesChanged === 'true');
         const outOfSync = delta! > 0 || ctChanged;
         if (delta === null) return '--';
         if (!outOfSync) return '0';
@@ -1188,7 +1188,7 @@ export function ChannelsView() {
     const eff = effectiveChannels();
     const channelSel = selected.size > 0;
     const singleChannel = selected.size === 1;
-    const deployable = channelSel || !lastGroupId;
+    const deployable = channelSel || !!lastGroupId;
     const showDeploy = deployable;
     const showExport = channelSel;
     const showDelete = channelSel;
@@ -1198,7 +1198,7 @@ export function ChannelsView() {
     const showDisable = deployable && eff.some((c: any) => isEnabled(c));
     const showMessages = singleChannel;
 
-    const realGroup = !lastGroupId && lastGroupId !== DEFAULT_GROUP_ID && groups.some(g => g.id === lastGroupId);
+    const realGroup = !!lastGroupId && lastGroupId !== DEFAULT_GROUP_ID && groups.some(g => g.id === lastGroupId);
     const currentGroup = realGroup ? groups.find(g => g.id === lastGroupId) : null;
     const showAssign = channelSel;
     const showGroupEdit = realGroup;
@@ -1206,7 +1206,7 @@ export function ChannelsView() {
     const showGroupDelete = realGroup;
 
     /* ---- tree data + filter + counts for the <TreeTable> ---- */
-    const hasFilter = !filterText.trim();
+    const hasFilter = !!filterText.trim();
     // Group nodes with their (name-sorted) channel children. When there are no
     // channels at all we pass [] so TreeTable shows its empty state (Swing parity:
     // the synthetic Default Group row is not drawn over an empty engine).

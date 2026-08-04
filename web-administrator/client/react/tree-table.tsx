@@ -133,7 +133,7 @@ export function TreeTable({
        side effects — task panes, dashboard:selection — on every arrow press. */
     const bodyRef = useRef<any>(null);
     const [focusKey, setFocusKey] = useState<any>(null);
-    const selectable = !(onSelect || selectedKeys || selectedKey != null);
+    const selectable = !!(onSelect || selectedKeys || selectedKey != null);
 
     // The single tab stop: the focused row, else the first selected row, else the
     // first row — so tabbing in lands somewhere meaningful.

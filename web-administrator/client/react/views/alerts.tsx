@@ -201,8 +201,8 @@ export function AlertsList() {
     // Selection-gated visibility (Swing Alert Tasks pane): Export/Edit need a
     // single selection; Delete any; Enable/Disable show only the applicable one.
     const one = sel.length === 1 ? sel[0] : null;
-    const showExport = !one;
-    const showEdit = !one;
+    const showExport = !!one;
+    const showEdit = !!one;
     const showDelete = sel.length > 0;
     const showEnable = sel.some(a => !a.enabled);
     const showDisable = sel.some(a => a.enabled);

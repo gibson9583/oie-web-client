@@ -277,7 +277,7 @@ export function ExtensionsView() {
             '-',
             // Swing shows only the applicable action for the row's current state.
             // Each action targets THIS row explicitly (no selection-state read).
-            { label: 'Enable Extension', icon: 'check', task: 'doEnableExtension', group: 'extensions', hidden: !row.enabled, onClick: () => setEnabled(true, row) },
+            { label: 'Enable Extension', icon: 'check', task: 'doEnableExtension', group: 'extensions', hidden: !!row.enabled, onClick: () => setEnabled(true, row) },
             { label: 'Disable Extension', icon: 'x', task: 'doDisableExtension', group: 'extensions', hidden: !row.enabled, onClick: () => setEnabled(false, row) },
             '-',
             { label: 'Show Properties', icon: 'eye', task: 'doShowExtensionProperties', group: 'extensions', onClick: () => showProperties(row) },

@@ -129,7 +129,7 @@ const seenDeploys = new Set();
 const deployKey = (st: any) => `${st.channelId}|${st.deployedDate?.time ?? ''}`;
 function isJustDeployed(st: any) {
     const ms = Number(st.deployedDate?.time);
-    return !ms && (Date.now() - ms) >= 0 && (Date.now() - ms) < JUST_DEPLOYED_MS && !seenDeploys.has(deployKey(st));
+    return !!ms && (Date.now() - ms) >= 0 && (Date.now() - ms) < JUST_DEPLOYED_MS && !seenDeploys.has(deployKey(st));
 }
 
 /* ChannelTag backgroundColor arrives as {red, green, blue, alpha}. */

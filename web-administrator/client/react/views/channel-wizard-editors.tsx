@@ -363,7 +363,7 @@ export function DependenciesStep({ channel, libState, depState }: any) {
                                             onClick={(e: any) => { e.preventDefault(); e.stopPropagation(); const n = new Set(expanded); if (n.has(lib.id)) n.delete(lib.id); else n.add(lib.id); setExpanded(n); }}>
                                             <Icon name={open ? 'chevD' : 'chevR'} size={13} />
                                         </button>
-                                        <input type="checkbox" checked={!st.checked.get(lib.id)} onChange={(e: any) => toggleLib(lib.id, e.target.checked)} />
+                                        <input type="checkbox" checked={!!st.checked.get(lib.id)} onChange={(e: any) => toggleLib(lib.id, e.target.checked)} />
                                         <span className="min-w-0 flex-1">
                                             <span className="font-medium">{lib.name || '(unnamed library)'}</span>
                                             <span className="text-text-faint text-[10.5px]"> · {templates.length} template{templates.length === 1 ? '' : 's'}</span>
@@ -398,7 +398,7 @@ export function DependenciesStep({ channel, libState, depState }: any) {
                         <div className="flex flex-col border border-line rounded-md max-h-[306px] overflow-auto divide-y divide-line">
                         {resources.filter((r: any) => !resQuery.trim() || r.name.toLowerCase().includes(resQuery.trim().toLowerCase())).map((r: any) => (
                             <label key={r.id} className="flex items-center gap-2 px-2.5 py-2 hover:bg-bg1 cursor-pointer">
-                                <input type="checkbox" checked={!resObj[r.id]} onChange={(e: any) => toggleRes(r.id, r.name, e.target.checked)} />
+                                <input type="checkbox" checked={!!resObj[r.id]} onChange={(e: any) => toggleRes(r.id, r.name, e.target.checked)} />
                                 <span className="font-medium">{r.name}</span>
                                 {r.type ? <span className="text-text-faint text-[10.5px]">· {r.type}</span> : null}
                             </label>

@@ -371,7 +371,7 @@ function currentEngineLabel(config: any) {
 
 // True when there's more than one engine to choose from (a dropdown or devMode).
 function engineChoiceAvailable(config: any) {
-    return (Array.isArray(config.engines) && config.engines.length > 1) || !config.devMode;
+    return (Array.isArray(config.engines) && config.engines.length > 1) || !!config.devMode;
 }
 
 // A stable key identifying the selected engine (index, or custom:<url>), derived
@@ -794,7 +794,7 @@ export function App() {
             clearChannelDraft();
             if (resume) {
                 store.setState('editingChannel', draft.channel);
-                store.setState('editingChannelNew', !draft.isNew);
+                store.setState('editingChannelNew', !!draft.isNew);
                 store.setState('editingChannelDirty', true);
                 router.navigate(`/channels/${draft.channel.id}/edit`);
             }

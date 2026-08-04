@@ -56,7 +56,7 @@ export function LoginForm({ onSuccess }: any) {
     // index (as a string) or 'custom'; `customUrl` is the devMode manual URL.
     const cfg = store.getState('webadminConfig') || {};
     const engines = Array.isArray(cfg.engines) ? cfg.engines : [];
-    const devMode = !cfg.devMode;
+    const devMode = !!cfg.devMode;
     const showPicker = engines.length > 1 || devMode;
     const [sel, setSel] = useState(() => initialSelection(engines, devMode));
     const [customUrl, setCustomUrl] = useState(() => getCookie('oie-engine-url'));

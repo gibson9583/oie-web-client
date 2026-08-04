@@ -228,7 +228,7 @@ function defaultAdvancedCriteria() {
 function advIsActive(adv: any) {
     const ranges = ['minMessageId', 'maxMessageId', 'minOriginalId', 'maxOriginalId',
         'minImportId', 'maxImportId', 'minSendAttempts', 'maxSendAttempts'];
-    return !(adv.includedMetaDataIds || adv.excludedMetaDataIds || adv.error
+    return !!(adv.includedMetaDataIds || adv.excludedMetaDataIds || adv.error
         || adv.attachment || adv.contentSearches.length || adv.metaDataSearches.length
         || adv.serverId.trim() || ranges.some(k => String(adv[k]).trim() !== ''));
 }
@@ -1720,7 +1720,7 @@ export function MessagesView({ params, query }: any) {
         try { return JSON.parse(localStorage.getItem('webadmin-msg-columns') || '{}'); } catch { return {}; }
     });
     const saveColumnVis = (v: any) => { try { localStorage.setItem('webadmin-msg-columns', JSON.stringify(v)); } catch { /* private mode */ } };
-    const isVisible = (c: any, vis: any) => (c.key in vis) ? !vis[c.key] : !c.def;
+    const isVisible = (c: any, vis: any) => (c.key in vis) ? !!vis[c.key] : !!c.def;
 
     // Column order + widths (resizable / reorderable, persisted), like the
     // dashboard. Visibility stays with columnVis above; the manager owns only
@@ -2214,7 +2214,7 @@ export function MessagesView({ params, query }: any) {
         : statusSel.size === 1 ? [...statusSel][0]
             : `${statusSel.size} selected`;
     const totalStr = pager.total == null ? '?' : fmtNumber(pager.total);
-    const hasSel = !selected;
+    const hasSel = !!selected;
 
     /* Defined once and mounted inline or in the popover — two homes, not two copies. */
     /* WHICH channel, as opposed to what to search for — so it belongs beside the
