@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc -p type-tests/tsconfig.json && tsc -p web-administrator/tsconfig.json && tsc -p web-administrator/tsconfig.server.json --noEmit && tsc -p web-administrator/tsconfig.plugins.json && tsc -p web-administrator/tsconfig.views.json",
+    "typecheck": "tsc -p type-tests/tsconfig.json && tsc -p web-administrator/tsconfig.json && tsc -p web-administrator/tsconfig.server.json --noEmit && tsc -p web-administrator/tsconfig.plugins.json && tsc -p web-administrator/tsconfig.views.json && tsc -p e2e/tsconfig.json",
     "pree2e": "npm run build -w web-administrator",
     "e2e": "playwright test",
     "e2e:live": "E2E_LIVE=1 playwright test --project=live",
