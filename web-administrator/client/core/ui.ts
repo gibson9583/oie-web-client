@@ -882,7 +882,7 @@ export class DataTable<T = any> {
 
 /* ---- form field helpers ------------------------------------------------------------------------------ */
 
-export function field(label: string, control: Node, hint?: string): HTMLElement {
+export function field(label: string | Node, control: Node, hint?: string): HTMLElement {
     return h('div.field', h('label', label), control, hint ? h('div.hint', hint) : null);
 }
 
