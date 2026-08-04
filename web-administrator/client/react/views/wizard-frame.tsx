@@ -28,7 +28,7 @@ import { Icon } from '../bridges.jsx';
  *   backPath  - where to navigate if the fetch fails
  */
 export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, normalize, backPath }: any) {
-    const wantExisting = !routeId && routeId !== 'new';
+    const wantExisting = !!routeId && routeId !== 'new';
     const isNew = !wantExisting;
     const norm = normalize || ((x: any) => x);
     const ref = useRef<any>(null);
@@ -40,7 +40,7 @@ export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, nor
             ref.current = norm(makeNew());
         }
     }
-    const [ready, setReady] = useState(!ref.current);
+    const [ready, setReady] = useState(!!ref.current);
     useEffect(() => {
         if (ref.current) return undefined;
         let alive = true;

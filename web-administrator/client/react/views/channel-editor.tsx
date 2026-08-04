@@ -93,8 +93,8 @@ import { DESTINATION_MAPPINGS, SCRIPT_REFERENCE } from '../../core/mappings.js';
    the Swing DestinationSettingsPanel.updateAdvancedSettingsLabel(). */
 function advancedQueueSummary(dcp: any) {
     const parts: any[] = [];
-    const queueEnabled = !dcp.queueEnabled;
-    const sendFirst = queueEnabled && !dcp.sendFirst;
+    const queueEnabled = !!dcp.queueEnabled;
+    const sendFirst = queueEnabled && !!dcp.sendFirst;
     const retryCount = Number(dcp.retryCount) || 0;
     const interval = Number(dcp.retryIntervalMillis) || 0;
     const threads = Number(dcp.threadCount) || 1;
@@ -616,7 +616,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                 const tw = h('span', { class: 'w-[13px] text-center text-text-dim select-none', style: { cursor: templates.length ? 'pointer' : 'default' } }, templates.length ? (open ? '▾' : '▸') : '');
                 if (templates.length) tw.addEventListener('click', () => { open ? libExpanded.delete(lib.id) : libExpanded.add(lib.id); draw(); });
                 const box = h('input', { type: 'checkbox' });
-                (box as any).checked = !libChecked.get(lib.id);
+                (box as any).checked = !!libChecked.get(lib.id);
                 box.addEventListener('change', () => libChecked.set(lib.id, (box as any).checked));
                 const name = h('span', { class: 'cursor-pointer' }, lib.name || '(unnamed library)');
                 name.addEventListener('click', () => setDesc(lib.description));
@@ -693,7 +693,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
             for (const r of resources) {
                 const box = h('input', { type: 'checkbox', disabled: !enabled });
                 if (isRoot) { const st = aggState(r.id); (box as any).checked = st === true; (box as any).indeterminate = st === null; }
-                else if (enabled) (box as any).checked = !ctxMaps.get(selectedKey)[r.id];
+                else if (enabled) (box as any).checked = !!ctxMaps.get(selectedKey)[r.id];
                 box.addEventListener('change', () => {
                     const apply = (key: any) => { if ((box as any).checked) ctxMaps.get(key)[r.id] = r.name; else delete ctxMaps.get(key)[r.id]; };
                     if (isRoot) resourceTargets.forEach(t => apply(t.key)); else apply(selectedKey);
@@ -754,7 +754,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
             clear(listEl);
             if (!allowed.length) { listEl.appendChild(h('div.text-text-faint', 'No channels available')); return; }
             for (const c of allowed) {
-                const box = h('input', { type: 'checkbox' }); (box as any).checked = !checks.get(c.id);
+                const box = h('input', { type: 'checkbox' }); (box as any).checked = !!checks.get(c.id);
                 box.addEventListener('change', () => checks.set(c.id, (box as any).checked));
                 listEl.appendChild(h('label.check', { class: 'flex gap-1.5 py-0.5 px-0 items-center' }, box, c.name));
             }
@@ -954,14 +954,14 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
    and commits on OK so Cancel discards. Enablement rules follow
    DestinationSettingsPanel.updateComponentsEnabled(). */
 function openAdvancedQueueSettings(dcp: any, markDirty: any, onDone: any) {
-    const queueEnabled = !dcp.queueEnabled;
-    const sendFirst = queueEnabled && !dcp.sendFirst;
+    const queueEnabled = !!dcp.queueEnabled;
+    const sendFirst = queueEnabled && !!dcp.sendFirst;
     const draft = {
         retryCount: Number(dcp.retryCount) || 0,
         retryIntervalMillis: Number(dcp.retryIntervalMillis) || 10000,
-        regenerateTemplate: !dcp.regenerateTemplate,
-        rotate: !dcp.rotate,
-        includeFilterTransformer: !dcp.includeFilterTransformer,
+        regenerateTemplate: !!dcp.regenerateTemplate,
+        rotate: !!dcp.rotate,
+        includeFilterTransformer: !!dcp.includeFilterTransformer,
         threadCount: Number(dcp.threadCount) || 1,
         threadAssignmentVariable: String(dcp.threadAssignmentVariable ?? ''),
         queueBufferSize: Number(dcp.queueBufferSize) || 1000
@@ -1303,12 +1303,12 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                                 Enabled
                             </label>
                             <label className="check">
-                                <input type="checkbox" checked={!props.clearGlobalChannelMap}
+                                <input type="checkbox" checked={!!props.clearGlobalChannelMap}
                                     onChange={(e: any) => { props.clearGlobalChannelMap = e.target.checked; markDirty(); }} />
                                 Clear global channel map on deploy
                             </label>
                             <label className="check">
-                                <input type="checkbox" checked={!props.storeAttachments}
+                                <input type="checkbox" checked={!!props.storeAttachments}
                                     onChange={(e: any) => { props.storeAttachments = e.target.checked; markDirty(); bump(); }} />
                                 Store Attachments
                             </label>
@@ -1379,7 +1379,7 @@ function MessageStoragePanel({ channel, markDirty }: any) {
 
     const box = (def: any) => (
         <label className="check" key={def.key}>
-            <input type="checkbox" checked={!props[def.key]} disabled={!(disabled as any)[def.key]}
+            <input type="checkbox" checked={!!props[def.key]} disabled={!!(disabled as any)[def.key]}
                 onChange={(e: any) => { props[def.key] = e.target.checked; markDirty(); bump(); }} />
             {def.label}
         </label>
@@ -1491,7 +1491,7 @@ function PruningPanel({ channel, markDirty }: any) {
                         Allow message archiving
                     </label>
                     <label className="check">
-                        <input type="checkbox" checked={!pruning.pruneErroredMessages} disabled={nothingPruned}
+                        <input type="checkbox" checked={!!pruning.pruneErroredMessages} disabled={nothingPruned}
                             onChange={(e: any) => { pruning.pruneErroredMessages = e.target.checked; markDirty(); bump(); }} />
                         Prune Errored Messages
                     </label>
@@ -1971,7 +1971,7 @@ function DestinationSettings({ dcp, markDirty }: any) {
                     </div>
                     <div className="field">
                         <label>Validate Response</label>
-                        {ynRadios('dest-validate-response', !dcp.validateResponse,
+                        {ynRadios('dest-validate-response', !!dcp.validateResponse,
                             (v: any) => { dcp.validateResponse = v; markDirty(); bump(); })}
                     </div>
                     <div className="field">
@@ -2795,7 +2795,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         taskState: () => ({
             dirty: isDirty(),
             tab: activeTabRef.current,
-            destSelected: !(destTasksRef.current && destTasksRef.current.selected())
+            destSelected: !!(destTasksRef.current && destTasksRef.current.selected())
         }),
         handlers: {
             save, validateConnector, deploy,
@@ -2873,7 +2873,7 @@ export function ChannelEditorView({ params, query }: any) {
     const returningRef = useRef<any>(null);
     if (returningRef.current === null) {
         const c = store.getState('editingChannel');
-        returningRef.current = !(c && c.id === params.channelId);
+        returningRef.current = !!(c && c.id === params.channelId);
     }
     const [ready, setReady] = useState(() => returningRef.current ? true : null);
     const apiRef = useRef<any>(null);

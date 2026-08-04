@@ -107,7 +107,7 @@ function pathOf(target: any, list: any, parent: any[] = []): any {
     }
     return null;
 }
-const pathEquals = (a: any, b: any) => !a && !b && a.length === b.length && a.every((v: any, i: any) => v === b[i]);
+const pathEquals = (a: any, b: any) => !!a && !!b && a.length === b.length && a.every((v: any, i: any) => v === b[i]);
 const isAncestorPath = (anc: any, p: any) => anc.length < p.length && anc.every((v: any, i: any) => v === p[i]);
 
 // Flatten the tree to display rows in order, carrying each row's path/depth.
@@ -256,7 +256,7 @@ function resolveEditorAt(target: any) {
 
 function hasAccessorDrag(dragRef: any, e: any) {
     if (dragRef.current) return true;
-    return !(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(ACCESSOR_FLAVOR));
+    return !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(ACCESSOR_FLAVOR));
 }
 
 // Allow dropping onto editors/fields anywhere in the view (the tree lives in
@@ -511,7 +511,7 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
 function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, onChange, onReplaceElement, destinations }: any) {
     const hostRef = useRef<any>(null);
     const def = element ? typeDefFor(isFilter, element.__type) : null;
-    const hasComponent = !(def && typeof def.component === 'function');
+    const hasComponent = !!(def && typeof def.component === 'function');
 
     useEffect(() => {
         if (!element || !hasComponent) return undefined;
@@ -1640,7 +1640,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         e.preventDefault();
         if (path && !pathEquals(path, selectedPathRef.current)) selectElement(path);
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
-        const onStep = !el;
+        const onStep = !!el;
         const t = kind.title, n = kind.noun;
         // Mutations ride channelEdit/doSaveChannel (same tagging as the task pane).
         const gate = { task: 'doSaveChannel', group: 'channelEdit' };
@@ -1675,11 +1675,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     function taskState() {
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
-        const onStep = !el;
+        const onStep = !!el;
         return {
             onStep,
-            assign: !(onStep && !isIteratorType(el.__type)),
-            remove: !(onStep && selectedPathRef.current && selectedPathRef.current.length > 1),
+            assign: !!(onStep && !isIteratorType(el.__type)),
+            remove: !!(onStep && selectedPathRef.current && selectedPathRef.current.length > 1),
             dirty: channelDirty()
         };
     }

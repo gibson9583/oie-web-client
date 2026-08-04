@@ -649,7 +649,7 @@ export function AlertEditor({ params, query = {} }: any) {
     }
 
     const loadError = tree && tree.loadError;
-    const ready = !form && !tree && !loadError;
+    const ready = !!form && !!tree && !loadError;
 
     /* ---- actions rows (protocol/recipient pairs) ---- */
     const addAction = () => patchForm({ actionRows: [...form.actionRows, { protocol: tree.protocols[0], recipient: '' }] });

@@ -45,7 +45,7 @@ function AlertWizardView({ params }: any) {
     const { model, isNew, ready } = useWizardModel({
         routeId: params && params.alertId,
         storeKey: 'editingAlert',
-        isValid: (a: any) => !a.trigger,
+        isValid: (a: any) => !!a.trigger,
         makeNew: () => newAlert('', version),
         fetch: (id: any) => api.alerts.get(id),
         normalize: normalizeActionGroups,
@@ -427,14 +427,14 @@ function AlertWizardInner({ alert, isNew }: any) {
                 <div className="ml-auto flex items-center gap-2">
                     {/* RBAC: save/create affordances hide without alertEdit/doSaveAlerts. */}
                     {!isLast ? (
-                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !nameError()} onClick={tryNext}>Next</button>
+                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>Next</button>
                     ) : isNew && canSave ? (
                         <>
-                            <button className="btn" disabled={saving || !nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Creating…' : 'Create Alert'}</button>
-                            <button className="btn btn-primary" disabled={saving || !nameError()} onClick={() => finish(true)}><Icon name="check" size={14} />Create &amp; Enable</button>
+                            <button className="btn" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Creating…' : 'Create Alert'}</button>
+                            <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(true)}><Icon name="check" size={14} />Create &amp; Enable</button>
                         </>
                     ) : !isNew && dirtyRef.current && canSave ? (
-                        <button className="btn btn-primary" disabled={saving || !nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Saving…' : 'Save Alert'}</button>
+                        <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Saving…' : 'Save Alert'}</button>
                     ) : (
                         <button className="btn" onClick={() => router.navigate('/alerts')}><Icon name="x" size={14} />Exit</button>
                     )}

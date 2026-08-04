@@ -631,8 +631,8 @@ export function CodeTemplatesView() {
 
     // Selection-dependent task visibility (Swing Code Template Tasks pane).
     const found = resolve(selected);
-    const isTemplate = !found && selected && selected.kind === 'template';
-    const isLibrary = !found && selected && selected.kind === 'library';
+    const isTemplate = !!found && selected && selected.kind === 'template';
+    const isLibrary = !!found && selected && selected.kind === 'library';
 
     // Tree data + filter for the <TreeTable>.
     const treeData = entries.map((entry: any) => ({
@@ -825,7 +825,7 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
                 </div>
                 <div className="field justify-end">
                     <label className="check">
-                        <input type="checkbox" checked={!library.includeNewChannels}
+                        <input type="checkbox" checked={!!library.includeNewChannels}
                             onChange={(e: any) => { library.includeNewChannels = e.target.checked; markDirty(); }} />
                         Include New Channels
                     </label>

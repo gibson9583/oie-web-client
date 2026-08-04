@@ -557,7 +557,7 @@ function ChannelWizardView({ params }: any) {
     const { model, isNew, ready } = useWizardModel({
         routeId: params && params.channelId,
         storeKey: 'editingChannel',
-        isValid: (c: any) => !c.sourceConnector,
+        isValid: (c: any) => !!c.sourceConnector,
         makeNew: () => {
             const c = oie.newChannel('', version);
             c.name = '';   // newChannel defaults to "New Channel"; start blank so Basics requires a name
@@ -856,13 +856,13 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                 <button className="btn" disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>Back</button>
                 <div className="ml-auto flex items-center gap-2">
                     {!isLast ? (
-                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !nameError()} onClick={tryNext}>Next</button>
+                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>Next</button>
                     ) : (
                         <>
                             {/* RBAC: save/deploy affordances hide without the matching
                                 channelEdit task (same gating as the classic editor). */}
                             {(isNew || dirtyRef.current) && canSave ? (
-                                <button className="btn" disabled={busy || !nameError()} onClick={() => finish(false)}>
+                                <button className="btn" disabled={busy || !!nameError()} onClick={() => finish(false)}>
                                     <Icon name="save" size={14} />{saving ? (isNew ? 'Creating…' : 'Saving…') : (isNew ? 'Create Channel' : 'Save Changes')}
                                 </button>
                             ) : (
@@ -871,7 +871,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                                 </button>
                             )}
                             {isNew || dirtyRef.current ? (
-                                canSave && canDeploy && <button className="btn btn-primary" disabled={busy || !nameError()} onClick={() => finish(true)}>
+                                canSave && canDeploy && <button className="btn btn-primary" disabled={busy || !!nameError()} onClick={() => finish(true)}>
                                     <Icon name="deploy" size={14} />{deploying ? 'Deploying…' : (isNew ? 'Create & Deploy' : 'Save & Deploy')}
                                 </button>
                             ) : (
