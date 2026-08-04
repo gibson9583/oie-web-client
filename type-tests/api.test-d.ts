@@ -4,7 +4,7 @@
  * If a future `gen:schema` against the engine drops/renames a model, this fails.
  */
 import api, { asList, destinationsOf, elementsToArray, ApiError } from '@oie/web-api';
-import type { Channel, Connector, WireChannel, DashboardStatus, User, Message } from '@oie/web-api';
+import type { Channel, Connector, WireChannel, WireConnector, DashboardStatus, User, Message } from '@oie/web-api';
 
 async function goodUsage() {
     // Generated model fields resolve. The engine's OpenAPI marks most fields
@@ -18,7 +18,12 @@ async function goodUsage() {
 
     // Destinations come out of the model helper, which flattens whichever XStream
     // shape the engine produced. THIS is the supported way to read them.
-    const dests: Connector[] = destinationsOf(ch);
+    const dests: WireConnector[] = destinationsOf(ch);
+
+    // Nested override: a destination's transformer carries a class-keyed element
+    // map, so it flows through elementsToArray too — not through .map().
+    const nested = elementsToArray(dests[0]?.transformer?.elements);
+    void nested;
 
     // Filter/transformer elements are a class-name-keyed map on the wire, so they
     // go through the helper too; each result carries the synthesized __type.

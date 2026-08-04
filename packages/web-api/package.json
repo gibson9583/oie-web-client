@@ -16,6 +16,7 @@
     "dist",
     "index.js",
     "index.d.ts",
+    "types",
     "oie-schema.d.ts",
     "README.md"
   ],

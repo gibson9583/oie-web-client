@@ -1,0 +1,12 @@
+{
+  "//": "Emits the @oie/web-api type declarations from the pkg-api barrel's import graph into packages/web-api/types/ (run via `npm run gen:types`, part of `npm run build`). The package's index.d.ts re-exports them; oie-schema.d.ts is copied alongside by the gen:types script.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "client/core",
+    "outDir": "../packages/web-api/types"
+  },
+  "include": ["client/core/pkg-api.ts", "client/core/vendor-modules.d.ts"]
+}
