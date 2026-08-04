@@ -1,4 +1,4 @@
-// web-administrator/plugins/attachment-imageviewer/web/plugin.tsx
+// plugins/attachment-imageviewer/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var IMAGE_RE = /^image\/|(^|[^a-z])(png|jpe?g|gif|bmp|webp|svg|tiff?)([^a-z]|$)/i;

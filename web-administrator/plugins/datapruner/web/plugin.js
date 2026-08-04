@@ -1,4 +1,4 @@
-// web-administrator/plugins/datapruner/web/plugin.tsx
+// plugins/datapruner/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var PRUNER_STATUS_ORDER = ["currentState", "currentProcess", "lastProcess", "nextProcess", "isRunning"];

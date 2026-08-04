@@ -33,6 +33,10 @@ const names = Object.keys(entryPoints);
 if (!names.length) { console.log('[build-plugins] no TypeScript plugin entries'); process.exit(0); }
 
 await build({
+    // Pin the working dir so the entry-path comment esbuild writes into each
+    // bundle is identical no matter where the tool is invoked from (the CI
+    // drift check compares bytes).
+    absWorkingDir: root,
     entryPoints,
     outdir: root,
     bundle: true,

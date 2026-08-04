@@ -1,4 +1,4 @@
-// web-administrator/plugins/httpauth/web/plugin.tsx
+// plugins/httpauth/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 import { DESTINATION_MAPPINGS } from "@oie/web-ui";
 var React = platform.React;

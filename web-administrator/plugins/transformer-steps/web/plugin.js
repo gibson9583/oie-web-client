@@ -1,4 +1,4 @@
-// web-administrator/plugins/transformer-steps/web/plugin.tsx
+// plugins/transformer-steps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
 var SCOPES = [
