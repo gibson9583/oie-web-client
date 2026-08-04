@@ -13,12 +13,38 @@
  * extend it. See that package's README.
  */
 import globals from 'globals';
+import babelParser from '@babel/eslint-parser';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 // Shell uses the lenient boundary (it legitimately owns the core internals a
 // plugin may not touch), so it reuses only the deep-import guard from the
 // shared plugin config rather than the full strict ruleset.
 import { noDeepPackageImports } from './packages/eslint-config/index.js';
+
+/* TypeScript sources are linted through the Babel parser (syntax-only — the
+   type checking itself is tsc's job via `npm run typecheck`). typescript-eslint
+   is not an option while the repo compiles with TypeScript 7 (its parser peers
+   on <= 6). This restores the react-hooks rules the .jsx -> .tsx move would
+   otherwise have lost; no-undef/no-unused-vars stay off here because scope
+   analysis over type annotations false-positives — tsc covers both. */
+const tsLanguageOptions = {
+    parser: babelParser,
+    parserOptions: {
+        requireConfigFile: false,
+        babelOptions: { presets: ['@babel/preset-typescript'] },
+    },
+    globals: { ...globals.browser },
+};
+// .tsx needs JSX enabled explicitly; kept OFF for .ts, where `<T>(...)` generic
+// arrows would otherwise parse as JSX.
+const tsxLanguageOptions = {
+    parser: babelParser,
+    parserOptions: {
+        requireConfigFile: false,
+        babelOptions: { presets: ['@babel/preset-typescript'], plugins: ['@babel/plugin-syntax-jsx'] },
+    },
+    globals: { ...globals.browser },
+};
 
 export default [
     {
@@ -99,6 +125,54 @@ export default [
             'no-restricted-imports': ['error', noDeepPackageImports],
             'no-undef': 'warn',
             'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
+            'react/jsx-uses-vars': 'error',
+            'react/jsx-uses-react': 'error',
+            'react/jsx-key': 'warn',
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
+        },
+    },
+
+    // React shell/views + datatypes (.tsx/.ts, automatic JSX runtime) — the
+    // hooks rules guard the same effect-deps/once-only-setup bugs they did on
+    // the .jsx sources.
+    {
+        files: ['web-administrator/client/react/**/*.tsx', 'web-administrator/client/datatypes/*.tsx', 'web-administrator/client/main.tsx'],
+        languageOptions: tsxLanguageOptions,
+        plugins: { react, 'react-hooks': reactHooks },
+        settings: { react: { version: 'detect' } },
+        rules: {
+            'no-restricted-imports': ['error', noDeepPackageImports],
+            'react/jsx-uses-vars': 'error',
+            'react/jsx-key': 'warn',
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
+        },
+    },
+
+    // Raw-served TypeScript core + connector panels + bundled plugin sources
+    // (classic JSX runtime against the lazy host React).
+    {
+        files: ['web-administrator/client/react/**/*.ts', 'web-administrator/client/datatypes/*.ts', 'web-administrator/client/core/*.ts', 'web-administrator/client/connectors/*.ts', 'web-administrator/plugins/*/web/*.ts'],
+        ignores: ['**/*.d.ts'],
+        languageOptions: tsLanguageOptions,
+        plugins: { 'react-hooks': reactHooks },
+        rules: {
+            'no-restricted-imports': ['error', noDeepPackageImports],
+            'react-hooks/rules-of-hooks': 'error',
+            'react-hooks/exhaustive-deps': 'warn',
+        },
+    },
+
+    // Raw-served connector panels + bundled plugin sources (.tsx, classic JSX
+    // runtime against the lazy host React).
+    {
+        files: ['web-administrator/client/connectors/*.tsx', 'web-administrator/plugins/*/web/*.tsx'],
+        languageOptions: tsxLanguageOptions,
+        plugins: { react, 'react-hooks': reactHooks },
+        settings: { react: { version: 'detect' } },
+        rules: {
+            'no-restricted-imports': ['error', noDeepPackageImports],
             'react/jsx-uses-vars': 'error',
             'react/jsx-uses-react': 'error',
             'react/jsx-key': 'warn',
