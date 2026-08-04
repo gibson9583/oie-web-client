@@ -1,0 +1,15 @@
+{
+  "//": "Strict type-check + CJS emit for the Node server (run via tools/build-server.mjs; check-only via `npm run typecheck`). Sources are server/*.ts; the committed server/*.js twins are what `node server/index.js` runs — same model as the client core twins.",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": false,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "lib": ["es2022"],
+    "types": ["node"],
+    "skipLibCheck": true,
+    "esModuleInterop": true
+  },
+  "include": ["server/*.ts"]
+}
