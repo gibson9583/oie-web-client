@@ -1,0 +1,12 @@
+{
+  "//": "Emits the @oie/web-shell type declarations from the pkg-shell barrel's import graph into packages/web-shell/types/ (run via `npm run gen:types`). Each package ships its own copy of the shared graph so the published types are self-contained.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "rootDir": "client/core",
+    "outDir": "../packages/web-shell/types"
+  },
+  "include": ["client/core/pkg-shell.ts", "client/core/vendor-modules.d.ts"]
+}

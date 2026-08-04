@@ -13,7 +13,7 @@
     "predev": "node tools/build-vendor.mjs && node tools/build-core.mjs",
     "dev": "WEBADMIN_DEV=1 node --watch-path=./server server/index.js",
     "build": "node tools/build-vendor.mjs && node tools/build-core.mjs && vite build && node tools/build-plugins.mjs && node tools/build-connectors.mjs && npm run gen:types",
-    "gen:types": "tsc -p tsconfig.types.json && cp client/core/oie-schema.d.ts ../packages/web-api/types/oie-schema.d.ts",
+    "gen:types": "tsc -p tsconfig.types.json && cp client/core/oie-schema.d.ts ../packages/web-api/types/oie-schema.d.ts && tsc -p tsconfig.types-shell.json && cp client/core/oie-schema.d.ts ../packages/web-shell/types/oie-schema.d.ts",
     "test": "for f in client/core/*.test.js server/*.test.js; do node \"$f\" || exit 1; done"
   },
   "engines": {
