@@ -31,27 +31,27 @@ const SCHEMES = [
 /* Per-scheme connection-field enablement, mirroring FileReader/FileWriter
    onSchemeChange(): each connection control is disabled by default and only
    enabled for the schemes listed below (Swing setEnabled). */
-const anonymousEnabled = (p) => ['FTP', 'S3', 'WEBDAV'].includes(p.scheme);
-const timeoutEnabled = (p) => ['FTP', 'SFTP', 'S3', 'SMB'].includes(p.scheme);
-const secureEnabled = (p) => p.scheme === 'WEBDAV';
-const passiveEnabled = (p) => p.scheme === 'FTP';
-const validateEnabled = (p) => p.scheme === 'FTP';
+const anonymousEnabled = (p: any) => ['FTP', 'S3', 'WEBDAV'].includes(p.scheme);
+const timeoutEnabled = (p: any) => ['FTP', 'SFTP', 'S3', 'SMB'].includes(p.scheme);
+const secureEnabled = (p: any) => p.scheme === 'WEBDAV';
+const passiveEnabled = (p: any) => p.scheme === 'FTP';
+const validateEnabled = (p: any) => p.scheme === 'FTP';
 /* Username/Password follow the Anonymous radios (anonymousYes/NoActionPerformed):
    disabled when scheme==FILE (no credentials) or Anonymous=Yes. */
-const credentialsDisabled = (p) => p.scheme === 'FILE' || (anonymousEnabled(p) && asBool(p.anonymous));
+const credentialsDisabled = (p: any) => p.scheme === 'FILE' || (anonymousEnabled(p) && asBool(p.anonymous));
 
 /* Swing FileReader/FileWriter.checkProperties credential requirements (shared):
    with Anonymous=No, Username is required unless S3 is using the default
    credential provider chain. Password is additionally required unless SFTP is
    using key-only auth (ignorePassword = SFTP && !passwordAuth). */
-const credentialsRequired = (p) => !asBool(p.anonymous)
+const credentialsRequired = (p: any) => !asBool(p.anonymous)
     && (p.scheme !== 'S3' || !asBool(p.schemeProperties && p.schemeProperties.useDefaultCredentialProviderChain));
-const passwordRequired = (p) => credentialsRequired(p)
+const passwordRequired = (p: any) => credentialsRequired(p)
     && !(p.scheme === 'SFTP' && !asBool(p.schemeProperties && p.schemeProperties.passwordAuth));
 
 /* anonymousYesActionPerformed / anonymousNoActionPerformed forced text:
    Anonymous=Yes -> 'anonymous'/'anonymous' (''/'' for S3); S3+No clears both. */
-function applyAnonymous(p) {
+function applyAnonymous(p: any) {
     // Anonymous / S3 just clear + disable the credential fields — we do NOT
     // prefill the placeholder 'anonymous'/'anonymous' the Swing client used.
     if (p.scheme === 'S3' || asBool(p.anonymous)) {
@@ -62,7 +62,7 @@ function applyAnonymous(p) {
 
 /* Selecting Binary forces Encoding back to Default and disables it
    (fileTypeBinaryActionPerformed: setSelectedIndex(0) = DEFAULT_ENCODING). */
-function onFileTypeSet(p) {
+function onFileTypeSet(p: any) {
     if (asBool(p.binary)) p.charsetEncoding = 'DEFAULT_ENCODING';
 }
 
@@ -80,16 +80,16 @@ const FILE_TYPE_OPTIONS = [
    Append is disabled for S3/WEBDAV (onSchemeChange allowAppend=false). Rendered
    as a custom mutually-exclusive group so the invalid both-true combo (which the
    two independent web radios allowed) cannot occur. */
-function fileExistsValue(p) {
+function fileExistsValue(p: any) {
     if (asBool(p.outputAppend)) return 'append';
     if (asBool(p.errorOnExists)) return 'error';
     return 'overwrite';
 }
 function fileExistsField() {
-    const allowAppend = (p) => p.scheme !== 'S3' && p.scheme !== 'WEBDAV';
+    const allowAppend = (p: any) => p.scheme !== 'S3' && p.scheme !== 'WEBDAV';
     return {
         label: 'File Exists', type: 'custom', refresh: true,
-        render: (p, { onChange, repaint }) => {
+        render: (p: any, { onChange, repaint }: any) => {
             const current = fileExistsValue(p);
             const group = h('div.radio-group.inline-row');
             const opts = [
@@ -97,7 +97,7 @@ function fileExistsField() {
                 { value: 'overwrite', label: 'Overwrite' },
                 { value: 'error', label: 'Error' }
             ];
-            opts.forEach((o) => {
+            opts.forEach((o: any) => {
                 const input = h('input', {
                     type: 'radio', name: 'file-exists',
                     checked: o.value === current,
@@ -122,13 +122,13 @@ function fileExistsField() {
    whenever the typed region isn't a known id. The text field stays the source
    of truth (free-text), mirroring the Swing regionComboBox sitting beside the
    regionField. Rebuilt on every repaint, so it always reflects the field. */
-function regionPicker(p, ctx) {
+function regionPicker(p: any, ctx: any) {
     const sp = p.schemeProperties || {};
     const current = sp.region || '';
     const isKnown = S3_REGIONS.includes(current);
-    const opts = [{ value: 'Custom', label: 'Custom' }, ...S3_REGIONS.map((r) => ({ value: r, label: r }))];
+    const opts = [{ value: 'Custom', label: 'Custom' }, ...S3_REGIONS.map((r: any) => ({ value: r, label: r }))];
     const sel = select(opts, isKnown ? current : 'Custom', {
-        onChange: (e) => {
+        onChange: (e: any) => {
             const v = e.target.value;
             if (v === 'Custom') return; // typing drives "Custom"; selecting it is a no-op (matches Swing)
             sp.region = v;
@@ -143,7 +143,7 @@ function regionPicker(p, ctx) {
 
 /* Per-scheme host prefix label (FileWriter/FileReader hostLabel): the bare scheme
    for ftp/sftp/smb, http(s):// for WebDAV (secure), "S3 Bucket:" for S3. */
-function schemePrefix(p) {
+function schemePrefix(p: any) {
     switch (String(p.scheme)) {
         case 'FTP': return 'ftp://';
         case 'SFTP': return 'sftp://';
@@ -159,11 +159,11 @@ function schemePrefix(p) {
    first '/' to load, recomposed on edit (getProperties: host + "/" + path). Raw
    inputs commit via the connector onChange (markDirty) WITHOUT repainting, so
    typing keeps focus. */
-function hostPathField(onChange) {
+function hostPathField(onChange: any): any {
     return {
         label: '', type: 'custom',
-        visible: (p) => p.scheme !== 'FILE',
-        render: (p) => {
+        visible: (p: any) => p.scheme !== 'FILE',
+        render: (p: any) => {
             const host = String(p.host ?? '');
             const slash = host.indexOf('/');
             const hostPart = slash === -1 ? host : host.slice(0, slash);
@@ -185,7 +185,7 @@ function hostPathField(onChange) {
  * schemes carry a concrete subclass identified by '@class'. Defaults mirror
  * the Java constructors (server/src/com/mirth/connect/connectors/file). */
 
-const SCHEME_PROPERTY_CLASSES = {
+const SCHEME_PROPERTY_CLASSES: Record<string, string> = {
     FTP: 'com.mirth.connect.connectors.file.FTPSchemeProperties',
     SFTP: 'com.mirth.connect.connectors.file.SftpSchemeProperties',
     S3: 'com.mirth.connect.connectors.file.S3SchemeProperties',
@@ -223,22 +223,22 @@ const S3_REGIONS = [
    Rendered as a custom mutually-exclusive group (like fileExistsField) so the
    invalid "neither" combo the two independent web radios allowed cannot occur,
    and Key File/Passphrase are revealed for Public Key OR Both. */
-function sftpAuthValue(sp) {
+function sftpAuthValue(sp: any) {
     const pw = asBool(sp && sp.passwordAuth);
     const key = asBool(sp && sp.keyAuth);
     if (pw && key) return 'both';
     if (key) return 'key';
     return 'password';
 }
-function sftpKeyEnabled(p) {
+function sftpKeyEnabled(p: any) {
     const v = sftpAuthValue(p.schemeProperties);
     return v === 'key' || v === 'both';
 }
 function sftpAuthField() {
     return {
         label: 'Authentication', type: 'custom', refresh: true,
-        visible: (p) => p.scheme === 'SFTP',
-        render: (p, { onChange, repaint }) => {
+        visible: (p: any) => p.scheme === 'SFTP',
+        render: (p: any, { onChange, repaint }: any) => {
             const sp = p.schemeProperties || {};
             const current = sftpAuthValue(sp);
             const group = h('div.radio-group.inline-row');
@@ -247,7 +247,7 @@ function sftpAuthField() {
                 { value: 'key', label: 'Public Key' },
                 { value: 'both', label: 'Both' }
             ];
-            opts.forEach((o) => {
+            opts.forEach((o: any) => {
                 const input = h('input', {
                     type: 'radio', name: 'sftp-auth',
                     checked: o.value === current,
@@ -274,7 +274,7 @@ const SMB_VERSIONS = [
     { value: 'SMB311', label: 'SMB v3.1.1' }
 ];
 
-function defaultSchemeProperties(scheme) {
+function defaultSchemeProperties(scheme: any) {
     switch (scheme) {
         case 'FTP':
             return {
@@ -314,7 +314,7 @@ function defaultSchemeProperties(scheme) {
 
 /* Create the scheme's properties object when missing or of the wrong class
    (e.g. the user just switched schemes); leave a matching object untouched. */
-function ensureSchemeProperties(properties) {
+function ensureSchemeProperties(properties: any) {
     const cls = SCHEME_PROPERTY_CLASSES[properties.scheme];
     if (!cls) {
         // FILE/WEBDAV have no scheme properties. The key must be ABSENT, not null:
@@ -336,7 +336,7 @@ function ensureSchemeProperties(properties) {
    rebuild schemeProperties for the new scheme and apply the forced selections
    Swing performs — WEBDAV forces Passive Mode=No, and the Anonymous radios are
    re-applied (forcing username/password defaults). */
-function onSchemeChange(properties) {
+function onSchemeChange(properties: any) {
     // ensureSchemeProperties handles both directions: it builds the concrete
     // subclass for FTP/SFTP/S3/SMB and DELETES the key for FILE/WEBDAV. It must
     // never be set to null here — a scheme change only repaints the form, so the
@@ -348,7 +348,7 @@ function onSchemeChange(properties) {
 
 /* Writer scheme switch additionally forces Validate Connection=No for WEBDAV,
    and for S3 forces Create Temp File=No (allowAppend=false; tempFile disabled). */
-function onWriterSchemeChange(properties) {
+function onWriterSchemeChange(properties: any) {
     onSchemeChange(properties);
     if (properties.scheme === 'WEBDAV') properties.validateConnection = false;
     if (properties.scheme === 'S3') {
@@ -361,8 +361,8 @@ function onWriterSchemeChange(properties) {
 function ftpInitialCommandsField() {
     return {
         label: 'Initial Commands', type: 'custom', span: true,
-        visible: (p) => p.scheme === 'FTP',
-        render: (p, { onChange }) => {
+        visible: (p: any) => p.scheme === 'FTP',
+        render: (p: any, { onChange }: any) => {
             const sp = p.schemeProperties || {};
             let lines = sp.initialCommands && typeof sp.initialCommands === 'object'
                 ? sp.initialCommands.string : null;
@@ -371,8 +371,8 @@ function ftpInitialCommandsField() {
             const area = h('textarea', {
                 rows: 3,
                 placeholder: 'One FTP command per line, sent after connecting',
-                onInput: (e) => {
-                    const values = e.target.value.split('\n').map((s) => s.trim()).filter((s) => s !== '');
+                onInput: (e: any) => {
+                    const values = e.target.value.split('\n').map((s: any) => s.trim()).filter((s: any) => s !== '');
                     sp.initialCommands = values.length ? { string: values } : null;
                     onChange();
                 }
@@ -383,16 +383,16 @@ function ftpInitialCommandsField() {
 }
 
 /* Section of scheme-specific fields, shared by File Reader and File Writer. */
-function schemeSettingsFields() {
-    const sftp = (p) => p.scheme === 'SFTP';
-    const s3 = (p) => p.scheme === 'S3';
+function schemeSettingsFields(): any[] {
+    const sftp = (p: any) => p.scheme === 'SFTP';
+    const s3 = (p: any) => p.scheme === 'S3';
     return [
-        { section: 'FTP Settings', visible: (p) => p.scheme === 'FTP' },
+        { section: 'FTP Settings', visible: (p: any) => p.scheme === 'FTP' },
         ftpInitialCommandsField(),
         { section: 'SFTP Settings', visible: sftp },
         sftpAuthField(),
-        { key: 'schemeProperties.keyFile', label: 'Public/Private Key File', type: 'text', width: '320px', visible: (p) => sftp(p) && sftpKeyEnabled(p) },
-        { key: 'schemeProperties.passPhrase', label: 'Passphrase', type: 'password', width: '220px', visible: (p) => sftp(p) && sftpKeyEnabled(p) },
+        { key: 'schemeProperties.keyFile', label: 'Public/Private Key File', type: 'text', width: '320px', visible: (p: any) => sftp(p) && sftpKeyEnabled(p) },
+        { key: 'schemeProperties.passPhrase', label: 'Passphrase', type: 'password', width: '220px', visible: (p: any) => sftp(p) && sftpKeyEnabled(p) },
         { key: 'schemeProperties.hostKeyChecking', label: 'Host Key Checking', type: 'select', width: '120px', visible: sftp, options: [
             { value: 'yes', label: 'Yes' },
             { value: 'ask', label: 'Ask' },
@@ -406,25 +406,25 @@ function schemeSettingsFields() {
             type: 'radio', options: YES_NO, refresh: true, visible: s3,
             // Swing AdvancedS3SettingsDialog greys these + shows a red warning when
             // the connector is using Anonymous credentials.
-            disabled: (p) => asBool(p.anonymous),
-            append: (p) => asBool(p.anonymous)
+            disabled: (p: any) => asBool(p.anonymous),
+            append: (p: any) => asBool(p.anonymous)
                 ? h('span', { class: 'text-[#c0392b] ml-3 font-[500]' }, 'Anonymous credentials are currently in use')
                 : null,
             tooltip: 'When No, the Username/Password above are used as the AWS access key ID / secret access key'
         },
-        { key: 'schemeProperties.useTemporaryCredentials', label: 'Use Temporary Credentials', type: 'radio', options: YES_NO, refresh: true, visible: s3, disabled: (p) => asBool(p.anonymous) },
-        { key: 'schemeProperties.duration', label: 'Duration (seconds)', type: 'number', numeric: true, width: '110px', visible: (p) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p) => asBool(p.anonymous) },
+        { key: 'schemeProperties.useTemporaryCredentials', label: 'Use Temporary Credentials', type: 'radio', options: YES_NO, refresh: true, visible: s3, disabled: (p: any) => asBool(p.anonymous) },
+        { key: 'schemeProperties.duration', label: 'Duration (seconds)', type: 'number', numeric: true, width: '110px', visible: (p: any) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p: any) => asBool(p.anonymous) },
         {
             key: 'schemeProperties.region', label: 'Region', type: 'text', width: '160px', visible: s3, placeholder: 'us-east-1', refresh: true,
             // Region helper combo (AdvancedS3SettingsDialog.regionComboBox): picking
             // a known Region id fills the text field; a non-matching typed value
             // snaps the combo to "Custom" (regionFieldUpdated/regionComboBoxActionPerformed).
-            append: (p, ctx) => regionPicker(p, ctx)
+            append: (p: any, ctx: any) => regionPicker(p, ctx)
         },
         { key: 'schemeProperties.customHeaders', label: 'Custom HTTP Headers', type: 'keyvalue', mapShape: 'list', visible: s3 },
-        { section: 'SMB Settings', visible: (p) => p.scheme === 'SMB' },
-        { key: 'schemeProperties.smbMinVersion', label: 'SMB Minimum Version', type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p) => p.scheme === 'SMB' },
-        { key: 'schemeProperties.smbMaxVersion', label: 'SMB Maximum Version', type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p) => p.scheme === 'SMB' }
+        { section: 'SMB Settings', visible: (p: any) => p.scheme === 'SMB' },
+        { key: 'schemeProperties.smbMinVersion', label: 'SMB Minimum Version', type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p: any) => p.scheme === 'SMB' },
+        { key: 'schemeProperties.smbMaxVersion', label: 'SMB Maximum Version', type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p: any) => p.scheme === 'SMB' }
     ];
 }
 
@@ -438,12 +438,12 @@ const FILE_VAR_MIME = 'application/x-oie-filevar';
    move/error fields (marked data-file-var-target). Browsers can expose a dragged
    element's text as text/plain, which any input would otherwise accept; cancelling
    the drop's default at capture phase prevents that on non-target elements. */
-const isFileVarDrag = (ev) => ev.dataTransfer && Array.from(ev.dataTransfer.types).includes(FILE_VAR_MIME);
-const isFileVarTarget = (t) => t instanceof HTMLElement && t.dataset.fileVarTarget === '1';
-function fileVarDocDragOver(ev) {
-    if (isFileVarDrag(ev) && !isFileVarTarget(ev.target)) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'none'; }
+const isFileVarDrag = (ev: any) => ev.dataTransfer && Array.from(ev.dataTransfer!.types).includes(FILE_VAR_MIME);
+const isFileVarTarget = (t: any) => t instanceof HTMLElement && t.dataset.fileVarTarget === '1';
+function fileVarDocDragOver(ev: any) {
+    if (isFileVarDrag(ev) && !isFileVarTarget(ev.target)) { ev.preventDefault(); ev.dataTransfer!.dropEffect = 'none'; }
 }
-function fileVarDocDrop(ev) {
+function fileVarDocDrop(ev: any) {
     if (isFileVarDrag(ev) && !isFileVarTarget(ev.target)) { ev.preventDefault(); ev.stopPropagation(); }
 }
 
@@ -452,14 +452,14 @@ function fileVarDocDrop(ev) {
    bordered vertical variable list box on the right (spanning the rows). Clicking
    a variable inserts ${var} at the cursor of the last-focused directory/filename
    field. Gating greys the move fields unless their action is "Move". */
-function afterProcessingBlock(properties, onChange) {
+function afterProcessingBlock(properties: any, onChange: any): any {
     return {
         type: 'custom', full: true,
-        render: (p) => {
-            let lastInput = null;
+        render: (p: any) => {
+            let lastInput: any = null;
             const grid = h('div', { class: 'grid grid-cols-[max-content_1fr_max-content] gap-y-[5px] gap-x-3 items-center' });
 
-            const insertVar = (v) => {
+            const insertVar = (v: any) => {
                 const input = lastInput;
                 if (!input || input.disabled) return;
                 const token = '${' + v + '}';
@@ -477,33 +477,33 @@ function afterProcessingBlock(properties, onChange) {
                 const moveDis = p.afterProcessingAction !== 'MOVE';
                 const errDis = p.errorReadingAction !== 'MOVE' && p.errorResponseAction !== 'MOVE';
 
-                const labelCell = (text, dim) => h('label.cform-label', { style: dim ? { opacity: '0.5' } : null }, `${text}:`);
-                const radioCell = (key, opts) => {
+                const labelCell = (text: any, dim?: any) => h('label.cform-label', { style: dim ? { opacity: '0.5' } : null }, `${text}:`);
+                const radioCell = (key: any, opts: any) => {
                     const grp = h('div.radio-group.inline-row');
-                    opts.forEach((o) => {
+                    opts.forEach((o: any) => {
                         const inp = h('input', { type: 'radio', name: `apb-${key}`, checked: String(p[key]) === String(o.value) });
                         inp.addEventListener('change', () => { p[key] = o.value; onChange(); paint(); });
                         grp.appendChild(h('label.check', inp, o.label));
                     });
                     return grp;
                 };
-                const inputCell = (key, width, dis) => {
+                const inputCell = (key: any, width?: any, dis?: any) => {
                     const inp = textInput(String(p[key] ?? ''), {
                         disabled: dis, style: { width, opacity: dis ? '0.5' : '1' },
-                        onInput: (ev) => { p[key] = ev.target.value; onChange(); }
+                        onInput: (ev: any) => { p[key] = ev.target.value; onChange(); }
                     });
                     inp.addEventListener('focus', () => { lastInput = inp; });
                     inp.dataset.fileVarTarget = '1';   // the only permitted drop targets
                     // Accept ONLY a file-variable drag (the custom MIME type); insert
                     // the token at the cursor and fire input so the property updates.
-                    inp.addEventListener('dragover', (ev) => {
-                        if (!inp.disabled && Array.from(ev.dataTransfer.types).includes(FILE_VAR_MIME)) {
+                    inp.addEventListener('dragover', (ev: any) => {
+                        if (!inp.disabled && Array.from(ev.dataTransfer!.types).includes(FILE_VAR_MIME)) {
                             ev.preventDefault();
-                            ev.dataTransfer.dropEffect = 'copy';
+                            ev.dataTransfer!.dropEffect = 'copy';
                         }
                     });
-                    inp.addEventListener('drop', (ev) => {
-                        const token = ev.dataTransfer.getData(FILE_VAR_MIME);
+                    inp.addEventListener('drop', (ev: any) => {
+                        const token = ev.dataTransfer!.getData(FILE_VAR_MIME);
                         if (!token || inp.disabled) return;
                         ev.preventDefault();
                         const s = inp.selectionStart ?? inp.value.length;
@@ -539,7 +539,7 @@ function afterProcessingBlock(properties, onChange) {
                 const listBox = h('div', {
                     class: 'col-[3] self-stretch border border-line rounded-[4px] py-1 px-0 min-w-[135px] bg-bg1 overflow-auto',
                     style: { gridRow: `1 / ${rows.length + 1}` }
-                }, FILE_NAME_VARS.map((v) => {
+                }, FILE_NAME_VARS.map((v: any) => {
                     const item = h('div', {
                         class: 'py-[3px] px-3 cursor-grab font-mono text-[11px] select-none',
                         title: `Drag into a Move-to / Error field, or click to insert into the last-focused one`,
@@ -549,13 +549,13 @@ function afterProcessingBlock(properties, onChange) {
                     // inputs (which fire their input event), or click inserts into
                     // the last-focused field.
                     item.draggable = true;
-                    item.addEventListener('dragstart', (ev) => {
+                    item.addEventListener('dragstart', (ev: any) => {
                         // Custom type only (NOT text/plain), so the drop is accepted
                         // exclusively by the move/error fields' drop handlers. The
                         // document blockers cancel any drop outside those fields.
-                        ev.dataTransfer.clearData();
-                        ev.dataTransfer.setData(FILE_VAR_MIME, '${' + v + '}');
-                        ev.dataTransfer.effectAllowed = 'copy';
+                        ev.dataTransfer!.clearData();
+                        ev.dataTransfer!.setData(FILE_VAR_MIME, '${' + v + '}');
+                        ev.dataTransfer!.effectAllowed = 'copy';
                         document.addEventListener('dragover', fileVarDocDragOver, true);
                         document.addEventListener('drop', fileVarDocDrop, true);
                     });
@@ -577,7 +577,7 @@ function afterProcessingBlock(properties, onChange) {
 }
 
 const fileReader = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.file.FileReceiverProperties',
             '@version': version,
@@ -614,7 +614,7 @@ const fileReader = {
             charsetEncoding: 'DEFAULT_ENCODING'
         };
     },
-    component({ properties, channel, onChange }) {
+    component({ properties, channel, onChange }: any) {
         ensureSchemeProperties(properties);
         return (
             <div>
@@ -622,7 +622,7 @@ const fileReader = {
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
                     { section: 'Connection Settings' },
                     { key: 'scheme', label: 'Method', type: 'select', options: SCHEMES, refresh: true, width: '160px', onSet: onSchemeChange, append: () => connectorTestButton({ label: 'Test Read', icon: 'folder', path: '/connectors/file/_testRead', channel, properties }) },
-                    { key: 'host', label: 'Directory', type: 'text', width: '420px', disabled: (p) => p.scheme !== 'FILE' },
+                    { key: 'host', label: 'Directory', type: 'text', width: '420px', disabled: (p: any) => p.scheme !== 'FILE' },
                     hostPathField(onChange),
                     { key: 'fileFilter', label: 'Filename Filter Pattern', type: 'text', width: '220px' },
                     { key: 'regex', label: 'Regular Expression', type: 'radio', options: YES_NO },
@@ -630,19 +630,19 @@ const fileReader = {
                     { key: 'ignoreDot', label: 'Ignore . files', type: 'radio', options: YES_NO },
                     {
                         key: 'anonymous', label: 'Anonymous', type: 'radio', options: YES_NO, refresh: true,
-                        disabled: (p) => !anonymousEnabled(p), onSet: applyAnonymous
+                        disabled: (p: any) => !anonymousEnabled(p), onSet: applyAnonymous
                     },
-                    { key: 'username', label: (p) => p.scheme === 'S3' ? 'AWS Access Key ID' : 'Username', type: 'text', width: '220px', disabled: credentialsDisabled },
-                    { key: 'password', label: (p) => p.scheme === 'S3' ? 'AWS Secret Access Key' : 'Password', type: 'password', width: '220px', disabled: credentialsDisabled },
-                    { key: 'timeout', label: 'Timeout (ms)', type: 'number', width: '120px', disabled: (p) => !timeoutEnabled(p) },
-                    { key: 'secure', label: 'Secure Mode', type: 'radio', options: YES_NO, disabled: (p) => !secureEnabled(p) },
-                    { key: 'passive', label: 'Passive Mode', type: 'radio', options: YES_NO, disabled: (p) => !passiveEnabled(p) },
-                    { key: 'validateConnection', label: 'Validate Connection', type: 'radio', options: YES_NO, disabled: (p) => !validateEnabled(p) },
+                    { key: 'username', label: (p: any) => p.scheme === 'S3' ? 'AWS Access Key ID' : 'Username', type: 'text', width: '220px', disabled: credentialsDisabled },
+                    { key: 'password', label: (p: any) => p.scheme === 'S3' ? 'AWS Secret Access Key' : 'Password', type: 'password', width: '220px', disabled: credentialsDisabled },
+                    { key: 'timeout', label: 'Timeout (ms)', type: 'number', width: '120px', disabled: (p: any) => !timeoutEnabled(p) },
+                    { key: 'secure', label: 'Secure Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !secureEnabled(p) },
+                    { key: 'passive', label: 'Passive Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !passiveEnabled(p) },
+                    { key: 'validateConnection', label: 'Validate Connection', type: 'radio', options: YES_NO, disabled: (p: any) => !validateEnabled(p) },
                     ...schemeSettingsFields(),
                     { section: 'After Processing' },
                     afterProcessingBlock(properties, onChange),
                     { key: 'checkFileAge', label: 'Check File Age', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'fileAge', label: 'File Age (ms)', type: 'number', width: '120px', disabled: (p) => !asBool(p.checkFileAge) },
+                    { key: 'fileAge', label: 'File Age (ms)', type: 'number', width: '120px', disabled: (p: any) => !asBool(p.checkFileAge) },
                     // Swing renders File Size as one row: [min] - [max] [Ignore Maximum].
                     // Min/Max stay as separate typed fields (a typed input cannot live
                     // in `append`, which is rebuilt on every repaint); the Ignore Maximum
@@ -651,9 +651,9 @@ const fileReader = {
                     { key: 'fileSizeMinimum', label: 'File Size (bytes)', type: 'number', width: '120px' },
                     {
                         key: 'fileSizeMaximum', label: 'to', type: 'number', width: '120px', refresh: true,
-                        disabled: (p) => asBool(p.ignoreFileSizeMaximum),
-                        append: (p, ctx) => checkbox('Ignore Maximum', asBool(p.ignoreFileSizeMaximum), {
-                            onChange: (e) => { p.ignoreFileSizeMaximum = e.target.checked; ctx.onChange(); ctx.repaint && ctx.repaint(); }
+                        disabled: (p: any) => asBool(p.ignoreFileSizeMaximum),
+                        append: (p: any, ctx: any) => checkbox('Ignore Maximum', asBool(p.ignoreFileSizeMaximum), {
+                            onChange: (e: any) => { p.ignoreFileSizeMaximum = e.target.checked; ctx.onChange(); ctx.repaint && ctx.repaint(); }
                         }).el
                     },
                     { key: 'sortBy', label: 'Sort Files By', type: 'select', width: '120px', options: [
@@ -665,7 +665,7 @@ const fileReader = {
                         key: 'binary', label: 'File Type', type: 'radio', refresh: true,
                         onSet: onFileTypeSet, options: FILE_TYPE_OPTIONS
                     },
-                    { key: 'charsetEncoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px', disabled: (p) => asBool(p.binary) }
+                    { key: 'charsetEncoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.binary) }
                 ]} />
             </div>
         );
@@ -675,23 +675,23 @@ const fileReader = {
     // per the shared credential rules; Timeout required for FTP/SFTP/SMB; File
     // Age required when Check File Age=Yes; File Size minimum always required and
     // maximum required unless Ignore Maximum is set.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
-            { key: 'host', label: 'Directory', when: (p) => p.scheme === 'FILE' },
-            { key: 'host', label: 'Host', when: (p) => p.scheme !== 'FILE' },
+            { key: 'host', label: 'Directory', when: (p: any) => p.scheme === 'FILE' },
+            { key: 'host', label: 'Host', when: (p: any) => p.scheme !== 'FILE' },
             { key: 'fileFilter', label: 'Filename Filter Pattern' },
             { key: 'username', label: 'Username', when: credentialsRequired },
             { key: 'password', label: 'Password', when: passwordRequired },
-            { key: 'timeout', label: 'Timeout', when: (p) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) },
-            { key: 'fileAge', label: 'File Age', when: (p) => asBool(p.checkFileAge) },
+            { key: 'timeout', label: 'Timeout', when: (p: any) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) },
+            { key: 'fileAge', label: 'File Age', when: (p: any) => asBool(p.checkFileAge) },
             { key: 'fileSizeMinimum', label: 'File Size (bytes)' },
-            { key: 'fileSizeMaximum', label: 'File Size Maximum', when: (p) => !asBool(p.ignoreFileSizeMaximum) }
+            { key: 'fileSizeMaximum', label: 'File Size Maximum', when: (p: any) => !asBool(p.ignoreFileSizeMaximum) }
         ]);
     }
 };
 
 const fileWriter = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.file.FileDispatcherProperties',
             '@version': version,
@@ -717,28 +717,28 @@ const fileWriter = {
             template: ''
         };
     },
-    component({ properties, channel, onChange }) {
+    component({ properties, channel, onChange }: any) {
         ensureSchemeProperties(properties);
         return (
             <div>
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
                     { section: 'Connection Settings' },
                     { key: 'scheme', label: 'Method', type: 'select', options: SCHEMES, refresh: true, width: '160px', onSet: onWriterSchemeChange, append: () => connectorTestButton({ label: 'Test Write', icon: 'folder', path: '/connectors/file/_testWrite', channel, properties }) },
-                    { key: 'host', label: 'Directory', type: 'text', width: '420px', disabled: (p) => p.scheme !== 'FILE' },
+                    { key: 'host', label: 'Directory', type: 'text', width: '420px', disabled: (p: any) => p.scheme !== 'FILE' },
                     hostPathField(onChange),
                     { key: 'outputPattern', label: 'File Name', type: 'text', width: '220px' },
                     {
                         key: 'anonymous', label: 'Anonymous', type: 'radio', options: YES_NO, refresh: true,
-                        disabled: (p) => !anonymousEnabled(p), onSet: applyAnonymous
+                        disabled: (p: any) => !anonymousEnabled(p), onSet: applyAnonymous
                     },
-                    { key: 'username', label: (p) => p.scheme === 'S3' ? 'AWS Access Key ID' : 'Username', type: 'text', width: '220px', disabled: credentialsDisabled },
-                    { key: 'password', label: (p) => p.scheme === 'S3' ? 'AWS Secret Access Key' : 'Password', type: 'password', width: '220px', disabled: credentialsDisabled },
-                    { key: 'timeout', label: 'Timeout (ms)', type: 'number', width: '120px', disabled: (p) => !timeoutEnabled(p) },
+                    { key: 'username', label: (p: any) => p.scheme === 'S3' ? 'AWS Access Key ID' : 'Username', type: 'text', width: '220px', disabled: credentialsDisabled },
+                    { key: 'password', label: (p: any) => p.scheme === 'S3' ? 'AWS Secret Access Key' : 'Password', type: 'password', width: '220px', disabled: credentialsDisabled },
+                    { key: 'timeout', label: 'Timeout (ms)', type: 'number', width: '120px', disabled: (p: any) => !timeoutEnabled(p) },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'maxIdleTime', label: 'Max Idle Time (ms)', type: 'number', width: '120px', disabled: (p) => !asBool(p.keepConnectionOpen) },
-                    { key: 'secure', label: 'Secure Mode', type: 'radio', options: YES_NO, disabled: (p) => !secureEnabled(p) },
-                    { key: 'passive', label: 'Passive Mode', type: 'radio', options: YES_NO, disabled: (p) => !passiveEnabled(p) },
-                    { key: 'validateConnection', label: 'Validate Connection', type: 'radio', options: YES_NO, disabled: (p) => !validateEnabled(p) },
+                    { key: 'maxIdleTime', label: 'Max Idle Time (ms)', type: 'number', width: '120px', disabled: (p: any) => !asBool(p.keepConnectionOpen) },
+                    { key: 'secure', label: 'Secure Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !secureEnabled(p) },
+                    { key: 'passive', label: 'Passive Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !passiveEnabled(p) },
+                    { key: 'validateConnection', label: 'Validate Connection', type: 'radio', options: YES_NO, disabled: (p: any) => !validateEnabled(p) },
                     ...schemeSettingsFields(),
                     { section: 'File Writer Settings' },
                     fileExistsField(),
@@ -746,13 +746,13 @@ const fileWriter = {
                         // Create Temp File is disabled when File Exists=Append
                         // (fileExistsAppendRadioActionPerformed) or scheme=S3.
                         key: 'temporary', label: 'Create Temp File', type: 'radio', options: YES_NO,
-                        disabled: (p) => asBool(p.outputAppend) || p.scheme === 'S3'
+                        disabled: (p: any) => asBool(p.outputAppend) || p.scheme === 'S3'
                     },
                     {
                         key: 'binary', label: 'File Type', type: 'radio', refresh: true,
                         onSet: onFileTypeSet, options: FILE_TYPE_OPTIONS
                     },
-                    { key: 'charsetEncoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px', disabled: (p) => asBool(p.binary) },
+                    { key: 'charsetEncoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.binary) },
                     { section: 'Template' },
                     { key: 'template', label: 'Template', type: 'code', minHeight: '260px' }
                 ]} />
@@ -764,20 +764,20 @@ const fileWriter = {
     // the shared credential rules; Timeout required for FTP/SFTP/SMB. (Max Idle
     // Time's `NumberUtils.toInt(...) < 0` check is numeric/range, not a blank
     // check, so it is intentionally skipped here.)
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
-            { key: 'host', label: 'Directory', when: (p) => p.scheme === 'FILE' },
-            { key: 'host', label: 'Host', when: (p) => p.scheme !== 'FILE' },
+            { key: 'host', label: 'Directory', when: (p: any) => p.scheme === 'FILE' },
+            { key: 'host', label: 'Host', when: (p: any) => p.scheme !== 'FILE' },
             { key: 'outputPattern', label: 'File Name' },
             { key: 'template', label: 'Template' },
             { key: 'username', label: 'Username', when: credentialsRequired },
             { key: 'password', label: 'Password', when: passwordRequired },
-            { key: 'timeout', label: 'Timeout', when: (p) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) }
+            { key: 'timeout', label: 'Timeout', when: (p: any) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) }
         ]);
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('File Reader', 'SOURCE', fileReader);
     platform.registerConnectorPanel('File Writer', 'DESTINATION', fileWriter);
 }

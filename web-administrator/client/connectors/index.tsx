@@ -22,9 +22,9 @@ import { frameModeSampleFrame, frameModeSettingsDialog } from './forms.js';
 /* Raw-JSON fallback panel: a code editor over the connector properties with an
    Apply button. Mutates `properties` in place (preserving '@class'/'@version')
    and calls onChange — identical semantics to the imperative version. */
-function GenericPanel({ properties, onChange }) {
-    const hostRef = useRef(null);
-    const editorRef = useRef(null);
+function GenericPanel({ properties, onChange }: any) {
+    const hostRef = useRef<any>(null);
+    const editorRef = useRef<any>(null);
     useEffect(() => {
         const host = hostRef.current;
         const editor = createCodeEditor({
@@ -38,10 +38,10 @@ function GenericPanel({ properties, onChange }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     const apply = () => {
-        let parsed;
+        let parsed: any;
         try {
             parsed = JSON.parse(editorRef.current.getValue());
-        } catch (e) {
+        } catch (e: any) {
             toast('Invalid JSON: ' + e.message, 'error');
             return;
         }
@@ -71,14 +71,14 @@ function GenericPanel({ properties, onChange }) {
 
 function genericPanel() {
     return {
-        defaults(version) {
+        defaults(version: any) {
             return { '@version': version };
         },
         component: GenericPanel
     };
 }
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('*', 'SOURCE', genericPanel());
     platform.registerConnectorPanel('*', 'DESTINATION', genericPanel());
 
@@ -86,7 +86,7 @@ export function register(platform) {
     // MLLP framing ships as the mllpmode plugin.
     platform.registerTransmissionMode('Basic', {
         label: 'Basic TCP', order: 20,
-        apply(tm) {
+        apply(tm: any) {
             tm['@class'] = 'com.mirth.connect.model.transmission.framemode.FrameModeProperties';
             tm.pluginPointName = 'Basic';
             tm.startOfMessageBytes = '';

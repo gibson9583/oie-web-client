@@ -4,11 +4,28 @@
   "description": "OIE web admin UI framework (DOM toolkit, tables, forms, code editor) for plugin authors.",
   "license": "MPL-2.0",
   "type": "module",
-  "exports": { ".": { "types": "./index.d.ts", "default": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "main": "./dist/index.js",
   "types": "./index.d.ts",
-  "files": ["dist", "index.js", "index.d.ts", "README.md"],
-  "scripts": { "build": "vite build" },
-  "dependencies": { "@oie/web-api": "0.1.0" },
-  "devDependencies": { "vite": "^8.1.5" }
+  "files": [
+    "dist",
+    "index.js",
+    "index.d.ts",
+    "types",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@oie/web-api": "0.1.0"
+  },
+  "devDependencies": {
+    "vite": "^8.1.5"
+  }
 }

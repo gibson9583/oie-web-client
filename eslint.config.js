@@ -39,6 +39,10 @@ export default [
             sourceType: 'module',
             globals: { ...globals.browser },
         },
+        // The generated .js twins of the TypeScript sources carry over
+        // eslint-disable comments for react-hooks rules; the plugin must be
+        // present for those rule names to resolve.
+        plugins: { 'react-hooks': reactHooks },
         rules: {
             'no-restricted-imports': ['error', noDeepPackageImports],
             'no-undef': 'warn',

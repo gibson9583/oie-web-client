@@ -1,9 +1,13 @@
 {
-  "//": "Emits the raw-served .js twins for the TypeScript core modules (run via tools/build-core.mjs). tsc rather than esbuild so comments survive into the served files — plugin authors read /core/*.js in the browser. Type declarations are a separate emit (tsconfig.types.json).",
+  "//": "Emits the raw-served .js twins for the TypeScript client modules (core + connectors; run via tools/build-core.mjs). tsc rather than esbuild so comments survive into the served files \u2014 plugin authors read /core/*.js and /connectors/*.js in the browser. Type declarations are a separate emit (tsconfig.types*.json).",
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
     "declaration": false
   },
-  "include": ["client/core/*.ts"]
+  "include": [
+    "client/core/*.ts",
+    "client/connectors/*.ts",
+    "client/connectors/*.tsx"
+  ]
 }

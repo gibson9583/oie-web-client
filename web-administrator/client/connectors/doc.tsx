@@ -15,14 +15,14 @@ import { post } from '../core/api.js';
 
 // Swing updateFileEnabled(enable): Directory/File Name/Test Write are greyed when
 // output == ATTACHMENT (enabled for FILE/BOTH).
-const writesFile = (p) => String(p.output ?? 'FILE').toUpperCase() !== 'ATTACHMENT';
-const isRtf = (p) => String(p.documentType ?? 'pdf').toLowerCase() === 'rtf';
+const writesFile = (p: any) => String(p.output ?? 'FILE').toUpperCase() !== 'ATTACHMENT';
+const isRtf = (p: any) => String(p.documentType ?? 'pdf').toLowerCase() === 'rtf';
 
 /* "Test Write" (Swing DocumentWriter.testWrite): posts the Directory (host) as a
    text/plain body to /connectors/doc/_testWrite — NOT the JSON properties — with
    channelId/channelName query params (DocumentConnectorServletInterface). */
-function docTestWriteButton(properties, channel) {
-    const btn = taskButton('Test Write', 'folder', async () => {
+function docTestWriteButton(properties: any, channel: any) {
+    const btn: any = taskButton('Test Write', 'folder', async () => {
         btn.disabled = true;
         try {
             const result = await post('/connectors/doc/_testWrite', properties.host ?? '', {
@@ -90,16 +90,16 @@ const PAGE_SIZES = [
 
 // Unit conversion (Unit.convertTo). Native preset dimensions are converted into the
 // currently-selected unit before comparing against the width/height fields.
-const CONVERSION = {
+const CONVERSION: Record<string, Record<string, number>> = {
     INCHES: { INCHES: 1, MM: 25.4, TWIPS: 1440 },
     MM: { INCHES: 1 / 25.4, MM: 1, TWIPS: 1440 / 25.4 },
     TWIPS: { INCHES: 1 / 1440, MM: 25.4 / 1440, TWIPS: 1 }
 };
-const convertTo = (value, from, to) => (CONVERSION[from]?.[to] ?? 1) * value;
+const convertTo = (value: any, from: any, to: any) => (CONVERSION[from]?.[to] ?? 1) * value;
 
 // updatePageSizeComboBox(): the preset reflecting the current width/height/unit, or
 // 'CUSTOM' when none matches (CUSTOM only appears in this case).
-const matchingPreset = (p) => {
+const matchingPreset = (p: any) => {
     const width = Number.parseFloat(p.pageWidth);
     const height = Number.parseFloat(p.pageHeight);
     const unit = String(p.pageUnit ?? 'INCHES');
@@ -113,32 +113,32 @@ const matchingPreset = (p) => {
 };
 
 // BigDecimal(value).setScale(2, RoundingMode.DOWN) — truncates to two decimals.
-const scale2Down = (value) => (Math.trunc(value * 100) / 100).toFixed(2);
+const scale2Down = (value: any) => (Math.trunc(value * 100) / 100).toFixed(2);
 
 /* Page Size row: width × height unit preset, all on one line under a single
  * 'Page Size:' label (DocumentWriter.initLayout add(..., "split 5")). The preset
  * combo is a non-persisted convenience that two-way-binds to pageWidth/pageHeight/
  * pageUnit (pageSizeComboBoxActionPerformed). */
-function pageSizeRow(p, { onChange }) {
+function pageSizeRow(p: any, { onChange }: any) {
     const widthField = h('input', {
         type: 'text', value: p.pageWidth ?? '', class: 'w-[49px]',
-        onInput: (e) => { p.pageWidth = e.target.value; onChange(); }
+        onInput: (e: any) => { p.pageWidth = e.target.value; onChange(); }
     });
     const heightField = h('input', {
         type: 'text', value: p.pageHeight ?? '', class: 'w-[49px]',
-        onInput: (e) => { p.pageHeight = e.target.value; onChange(); }
+        onInput: (e: any) => { p.pageHeight = e.target.value; onChange(); }
     });
     const unitField = select(PAGE_UNITS, p.pageUnit ?? 'INCHES', {
         class: 'w-[81px]',
-        onChange: (e) => { p.pageUnit = e.target.value; onChange(); }
+        onChange: (e: any) => { p.pageUnit = e.target.value; onChange(); }
     });
 
     const current = matchingPreset(p);
-    const presetOptions = PAGE_SIZES.map((ps) => ({ value: ps.name, label: ps.name }));
+    const presetOptions = PAGE_SIZES.map((ps: any) => ({ value: ps.name, label: ps.name }));
     if (current === 'CUSTOM') presetOptions.push({ value: 'CUSTOM', label: 'Custom' });
     const presetField = select(presetOptions, current, {
-        onChange: (e) => {
-            const ps = PAGE_SIZES.find((x) => x.name === e.target.value);
+        onChange: (e: any) => {
+            const ps = PAGE_SIZES.find((x: any) => x.name === e.target.value);
             if (ps) {
                 p.pageWidth = scale2Down(ps.width);
                 p.pageHeight = scale2Down(ps.height);
@@ -153,7 +153,7 @@ function pageSizeRow(p, { onChange }) {
 }
 
 const documentWriter = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.doc.DocumentDispatcherProperties',
             '@version': version,
@@ -171,7 +171,7 @@ const documentWriter = {
             template: ''
         };
     },
-    component({ properties, channel, onChange }) {
+    component({ properties, channel, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { key: 'output', label: 'Output', type: 'radio', refresh: true, options: [
@@ -181,15 +181,15 @@ const documentWriter = {
                 ] },
                 {
                     key: 'host', label: 'Directory', type: 'text', width: '200px',
-                    disabled: (p) => !writesFile(p),
+                    disabled: (p: any) => !writesFile(p),
                     append: () => docTestWriteButton(properties, channel)
                 },
-                { key: 'outputPattern', label: 'File Name', type: 'text', width: '200px', disabled: (p) => !writesFile(p) },
+                { key: 'outputPattern', label: 'File Name', type: 'text', width: '200px', disabled: (p: any) => !writesFile(p) },
                 {
                     // Switching to RTF disables the Encrypted radio and forces Encrypted=No
                     // (documentTypeRTFRadioActionPerformed -> encryptedNoActionPerformed).
                     key: 'documentType', label: 'Document Type', type: 'radio', refresh: true,
-                    onSet: (p) => { if (isRtf(p)) p.encrypt = false; },
+                    onSet: (p: any) => { if (isRtf(p)) p.encrypt = false; },
                     options: [
                         { value: 'pdf', label: 'PDF' },
                         { value: 'rtf', label: 'RTF' }
@@ -198,7 +198,7 @@ const documentWriter = {
                 { key: 'encrypt', label: 'Encrypted', type: 'radio', options: YES_NO, refresh: true, disabled: isRtf },
                 // Password is greyed when Encrypted=No, including under RTF (which calls
                 // encryptedNoActionPerformed and disables the Encrypted radio).
-                { key: 'password', label: 'Password', type: 'password', width: '124px', disabled: (p) => isRtf(p) || !asBool(p.encrypt) },
+                { key: 'password', label: 'Password', type: 'password', width: '124px', disabled: (p: any) => isRtf(p) || !asBool(p.encrypt) },
                 { label: 'Page Size', type: 'custom', render: pageSizeRow },
                 { key: 'template', label: 'HTML Template', type: 'code', language: 'html', minHeight: '260px' }
             ]} />
@@ -207,18 +207,18 @@ const documentWriter = {
     // Swing DocumentWriter.checkProperties: Directory/File Name required unless Output =
     // Attachment (writesFile); HTML Template always required; Password required when
     // Encrypted = Yes; Page Width/Height must not be blank (numeric/range check skipped).
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'host', label: 'Directory', when: writesFile },
             { key: 'outputPattern', label: 'File Name', when: writesFile },
             { key: 'template', label: 'HTML Template' },
-            { key: 'password', label: 'Password', when: (p) => asBool(p.encrypt) },
+            { key: 'password', label: 'Password', when: (p: any) => asBool(p.encrypt) },
             { key: 'pageWidth', label: 'Page Width' },
             { key: 'pageHeight', label: 'Page Height' }
         ]);
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('Document Writer', 'DESTINATION', documentWriter);
 }

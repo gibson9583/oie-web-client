@@ -30,12 +30,14 @@ import {
     getPath, setPath, mapEntries, writeMapEntries, asBool,
     postConnectorProperties, successToast, apiErrorMessage
 } from './forms.js';
+import type { FormField } from './forms.js';
+import type { CodeEditor } from '../core/codeeditor.js';
 
 /* Inline icon — raw-served modules can't import the bundled React <Icon> from
    ../react/bridges.jsx. icon() returns a trusted SVG node; mount it directly
    (no innerHTML, so no HTML-injection surface even if a name were ever dynamic). */
-function Icon({ name }) {
-    const ref = useRef(null);
+function Icon({ name }: { name: string }) {
+    const ref = useRef<HTMLSpanElement | null>(null);
     useEffect(() => { const el = ref.current; if (el) el.replaceChildren(icon(name)); }, [name]);
     return <span ref={ref} className="inline-flex" />;
 }
@@ -46,7 +48,7 @@ export * from './forms.js';
 
 /* ---- code editor island (wraps createCodeEditor; mutate-in-place onChange) --- */
 
-const DEFAULT_WIDTHS = {
+const DEFAULT_WIDTHS: Record<string, string> = {
     number: '110px',
     text: '320px',
     password: '320px',
@@ -60,13 +62,16 @@ let cformUid = 0;
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
    SOAP envelope, then repaints), the editor is updated to the new value — but
    only when it differs, so normal typing never clobbers the cursor. */
-function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label }) {
-    const hostRef = useRef(null);
-    const edRef = useRef(null);
+function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label }: {
+    value: any; language?: string; minHeight?: string; placeholder?: string;
+    onChange: (v: string) => void; disabled?: boolean; label?: string;
+}) {
+    const hostRef = useRef<HTMLDivElement | null>(null);
+    const edRef = useRef<CodeEditor | null>(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
     useEffect(() => {
-        const host = hostRef.current;
+        const host = hostRef.current!;
         const editor = createCodeEditor({
             value: value === null || value === undefined ? '' : String(value),
             language: language || 'text',
@@ -76,7 +81,7 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
             maximizable: true,   // connector code fields (incl. JavaScript Writer) can go full-screen
             popoutTitle: label,  // full-screen code view: header title + velocity variables rail
             popoutVars: DESTINATION_MAPPINGS,
-            onChange: (v) => onChangeRef.current && onChangeRef.current(v)
+            onChange: (v: string) => onChangeRef.current && onChangeRef.current(v)
         });
         edRef.current = editor;
         host.appendChild(editor.el);
@@ -104,10 +109,10 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
 
 /* Mounts a DOM Node (returned by a field's custom render() or an `append`
    helper) into the React tree. */
-function DomNode({ node }) {
-    const ref = useRef(null);
+function DomNode({ node }: { node: Node | null }) {
+    const ref = useRef<HTMLSpanElement | null>(null);
     useEffect(() => {
-        const host = ref.current;
+        const host = ref.current!;
         if (node) host.appendChild(node);
         return () => { if (host) host.replaceChildren(); };
     }, [node]);
@@ -116,23 +121,23 @@ function DomNode({ node }) {
 
 /* ---- key/value (XStream linked-hash-map) editor ----------------------------- */
 
-function KeyValueEditor({ properties, field, onChange, disabled }) {
+function KeyValueEditor({ properties, field, onChange, disabled }: { properties: any; field: FormField; onChange: () => void; disabled?: boolean }) {
     const [, tick] = useReducer((n) => n + 1, 0);
     // rows live in a ref so edits mutate the same array across renders, exactly
     // like the imperative keyValueEditor's closure-captured `rows`.
-    const rowsRef = useRef(null);
+    const rowsRef = useRef<Array<[string, string]> | null>(null);
     // Re-read from the property when the map is REPLACED externally (e.g. loading
     // a JMS connection template) — detected by identity vs. our own last write.
-    const lastMapRef = useRef(undefined);
-    const currentMap = getPath(properties, field.key);
+    const lastMapRef = useRef<any>(undefined);
+    const currentMap = getPath(properties, field.key!);
     if (rowsRef.current === null || currentMap !== lastMapRef.current) {
         rowsRef.current = mapEntries(currentMap);
         lastMapRef.current = currentMap;
     }
-    const rows = rowsRef.current;
+    const rows = rowsRef.current!;
     const commit = () => {
-        const written = writeMapEntries(getPath(properties, field.key), rows, field.mapShape || 'string');
-        setPath(properties, field.key, written);
+        const written = writeMapEntries(getPath(properties, field.key!), rows, field.mapShape || 'string');
+        setPath(properties, field.key!, written);
         lastMapRef.current = written;
         onChange();
     };
@@ -155,7 +160,7 @@ function KeyValueEditor({ properties, field, onChange, disabled }) {
 
 /* ---- one form row (control + label), React port of renderRow ---------------- */
 
-function FieldRow({ properties, field, onChange, repaint }) {
+function FieldRow({ properties, field, onChange, repaint }: { properties: any; field: FormField; onChange: () => void; repaint: (() => void) | null }) {
     const f = field;
     const value = f.key === undefined ? undefined : getPath(properties, f.key);
     // Swing greys (disables) fields that don't apply to the current selection;
@@ -164,14 +169,14 @@ function FieldRow({ properties, field, onChange, repaint }) {
     // Labels may be dynamic (Swing relabels some fields per selection); a function
     // label is re-evaluated on every repaint.
     const labelText = typeof f.label === 'function' ? f.label(properties) : f.label;
-    const set = (v) => {
+    const set = (v: any) => {
         if (f.key !== undefined) setPath(properties, f.key, v);
         if (f.onSet) f.onSet(properties, v);
         onChange();
         if (repaint) repaint();
     };
 
-    let control = null;
+    let control: any = null;
     let wide = f.span === true;
 
     // Width handling mirrors forms.js renderRow: wide controls keep the full
@@ -219,7 +224,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         }
         case 'display': {
             // Read-only computed text; refreshed whenever the form repaints.
-            const text = f.compute ? f.compute(properties) : getPath(properties, f.key);
+            const text = f.compute ? f.compute(properties) : getPath(properties, f.key!);
             control = <span className="cform-display" style={f.width ? { width: f.width } : undefined}>{text === null || text === undefined ? '' : String(text)}</span>;
             break;
         }
@@ -231,7 +236,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
             control = (
                 <select value={value ?? ''} data-fkey={f.key} style={inputStyle} disabled={disabled}
                     onChange={(e) => set(f.numeric ? parseInt(e.target.value, 10) : e.target.value)}>
-                    {(f.options || []).map((opt, i) => {
+                    {(typeof f.options === 'function' ? f.options(properties) : f.options || []).map((opt, i) => {
                         const o = typeof opt === 'object' ? opt : { value: opt, label: String(opt) };
                         return <option key={i} value={o.value}>{o.label}</option>;
                     })}
@@ -256,7 +261,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
         case 'custom': {
             // The field's render() returns a DOM Node (verbatim connector logic);
             // mount it. repaint mirrors the imperative builder's repaint.
-            const node = f.render(properties, { onChange, repaint: repaint || (() => {}) });
+            const node = f.render!(properties, { onChange, repaint: repaint || (() => {}) });
             if (node && f.width && node.style) node.style.width = f.width;
             control = <DomNode node={node} />;
             break;
@@ -301,14 +306,14 @@ function FieldRow({ properties, field, onChange, repaint }) {
  * fields render as label:control rows in a `.cform-grid`. `refresh`/`custom`
  * fields repaint the form (here, a state tick re-renders the whole component).
  */
-export function ConnectorForm({ properties, fields, onChange }) {
+export function ConnectorForm({ properties, fields, onChange }: { properties: any; fields: FormField[]; onChange: () => void }) {
     const [, repaint] = useReducer((n) => n + 1, 0);
     const notify = () => { onChange(); /* displays + visibility refresh on re-render */ repaint(); };
 
     // Group fields into sections exactly like buildForm's paint(): a `section`
     // entry opens a new grid; leading fields with no section open an untitled one.
-    const sections = [];
-    let current = null;
+    const sections: Array<{ title: string | null | undefined; rows: FormField[] }> = [];
+    let current: { title: string | null | undefined; rows: FormField[] } | null = null;
     for (const f of fields) {
         if (f.section !== undefined) {
             if (f.visible && !f.visible(properties)) { current = null; continue; }
@@ -342,16 +347,16 @@ export function ConnectorForm({ properties, fields, onChange }) {
 /* ---- 'Ports in Use' button (opens the imperative modal) --------------------- */
 
 export function PortsInUseButton() {
-    const ref = useRef(null);
+    const ref = useRef<HTMLSpanElement | null>(null);
     useEffect(() => {
-        const host = ref.current;
+        const host = ref.current!;
         const btn = taskButton('Ports in Use', 'search', async () => {
             btn.disabled = true;
             try {
                 const ports = await api.channels.portsInUse();
                 const rows = ports
-                    .filter((p) => p && typeof p === 'object')
-                    .map((p) => h('tr', h('td.num', String(p.port ?? '')), h('td', String(p.name ?? ''))));
+                    .filter((p: any) => p && typeof p === 'object')
+                    .map((p: any) => h('tr', h('td.num', String(p.port ?? '')), h('td', String(p.name ?? ''))));
                 modal({
                     title: 'Ports in Use',
                     body: h('table.dt',
@@ -364,7 +369,7 @@ export function PortsInUseButton() {
             } finally {
                 btn.disabled = false;
             }
-        });
+        }) as HTMLButtonElement;   // never null: no RBAC task ref is passed
         host.appendChild(btn);
         return () => { if (host) host.replaceChildren(); };
     }, []);
@@ -373,14 +378,14 @@ export function PortsInUseButton() {
 
 /* ---- 'Test Connection' style button ----------------------------------------- */
 
-export function ConnectorTestButton({ label = 'Test Connection', icon: iconName = 'link', path, channel, properties }) {
-    const ref = useRef(null);
+export function ConnectorTestButton({ label = 'Test Connection', icon: iconName = 'link', path, channel, properties }: { label?: string; icon?: string; path: string; channel: any; properties: any }) {
+    const ref = useRef<HTMLSpanElement | null>(null);
     // Latest props captured by ref so the button (built once) always POSTs the
     // current mutated properties.
     const stateRef = useRef({ label, iconName, path, channel, properties });
     stateRef.current = { label, iconName, path, channel, properties };
     useEffect(() => {
-        const host = ref.current;
+        const host = ref.current!;
         const btn = taskButton(stateRef.current.label, stateRef.current.iconName, async () => {
             const s = stateRef.current;
             btn.disabled = true;
@@ -395,7 +400,7 @@ export function ConnectorTestButton({ label = 'Test Connection', icon: iconName 
             } finally {
                 btn.disabled = false;
             }
-        });
+        }) as HTMLButtonElement;   // never null: no RBAC task ref is passed
         host.appendChild(btn);
         return () => { if (host) host.replaceChildren(); };
     }, []);
@@ -404,7 +409,7 @@ export function ConnectorTestButton({ label = 'Test Connection', icon: iconName 
 
 /* ---- polling schedule (PollConnectorProperties), React port ----------------- */
 
-export function PollSection({ properties, onChange }) {
+export function PollSection({ properties, onChange }: { properties: any; onChange: () => void }) {
     return (
         <div className="cform-section mt-4">
             <div className="cform-section-title">Polling Settings</div>
@@ -417,22 +422,22 @@ export function PollSection({ properties, onChange }) {
    pollingFrequency in MILLISECONDS; the UI shows value × unit. On load the unit
    is the largest one the stored ms divides into evenly (so 18000000 → 5 hours,
    5000 → 5 seconds), defaulting to milliseconds. */
-const FREQ_UNITS = [
+const FREQ_UNITS: Array<{ value: string; label: string; ms: number }> = [
     { value: 'ms', label: 'milliseconds', ms: 1 },
     { value: 's', label: 'seconds', ms: 1000 },
     { value: 'm', label: 'minutes', ms: 60000 },
     { value: 'h', label: 'hours', ms: 3600000 }
 ];
-function deriveFreqUnit(freq) {
+function deriveFreqUnit(freq: any): string {
     const f = Number(freq) || 0;
     for (let i = FREQ_UNITS.length - 1; i >= 1; i--) {
         if (f !== 0 && f % FREQ_UNITS[i].ms === 0) return FREQ_UNITS[i].value;
     }
     return 'ms';
 }
-const unitMs = (u) => (FREQ_UNITS.find((x) => x.value === u) || FREQ_UNITS[0]).ms;
+const unitMs = (u: string) => (FREQ_UNITS.find((x) => x.value === u) || FREQ_UNITS[0]).ms;
 
-function PollSettings({ properties, onChange }) {
+function PollSettings({ properties, onChange }: { properties: any; onChange: () => void }) {
     const [, tick] = useReducer((n) => n + 1, 0);
     const notify = () => { onChange(); tick(); };
     const p = properties.pollConnectorProperties;
@@ -446,9 +451,9 @@ function PollSettings({ properties, onChange }) {
     }
 
     // Cron rows mutate in a ref, committed back into p.cronJobs on each edit.
-    const cronRef = useRef(null);
-    if (cronRef.current === null) cronRef.current = cronRows().map((job) => ({ expression: job.expression ?? '', description: job.description ?? '' }));
-    const cron = cronRef.current;
+    const cronRef = useRef<Array<{ expression: string; description: string }> | null>(null);
+    if (cronRef.current === null) cronRef.current = cronRows().map((job: any) => ({ expression: job.expression ?? '', description: job.description ?? '' }));
+    const cron = cronRef.current!;
     const commitCron = () => {
         p.cronJobs = cron.length ? { cronProperty: cron.map((r) => ({ description: r.description, expression: r.expression })) } : null;
         onChange();
@@ -548,7 +553,7 @@ function PollSettings({ properties, onChange }) {
 /* Day-of-week checkboxes, ordered S M T W Th F S to match Swing's dialog. `idx`
    is the java.util.Calendar constant used to index the inactiveDays boolean[8]
    (SUNDAY=1 … SATURDAY=7; element 0 is unused). */
-const POLL_DAYS = [
+const POLL_DAYS: Array<{ label: string; idx: number; title: string }> = [
     { label: 'S', idx: 1, title: 'Sunday' },
     { label: 'M', idx: 2, title: 'Monday' },
     { label: 'T', idx: 3, title: 'Tuesday' },
@@ -565,7 +570,7 @@ const POLL_DAYS = [
    stores INACTIVE days, so checked === !inactiveDays[idx] (and writing back
    inverts: inactiveDays[idx] = !checked). Active Time is only configurable for
    Interval polling, matching Swing's enableComponents(). */
-function PollAdvancedSettings({ p, pollingType, onChange }) {
+function PollAdvancedSettings({ p, pollingType, onChange }: { p: any; pollingType: string; onChange: () => void }) {
     const [, tick] = useReducer((n) => n + 1, 0);
     const [open, setOpen] = useState(false);
     const uid = useMemo(() => ++cformUid, []);
@@ -591,7 +596,7 @@ function PollAdvancedSettings({ p, pollingType, onChange }) {
     const timeEnabled = pollingType === 'INTERVAL';   // Swing disables Active Time for Time/Cron
     const rangeEnabled = timeEnabled && !allDay;
 
-    const numField = (value, min, max, apply) => (
+    const numField = (value: any, min: number, max: number, apply: (v: number) => void) => (
         <input type="number" min={min} max={max} className="w-[63px]" value={value}
             onChange={(e) => { apply(parseInt(e.target.value, 10) || 0); notify(); }} />
     );
@@ -690,13 +695,13 @@ function defaultFrameMode() {
     };
 }
 
-export function TransmissionModePanel({ properties, onChange }) {
+export function TransmissionModePanel({ properties, onChange }: { properties: any; onChange: () => void }) {
     const [, tick] = useReducer((n) => n + 1, 0);
     if (!properties.transmissionModeProperties || typeof properties.transmissionModeProperties !== 'object') {
         properties.transmissionModeProperties = defaultFrameMode();
     }
     const tm = properties.transmissionModeProperties;
-    const modes = useMemo(() => platform.transmissionModes(), []);
+    const modes = useMemo(() => platform.transmissionModes(), []) as any[];
     if (!tm.pluginPointName && modes[0]) tm.pluginPointName = modes[0].name;
     const modeOf = () => modes.find((m) => m.name === tm.pluginPointName);
 

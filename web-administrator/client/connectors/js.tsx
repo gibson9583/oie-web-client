@@ -12,7 +12,7 @@ import {
 } from './react-forms.js';
 
 const javascriptReader = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.js.JavaScriptReceiverProperties',
             '@version': version,
@@ -22,7 +22,7 @@ const javascriptReader = {
             script: ''
         };
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange }: any) {
         return (
             <div>
                 <PollSection properties={properties} onChange={onChange} />
@@ -37,7 +37,7 @@ const javascriptReader = {
         );
     },
     // Swing JavaScriptReader.checkProperties: script must not be empty.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'script', label: 'JavaScript' }
         ]);
@@ -45,7 +45,7 @@ const javascriptReader = {
 };
 
 const javascriptWriter = {
-    defaults(version) {
+    defaults(version: any) {
         return {
             '@class': 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties',
             '@version': version,
@@ -54,7 +54,7 @@ const javascriptWriter = {
             script: ''
         };
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'JavaScript Writer Settings' },
@@ -66,14 +66,14 @@ const javascriptWriter = {
         );
     },
     // Swing JavaScriptWriter.checkProperties: script must not be empty.
-    validate(properties) {
+    validate(properties: any) {
         return requireFields(properties, [
             { key: 'script', label: 'JavaScript' }
         ]);
     }
 };
 
-export function register(platform) {
+export function register(platform: any) {
     platform.registerConnectorPanel('JavaScript Reader', 'SOURCE', javascriptReader);
     platform.registerConnectorPanel('JavaScript Writer', 'DESTINATION', javascriptWriter);
 }
