@@ -1,0 +1,2 @@
+export { platform, loadPlugins, OIE_API_VERSION, apiCompatible } from './platform.js';
+export type { Platform, PluginComponent, PluginManifest, RouterApi, StoreApi, EventsApi, NavItem, ViewContext, ViewResult, ViewHandler, ViewMeta, ConnectorMode, DashboardTab, DashboardColumn, ChannelTab, SettingsPanel, AttachmentViewer, StepRuleType, ConnectorPanel, ConnectorPropertiesPanel, DataTypeDef, TransmissionModeDef, ResourceTypeDef, ChannelAction, ChannelActionContext, CodeTemplateAction, CodeTemplateActionContext } from './platform.js';

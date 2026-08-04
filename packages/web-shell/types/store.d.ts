@@ -1,0 +1,14 @@
+export declare function setState(key: string, value: any): void;
+export declare function getState(key: string): any;
+export declare function subscribe(key: string, fn: (value: any) => void): () => void;
+export declare function emit(event: string, detail?: any): void;
+export declare function on(event: string, fn: (detail: any) => void): () => void;
+export declare function setPrefScope(serverId: string | number | null | undefined, userId: string | number | null | undefined): void;
+export declare function scopedKey(base: string): string;
+export declare function setTheme(theme: string): void;
+export declare function initTheme(): void;
+export declare const TABLE_DENSITIES: string[];
+export declare function setTableDensity(density: string): void;
+export declare function setRailCollapsed(collapsed: boolean): void;
+export declare function initRailCollapsed(): void;
+export declare function reapplyScopedSettings(): void;
