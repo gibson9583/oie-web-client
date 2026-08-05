@@ -97,7 +97,7 @@ function discover(pluginDirs: string[]): Array<{ dir: string; manifest: ServerPl
  * still requires a restart because of Node's module cache).
  */
 export function install(app: Express, config: any) {
-    const dirs = config.pluginDirs || [config.pluginDir];
+    const dirs = config.pluginDirs;
     const mountedServers = new Set<string>();
 
     function toClientManifest(manifest: ServerPluginManifest) {
@@ -186,7 +186,7 @@ export function install(app: Express, config: any) {
 // in index.html (so the browser fetches plugin code in parallel with the shell
 // instead of waiting on the plugins.json round-trip). Re-scanned per call.
 export function clientEntries(config: any): string[] {
-    const dirs = config.pluginDirs || [config.pluginDir];
+    const dirs = config.pluginDirs;
     return discover(dirs)
         .map((p) => (p.manifest.client && p.manifest.client.entry)
             ? `/plugins/${p.manifest.id}/${p.manifest.client.entry}`
