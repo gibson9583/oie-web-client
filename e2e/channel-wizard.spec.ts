@@ -328,6 +328,45 @@ test.describe('channel wizard', () => {
         await expect(page.locator('.taskbar').getByText('Save Changes')).toBeVisible();
     });
 
+    test('editing Channel Options and Scripts on an existing channel marks it dirty (regression: silent discard)', async ({ page }) => {
+        const CH = 'ch-opts-dirty';
+        const dt = (io: any) => ({ '@version': '4.5.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
+        const existing = {
+            '@version': '4.5.0', id: CH, name: 'Opts Dirty Channel', nextMetaDataId: 2,
+            sourceConnector: {
+                metaDataId: 0, name: 'sourceConnector', transportName: 'Channel Reader', mode: 'SOURCE', enabled: true,
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0', pluginProperties: null, sourceConnectorProperties: {} },
+                transformer: dt('HL7V2'), filter: { '@version': '4.5.0', elements: null }
+            },
+            destinationConnectors: { connector: [{
+                metaDataId: 1, name: 'Destination 1', transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true,
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.5.0', pluginProperties: null, destinationConnectorProperties: {} },
+                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.5.0', elements: null }
+            }] },
+            properties: { '@version': '4.5.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
+            exportData: { metadata: { enabled: true, pruningSettings: {} } }
+        };
+        await mockEngine(page, { [`GET /channels/${CH}`]: { channel: existing } });
+
+        // Channel Options: changing the initial state must surface Save (it used to
+        // be silently discarded — ChannelSettings was mounted with no onChange).
+        await page.goto(`/channels/${CH}/guided`);
+        await page.locator('.wiz-step', { hasText: 'Channel Options' }).click();
+        await page.locator('.view-body select').first().selectOption('PAUSED');
+        await expect(page.locator('.taskbar').getByText('Save Changes')).toBeVisible();
+
+        // Scripts: typing in the script editor must surface Save too (same bug,
+        // second unwired step). Fresh load so the wizard starts clean.
+        await page.goto(`/channels/${CH}/guided`);
+        await page.locator('.wiz-step', { hasText: 'Scripts' }).click();
+        // monaco 0.56 uses the EditContext API (no editable textarea to .fill()) —
+        // focus the editor and type via the keyboard to dirty the model.
+        await expect(page.locator('.view-body .ce').first()).toBeVisible();
+        await page.locator('.view-body .ce .monaco-editor, .view-body .ce').first().click();
+        await page.keyboard.type('// edited');
+        await expect(page.locator('.taskbar').getByText('Save Changes')).toBeVisible();
+    });
+
     test('blocks a duplicate channel name', async ({ page }) => {
         await mockEngine(page, {
             // idsAndNames wire shape: a single 'map' root key the proxy unwraps to
