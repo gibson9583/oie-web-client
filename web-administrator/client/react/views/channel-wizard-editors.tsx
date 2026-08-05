@@ -437,7 +437,7 @@ export function DependenciesStep({ channel, libState, depState }: any) {
 
 // Replicates the classic editor's connector-properties loop: plugin panels keyed by
 // a fully-qualified class name under connector.properties.pluginProperties[fqcn].
-export function ConnectorPropertiesPanels({ channel, connector, mode }: any) {
+export function ConnectorPropertiesPanels({ channel, connector, mode, onChange }: any) {
     const hostRef = useRef<any>(null);
     const [, tick] = useReducer((x: any) => x + 1, 0);
     useEffect(() => {
@@ -463,7 +463,7 @@ export function ConnectorPropertiesPanels({ channel, connector, mode }: any) {
             body.className = 'panel-body';
             wrap.append(header, body);
             host.appendChild(wrap);
-            teardowns.push(mountReact(body, <PluginSlot def={ppDef} ctx={{ getEntry, setEntry, propertiesClass: fqcn, connector, channel, platform, onChange: () => {} }} />));
+            teardowns.push(mountReact(body, <PluginSlot def={ppDef} ctx={{ getEntry, setEntry, propertiesClass: fqcn, connector, channel, platform, onChange: onChange || (() => {}) }} />));
         }
         return () => { teardowns.forEach((t: any) => { try { t(); } catch { /* ignore */ } }); host.replaceChildren(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -547,7 +547,7 @@ const SCRIPTS = [
     { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed.', context: 'CHANNEL_POSTPROCESSOR' }
 ];
 
-export function ChannelScripts({ channel }: any) {
+export function ChannelScripts({ channel, onChange }: any) {
     const [which, setWhich] = useState('deployScript');
     const spec = SCRIPTS.find((s: any) => s.key === which);
     // Scope Monaco's variable/code-template completions to the selected script,
@@ -567,7 +567,7 @@ export function ChannelScripts({ channel }: any) {
             <div className="panel-body flex flex-col gap-2">
                 <div className="hint">{spec!.hint!}</div>
                 <CodeEditor key={which} language="javascript" defaultValue={channel[which] || ''}
-                    onChange={(v: any) => { channel[which] = v; }} style={{ minHeight: '260px' }} />
+                    onChange={(v: any) => { channel[which] = v; if (onChange) onChange(); }} style={{ minHeight: '260px' }} />
             </div>
         </div>
     );
@@ -800,8 +800,11 @@ function ChannelTags({ channel, version }: any) {
     );
 }
 
-export function ChannelSettings({ channel, version }: any) {
-    const [, tick] = useReducer((x: any) => x + 1, 0);
+export function ChannelSettings({ channel, version, onChange }: any) {
+    const [, retick] = useReducer((x: any) => x + 1, 0);
+    // Every edit handler funnels through tick(); notifying here is what lets the
+    // wizard mark itself dirty (Save button + leave guard) for this step.
+    const tick = () => { retick(); if (onChange) onChange(); };
     const p = channel.properties = channel.properties || {};
     const meta = channel.exportData = channel.exportData || {};
     meta.metadata = meta.metadata || { enabled: true, pruningSettings: {} };

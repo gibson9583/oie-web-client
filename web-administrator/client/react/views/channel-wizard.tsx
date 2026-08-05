@@ -370,7 +370,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                     {/* Destination Settings (queue) sit above the connector panel, like the classic editor. */}
                     {isDest && <QueueSettings key={`q-${connector.metaDataId}-${connector.transportName}`} connector={connector} onChange={onChange} />}
                     {/* connector-properties (SSL/auth) panels render BEFORE the main panel, matching the classic editor */}
-                    <ConnectorPropertiesPanels key={`pp-${connector.transportName}`} channel={channel} connector={connector} mode={mode} />
+                    <ConnectorPropertiesPanels key={`pp-${connector.transportName}`} channel={channel} connector={connector} mode={mode} onChange={onChange} />
                     {/* Destinations get the classic Destination Mappings rail beside the
                         connector settings (styled like the alert wizard's Variables panel). */}
                     <div className="flex flex-col lg:flex-row gap-4 items-stretch">
@@ -837,7 +837,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                             onInbound={changeInbound} onOutbound={changeOutbound} nameError={nErr} />
                     )}
                     {stepName === 'Dependencies' && <DependenciesStep channel={channel} libState={libStateRef} depState={depStateRef} />}
-                    {stepName === 'Channel Options' && <ChannelSettings channel={channel} version={version} />}
+                    {stepName === 'Channel Options' && <ChannelSettings channel={channel} version={version} onChange={bump} />}
                     {stepName === 'Source' && (
                         <ConnectorTabs channel={channel} connector={channel.sourceConnector} mode="SOURCE" version={version} onChange={bump} />
                     )}
@@ -846,7 +846,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                             onSelect={setSelectedDest} onAdd={addDestination} onRemove={removeDestination}
                             onRename={renameDestination} onChange={bump} />
                     )}
-                    {stepName === 'Scripts' && <ChannelScripts channel={channel} />}
+                    {stepName === 'Scripts' && <ChannelScripts channel={channel} onChange={bump} />}
                     {stepName === 'Review' && <ReviewStep channel={channel} inbound={inbound} outbound={outbound} />}
                 </div>
             </div>
