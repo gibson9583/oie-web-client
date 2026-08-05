@@ -13,6 +13,10 @@
  */
 import * as store from './store.js';
 const BASE_KEY = 'webadmin.channel-draft';
+// A stash exists to survive a session hiccup, not to persist forever on a
+// shared workstation: connector credentials ride inside the channel JSON.
+// Anything older than this is purged instead of offered (#24).
+const DRAFT_TTL_MS = 48 * 60 * 60 * 1000;
 /** Stashes the in-progress channel iff one is open and dirty. Best-effort. */
 export function stashChannelDraft() {
     try {
@@ -35,7 +39,12 @@ export function stashChannelDraft() {
 export function peekChannelDraft() {
     try {
         const raw = localStorage.getItem(store.scopedKey(BASE_KEY));
-        return raw ? JSON.parse(raw) : null;
+        const draft = raw ? JSON.parse(raw) : null;
+        if (draft && (!Number.isFinite(draft.savedAt) || Date.now() - draft.savedAt > DRAFT_TTL_MS)) {
+            clearChannelDraft(); // expired — purge rather than offer stale credentials
+            return null;
+        }
+        return draft;
     }
     catch {
         return null;

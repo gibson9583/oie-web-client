@@ -19,6 +19,10 @@ import { checkTask } from '../core/authorization.js';
 // panes; persists for the session.
 const paneCollapsed = new Map();
 
+/** Forget the per-view pane collapse state — called on sign-out so the next
+    user of this tab starts from the defaults, not the last user's layout. */
+export function resetPaneCollapsed() { paneCollapsed.clear(); }
+
 // RBAC task group (Swing pane key, e.g. "channel"). A task pane sets it once via
 // RailPane group=...; its TaskButtons read it so each only needs its `task` id.
 const TaskGroupContext = createContext(null);

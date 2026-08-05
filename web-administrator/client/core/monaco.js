@@ -378,7 +378,11 @@ const LANGUAGES = {
    a view may legitimately detach/re-attach a live editor between tabs, so we
    never sweep mid-view.) */
 const liveMonaco = new Set();
-function disposeDetachedMonaco() {
+/** Dispose every Monaco editor whose host element has left the document.
+    Runs on route changes automatically; the shell also calls it on sign-out,
+    which swaps the DOM without a route change (script content must not stay
+    in memory behind the login card). */
+export function disposeDetachedMonaco() {
     for (const rec of [...liveMonaco]) {
         if (!document.contains(rec.el))
             rec.dispose();

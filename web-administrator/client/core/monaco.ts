@@ -410,7 +410,11 @@ const LANGUAGES: Record<string, string> = {
    never sweep mid-view.) */
 const liveMonaco = new Set<{ el: HTMLElement; dispose: () => void }>();
 
-function disposeDetachedMonaco(): void {
+/** Dispose every Monaco editor whose host element has left the document.
+    Runs on route changes automatically; the shell also calls it on sign-out,
+    which swaps the DOM without a route change (script content must not stay
+    in memory behind the login card). */
+export function disposeDetachedMonaco(): void {
     for (const rec of [...liveMonaco]) {
         if (!document.contains(rec.el)) rec.dispose();
     }

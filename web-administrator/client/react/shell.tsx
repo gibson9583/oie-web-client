@@ -27,6 +27,10 @@ import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
 import { hasUnsavedWork } from '../core/unsaved.js';
 import { stashChannelDraft, peekChannelDraft, clearChannelDraft } from '../core/channel-draft.js';
+import { queryClient } from './queries';
+import { resetPaneCollapsed } from './ui';
+import { disposeDetachedMonaco } from '../core/monaco.js';
+import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
 import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
@@ -705,6 +709,10 @@ export function App() {
             // reason inline instead — nothing to dismiss before signing back in.
             store.setState('loginNotice', 'Your session expired — please sign in again.');
             store.setState('user', null);
+            scrubSessionState();
+            // The deep link (which channel was open) must not sit in the address
+            // bar over the login card for the next person to read (#24).
+            history.replaceState(null, '', '/');
         });
         return () => { alive = false; off(); };
     }, []);
@@ -741,10 +749,35 @@ export function App() {
         };
     }, [user]);
 
+    /* Everything a departed session must not leave behind for the next user of
+       this tab (#22/#24): the TanStack cache (a different user signing in within
+       staleTime saw the previous user's channels instantly), the code-template
+       completion catalog, Monaco models/undo stacks (logout swaps the DOM via
+       replaceState, so the route-change sweep never fires), the per-view pane
+       layout, the working-copy store keys, and — in devMode — the typed engine
+       URL cookie, which otherwise prefills for the next person. */
+    const scrubSessionState = () => {
+        queryClient.clear();
+        invalidateCompletions();
+        clearActiveScope();
+        // Deferred: the editors only DETACH when React swaps in the login card,
+        // which happens on the render after the setState calls around us.
+        setTimeout(disposeDetachedMonaco, 0);
+        resetPaneCollapsed();
+        store.setState('editingChannel', null);
+        store.setState('editingChannelNew', false);
+        store.setState('editingChannelDirty', false);
+        document.cookie = 'oie-engine-url=; Max-Age=0; path=/';
+    };
+
     const onLogout = async () => {
         try { await api.auth.logout(); } catch { /* session may already be gone */ }
+        // Explicit sign-out abandons any stash (an expiry stash is a safety net;
+        // a deliberate logout on a shared workstation must not leave one behind).
+        clearChannelDraft();
         store.setState('user', null);
         store.setState('navGuard', null);
+        scrubSessionState();
         store.setPrefScope(null, null);   // next sign-in re-scopes to that user
         resetSessionExpired();
         history.replaceState(null, '', '/');
@@ -828,6 +861,7 @@ export function App() {
             try { await api.auth.inactivityLogout(); } catch { /* session may already be gone */ }
             store.setState('user', null);
             store.setState('navGuard', null);
+            scrubSessionState();
             store.setPrefScope(null, null);
             resetSessionExpired();
             history.replaceState(null, '', '/');
