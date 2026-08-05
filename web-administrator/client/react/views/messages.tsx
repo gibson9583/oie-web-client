@@ -1845,7 +1845,12 @@ export function MessagesView({ params, query }: any) {
 
     /* ---- search (explicit command) ---- */
 
+    // Search responses can resolve out of order (a slow page-1 landing after a
+    // fast page-2); only the newest issued search may write results.
+    const searchGenRef = useRef(0);
+
     async function runSearch(resetOffset: any) {
+        const gen = ++searchGenRef.current;
         if (resetOffset) {
             offsetRef.current = 0;
             lastParamsRef.current = buildParams();
@@ -1857,6 +1862,7 @@ export function MessagesView({ params, query }: any) {
             // Fetch one extra row to learn whether a next page exists, instead of
             // paying for a COUNT on every search (Swing's lazy-count model).
             const rows = await api.messages.search(channelId, { ...lastParamsRef.current, offset: offsetRef.current, limit: limitRef.current + 1 });
+            if (gen !== searchGenRef.current) return;   // superseded by a newer search
             const list = rows.filter(m => m && typeof m === 'object');
             const hasNext = list.length > limitRef.current;
             if (hasNext) list.pop();   // drop the probe row

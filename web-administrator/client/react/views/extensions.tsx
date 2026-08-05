@@ -241,6 +241,11 @@ export function ExtensionsView() {
 
     /* ---- load ---------------------------------------------------------- */
 
+    // load() also runs after installs/uninstalls; if the response lands after
+    // the user navigated away, don't write state into the unmounted view.
+    const aliveRef = useRef(true);
+    useEffect(() => () => { aliveRef.current = false; }, []);
+
     async function load() {
         try {
             const [connRaw, plugRaw] = await Promise.all([api.extensions.connectors(), api.extensions.plugins()]);
@@ -254,12 +259,14 @@ export function ExtensionsView() {
                     row.enabled = true;
                 }
             }));
+            if (!aliveRef.current) return;
             setConnectors(conns);
             setPlugins(plugs);
             setLoadError(null);
             // A reload prunes a vanished selection — resync the tracked row + tasks.
             setSel((prev: any) => (prev ? [...conns, ...plugs].find(r => r.name === prev.name) ?? null : null));
         } catch (e: any) {
+            if (!aliveRef.current) return;
             toast(`Failed to load extensions: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
         }

@@ -1306,7 +1306,7 @@ export function ChannelsView() {
                         onRowDrop={onRowDrop}
                         columnsKey="channels"
                         columnWidths={CHANNEL_COL_WIDTHS}
-                        pinnedKeys={['name']}
+                        pinnedKeys={['status', 'name']}
                         emptyText={(
                             <>
                                 <div className="empty-icon"><Icon name="channels" size={30} /></div>

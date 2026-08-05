@@ -239,7 +239,12 @@ export function EventsView() {
     // The count path 500s on an empty level set ("EVENT_LEVEL IN ()"); always send one.
     const countParams = (params: any) => ({ ...params, level: params.level ?? LEVELS });
 
+    // Search responses can resolve out of order (a slow search landing after a
+    // faster later one); only the newest issued search may write results.
+    const searchGenRef = useRef(0);
+
     async function runSearch(params: any, offset: any, limit: any) {
+        const gen = ++searchGenRef.current;
         let rows: any[] = [];
         let total = 0;
         try {
@@ -250,8 +255,10 @@ export function EventsView() {
             rows = normalizeEvents(raw);
             total = toCount(count);
         } catch (e: any) {
+            if (gen !== searchGenRef.current) return;
             toast(`Event search failed: ${shortError(e)}`, 'error');
         }
+        if (gen !== searchGenRef.current) return;   // superseded by a newer search
         setEvents(rows);
         setPage({ offset, limit, total, params });
         // Keep the selection when the same event is still in the new page.

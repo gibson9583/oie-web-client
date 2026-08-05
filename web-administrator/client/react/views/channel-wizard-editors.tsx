@@ -665,7 +665,6 @@ function AttachmentHandler({ channel, version }: any) {
                     <input type="checkbox" checked={p.storeAttachments === true} onChange={(e: any) => { p.storeAttachments = e.target.checked; tick(); }} />Store attachments
                 </label>
             </div>
-            {p.storeAttachments && (
             <div className="panel-body flex flex-col gap-3">
                 <label className="flex flex-wrap items-center gap-3">
                     <span className="w-[126px] text-text-dim text-[11px]">Attachment handler</span>
@@ -701,8 +700,9 @@ function AttachmentHandler({ channel, version }: any) {
                     </div>
                 )}
                 {(ap.type === 'None' || ap.type === 'DICOM') && <div className="hint">{ap.type === 'DICOM' ? 'DICOM attachments are handled automatically.' : 'Choose a handler to extract attachments from incoming messages.'}</div>}
+                {ap.type && ap.type !== 'None' && !p.storeAttachments
+                    && <div className="hint">Attachments will be extracted but not stored or reattached.</div>}
             </div>
-            )}
         </div>
     );
 }
