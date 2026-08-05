@@ -34,6 +34,7 @@ import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
+import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
 /* ---- @oie/* plugin API contract version --------------------------------------
  * The version of the framework surface (the `platform` registries + the @oie/web-*
@@ -119,6 +120,11 @@ export const platform = {
     setAuthorizationController,
     checkTask,
     /* ---- extension points ---- */
+    /* A plugin glyph for the shared icon set (core/icons.ts): pathData is SVG
+       path data on a 24x24 grid, rendered stroke-only in currentColor — the
+       same format as the built-ins. Register before referencing the name in a
+       nav item / action / ui.icon() call. Built-in names are protected. */
+    registerIcon,
     registerNavItem(item) { registries.navItems.push(item); },
     /* Command-palette entry. Same shape as a nav item ({ id, label, icon, section,
        task, rbac, path | run }); see core/commands.ts. */

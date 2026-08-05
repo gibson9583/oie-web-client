@@ -193,6 +193,10 @@ function MyView() {
 }
 
 export function register() {
+    // Bring your own glyph (or use a built-in name — see core/icons.ts). Path
+    // data on a 24x24 grid, rendered stroke-only in currentColor; on shells
+    // without the name the icon degrades to the built-in `info` glyph.
+    platform.registerIcon('plug', 'M9 7V3M15 7V3M6 7h12v4a6 6 0 0 1-12 0V7zM12 17v4');
     platform.registerNavItem({ id: 'my-plugin', label: 'My Plugin', icon: 'plug',
         path: '/my-plugin', section: 'Engine', order: 99 });
     // reactView() wraps a component as a routed-view handler.
@@ -399,6 +403,14 @@ your bundle), keeping `@oie/*` external:
 ```jsx
 import { platform } from '@oie/web-shell';
 const React = platform.React;
+
+// Plugin glyph for the shared icon set: SVG path data on a 24x24 grid, drawn
+// stroke-only (1.7px, currentColor, no fill) like every built-in. The name is
+// then valid anywhere an `icon` is accepted (nav items, actions, commands,
+// ui.icon()). Built-in names can't be overridden; unknown names fall back to
+// the `info` glyph, so a plugin on an older shell degrades instead of breaking
+// (guard with platform.registerIcon?.(...) if you support pre-registerIcon shells).
+platform.registerIcon(name, pathData);
 
 // Full routed view + rail navigation (ClientPlugin)
 platform.registerNavItem({ id, label, icon, path, section, order });

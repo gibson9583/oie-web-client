@@ -7,7 +7,9 @@ import { h } from '@oie/web-ui';
 
 // A plugin's register(platform) entry point typed against the public contract.
 export function register(p: Platform) {
-    p.registerNavItem({ id: 'demo', label: 'Demo', path: '/demo', section: 'Engine', order: 9 });
+    // Plugin glyph registration — the name is then valid anywhere an `icon` is accepted.
+    p.registerIcon('demo-glyph', 'M5 20v-7a7 7 0 0 1 14 0v7');
+    p.registerNavItem({ id: 'demo', label: 'Demo', icon: 'demo-glyph', path: '/demo', section: 'Engine', order: 9 });
     p.registerView('/demo', () => ({ el: h('div', 'hi') }), { title: 'Demo' });
     // Plugin UI is a React `component` (rendered as <Component {...ctx}/>), not an
     // imperative render(host, ctx). Authored against platform.React.
