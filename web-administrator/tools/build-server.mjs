@@ -6,7 +6,7 @@
  * also regenerate on boot). Mirrors tools/build-core.mjs for client/core.
  */
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,7 +16,14 @@ const serverDir = path.join(root, 'server');
 const sources = readdirSync(serverDir).filter(n => n.endsWith('.ts') && !n.endsWith('.d.ts'));
 if (!sources.length) { console.log('[build-server] no TypeScript server modules'); process.exit(0); }
 
+// typescript is a devDependency; on a production install (`npm ci --omit=dev`)
+// it is absent — the committed generated twins are current, so skip gracefully
+// instead of crashing `npm start`.
 const tsc = path.join(root, '..', 'node_modules', '.bin', 'tsc');
+if (!existsSync(tsc)) {
+    console.log('[build-server] typescript not installed (production install?) — using the committed generated files.');
+    process.exit(0);
+}
 const res = spawnSync(tsc, ['-p', path.join(root, 'tsconfig.server.json')], { stdio: 'inherit' });
 if (res.status !== 0) process.exit(res.status ?? 1);
 

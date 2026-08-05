@@ -11,8 +11,18 @@
  * modules and resolves the deps itself; the import-map entry is inert.
  */
 
-import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
+
+// esbuild is a devDependency. On a production install (`npm ci --omit=dev`)
+// it is absent — and that is fine: the vendored bundles it produces are
+// committed, so regeneration is a development convenience, not a boot
+// requirement. Skip gracefully instead of crashing `npm start`.
+let build;
+try { ({ build } = await import('esbuild')); }
+catch {
+    console.log('[build-vendor] esbuild not installed (production install?) — using the committed vendor bundles.');
+    process.exit(0);
+}
 import { dirname, resolve } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
