@@ -21,12 +21,12 @@ function goodUsage() {
        existing plugin does `modal(...).el.style.width = …` on the next line.
        Pinned here so the element can't quietly become nullable again. */
     const modalEl: HTMLElement = m.el;
-    /* toast returns the registered renderer's handle in the real app, or the
-       bare DOM node from the fallback renderer — the union is the truthful
-       contract (core/ui.ts cornerToast). */
+    /* toast returns a UiHandle from both renderers — the registered Radix one
+       and the DOM fallback (core/ui.ts cornerToast) — so callers can dismiss
+       programmatically without sniffing the shape. */
     const t = toast('saved');
-    const toastEl: HTMLElement = t instanceof HTMLElement ? t : t.el;
-    if (!(t instanceof HTMLElement)) t.close();
+    const toastEl: HTMLElement = t.el;
+    t.close();
     /* null when a registered context-menu renderer returns no element. */
     const menuEl: HTMLElement | null = contextMenu(10, 10, [{ label: 'Open', onClick: () => {} }, '-']);
     closeContextMenu({ restore: false });

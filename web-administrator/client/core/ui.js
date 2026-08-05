@@ -12,6 +12,7 @@ import { checkTask } from './authorization.js';
 // columns.js imports h/contextMenu from here; the cycle is safe because both
 // sides only use the imported bindings at call time, never at module load.
 import { createColumnManager, decorateColumns, attachColumnMenu } from './columns.js';
+import { scopedKey } from './store.js';
 export function h(spec, attrs, ...children) {
     let tag = 'div';
     const classes = [];
@@ -133,7 +134,7 @@ function domCornerToast(message, type, timeout) {
         el.style.opacity = '0';
         setTimeout(() => el.remove(), 260);
     }, timeout);
-    return el;
+    return { el, close: () => el.remove() };
 }
 /*
  * Notifications. Errors and warnings are surfaced in the readable,
@@ -319,11 +320,13 @@ export function promptDialog(title, label, initial = '') {
         // back to this field after the user has already moved on.
     });
 }
-/* Copy text to the clipboard with a small toast — shared by detail modals. */
-function copyToClipboard(text) {
+/* Copy text to the clipboard with a small toast — shared by detail modals.
+   writeText is async and can reject (permissions policy, non-secure context):
+   await it so the toast reports what actually happened, not a false "Copied". */
+async function copyToClipboard(text) {
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(String(text));
+            await navigator.clipboard.writeText(String(text));
             toast('Copied to clipboard');
             return;
         }
@@ -598,7 +601,8 @@ export class DataTable {
         this.defaultHidden = new Set(columns.filter(c => c.defaultHidden).map(c => c.key));
         this.hidden = new Set(this.defaultHidden);
         if (options.columnsMenuKey) {
-            const saved = localStorage.getItem(options.columnsMenuKey);
+            // Scoped per server+user, matching createColumnManager's persistence.
+            const saved = localStorage.getItem(scopedKey(options.columnsMenuKey));
             if (saved != null) {
                 try {
                     this.hidden = new Set(JSON.parse(saved));
@@ -623,7 +627,7 @@ export class DataTable {
     saveHidden() {
         if (this.options.columnsMenuKey) {
             try {
-                localStorage.setItem(this.options.columnsMenuKey, JSON.stringify([...this.hidden]));
+                localStorage.setItem(scopedKey(this.options.columnsMenuKey), JSON.stringify([...this.hidden]));
             }
             catch { /* private mode */ }
         }
@@ -867,6 +871,9 @@ export async function saveFile(suggestedName, type, getContent) {
 export function pickFile(accept, { binary = false } = {}) {
     return new Promise(resolve => {
         const input = h('input', { type: 'file', accept, class: 'hidden' });
+        // Dismissing the OS dialog fires 'cancel' (no 'change'); without this the
+        // returned promise never settles and the hidden input leaks.
+        input.addEventListener('cancel', () => { input.remove(); resolve(null); });
         input.addEventListener('change', () => {
             const file = input.files && input.files[0];
             input.remove();
