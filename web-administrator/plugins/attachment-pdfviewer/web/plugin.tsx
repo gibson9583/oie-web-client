@@ -54,12 +54,15 @@ export function register(platform: Platform) {
                 </div>
             );
         }
-        // Sandbox the attacker-controlled PDF: opaque origin, no scripts, no
-        // top-frame navigation (render-only) via an empty sandbox attribute.
+        // Sandbox the attacker-controlled PDF: scripts, top-frame navigation,
+        // popups and forms all stay blocked. allow-same-origin (and nothing
+        // else) is deliberate: a fully-empty sandbox disables Chromium's
+        // built-in PDF plugin, leaving a blank frame (#25) — and it grants the
+        // document nothing here, because a data: URL is opaque-origin anyway.
         return (
             <div className="mt-[13px]">
                 <iframe
-                    sandbox=""
+                    sandbox="allow-same-origin"
                     src={state.src}
                     className="w-full h-[576px] border border-[var(--bg3)] rounded-[4px]"
                 />

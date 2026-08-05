@@ -328,9 +328,11 @@ function XsltEditor({ element, onChange }) {
     }
   )));
 }
+var dsfUid = 0;
 function DestinationSetFilterEditor({ element, onChange, destinations }) {
   const force = useRerender();
   const [selValue, setSelValue] = React.useState(-1);
+  const uid = React.useMemo(() => ++dsfUid, []);
   const dests = Array.isArray(destinations) ? destinations : [];
   const behavior = element.behavior || "REMOVE";
   const condition = element.condition || "EXISTS";
@@ -417,7 +419,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
     "input",
     {
       type: "radio",
-      name: `dsf-condition-${element.__type}`,
+      name: `dsf-condition-${uid}`,
       checked: condition === opt.value,
       onChange: () => {
         element.condition = opt.value;

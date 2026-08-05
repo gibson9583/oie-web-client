@@ -80,7 +80,7 @@ const PAGE_SIZES = [
     { name: 'B1', width: 707, height: 1000, unit: 'MM' },
     { name: 'B2', width: 500, height: 707, unit: 'MM' },
     { name: 'B3', width: 353, height: 500, unit: 'MM' },
-    { name: 'B4', width: 250, height: 343, unit: 'MM' },
+    { name: 'B4', width: 250, height: 353, unit: 'MM' },
     { name: 'B5', width: 176, height: 250, unit: 'MM' },
     { name: 'B6', width: 125, height: 176, unit: 'MM' },
     { name: 'B7', width: 88, height: 125, unit: 'MM' },

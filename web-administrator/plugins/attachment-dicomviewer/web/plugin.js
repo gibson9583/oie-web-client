@@ -732,11 +732,12 @@ function imageInfo(ds) {
   const photometric = (ds.string("x00280004") || "MONOCHROME2").trim().toUpperCase();
   const planar = ds.uint16("x00280006") || 0;
   const numFrames = parseInt(ds.intString("x00280008") || "1", 10) || 1;
+  const bigEndian = (ds.string("x00020010") || "").trim() === "1.2.840.10008.1.2.2";
   const slope = first(ds.string("x00281053")) ?? 1;
   const intercept = first(ds.string("x00281052")) ?? 0;
   const wc = first(ds.string("x00281050"));
   const ww = first(ds.string("x00281051"));
-  return { rows, cols, spp, bitsAllocated, pixelRepresentation, photometric, planar, numFrames, slope, intercept, wc, ww };
+  return { rows, cols, spp, bitsAllocated, pixelRepresentation, photometric, planar, numFrames, slope, intercept, wc, ww, bigEndian };
 }
 function readFrame(ds, bytes, info, frame) {
   const el = ds.elements.x7fe00010;
@@ -749,6 +750,13 @@ function readFrame(ds, bytes, info, frame) {
   if (start + frameBytes > bytes.length) return null;
   const slice = bytes.slice(start, start + frameBytes);
   if (bytesPer === 1) return new Uint8Array(slice.buffer);
+  if (info.bigEndian) {
+    for (let i = 0; i + 1 < slice.length; i += 2) {
+      const t = slice[i];
+      slice[i] = slice[i + 1];
+      slice[i + 1] = t;
+    }
+  }
   return info.pixelRepresentation ? new Int16Array(slice.buffer) : new Uint16Array(slice.buffer);
 }
 function renderGray(canvas, raw, info, wc, ww) {
@@ -809,6 +817,7 @@ function register(platform2) {
     const [win, setWin] = React.useState(null);
     const [zoom, setZoom] = React.useState(1);
     const [popUrl, setPopUrl] = React.useState(null);
+    const [decodeError, setDecodeError] = React.useState(null);
     const canvasRef = React.useRef(null);
     React.useEffect(() => {
       let cancelled = false;
@@ -816,6 +825,7 @@ function register(platform2) {
       setFrame(0);
       setWin(null);
       setZoom(1);
+      setDecodeError(null);
       (async () => {
         try {
           const msg = await platform3.api.messages.get(channelId, messageId);
@@ -881,8 +891,8 @@ function register(platform2) {
       const cv = canvasRef.current;
       try {
         if (state.kind === "jpeg") {
-          drawJpegFrame(cv, state.ds, state.bytes, state.info, frame).catch(() => {
-          });
+          setDecodeError(null);
+          drawJpegFrame(cv, state.ds, state.bytes, state.info, frame).catch((e) => setDecodeError(e && e.message ? e.message : "the browser could not decode this frame"));
           return;
         }
         if (state.kind !== "raw") return;
@@ -914,7 +924,7 @@ function register(platform2) {
         ref: canvasRef,
         style: { transform: `scale(${zoom})`, transformOrigin: "top left", imageRendering: "pixelated", display: "block" }
       }
-    )), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-4 flex-wrap text-[11px]" }, info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame <= 0, onClick: () => setFrame((f) => Math.max(0, f - 1)) }, "\u2039"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, `Frame ${frame + 1} / ${info.numFrames}`), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame >= info.numFrames - 1, onClick: () => setFrame((f) => Math.min(info.numFrames - 1, f + 1)) }, "\u203A")), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Zoom"), /* @__PURE__ */ React.createElement("input", { type: "range", min: "0.25", max: "8", step: "0.25", value: zoom, onChange: (e) => setZoom(parseFloat(e.target.value)) }), /* @__PURE__ */ React.createElement("span", { className: "mono w-[38px]" }, `${Math.round(zoom * 100)}%`)), grayscale && win && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Level"), /* @__PURE__ */ React.createElement(
+    )), decodeError && /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, `Could not decode this JPEG frame: ${decodeError}`), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-4 flex-wrap text-[11px]" }, info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame <= 0, onClick: () => setFrame((f) => Math.max(0, f - 1)) }, "\u2039"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, `Frame ${frame + 1} / ${info.numFrames}`), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame >= info.numFrames - 1, onClick: () => setFrame((f) => Math.min(info.numFrames - 1, f + 1)) }, "\u203A")), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Zoom"), /* @__PURE__ */ React.createElement("input", { type: "range", min: "0.25", max: "8", step: "0.25", value: zoom, onChange: (e) => setZoom(parseFloat(e.target.value)) }), /* @__PURE__ */ React.createElement("span", { className: "mono w-[38px]" }, `${Math.round(zoom * 100)}%`)), grayscale && win && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Level"), /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "range",

@@ -148,9 +148,9 @@ const tcpSender = {
         // Swing's modeServer/modeClientRadioActionPerformed keep every field
         // visible but toggle enabled state, then re-apply the override-binding and
         // keep-connection-open sub-gating in Client mode.
-        const serverMode = (p) => p.serverMode === true;
-        const localBindingDisabled = (p) => p.serverMode !== true && !asBool(p.overrideLocalBinding);
-        const sendDisabled = (p) => p.serverMode === true || !asBool(p.keepConnectionOpen);
+        const serverMode = (p) => asBool(p.serverMode);
+        const localBindingDisabled = (p) => !asBool(p.serverMode) && !asBool(p.overrideLocalBinding);
+        const sendDisabled = (p) => asBool(p.serverMode) || !asBool(p.keepConnectionOpen);
         return (React.createElement("div", null,
             React.createElement(TransmissionModePanel, { properties: properties, onChange: onChange }),
             React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
@@ -171,7 +171,7 @@ const tcpSender = {
                     { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: localBindingDisabled },
                     // Ports in Use follows the Local Port field: on in Server mode or Client+Override.
                     { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', append: (p) => portsInUseButton({ disabled: localBindingDisabled(p) }), disabled: localBindingDisabled },
-                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p) => p.serverMode !== true },
+                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p) => !asBool(p.serverMode) },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
                     { key: 'checkRemoteHost', label: 'Check Remote Host', type: 'radio', options: YES_NO, disabled: sendDisabled },
                     { key: 'sendTimeout', label: 'Send Timeout (ms)', type: 'number', width: '90px', disabled: sendDisabled },

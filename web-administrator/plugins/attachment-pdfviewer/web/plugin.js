@@ -34,7 +34,7 @@ function register(platform2) {
     return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement(
       "iframe",
       {
-        sandbox: "",
+        sandbox: "allow-same-origin",
         src: state.src,
         className: "w-full h-[576px] border border-[var(--bg3)] rounded-[4px]"
       }
