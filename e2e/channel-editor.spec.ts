@@ -297,6 +297,10 @@ test.describe('Channel editor', () => {
                 { string: ['other-1', 'Taken Name'] },
             ] } },
         });
+        let putCalled = false;
+        page.on('request', (r) => {
+            if (r.method() === 'PUT' && new URL(r.url()).pathname === `/api/channels/${CHANNEL_ID}`) putCalled = true;
+        });
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
 
         const nameField = page.locator('.panel input[type=text]').first();
@@ -307,6 +311,7 @@ test.describe('Channel editor', () => {
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await expect(page.getByText('Channel "Taken Name" already exists.')).toBeVisible();
         // The PUT must NOT have fired (save aborted).
+        expect(putCalled).toBe(false);
     });
 
     test('saving is blocked when a connector required field is empty (issue #13)', async ({ page }) => {

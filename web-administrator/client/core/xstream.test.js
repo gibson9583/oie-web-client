@@ -45,6 +45,18 @@ const stringMap = {
 };
 eq('custom HashMap (Map<String,String> interleaved)', toDisplayString(stringMap), '{a=1, b=2}');
 
+/* ---- empty wire shapes: XStream renders an empty collection/map as '' ---- */
+eq('empty string', toDisplayString(''), '');
+eq('null', toDisplayString(null), '');
+eq('undefined', toDisplayString(undefined), '');
+eq('empty list', toDisplayString({ list: '' }), '[]');
+eq('empty linked-hash-set', toDisplayString({ 'linked-hash-set': '' }), '[]');
+eq('empty linked-hash-map', toDisplayString({ 'linked-hash-map': '' }), '{}');
+eq('mappingEntries empty content', JSON.stringify(mappingEntries({ content: '' })), '[]');
+eq('mappingEntries null map', JSON.stringify(mappingEntries(null)), '[]');
+eq('mappingEntries empty entry list', JSON.stringify(mappingEntries({ content: { entry: '' } })), '[]');
+eq('mappingEntries empty m wrapper', JSON.stringify(mappingEntries({ content: { m: '' } })), '[]');
+
 /* ---- mappingEntries: source/connector/response map content ---- */
 const sourceMap = { content: { m: { entry: { string: 'destinationSet', 'linked-hash-set': { int: 1 } } } } };
 eq('mappingEntries destinationSet', JSON.stringify(mappingEntries(sourceMap)), JSON.stringify([['destinationSet', '[1]']]));
