@@ -180,7 +180,7 @@ export function register(platform: Platform) {
 
     /* Key/value table over a linked-hash-map (credentials user/password, custom
        properties). Mutates entry[key] in place and notifies. */
-    function KeyValueField({ entry, fieldKey, onChange }: any) {
+    function KeyValueField({ entry, fieldKey, onChange, secretValues }: any) {
         const [rows, setRows] = React.useState(() => mapRows(entry[fieldKey]));
         const commit = (next: any) => {
             entry[fieldKey] = writeMapRows(next);
@@ -194,7 +194,9 @@ export function register(platform: Platform) {
                         <input type="text" placeholder="Name" className="flex-1" value={row[0]}
                             onInput={(e: any) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }}
                             onChange={(e: any) => { const next = rows.slice(); next[i] = [e.target.value, row[1]]; commit(next); }} />
-                        <input type="text" placeholder="Value" className="flex-[2]" value={row[1]}
+                        <input type={secretValues ? 'password' : 'text'}
+                            autoComplete={secretValues ? 'off' : undefined}
+                            placeholder="Value" className="flex-[2]" value={row[1]}
                             onInput={(e: any) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }}
                             onChange={(e: any) => { const next = rows.slice(); next[i] = [row[0], e.target.value]; commit(next); }} />
                         <button type="button" className="icon-btn" title="Remove"
@@ -283,7 +285,9 @@ export function register(platform: Platform) {
                 </CformRow>
                 {!useVar && (
                     <CformRow label="Credentials (user / password)" top>
-                        <KeyValueField entry={entry} fieldKey="credentials" onChange={onChange} />
+                        {/* secretValues: these are HTTP auth passwords — mask them
+                            and keep the browser's password manager out of it (#24). */}
+                        <KeyValueField entry={entry} fieldKey="credentials" onChange={onChange} secretValues />
                     </CformRow>
                 )}
                 {useVar && (

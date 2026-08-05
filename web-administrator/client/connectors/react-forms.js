@@ -234,7 +234,10 @@ function FieldRow({ properties, field, onChange, repaint }) {
             // 'text' and 'password' (and any unknown type) render as a plain
             // input — password just swaps the input type, matching forms.js.
             // data-fkey exposes the field's property key for e2e targeting.
-            control = React.createElement("input", { type: f.type === 'password' ? 'password' : 'text', "data-fkey": f.key, value: value ?? '', disabled: disabled, placeholder: f.placeholder, style: inputStyle, onChange: (e) => set(e.target.value) });
+            // autoComplete off: these are CONNECTOR credentials (destination
+            // databases, SMTP relays…) — the browser must not offer to save
+            // them as the user's own login or autofill a saved one here (#24).
+            control = React.createElement("input", { type: f.type === 'password' ? 'password' : 'text', "data-fkey": f.key, value: value ?? '', disabled: disabled, autoComplete: f.type === 'password' ? 'off' : undefined, placeholder: f.placeholder, style: inputStyle, onChange: (e) => set(e.target.value) });
     }
     const appendNode = f.append ? f.append(properties, { onChange, repaint: repaint || (() => { }) }) : null;
     // `full` fields occupy the whole row (both grid columns, no label cell) — for
@@ -485,7 +488,10 @@ function PollAdvancedSettings({ p, pollingType, onChange }) {
     const allDay = asBool(adv.allDay);
     const timeEnabled = pollingType === 'INTERVAL'; // Swing disables Active Time for Time/Cron
     const rangeEnabled = timeEnabled && !allDay;
-    const numField = (value, min, max, apply) => (React.createElement("input", { type: "number", min: min, max: max, className: "w-[63px]", value: value, onChange: (e) => { apply(parseInt(e.target.value, 10) || 0); notify(); } }));
+    // Clamps to [min, max] on change — the native min/max attributes only
+    // constrain the spinners, not typed input, and an out-of-range hour/minute
+    // round-trips to the engine as an invalid cron window.
+    const numField = (value, min, max, apply) => (React.createElement("input", { type: "number", min: min, max: max, className: "w-[63px]", value: value, onChange: (e) => { apply(Math.min(max, Math.max(min, parseInt(e.target.value, 10) || 0))); notify(); } }));
     return (React.createElement("div", { className: "span-2 my-2.5" },
         React.createElement("button", { type: "button", className: "btn", onClick: () => setOpen((o) => !o) }, open ? 'Hide Advanced Settings' : 'Advanced Settings'),
         open && (React.createElement("div", { className: "cform-section mt-2" },

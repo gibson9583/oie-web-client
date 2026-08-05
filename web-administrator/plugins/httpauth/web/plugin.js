@@ -133,7 +133,7 @@ function register(platform2) {
     }, []);
     return /* @__PURE__ */ React.createElement("div", { ref: hostRef });
   }
-  function KeyValueField({ entry, fieldKey, onChange }) {
+  function KeyValueField({ entry, fieldKey, onChange, secretValues }) {
     const [rows, setRows] = React.useState(() => mapRows(entry[fieldKey]));
     const commit = (next) => {
       entry[fieldKey] = writeMapRows(next);
@@ -161,7 +161,8 @@ function register(platform2) {
     ), /* @__PURE__ */ React.createElement(
       "input",
       {
-        type: "text",
+        type: secretValues ? "password" : "text",
+        autoComplete: secretValues ? "off" : void 0,
         placeholder: "Value",
         className: "flex-[2]",
         value: row[1],
@@ -268,7 +269,7 @@ function register(platform2) {
       setUseVar(v);
       onChange();
     };
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CformRow, { label: "Use Credentials" }, /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: !useVar, onChange: () => setUse(false) }), " Table"), /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: useVar, onChange: () => setUse(true) }), " Variable"))), !useVar && /* @__PURE__ */ React.createElement(CformRow, { label: "Credentials (user / password)", top: true }, /* @__PURE__ */ React.createElement(KeyValueField, { entry, fieldKey: "credentials", onChange })), useVar && /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(CformRow, { label: "Use Credentials" }, /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: !useVar, onChange: () => setUse(false) }), " Table"), /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement("input", { type: "radio", name, checked: useVar, onChange: () => setUse(true) }), " Variable"))), !useVar && /* @__PURE__ */ React.createElement(CformRow, { label: "Credentials (user / password)", top: true }, /* @__PURE__ */ React.createElement(KeyValueField, { entry, fieldKey: "credentials", onChange, secretValues: true })), useVar && /* @__PURE__ */ React.createElement(
       TextRow,
       {
         label: "Credentials Variable",

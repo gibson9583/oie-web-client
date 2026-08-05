@@ -570,7 +570,9 @@ function ServerTab({ ctx }: any) {
                             onChange={(e: any) => patch({ smtpUsername: e.target.value })} />
                     </Field>
                     <Field label="Password">
-                        <input type="password" disabled={!form.smtpAuth} value={form.smtpPassword}
+                        {/* SMTP relay credential, not the user's own login — don't
+                            let the browser save or autofill it (#24). */}
+                        <input type="password" autoComplete="off" disabled={!form.smtpAuth} value={form.smtpPassword}
                             onChange={(e: any) => patch({ smtpPassword: e.target.value })} />
                     </Field>
                 </div></div>
