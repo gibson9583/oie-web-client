@@ -42,6 +42,29 @@ async function breakView(page: any, chunk: any, exportName: any) {
 /** Let the broken view render cleanly from the next mount onward. */
 const repairView = (page: any) => page.evaluate(() => { (window as any).__failView = false; });
 
+test.describe('an engine endpoint that fails', () => {
+    test('a 500 on a view load is reported, dismissible, and the shell survives', async ({ page }) => {
+        // The Events view searches on mount; the engine answers it with a 500.
+        await mockEngine(page, { 'GET /events': { __status: 500, body: { message: 'database gone' } } });
+        await page.goto('/events');
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+
+        // The failure lands in the acknowledge-to-dismiss error dialog (not a
+        // transient toast), naming the operation that failed.
+        const dialog = page.getByRole('dialog');
+        await expect(dialog).toContainText('Event search failed');
+        // The footer's primary Close (the header has an icon-button named Close too).
+        await dialog.locator('button.btn-primary', { hasText: 'Close' }).click();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+
+        // The view rendered its empty state rather than blanking, and the shell
+        // still navigates.
+        await expect(page.locator('.topbar')).toBeVisible();
+        await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    });
+});
+
 test.describe('a view that throws', () => {
     test('reports the failure instead of blanking, and the shell survives', async ({ page }) => {
         await mockEngine(page);

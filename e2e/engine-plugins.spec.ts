@@ -71,9 +71,12 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
         body: "export function register(platform){ window.__newLoaded=true; platform.registerNavItem({id:'new-plug',label:'Too New Plugin',icon:'puzzle',path:'/new-plug',section:'Plugins'}); }"
     }));
     await page.goto('/dashboard');
-    // Give load a beat, then assert the incompatible plugin did NOT execute or register
-    // — the gate must skip it BEFORE importing, so its code never runs.
-    await page.waitForTimeout(700);
+    // Deterministic settle point: the dashboard rows render only after boot,
+    // and boot awaits loadPlugins() — so once they're visible, the plugin
+    // phase is over and the assertions below can't race it.
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    // The incompatible plugin did NOT execute or register — the gate must skip
+    // it BEFORE importing, so its code never runs.
     expect(await page.evaluate(() => (window as any).__newLoaded === true)).toBe(false);
     await expect(page.getByRole('button', { name: 'Too New Plugin' })).toHaveCount(0);
 });

@@ -42,6 +42,24 @@ test('an RBAC controller hides a denied nav item and task button', async ({ page
     await expect(tasks.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
 });
 
+test('a denied channel task is not offered through the command palette either', async ({ page }) => {
+    // Deny the channel-edit and message-browser view tasks. Hiding the taskbar
+    // buttons is not enough — the palette builds its own channel entries, and
+    // it must apply the same checkTask gate (#22).
+    await installRbacPlugin(page, "g==='view'&&(t==='doShowChannel'||t==='doShowMessages')");
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('.cmdk')).toBeVisible();
+    await page.locator('.cmdk-field input').fill('#demo');
+    // The channel exists (the dashboard just listed it), but a role denied both
+    // channel tasks gets no channel entries offered.
+    await expect(page.locator('.cmdk-scope')).toHaveText('Channels');
+    await expect(page.locator('.cmdk-opt')).toHaveCount(0);
+});
+
 test('with no RBAC controller, the Dashboard nav and Refresh task are visible', async ({ page }) => {
     await mockEngine(page);
     await page.goto('/dashboard');
