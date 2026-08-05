@@ -52,6 +52,16 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
     const dragRef = useRef<any>(null);                     // { kind: 'item'|'group', id }
     const bodyRef = useRef<any>(null);
 
+    // The command palette's "Customize navigation" entry dispatches this event
+    // (react/shell.tsx); edit mode is component-local state, so the rail itself
+    // must listen (#22 — the entry was a silent no-op). Open the rail too: edit
+    // affordances are invisible on the collapsed icon rail.
+    useEffect(() => {
+        const start = () => { setEditing(true); store.setState('railCollapsed', false); };
+        window.addEventListener('webadmin:customize-nav', start);
+        return () => window.removeEventListener('webadmin:customize-nav', start);
+    }, []);
+
     const apply = useCallback((next: any) => {
         setLayout(next);
         // Store nothing at all when the user is back to the defaults, so an

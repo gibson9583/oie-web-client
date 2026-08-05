@@ -1892,7 +1892,8 @@ export function SettingsView({ query }: any) {
 
     async function performTabSwitch(i: any) {
         if (dirtyRef.current) {
-            const choice = await promptSaveSettings();
+            const choice = await promptSaveSettings(
+                platform.checkTask(`settings_${activeLabelRef.current}`, 'doSave'));
             if (choice === 'cancel') return;
             if (choice === 'save' && saveRef.current && (await saveRef.current()) === false) return;
         }

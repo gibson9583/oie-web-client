@@ -574,7 +574,15 @@ function ChannelWizardView({ params }: any) {
 
 function ChannelWizardInner({ channel, isNew, version }: any) {
     // When editing began — for the engine's modified-since-opened check on save.
-    const startEditRef = useRef(new Date());
+    // Baseline it on the channel's OWN last-modified as loaded, not mount
+    // wall-clock time (immune to clock skew), rounded UP to the whole second
+    // (the engine parses startEdit at second precision). A channel without a
+    // stored last-modified falls back to mount time — same as channel-editor.
+    const loadedLM = channel && channel.exportData && channel.exportData.metadata
+        && channel.exportData.metadata.lastModified;
+    const loadedLMms = loadedLM ? Number(loadedLM.time != null ? loadedLM.time : loadedLM) : NaN;
+    const startEditRef = useRef(Number.isFinite(loadedLMms)
+        ? new Date(Math.ceil(loadedLMms / 1000) * 1000) : new Date());
     const [, forceRender] = useReducer((x: any) => x + 1, 0);
     const switchingRef = useRef(false);   // true when switching to the classic editor (keep editingChannel)
     const typesRef = useRef<any>(null);
@@ -743,12 +751,17 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             if (isNew) {
                 await api.channels.create(channel);
             } else {
+                // Swing parity: every save increments the channel revision.
+                channel.revision = (Number(channel.revision) || 0) + 1;
                 const ok = await api.channels.update(channel.id, channel, false, startEditRef.current);
                 if (String(ok) === 'false') {
                     const overwrite = await confirmDialog('Channel Modified',
                         'This channel has been modified since you first opened it. Are you sure you want to overwrite it?',
                         { danger: true, okLabel: 'Overwrite' });
-                    if (!overwrite) return false;
+                    if (!overwrite) {
+                        channel.revision = (Number(channel.revision) || 0) - 1;
+                        return false;
+                    }
                     await api.channels.update(channel.id, channel, true);
                 }
                 startEditRef.current = new Date();
