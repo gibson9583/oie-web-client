@@ -2,6 +2,10 @@
 /*
  * Inline SVG icon set (24px grid, stroke-based). Dependency-free so the app
  * works in air-gapped environments. icon(name, size?) returns an SVGElement.
+ *
+ * Plugins add their own glyphs through platform.registerIcon(name, pathData)
+ * — same format as the built-ins: path data for a 24x24 viewBox, rendered
+ * stroke-only in currentColor. Built-in names cannot be overridden.
  */
 const P = {
     dashboard: 'M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 9h8V3h-8z',
@@ -80,6 +84,31 @@ const P = {
     popout: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3',
     store: 'M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0'
 };
+// Plugin-registered glyphs (platform.registerIcon). Kept separate from P so
+// built-ins always win the lookup and the set stays inspectable.
+const registered = new Map();
+/**
+ * Register a plugin glyph: `pathData` is SVG path data drawn on a 24x24 grid,
+ * rendered stroke-only (1.7px, currentColor) like every built-in. Unknown
+ * names still fall back to the `info` glyph, so plugins running on shells
+ * without their icons degrade instead of breaking. Re-registering a plugin
+ * name overwrites (same rule as the other name-keyed registries); built-in
+ * names are protected.
+ */
+export function registerIcon(name, pathData) {
+    if (!name || typeof pathData !== 'string' || !pathData.trim()) {
+        console.warn(`registerIcon: ignoring '${name}' — a non-empty SVG path is required`);
+        return;
+    }
+    if (Object.prototype.hasOwnProperty.call(P, name)) {
+        console.warn(`registerIcon: '${name}' is a built-in icon and cannot be overridden`);
+        return;
+    }
+    registered.set(name, pathData);
+}
+function pathOf(name) {
+    return P[name] ?? registered.get(name) ?? P.info;
+}
 export function icon(name, size = 16) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -91,10 +120,10 @@ export function icon(name, size = 16) {
     svg.setAttribute('stroke-linecap', 'round');
     svg.setAttribute('stroke-linejoin', 'round');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', P[name] || P.info);
+    path.setAttribute('d', pathOf(name));
     svg.appendChild(path);
     return svg;
 }
 // Raw path data for renderers that build their own <svg> (e.g. the React <Icon>
 // component) instead of using icon()'s DOM SVGElement. Mirrors icon()'s fallback.
-export function iconPath(name) { return P[name] || P.info; }
+export function iconPath(name) { return pathOf(name); }

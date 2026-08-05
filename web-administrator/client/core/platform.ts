@@ -34,6 +34,7 @@ import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
+import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
 import type { Command } from './commands.js';
 import type { OieObject } from './wire-types.js';
@@ -362,6 +363,8 @@ export interface Platform {
     checkTask: typeof checkTask;
 
     /* extension points */
+    /** Add a glyph to the shared icon set: SVG path data on a 24x24 grid, rendered stroke-only in currentColor. Referenced by name anywhere an `icon` is accepted (nav items, actions, `ui.icon()`). Built-in names cannot be overridden. */
+    registerIcon(name: string, pathData: string): void;
     registerNavItem(item: NavItem): void;
     /** Command-palette entry — same shape as a nav item. Returns an unregister fn. */
     registerCommand(command: Command): () => void;
@@ -441,6 +444,11 @@ export const platform: Platform = {
 
     /* ---- extension points ---- */
 
+    /* A plugin glyph for the shared icon set (core/icons.ts): pathData is SVG
+       path data on a 24x24 grid, rendered stroke-only in currentColor — the
+       same format as the built-ins. Register before referencing the name in a
+       nav item / action / ui.icon() call. Built-in names are protected. */
+    registerIcon,
     registerNavItem(item) { registries.navItems.push(item); },
     /* Command-palette entry. Same shape as a nav item ({ id, label, icon, section,
        task, rbac, path | run }); see core/commands.ts. */
