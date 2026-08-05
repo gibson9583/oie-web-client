@@ -111,7 +111,7 @@ export function DateTimeField({ value, onChange, label, placeholder = 'yyyy-mm-d
                         <DayPicker
                             mode="single"
                             selected={date || undefined}
-                            month={date || undefined}
+                            defaultMonth={date || undefined}
                             onSelect={(picked: any) => { if (picked) commit(picked, hour, minute); }}
                             showOutsideDays />
                         <div className="dtf-time">
