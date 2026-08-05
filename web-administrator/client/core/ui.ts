@@ -12,6 +12,7 @@ import { checkTask } from './authorization.js';
 // columns.js imports h/contextMenu from here; the cycle is safe because both
 // sides only use the imported bindings at call time, never at module load.
 import { createColumnManager, decorateColumns, attachColumnMenu } from './columns.js';
+import { scopedKey } from './store.js';
 import type { ColumnManager } from './columns.js';
 
 /* ---- public types ----------------------------------------------------------
@@ -199,12 +200,12 @@ export function setToastRenderer(fn: ((message: string, type: ToastType, timeout
 
 /* Low-level corner toast: transient, non-blocking. Used for info/success and
    for feedback that must never steal focus (e.g. clipboard results). */
-function cornerToast(message: string, type: ToastType = 'info', timeout = 4200): UiHandle | HTMLElement {
+function cornerToast(message: string, type: ToastType = 'info', timeout = 4200): UiHandle {
     if (toastRenderer) return toastRenderer(String(message), type, timeout);
     return domCornerToast(message, type, timeout);
 }
 
-function domCornerToast(message: string, type: ToastType, timeout: number): HTMLElement {
+function domCornerToast(message: string, type: ToastType, timeout: number): UiHandle {
     if (!toastHost) {
         // A polite live region, or none of this reaches a screen reader: these are
         // the app's only confirmation that a save/deploy/copy actually happened.
@@ -221,7 +222,7 @@ function domCornerToast(message: string, type: ToastType, timeout: number): HTML
         el.style.opacity = '0';
         setTimeout(() => el.remove(), 260);
     }, timeout);
-    return el;
+    return { el, close: () => el.remove() };
 }
 
 /*
@@ -233,7 +234,7 @@ function domCornerToast(message: string, type: ToastType, timeout: number): HTML
  * deploy and validation flows); a plain toast(msg, 'error'|'warn') gets a
  * generic Error/Warning dialog.
  */
-export function toast(message: any, type: ToastType = 'info', timeout = 4200): UiHandle | HTMLElement {
+export function toast(message: any, type: ToastType = 'info', timeout = 4200): UiHandle {
     if (type === 'error' || type === 'warn') {
         return detailModal({
             title: type === 'error' ? 'Error' : 'Warning',
@@ -404,11 +405,13 @@ export function promptDialog(title: string, label: string, initial = ''): Promis
     });
 }
 
-/* Copy text to the clipboard with a small toast — shared by detail modals. */
-function copyToClipboard(text: unknown): void {
+/* Copy text to the clipboard with a small toast — shared by detail modals.
+   writeText is async and can reject (permissions policy, non-secure context):
+   await it so the toast reports what actually happened, not a false "Copied". */
+async function copyToClipboard(text: unknown): Promise<void> {
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(String(text));
+            await navigator.clipboard.writeText(String(text));
             toast('Copied to clipboard');
             return;
         }
@@ -697,7 +700,8 @@ export class DataTable<T = any> {
         this.defaultHidden = new Set(columns.filter(c => c.defaultHidden).map(c => c.key));
         this.hidden = new Set(this.defaultHidden);
         if (options.columnsMenuKey) {
-            const saved = localStorage.getItem(options.columnsMenuKey);
+            // Scoped per server+user, matching createColumnManager's persistence.
+            const saved = localStorage.getItem(scopedKey(options.columnsMenuKey));
             if (saved != null) { try { this.hidden = new Set(JSON.parse(saved)); } catch { /* keep defaults */ } }
         }
         // Opt-in resizable + reorderable + show/hide columns (persisted per view),
@@ -720,7 +724,7 @@ export class DataTable<T = any> {
 
     saveHidden(): void {
         if (this.options.columnsMenuKey) {
-            try { localStorage.setItem(this.options.columnsMenuKey, JSON.stringify([...this.hidden])); } catch { /* private mode */ }
+            try { localStorage.setItem(scopedKey(this.options.columnsMenuKey), JSON.stringify([...this.hidden])); } catch { /* private mode */ }
         }
     }
 
@@ -964,6 +968,9 @@ export async function saveFile(suggestedName: string, type: string, getContent: 
 export function pickFile(accept?: string, { binary = false }: { binary?: boolean } = {}): Promise<{ name: string; content: string } | null> {
     return new Promise<{ name: string; content: string } | null>(resolve => {
         const input = h('input', { type: 'file', accept, class: 'hidden' }) as HTMLInputElement;
+        // Dismissing the OS dialog fires 'cancel' (no 'change'); without this the
+        // returned promise never settles and the hidden input leaks.
+        input.addEventListener('cancel', () => { input.remove(); resolve(null); });
         input.addEventListener('change', () => {
             const file = input.files && input.files[0];
             input.remove();

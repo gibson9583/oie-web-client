@@ -13,6 +13,7 @@
  * are neither movable nor resizable.
  */
 import { h, contextMenu } from './ui.js';
+import { scopedKey } from './store.js';
 const PREFIX = 'webadmin-cols-';
 /** Per-view persistent column order + widths + hidden set. `defaults` maps key ->
     width px; `defaultHidden` lists keys hidden by default (Swing parity) until the
@@ -22,7 +23,10 @@ export function createColumnManager(storageKey, defaults, defaultHidden = []) {
     let widths = {};
     let hidden = new Set(defaultHidden); // column keys hidden (seeded from defaults)
     try {
-        const raw = JSON.parse(localStorage.getItem(PREFIX + storageKey) || '{}');
+        // Scoped per server+user (store.scopedKey) so layouts don't bleed across
+        // engines or accounts on a shared browser. Pre-scoping layouts are
+        // abandoned under the bare key — a one-time reset to defaults.
+        const raw = JSON.parse(localStorage.getItem(scopedKey(PREFIX + storageKey)) || '{}');
         if (Array.isArray(raw.order))
             order = raw.order;
         if (raw.widths && typeof raw.widths === 'object')
@@ -33,7 +37,7 @@ export function createColumnManager(storageKey, defaults, defaultHidden = []) {
     catch { /* defaults */ }
     function save() {
         try {
-            localStorage.setItem(PREFIX + storageKey, JSON.stringify({ order, widths, hidden: [...hidden] }));
+            localStorage.setItem(scopedKey(PREFIX + storageKey), JSON.stringify({ order, widths, hidden: [...hidden] }));
         }
         catch { /* private mode */ }
     }

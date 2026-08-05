@@ -551,7 +551,7 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
         const base = `/api${wsBase}/webplugins/${encodeURIComponent(path)}`;
         try {
             // Served raw by the engine (not XStream-wrapped), so read it as plain JSON.
-            const res = await fetch(`${base}/plugin.json`, { credentials: 'same-origin' });
+            const res = await fetch(`${base}/plugin.json`, { credentials: 'same-origin', signal: AbortSignal.timeout(120_000) });
             if (!res.ok) return null;
             const m = await res.json();
             if (!m || !m.id) return null;
@@ -578,7 +578,7 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
 export async function loadPlugins(): Promise<PluginManifest[]> {
     let manifests: PluginManifest[] = [];
     try {
-        const res = await fetch('/webadmin/plugins.json');
+        const res = await fetch('/webadmin/plugins.json', { signal: AbortSignal.timeout(120_000) });
         if (res.ok) manifests = await res.json();
     } catch (e) {
         console.warn('[plugins] manifest fetch failed:', e);

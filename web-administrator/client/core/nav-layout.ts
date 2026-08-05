@@ -226,7 +226,6 @@ export function withMovedItem(layout: NavLayout | null | undefined, groups: Merg
     if (!from || !to) return l;
 
     // Work on shallow copies of the two affected orders, then write them out.
-    const moving = from.items.find((i) => i.id === itemId);
     const fromIds = from.items.filter((i) => i.id !== itemId).map((i) => i.id);
     const toIds = from === to ? fromIds : to.items.map((i) => i.id);
     const at = Math.max(0, Math.min(index, toIds.length));
@@ -237,7 +236,6 @@ export function withMovedItem(layout: NavLayout | null | undefined, groups: Merg
         fromIds.forEach((id, i) => { itemEntry(l, id).order = i; });
     }
     toIds.forEach((id, i) => { itemEntry(l, id).order = i; });
-    void moving;
     return dropEmpty(l);
 }
 

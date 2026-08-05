@@ -73,7 +73,7 @@ export declare function defaultSourceProperties(version: string, overrides?: any
 export declare function defaultDestinationProperties(version: string, overrides?: any): any;
 export declare function defaultListenerProperties(version: string, port?: string | number): any;
 export declare function defaultPollProperties(version: string): any;
-export declare function successToast(message: string): HTMLElement | import("../core/ui.js").UiHandle;
+export declare function successToast(message: string): import("../core/ui.js").UiHandle;
 export declare function apiErrorMessage(e: any): string;
 export declare function postConnectorProperties(path: string, properties: any, channel: any, params?: any): Promise<any>;
 export declare function connectorTestButton({ label, icon: iconName, path, channel, properties, disabled }: {

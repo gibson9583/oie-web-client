@@ -78,6 +78,11 @@ function setReachable(next) {
  * reaches handle().
  */
 function send(url, init, opts) {
+    // A hard ceiling so a wedged proxy/engine socket cannot hang a caller's
+    // await forever (spinners that never resolve). Generous because legitimate
+    // engine calls can be slow (large channel groups, message exports).
+    if (!init.signal)
+        init.signal = AbortSignal.timeout(120_000);
     return fetch(url, init).then((response) => {
         setReachable(!GATEWAY_STATUSES.has(response.status));
         return handle(response, opts);
@@ -328,7 +333,8 @@ export const auth = {
         if (loginData != null)
             h['X-Mirth-Login-Data'] = String(loginData);
         const res = await fetch(BASE + '/users/_login', {
-            method: 'POST', headers: h, credentials: 'same-origin', body: form.toString()
+            method: 'POST', headers: h, credentials: 'same-origin', body: form.toString(),
+            signal: AbortSignal.timeout(120_000)
         });
         const text = await res.text().catch(() => '');
         const parsed = parseBody(text);
@@ -452,7 +458,7 @@ export const messages = {
     // raw Base64 DICOM (Swing getDICOMMessage). Body is the ConnectorMessage.
     getDicom: (channelId, messageId, connectorMessage) => post(`/channels/${enc(channelId)}/messages/${enc(messageId)}/_getDICOMMessage`, connectorMessage, {
         wrapKey: (connectorMessage && connectorMessage['@class']) || 'com.mirth.connect.donkey.model.message.ConnectorMessage',
-        raw: true, noAuthHandler: true
+        raw: true
     }),
     processNew: (channelId, rawData, destinationMetaDataIds, sourceMapEntries) => {
         const params = {};

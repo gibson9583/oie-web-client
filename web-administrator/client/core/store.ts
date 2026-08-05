@@ -8,7 +8,9 @@ const subs: Record<string, Array<(value: any) => void>> = {};
 
 export function setState(key: string, value: any): void {
     state[key] = value;
-    (subs[key] || []).forEach(fn => fn(value));
+    // A throwing subscriber must not starve the ones after it — listeners are
+    // independent (views, plugins) and one plugin's bug shouldn't wedge the shell.
+    (subs[key] || []).forEach(fn => { try { fn(value); } catch (e) { console.error('[store] subscriber failed for', key, e); } });
 }
 
 export function getState(key: string): any { return state[key]; }

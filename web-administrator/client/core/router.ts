@@ -132,7 +132,10 @@ async function handleChange(): Promise<void> {
         } catch (err) {
             if (gen !== generation) return;
             console.error('[router] view failed to load', path, err);
-            renderInto(loadErrorNode(path));
+            // Retry with the FULL location (query included) — `path` was stripped
+            // of its query string above, and losing it would retry a different view
+            // state (message filters, wizard step, …).
+            renderInto(loadErrorNode(currentPath()));
             window.dispatchEvent(new CustomEvent('route:changed', { detail: { path, params, query, meta: route.meta } }));
             return;
         }
