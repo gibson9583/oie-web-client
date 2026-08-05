@@ -60,11 +60,15 @@ function imageInfo(ds: any) {
     const photometric = (ds.string('x00280004') || 'MONOCHROME2').trim().toUpperCase();
     const planar = ds.uint16('x00280006') || 0;                   // 1 = planar (RRR..GGG..BBB)
     const numFrames = parseInt(ds.intString('x00280008') || '1', 10) || 1;
+    // Explicit VR Big Endian: dicom-parser reads header VALUES with its
+    // big-endian parser, but raw pixel data stays as stored — a typed-array
+    // view over it is host-little-endian, so 16-bit samples must be swapped.
+    const bigEndian = (ds.string('x00020010') || '').trim() === '1.2.840.10008.1.2.2';
     const slope = first(ds.string('x00281053')) ?? 1;
     const intercept = first(ds.string('x00281052')) ?? 0;
     const wc = first(ds.string('x00281050'));
     const ww = first(ds.string('x00281051'));
-    return { rows, cols, spp, bitsAllocated, pixelRepresentation, photometric, planar, numFrames, slope, intercept, wc, ww };
+    return { rows, cols, spp, bitsAllocated, pixelRepresentation, photometric, planar, numFrames, slope, intercept, wc, ww, bigEndian };
 }
 
 /* Read one uncompressed frame's samples as a typed array (Int16/Uint16/Uint8). */
@@ -80,6 +84,9 @@ function readFrame(ds: any, bytes: any, info: any, frame: any) {
     // Copy so the typed-array view is 0-aligned (pixel data may sit at an odd offset).
     const slice = bytes.slice(start, start + frameBytes);
     if (bytesPer === 1) return new Uint8Array(slice.buffer);
+    if (info.bigEndian) {
+        for (let i = 0; i + 1 < slice.length; i += 2) { const t = slice[i]; slice[i] = slice[i + 1]; slice[i + 1] = t; }
+    }
     return info.pixelRepresentation ? new Int16Array(slice.buffer) : new Uint16Array(slice.buffer);
 }
 
@@ -138,12 +145,13 @@ export function register(platform: Platform) {
         const [win, setWin] = React.useState(null as any);   // { c, w } window center/width
         const [zoom, setZoom] = React.useState(1);
         const [popUrl, setPopUrl] = React.useState(null as any);   // fullscreen pop-out image
+        const [decodeError, setDecodeError] = React.useState(null as any);   // per-frame JPEG decode failure
         const canvasRef = React.useRef(null as any);
 
         // Load + parse the object once.
         React.useEffect(() => {
             let cancelled = false;
-            setState({ status: 'loading' }); setFrame(0); setWin(null); setZoom(1);
+            setState({ status: 'loading' }); setFrame(0); setWin(null); setZoom(1); setDecodeError(null);
             (async () => {
                 try {
                     // A DICOM attachment holds only the pixel data, so it has no
@@ -209,7 +217,14 @@ export function register(platform: Platform) {
             if (state.status !== 'ready' || !canvasRef.current) return;
             const cv = canvasRef.current;
             try {
-                if (state.kind === 'jpeg') { drawJpegFrame(cv, state.ds, state.bytes, state.info, frame).catch(() => {}); return; }
+                if (state.kind === 'jpeg') {
+                    // A decode failure must not be silent — the user would see a
+                    // stale (or blank) canvas with no explanation.
+                    setDecodeError(null);
+                    drawJpegFrame(cv, state.ds, state.bytes, state.info, frame)
+                        .catch((e: any) => setDecodeError(e && e.message ? e.message : 'the browser could not decode this frame'));
+                    return;
+                }
                 if (state.kind !== 'raw') return;
                 const raw = readFrame(state.ds, state.bytes, state.info, frame);
                 if (!raw) return;
@@ -249,6 +264,9 @@ export function register(platform: Platform) {
                             <canvas ref={canvasRef}
                                 style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', imageRendering: 'pixelated', display: 'block' }} />
                         </div>
+                        {decodeError && (
+                            <div className="text-text-faint text-[11px]">{`Could not decode this JPEG frame: ${decodeError}`}</div>
+                        )}
                         <div className="flex items-center gap-4 flex-wrap text-[11px]">
                             {info.numFrames > 1 && (
                                 <span className="inline-flex items-center gap-1.5">

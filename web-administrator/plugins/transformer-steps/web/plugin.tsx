@@ -419,9 +419,15 @@ function XsltEditor({ element, onChange }: any) {
    compatible. metaDataIds is stored as the List<Integer> of CHECKED ids and
    values as a List<String>, in the same wire shape the model loaded with — a
    loaded element the user only renames round-trips untouched. */
+let dsfUid = 0;
+
 function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
     const force = useRerender();
     const [selValue, setSelValue] = React.useState(-1);
+    // Per-INSTANCE radio-group name: keying on the element class collides when
+    // two Destination Set Filter steps are on screen at once (same class), and
+    // colliding names let one step's Condition radios uncheck the other's.
+    const uid = React.useMemo(() => ++dsfUid, []);
 
     const dests = Array.isArray(destinations) ? destinations : [];
     const behavior = element.behavior || 'REMOVE';
@@ -523,7 +529,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                             <label className="check" key={opt.value}>
                                 <input
                                     type="radio"
-                                    name={`dsf-condition-${element.__type}`}
+                                    name={`dsf-condition-${uid}`}
                                     checked={condition === opt.value}
                                     onChange={() => { element.condition = opt.value; onChange(); force(); }}
                                 />

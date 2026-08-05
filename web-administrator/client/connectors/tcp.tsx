@@ -162,9 +162,9 @@ const tcpSender = {
         // Swing's modeServer/modeClientRadioActionPerformed keep every field
         // visible but toggle enabled state, then re-apply the override-binding and
         // keep-connection-open sub-gating in Client mode.
-        const serverMode = (p: any) => p.serverMode === true;
-        const localBindingDisabled = (p: any) => p.serverMode !== true && !asBool(p.overrideLocalBinding);
-        const sendDisabled = (p: any) => p.serverMode === true || !asBool(p.keepConnectionOpen);
+        const serverMode = (p: any) => asBool(p.serverMode);
+        const localBindingDisabled = (p: any) => !asBool(p.serverMode) && !asBool(p.overrideLocalBinding);
+        const sendDisabled = (p: any) => asBool(p.serverMode) || !asBool(p.keepConnectionOpen);
         return (
             <div>
                 <TransmissionModePanel properties={properties} onChange={onChange} />
@@ -186,7 +186,7 @@ const tcpSender = {
                     { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: localBindingDisabled },
                     // Ports in Use follows the Local Port field: on in Server mode or Client+Override.
                     { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', append: (p: any) => portsInUseButton({ disabled: localBindingDisabled(p) }), disabled: localBindingDisabled },
-                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p: any) => p.serverMode !== true },
+                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
                     { key: 'checkRemoteHost', label: 'Check Remote Host', type: 'radio', options: YES_NO, disabled: sendDisabled },
                     { key: 'sendTimeout', label: 'Send Timeout (ms)', type: 'number', width: '90px', disabled: sendDisabled },

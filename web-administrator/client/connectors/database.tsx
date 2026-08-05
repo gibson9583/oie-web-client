@@ -30,12 +30,16 @@ function loadDrivers(platform: any) {
 /* Boilerplate "Connection" code generators (Swing generateConnectionString /
    generateUpdateConnectionString). Pure client-side string building from the
    driver/url/username/password fields — no server call — matching the engine
-   character-for-character so the generated JavaScript is identical. */
+   character-for-character so the generated JavaScript is identical, EXCEPT that
+   values are escaped for the single-quoted literals they land in: a password
+   containing ' or \ otherwise produces a script that doesn't parse. */
+const rhinoStr = (v: any) => String(v || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
 function generateConnectionString(p: any) {
     return 'var dbConn;\n' +
         '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
-        (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
-        (p.username || '') + '\',\'' + (p.password || '') +
+        rhinoStr(p.driver) + '\',\'' + rhinoStr(p.url) + '\',\'' +
+        rhinoStr(p.username) + '\',\'' + rhinoStr(p.password) +
         '\');\n\n\t// You may access this result below with $(\'column_name\')\n\treturn result;\n} finally {' +
         '\n\tif (dbConn) { \n\t\tdbConn.close();\n\t}\n}';
 }
@@ -55,8 +59,8 @@ function generateUpdateConnectionString(p: any) {
     }
     s += 'var dbConn;\n' +
         '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
-        (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
-        (p.username || '') + '\',\'' + (p.password || '') +
+        rhinoStr(p.driver) + '\',\'' + rhinoStr(p.url) + '\',\'' +
+        rhinoStr(p.username) + '\',\'' + rhinoStr(p.password) +
         '\');\n\n} finally {' +
         '\n\tif (dbConn) { \n\t\tdbConn.close();\n\t}\n}';
     return s;
@@ -67,8 +71,8 @@ function generateUpdateConnectionString(p: any) {
 function generateWriterConnectionString(p: any) {
     return 'var dbConn;\n' +
         '\ntry {\n\tdbConn = DatabaseConnectionFactory.createDatabaseConnection(\'' +
-        (p.driver || '') + '\',\'' + (p.url || '') + '\',\'' +
-        (p.username || '') + '\',\'' + (p.password || '') +
+        rhinoStr(p.driver) + '\',\'' + rhinoStr(p.url) + '\',\'' +
+        rhinoStr(p.username) + '\',\'' + rhinoStr(p.password) +
         '\');\n\n} finally {' +
         '\n\tif (dbConn) { \n\t\tdbConn.close();\n\t}\n}';
 }
