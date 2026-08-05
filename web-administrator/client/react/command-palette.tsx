@@ -86,9 +86,9 @@ function commandEntries() {
         }));
 }
 
-/* Channels come from whatever the dashboard has already polled. `oie-dashboard`
-   is the key react/queries.js uses; reading the cache directly (rather than
-   subscribing) keeps opening the palette free of requests. */
+/* Channels come from whatever the dashboard has already polled — the
+   ['statuses','dashboard'] query react/queries.ts maintains; reading the cache
+   directly (rather than subscribing) keeps opening the palette free of requests. */
 function cachedChannels() {
     const rows: any[] = [];
     const cached = queryClient.getQueryData(['statuses', 'dashboard']);
@@ -116,10 +116,13 @@ function channelEntries(fallback: any) {
         return true;
     }).flatMap((c: any) => {
         const base = { kind: 'channel', label: c.name || c.id, group: 'Channels', state: c.state };
+        // Gated through the same (group, task) pairs as the nav/menu twins, per
+        // this file's own header contract — the palette must never surface an
+        // entry RBAC hides elsewhere.
         return [
-            { ...base, id: 'chan:' + c.id, hint: 'edit', path: '/channels/' + c.id + '/edit' },
-            { ...base, id: 'chanmsg:' + c.id, hint: 'messages', path: '/messages/' + c.id }
-        ];
+            checkTask('view', 'doShowChannel') ? { ...base, id: 'chan:' + c.id, hint: 'edit', path: '/channels/' + c.id + '/edit' } : null,
+            checkTask('view', 'doShowMessages') ? { ...base, id: 'chanmsg:' + c.id, hint: 'messages', path: '/messages/' + c.id } : null
+        ].filter(Boolean);
     });
 }
 
@@ -147,6 +150,7 @@ export function CommandPalette() {
     // Only if the dashboard has never been visited: one cheap id/name fetch, once.
     useEffect(() => {
         if (!open || cachedChannels().length || fallbackChannels.length) return;
+        if (!checkTask('view', 'doShowChannel') && !checkTask('view', 'doShowMessages')) return;
         let cancelled = false;
         api.channels.idsAndNames()
             .then((map: any) => {
@@ -181,9 +185,11 @@ export function CommandPalette() {
         }
         return pool
             .map((e: any) => {
-                const m = fuzzyMatch(e.label, needle)
-                    || (e.keywords ? fuzzyMatch(e.keywords, needle) : null);
-                return m ? { entry: e, score: m.score, hits: fuzzyMatch(e.label, needle) ? m.hits : [] } : null;
+                const labelMatch = fuzzyMatch(e.label, needle);
+                const m = labelMatch || (e.keywords ? fuzzyMatch(e.keywords, needle) : null);
+                // Highlight indices only apply when the LABEL matched — a
+                // keywords-only match has nothing sensible to underline.
+                return m ? { entry: e, score: m.score, hits: labelMatch ? m.hits : [] } : null;
             })
             .filter(Boolean)
             .sort((a: any, b: any) => a.score - b.score)
