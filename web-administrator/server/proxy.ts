@@ -256,6 +256,16 @@ export function createApiProxy(config: any) {
         });
 
         req.pipe(upstream);
+
+        // If the browser goes away mid-request (tab closed, navigation), tear
+        // down the upstream leg too — otherwise an abandoned large download or
+        // long-poll keeps streaming from the engine into a dead socket. On a
+        // normal completion writableEnded is true and the keep-alive socket is
+        // left for the pool. Deliberately NO idle timeout here: /api carries
+        // legitimately long-lived streams (message exports, server log tails).
+        res.on('close', () => {
+            if (!res.writableEnded) upstream.destroy();
+        });
     };
 }
 

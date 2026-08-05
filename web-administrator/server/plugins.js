@@ -123,7 +123,7 @@ function discover(pluginDirs) {
  * still requires a restart because of Node's module cache).
  */
 function install(app, config) {
-    const dirs = config.pluginDirs || [config.pluginDir];
+    const dirs = config.pluginDirs;
     const mountedServers = new Set();
     function toClientManifest(manifest) {
         return {
@@ -214,7 +214,7 @@ function install(app, config) {
 // in index.html (so the browser fetches plugin code in parallel with the shell
 // instead of waiting on the plugins.json round-trip). Re-scanned per call.
 function clientEntries(config) {
-    const dirs = config.pluginDirs || [config.pluginDir];
+    const dirs = config.pluginDirs;
     return discover(dirs)
         .map((p) => (p.manifest.client && p.manifest.client.entry)
         ? `/plugins/${p.manifest.id}/${p.manifest.client.entry}`
