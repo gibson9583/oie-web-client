@@ -15,7 +15,7 @@
  * with no .ts source is plain JavaScript and is left as-is.
  */
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +28,14 @@ const sources = dirs.flatMap((dir) => readdirSync(dir)
 if (!sources.length) { console.log('[build-core] no TypeScript client modules'); process.exit(0); }
 
 // The workspace-hoisted tsc shim (TS 7 does not export a require()-able bin path).
+// typescript is a devDependency; on a production install (`npm ci --omit=dev`)
+// it is absent — the committed generated twins are current, so skip gracefully
+// instead of crashing `npm start`.
 const tsc = path.join(root, '..', 'node_modules', '.bin', 'tsc');
+if (!existsSync(tsc)) {
+    console.log('[build-core] typescript not installed (production install?) — using the committed generated files.');
+    process.exit(0);
+}
 const res = spawnSync(tsc, ['-p', path.join(root, 'tsconfig.emit.json')], { stdio: 'inherit' });
 if (res.status !== 0) process.exit(res.status ?? 1);
 

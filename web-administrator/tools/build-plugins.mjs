@@ -12,8 +12,16 @@
  * Run by `npm run build` (after vite build). A plugin with no TypeScript entry
  * is left as-is (hand-written plugin.js / third-party plugins are untouched).
  */
-import { build } from 'esbuild';
 import { readdirSync, existsSync } from 'node:fs';
+
+// esbuild is a devDependency; on a production install the committed plugin
+// bundles are current — skip gracefully instead of crashing `npm start`.
+let build;
+try { ({ build } = await import('esbuild')); }
+catch {
+    console.log('[build-plugins] esbuild not installed (production install?) — using the committed plugin bundles.');
+    process.exit(0);
+}
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
