@@ -270,7 +270,11 @@ function FieldRow({ properties, field, onChange, repaint }: { properties: any; f
             // 'text' and 'password' (and any unknown type) render as a plain
             // input — password just swaps the input type, matching forms.js.
             // data-fkey exposes the field's property key for e2e targeting.
+            // autoComplete off: these are CONNECTOR credentials (destination
+            // databases, SMTP relays…) — the browser must not offer to save
+            // them as the user's own login or autofill a saved one here (#24).
             control = <input type={f.type === 'password' ? 'password' : 'text'} data-fkey={f.key} value={value ?? ''} disabled={disabled}
+                autoComplete={f.type === 'password' ? 'off' : undefined}
                 placeholder={f.placeholder} style={inputStyle} onChange={(e) => set(e.target.value)} />;
     }
 
@@ -596,9 +600,12 @@ function PollAdvancedSettings({ p, pollingType, onChange }: { p: any; pollingTyp
     const timeEnabled = pollingType === 'INTERVAL';   // Swing disables Active Time for Time/Cron
     const rangeEnabled = timeEnabled && !allDay;
 
+    // Clamps to [min, max] on change — the native min/max attributes only
+    // constrain the spinners, not typed input, and an out-of-range hour/minute
+    // round-trips to the engine as an invalid cron window.
     const numField = (value: any, min: number, max: number, apply: (v: number) => void) => (
         <input type="number" min={min} max={max} className="w-[63px]" value={value}
-            onChange={(e) => { apply(parseInt(e.target.value, 10) || 0); notify(); }} />
+            onChange={(e) => { apply(Math.min(max, Math.max(min, parseInt(e.target.value, 10) || 0))); notify(); }} />
     );
 
     return (

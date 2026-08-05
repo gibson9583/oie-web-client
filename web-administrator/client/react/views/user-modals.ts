@@ -75,8 +75,11 @@ export function userForm(user: any = {}) {
    User) lets a blank pair leave the password unchanged; the default (New User /
    Change Password) requires both. `label` renames the field ("New Password"). */
 export function passwordFields({ optional = false, label = 'Password' }: any = {}) {
-    const password = h('input', { type: 'password' });
-    const confirm = h('input', { type: 'password' });
+    // autocomplete=new-password: this pair SETS a password (create user / reset)
+    // — the hint stops the browser autofilling the admin's saved login into it
+    // and prompts its generator/update flow instead (#24).
+    const password = h('input', { type: 'password', autocomplete: 'new-password' });
+    const confirm = h('input', { type: 'password', autocomplete: 'new-password' });
     // Show the configured policy up front (the engine still enforces on submit).
     const hint = h('div.hint', { class: 'mt-1.5' });
     api.server.passwordRequirements()
