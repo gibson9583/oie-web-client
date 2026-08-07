@@ -182,7 +182,7 @@ const cleanTemplate = (code: any) => String(code == null ? '' : code).replace(/\
 const stripDocumentation = (code: any) => String(code == null ? '' : code).trim().replace(/^\/\*\*[\s\S]*?\*\/\s*/, '').trim();
 
 // Build a function's call from its definition (CodeTemplateFunctionDefinition
-// .getTransferData): "function name(a: any, b: any) {...}" -> "name(a, b)".
+// .getTransferData): "function name(a, b) {...}" -> "name(a, b)".
 function functionTransferData(code: any) {
     const m = /function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/.exec(String(code == null ? '' : code));
     if (!m) return null;

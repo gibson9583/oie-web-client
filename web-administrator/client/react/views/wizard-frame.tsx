@@ -21,10 +21,10 @@ import { Icon } from '../bridges.jsx';
  *
  *   routeId   - the route param value ('new' | an id | undefined)
  *   storeKey  - store key holding the handed-over model (e.g. 'editingChannel')
- *   isValid   - (stored: any) => bool: is the stored object a usable model of this type
+ *   isValid   - (stored) => bool: is the stored object a usable model of this type
  *   makeNew   - () => model: build a blank model for the new-channel/alert case
- *   fetch     - (id: any) => Promise<model>: load an existing model from the engine
- *   normalize - (model: any) => model: optional in-place fix-ups before use
+ *   fetch     - (id) => Promise<model>: load an existing model from the engine
+ *   normalize - (model) => model: optional in-place fix-ups before use
  *   backPath  - where to navigate if the fetch fails
  */
 export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, normalize, backPath }: any) {
