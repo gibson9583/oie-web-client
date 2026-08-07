@@ -81,7 +81,7 @@ export const DEFAULT_FIXTURES = {
                 {
                     '@version': '4.5.0', id: 'tpl-1', name: 'Trim Whitespace', revision: 1,
                     contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
-                    properties: { '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties', type: 'FUNCTION', code: 'function trim(s: any) { return String(s).trim(); }' }
+                    properties: { '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties', type: 'FUNCTION', code: 'function trim(s) { return String(s).trim(); }' }
                 }
             ] }
         }

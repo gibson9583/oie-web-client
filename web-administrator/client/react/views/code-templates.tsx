@@ -87,7 +87,7 @@ const CONNECTOR_CONTEXTS = CONTEXT_GROUPS
     .flatMap(g => g.types.map(t => t[0]));
 
 /* CodeTemplate.DEFAULT_CODE */
-const DEFAULT_CODE = '/**\n\tModify the description here. Modify the function name and parameters as needed. One function per\n\ttemplate is recommended; create a new code template for each new function.\n\n\t@param {String} arg1 - arg1 description\n\t@return {String} return description\n*/\nfunction new_function1(arg1: any) {\n\t// TODO: Enter code here\n}';
+const DEFAULT_CODE = '/**\n\tModify the description here. Modify the function name and parameters as needed. One function per\n\ttemplate is recommended; create a new code template for each new function.\n\n\t@param {String} arg1 - arg1 description\n\t@return {String} return description\n*/\nfunction new_function1(arg1) {\n\t// TODO: Enter code here\n}';
 
 /* ---- XStream shape helpers (reused verbatim) --------------------------------- */
 
