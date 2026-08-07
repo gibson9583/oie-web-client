@@ -11,9 +11,9 @@
  *   columns      [{ key, label, align?, tree?, render(node) }] — `tree` column
  *                gets the depth indent + twisty; render() returns cell content.
  *   data         root nodes; children via getChildren(node).
- *   getChildren  (node: any) => array | undefined/null (leaf).
- *   rowKey       (node: any) => stable string key.
- *   rowClassName (node: any, depth: any) => extra <tr> classes (optional).
+ *   getChildren  (node) => array | undefined/null (leaf).
+ *   rowKey       (node) => stable string key.
+ *   rowClassName (node, depth) => extra <tr> classes (optional).
  *   selectedKey  currently-selected rowKey (or null).
  *   onSelect / onActivate / onRowContextMenu(node, e) / onEmptyContextMenu(e)
  *   columnsKey   localStorage key (createColumnManager storageKey).
@@ -21,7 +21,7 @@
  *   defaultHidden [key] hidden by default.
  *   pinnedKeys   [key] that can never be hidden/reordered (the tree column).
  *   emptyText    shown when data is empty.
- *   matches      optional (node: any) => bool filter; non-matching leaves are dropped,
+ *   matches      optional (node) => bool filter; non-matching leaves are dropped,
  *                parents kept if they or a descendant match.
  */
 
