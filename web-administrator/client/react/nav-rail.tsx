@@ -54,10 +54,12 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
 
     // The command palette's "Customize navigation" entry dispatches this event
     // (react/shell.tsx); edit mode is component-local state, so the rail itself
-    // must listen (#22 — the entry was a silent no-op). Open the rail too: edit
-    // affordances are invisible on the collapsed icon rail.
+    // must listen (#22 — the entry was a silent no-op). Only set editing here:
+    // the borrow/restore effect below opens a collapsed rail AND records the
+    // borrow, so Done gives the width back — expanding the rail directly would
+    // skip that bookkeeping and leave it stuck open for the session.
     useEffect(() => {
-        const start = () => { setEditing(true); store.setState('railCollapsed', false); };
+        const start = () => setEditing(true);
         window.addEventListener('webadmin:customize-nav', start);
         return () => window.removeEventListener('webadmin:customize-nav', start);
     }, []);
