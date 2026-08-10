@@ -19,6 +19,13 @@ import * as https from 'https';
 import type { Request, Response } from 'express';
 import type { ResolvedEngine, WebAdminConfig } from './config';
 
+/** The slice of a ResolvedEngine the transport layer reads (agentFor,
+    engineRequest). verifyTls is REQUIRED, not optional: an optional flag lets a
+    forgotten field coerce to rejectUnauthorized: false — TLS verification
+    silently off — where a required one makes that a compile error. `name` is
+    display-only and deliberately not part of this contract. */
+export type EngineTarget = Pick<ResolvedEngine, 'url' | 'verifyTls'>;
+
 // Hop-by-hop headers must not be forwarded (RFC 7230 §6.1).
 const HOP_BY_HOP = new Set([
     'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
@@ -56,7 +63,7 @@ function forwardCookie(cookieHeader: unknown): string {
  *   (absent/invalid) → the first configured engine (the default)
  * Returns { url, verifyTls }. Exported + pure for reuse (plugin-install) and tests.
  */
-export function resolveEngine(config: WebAdminConfig, req: { headers?: http.IncomingHttpHeaders } | null | undefined): { url: string; verifyTls: boolean } {
+export function resolveEngine(config: WebAdminConfig, req: { headers?: http.IncomingHttpHeaders } | null | undefined): EngineTarget {
     const engines = Array.isArray(config.engines) && config.engines.length
         ? config.engines
         : [{ url: config.engine.url, verifyTls: !!config.engine.verifyTls }];
@@ -144,7 +151,7 @@ export function createApiProxy(config: WebAdminConfig) {
     // Keep-alive agents cached per engine (url + verifyTls) so switching engines
     // doesn't re-create sockets each request.
     const agents = new Map<string, { target: URL; isHttps: boolean; transport: typeof http | typeof https; agent: http.Agent | https.Agent }>();
-    function agentFor(engine: { url: string; verifyTls?: boolean }) {
+    function agentFor(engine: EngineTarget) {
         const key = `${engine.url}|${engine.verifyTls}`;
         let entry = agents.get(key);
         if (!entry) {
@@ -274,7 +281,7 @@ export function createApiProxy(config: WebAdminConfig) {
 // ENGINE makes the EXTENSIONS_MANAGE authorization decision). `engine` is a
 // resolved { url, verifyTls } (see resolveEngine) — same TLS posture as the proxy.
 // Buffers the response.
-export function engineRequest(engine: { url: string; verifyTls?: boolean }, { method, path: reqPath, headers, body }: { method: string; path: string; headers?: http.OutgoingHttpHeaders; body?: Buffer | null }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+export function engineRequest(engine: EngineTarget, { method, path: reqPath, headers, body }: { method: string; path: string; headers?: http.OutgoingHttpHeaders; body?: Buffer | null }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
     return new Promise((resolve, reject) => {
         const target = new URL(engine.url);
         const isHttps = target.protocol === 'https:';
