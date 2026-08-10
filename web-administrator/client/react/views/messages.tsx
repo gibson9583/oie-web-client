@@ -1886,6 +1886,7 @@ export function MessagesView({ params, query }: any) {
             setMessages(list);
             setPager({ offset: offsetRef.current, shown: list.length, total: totalRef.current, hasNext });
         } catch (e: any) {
+            if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
             toast(`Search failed: ${e.message}`, 'error');
         }
     }
@@ -1894,15 +1895,26 @@ export function MessagesView({ params, query }: any) {
     /* The total match count is resolved lazily (Swing's Count button): a COUNT is
        expensive on large tables, so we don't run one on every search. */
     async function ensureTotal() {
-        if (totalRef.current == null) totalRef.current = toCount(await api.messages.count(channelId, lastParamsRef.current));
-        return totalRef.current;
+        if (totalRef.current != null) return totalRef.current;
+        const gen = searchGenRef.current;
+        const n = toCount(await api.messages.count(channelId, lastParamsRef.current));
+        // A count that lands after a newer search must not clobber that search's
+        // total (runSearch's generation rule); it still answers the caller that asked.
+        if (gen === searchGenRef.current) totalRef.current = n;
+        return n;
     }
     async function doCount() {
+        const gen = searchGenRef.current;
         setCountBusy(true);
-        try { await ensureTotal(); }
-        catch (e: any) { toast(`Count failed: ${e.message}`, 'error'); return; }
+        let n;
+        try { n = await ensureTotal(); }
+        catch (e: any) {
+            if (gen === searchGenRef.current) toast(`Count failed: ${e.message}`, 'error');
+            return;
+        }
         finally { setCountBusy(false); }
-        setPager((p: any) => ({ ...p, total: totalRef.current }));
+        if (gen !== searchGenRef.current) return;   // superseded — the newer search owns the pager
+        setPager((p: any) => ({ ...p, total: n }));
     }
 
     /* ---- selection + detail ---- */
@@ -2058,11 +2070,12 @@ export function MessagesView({ params, query }: any) {
 
     async function removeResultsTask() {
         const filter = { ...lastParamsRef.current };
-        try { await ensureTotal(); }
+        let total;
+        try { total = await ensureTotal(); }
         catch (e: any) { toast(`Count failed: ${e.message}`, 'error'); return; }
         if (getPref('confirmReprocessRemove') !== false) {
             const text = await promptDialog('Remove Results',
-                `Permanently remove all ${fmtNumber(totalRef.current)} message(s) matching the current search from ${channelName}? ` +
+                `Permanently remove all ${fmtNumber(total)} message(s) matching the current search from ${channelName}? ` +
                 'This cannot be undone. Type REMOVE to confirm.');
             if (text === null) return;
             if (text.trim() !== 'REMOVE') {
@@ -2084,10 +2097,11 @@ export function MessagesView({ params, query }: any) {
     }
 
     async function reprocessResultsTask() {
-        try { await ensureTotal(); }
+        let total;
+        try { total = await ensureTotal(); }
         catch (e: any) { toast(`Count failed: ${e.message}`, 'error'); return; }
         reprocessDialog({
-            channelId, connectors, total: totalRef.current, lastParams: lastParamsRef.current,
+            channelId, connectors, total, lastParams: lastParamsRef.current,
             isResults: true, onDone: () => searchRef.current(false)
         });
     }
@@ -2123,10 +2137,11 @@ export function MessagesView({ params, query }: any) {
     }
 
     async function exportResultsTask() {
-        try { await ensureTotal(); }
+        let total;
+        try { total = await ensureTotal(); }
         catch (e: any) { toast(`Count failed: ${e.message}`, 'error'); return; }
-        if (!totalRef.current) { toast('No results to export', 'warn'); return; }
-        exportResultsDialog({ channelId, total: totalRef.current, lastParams: lastParamsRef.current });
+        if (!total) { toast('No results to export', 'warn'); return; }
+        exportResultsDialog({ channelId, total, lastParams: lastParamsRef.current });
     }
 
     /* ---- status filter dropdown (imperative checklist over the trigger) ---- */
