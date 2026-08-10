@@ -172,6 +172,9 @@ function engineLabel(url) {
         return String(url);
     }
 }
+// Takes only the slice it reads: it runs inside load() BEFORE the full
+// WebAdminConfig exists (engines/root are not resolved yet), so claiming the
+// whole interface here would be a lie that happens to compile.
 function buildEngines(config) {
     const raw = Array.isArray(config.allowedUrls) && config.allowedUrls.length
         ? config.allowedUrls

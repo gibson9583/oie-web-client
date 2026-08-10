@@ -49,8 +49,9 @@ export interface WebAdminConfig {
     pluginDirs: string[];
     engines: ResolvedEngine[];
     root: string;
-    /** config.json may carry extra keys (e.g. pluginDirs before resolution). */
-    [key: string]: any;
+    /** config.json is user-authored and may carry extra keys (e.g. plugin-specific
+        settings); `unknown` keeps that openness while forcing readers to narrow. */
+    [key: string]: unknown;
 }
 
 const ROOT = path.resolve(__dirname, '..');
@@ -151,7 +152,10 @@ function engineLabel(url: string): string {
     try { return new URL(url).host; } catch { return String(url); }
 }
 
-export function buildEngines(config: any): ResolvedEngine[] {
+// Takes only the slice it reads: it runs inside load() BEFORE the full
+// WebAdminConfig exists (engines/root are not resolved yet), so claiming the
+// whole interface here would be a lie that happens to compile.
+export function buildEngines(config: Pick<WebAdminConfig, 'engine' | 'allowedUrls'>): ResolvedEngine[] {
     const raw = Array.isArray(config.allowedUrls) && config.allowedUrls.length
         ? config.allowedUrls
         : [{ name: null, url: config.engine.url, verifyTls: config.engine.verifyTls }];
