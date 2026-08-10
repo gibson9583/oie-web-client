@@ -51,7 +51,10 @@ const tcpListener = {
         // Server binds and listens locally; Client connects out to a remote
         // address. Swing's modeServer/modeClientRadioActionPerformed keep all the
         // mode-specific fields visible but toggle their enabled state.
-        const serverMode = (p) => p.serverMode !== false;
+        // asBool, not a strict compare: the engine wire shape can deliver
+        // "true"/"false" strings, which a strict !== false read as Server mode
+        // while validate() below read them as Client — an unresolvable save.
+        const serverMode = (p) => asBool(p.serverMode);
         return (React.createElement("div", { className: "flex flex-col gap-4" },
             React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
                     { section: 'Listener Settings' },
@@ -69,7 +72,7 @@ const tcpListener = {
                     { key: 'remotePort', label: 'Remote Port', type: 'number', width: '90px', disabled: serverMode },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, disabled: serverMode },
                     { key: 'reconnectInterval', label: 'Reconnect Interval (ms)', type: 'number', width: '90px', disabled: serverMode },
-                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p) => p.serverMode === false },
+                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p) => !asBool(p.serverMode) },
                     { key: 'receiveTimeout', label: 'Receive Timeout (ms)', type: 'number', width: '90px', tooltip: '0 = never time out' },
                     { key: 'bufferSize', label: 'Buffer Size (bytes)', type: 'number', width: '90px' },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO },

@@ -63,6 +63,25 @@ test('TCP Sender: Test Connection / Ports in Use grey by mode + local binding', 
     await expect(page.getByRole('button', { name: 'Ports in Use', exact: true })).toBeEnabled();
 });
 
+test('TCP Listener: a saved Client-mode listener (wire-string boolean) keeps its remote fields editable', async ({ page }) => {
+    // The engine wire shape can deliver serverMode as the STRING "false". The
+    // display predicates must read it like validate()'s asBool does — a strict
+    // compare rendered a saved Client-mode listener as Server: Remote Address/
+    // Port greyed out while validation demanded them (an unresolvable save),
+    // and Max Connections editable when the engine ignores it.
+    const c = CASES.find((x) => x.name === 'TCP Listener');
+    const id = 'fs-tcp-listener-client';
+    const channel = makeChannel(id, { source: { transportName: 'TCP Listener', properties: { ...c!.properties(), serverMode: 'false' } } });
+    await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
+    await page.goto(`/channels/${id}/edit`);
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
+    await expect(page.locator('.cform-section').first()).toBeVisible();
+    await expect(page.locator('[data-fkey="serverMode"]').getByRole('radio', { name: 'Client', exact: true })).toBeChecked();
+    await expect(page.locator('[data-fkey="remoteAddress"]')).toBeEnabled();
+    await expect(page.locator('[data-fkey="remotePort"]')).toBeEnabled();
+    await expect(page.locator('[data-fkey="maxConnections"]')).toBeDisabled();
+});
+
 test('Polling connector: Advanced Settings reveals the Active Days / Active Time editor', async ({ page }) => {
     await openPanel(page, 'File Reader', 'SOURCE');
     await page.getByRole('button', { name: 'Advanced Settings', exact: true }).click();
