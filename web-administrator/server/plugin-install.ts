@@ -15,6 +15,7 @@
 import express from 'express';
 import type { Request, Response, NextFunction, Express } from 'express';
 import { engineRequest, resolveEngine } from './proxy';
+import type { WebAdminConfig } from './config';
 
 const MAX_UPLOAD = '16mb';   // express.raw cap (engine zips are a few MB)
 
@@ -42,7 +43,7 @@ function relayEngine(res: Response, engineRes: { status: number; headers: Record
     return res.send(engineRes.body);
 }
 
-async function handleInstall(req: Request, res: Response, config: any): Promise<any> {
+async function handleInstall(req: Request, res: Response, config: WebAdminConfig): Promise<any> {
     if (!csrfOk(req)) return res.status(403).json({ error: 'CSRF', message: 'Missing X-Requested-With header' });
     const body = req.body;
     if (!Buffer.isBuffer(body) || body.length === 0) return res.status(400).json({ error: 'EMPTY', message: 'No upload received' });
@@ -71,7 +72,7 @@ async function handleInstall(req: Request, res: Response, config: any): Promise<
     res.json({ engineInstalled: true, restartEngine: true });
 }
 
-async function handleUninstall(req: Request, res: Response, config: any): Promise<any> {
+async function handleUninstall(req: Request, res: Response, config: WebAdminConfig): Promise<any> {
     if (!csrfOk(req)) return res.status(403).json({ error: 'CSRF', message: 'Missing X-Requested-With header' });
     const enginePath = req.body && typeof req.body.path === 'string' ? req.body.path : null;
     if (!enginePath) return res.status(400).json({ error: 'NO_PATH', message: 'Extension path is required' });
@@ -100,7 +101,7 @@ async function handleUninstall(req: Request, res: Response, config: any): Promis
 }
 
 // Mount BEFORE the /api proxy in server/index.js.
-export function installPluginRoutes(app: Express, config: any): void {
+export function installPluginRoutes(app: Express, config: WebAdminConfig): void {
     app.post('/api/_webadmin/plugins/_install',
         preUploadGate,
         express.raw({ type: () => true, limit: MAX_UPLOAD }),

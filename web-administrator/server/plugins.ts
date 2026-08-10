@@ -28,6 +28,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import express from 'express';
 import type { Express, Request, Response } from 'express';
+import type { WebAdminConfig } from './config';
 
 /** A plugin.json manifest as read from disk. */
 export interface ServerPluginManifest {
@@ -40,7 +41,9 @@ export interface ServerPluginManifest {
     client?: { entry?: string };
     server?: { entry?: string };
     oie?: { apiMin?: string };
-    [key: string]: any;
+    /** plugin.json is third-party-authored and may carry extra keys; `unknown`
+        keeps that openness while forcing readers to narrow. */
+    [key: string]: unknown;
 }
 
 function discover(pluginDirs: string[]): Array<{ dir: string; manifest: ServerPluginManifest }> {
@@ -96,7 +99,7 @@ function discover(pluginDirs: string[]): Array<{ dir: string; manifest: ServerPl
  * mounted lazily on first sight, but updating an already-loaded server entry
  * still requires a restart because of Node's module cache).
  */
-export function install(app: Express, config: any) {
+export function install(app: Express, config: WebAdminConfig) {
     const dirs = config.pluginDirs;
     const mountedServers = new Set<string>();
 
@@ -185,7 +188,7 @@ export function install(app: Express, config: any) {
 // Fresh list of client plugin entry URLs, for <link rel="modulepreload"> hints
 // in index.html (so the browser fetches plugin code in parallel with the shell
 // instead of waiting on the plugins.json round-trip). Re-scanned per call.
-export function clientEntries(config: any): string[] {
+export function clientEntries(config: WebAdminConfig): string[] {
     const dirs = config.pluginDirs;
     return discover(dirs)
         .map((p) => (p.manifest.client && p.manifest.client.entry)
@@ -198,7 +201,7 @@ export function clientEntries(config: any): string[] {
 // href's entry segment comes straight from plugin.json (`client.entry` is not
 // shape-validated the way `id` is), so attribute-escape it — a crafted entry
 // must not break out of the href and inject markup into the shell.
-export function preloadLinks(config: any): string[] {
+export function preloadLinks(config: WebAdminConfig): string[] {
     const esc = (s: unknown) => String(s).replace(/[&<>"']/g,
         (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
     return clientEntries(config).map((e) => `<link rel="modulepreload" href="${esc(e)}">`);

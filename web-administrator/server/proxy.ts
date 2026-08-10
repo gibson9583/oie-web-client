@@ -17,7 +17,7 @@
 import * as http from 'http';
 import * as https from 'https';
 import type { Request, Response } from 'express';
-import type { ResolvedEngine } from './config';
+import type { ResolvedEngine, WebAdminConfig } from './config';
 
 // Hop-by-hop headers must not be forwarded (RFC 7230 §6.1).
 const HOP_BY_HOP = new Set([
@@ -56,7 +56,7 @@ function forwardCookie(cookieHeader: unknown): string {
  *   (absent/invalid) → the first configured engine (the default)
  * Returns { url, verifyTls }. Exported + pure for reuse (plugin-install) and tests.
  */
-export function resolveEngine(config: any, req: { headers?: Record<string, any> } | null | undefined): { url: string; verifyTls: boolean } {
+export function resolveEngine(config: WebAdminConfig, req: { headers?: http.IncomingHttpHeaders } | null | undefined): { url: string; verifyTls: boolean } {
     const engines = Array.isArray(config.engines) && config.engines.length
         ? config.engines
         : [{ url: config.engine.url, verifyTls: !!config.engine.verifyTls }];
@@ -118,7 +118,7 @@ const PROXY_FWD_HEADERS = [
 // engine version sends. Must go in the headers passed to writeHead — a value set
 // via res.setHeader loses to writeHead's on conflict. Mutates `headers`; pure +
 // exported for testing.
-export function forceNoStore(headers: Record<string, any>): Record<string, any> {
+export function forceNoStore(headers: http.OutgoingHttpHeaders): http.OutgoingHttpHeaders {
     headers['cache-control'] = 'no-store';
     // Contradictory legacy hints; no-store must stand alone.
     delete headers['expires'];
@@ -130,7 +130,7 @@ export function forceNoStore(headers: Record<string, any>): Record<string, any> 
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
 // Forwarded / X-Real-IP headers unless the immediate peer is trusted. Pure +
 // exported for testing.
-export function sanitizeForwardHeaders(headers: Record<string, any>, remoteAddress: string | null | undefined, priorXff?: string | string[] | null, trusted?: Set<string> | null): Record<string, any> {
+export function sanitizeForwardHeaders(headers: http.OutgoingHttpHeaders, remoteAddress: string | null | undefined, priorXff?: string | string[] | null, trusted?: Set<string> | null): http.OutgoingHttpHeaders {
     const xff = resolveForwardedFor(remoteAddress, priorXff, trusted);
     if (xff) headers['x-forwarded-for'] = xff; else delete headers['x-forwarded-for'];
     if (!isTrustedPeer(remoteAddress, trusted)) {
@@ -139,7 +139,7 @@ export function sanitizeForwardHeaders(headers: Record<string, any>, remoteAddre
     return headers;
 }
 
-export function createApiProxy(config: any) {
+export function createApiProxy(config: WebAdminConfig) {
     const trustedProxies = new Set<string>(Array.isArray(config.trustedProxies) ? config.trustedProxies : []);
     // Keep-alive agents cached per engine (url + verifyTls) so switching engines
     // doesn't re-create sockets each request.
@@ -167,7 +167,7 @@ export function createApiProxy(config: any) {
         const engine = resolveEngine(config, req);
         const { target, isHttps, transport, agent } = agentFor(engine);
 
-        const headers: Record<string, any> = {};
+        const headers: http.OutgoingHttpHeaders = {};
         for (const [name, value] of Object.entries(req.headers)) {
             if (!HOP_BY_HOP.has(name.toLowerCase())) headers[name] = value;
         }
@@ -209,7 +209,7 @@ export function createApiProxy(config: any) {
             path: req.originalUrl,
             headers
         }, (upstreamRes) => {
-            const resHeaders: Record<string, any> = {};
+            const resHeaders: http.OutgoingHttpHeaders = {};
             for (const [name, value] of Object.entries(upstreamRes.headers)) {
                 if (!HOP_BY_HOP.has(name.toLowerCase())) resHeaders[name] = value;
             }
@@ -274,7 +274,7 @@ export function createApiProxy(config: any) {
 // ENGINE makes the EXTENSIONS_MANAGE authorization decision). `engine` is a
 // resolved { url, verifyTls } (see resolveEngine) — same TLS posture as the proxy.
 // Buffers the response.
-export function engineRequest(engine: { url: string; verifyTls?: boolean }, { method, path: reqPath, headers, body }: { method: string; path: string; headers?: Record<string, any>; body?: Buffer | null }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+export function engineRequest(engine: { url: string; verifyTls?: boolean }, { method, path: reqPath, headers, body }: { method: string; path: string; headers?: http.OutgoingHttpHeaders; body?: Buffer | null }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
     return new Promise((resolve, reject) => {
         const target = new URL(engine.url);
         const isHttps = target.protocol === 'https:';
@@ -282,7 +282,7 @@ export function engineRequest(engine: { url: string; verifyTls?: boolean }, { me
         const agent = isHttps
             ? new https.Agent({ rejectUnauthorized: !!engine.verifyTls })
             : new http.Agent();
-        const h: Record<string, any> = {};
+        const h: http.OutgoingHttpHeaders = {};
         for (const [name, value] of Object.entries(headers || {})) {
             if (value != null && !HOP_BY_HOP.has(name.toLowerCase())) h[name] = value;
         }
