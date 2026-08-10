@@ -21,6 +21,7 @@
   "include": [
     "client/core/*.ts",
     "client/connectors/*.ts",
-    "client/connectors/*.tsx"
+    "client/connectors/*.tsx",
+    "../packages/*/index.ts"
   ]
 }
