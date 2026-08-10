@@ -2192,7 +2192,14 @@ input.grid-name::placeholder { color: var(--text-faint); }
     padding-top: 4px;
 }
 /* Only what differs from a nav row: the active-customizing accent. */
-.rail-customize .rail-chrome.on { color: var(--accent); }
+/* The pressed state must stay readable on an engine-tinted rail: --accent has
+   no contrast guarantee against an arbitrary environment color (light-mode
+   accent blue vanishes into a blue tint), so use the same rail-fg chip as
+   .rail-item.active, which is computed against the actual rail surface. */
+.rail-customize .rail-chrome.on {
+    background: color-mix(in srgb, var(--rail-fg) 16%, transparent);
+    color: var(--rail-fg);
+}
 .rail-collapsed .rail .rail-customize .rail-label { display: none; }
 .rail-pane.collapsed .pane-chevron { transform: rotate(180deg); }
 
