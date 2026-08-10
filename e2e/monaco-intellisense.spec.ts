@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { mockEngine } from './mock.js';
+import { CASES, channelWithSourceElement } from './step-rule-fixtures.js';
 
 /*
  * Guards Monaco's TypeScript language-service worker, which powers IntelliSense
@@ -43,4 +44,104 @@ test('Monaco TS worker answers member completions (IntelliSense)', async ({ page
     // the language service read the extra lib through a live worker, not just that
     // some worker exists.
     expect(result).toContain('convertDate');
+});
+
+/*
+ * A code template is more than one named function: a template can build a whole
+ * namespace object (toolbox.widgets.spin = function …). The scoped template
+ * SOURCES are fed to the language service as extra libs (script-completions
+ * templateSourcesInScope → monaco.js), so members complete after every dot —
+ * with no JSDoc required. Scope rules still hold: a library not linked to the
+ * channel contributes nothing.
+ */
+test('a namespace code template completes its members, scoped to the channel', async ({ page }) => {
+    const kase = CASES.find((c) => c.kind === 'transformer')!;
+    const id = 'tpl-lib-scope';
+    const channel = channelWithSourceElement(id, kase.kind, kase.class, kase.element());
+
+    await mockEngine(page, {
+        [`GET /channels/${id}`]: { channel },
+        'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [
+            {
+                '@version': '4.5.0', id: 'lib-ns', name: 'Toolbox Helpers', revision: 1,
+                includeNewChannels: false, disabledChannelIds: '',
+                enabledChannelIds: { string: [id] },
+                codeTemplates: { codeTemplate: [{
+                    '@version': '4.5.0', id: 'tpl-ns', name: 'Toolbox Namespace', revision: 1,
+                    contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
+                    properties: {
+                        '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties',
+                        type: 'FUNCTION',
+                        code: 'var toolbox = toolbox || {};\ntoolbox.widgets = {};\ntoolbox.widgets.spin = function (speed) { return speed; };\ntoolbox.widgets.paint = function (color) { return color; };\n'
+                    }
+                }] }
+            },
+            {
+                // The common library shape: a single top-level IIFE assigning its
+                // namespace through a `global` parameter. The language service
+                // can't see through that, so the source is fed UNWRAPPED — Rhino
+                // runs the wrapper at script scope anyway, so the inner var IS a
+                // runtime global.
+                '@version': '4.5.0', id: 'lib-iife', name: 'Test Library', revision: 1,
+                includeNewChannels: false, disabledChannelIds: '',
+                enabledChannelIds: { string: [id] },
+                codeTemplates: { codeTemplate: [{
+                    '@version': '4.5.0', id: 'tpl-iife', name: 'Test.js', revision: 1,
+                    contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
+                    properties: {
+                        '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties',
+                        type: 'FUNCTION',
+                        code: '/*! Test.js v1.0 | (c) Example | MIT\n * a banner comment ahead of the wrapper, like real libraries ship */\n(function (global) {\n  "use strict";\n  var testlib = global.testlib || {};\n  testlib.version = "1.0";\n  /* namespace scaffolded as an object literal of empty objects — the form the\n     language service cannot merge later assignments into (normalized in the\n     feed) */\n  testlib.rockets = { launchpad: {} };\n  testlib.rockets.launchpad.ignite = function (fuel) { return fuel; };\n  testlib.rockets.launchpad.countdown = function (seconds) { return seconds; };\n  global.testlib = testlib;\n})(this);\n'
+                    }
+                }] }
+            },
+            {
+                // Linked to a DIFFERENT channel — must contribute nothing here.
+                '@version': '4.5.0', id: 'lib-other', name: 'Elsewhere', revision: 1,
+                includeNewChannels: false, disabledChannelIds: '',
+                enabledChannelIds: { string: ['some-other-channel'] },
+                codeTemplates: { codeTemplate: [{
+                    '@version': '4.5.0', id: 'tpl-other', name: 'Other Namespace', revision: 1,
+                    contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
+                    properties: {
+                        '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties',
+                        type: 'FUNCTION',
+                        code: 'var elsewhere = { hidden: function () {} };\n'
+                    }
+                }] }
+            }
+        ] } },
+    });
+
+    // Reach a transformer editor so setActiveScope(channel, SOURCE_FILTER_TRANSFORMER) fires.
+    await page.goto(`/channels/${id}/edit`);
+    await expect(page.getByRole('tab', { name: 'Summary', exact: true })).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
+    await page.getByRole('button', { name: /^Edit Transformer/ }).click();
+    await page.waitForSelector('.monaco-editor', { timeout: 15_000 });
+
+    const membersOf = (prefix: string) => page.evaluate(async (pfx) => {
+        const monaco = (window as any).monaco;
+        const tsLang = (monaco.languages && monaco.languages.typescript) || monaco.typescript;
+        const accessor = await tsLang.getJavaScriptWorker();
+        const model = monaco.editor.createModel(pfx, 'javascript');
+        try {
+            const client = await accessor(model.uri);
+            const info = await client.getCompletionsAtPosition(model.uri.toString(), pfx.length);
+            return (info && info.entries || []).map((e: any) => e.name);
+        } finally {
+            model.dispose();
+        }
+    }, prefix);
+
+    // The scope loads async after the editor mounts; poll until the lib lands.
+    await expect.poll(() => membersOf('toolbox.widgets.'), { timeout: 10_000 }).toContain('spin');
+    expect(await membersOf('toolbox.widgets.')).toContain('paint');
+    // The namespace root itself is a known global now.
+    expect(await membersOf('toolb')).toContain('toolbox');
+    // The IIFE-wrapped library completes through every dot of its namespace.
+    expect(await membersOf('testlib.rockets.launchpad.')).toEqual(expect.arrayContaining(['ignite', 'countdown']));
+    expect(await membersOf('testl')).toContain('testlib');
+    // The other channel's library stayed out of scope.
+    expect(await membersOf('elsewh')).not.toContain('elsewhere');
 });
