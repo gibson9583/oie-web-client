@@ -9,6 +9,15 @@ export interface TemplateCompletion {
 export declare function invalidate(): void;
 /** The in-scope code-template functions for a channel + editor contexts. */
 export declare function templatesInScope(channelId: string | number, contexts: string[]): Promise<TemplateCompletion[]>;
+/** A code template's source, fed to the language service as one extra lib. */
+export interface TemplateLib {
+    id: string;
+    code: string;
+}
+export declare function templateSourcesInScope(channelId: string | number, contexts: string[]): Promise<TemplateLib[]>;
+/** Subscribe to active template-lib changes. Returns an unsubscribe. */
+export declare function onActiveLibsChange(cb: (libs: TemplateLib[]) => void): () => void;
+export declare function getActiveLibs(): TemplateLib[];
 export declare function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void>;
 export declare function clearActiveScope(): void;
 export declare function getActiveCompletions(): TemplateCompletion[];
