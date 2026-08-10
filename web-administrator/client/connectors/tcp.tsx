@@ -56,7 +56,10 @@ const tcpListener = {
         // Server binds and listens locally; Client connects out to a remote
         // address. Swing's modeServer/modeClientRadioActionPerformed keep all the
         // mode-specific fields visible but toggle their enabled state.
-        const serverMode = (p: any) => p.serverMode !== false;
+        // asBool, not a strict compare: the engine wire shape can deliver
+        // "true"/"false" strings, which a strict !== false read as Server mode
+        // while validate() below read them as Client — an unresolvable save.
+        const serverMode = (p: any) => asBool(p.serverMode);
         return (
             // Match the inter-section spacing a single ConnectorForm gives
             // (.cform gap), since this panel stacks two forms + the transmission
@@ -81,7 +84,7 @@ const tcpListener = {
                     { key: 'remotePort', label: 'Remote Port', type: 'number', width: '90px', disabled: serverMode },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, disabled: serverMode },
                     { key: 'reconnectInterval', label: 'Reconnect Interval (ms)', type: 'number', width: '90px', disabled: serverMode },
-                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p: any) => p.serverMode === false },
+                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
                     { key: 'receiveTimeout', label: 'Receive Timeout (ms)', type: 'number', width: '90px', tooltip: '0 = never time out' },
                     { key: 'bufferSize', label: 'Buffer Size (bytes)', type: 'number', width: '90px' },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO },
