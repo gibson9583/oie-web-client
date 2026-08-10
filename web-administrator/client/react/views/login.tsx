@@ -64,7 +64,16 @@ export function LoginForm({ onSuccess }: any) {
     const userRef = useRef<any>(null);
     const busyRef = useRef(false);   // re-entry guard (state is async)
     useEffect(() => {
-        const t = setTimeout(() => userRef.current && userRef.current.focus(), 50);
+        // Focus the username field once the view settles — but only if nothing
+        // in the form already has focus. A blind focus() 50ms in steals it back
+        // from a user (or test) who has already moved to the password field,
+        // landing their next keystrokes in the wrong box (same guard as the
+        // welcome wizard's deferred focus).
+        const t = setTimeout(() => {
+            const el = userRef.current;
+            const form = el && el.closest('form');
+            if (el && !(form && form.contains(document.activeElement))) el.focus();
+        }, 50);
         return () => clearTimeout(t);
     }, []);
 
