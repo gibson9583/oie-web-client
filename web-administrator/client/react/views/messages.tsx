@@ -1298,8 +1298,11 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
                     }
                     try {
                         if (isResults) {
+                            // Reprocessing a whole result set runs as long as the
+                            // engine needs — no client ceiling (timeoutMs: null).
                             await api.post(`/channels/${channelId}/messages/_reprocess`, null, {
-                                params: { ...lastParams, replace: overwrite.input.checked, filterDestinations, metaDataId: metaDataIds || [] }
+                                params: { ...lastParams, replace: overwrite.input.checked, filterDestinations, metaDataId: metaDataIds || [] },
+                                timeoutMs: null
                             });
                             toast('Reprocess task submitted');
                         } else {
@@ -1577,7 +1580,9 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
                 params.archiveFormat = 'zip';
                 if (o.pwProtect && o.password) { params.password = o.password; params.encryptionType = o.algo.value; }
             }
-            const count = await api.post(`/channels/${channelId}/messages/_export`, null, { params });
+            // The engine writes every matching message to its filesystem before
+            // answering — minutes for a big filter — so no client ceiling.
+            const count = await api.post(`/channels/${channelId}/messages/_export`, null, { params, timeoutMs: null });
             toast(`Server exported ${fmtNumber(Number(count) || 0)} message(s) to ${o.rootFolder}`);
             dlg.close();
         } catch (e: any) {
@@ -2068,8 +2073,9 @@ export function MessagesView({ params, query }: any) {
         try {
             // DELETE /channels/{id}/messages is the query-param twin of POST
             // _remove (which takes a MessageFilter body); it accepts the exact
-            // search params already built for GET /messages.
-            await api.del(`/channels/${channelId}/messages`, filter);
+            // search params already built for GET /messages. Removing a whole
+            // result set can outlast the default ceiling — no client timeout.
+            await api.del(`/channels/${channelId}/messages`, filter, { timeoutMs: null });
             toast('Messages removed');
             searchRef.current(true);
         } catch (e: any) {
