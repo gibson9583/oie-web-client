@@ -76,63 +76,6 @@ export default [
         },
     },
 
-    // React shell/views (.jsx) — browser runtime + React rules. jsx-uses-vars
-    // keeps no-unused-vars from false-flagging components used only in JSX;
-    // react-hooks catches the effect-deps/once-only-setup bugs that bite ported
-    // imperative code (Monaco, intervals, subscriptions). Automatic JSX runtime,
-    // so React need not be in scope.
-    {
-        files: ['web-administrator/client/**/*.jsx'],
-        // Connector panels are .jsx too but use the classic JSX runtime — they
-        // get their own block below (this one assumes the automatic runtime).
-        ignores: ['web-administrator/client/connectors/*.jsx'],
-        languageOptions: {
-            ecmaVersion: 'latest',
-            sourceType: 'module',
-            globals: { ...globals.browser },
-            parserOptions: { ecmaFeatures: { jsx: true } },
-        },
-        plugins: { react, 'react-hooks': reactHooks },
-        settings: { react: { version: 'detect' } },
-        rules: {
-            'no-restricted-imports': ['error', noDeepPackageImports],
-            'no-undef': 'warn',
-            'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
-            'react/jsx-uses-vars': 'error',
-            'react/jsx-key': 'warn',
-            'react-hooks/rules-of-hooks': 'error',
-            'react-hooks/exhaustive-deps': 'warn',
-        },
-    },
-
-    // Raw-served React connector panels (.jsx). Unlike the shell views above,
-    // these are served UNBUNDLED and compiled by tools/build-connectors.mjs with
-    // the CLASSIC JSX runtime, so each imports `React` from ./react-platform.js
-    // (the lazy host-React bridge) and JSX compiles to React.createElement.
-    // jsx-uses-react marks that `React` import as used — without it the
-    // automatic-runtime block above would flag the import no-unused-vars.
-    {
-        files: ['web-administrator/client/connectors/*.jsx'],
-        languageOptions: {
-            ecmaVersion: 'latest',
-            sourceType: 'module',
-            globals: { ...globals.browser },
-            parserOptions: { ecmaFeatures: { jsx: true } },
-        },
-        plugins: { react, 'react-hooks': reactHooks },
-        settings: { react: { version: 'detect' } },
-        rules: {
-            'no-restricted-imports': ['error', noDeepPackageImports],
-            'no-undef': 'warn',
-            'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
-            'react/jsx-uses-vars': 'error',
-            'react/jsx-uses-react': 'error',
-            'react/jsx-key': 'warn',
-            'react-hooks/rules-of-hooks': 'error',
-            'react-hooks/exhaustive-deps': 'warn',
-        },
-    },
-
     // React shell/views + datatypes (.tsx/.ts, automatic JSX runtime) — the
     // hooks rules guard the same effect-deps/once-only-setup bugs they did on
     // the .jsx sources.
@@ -151,9 +94,10 @@ export default [
     },
 
     // Raw-served TypeScript core + connector panels + bundled plugin sources
-    // (classic JSX runtime against the lazy host React).
+    // (classic JSX runtime against the lazy host React), plus the @oie/*
+    // package barrels — the public entries third-party plugins import.
     {
-        files: ['web-administrator/client/react/**/*.ts', 'web-administrator/client/datatypes/*.ts', 'web-administrator/client/core/*.ts', 'web-administrator/client/connectors/*.ts', 'web-administrator/plugins/*/web/*.ts'],
+        files: ['web-administrator/client/react/**/*.ts', 'web-administrator/client/datatypes/*.ts', 'web-administrator/client/core/*.ts', 'web-administrator/client/connectors/*.ts', 'web-administrator/plugins/*/web/*.ts', 'packages/*/index.ts'],
         ignores: ['**/*.d.ts'],
         languageOptions: tsLanguageOptions,
         plugins: { 'react-hooks': reactHooks },
@@ -185,8 +129,6 @@ export default [
     {
         files: [
             'web-administrator/server/**/*.js',
-            'packages/**/vite.config.js',
-            'web-administrator/vite.config.js',
             'eslint.config.js',
             '**/*.test.js',
         ],
