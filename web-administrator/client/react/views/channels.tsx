@@ -889,8 +889,10 @@ export function ChannelsView() {
     async function exportAllTask() {
         if (!channels.length) { toast('No channels to export', 'warn'); return; }
         try {
-            // One combined Swing-format <list> of <channel> elements.
-            await saveFile('channels.xml', 'application/xml', () => api.getXml('/channels'));
+            // One combined Swing-format <list> of <channel> elements. Serializing
+            // every channel takes the engine minutes on a big server — no client
+            // ceiling (timeoutMs: null).
+            await saveFile('channels.xml', 'application/xml', () => api.getXml('/channels', undefined, { timeoutMs: null }));
         } catch (e: any) {
             toast(e.message, 'error');
         }
@@ -1140,7 +1142,7 @@ export function ChannelsView() {
         if (!group) return;
         try {
             await saveFile(`${group.name || group.id}.xml`, 'application/xml', async () => {
-                const xml = await api.getXml('/channelgroups');
+                const xml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
                 const doc = new DOMParser().parseFromString(xml, 'text/xml');
                 if (doc.querySelector('parsererror')) throw new Error('Engine returned invalid XML');
                 const el = [...doc.querySelectorAll('channelGroup')].find(node =>
@@ -1155,7 +1157,9 @@ export function ChannelsView() {
 
     async function exportGroupsTask() {
         try {
-            await saveFile('channel-groups.xml', 'application/xml', () => api.getXml('/channelgroups'));
+            // The group export embeds every channel — same open-ended engine
+            // serialization as Export All Channels, so no client ceiling.
+            await saveFile('channel-groups.xml', 'application/xml', () => api.getXml('/channelgroups', undefined, { timeoutMs: null }));
         } catch (e: any) {
             toast(e.message, 'error');
         }

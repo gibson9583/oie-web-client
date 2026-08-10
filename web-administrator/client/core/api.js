@@ -80,13 +80,28 @@ function setReachable(next) {
 function send(url, init, opts) {
     // A hard ceiling so a wedged proxy/engine socket cannot hang a caller's
     // await forever (spinners that never resolve). Generous because legitimate
-    // engine calls can be slow (large channel groups, message exports).
-    if (!init.signal)
-        init.signal = AbortSignal.timeout(120_000);
+    // engine calls can be slow (large channel groups, message exports), and
+    // overridable (RequestOptions.timeoutMs) because some operations are
+    // legitimately open-ended: aborting them wouldn't stop the engine, only
+    // orphan the work in flight.
+    const timeoutMs = opts?.timeoutMs === undefined ? 120_000 : opts.timeoutMs;
+    if (!init.signal && timeoutMs !== null)
+        init.signal = AbortSignal.timeout(timeoutMs);
     return fetch(url, init).then((response) => {
         setReachable(!GATEWAY_STATUSES.has(response.status));
         return handle(response, opts);
-    }, (err) => { setReachable(false); throw err; });
+    }, (err) => {
+        // The ceiling above fired: the CLIENT stopped waiting. The bare
+        // DOMException ("signal timed out") reads like an engine failure and
+        // invites retrying an operation the engine may still be executing —
+        // say what actually happened. A slow answer is also not an
+        // unreachable engine, so reachability is left alone.
+        if (err && err.name === 'TimeoutError') {
+            throw new Error(`No response after ${Math.round(timeoutMs / 1000)} seconds — the web administrator stopped waiting. The engine may still be completing the operation; check its result before retrying.`);
+        }
+        setReachable(false);
+        throw err;
+    });
 }
 function headers(contentType) {
     const h = {
@@ -235,7 +250,7 @@ export function get(path, params, opts) {
         method: 'GET', headers: headers(), credentials: 'same-origin'
     }, opts);
 }
-export function post(path, body, { params, contentType = 'application/json', wrapKey, raw, noAuthHandler } = {}) {
+export function post(path, body, { params, contentType = 'application/json', wrapKey, raw, noAuthHandler, timeoutMs } = {}) {
     let payload = body;
     if (body !== undefined && body !== null && typeof body !== 'string' && !(body instanceof FormData)) {
         payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
@@ -245,23 +260,23 @@ export function post(path, body, { params, contentType = 'application/json', wra
         headers: body instanceof FormData ? headers() : headers(contentType),
         credentials: 'same-origin',
         body: payload ?? null
-    }, { raw, noAuthHandler });
+    }, { raw, noAuthHandler, timeoutMs });
 }
-export function put(path, body, { params, contentType = 'application/json', wrapKey, raw } = {}) {
+export function put(path, body, { params, contentType = 'application/json', wrapKey, raw, timeoutMs } = {}) {
     let payload = body;
     if (body !== undefined && body !== null && typeof body !== 'string') {
         payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
     }
     return send(BASE + path + qs(params), {
         method: 'PUT', headers: headers(contentType), credentials: 'same-origin', body: payload ?? null
-    }, { raw });
+    }, { raw, timeoutMs });
 }
 /* ---- Raw XML content negotiation -------------------------------------------
    The engine's XStream serializer answers Accept: application/xml with the
    same XML the Swing Administrator reads/writes, and its JAX-RS endpoints
    consume raw application/xml bodies. These helpers skip all client-side
    (de)serialization so import/export round-trips are byte-faithful. */
-export function getXml(path, params) {
+export function getXml(path, params, opts) {
     return send(BASE + path + qs(params), {
         method: 'GET',
         headers: {
@@ -269,7 +284,7 @@ export function getXml(path, params) {
             'X-Requested-With': 'OpenIntegrationEngine-WebAdmin'
         },
         credentials: 'same-origin'
-    }, { raw: true });
+    }, { ...opts, raw: true });
 }
 export function postXml(path, xml, params) {
     return post(path, String(xml), { params, contentType: 'application/xml' });
@@ -277,10 +292,10 @@ export function postXml(path, xml, params) {
 export function putXml(path, xml, params) {
     return put(path, String(xml), { params, contentType: 'application/xml' });
 }
-export function del(path, params) {
+export function del(path, params, opts) {
     return send(BASE + path + qs(params), {
         method: 'DELETE', headers: headers(), credentials: 'same-origin'
-    });
+    }, opts);
 }
 /* When the engine returns a singleton or missing list, normalize to an array.
    XStream JSON renders one-element collections as a bare object, and classes
@@ -439,17 +454,21 @@ export const statistics = {
 /* ---- Engine (deploy) --------------------------------------------------------- */
 export const engine = {
     deploy: (channelId, returnErrors = true) => post(`/channels/${enc(channelId)}/_deploy`, null, { params: { returnErrors } }),
-    deployMany: (channelIds, returnErrors = true) => post('/channels/_deploy', { set: { string: channelIds } }, { params: { returnErrors } }),
+    // The fan-out deploys run as long as the slowest channel plus the deploy
+    // scripts — minutes on a big server — so they carry no client ceiling.
+    deployMany: (channelIds, returnErrors = true) => post('/channels/_deploy', { set: { string: channelIds } }, { params: { returnErrors }, timeoutMs: null }),
     undeploy: (channelId, returnErrors = true) => post(`/channels/${enc(channelId)}/_undeploy`, null, { params: { returnErrors } }),
     undeployMany: (channelIds, returnErrors = true) => post('/channels/_undeploy', { set: { string: channelIds } }, { params: { returnErrors } }),
-    redeployAll: (returnErrors = true) => post('/channels/_redeployAll', null, { params: { returnErrors } })
+    redeployAll: (returnErrors = true) => post('/channels/_redeployAll', null, { params: { returnErrors }, timeoutMs: null })
 };
 /* ===========================================================================
    Messages                                       /channels/{id}/messages
    ========================================================================== */
 export const messages = {
     search: (channelId, params) => get(`/channels/${enc(channelId)}/messages`, params).then(v => asList(v, 'message')),
-    count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params),
+    // A COUNT over a large message table is legitimately slow (it's why the
+    // browser defers it to an explicit button, like Swing) — no client ceiling.
+    count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params, { timeoutMs: null }),
     get: (channelId, messageId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
     maxMessageId: (channelId) => get(`/channels/${enc(channelId)}/messages/maxMessageId`),
     attachments: (channelId, messageId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments`).then(v => asList(v, 'attachment')),
@@ -517,7 +536,10 @@ export const server = {
     updateSettings: () => get('/server/updateSettings'),
     setUpdateSettings: (settings) => put('/server/updateSettings', settings, { wrapKey: 'updateSettings' }),
     configuration: (params) => get('/server/configuration', params),
-    setConfiguration: (config, deploy = false, overwriteConfigMap = false) => put('/server/configuration', config, { wrapKey: 'serverConfiguration', params: { deploy, overwriteConfigMap } }),
+    // A configuration restore with deploy=true redeploys every channel; cutting
+    // it off client-side mid-restore invites a retry the engine is still
+    // executing — no client ceiling.
+    setConfiguration: (config, deploy = false, overwriteConfigMap = false) => put('/server/configuration', config, { wrapKey: 'serverConfiguration', params: { deploy, overwriteConfigMap }, timeoutMs: null }),
     testEmail: (properties) => post('/server/_testEmail', properties, { wrapKey: 'properties' }),
     generateGUID: () => post('/server/_generateGUID', null, { raw: true }),
     globalScripts: () => get('/server/globalScripts'),

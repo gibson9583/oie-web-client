@@ -35,6 +35,11 @@ export interface RequestOptions {
     raw?: boolean;
     /** Treat 401 as a credentials error (don't fire the global session-expired handler). */
     noAuthHandler?: boolean;
+    /** Client-side wait ceiling in ms (default 120 000). Pass `null` for engine
+        operations that legitimately run longer (redeploy-all, restore, server
+        export, filter-wide remove/reprocess, COUNT): aborting the request does
+        not stop the engine — it only abandons the work mid-flight. */
+    timeoutMs?: number | null;
 }
 
 export interface WriteOptions extends RequestOptions {
@@ -116,14 +121,29 @@ function setReachable(next: boolean): void {
 function send(url: string, init: RequestInit, opts?: RequestOptions): Promise<Json> {
     // A hard ceiling so a wedged proxy/engine socket cannot hang a caller's
     // await forever (spinners that never resolve). Generous because legitimate
-    // engine calls can be slow (large channel groups, message exports).
-    if (!init.signal) init.signal = AbortSignal.timeout(120_000);
+    // engine calls can be slow (large channel groups, message exports), and
+    // overridable (RequestOptions.timeoutMs) because some operations are
+    // legitimately open-ended: aborting them wouldn't stop the engine, only
+    // orphan the work in flight.
+    const timeoutMs = opts?.timeoutMs === undefined ? 120_000 : opts.timeoutMs;
+    if (!init.signal && timeoutMs !== null) init.signal = AbortSignal.timeout(timeoutMs);
     return fetch(url, init).then(
         (response) => {
             setReachable(!GATEWAY_STATUSES.has(response.status));
             return handle(response, opts);
         },
-        (err) => { setReachable(false); throw err; }
+        (err) => {
+            // The ceiling above fired: the CLIENT stopped waiting. The bare
+            // DOMException ("signal timed out") reads like an engine failure and
+            // invites retrying an operation the engine may still be executing —
+            // say what actually happened. A slow answer is also not an
+            // unreachable engine, so reachability is left alone.
+            if (err && err.name === 'TimeoutError') {
+                throw new Error(`No response after ${Math.round((timeoutMs as number) / 1000)} seconds — the web administrator stopped waiting. The engine may still be completing the operation; check its result before retrying.`);
+            }
+            setReachable(false);
+            throw err;
+        }
     );
 }
 
@@ -268,7 +288,7 @@ export function get(path: string, params?: QueryParams | null, opts?: RequestOpt
     }, opts);
 }
 
-export function post(path: string, body?: any, { params, contentType = 'application/json', wrapKey, raw, noAuthHandler }: WriteOptions = {}): Promise<Json> {
+export function post(path: string, body?: any, { params, contentType = 'application/json', wrapKey, raw, noAuthHandler, timeoutMs }: WriteOptions = {}): Promise<Json> {
     let payload = body;
     if (body !== undefined && body !== null && typeof body !== 'string' && !(body instanceof FormData)) {
         payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
@@ -278,17 +298,17 @@ export function post(path: string, body?: any, { params, contentType = 'applicat
         headers: body instanceof FormData ? headers() : headers(contentType),
         credentials: 'same-origin',
         body: payload ?? null
-    }, { raw, noAuthHandler });
+    }, { raw, noAuthHandler, timeoutMs });
 }
 
-export function put(path: string, body?: any, { params, contentType = 'application/json', wrapKey, raw }: WriteOptions = {}): Promise<Json> {
+export function put(path: string, body?: any, { params, contentType = 'application/json', wrapKey, raw, timeoutMs }: WriteOptions = {}): Promise<Json> {
     let payload = body;
     if (body !== undefined && body !== null && typeof body !== 'string') {
         payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
     }
     return send(BASE + path + qs(params), {
         method: 'PUT', headers: headers(contentType), credentials: 'same-origin', body: payload ?? null
-    }, { raw });
+    }, { raw, timeoutMs });
 }
 
 /* ---- Raw XML content negotiation -------------------------------------------
@@ -297,7 +317,7 @@ export function put(path: string, body?: any, { params, contentType = 'applicati
    consume raw application/xml bodies. These helpers skip all client-side
    (de)serialization so import/export round-trips are byte-faithful. */
 
-export function getXml(path: string, params?: QueryParams): Promise<string> {
+export function getXml(path: string, params?: QueryParams, opts?: RequestOptions): Promise<string> {
     return send(BASE + path + qs(params), {
         method: 'GET',
         headers: {
@@ -305,7 +325,7 @@ export function getXml(path: string, params?: QueryParams): Promise<string> {
             'X-Requested-With': 'OpenIntegrationEngine-WebAdmin'
         },
         credentials: 'same-origin'
-    }, { raw: true });
+    }, { ...opts, raw: true });
 }
 
 export function postXml(path: string, xml: string, params?: QueryParams): Promise<Json> {
@@ -316,10 +336,10 @@ export function putXml(path: string, xml: string, params?: QueryParams): Promise
     return put(path, String(xml), { params, contentType: 'application/xml' });
 }
 
-export function del(path: string, params?: QueryParams): Promise<Json> {
+export function del(path: string, params?: QueryParams, opts?: RequestOptions): Promise<Json> {
     return send(BASE + path + qs(params), {
         method: 'DELETE', headers: headers(), credentials: 'same-origin'
-    });
+    }, opts);
 }
 
 /* When the engine returns a singleton or missing list, normalize to an array.
@@ -704,12 +724,14 @@ export const statistics: StatisticsApi = {
 
 export const engine: EngineApi = {
     deploy: (channelId, returnErrors = true) => post(`/channels/${enc(channelId)}/_deploy`, null, { params: { returnErrors } }),
+    // The fan-out deploys run as long as the slowest channel plus the deploy
+    // scripts — minutes on a big server — so they carry no client ceiling.
     deployMany: (channelIds, returnErrors = true) =>
-        post('/channels/_deploy', { set: { string: channelIds } }, { params: { returnErrors } }),
+        post('/channels/_deploy', { set: { string: channelIds } }, { params: { returnErrors }, timeoutMs: null }),
     undeploy: (channelId, returnErrors = true) => post(`/channels/${enc(channelId)}/_undeploy`, null, { params: { returnErrors } }),
     undeployMany: (channelIds, returnErrors = true) =>
         post('/channels/_undeploy', { set: { string: channelIds } }, { params: { returnErrors } }),
-    redeployAll: (returnErrors = true) => post('/channels/_redeployAll', null, { params: { returnErrors } })
+    redeployAll: (returnErrors = true) => post('/channels/_redeployAll', null, { params: { returnErrors }, timeoutMs: null })
 };
 
 /* ===========================================================================
@@ -719,7 +741,9 @@ export const engine: EngineApi = {
 export const messages: MessagesApi = {
     search: (channelId, params) =>
         get(`/channels/${enc(channelId)}/messages`, params).then(v => asList<Message>(v, 'message')),
-    count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params),
+    // A COUNT over a large message table is legitimately slow (it's why the
+    // browser defers it to an explicit button, like Swing) — no client ceiling.
+    count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params, { timeoutMs: null }),
     get: (channelId, messageId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
     maxMessageId: (channelId) => get(`/channels/${enc(channelId)}/messages/maxMessageId`),
     attachments: (channelId, messageId) =>
@@ -796,8 +820,11 @@ export const server: ServerApi = {
     updateSettings: () => get('/server/updateSettings'),
     setUpdateSettings: (settings) => put('/server/updateSettings', settings, { wrapKey: 'updateSettings' }),
     configuration: (params) => get('/server/configuration', params),
+    // A configuration restore with deploy=true redeploys every channel; cutting
+    // it off client-side mid-restore invites a retry the engine is still
+    // executing — no client ceiling.
     setConfiguration: (config, deploy = false, overwriteConfigMap = false) =>
-        put('/server/configuration', config, { wrapKey: 'serverConfiguration', params: { deploy, overwriteConfigMap } }),
+        put('/server/configuration', config, { wrapKey: 'serverConfiguration', params: { deploy, overwriteConfigMap }, timeoutMs: null }),
     testEmail: (properties) => post('/server/_testEmail', properties, { wrapKey: 'properties' }),
     generateGUID: () => post('/server/_generateGUID', null, { raw: true }),
     globalScripts: () => get('/server/globalScripts'),

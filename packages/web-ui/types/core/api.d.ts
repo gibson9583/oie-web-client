@@ -8,6 +8,11 @@ export interface RequestOptions {
     raw?: boolean;
     /** Treat 401 as a credentials error (don't fire the global session-expired handler). */
     noAuthHandler?: boolean;
+    /** Client-side wait ceiling in ms (default 120 000). Pass `null` for engine
+        operations that legitimately run longer (redeploy-all, restore, server
+        export, filter-wide remove/reprocess, COUNT): aborting the request does
+        not stop the engine — it only abandons the work mid-flight. */
+    timeoutMs?: number | null;
 }
 export interface WriteOptions extends RequestOptions {
     params?: QueryParams;
@@ -32,12 +37,12 @@ export declare class ApiError extends Error {
 /** Parse an engine response body (JSON or XML), unwrapping the XStream root key. */
 export declare function parseBody(text: string | null | undefined): Json;
 export declare function get(path: string, params?: QueryParams | null, opts?: RequestOptions): Promise<Json>;
-export declare function post(path: string, body?: any, { params, contentType, wrapKey, raw, noAuthHandler }?: WriteOptions): Promise<Json>;
-export declare function put(path: string, body?: any, { params, contentType, wrapKey, raw }?: WriteOptions): Promise<Json>;
-export declare function getXml(path: string, params?: QueryParams): Promise<string>;
+export declare function post(path: string, body?: any, { params, contentType, wrapKey, raw, noAuthHandler, timeoutMs }?: WriteOptions): Promise<Json>;
+export declare function put(path: string, body?: any, { params, contentType, wrapKey, raw, timeoutMs }?: WriteOptions): Promise<Json>;
+export declare function getXml(path: string, params?: QueryParams, opts?: RequestOptions): Promise<string>;
 export declare function postXml(path: string, xml: string, params?: QueryParams): Promise<Json>;
 export declare function putXml(path: string, xml: string, params?: QueryParams): Promise<Json>;
-export declare function del(path: string, params?: QueryParams): Promise<Json>;
+export declare function del(path: string, params?: QueryParams, opts?: RequestOptions): Promise<Json>;
 export declare function asList<T = OieObject>(value: any, key?: string): T[];
 export interface AuthApi {
     /** Idle-timeout logout — the engine event log records "Logged out due to inactivity". */
