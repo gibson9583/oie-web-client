@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
 
 permissions:
   contents: read
@@ -24,12 +26,18 @@ env:
 jobs:
   publish:
     name: Build & push image
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    env:
+      # Fork PRs get no repo secrets, so they cannot log in to Docker Hub:
+      # they build the image as validation, while same-repo runs also push.
+      PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Log in to Docker Hub
+        if: env.PUSH == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME || 'gibson9583' }}
@@ -40,11 +48,13 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           # main -> latest; a vX.Y.Z tag -> X.Y.Z and X.Y (latest is NOT moved
-          # by releases — it tracks the latest main commit).
+          # by releases — it tracks the latest main commit); a PR -> pr-N,
+          # updated on every push to the PR.
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=pr
           # latest=auto would also move `latest` on release tags; only the
           # explicit rule above (main pushes) may set it.
           flavor: |
@@ -54,8 +64,35 @@ jobs:
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
-          push: true
+          push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # A merged or closed PR takes its pr-N tag with it. Requires the token to
+  # carry Docker Hub's "delete" scope (a Read/Write-only token gets a 403 —
+  # regenerate as Read, Write, Delete if this job ever fails there). Fork PRs
+  # never pushed a tag, so there is nothing to remove.
+  remove-pr-image:
+    name: Remove PR image
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the pr-N tag from Docker Hub
+        env:
+          USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'gibson9583' }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          TAG: pr-${{ github.event.pull_request.number }}
+        run: |
+          JWT=$(curl -fsS -H 'Content-Type: application/json' \
+                -d "{\"username\":\"$USERNAME\",\"password\":\"$TOKEN\"}" \
+                https://hub.docker.com/v2/users/login | jq -r .token)
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+                -H "Authorization: Bearer $JWT" \
+                "https://hub.docker.com/v2/repositories/$IMAGE_NAME/tags/$TAG/")
+          case "$STATUS" in
+            2*)  echo "deleted $IMAGE_NAME:$TAG" ;;
+            404) echo "$IMAGE_NAME:$TAG was never pushed — nothing to remove" ;;
+            *)   echo "::error::Docker Hub tag delete failed with HTTP $STATUS"; exit 1 ;;
+          esac
