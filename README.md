@@ -51,7 +51,7 @@ oie-web-client/
 
 | Tool | Version | Notes |
 |---|---|---|
-| **Node.js** | **20 LTS or newer** (18.18+ minimum) | Runs the server, the Vite build, and the tests; bundles a compatible npm. Check with `node -v`. |
+| **Node.js** | **22 LTS recommended** (20.19+ minimum) | Runs the server, the Vite build, and the tests; bundles a compatible npm. Check with `node -v`. Vite 8 requires 20.19+, and the lint toolchain (Babel 8) wants 22.18+; the built server alone still runs on 18+. |
 | **npm** | **9+** (ships with Node 18+) | This is an npm-**workspaces** monorepo (npm 7+ required). Yarn/pnpm are not used. |
 | **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. This release line targets OIE 4.6.0. |
 | **OIE Web Support plugin** | latest | **Required.** Installs the engine REST endpoints the web client uses for byte-exact message-tree serialization and JavaScript validation/formatting — these aren't in the core 4.6.0 engine. Install it into the engine's `extensions/` and restart. → **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)** |
@@ -98,10 +98,54 @@ start` serves when present (otherwise it serves the source directly). Either pat
 keeps the framework a single shared instance, so runtime-loaded plugins resolve
 against the same copy.
 
+## Run with Docker
+
+Prebuilt images are published to Docker Hub as
+[`gibson9583/oie-web-client`](https://hub.docker.com/r/gibson9583/oie-web-client):
+`latest` tracks the latest `main` commit, `X.Y.Z` / `X.Y` are cut from releases,
+and `pr-N` previews open pull requests (removed when the PR closes).
+
+```bash
+docker run --rm -p 3030:3030 \
+  -e OIE_URL=https://host.docker.internal:8443 \
+  gibson9583/oie-web-client:latest
+```
+
+Inside a container `localhost` is the container itself — use
+`host.docker.internal` to reach an engine running on the Docker host (Docker
+Desktop), or the engine's real hostname otherwise.
+
+The image bakes in **no configuration** — it reads the same settings as a source
+install (see [Configuration](#configuration)). Env vars cover the per-setting
+overrides; for the full config document — `allowedUrls`, `tls`, `pluginDirs`,
+plugin settings — mount a file or pass the JSON inline:
+
+```bash
+# Mount a config document (reference any PEMs by absolute path):
+docker run --rm -p 3030:3030 \
+  -v ./my-config:/config:ro -e WEBADMIN_CONFIG=/config/config.json \
+  gibson9583/oie-web-client:latest
+
+# …or inject the document itself (e.g. from an orchestrator secret):
+docker run --rm -p 3030:3030 \
+  -e WEBADMIN_CONFIG_JSON='{"allowedUrls":[{"name":"Prod","url":"https://oie-prod:8443"}]}' \
+  gibson9583/oie-web-client:latest
+```
+
+The container runs as the non-root `node` user and serves plain HTTP on `3030` —
+terminate TLS in front, or configure [built-in TLS](#serving-over-https) with
+mounted PEMs. Build the image yourself with `docker build -t oie-web-client .`
+from the repo root.
+
 ## Configuration
 
-Settings load from `web-administrator/config.json` (gitignored — it holds
-machine-specific paths), with environment-variable overrides. Start from
+Settings load from a single JSON **config document**, then per-setting
+environment-variable overrides on top. The document comes from the first of
+(highest wins): `WEBADMIN_CONFIG_JSON` (the JSON itself, inline), the file named
+by `WEBADMIN_CONFIG` (mountable anywhere in a container), or
+`web-administrator/config.json` (gitignored — it holds machine-specific paths).
+An explicitly named source that is missing or unparseable fails startup rather
+than silently booting on defaults. Start from
 [`config.example.json`](web-administrator/config.example.json):
 
 | Setting | Env var | Default | Description |
@@ -189,7 +233,7 @@ plugin UIs are disabled with a notice. Format Document runs entirely client-side
 | Login fails, "engine unreachable", or a `502` | The engine isn't running or `engine.url` is wrong. Confirm `<engine.url>/api/server/version` responds. |
 | TLS / certificate errors reaching the engine | Keep `engine.verifyTls` = `false` for a self-signed engine (the default). |
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
-| Vite or syntax errors on `npm run dev` / `npm start` | Use Node 20 LTS+ (`node -v`); Node < 18.18 can't run Vite 5 and the test tooling. |
+| Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22 LTS (`node -v`); Node < 20.19 can't run Vite 8 and the test tooling. |
 | Message trees, Validate Script, or plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install `websupport-<version>.zip` from the Extensions page and restart the engine. |
 
 ## Plugins & the Community Store
@@ -234,7 +278,7 @@ Run from the repo root:
 | Command | What it does |
 |---|---|
 | `npm run lint` | ESLint across the repo, including the `@oie/*` import-boundary rules |
-| `npm run typecheck` | `tsc` over `type-tests/` — validates the `@oie/*` public type surface |
+| `npm run typecheck` | `tsc` over six projects — the `@oie/*` public type surface (`type-tests/`), the client, server, plugins, views, and the e2e suite |
 | `npm run e2e` | Playwright suite; `/api/*` is mocked in-browser, so it runs with no engine |
 | `npm run e2e:live` | The same specs against a real engine (opt-in via `E2E_LIVE=1`) |
 | `npm run gen:userapi` | Regenerate `client/core/userapi.generated.js` from the engine's REST surface |
