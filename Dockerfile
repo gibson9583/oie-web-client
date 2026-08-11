@@ -5,7 +5,7 @@
 # inside web-administrator/ breaks the @oie/* links) and produce the built
 # client (client/dist, vendor bundles, plugin bundles).
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # Manifests first so the npm ci layer caches across source-only changes.
@@ -29,7 +29,7 @@ RUN npm run build -w web-administrator
 #   the document inline    WEBADMIN_CONFIG_JSON='{"allowedUrls":[...],"tls":{...}}'
 # Use absolute paths for mounted PEM/plugin paths inside the document.
 # ---------------------------------------------------------------------------
-FROM node:20-alpine
+FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 
