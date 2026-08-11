@@ -1,0 +1,25 @@
+# Keep the build context to what the image actually needs.
+.git
+.github
+node_modules
+**/node_modules
+
+# Tests and tooling that never run inside the image.
+e2e
+type-tests
+test-results
+playwright.config.ts
+
+# Local-only state — config.json may hold real engine URLs and must never
+# be baked into an image; dist is rebuilt inside the container.
+web-administrator/config.json
+web-administrator/custom-plugins
+web-administrator/client/dist
+derby.log
+
+# Docs and working notes.
+*.md
+*.pdf
+
+Dockerfile
+.dockerignore
