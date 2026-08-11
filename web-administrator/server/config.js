@@ -5,10 +5,20 @@
  *
  * Resolution order (later wins):
  *   1. Built-in defaults
- *   2. config.json in the project root (optional)
- *   3. Environment variables
+ *   2. ONE config document: WEBADMIN_CONFIG_JSON (inline JSON), else the file
+ *      named by WEBADMIN_CONFIG, else config.json in the project root (optional)
+ *   3. Environment variables (the per-setting overrides below)
  *
  * Environment variables:
+ *   WEBADMIN_CONFIG      Path to the config JSON document (absolute, or resolved
+ *                        against the working directory) — the full surface:
+ *                        engine/allowedUrls, tls, pluginDirs, plugin settings.
+ *                        Lets a container mount the config anywhere. Startup
+ *                        fails if the file is missing or invalid.
+ *   WEBADMIN_CONFIG_JSON The config JSON document itself, passed inline (e.g. an
+ *                        orchestrator-injected env var or secret). Takes
+ *                        precedence over WEBADMIN_CONFIG. Startup fails on
+ *                        invalid JSON.
  *   WEBADMIN_PORT        Port the web administrator listens on (default 3030)
  *   WEBADMIN_HOST        Bind address (default 0.0.0.0)
  *   OIE_URL              Base URL of the engine, e.g. https://localhost:8443
@@ -104,18 +114,41 @@ const defaults = {
 };
 function load() {
     const config = JSON.parse(JSON.stringify(defaults));
-    const configFile = path.join(ROOT, 'config.json');
-    if (fs.existsSync(configFile)) {
+    // ONE config document feeds this layer: inline JSON (WEBADMIN_CONFIG_JSON),
+    // else an explicit file (WEBADMIN_CONFIG), else the optional ./config.json.
+    // Explicit sources fail hard — a typo'd path or bad JSON must not silently
+    // boot a default-configured server. Relative paths inside the document
+    // (tls.key/cert, pluginDirs) resolve against the app root regardless of
+    // where the document came from, so mounted configs should use absolute paths.
+    let doc = null;
+    if (process.env.WEBADMIN_CONFIG_JSON) {
+        if (process.env.WEBADMIN_CONFIG)
+            console.error('[config] WEBADMIN_CONFIG_JSON is set — ignoring WEBADMIN_CONFIG');
         try {
-            const fileConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            Object.assign(config, fileConfig, {
-                engine: Object.assign({}, config.engine, fileConfig.engine || {})
-            });
+            doc = JSON.parse(process.env.WEBADMIN_CONFIG_JSON);
         }
         catch (e) {
-            console.error(`[config] Failed to parse ${configFile}: ${e.message}`);
+            console.error(`[config] Failed to parse WEBADMIN_CONFIG_JSON: ${e.message}`);
             process.exit(1);
         }
+    }
+    else {
+        const explicit = process.env.WEBADMIN_CONFIG;
+        const configFile = explicit ? path.resolve(explicit) : path.join(ROOT, 'config.json');
+        if (explicit || fs.existsSync(configFile)) {
+            try {
+                doc = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+            }
+            catch (e) {
+                console.error(`[config] Failed to read ${configFile}: ${e.message}`);
+                process.exit(1);
+            }
+        }
+    }
+    if (doc) {
+        Object.assign(config, doc, {
+            engine: Object.assign({}, config.engine, doc.engine || {})
+        });
     }
     if (process.env.WEBADMIN_PORT)
         config.port = parseInt(process.env.WEBADMIN_PORT, 10);
