@@ -1,11 +1,16 @@
 # syntax=docker/dockerfile:1
 
+# Every stage that RUNs anything executes on the BUILD platform — emulated npm
+# SIGILLs under QEMU on node 22's arm64 binary (and was the slow path anyway).
+# All output copied into the final image is architecture-independent JS, so
+# only the final stage's base layers differ per platform.
+
 # ---------------------------------------------------------------------------
 # Build stage: install the full npm workspace (root install — installing
 # inside web-administrator/ breaks the @oie/* links) and produce the built
 # client (client/dist, vendor bundles, plugin bundles).
 # ---------------------------------------------------------------------------
-FROM node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 
 # Manifests first so the npm ci layer caches across source-only changes.
@@ -22,8 +27,24 @@ COPY web-administrator web-administrator
 RUN npm run build -w web-administrator
 
 # ---------------------------------------------------------------------------
-# Runtime stage: production dependencies only, plus the built app. Nothing is
-# baked in — configure from outside the image (see web-administrator/server/config.ts):
+# Production dependencies, installed once on the build platform. Sound because
+# every production dependency is pure JS — if a native prod dep is ever added,
+# this stage must go back to running per-architecture.
+# ---------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM node:22-alpine AS proddeps
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY packages/eslint-config/package.json packages/eslint-config/
+COPY packages/web-api/package.json packages/web-api/
+COPY packages/web-shell/package.json packages/web-shell/
+COPY packages/web-ui/package.json packages/web-ui/
+COPY web-administrator/package.json web-administrator/
+RUN npm ci --omit=dev && npm cache clean --force
+
+# ---------------------------------------------------------------------------
+# Runtime stage (per-architecture, no RUN steps): production dependencies plus
+# the built app. Nothing is baked in — configure from outside the image (see
+# web-administrator/server/config.ts):
 #   per-setting env vars   OIE_URL, WEBADMIN_PORT, WEBADMIN_TLS_KEY/CERT, ...
 #   a mounted document     WEBADMIN_CONFIG=/config/config.json
 #   the document inline    WEBADMIN_CONFIG_JSON='{"allowedUrls":[...],"tls":{...}}'
@@ -33,13 +54,7 @@ FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-COPY packages/eslint-config/package.json packages/eslint-config/
-COPY packages/web-api/package.json packages/web-api/
-COPY packages/web-shell/package.json packages/web-shell/
-COPY packages/web-ui/package.json packages/web-ui/
-COPY web-administrator/package.json web-administrator/
-RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=proddeps /app /app
 
 # The workspace links in node_modules/@oie point into packages/, so the real
 # package sources must be present.
