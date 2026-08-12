@@ -294,7 +294,9 @@ function createOidcRouter(config) {
             for (const cookie of (0, proxy_1.rewriteSetCookies)(upstreamCookies, secure))
                 res.append('Set-Cookie', cookie);
             res.append('Set-Cookie', `oie-engine=${found.index}; Path=/; SameSite=Lax${secure ? '; Secure' : ''}`);
-            const pluginMissing = status === 'FAIL' && /invalid (username|user name).*password/i.test(String(result.message || ''));
+            // Local auth answers "Incorrect username or password." — an oidc:-prefixed
+            // password can only reach local auth when no OIDC plugin intercepted it.
+            const pluginMissing = status === 'FAIL' && /incorrect username or password|invalid (username|user name).*password/i.test(String(result.message || ''));
             const message = result.clientPluginClass ? String(result.message || '')
                 : pluginMissing ? 'The engine does not accept SSO. Verify that the OIDC Authentication extension is installed and configured.'
                     : status === 'FAIL' ? 'SSO sign-in was rejected.' : String(result.message || '');
