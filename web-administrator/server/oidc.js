@@ -42,6 +42,7 @@ exports.openTransaction = openTransaction;
 exports.validReturnPath = validReturnPath;
 exports.validateIdTokenClaims = validateIdTokenClaims;
 exports.engineOidcConfiguration = engineOidcConfiguration;
+exports.throttleKey = throttleKey;
 exports.createOidcRouter = createOidcRouter;
 const crypto = __importStar(require("crypto"));
 const express_1 = __importDefault(require("express"));
@@ -187,11 +188,30 @@ async function providerAt(config, raw) {
     const clientId = engine?.configured ? engine.clientId : web.clientId;
     return discoveryUrl && clientId ? { index, provider: { ...web, discoveryUrl, clientId } } : null;
 }
-function limiter() {
+// The address the throttle should count: behind the deployment's trusted front
+// proxy every browser shares one socket address, so use the client the proxy
+// reports (the RIGHTMOST X-Forwarded-For hop — appended by the trusted proxy,
+// unforgeable by the client, unlike the client-suppliable leftmost entries).
+function throttleKey(remoteAddress, forwardedFor, trusted) {
+    if ((0, proxy_1.isTrustedPeer)(remoteAddress, trusted)) {
+        const hops = String(forwardedFor || '').split(',').map((hop) => hop.trim()).filter(Boolean);
+        if (hops.length)
+            return hops[hops.length - 1];
+    }
+    return String(remoteAddress || 'unknown');
+}
+function limiter(trusted) {
     const hits = new Map();
     return (req, res, next) => {
-        const key = String(req.socket.remoteAddress || 'unknown');
+        const key = throttleKey(req.socket.remoteAddress, req.headers['x-forwarded-for'], trusted);
         const now = Date.now();
+        // Drop buckets whose window has fully passed so one-off addresses
+        // don't accumulate forever.
+        if (hits.size > 1000)
+            for (const [stale, times] of hits) {
+                if (now - (times[times.length - 1] || 0) >= 60000)
+                    hits.delete(stale);
+            }
         const recent = (hits.get(key) || []).filter((time) => now - time < 60000);
         if (recent.length >= 30) {
             res.status(429).send('Too many OIDC requests. Try again shortly.');
@@ -205,7 +225,7 @@ function limiter() {
 function createOidcRouter(config) {
     const router = express_1.default.Router();
     const trusted = new Set(config.trustedProxies || []);
-    router.use(limiter());
+    router.use(limiter(trusted));
     router.get('/start', async (req, res) => {
         const found = await providerAt(config, req.query.engine);
         if (!found) {

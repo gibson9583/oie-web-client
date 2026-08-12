@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { openTransaction, sealTransaction, validReturnPath, validateIdTokenClaims } from './oidc';
+import { openTransaction, sealTransaction, throttleKey, validReturnPath, validateIdTokenClaims } from './oidc';
 import { normalizeOidc } from './config';
 
 const secret = 'a sufficiently long test client secret';
@@ -12,6 +12,11 @@ assert.throws(() => openTransaction(sealed.join('.'), secret, now), /invalid/);
 assert.throws(() => openTransaction(sealTransaction({ ...txn, created: now - 700000 }, secret), secret, now), /expired/);
 assert.strictEqual(validReturnPath('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)']) assert.strictEqual(validReturnPath(bad), '/');
+
+const trusted = new Set(['10.0.0.1']);
+assert.strictEqual(throttleKey('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');
+assert.strictEqual(throttleKey('192.0.2.9', '203.0.113.5', trusted), '192.0.2.9');
+assert.strictEqual(throttleKey('10.0.0.1', undefined, trusted), '10.0.0.1');
 
 const metadata = { issuer: 'https://issuer.test', authorization_endpoint: 'https://issuer.test/auth', token_endpoint: 'https://issuer.test/token' };
 const provider: any = { clientId: 'client' };

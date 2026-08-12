@@ -48,6 +48,10 @@ assert.throws(() => (0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)({ ..
 assert.strictEqual((0, oidc_1.validReturnPath)('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)'])
     assert.strictEqual((0, oidc_1.validReturnPath)(bad), '/');
+const trusted = new Set(['10.0.0.1']);
+assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');
+assert.strictEqual((0, oidc_1.throttleKey)('192.0.2.9', '203.0.113.5', trusted), '192.0.2.9');
+assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', undefined, trusted), '10.0.0.1');
 const metadata = { issuer: 'https://issuer.test', authorization_endpoint: 'https://issuer.test/auth', token_endpoint: 'https://issuer.test/token' };
 const provider = { clientId: 'client' };
 const claims = { iss: metadata.issuer, aud: 'client', nonce: 'n', exp: Math.floor(now / 1000) + 60 };
