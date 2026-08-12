@@ -155,6 +155,9 @@ export function LoginForm({ onSuccess }: any) {
         }
         setError(result.message || 'SSO sign-in failed.');
         chooseLocal(true);
+        // Mount-only by design: the SSO result cookie and autoRedirect decision
+        // are consumed exactly once, for the engine selected at page load.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     async function submit(e: any) {
