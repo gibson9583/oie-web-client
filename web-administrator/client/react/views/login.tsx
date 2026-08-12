@@ -142,7 +142,13 @@ export function LoginForm({ onSuccess }: any) {
         const status = result.status || result;
         if (status === 'SUCCESS' || status === 'SUCCESS_GRACE_PERIOD') {
             api.auth.current().then((user: any) => onSuccess(user, { graceMessage: result.message || null }))
-                .catch(() => setError('SSO completed, but the engine session could not be loaded.'));
+                // 403 = the session is real but the account holds no permissions
+                // (an RBAC install with no role assigned — e.g. a JIT user and no
+                // default role). Say so; the generic line sends people debugging
+                // cookies when the fix is a role assignment.
+                .catch((err: any) => setError(err && err.status === 403
+                    ? 'Signed in via SSO, but this account has no permissions on this engine. Assign it an RBAC role (or set a default role in the OIDC policy) and sign in again.'
+                    : 'SSO completed, but the engine session could not be loaded.'));
             return;
         }
         if (result.clientPluginClass) {

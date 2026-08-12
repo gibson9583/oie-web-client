@@ -241,6 +241,15 @@ test.describe('OIDC login', () => {
         await expect(page.locator('input[type=password]')).toBeVisible();
     });
 
+    test('a roleless account under RBAC gets the missing-permissions explanation', async ({ page }) => {
+        // The engine session is real, but RBAC denies a user with no role even
+        // users/current (403) — the card must point at roles, not cookies.
+        await mockEngine(page, { 'GET /users/current': { __status: 403 } });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await expect(page.getByText(/no permissions on this engine/)).toBeVisible({ timeout: 15_000 });
+    });
+
     test('a retry after a rejected attempt forces IdP re-authentication', async ({ page }) => {
         // The IdP's own SSO session silently replays the same account; after a
         // rejection the retry must carry prompt=login so the user can switch.
