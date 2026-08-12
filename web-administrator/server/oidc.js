@@ -163,18 +163,20 @@ async function engineOidcConfiguration(config, index) {
     const cached = engineConfigCache.get(engine.url);
     if (cached && cached.expires > Date.now())
         return cached.value;
+    // This probe sits on the pre-auth login screen's path (/webadmin/config.json),
+    // so it must answer fast and remember failures: a black-holed engine gets a
+    // short timeout and a negative-cache entry instead of a stall per page load.
+    let value = null;
     try {
-        const response = await (0, proxy_1.engineRequest)(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' } });
-        if (response.status !== 200)
-            return null;
-        const parsed = JSON.parse(response.body.toString('utf8'));
-        const value = parsed && parsed.configured != null ? parsed : parsed?.publicConfiguration || parsed;
-        engineConfigCache.set(engine.url, { expires: Date.now() + 30000, value });
-        return value;
+        const response = await (0, proxy_1.engineRequest)(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' }, timeoutMs: 5000 });
+        if (response.status === 200) {
+            const parsed = JSON.parse(response.body.toString('utf8'));
+            value = parsed && parsed.configured != null ? parsed : parsed?.publicConfiguration || parsed;
+        }
     }
-    catch {
-        return null;
-    }
+    catch { /* unreachable or malformed — treated as not configured until the negative TTL lapses */ }
+    engineConfigCache.set(engine.url, { expires: Date.now() + (value ? 30000 : 15000), value });
+    return value;
 }
 async function providerAt(config, raw) {
     const index = /^\d+$/.test(String(raw)) ? Number(raw) : -1;

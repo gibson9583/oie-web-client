@@ -288,7 +288,7 @@ export function createApiProxy(config: WebAdminConfig) {
 // ENGINE makes the EXTENSIONS_MANAGE authorization decision). `engine` is a
 // resolved { url, verifyTls } (see resolveEngine) — same TLS posture as the proxy.
 // Buffers the response.
-export function engineRequest(engine: EngineTarget, { method, path: reqPath, headers, body }: { method: string; path: string; headers?: http.OutgoingHttpHeaders; body?: Buffer | null }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+export function engineRequest(engine: EngineTarget, { method, path: reqPath, headers, body, timeoutMs = 120000 }: { method: string; path: string; headers?: http.OutgoingHttpHeaders; body?: Buffer | null; timeoutMs?: number }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
     return new Promise((resolve, reject) => {
         const target = new URL(engine.url);
         const isHttps = target.protocol === 'https:';
@@ -320,7 +320,7 @@ export function engineRequest(engine: EngineTarget, { method, path: reqPath, hea
             });
             res.on('end', () => resolve({ status: res.statusCode!, headers: res.headers, body: Buffer.concat(chunks) }));
         });
-        upstream.setTimeout(120000, () => upstream.destroy(new Error('engine request timed out')));
+        upstream.setTimeout(timeoutMs, () => upstream.destroy(new Error('engine request timed out')));
         upstream.on('error', reject);
         if (body && body.length) upstream.write(body);
         upstream.end();
