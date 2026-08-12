@@ -99,11 +99,15 @@ export function LoginForm({ onSuccess }: any) {
         try { if (value) localStorage.setItem(preferenceKey, 'local'); else localStorage.removeItem(preferenceKey); } catch { /* private mode */ }
     }
 
+    // After a rejected attempt, retry with prompt=login so the IdP re-prompts
+    // instead of silently replaying its session for the same rejected account.
+    const [ssoReauth, setSsoReauth] = useState(false);
+
     function startSso() {
         const selectionError = commitEngineSelection(showPicker, sel, customUrl);
         if (selectionError) { setError(selectionError); return; }
         const returnPath = location.pathname === '/' ? '/' : location.pathname + location.search + location.hash;
-        location.assign(`/oidc/start?engine=${encodeURIComponent(sel)}&return=${encodeURIComponent(returnPath)}`);
+        location.assign(`/oidc/start?engine=${encodeURIComponent(sel)}&return=${encodeURIComponent(returnPath)}${ssoReauth ? '&prompt=login' : ''}`);
     }
 
     const userRef = useRef<any>(null);
@@ -155,6 +159,7 @@ export function LoginForm({ onSuccess }: any) {
         }
         setError(result.message || 'SSO sign-in failed.');
         chooseLocal(true);
+        setSsoReauth(true);
         // Mount-only by design: the SSO result cookie and autoRedirect decision
         // are consumed exactly once, for the engine selected at page load.
         // eslint-disable-next-line react-hooks/exhaustive-deps

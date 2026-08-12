@@ -241,6 +241,24 @@ test.describe('OIDC login', () => {
         await expect(page.locator('input[type=password]')).toBeVisible();
     });
 
+    test('a retry after a rejected attempt forces IdP re-authentication', async ({ page }) => {
+        // The IdP's own SSO session silently replays the same account; after a
+        // rejection the retry must carry prompt=login so the user can switch.
+        loginStatus = { status: 401, body: { 'com.mirth.connect.model.LoginStatus': { status: 'FAIL', message: 'SSO sign-in was rejected.' } } };
+        await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+        await page.goto(appUrl + '/');
+
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await expect(page.getByText('SSO sign-in was rejected.')).toBeVisible({ timeout: 15_000 });
+        expect(received.authorize!.get('prompt')).toBeNull();
+
+        // The failure dropped the card into local mode; go back to SSO and retry.
+        await page.getByRole('button', { name: 'Sign in with SSO' }).click();
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await expect(page.getByText('SSO sign-in was rejected.')).toBeVisible({ timeout: 15_000 });
+        expect(received.authorize!.get('prompt')).toBe('login');
+    });
+
     test('an engine without the OIDC extension yields the install hint', async ({ page }) => {
         // The plugin absent, local auth answers its real rejection wording.
         loginStatus = { status: 401, body: { 'com.mirth.connect.model.LoginStatus': { status: 'FAIL', message: 'Incorrect username or password.' } } };

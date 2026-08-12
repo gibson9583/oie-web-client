@@ -277,6 +277,12 @@ function createOidcRouter(config) {
             target.searchParams.set('nonce', txn.nonce);
             target.searchParams.set('code_challenge_method', 'S256');
             target.searchParams.set('code_challenge', crypto.createHash('sha256').update(verifier).digest('base64url'));
+            // Allowlisted literal only. The login card sends this on a retry
+            // after a rejected attempt: the IdP's own SSO session would
+            // otherwise silently re-authenticate the same rejected account,
+            // making it impossible to switch users.
+            if (req.query.prompt === 'login')
+                target.searchParams.set('prompt', 'login');
             return res.redirect(target.toString());
         }
         catch (error) {
