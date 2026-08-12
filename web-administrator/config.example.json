@@ -10,5 +10,16 @@
     "pluginDirs": [],
     "trustedProxies": [],
     "codeTemplateCompletions": true,
-    "tls": null
+    "tls": null,
+    "oidc": {
+        "0": {
+            "enabled": false,
+            "discoveryUrl": "https://identity.example.com/.well-known/openid-configuration",
+            "clientId": "oie-web-administrator",
+            "clientSecret": "replace-with-a-secret",
+            "scopes": ["openid", "profile", "email"],
+            "providerLabel": "Company SSO",
+            "autoRedirect": false
+        }
+    }
 }
