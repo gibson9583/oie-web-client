@@ -22,5 +22,8 @@ assert.throws(() => validateIdTokenClaims(token, metadata, provider, 'wrong', no
 const engines = [{ name: 'Production', url: 'https://engine.test', verifyTls: true }];
 const providerConfig = { enabled: true, discoveryUrl: 'https://issuer.test/.well-known/openid-configuration', clientId: 'client', clientSecret: secret };
 assert.ok(normalizeOidc({ Production: providerConfig }, engines).Production);
+const engineManaged = normalizeOidc({ Production: { enabled: true, clientSecret: secret, providerLabel: 'SSO' } }, engines).Production;
+assert.strictEqual(engineManaged.discoveryUrl, undefined);
+assert.strictEqual(engineManaged.clientId, undefined);
 assert.throws(() => normalizeOidc({ '0': providerConfig }, engines), /does not match a configured engine name/);
 console.log('oidc tests passed');

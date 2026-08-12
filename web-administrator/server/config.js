@@ -243,24 +243,26 @@ function normalizeOidc(raw, engines) {
         const enabled = value.enabled !== false;
         if (!enabled)
             continue;
-        for (const field of ['discoveryUrl', 'clientId', 'clientSecret']) {
+        for (const field of ['clientSecret']) {
             if (typeof value[field] !== 'string' || !value[field].trim())
                 throw new Error(`[config] oidc.${key}.${field} is required when enabled`);
         }
         let discovery;
-        try {
-            discovery = new URL(value.discoveryUrl);
+        if (value.discoveryUrl) {
+            try {
+                discovery = new URL(value.discoveryUrl);
+            }
+            catch {
+                throw new Error(`[config] oidc.${key}.discoveryUrl must be an absolute URL`);
+            }
+            if (discovery.protocol !== 'https:' && discovery.hostname !== 'localhost' && discovery.hostname !== '127.0.0.1')
+                throw new Error(`[config] oidc.${key}.discoveryUrl must use HTTPS (HTTP is allowed only for localhost)`);
         }
-        catch {
-            throw new Error(`[config] oidc.${key}.discoveryUrl must be an absolute URL`);
-        }
-        if (discovery.protocol !== 'https:' && discovery.hostname !== 'localhost' && discovery.hostname !== '127.0.0.1')
-            throw new Error(`[config] oidc.${key}.discoveryUrl must use HTTPS (HTTP is allowed only for localhost)`);
         const scopes = value.scopes == null ? ['openid', 'profile', 'email']
             : (Array.isArray(value.scopes) ? value.scopes.map(String) : String(value.scopes).split(/[ ,]+/)).filter(Boolean);
         if (!scopes.includes('openid'))
             scopes.unshift('openid');
-        out[key] = { enabled, discoveryUrl: discovery.toString(), clientId: value.clientId,
+        out[key] = { enabled, discoveryUrl: discovery?.toString(), clientId: value.clientId ? String(value.clientId) : undefined,
             clientSecret: value.clientSecret, scopes, providerLabel: String(value.providerLabel || 'SSO'),
             autoRedirect: !!value.autoRedirect, endSession: !!value.endSession };
     }

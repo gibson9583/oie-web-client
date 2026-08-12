@@ -17,7 +17,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { load } from './config';
 import type { TlsConfig } from './config';
 import { createApiProxy } from './proxy';
-import { createOidcRouter } from './oidc';
+import { createOidcRouter, engineOidcConfiguration } from './oidc';
 import { installPluginRoutes } from './plugin-install';
 import * as plugins from './plugins';
 
@@ -109,7 +109,7 @@ app.use('/api', createApiProxy(config));
 app.use('/oidc', createOidcRouter(config));
 
 // --- Web admin metadata ------------------------------------------------------
-app.get('/webadmin/config.json', (req: Request, res: Response) => {
+app.get('/webadmin/config.json', async (req: Request, res: Response) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
     // not disclose internal engine URLs. The client selects an engine by its
     // index (the oie-engine cookie) and the proxy resolves the real URL server
@@ -117,10 +117,11 @@ app.get('/webadmin/config.json', (req: Request, res: Response) => {
     // already host-derived when unset (buildEngines → engineLabel), so the login
     // dropdown and the connected-engine label read fine from `name` alone.
     res.json({
-        engines: config.engines.map((e) => {
+        engines: await Promise.all(config.engines.map(async (e, index) => {
             const oidc = config.oidc[e.name];
-            return { name: e.name, ...(oidc ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {}) };
-        }),
+            const engineOidc = oidc ? await engineOidcConfiguration(config, index) : null;
+            return { name: e.name, ...(oidc && engineOidc?.configured ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {}) };
+        })),
         devMode: !!config.devMode,
         version: require('../package.json').version,
         codeTemplateCompletions: config.codeTemplateCompletions !== false

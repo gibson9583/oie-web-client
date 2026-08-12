@@ -20,8 +20,6 @@
     "oidc": {
         "Production": {
             "enabled": false,
-            "discoveryUrl": "https://identity.example.com/.well-known/openid-configuration",
-            "clientId": "oie-web-administrator",
             "clientSecret": "replace-with-a-secret",
             "scopes": ["openid", "profile", "email"],
             "providerLabel": "Company SSO",

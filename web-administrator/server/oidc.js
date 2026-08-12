@@ -41,6 +41,7 @@ exports.sealTransaction = sealTransaction;
 exports.openTransaction = openTransaction;
 exports.validReturnPath = validReturnPath;
 exports.validateIdTokenClaims = validateIdTokenClaims;
+exports.engineOidcConfiguration = engineOidcConfiguration;
 exports.createOidcRouter = createOidcRouter;
 const crypto = __importStar(require("crypto"));
 const express_1 = __importDefault(require("express"));
@@ -153,12 +154,38 @@ function validateIdTokenClaims(token, metadata, provider, nonce, now = Date.now(
         throw new Error('ID token is expired or not active');
     return claims;
 }
-function providerAt(config, raw) {
+const engineConfigCache = new Map();
+async function engineOidcConfiguration(config, index) {
+    const engine = config.engines[index];
+    if (!engine)
+        return null;
+    const cached = engineConfigCache.get(engine.url);
+    if (cached && cached.expires > Date.now())
+        return cached.value;
+    try {
+        const response = await (0, proxy_1.engineRequest)(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' } });
+        if (response.status !== 200)
+            return null;
+        const parsed = JSON.parse(response.body.toString('utf8'));
+        const value = parsed && parsed.configured != null ? parsed : parsed?.publicConfiguration || parsed;
+        engineConfigCache.set(engine.url, { expires: Date.now() + 30000, value });
+        return value;
+    }
+    catch {
+        return null;
+    }
+}
+async function providerAt(config, raw) {
     const index = /^\d+$/.test(String(raw)) ? Number(raw) : -1;
     if (index < 0 || index >= config.engines.length)
         return null;
-    const provider = (0, config_1.oidcForEngine)(config, index);
-    return provider ? { index, provider } : null;
+    const web = (0, config_1.oidcForEngine)(config, index);
+    if (!web)
+        return null;
+    const engine = await engineOidcConfiguration(config, index);
+    const discoveryUrl = engine?.configured ? engine.discoveryUrl : web.discoveryUrl;
+    const clientId = engine?.configured ? engine.clientId : web.clientId;
+    return discoveryUrl && clientId ? { index, provider: { ...web, discoveryUrl, clientId } } : null;
 }
 function limiter() {
     const hits = new Map();
@@ -180,7 +207,7 @@ function createOidcRouter(config) {
     const trusted = new Set(config.trustedProxies || []);
     router.use(limiter());
     router.get('/start', async (req, res) => {
-        const found = providerAt(config, req.query.engine);
+        const found = await providerAt(config, req.query.engine);
         if (!found) {
             setResult(res, { status: 'FAIL', message: 'SSO is not configured for this engine.' }, secureRequest(req, trusted));
             return res.redirect('/');
@@ -221,7 +248,7 @@ function createOidcRouter(config) {
             let found = null;
             const raw = cookies(req)[TXN_COOKIE];
             for (let i = 0; i < config.engines.length && !txn; i++) {
-                const candidate = providerAt(config, i);
+                const candidate = await providerAt(config, i);
                 if (!candidate)
                     continue;
                 try {

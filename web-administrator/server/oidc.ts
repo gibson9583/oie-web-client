@@ -10,6 +10,7 @@ const RESULT_COOKIE = 'oie-oidc-result';
 const TXN_TTL_MS = 10 * 60 * 1000;
 const metadataCache = new Map<string, { expires: number; value: Metadata }>();
 type Metadata = { issuer: string; authorization_endpoint: string; token_endpoint: string };
+type ActiveProvider = OidcProviderConfig & { discoveryUrl: string; clientId: string };
 type Transaction = { v: 1; state: string; nonce: string; verifier: string; engine: number; returnPath: string; created: number };
 
 function b64(value: Buffer | string): string { return Buffer.from(value).toString('base64url'); }
@@ -75,7 +76,7 @@ function setResult(res: Response, payload: object, secure: boolean): void {
     res.append('Set-Cookie', `${RESULT_COOKIE}=${value}; Path=/; Max-Age=120; SameSite=Lax${secure ? '; Secure' : ''}`);
 }
 
-async function discovery(provider: OidcProviderConfig): Promise<Metadata> {
+async function discovery(provider: ActiveProvider): Promise<Metadata> {
     const cached = metadataCache.get(provider.discoveryUrl);
     if (cached && cached.expires > Date.now()) return cached.value;
     const response = await fetch(provider.discoveryUrl, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
@@ -96,7 +97,7 @@ function jwtClaims(token: string): any {
     return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
 }
 
-export function validateIdTokenClaims(token: string, metadata: Metadata, provider: OidcProviderConfig, nonce: string, now = Date.now()): any {
+export function validateIdTokenClaims(token: string, metadata: Metadata, provider: Pick<ActiveProvider, 'clientId'>, nonce: string, now = Date.now()): any {
     const claims = jwtClaims(token);
     const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
     if (claims.iss !== metadata.issuer || !audiences.includes(provider.clientId) || claims.nonce !== nonce)
@@ -108,11 +109,27 @@ export function validateIdTokenClaims(token: string, metadata: Metadata, provide
     return claims;
 }
 
-function providerAt(config: WebAdminConfig, raw: unknown): { index: number; provider: OidcProviderConfig } | null {
+const engineConfigCache = new Map<string, { expires: number; value: { configured: boolean; discoveryUrl?: string; clientId?: string } }>();
+export async function engineOidcConfiguration(config: WebAdminConfig, index: number) {
+    const engine = config.engines[index]; if (!engine) return null;
+    const cached = engineConfigCache.get(engine.url); if (cached && cached.expires > Date.now()) return cached.value;
+    try {
+        const response = await engineRequest(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' } });
+        if (response.status !== 200) return null;
+        const parsed = JSON.parse(response.body.toString('utf8'));
+        const value = parsed && parsed.configured != null ? parsed : parsed?.publicConfiguration || parsed;
+        engineConfigCache.set(engine.url, { expires: Date.now() + 30000, value }); return value;
+    } catch { return null; }
+}
+
+async function providerAt(config: WebAdminConfig, raw: unknown): Promise<{ index: number; provider: ActiveProvider } | null> {
     const index = /^\d+$/.test(String(raw)) ? Number(raw) : -1;
     if (index < 0 || index >= config.engines.length) return null;
-    const provider = oidcForEngine(config, index);
-    return provider ? { index, provider } : null;
+    const web = oidcForEngine(config, index); if (!web) return null;
+    const engine = await engineOidcConfiguration(config, index);
+    const discoveryUrl = engine?.configured ? engine.discoveryUrl : web.discoveryUrl;
+    const clientId = engine?.configured ? engine.clientId : web.clientId;
+    return discoveryUrl && clientId ? { index, provider: { ...web, discoveryUrl, clientId } as ActiveProvider } : null;
 }
 
 function limiter() {
@@ -131,7 +148,7 @@ export function createOidcRouter(config: WebAdminConfig) {
     const trusted = new Set(config.trustedProxies || []);
     router.use(limiter());
     router.get('/start', async (req, res) => {
-        const found = providerAt(config, req.query.engine);
+        const found = await providerAt(config, req.query.engine);
         if (!found) { setResult(res, { status: 'FAIL', message: 'SSO is not configured for this engine.' }, secureRequest(req, trusted)); return res.redirect('/'); }
         try {
             const metadata = await discovery(found.provider);
@@ -161,10 +178,10 @@ export function createOidcRouter(config: WebAdminConfig) {
         let returnPath = '/';
         try {
             // Try configured secrets because the engine index itself is sealed.
-            let txn: Transaction | null = null; let found: ReturnType<typeof providerAt> = null;
+            let txn: Transaction | null = null; let found: Awaited<ReturnType<typeof providerAt>> = null;
             const raw = cookies(req)[TXN_COOKIE];
             for (let i = 0; i < config.engines.length && !txn; i++) {
-                const candidate = providerAt(config, i); if (!candidate) continue;
+                const candidate = await providerAt(config, i); if (!candidate) continue;
                 try { const opened = openTransaction(raw, candidate.provider.clientSecret); if (opened.engine === i) { txn = opened; found = candidate; } } catch { /* next */ }
             }
             if (!txn || !found || req.query.state !== txn.state) throw new Error('invalid or expired sign-in transaction');

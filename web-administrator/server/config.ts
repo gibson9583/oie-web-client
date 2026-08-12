@@ -47,8 +47,8 @@ export interface ResolvedEngine { name: string; url: string; verifyTls: boolean;
 export interface TlsConfig { key: string; cert: string; passphrase?: string; }
 export interface OidcProviderConfig {
     enabled: boolean;
-    discoveryUrl: string;
-    clientId: string;
+    discoveryUrl?: string;
+    clientId?: string;
     clientSecret: string;
     scopes: string[];
     providerLabel: string;
@@ -230,17 +230,19 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`[config] oidc.${key} must be an object`);
         const enabled = value.enabled !== false;
         if (!enabled) continue;
-        for (const field of ['discoveryUrl', 'clientId', 'clientSecret']) {
+        for (const field of ['clientSecret']) {
             if (typeof value[field] !== 'string' || !value[field].trim()) throw new Error(`[config] oidc.${key}.${field} is required when enabled`);
         }
-        let discovery: URL;
-        try { discovery = new URL(value.discoveryUrl); } catch { throw new Error(`[config] oidc.${key}.discoveryUrl must be an absolute URL`); }
-        if (discovery.protocol !== 'https:' && discovery.hostname !== 'localhost' && discovery.hostname !== '127.0.0.1')
-            throw new Error(`[config] oidc.${key}.discoveryUrl must use HTTPS (HTTP is allowed only for localhost)`);
+        let discovery: URL | undefined;
+        if (value.discoveryUrl) {
+            try { discovery = new URL(value.discoveryUrl); } catch { throw new Error(`[config] oidc.${key}.discoveryUrl must be an absolute URL`); }
+            if (discovery.protocol !== 'https:' && discovery.hostname !== 'localhost' && discovery.hostname !== '127.0.0.1')
+                throw new Error(`[config] oidc.${key}.discoveryUrl must use HTTPS (HTTP is allowed only for localhost)`);
+        }
         const scopes = value.scopes == null ? ['openid', 'profile', 'email']
             : (Array.isArray(value.scopes) ? value.scopes.map(String) : String(value.scopes).split(/[ ,]+/)).filter(Boolean);
         if (!scopes.includes('openid')) scopes.unshift('openid');
-        out[key] = { enabled, discoveryUrl: discovery.toString(), clientId: value.clientId,
+        out[key] = { enabled, discoveryUrl: discovery?.toString(), clientId: value.clientId ? String(value.clientId) : undefined,
             clientSecret: value.clientSecret, scopes, providerLabel: String(value.providerLabel || 'SSO'),
             autoRedirect: !!value.autoRedirect, endSession: !!value.endSession };
     }

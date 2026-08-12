@@ -136,7 +136,7 @@ app.use('/api', (0, proxy_1.createApiProxy)(config));
 // OIDC browser redirects must be mounted before static files / SPA fallback.
 app.use('/oidc', (0, oidc_1.createOidcRouter)(config));
 // --- Web admin metadata ------------------------------------------------------
-app.get('/webadmin/config.json', (req, res) => {
+app.get('/webadmin/config.json', async (req, res) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
     // not disclose internal engine URLs. The client selects an engine by its
     // index (the oie-engine cookie) and the proxy resolves the real URL server
@@ -144,10 +144,11 @@ app.get('/webadmin/config.json', (req, res) => {
     // already host-derived when unset (buildEngines → engineLabel), so the login
     // dropdown and the connected-engine label read fine from `name` alone.
     res.json({
-        engines: config.engines.map((e) => {
+        engines: await Promise.all(config.engines.map(async (e, index) => {
             const oidc = config.oidc[e.name];
-            return { name: e.name, ...(oidc ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {}) };
-        }),
+            const engineOidc = oidc ? await (0, oidc_1.engineOidcConfiguration)(config, index) : null;
+            return { name: e.name, ...(oidc && engineOidc?.configured ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {}) };
+        })),
         devMode: !!config.devMode,
         version: require('../package.json').version,
         codeTemplateCompletions: config.codeTemplateCompletions !== false

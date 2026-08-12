@@ -1721,6 +1721,10 @@ const BUILTIN_TABS = [
 function buildTabDefs(plat: any) {
     const defs = BUILTIN_TABS.slice();
     for (const panel of plat.settingsPanels()) {
+        // A plugin can publish a group-prefixed doSave task through an
+        // ExtensionPermission. When RBAC denies it, hide the entire management
+        // panel instead of rendering a form whose API calls will all return 403.
+        if (!plat.checkTask(`settings_${panel.label}`, 'doSave')) continue;
         defs.push({
             label: panel.label,
             render: (ctx: any) => {
