@@ -34,6 +34,28 @@ function getCookie(name: any) {
     return m ? decodeURIComponent(m[1]) : '';
 }
 
+function commitEngineSelection(showPicker: boolean, sel: string, customUrl: string): string | null {
+    if (!showPicker) { setCookie('oie-engine', '0'); return null; }
+    if (sel === 'custom') {
+        const url = customUrl.trim();
+        if (!url) return 'Enter an engine URL.';
+        setCookie('oie-engine', 'custom'); setCookie('oie-engine-url', url);
+    } else {
+        clearCookie('oie-engine-url'); setCookie('oie-engine', sel);
+    }
+    return null;
+}
+
+export function takeOidcResult(): any {
+    const raw = getCookie('oie-oidc-result');
+    if (!raw) return null;
+    clearCookie('oie-oidc-result');
+    try {
+        const padded = raw.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - raw.length % 4) % 4);
+        return JSON.parse(decodeURIComponent(Array.from(atob(padded), c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')));
+    } catch { return { status: 'FAIL', message: 'SSO sign-in could not be completed.' }; }
+}
+
 // Preselect the engine last used (persisted in the oie-engine cookie) so the
 // picker remembers your choice instead of always snapping back to the first.
 function initialSelection(engines: any, devMode: any) {
@@ -60,6 +82,29 @@ export function LoginForm({ onSuccess }: any) {
     const showPicker = engines.length > 1 || devMode;
     const [sel, setSel] = useState(() => initialSelection(engines, devMode));
     const [customUrl, setCustomUrl] = useState(() => getCookie('oie-engine-url'));
+    const selectedEngine = sel === 'custom' ? null : engines[Number(sel)];
+    const sso = selectedEngine?.sso;
+    const preferenceKey = `oie-login-mode:${sel}`;
+    const [localMode, setLocalMode] = useState(() => {
+        try { return localStorage.getItem(`oie-login-mode:${initialSelection(engines, devMode)}`) === 'local'; } catch { return false; }
+    });
+    const oidcResultRef = useRef<any>(takeOidcResult());
+
+    useEffect(() => {
+        try { setLocalMode(localStorage.getItem(preferenceKey) === 'local'); } catch { setLocalMode(false); }
+    }, [preferenceKey]);
+
+    function chooseLocal(value: boolean) {
+        setLocalMode(value);
+        try { if (value) localStorage.setItem(preferenceKey, 'local'); else localStorage.removeItem(preferenceKey); } catch { /* private mode */ }
+    }
+
+    function startSso() {
+        const selectionError = commitEngineSelection(showPicker, sel, customUrl);
+        if (selectionError) { setError(selectionError); return; }
+        const returnPath = location.pathname === '/' ? '/' : location.pathname + location.search + location.hash;
+        location.assign(`/oidc/start?engine=${encodeURIComponent(sel)}&return=${encodeURIComponent(returnPath)}`);
+    }
 
     const userRef = useRef<any>(null);
     const busyRef = useRef(false);   // re-entry guard (state is async)
@@ -77,6 +122,41 @@ export function LoginForm({ onSuccess }: any) {
         return () => clearTimeout(t);
     }, []);
 
+    useEffect(() => {
+        const result = oidcResultRef.current;
+        oidcResultRef.current = null;
+        if (!result) {
+            if (sso?.autoRedirect && !localMode) {
+                const guard = `oie-oidc-redirect:${sel}`;
+                try {
+                    if (!sessionStorage.getItem(guard)) { sessionStorage.setItem(guard, '1'); startSso(); }
+                } catch { /* storage unavailable: leave the button reachable */ }
+            }
+            return;
+        }
+        try { sessionStorage.removeItem(`oie-oidc-redirect:${sel}`); } catch { /* ignore */ }
+        const status = result.status || result;
+        if (status === 'SUCCESS' || status === 'SUCCESS_GRACE_PERIOD') {
+            api.auth.current().then((user: any) => onSuccess(user, { graceMessage: result.message || null }))
+                .catch(() => setError('SSO completed, but the engine session could not be loaded.'));
+            return;
+        }
+        if (result.clientPluginClass) {
+            const authenticate = getLoginAuthenticator(result.clientPluginClass);
+            if (!authenticate) { setError('This engine requires a multi-factor login method that is not available in the web administrator.'); return; }
+            authenticate({ clientPluginClass: result.clientPluginClass, username: result.updatedUsername || '', primaryStatus: result,
+                api, submit: (loginData: any) => api.auth.login(result.updatedUsername || '', '', loginData) } as any)
+                .then(async (second: any) => {
+                    const secondStatus = second?.status || second;
+                    if (secondStatus !== 'SUCCESS' && secondStatus !== 'SUCCESS_GRACE_PERIOD') throw new Error(second?.message || 'Multi-factor sign-in failed.');
+                    await onSuccess(await api.auth.current(), { graceMessage: second?.message || null });
+                }).catch((err: any) => setError(err.message || 'Multi-factor sign-in failed.'));
+            return;
+        }
+        setError(result.message || 'SSO sign-in failed.');
+        chooseLocal(true);
+    }, []);
+
     async function submit(e: any) {
         if (e && e.preventDefault) e.preventDefault();
         if (busyRef.current) return;
@@ -85,17 +165,8 @@ export function LoginForm({ onSuccess }: any) {
         store.setState('loginNotice', null);
 
         // Point this session at the chosen engine before authenticating.
-        if (showPicker) {
-            if (sel === 'custom') {
-                const url = customUrl.trim();
-                if (!url) { setError('Enter an engine URL.'); busyRef.current = false; return; }
-                setCookie('oie-engine', 'custom');
-                setCookie('oie-engine-url', url);
-            } else {
-                clearCookie('oie-engine-url');
-                setCookie('oie-engine', sel);
-            }
-        }
+        const selectionError = commitEngineSelection(showPicker, sel, customUrl);
+        if (selectionError) { setError(selectionError); busyRef.current = false; return; }
 
         setSubmitting(true);
         // Completes a successful (primary or post-MFA) login: reload on an engine
@@ -202,6 +273,14 @@ export function LoginForm({ onSuccess }: any) {
                             value={customUrl} onChange={(e: any) => setCustomUrl(e.target.value)} />
                     </div>
                 ) : null}
+                {sso && !localMode ? (
+                    <>
+                        <button className="btn btn-primary w-full justify-center p-[8px]" type="button" onClick={startSso}>
+                            Sign in with {sso.providerLabel || 'SSO'}
+                        </button>
+                        <button className="btn w-full justify-center mt-2" type="button" onClick={() => chooseLocal(true)}>Use local sign-in</button>
+                    </>
+                ) : <>
                 <div className="field">
                     <label>Username</label>
                     <input ref={userRef} type="text" autoComplete="username" placeholder="admin" required
@@ -215,6 +294,8 @@ export function LoginForm({ onSuccess }: any) {
                 <button className="btn btn-primary w-full justify-center p-[8px]" type="submit" disabled={submitting}>
                     {submitting ? 'Signing in…' : 'Sign in'}
                 </button>
+                {sso ? <button className="btn w-full justify-center mt-2" type="button" onClick={() => chooseLocal(false)}>Sign in with SSO</button> : null}
+                </>}
             </form>
             {/* Why you are back here (an expired session, a signed-out tab) — below the
                 card, quiet, and never a dialog: there is nothing to acknowledge. */}

@@ -32,7 +32,7 @@ import { resetPaneCollapsed } from './ui';
 import { disposeDetachedMonaco } from '../core/monaco.js';
 import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
 import { platform, loadPlugins } from '@oie/web-shell';
-import { LoginForm } from './views/login.jsx';
+import { LoginForm, takeOidcResult } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
 
@@ -690,8 +690,15 @@ export function App() {
             try {
                 const u = await api.auth.current();
                 if (u && u.username && alive) {
-                    await establishPrefScope(u);   // scope prefs/theme to server+user before views render
-                    if (alive) store.setState('user', u);
+                    const oidc = takeOidcResult();
+                    if (oidc && (oidc.status === 'SUCCESS' || oidc.status === 'SUCCESS_GRACE_PERIOD')) {
+                        // A callback-created session is already live before the SPA
+                        // boots; run the same consent/welcome/draft path as form login.
+                        await onLoginSuccess(u, { graceMessage: oidc.message || null });
+                    } else {
+                        await establishPrefScope(u);   // scope prefs/theme to server+user before views render
+                        if (alive) store.setState('user', u);
+                    }
                 }
             } catch { /* not signed in */ }
             finally { if (alive) setAuthChecked(true); }
