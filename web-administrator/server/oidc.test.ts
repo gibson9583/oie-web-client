@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { encodeResult, openTransaction, sealTransaction, throttleKey, validReturnPath, validateIdTokenClaims } from './oidc';
+import { encodeResult, openTransaction, sealTransaction, throttleKey, unwrapEngineJson, validReturnPath, validateIdTokenClaims } from './oidc';
 import { normalizeOidc } from './config';
 
 const secret = 'a sufficiently long test client secret';
@@ -12,6 +12,12 @@ assert.throws(() => openTransaction(sealed.join('.'), secret, now), /invalid/);
 assert.throws(() => openTransaction(sealTransaction({ ...txn, created: now - 700000 }, secret), secret, now), /expired/);
 assert.strictEqual(validReturnPath('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)']) assert.strictEqual(validReturnPath(bad), '/');
+
+// The engine wraps every JSON payload under a single XStream root key.
+const wrapped = { 'com.mirth.connect.model.LoginStatus': { status: 'SUCCESS', message: '', updatedUsername: 'jdoe' } };
+assert.strictEqual(unwrapEngineJson(wrapped).status, 'SUCCESS');
+assert.deepStrictEqual(unwrapEngineJson({ status: 'FAIL', message: 'no' }), { status: 'FAIL', message: 'no' });
+assert.strictEqual(unwrapEngineJson('SUCCESS'), 'SUCCESS');
 
 const decodeResult = (value: string) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
 assert.strictEqual(decodeResult(encodeResult({ status: 'FAIL', message: 'x'.repeat(5000) })).message.length, 600);

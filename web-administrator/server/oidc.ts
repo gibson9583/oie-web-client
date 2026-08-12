@@ -102,6 +102,18 @@ async function discovery(provider: ActiveProvider): Promise<Metadata> {
     return value;
 }
 
+// The engine's ObjectJSONSerializer wraps every JSON payload under a single
+// root key (XStream shape); the SPA's api.js normalizes identically. Reduce a
+// wrapped LoginStatus to the status object itself; leave bare shapes alone.
+export function unwrapEngineJson(parsed: unknown): any {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const keys = Object.keys(parsed as object);
+        const inner = keys.length === 1 ? (parsed as any)[keys[0]] : null;
+        if (inner && typeof inner === 'object' && !Array.isArray(inner)) return inner;
+    }
+    return parsed;
+}
+
 function jwtClaims(token: string): any {
     const parts = token.split('.');
     if (parts.length !== 3) throw new Error('invalid ID token');
@@ -132,7 +144,10 @@ export async function engineOidcConfiguration(config: WebAdminConfig, index: num
     try {
         const response = await engineRequest(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' }, timeoutMs: 5000 });
         if (response.status === 200) {
-            const parsed = JSON.parse(response.body.toString('utf8'));
+            let parsed = JSON.parse(response.body.toString('utf8'));
+            // Extension servlets that return String are serialized by the engine
+            // as {"string": "<the json text>"} (XStream shape) — unwrap first.
+            if (parsed && typeof parsed === 'object' && typeof parsed.string === 'string') parsed = JSON.parse(parsed.string);
             value = parsed && parsed.configured != null ? parsed : parsed?.publicConfiguration || parsed;
         }
     } catch { /* unreachable or malformed — treated as not configured until the negative TTL lapses */ }
@@ -236,7 +251,7 @@ export function createOidcRouter(config: WebAdminConfig) {
             sanitizeForwardHeaders(headers, req.socket.remoteAddress, req.headers['x-forwarded-for'], trusted);
             const login = await engineRequest(config.engines[found.index], { method: 'POST', path: '/api/users/_login', headers, body });
             let result: any;
-            try { result = JSON.parse(login.body.toString('utf8')); } catch { result = { status: login.status === 200 ? 'SUCCESS' : 'FAIL' }; }
+            try { result = unwrapEngineJson(JSON.parse(login.body.toString('utf8'))); } catch { result = { status: login.status === 200 ? 'SUCCESS' : 'FAIL' }; }
             const status = result?.status || result;
             if (!status) throw new Error('engine rejected SSO');
             const upstreamCookies = Array.isArray(login.headers['set-cookie']) ? login.headers['set-cookie'] : login.headers['set-cookie'] ? [login.headers['set-cookie']] : [];

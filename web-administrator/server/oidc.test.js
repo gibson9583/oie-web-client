@@ -48,6 +48,11 @@ assert.throws(() => (0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)({ ..
 assert.strictEqual((0, oidc_1.validReturnPath)('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)'])
     assert.strictEqual((0, oidc_1.validReturnPath)(bad), '/');
+// The engine wraps every JSON payload under a single XStream root key.
+const wrapped = { 'com.mirth.connect.model.LoginStatus': { status: 'SUCCESS', message: '', updatedUsername: 'jdoe' } };
+assert.strictEqual((0, oidc_1.unwrapEngineJson)(wrapped).status, 'SUCCESS');
+assert.deepStrictEqual((0, oidc_1.unwrapEngineJson)({ status: 'FAIL', message: 'no' }), { status: 'FAIL', message: 'no' });
+assert.strictEqual((0, oidc_1.unwrapEngineJson)('SUCCESS'), 'SUCCESS');
 const decodeResult = (value) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
 assert.strictEqual(decodeResult((0, oidc_1.encodeResult)({ status: 'FAIL', message: 'x'.repeat(5000) })).message.length, 600);
 assert.strictEqual(decodeResult((0, oidc_1.encodeResult)({ status: 'SUCCESS' })).status, 'SUCCESS');

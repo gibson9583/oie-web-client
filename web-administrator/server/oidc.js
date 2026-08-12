@@ -41,6 +41,7 @@ exports.sealTransaction = sealTransaction;
 exports.openTransaction = openTransaction;
 exports.validReturnPath = validReturnPath;
 exports.encodeResult = encodeResult;
+exports.unwrapEngineJson = unwrapEngineJson;
 exports.validateIdTokenClaims = validateIdTokenClaims;
 exports.engineOidcConfiguration = engineOidcConfiguration;
 exports.throttleKey = throttleKey;
@@ -145,6 +146,18 @@ async function discovery(provider) {
     metadataCache.set(provider.discoveryUrl, { expires: Date.now() + 5 * 60 * 1000, value });
     return value;
 }
+// The engine's ObjectJSONSerializer wraps every JSON payload under a single
+// root key (XStream shape); the SPA's api.js normalizes identically. Reduce a
+// wrapped LoginStatus to the status object itself; leave bare shapes alone.
+function unwrapEngineJson(parsed) {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const keys = Object.keys(parsed);
+        const inner = keys.length === 1 ? parsed[keys[0]] : null;
+        if (inner && typeof inner === 'object' && !Array.isArray(inner))
+            return inner;
+    }
+    return parsed;
+}
 function jwtClaims(token) {
     const parts = token.split('.');
     if (parts.length !== 3)
@@ -178,7 +191,11 @@ async function engineOidcConfiguration(config, index) {
     try {
         const response = await (0, proxy_1.engineRequest)(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' }, timeoutMs: 5000 });
         if (response.status === 200) {
-            const parsed = JSON.parse(response.body.toString('utf8'));
+            let parsed = JSON.parse(response.body.toString('utf8'));
+            // Extension servlets that return String are serialized by the engine
+            // as {"string": "<the json text>"} (XStream shape) — unwrap first.
+            if (parsed && typeof parsed === 'object' && typeof parsed.string === 'string')
+                parsed = JSON.parse(parsed.string);
             value = parsed && parsed.configured != null ? parsed : parsed?.publicConfiguration || parsed;
         }
     }
@@ -314,7 +331,7 @@ function createOidcRouter(config) {
             const login = await (0, proxy_1.engineRequest)(config.engines[found.index], { method: 'POST', path: '/api/users/_login', headers, body });
             let result;
             try {
-                result = JSON.parse(login.body.toString('utf8'));
+                result = unwrapEngineJson(JSON.parse(login.body.toString('utf8')));
             }
             catch {
                 result = { status: login.status === 200 ? 'SUCCESS' : 'FAIL' };
