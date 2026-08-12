@@ -17,6 +17,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { load } from './config';
 import type { TlsConfig } from './config';
 import { createApiProxy } from './proxy';
+import { createOidcRouter } from './oidc';
 import { installPluginRoutes } from './plugin-install';
 import * as plugins from './plugins';
 
@@ -104,6 +105,9 @@ installPluginRoutes(app, config);
 // --- Engine REST API proxy ---------------------------------------------------
 app.use('/api', createApiProxy(config));
 
+// OIDC browser redirects must be mounted before static files / SPA fallback.
+app.use('/oidc', createOidcRouter(config));
+
 // --- Web admin metadata ------------------------------------------------------
 app.get('/webadmin/config.json', (req: Request, res: Response) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
@@ -113,7 +117,10 @@ app.get('/webadmin/config.json', (req: Request, res: Response) => {
     // already host-derived when unset (buildEngines → engineLabel), so the login
     // dropdown and the connected-engine label read fine from `name` alone.
     res.json({
-        engines: config.engines.map((e) => ({ name: e.name })),
+        engines: config.engines.map((e, index) => {
+            const oidc = config.oidc[e.name] || config.oidc[String(index)];
+            return { name: e.name, ...(oidc ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {}) };
+        }),
         devMode: !!config.devMode,
         version: require('../package.json').version,
         codeTemplateCompletions: config.codeTemplateCompletions !== false

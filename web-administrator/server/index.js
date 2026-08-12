@@ -52,6 +52,7 @@ const crypto = __importStar(require("crypto"));
 const express_1 = __importDefault(require("express"));
 const config_1 = require("./config");
 const proxy_1 = require("./proxy");
+const oidc_1 = require("./oidc");
 const plugin_install_1 = require("./plugin-install");
 const plugins = __importStar(require("./plugins"));
 const config = (0, config_1.load)();
@@ -132,6 +133,8 @@ app.use('/api', (req, res, next) => { res.setHeader('Cache-Control', 'no-store')
 (0, plugin_install_1.installPluginRoutes)(app, config);
 // --- Engine REST API proxy ---------------------------------------------------
 app.use('/api', (0, proxy_1.createApiProxy)(config));
+// OIDC browser redirects must be mounted before static files / SPA fallback.
+app.use('/oidc', (0, oidc_1.createOidcRouter)(config));
 // --- Web admin metadata ------------------------------------------------------
 app.get('/webadmin/config.json', (req, res) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
@@ -141,7 +144,10 @@ app.get('/webadmin/config.json', (req, res) => {
     // already host-derived when unset (buildEngines → engineLabel), so the login
     // dropdown and the connected-engine label read fine from `name` alone.
     res.json({
-        engines: config.engines.map((e) => ({ name: e.name })),
+        engines: config.engines.map((e, index) => {
+            const oidc = config.oidc[e.name] || config.oidc[String(index)];
+            return { name: e.name, ...(oidc ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {}) };
+        }),
         devMode: !!config.devMode,
         version: require('../package.json').version,
         codeTemplateCompletions: config.codeTemplateCompletions !== false

@@ -133,6 +133,18 @@ export function forceNoStore(headers: http.OutgoingHttpHeaders): http.OutgoingHt
     return headers;
 }
 
+/** Apply the browser-facing session-cookie policy shared by the streaming proxy
+ * and server-side OIDC callback login. */
+export function rewriteSetCookies(cookies: string[] | undefined, secure: boolean): string[] {
+    return (cookies || []).map((original) => {
+        let cookie = original;
+        if (!/;\s*samesite=/i.test(cookie)) cookie += '; SameSite=Lax';
+        if (secure) { if (!/;\s*secure\b/i.test(cookie)) cookie += '; Secure'; }
+        else cookie = cookie.replace(/;\s*secure\b/ig, '');
+        return cookie;
+    });
+}
+
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
 // Forwarded / X-Real-IP headers unless the immediate peer is trusted. Pure +
@@ -233,12 +245,7 @@ export function createApiProxy(config: WebAdminConfig) {
                 // proxy; otherwise derive the scheme from the actual connection.
                 const proto = isTrustedPeer(req.socket.remoteAddress, trustedProxies) ? req.headers['x-forwarded-proto'] : undefined;
                 const secure = proto === 'https' || !!(req.socket as import('tls').TLSSocket).encrypted;
-                resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c: string) => {
-                    if (!/;\s*samesite=/i.test(c)) c += '; SameSite=Lax';
-                    if (secure) { if (!/;\s*secure/i.test(c)) c += '; Secure'; }
-                    else c = c.replace(/;\s*secure\b/ig, '');
-                    return c;
-                });
+                resHeaders['set-cookie'] = rewriteSetCookies(resHeaders['set-cookie'], secure);
             }
             res.writeHead(upstreamRes.statusCode!, resHeaders);
             upstreamRes.pipe(res);
@@ -319,4 +326,3 @@ export function engineRequest(engine: EngineTarget, { method, path: reqPath, hea
         upstream.end();
     });
 }
-

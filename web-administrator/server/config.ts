@@ -45,6 +45,16 @@ import * as path from 'path';
 export interface EngineEntry { name?: string | null; url: string; verifyTls?: boolean; }
 export interface ResolvedEngine { name: string; url: string; verifyTls: boolean; }
 export interface TlsConfig { key: string; cert: string; passphrase?: string; }
+export interface OidcProviderConfig {
+    enabled: boolean;
+    discoveryUrl: string;
+    clientId: string;
+    clientSecret: string;
+    scopes: string[];
+    providerLabel: string;
+    autoRedirect: boolean;
+    endSession?: boolean;
+}
 
 /** The resolved runtime configuration (defaults + config.json + env). */
 export interface WebAdminConfig {
@@ -58,6 +68,7 @@ export interface WebAdminConfig {
     tls: TlsConfig | null;
     pluginDirs: string[];
     engines: ResolvedEngine[];
+    oidc: Record<string, OidcProviderConfig>;
     root: string;
     /** config.json is user-authored and may carry extra keys (e.g. plugin-specific
         settings); `unknown` keeps that openness while forcing readers to narrow. */
@@ -174,8 +185,67 @@ export function load(): WebAdminConfig {
     // Invalid URLs are dropped with a warning. The proxy routes by index into this.
     config.engines = buildEngines(config);
 
+    // OIDC providers are keyed by engine name, with the zero-based engine index
+    // accepted as a deployment-friendly fallback. A single set of env overrides
+    // configures the default engine. Secrets remain server-side.
+    config.oidc = normalizeOidc(config.oidc, config.engines);
+
     config.root = ROOT;
     return config;
+}
+
+function envBoolean(name: string, fallback: boolean): boolean {
+    const value = process.env[name];
+    if (value == null) return fallback;
+    if (value !== 'true' && value !== 'false') throw new Error(`[config] ${name} must be "true" or "false"`);
+    return value === 'true';
+}
+
+export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<string, OidcProviderConfig> {
+    if (raw != null && (typeof raw !== 'object' || Array.isArray(raw))) throw new Error('[config] oidc must be an object keyed by engine name or index');
+    const source: Record<string, any> = { ...((raw || {}) as object) };
+    const envPresent = ['WEBADMIN_OIDC_DISCOVERY_URL', 'WEBADMIN_OIDC_CLIENT_ID', 'WEBADMIN_OIDC_CLIENT_SECRET',
+        'WEBADMIN_OIDC_ENABLED', 'WEBADMIN_OIDC_SCOPES', 'WEBADMIN_OIDC_PROVIDER_LABEL', 'WEBADMIN_OIDC_AUTO_REDIRECT']
+        .some((name) => process.env[name] != null);
+    if (envPresent) {
+        const first = engines[0]?.name || '0';
+        const previous = source[first] || source['0'] || {};
+        source[first] = {
+            ...previous,
+            enabled: envBoolean('WEBADMIN_OIDC_ENABLED', previous.enabled !== false),
+            discoveryUrl: process.env.WEBADMIN_OIDC_DISCOVERY_URL ?? previous.discoveryUrl,
+            clientId: process.env.WEBADMIN_OIDC_CLIENT_ID ?? previous.clientId,
+            clientSecret: process.env.WEBADMIN_OIDC_CLIENT_SECRET ?? previous.clientSecret,
+            scopes: process.env.WEBADMIN_OIDC_SCOPES ? process.env.WEBADMIN_OIDC_SCOPES.split(/[ ,]+/).filter(Boolean) : previous.scopes,
+            providerLabel: process.env.WEBADMIN_OIDC_PROVIDER_LABEL ?? previous.providerLabel,
+            autoRedirect: envBoolean('WEBADMIN_OIDC_AUTO_REDIRECT', !!previous.autoRedirect)
+        };
+    }
+    const out: Record<string, OidcProviderConfig> = {};
+    for (const [key, value] of Object.entries(source)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`[config] oidc.${key} must be an object`);
+        const enabled = value.enabled !== false;
+        if (!enabled) continue;
+        for (const field of ['discoveryUrl', 'clientId', 'clientSecret']) {
+            if (typeof value[field] !== 'string' || !value[field].trim()) throw new Error(`[config] oidc.${key}.${field} is required when enabled`);
+        }
+        let discovery: URL;
+        try { discovery = new URL(value.discoveryUrl); } catch { throw new Error(`[config] oidc.${key}.discoveryUrl must be an absolute URL`); }
+        if (discovery.protocol !== 'https:' && discovery.hostname !== 'localhost' && discovery.hostname !== '127.0.0.1')
+            throw new Error(`[config] oidc.${key}.discoveryUrl must use HTTPS (HTTP is allowed only for localhost)`);
+        const scopes = value.scopes == null ? ['openid', 'profile', 'email']
+            : (Array.isArray(value.scopes) ? value.scopes.map(String) : String(value.scopes).split(/[ ,]+/)).filter(Boolean);
+        if (!scopes.includes('openid')) scopes.unshift('openid');
+        out[key] = { enabled, discoveryUrl: discovery.toString(), clientId: value.clientId,
+            clientSecret: value.clientSecret, scopes, providerLabel: String(value.providerLabel || 'SSO'),
+            autoRedirect: !!value.autoRedirect, endSession: !!value.endSession };
+    }
+    return out;
+}
+
+export function oidcForEngine(config: WebAdminConfig, index: number): OidcProviderConfig | null {
+    const engine = config.engines[index];
+    return (engine && (config.oidc[engine.name] || config.oidc[String(index)])) || null;
 }
 
 // Derive a readable label from a URL, e.g. "https://oie-prod:8443/" -> "oie-prod:8443".
@@ -214,4 +284,3 @@ export function buildEngines(config: Pick<WebAdminConfig, 'engine' | 'allowedUrl
     }
     return engines;
 }
-

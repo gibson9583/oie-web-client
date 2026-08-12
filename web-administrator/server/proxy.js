@@ -53,6 +53,7 @@ exports.resolveEngine = resolveEngine;
 exports.isTrustedPeer = isTrustedPeer;
 exports.resolveForwardedFor = resolveForwardedFor;
 exports.forceNoStore = forceNoStore;
+exports.rewriteSetCookies = rewriteSetCookies;
 exports.sanitizeForwardHeaders = sanitizeForwardHeaders;
 exports.createApiProxy = createApiProxy;
 exports.engineRequest = engineRequest;
@@ -167,6 +168,22 @@ function forceNoStore(headers) {
     delete headers['pragma'];
     return headers;
 }
+/** Apply the browser-facing session-cookie policy shared by the streaming proxy
+ * and server-side OIDC callback login. */
+function rewriteSetCookies(cookies, secure) {
+    return (cookies || []).map((original) => {
+        let cookie = original;
+        if (!/;\s*samesite=/i.test(cookie))
+            cookie += '; SameSite=Lax';
+        if (secure) {
+            if (!/;\s*secure\b/i.test(cookie))
+                cookie += '; Secure';
+        }
+        else
+            cookie = cookie.replace(/;\s*secure\b/ig, '');
+        return cookie;
+    });
+}
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
 // Forwarded / X-Real-IP headers unless the immediate peer is trusted. Pure +
@@ -272,17 +289,7 @@ function createApiProxy(config) {
                 // proxy; otherwise derive the scheme from the actual connection.
                 const proto = isTrustedPeer(req.socket.remoteAddress, trustedProxies) ? req.headers['x-forwarded-proto'] : undefined;
                 const secure = proto === 'https' || !!req.socket.encrypted;
-                resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c) => {
-                    if (!/;\s*samesite=/i.test(c))
-                        c += '; SameSite=Lax';
-                    if (secure) {
-                        if (!/;\s*secure/i.test(c))
-                            c += '; Secure';
-                    }
-                    else
-                        c = c.replace(/;\s*secure\b/ig, '');
-                    return c;
-                });
+                resHeaders['set-cookie'] = rewriteSetCookies(resHeaders['set-cookie'], secure);
             }
             res.writeHead(upstreamRes.statusCode, resHeaders);
             upstreamRes.pipe(res);
