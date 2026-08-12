@@ -40,6 +40,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sealTransaction = sealTransaction;
 exports.openTransaction = openTransaction;
 exports.validReturnPath = validReturnPath;
+exports.encodeResult = encodeResult;
 exports.validateIdTokenClaims = validateIdTokenClaims;
 exports.engineOidcConfiguration = engineOidcConfiguration;
 exports.throttleKey = throttleKey;
@@ -115,9 +116,16 @@ function publicOrigin(req, trusted) {
         throw new Error('invalid host header');
     return `${secureRequest(req, trusted) ? 'https' : 'http'}://${host}`;
 }
+// Bound the human-readable part and never cut the encoding itself: a cookie
+// truncated mid-base64 decodes as garbage and the login card would show the
+// generic failure instead of the engine's actual message.
+function encodeResult(payload) {
+    const bounded = { ...payload, message: String(payload.message ?? '').slice(0, 600) };
+    const value = b64(JSON.stringify(bounded));
+    return value.length <= 3500 ? value : b64(JSON.stringify({ ...bounded, message: '' }));
+}
 function setResult(res, payload, secure) {
-    const value = b64(JSON.stringify(payload)).slice(0, 3500);
-    res.append('Set-Cookie', `${RESULT_COOKIE}=${value}; Path=/; Max-Age=120; SameSite=Lax${secure ? '; Secure' : ''}`);
+    res.append('Set-Cookie', `${RESULT_COOKIE}=${encodeResult(payload)}; Path=/; Max-Age=120; SameSite=Lax${secure ? '; Secure' : ''}`);
 }
 async function discovery(provider) {
     const cached = metadataCache.get(provider.discoveryUrl);

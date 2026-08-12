@@ -48,6 +48,9 @@ assert.throws(() => (0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)({ ..
 assert.strictEqual((0, oidc_1.validReturnPath)('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)'])
     assert.strictEqual((0, oidc_1.validReturnPath)(bad), '/');
+const decodeResult = (value) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+assert.strictEqual(decodeResult((0, oidc_1.encodeResult)({ status: 'FAIL', message: 'x'.repeat(5000) })).message.length, 600);
+assert.strictEqual(decodeResult((0, oidc_1.encodeResult)({ status: 'SUCCESS' })).status, 'SUCCESS');
 const trusted = new Set(['10.0.0.1']);
 assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');
 assert.strictEqual((0, oidc_1.throttleKey)('192.0.2.9', '203.0.113.5', trusted), '192.0.2.9');

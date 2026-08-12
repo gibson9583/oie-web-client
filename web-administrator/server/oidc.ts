@@ -74,9 +74,17 @@ function publicOrigin(req: Request, trusted: Set<string>): string {
     return `${secureRequest(req, trusted) ? 'https' : 'http'}://${host}`;
 }
 
-function setResult(res: Response, payload: object, secure: boolean): void {
-    const value = b64(JSON.stringify(payload)).slice(0, 3500);
-    res.append('Set-Cookie', `${RESULT_COOKIE}=${value}; Path=/; Max-Age=120; SameSite=Lax${secure ? '; Secure' : ''}`);
+// Bound the human-readable part and never cut the encoding itself: a cookie
+// truncated mid-base64 decodes as garbage and the login card would show the
+// generic failure instead of the engine's actual message.
+export function encodeResult(payload: { message?: unknown; [key: string]: unknown }): string {
+    const bounded = { ...payload, message: String(payload.message ?? '').slice(0, 600) };
+    const value = b64(JSON.stringify(bounded));
+    return value.length <= 3500 ? value : b64(JSON.stringify({ ...bounded, message: '' }));
+}
+
+function setResult(res: Response, payload: { message?: unknown; [key: string]: unknown }, secure: boolean): void {
+    res.append('Set-Cookie', `${RESULT_COOKIE}=${encodeResult(payload)}; Path=/; Max-Age=120; SameSite=Lax${secure ? '; Secure' : ''}`);
 }
 
 async function discovery(provider: ActiveProvider): Promise<Metadata> {
