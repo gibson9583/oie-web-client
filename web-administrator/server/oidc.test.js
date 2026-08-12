@@ -39,7 +39,7 @@ const oidc_1 = require("./oidc");
 const config_1 = require("./config");
 const secret = 'a sufficiently long test client secret';
 const now = Date.now();
-const txn = { v: 1, state: 'state', nonce: 'nonce', verifier: 'verifier', engine: 0, returnPath: '/dashboard?x=1', created: now };
+const txn = { v: 2, state: 'state', nonce: 'nonce', verifier: 'verifier', engineName: 'Production', returnPath: '/dashboard?x=1', created: now };
 assert.deepStrictEqual((0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)(txn, secret), secret, now), txn);
 const sealed = (0, oidc_1.sealTransaction)(txn, secret).split('.');
 sealed[1] = (sealed[1][0] === 'A' ? 'B' : 'A') + sealed[1].slice(1);

@@ -4,7 +4,7 @@ import { normalizeOidc } from './config';
 
 const secret = 'a sufficiently long test client secret';
 const now = Date.now();
-const txn = { v: 1 as const, state: 'state', nonce: 'nonce', verifier: 'verifier', engine: 0, returnPath: '/dashboard?x=1', created: now };
+const txn = { v: 2 as const, state: 'state', nonce: 'nonce', verifier: 'verifier', engineName: 'Production', returnPath: '/dashboard?x=1', created: now };
 assert.deepStrictEqual(openTransaction(sealTransaction(txn, secret), secret, now), txn);
 const sealed = sealTransaction(txn, secret).split('.');
 sealed[1] = (sealed[1][0] === 'A' ? 'B' : 'A') + sealed[1].slice(1);

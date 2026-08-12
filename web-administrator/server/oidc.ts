@@ -11,7 +11,10 @@ const TXN_TTL_MS = 10 * 60 * 1000;
 const metadataCache = new Map<string, { expires: number; value: Metadata }>();
 type Metadata = { issuer: string; authorization_endpoint: string; token_endpoint: string };
 type ActiveProvider = OidcProviderConfig & { discoveryUrl: string; clientId: string };
-type Transaction = { v: 1; state: string; nonce: string; verifier: string; engine: number; returnPath: string; created: number };
+// v2 seals the engine's stable NAME: like the oidc config keys, the identity
+// binding must not move when allowedUrls is reordered mid-flow (a restart
+// inside the 10-minute transaction window).
+type Transaction = { v: 2; state: string; nonce: string; verifier: string; engineName: string; returnPath: string; created: number };
 
 function b64(value: Buffer | string): string { return Buffer.from(value).toString('base64url'); }
 function random(size = 32): string { return crypto.randomBytes(size).toString('base64url'); }
@@ -33,7 +36,7 @@ export function openTransaction(value: string, secret: string, now = Date.now())
         const decipher = crypto.createDecipheriv('aes-256-gcm', keyFor(secret), Buffer.from(parts[0], 'base64url'));
         decipher.setAuthTag(Buffer.from(parts[2], 'base64url'));
         const txn = JSON.parse(Buffer.concat([decipher.update(Buffer.from(parts[1], 'base64url')), decipher.final()]).toString('utf8'));
-        if (txn.v !== 1 || typeof txn.created !== 'number' || txn.created > now + 30000 || now - txn.created > TXN_TTL_MS)
+        if (txn.v !== 2 || typeof txn.created !== 'number' || txn.created > now + 30000 || now - txn.created > TXN_TTL_MS)
             throw new Error('expired transaction');
         return txn;
     } catch (error) {
@@ -154,7 +157,7 @@ export function createOidcRouter(config: WebAdminConfig) {
             const metadata = await discovery(found.provider);
             const origin = publicOrigin(req, trusted);
             const verifier = random(48);
-            const txn: Transaction = { v: 1, state: random(), nonce: random(), verifier, engine: found.index,
+            const txn: Transaction = { v: 2, state: random(), nonce: random(), verifier, engineName: config.engines[found.index].name,
                 returnPath: validReturnPath(req.query.return), created: Date.now() };
             const secure = secureRequest(req, trusted);
             res.append('Set-Cookie', `${TXN_COOKIE}=${sealTransaction(txn, found.provider.clientSecret)}; Path=/oidc; HttpOnly; Max-Age=600; SameSite=Lax${secure ? '; Secure' : ''}`);
@@ -177,12 +180,14 @@ export function createOidcRouter(config: WebAdminConfig) {
         res.append('Set-Cookie', `${TXN_COOKIE}=; Path=/oidc; HttpOnly; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`);
         let returnPath = '/';
         try {
-            // Try configured secrets because the engine index itself is sealed.
+            // Try each configured engine's secret; the sealed engine NAME is
+            // authoritative, so a reordered allowedUrls still resolves to the
+            // same engine (names are unique whenever OIDC is configured).
             let txn: Transaction | null = null; let found: Awaited<ReturnType<typeof providerAt>> = null;
             const raw = cookies(req)[TXN_COOKIE];
             for (let i = 0; i < config.engines.length && !txn; i++) {
                 const candidate = await providerAt(config, i); if (!candidate) continue;
-                try { const opened = openTransaction(raw, candidate.provider.clientSecret); if (opened.engine === i) { txn = opened; found = candidate; } } catch { /* next */ }
+                try { const opened = openTransaction(raw, candidate.provider.clientSecret); if (opened.engineName === config.engines[i].name) { txn = opened; found = candidate; } } catch { /* next */ }
             }
             if (!txn || !found || req.query.state !== txn.state) throw new Error('invalid or expired sign-in transaction');
             returnPath = txn.returnPath;
