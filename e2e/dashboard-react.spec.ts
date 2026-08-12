@@ -264,3 +264,53 @@ test('the Stats toggle slides the KPI strip shut, leaving no gap above the table
     await expect.poll(() => wrap.evaluate((el) => getComputedStyle(el).overflow), { timeout: 3000 })
         .toBe('visible');
 });
+
+/* DLM on the free-typed (wildcard) filter: operational phrases become structured
+   state/stat filters, while plain names still substring-match. */
+const DLM_STATUSES = {
+    list: {
+        dashboardStatus: [
+            { channelId: 'c-started', name: 'Demo Started', state: 'STARTED', statistics: {} },
+            { channelId: 'c-stopped', name: 'Demo Stopped', state: 'STOPPED', statistics: {} },
+            // STOPPED but name does not contain "stopped" — only a DLM state hit finds it.
+            { channelId: 'c-quiet-stop', name: 'ADT Lab', state: 'STOPPED', statistics: {} },
+            {
+                channelId: 'c-errored', name: 'Orders', state: 'STARTED',
+                statistics: {
+                    entry: [{ 'com.mirth.connect.donkey.model.message.Status': 'ERROR', long: 4 }]
+                }
+            },
+        ],
+    },
+};
+
+test('DLM filter phrases match by state/stat, not only by name substring', async ({ page }) => {
+    await mockEngine(page, { 'GET /channels/statuses': DLM_STATUSES });
+    await page.goto('/dashboard');
+    await expect(page.getByText('ADT Lab', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Orders', { exact: true }).first()).toBeVisible();
+
+    const filter = page.locator('.filterbar input[role=combobox]');
+    const row = (name: string) => page.locator('tr', { hasText: name });
+
+    // "stopped" keeps every STOPPED channel, including ADT Lab (no name hit).
+    await filter.fill('stopped');
+    await filter.blur();
+    await expect(row('ADT Lab')).toBeVisible();
+    await expect(row('Demo Stopped')).toBeVisible();
+    await expect(row('Demo Started')).toHaveCount(0);
+    await expect(row('Orders')).toHaveCount(0);
+
+    // "with errors" keeps the channel whose ERROR stat is non-zero.
+    await filter.fill('with errors');
+    await filter.blur();
+    await expect(row('Orders')).toBeVisible();
+    await expect(row('ADT Lab')).toHaveCount(0);
+    await expect(row('Demo Started')).toHaveCount(0);
+
+    // Plain name search is unchanged.
+    await filter.fill('ADT');
+    await filter.blur();
+    await expect(row('ADT Lab')).toBeVisible();
+    await expect(row('Orders')).toHaveCount(0);
+});
