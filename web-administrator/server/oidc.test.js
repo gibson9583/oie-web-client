@@ -36,6 +36,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = __importStar(require("assert"));
 const oidc_1 = require("./oidc");
+const config_1 = require("./config");
 const secret = 'a sufficiently long test client secret';
 const now = Date.now();
 const txn = { v: 1, state: 'state', nonce: 'nonce', verifier: 'verifier', engine: 0, returnPath: '/dashboard?x=1', created: now };
@@ -53,4 +54,8 @@ const claims = { iss: metadata.issuer, aud: 'client', nonce: 'n', exp: Math.floo
 const token = `e30.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.signature`;
 assert.deepStrictEqual((0, oidc_1.validateIdTokenClaims)(token, metadata, provider, 'n', now), claims);
 assert.throws(() => (0, oidc_1.validateIdTokenClaims)(token, metadata, provider, 'wrong', now), /validation/);
+const engines = [{ name: 'Production', url: 'https://engine.test', verifyTls: true }];
+const providerConfig = { enabled: true, discoveryUrl: 'https://issuer.test/.well-known/openid-configuration', clientId: 'client', clientSecret: secret };
+assert.ok((0, config_1.normalizeOidc)({ Production: providerConfig }, engines).Production);
+assert.throws(() => (0, config_1.normalizeOidc)({ '0': providerConfig }, engines), /does not match a configured engine name/);
 console.log('oidc tests passed');

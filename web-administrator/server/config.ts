@@ -185,9 +185,9 @@ export function load(): WebAdminConfig {
     // Invalid URLs are dropped with a warning. The proxy routes by index into this.
     config.engines = buildEngines(config);
 
-    // OIDC providers are keyed by engine name, with the zero-based engine index
-    // accepted as a deployment-friendly fallback. A single set of env overrides
-    // configures the default engine. Secrets remain server-side.
+    // OIDC providers are keyed by the engine's stable, explicit name. Routing may
+    // use an index internally, but identity policy must not move when allowedUrls
+    // is reordered. A single set of env overrides configures the default engine.
     config.oidc = normalizeOidc(config.oidc, config.engines);
 
     config.root = ROOT;
@@ -202,14 +202,14 @@ function envBoolean(name: string, fallback: boolean): boolean {
 }
 
 export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<string, OidcProviderConfig> {
-    if (raw != null && (typeof raw !== 'object' || Array.isArray(raw))) throw new Error('[config] oidc must be an object keyed by engine name or index');
+    if (raw != null && (typeof raw !== 'object' || Array.isArray(raw))) throw new Error('[config] oidc must be an object keyed by engine name');
     const source: Record<string, any> = { ...((raw || {}) as object) };
     const envPresent = ['WEBADMIN_OIDC_DISCOVERY_URL', 'WEBADMIN_OIDC_CLIENT_ID', 'WEBADMIN_OIDC_CLIENT_SECRET',
         'WEBADMIN_OIDC_ENABLED', 'WEBADMIN_OIDC_SCOPES', 'WEBADMIN_OIDC_PROVIDER_LABEL', 'WEBADMIN_OIDC_AUTO_REDIRECT']
         .some((name) => process.env[name] != null);
     if (envPresent) {
         const first = engines[0]?.name || '0';
-        const previous = source[first] || source['0'] || {};
+        const previous = source[first] || {};
         source[first] = {
             ...previous,
             enabled: envBoolean('WEBADMIN_OIDC_ENABLED', previous.enabled !== false),
@@ -222,7 +222,11 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
         };
     }
     const out: Record<string, OidcProviderConfig> = {};
+    const engineNames = new Set(engines.map((engine) => engine.name));
+    if (Object.keys(source).length && engineNames.size !== engines.length)
+        throw new Error('[config] configured engine names must be unique when OIDC is enabled');
     for (const [key, value] of Object.entries(source)) {
+        if (!engineNames.has(key)) throw new Error(`[config] oidc.${key} does not match a configured engine name`);
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`[config] oidc.${key} must be an object`);
         const enabled = value.enabled !== false;
         if (!enabled) continue;
@@ -245,7 +249,7 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
 
 export function oidcForEngine(config: WebAdminConfig, index: number): OidcProviderConfig | null {
     const engine = config.engines[index];
-    return (engine && (config.oidc[engine.name] || config.oidc[String(index)])) || null;
+    return (engine && config.oidc[engine.name]) || null;
 }
 
 // Derive a readable label from a URL, e.g. "https://oie-prod:8443/" -> "oie-prod:8443".

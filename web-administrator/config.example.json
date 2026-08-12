@@ -5,14 +5,20 @@
         "url": "https://localhost:8443",
         "verifyTls": false
     },
-    "allowedUrls": [],
+    "allowedUrls": [
+        {
+            "name": "Production",
+            "url": "https://localhost:8443",
+            "verifyTls": false
+        }
+    ],
     "devMode": false,
     "pluginDirs": [],
     "trustedProxies": [],
     "codeTemplateCompletions": true,
     "tls": null,
     "oidc": {
-        "0": {
+        "Production": {
             "enabled": false,
             "discoveryUrl": "https://identity.example.com/.well-known/openid-configuration",
             "clientId": "oie-web-administrator",

@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { openTransaction, sealTransaction, validReturnPath, validateIdTokenClaims } from './oidc';
+import { normalizeOidc } from './config';
 
 const secret = 'a sufficiently long test client secret';
 const now = Date.now();
@@ -18,4 +19,8 @@ const claims = { iss: metadata.issuer, aud: 'client', nonce: 'n', exp: Math.floo
 const token = `e30.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.signature`;
 assert.deepStrictEqual(validateIdTokenClaims(token, metadata, provider, 'n', now), claims);
 assert.throws(() => validateIdTokenClaims(token, metadata, provider, 'wrong', now), /validation/);
+const engines = [{ name: 'Production', url: 'https://engine.test', verifyTls: true }];
+const providerConfig = { enabled: true, discoveryUrl: 'https://issuer.test/.well-known/openid-configuration', clientId: 'client', clientSecret: secret };
+assert.ok(normalizeOidc({ Production: providerConfig }, engines).Production);
+assert.throws(() => normalizeOidc({ '0': providerConfig }, engines), /does not match a configured engine name/);
 console.log('oidc tests passed');

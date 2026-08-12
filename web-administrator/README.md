@@ -43,13 +43,13 @@ OIE_URL=https://localhost:8443 npm start
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy); loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` | Serve the web UI itself over HTTPS: `{ "key", "cert", "passphrase"? }` (PEM paths). Leave `null` to serve HTTP and terminate TLS in front |
-| `oidc` | `WEBADMIN_OIDC_*` | `{}` | Confidential-client OIDC providers keyed by engine name or zero-based index. See below. |
+| `oidc` | `WEBADMIN_OIDC_*` | `{}` | Confidential-client OIDC providers keyed by the matching engine name. See below. |
 
 ### OpenID Connect sign-in
 
 OIDC is disabled unless an enabled provider is configured. Register exactly one redirect URI at the provider: `https://<web-admin-origin>/oidc/callback`. The web tier uses Authorization Code flow with PKCE and keeps tokens and the client secret out of the browser. The matching `oie-oidc-auth` extension must be installed and configured on each enabled engine.
 
-Each `oidc` entry accepts `enabled`, `discoveryUrl`, `clientId`, `clientSecret`, optional `scopes`, `providerLabel`, and `autoRedirect`. The environment variables `WEBADMIN_OIDC_ENABLED`, `WEBADMIN_OIDC_DISCOVERY_URL`, `WEBADMIN_OIDC_CLIENT_ID`, `WEBADMIN_OIDC_CLIENT_SECRET`, `WEBADMIN_OIDC_SCOPES`, `WEBADMIN_OIDC_PROVIDER_LABEL`, and `WEBADMIN_OIDC_AUTO_REDIRECT` override the default engine. Keep the client secret in a mounted secret or environment variable rather than source control.
+Each `oidc` entry must be keyed by the exact, unique `name` of its corresponding `allowedUrls` engine; numeric indexes are deliberately rejected so reordering engines cannot attach an identity provider to the wrong engine. Entries accept `enabled`, `discoveryUrl`, `clientId`, `clientSecret`, optional `scopes`, `providerLabel`, and `autoRedirect`. The environment variables `WEBADMIN_OIDC_ENABLED`, `WEBADMIN_OIDC_DISCOVERY_URL`, `WEBADMIN_OIDC_CLIENT_ID`, `WEBADMIN_OIDC_CLIENT_SECRET`, `WEBADMIN_OIDC_SCOPES`, `WEBADMIN_OIDC_PROVIDER_LABEL`, and `WEBADMIN_OIDC_AUTO_REDIRECT` override the default engine. Keep the client secret in a mounted secret or environment variable rather than source control.
 
 Local sign-in remains available from the login card as a break-glass path. OIDC does not currently end the provider session on logout. Align the engine's `server.api.sessionmaxinactiveinterval` with the provider session policy so an engine session does not substantially outlive the SSO session.
 

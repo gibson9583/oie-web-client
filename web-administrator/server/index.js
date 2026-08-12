@@ -144,8 +144,8 @@ app.get('/webadmin/config.json', (req, res) => {
     // already host-derived when unset (buildEngines → engineLabel), so the login
     // dropdown and the connected-engine label read fine from `name` alone.
     res.json({
-        engines: config.engines.map((e, index) => {
-            const oidc = config.oidc[e.name] || config.oidc[String(index)];
+        engines: config.engines.map((e) => {
+            const oidc = config.oidc[e.name];
             return { name: e.name, ...(oidc ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {}) };
         }),
         devMode: !!config.devMode,
