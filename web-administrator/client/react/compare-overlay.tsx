@@ -158,36 +158,34 @@ function SideHeader({ side, compareRef, state, onStage }: any) {
 
 /* ---- the overlay ------------------------------------------------------------- */
 
-export function CompareOverlay({ pair, channelName, onClose }: any) {
-    const [left, setLeft] = useState(() => pair.left);
-    const [right, setRight] = useState(() => pair.right);
-    // Bumped by Retry so a failed side refetches without changing its reference.
-    const [leftGen, setLeftGen] = useState(0);
-    const [rightGen, setRightGen] = useState(0);
-
-    const leftState = useSideContent(left, leftGen);
-    const rightState = useSideContent(right, rightGen);
-
+/*
+ * The diff itself, as its own component INSIDE the portal. That placement is the
+ * point: Radix's Dialog.Portal renders nothing on its first commit (it resolves
+ * its container in a layout effect), so a mount effect written in the overlay
+ * below would run before this host div exists and would silently never mount the
+ * editor. A child mounts when the portal content does.
+ *
+ * It also puts the whole editor lifecycle behind ONE unmount: whatever removed
+ * the overlay — Close, Esc, a route change, the shell tearing the view down at
+ * session end — this cleanup disposes the Monaco models (freeing them from
+ * Monaco's global registry, with the message content in them) and drops the
+ * buffers.
+ */
+function DiffPane({ original, modified, originalLanguage, modifiedLanguage }: any) {
     const hostRef = useRef<any>(null);
     const diffRef = useRef<any>(null);
-    // The two content buffers, mirrored out of React state so teardown can drop
-    // them explicitly rather than relying on the component object going away.
+    // The two content buffers, mirrored out of props so teardown releases them
+    // explicitly rather than relying on the component object going away.
     const buffersRef = useRef<any>({ original: '', modified: '' });
 
-    /* Mount the diff editor once, and tear it down on EVERY exit path — this
-       cleanup is the single place that runs for Close, Esc, a route change, or
-       the shell unmounting the view on session end. */
     useEffect(() => {
         const host = hostRef.current;
-        if (!host) return undefined;
         const diff = createDiffEditor({ original: '', modified: '', language: 'plaintext' });
         diffRef.current = diff;
         host.appendChild(diff.el);
         return () => {
             diffRef.current = null;
             buffersRef.current = { original: '', modified: '' };
-            // Frees the two models from Monaco's global registry; without it they
-            // outlive the overlay with the message content still in them.
             try { diff.dispose(); } catch { /* already gone */ }
             try { diff.el.remove(); } catch { /* already detached */ }
         };
@@ -198,16 +196,23 @@ export function CompareOverlay({ pair, channelName, onClose }: any) {
     useEffect(() => {
         const diff = diffRef.current;
         if (!diff) return;
-        const original = leftState.status === 'ready' ? leftState.text : '';
-        const modified = rightState.status === 'ready' ? rightState.text : '';
         buffersRef.current = { original, modified };
-        diff.setModels({
-            original, modified,
-            originalLanguage: leftState.language,
-            modifiedLanguage: rightState.language
-        });
+        diff.setModels({ original, modified, originalLanguage, modifiedLanguage });
         diff.layout();
-    }, [leftState, rightState]);
+    }, [original, modified, originalLanguage, modifiedLanguage]);
+
+    return <div className="compare-diff" ref={hostRef} />;
+}
+
+export function CompareOverlay({ pair, channelName, onClose }: any) {
+    const [left, setLeft] = useState(() => pair.left);
+    const [right, setRight] = useState(() => pair.right);
+    // Bumped by Retry so a failed side refetches without changing its reference.
+    const [leftGen, setLeftGen] = useState(0);
+    const [rightGen, setRightGen] = useState(0);
+
+    const leftState = useSideContent(left, leftGen);
+    const rightState = useSideContent(right, rightGen);
 
     /* Session end (explicit logout, idle logout, a background 401) closes the
        overlay so no content is left on an unattended screen — before the login
@@ -272,7 +277,11 @@ export function CompareOverlay({ pair, channelName, onClose }: any) {
                         </div>
 
                         <div className="compare-body">
-                            <div className="compare-diff" ref={hostRef} />
+                            <DiffPane
+                                original={leftState.status === 'ready' ? leftState.text : ''}
+                                modified={rightState.status === 'ready' ? rightState.text : ''}
+                                originalLanguage={leftState.language}
+                                modifiedLanguage={rightState.language} />
                             {pane('left', leftState, () => setLeftGen(g => g + 1))}
                             {pane('right', rightState, () => setRightGen(g => g + 1))}
                         </div>
