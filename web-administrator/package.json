@@ -1,6 +1,6 @@
 {
   "name": "oie-web-administrator",
-  "version": "1.0.0",
+  "version": "0.5.0-beta",
   "description": "Web-based administrator for Open Integration Engine (Mirth Connect fork). Standalone NodeJS app that mirrors the Swing Administrator and is pluggable by extension developers.",
   "license": "MPL-2.0",
   "main": "server/index.js",
@@ -8,11 +8,11 @@
     "oie-webadmin": "server/index.js"
   },
   "scripts": {
-    "prestart": "node tools/build-vendor.mjs && node tools/build-core.mjs && node tools/build-server.mjs",
+    "prestart": "node tools/build-info.mjs && node tools/build-vendor.mjs && node tools/build-core.mjs && node tools/build-server.mjs",
     "start": "node server/index.js",
-    "predev": "node tools/build-vendor.mjs && node tools/build-core.mjs && node tools/build-server.mjs",
+    "predev": "node tools/build-info.mjs && node tools/build-vendor.mjs && node tools/build-core.mjs && node tools/build-server.mjs",
     "dev": "WEBADMIN_DEV=1 node --watch-path=./server server/index.js",
-    "build": "node tools/build-vendor.mjs && node tools/build-core.mjs && node tools/build-server.mjs && vite build && node tools/build-plugins.mjs && npm run gen:types",
+    "build": "node tools/build-info.mjs && node tools/build-vendor.mjs && node tools/build-core.mjs && node tools/build-server.mjs && vite build && node tools/build-plugins.mjs && npm run gen:types",
     "gen:types": "tsc -p tsconfig.types.json && cp client/core/oie-schema.d.ts ../packages/web-api/types/oie-schema.d.ts && tsc -p tsconfig.types-shell.json && cp client/core/oie-schema.d.ts ../packages/web-shell/types/oie-schema.d.ts && tsc -p tsconfig.types-ui.json && cp client/core/oie-schema.d.ts ../packages/web-ui/types/core/oie-schema.d.ts",
     "test": "for f in client/core/*.test.js server/*.test.js; do node \"$f\" || exit 1; done"
   },
