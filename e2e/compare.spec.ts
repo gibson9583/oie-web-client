@@ -244,7 +244,12 @@ test('two channels that both have a message 12345 compare, distinguishably', asy
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
 
-    await page.goto(`/messages/${CID2}`);
+    /* The channel picker, NOT page.goto: the anchor is memory-only by design, so a
+       full page load is meant to wipe it (see the reload test below). What has to
+       survive is navigation WITHIN the app, which is what the picker does. */
+    await page.getByLabel('Channel').selectOption(CID2);
+    // 12346 is only in the first channel — its absence proves the switch landed.
+    await expect(row(page, '12346')).toHaveCount(0);
     await expect(row(page, '12345')).toBeVisible();
     // The anchor outlives the navigation, and still says which channel it is from.
     await expect(page.locator('.compare-chip')).toContainText('Demo Started · Msg 12345 · Source · Raw');
@@ -479,15 +484,41 @@ test('the comparison never enters the URL', async ({ page }) => {
 });
 
 test('navigating away releases the comparison', async ({ page }) => {
-    await openBrowser(page);
+    // Start channel-less so the picker leaves a history entry to go back TO: this
+    // has to be a route change, not a reload — a reload discards everything
+    // anyway and would prove nothing about the unmount.
+    await page.goto('/messages');
+    await page.getByLabel('Channel').selectOption(CID);
+    await expect(row(page, '12345')).toBeVisible();
+
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
     await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
     await expect(page.locator('.compare-overlay')).toBeVisible();
 
-    await page.goto('/dashboard');
+    /* Back, because the overlay is modal: the nav rail is inert until it closes,
+       so Back/Forward is how a route change actually reaches a user who has one
+       open. popstate re-routes in place — no reload. */
+    await page.goBack();
+    await expect(page).toHaveURL(/\/messages$/);
     await expect(page.locator('.compare-overlay')).toHaveCount(0);
     expect(await domText(page)).not.toContain(SENTINEL);
+});
+
+/* The other half of that rule: references are memory-only, so a full page load
+   starts from a clean IDLE state — nothing about a comparison is persisted for
+   the next person to open this tab. */
+test('a full page load clears the selection', async ({ page }) => {
+    await openBrowser(page);
+    await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
+    await expect(page.locator('.compare-chip')).toBeVisible();
+
+    await page.reload();
+    await expect(row(page, '12345')).toBeVisible();
+    await expect(page.locator('.compare-chip')).toHaveCount(0);
+    await expect(page.locator('tr.compare-anchor')).toHaveCount(0);
+    await expect(page.locator('.status-compare')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Compare to Selection' })).toBeDisabled();
 });
 
 /* ---- accessibility ------------------------------------------------------------ */
