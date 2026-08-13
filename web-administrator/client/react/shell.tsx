@@ -257,6 +257,19 @@ function openApiDocs() {
     window.open('/api/', '_blank');
 }
 
+// "0.5.0-beta (ab12cd3, built 2026-08-11)" — the package version plus the build
+// metadata stamped by tools/build-info.mjs and served in /webadmin/config.json.
+// `-dirty` marks a build from a modified tree, the one case where the commit
+// does not describe what is actually running.
+function webAdminIdentity() {
+    const cfg: any = store.getState('webadminConfig') || {};
+    const build = cfg.build || {};
+    const commit = build.commit ? String(build.commit).slice(0, 7) + (build.dirty ? '-dirty' : '') : '';
+    const built = build.date ? `built ${String(build.date).slice(0, 10)}` : '';
+    const detail = [commit, built].filter(Boolean).join(', ');
+    return `${cfg.version || '?'}${detail ? ` (${detail})` : ''}`;
+}
+
 async function showAbout() {
     let about: any = null;
     try { about = await api.server.about(); } catch { /* show what we can */ }
@@ -268,13 +281,21 @@ async function showAbout() {
             else if (Array.isArray(entry)) entries.push(entry);
         }
     }
+    /* The client is one more row of the same list, not a footnote in another
+       style: the dialog answers "what am I running", and the web administrator is
+       half the answer. Its key names it explicitly, since the engine's own
+       VERSION row sits directly above and would otherwise be ambiguous.
+       Unreachable engine: the list still renders, carrying the row we can
+       always answer plus a note for the one we can't. */
+    entries.push(['Web Administrator', webAdminIdentity()]);
+    if (!about) entries.unshift(['Engine', `v${store.getState('serverVersion') || '?'} — details unavailable`]);
     const kv = h('dl.kv');
     entries.forEach(([k, v]) => { kv.appendChild(h('dt', String(k))); kv.appendChild(h('dd', String(v ?? ''))); });
     modal({
         title: 'About Open Integration Engine',
         body: h('div',
             h('div.flex.items-center.gap-2.mb-[13px]', h('img', { src: '/assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
-            entries.length ? kv : h('div.text-text-dim', `Web Administrator v${(store.getState('webadminConfig') || {}).version || ''} — engine v${store.getState('serverVersion') || '?'}`)),
+            kv),
         buttons: [{ label: 'Close', primary: true }]
     });
 }
