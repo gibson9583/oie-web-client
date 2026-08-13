@@ -24,6 +24,11 @@ RUN npm ci
 
 COPY packages packages
 COPY web-administrator web-administrator
+# .git is not in the build context, so CI passes the commit in for
+# tools/build-info.mjs (see .github/workflows/docker.yml). The version itself
+# always comes from package.json; without this arg the image is simply stamped
+# version-only.
+ARG BUILD_COMMIT
 RUN npm run build -w web-administrator
 
 # ---------------------------------------------------------------------------
@@ -59,6 +64,7 @@ COPY --from=proddeps /app /app
 # The workspace links in node_modules/@oie point into packages/, so the real
 # package sources must be present.
 COPY --from=build /app/packages packages
+COPY --from=build /app/web-administrator/build-info.json web-administrator/
 COPY --from=build /app/web-administrator/server web-administrator/server
 COPY --from=build /app/web-administrator/client web-administrator/client
 COPY --from=build /app/web-administrator/plugins web-administrator/plugins

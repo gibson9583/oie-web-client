@@ -71,6 +71,10 @@ jobs:
           context: .
           platforms: ${{ env.PLATFORMS }}
           push: ${{ env.PUSH == 'true' }}
+          # Build metadata for the About dialog / startup log. The version
+          # comes from package.json; this only says which commit built it.
+          build-args: |
+            BUILD_COMMIT=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

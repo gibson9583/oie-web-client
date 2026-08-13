@@ -28,6 +28,18 @@ const clientDir = path.join(config.root, 'client');
 // (npm start) serves the static files as before — zero extra dependencies.
 const DEV = process.env.WEBADMIN_DEV === '1';
 
+// Build identity stamped by tools/build-info.mjs (gitignored; rebuilt by every
+// build/start script and the Docker build). The version is package.json's; git
+// supplies only which commit it was built from. Absent only on an install that
+// never ran a build script — the version still holds, we just can't say which
+// build it is.
+let buildInfo: { version: string; commit?: string | null; dirty?: boolean; date?: string | null };
+try {
+    buildInfo = JSON.parse(fs.readFileSync(path.join(config.root, 'build-info.json'), 'utf8'));
+} catch {
+    buildInfo = { version: require('../package.json').version };
+}
+
 // Build the listening server: HTTPS when config.tls supplies a readable key+cert
 // PEM (a convenience for standalone installs), else plain HTTP. Most deployments
 // terminate TLS at a reverse proxy instead. Exits with a clear message on a bad key/cert.
@@ -115,7 +127,8 @@ app.get('/webadmin/config.json', (req: Request, res: Response) => {
     res.json({
         engines: config.engines.map((e) => ({ name: e.name })),
         devMode: !!config.devMode,
-        version: require('../package.json').version,
+        version: buildInfo.version,
+        build: { commit: buildInfo.commit || null, dirty: !!buildInfo.dirty, date: buildInfo.date || null },
         codeTemplateCompletions: config.codeTemplateCompletions !== false
     });
 });
@@ -214,6 +227,7 @@ async function start() {
             console.log(`  Engine:  ${config.engines[0].url} (TLS verify: ${config.engines[0].verifyTls})`);
         }
         if (config.devMode) console.log('  devMode: ON — a login-entered engine URL will be proxied (trusted deployments only)');
+        console.log(`  Version: ${buildInfo.version}${buildInfo.commit ? ` (${String(buildInfo.commit).slice(0, 7)}${buildInfo.dirty ? '-dirty' : ''})` : ''}`);
         console.log(`  Plugins: ${loaded.length} loaded`);
         // Bind-posture warning: on a routable interface without TLS, the proxy
         // strips Secure from the JSESSIONID cookie (server/proxy.js), so the
