@@ -67,7 +67,7 @@ export function storedContentTypes(cm) {
  * and the per-stage data types (a hint for the diff editor's language) — the
  * content itself is left where it is and re-fetched when the overlay opens.
  */
-export function refFromConnectorMessage(channelId, messageId, cm, contentType) {
+export function refFromConnectorMessage(channel, messageId, cm, contentType) {
     const metaDataId = Number(cm?.metaDataId ?? 0);
     const storedTypes = storedContentTypes(cm);
     const dataTypes = {};
@@ -77,7 +77,8 @@ export function refFromConnectorMessage(channelId, messageId, cm, contentType) {
             dataTypes[type] = String(dataType);
     }
     return {
-        channelId: String(channelId),
+        channelId: String(channel.id),
+        channelName: channel.name ? String(channel.name) : undefined,
         messageId: Number(messageId),
         metaDataId,
         connectorName: cm?.connectorName || (metaDataId === 0 ? 'Source' : `Connector ${metaDataId}`),
@@ -95,11 +96,26 @@ export function samePair(a, b) {
         && Number(a.metaDataId) === Number(b.metaDataId)
         && a.contentType === b.contentType;
 }
-/** "Msg 41207 · Source · Raw" — the reference, never the content. */
+/**
+ * "Orders In · Msg 41207 · Source · Raw" — the reference, never the content.
+ *
+ * The channel LEADS, and is never omitted, because a message id is a per-channel
+ * sequence: every channel has a message 1. Two references from different
+ * channels would otherwise render identically, which matters most in exactly the
+ * place it would be least noticed — the two side headers of a comparison. Falls
+ * back to the channel id on the rare path where the name hasn't loaded yet.
+ */
 export function describeRef(ref) {
     if (!ref)
         return '';
-    return `Msg ${ref.messageId} · ${ref.connectorName || `Connector ${ref.metaDataId}`} · ${stageLabel(ref.contentType)}`;
+    const connector = ref.connectorName || `Connector ${ref.metaDataId}`;
+    return `${ref.channelName || ref.channelId} · Msg ${ref.messageId} · ${connector} · ${stageLabel(ref.contentType)}`;
+}
+/** True when both references are for the same message of the same channel. */
+export function sameMessage(a, b) {
+    if (!a || !b)
+        return false;
+    return String(a.channelId) === String(b.channelId) && Number(a.messageId) === Number(b.messageId);
 }
 /* ---- state (refs only) ------------------------------------------------------ */
 let anchor = null;

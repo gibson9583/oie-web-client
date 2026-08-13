@@ -5,7 +5,7 @@ import api, { resetSessionExpired } from './api.js';
 import { emit, on } from './store.js';
 import {
     selectForCompare, proposeCompare, confirmCompare, cancelPending, clearCompare,
-    getAnchor, getPending, samePair, describeRef, storedContentTypes, stageLabel, stageKey,
+    getAnchor, getPending, samePair, sameMessage, describeRef, storedContentTypes, stageLabel, stageKey,
     refFromConnectorMessage
 } from './compare.js';
 
@@ -13,7 +13,7 @@ let pass = 0, fail = 0;
 const ok = (cond, label) => { if (cond) pass++; else { fail++; console.error('  FAIL -', label); } };
 
 const ref = (over = {}) => ({
-    channelId: 'c1', messageId: 41207, metaDataId: 0, connectorName: 'Source',
+    channelId: 'c1', channelName: 'Orders In', messageId: 41207, metaDataId: 0, connectorName: 'Source',
     contentType: 'RAW', storedTypes: ['RAW', 'TRANSFORMED', 'ENCODED'], ...over
 });
 
@@ -41,19 +41,21 @@ ok(storedContentTypes({ metaDataId: 1 }).length === 0, 'a connector message with
 
 /* ---- building a reference from a loaded connector message ---- */
 
-const built = refFromConnectorMessage('c1', '41207', {
+const built = refFromConnectorMessage({ id: 'c1', name: 'Orders In' }, '41207', {
     metaDataId: 0, connectorName: 'Source',
     raw: { content: 'MSH|', dataType: 'HL7V2' },
     encoded: { content: '<x/>', dataType: 'XML' }
 }, 'RAW');
 ok(built.messageId === 41207 && typeof built.messageId === 'number', 'the message id is numeric');
 ok(built.channelId === 'c1' && built.metaDataId === 0, 'the coordinates carry over');
+ok(built.channelName === 'Orders In', 'the channel name is captured for display');
 ok(String(built.storedTypes) === 'RAW,ENCODED', 'stored stages come from the connector message');
 ok(built.dataTypes.RAW === 'HL7V2' && built.dataTypes.ENCODED === 'XML', 'per-stage data types are captured as a language hint');
 ok(!JSON.stringify(built).includes('MSH|'), 'a reference carries no content');
 
-const unnamed = refFromConnectorMessage('c1', 1, { metaDataId: 2, encoded: { content: 'x' } }, 'ENCODED');
+const unnamed = refFromConnectorMessage({ id: 'c1' }, 1, { metaDataId: 2, encoded: { content: 'x' } }, 'ENCODED');
 ok(unnamed.connectorName === 'Connector 2', 'an unnamed destination falls back to its id');
+ok(unnamed.channelName === undefined, 'no channel name is captured when none was given');
 
 /* ---- identical-tuple comparison ---- */
 
@@ -62,8 +64,17 @@ ok(samePair(ref(), ref({ contentType: 'ENCODED' })) === false, 'a different stag
 ok(samePair(ref(), ref({ metaDataId: 1 })) === false, 'a different connector is different content');
 ok(samePair(ref(), ref({ messageId: 41208 })) === false, 'a different message is different content');
 ok(samePair(ref(), null) === false, 'nothing compares equal to no ref');
+// Message ids are a PER-CHANNEL sequence, so the channel is part of identity.
+ok(samePair(ref(), ref({ channelId: 'c2', channelName: 'Orders Out' })) === false, 'the same id in another channel is different content');
 
-ok(describeRef(ref()) === 'Msg 41207 · Source · Raw', 'describeRef renders the reference only');
+ok(sameMessage(ref(), ref({ contentType: 'ENCODED' })) === true, 'two stages of one message are the same message');
+ok(sameMessage(ref(), ref({ metaDataId: 1 })) === true, 'two connectors of one message are the same message');
+ok(sameMessage(ref(), ref({ messageId: 41208 })) === false, 'a different message is not');
+ok(sameMessage(ref(), ref({ channelId: 'c2' })) === false, 'message 41207 of another channel is NOT the same message');
+ok(sameMessage(ref(), null) === false, 'nothing is the same message as no ref');
+
+ok(describeRef(ref()) === 'Orders In · Msg 41207 · Source · Raw', 'describeRef leads with the channel, and renders the reference only');
+ok(describeRef(ref({ channelName: undefined })) === 'c1 · Msg 41207 · Source · Raw', 'describeRef falls back to the channel id');
 ok(describeRef(null) === '', 'describeRef of nothing is empty');
 
 /* ---- the state machine ---- */

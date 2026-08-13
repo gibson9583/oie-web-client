@@ -204,7 +204,7 @@ function DiffPane({ original, modified, originalLanguage, modifiedLanguage }: an
     return <div className="compare-diff" ref={hostRef} />;
 }
 
-export function CompareOverlay({ pair, channelName, onClose }: any) {
+export function CompareOverlay({ pair, onClose }: any) {
     const [left, setLeft] = useState(() => pair.left);
     const [right, setRight] = useState(() => pair.right);
     // Bumped by Retry so a failed side refetches without changing its reference.
@@ -259,7 +259,10 @@ export function CompareOverlay({ pair, channelName, onClose }: any) {
                             <Dialog.Title asChild>
                                 <h2 className="compare-title">Compare Content</h2>
                             </Dialog.Title>
-                            {channelName ? <span className="tag">{channelName}</span> : null}
+                            {/* No channel chip in the header: the two sides need not
+                                be from the same channel, so naming one here would be
+                                wrong for the other. Each side's reference carries its
+                                own channel instead. */}
                             <span className="flex-1" />
                             <button className="btn" onClick={swap} title="Swap the two sides">
                                 <Icon name="transform" />Swap

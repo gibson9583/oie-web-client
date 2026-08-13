@@ -56,7 +56,7 @@ import { DateTimeField } from '../date-time-field.jsx';
 import { on } from '../../core/store.js';
 import {
     COMPARE_STAGES, cancelPending, confirmCompare, describeRef, getAnchor, getPending,
-    proposeCompare, refFromConnectorMessage, selectForCompare, stageLabel, storedContentTypes
+    proposeCompare, refFromConnectorMessage, sameMessage, selectForCompare, stageLabel, storedContentTypes
 } from '../../core/compare.js';
 import { CompareChip } from '../compare-chip.jsx';
 import { CompareOverlay } from '../compare-overlay.jsx';
@@ -995,7 +995,7 @@ function DetailTabs({ defs, anchorType, onActiveStage, onStageMenu }: any) {
 
 /* Tab set for one connector message (content stages, errors, mappings,
    attachments) — mirrors the Swing browser's per-connector tabs. */
-function ConnectorTabs({ message, cm, channelId, platform, anchor, onActiveStage, onStageMenu }: any) {
+function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, onActiveStage, onStageMenu }: any) {
     const contentDefs = [
         ['Raw', 'raw'], ['Processed Raw', 'processedRaw'], ['Transformed', 'transformed'],
         ['Encoded', 'encoded'], ['Sent', 'sent'], ['Response', 'response'],
@@ -1009,8 +1009,8 @@ function ConnectorTabs({ message, cm, channelId, platform, anchor, onActiveStage
        list and the data-type hints are the message's own truth, not a guess from
        the channel's storage mode. */
     const refForDef = useCallback((def: any) => (def && def.contentType
-        ? refFromConnectorMessage(channelId, message.messageId, cm, def.contentType)
-        : null), [channelId, message, cm]);
+        ? refFromConnectorMessage({ id: channelId, name: channelName }, message.messageId, cm, def.contentType)
+        : null), [channelId, channelName, message, cm]);
     const activeStage = useCallback((def: any) => { if (onActiveStage) onActiveStage(refForDef(def)); },
         [onActiveStage, refForDef]);
     const stageMenu = useCallback((def: any, e: any) => {
@@ -1087,7 +1087,7 @@ function ConnectorTabs({ message, cm, channelId, platform, anchor, onActiveStage
    connector tabs. The connector shown is chosen by selecting the source or
    destination row in the tree above, so the header is just the message label —
    no status pill or connector dropdown. */
-function DetailBody({ detail, channelId, platform, anchor, onActiveStage, onStageMenu }: any) {
+function DetailBody({ detail, channelId, channelName, platform, anchor, onActiveStage, onStageMenu }: any) {
     if (detail.status === 'empty') {
         return <div className="text-text-faint flex-none py-[8px] px-3.5">Select a message to view its contents.</div>;
     }
@@ -1109,7 +1109,7 @@ function DetailBody({ detail, channelId, platform, anchor, onActiveStage, onStag
         <>
             <div className="panel-header flex-none">{`Message ${message.messageId}`}</div>
             <ConnectorTabs key={`${message.messageId}:${cm.metaDataId}`}
-                message={message} cm={cm} channelId={channelId} platform={platform}
+                message={message} cm={cm} channelId={channelId} channelName={channelName} platform={platform}
                 anchor={anchor} onActiveStage={onActiveStage} onStageMenu={onStageMenu} />
         </>
     );
@@ -2131,7 +2131,9 @@ export function MessagesView({ params, query }: any) {
             body: h('div',
                 sideRow('Left', left, 'accent'),
                 sideRow('Right', right, 'amber'),
-                Number(left.messageId) === Number(right.messageId)
+                /* Same CHANNEL and message: ids are a per-channel sequence, so
+                   comparing message 5 of two channels is not one message's pipeline. */
+                sameMessage(left, right)
                     ? h('div.compare-confirm-note', 'Two stages of the same message — this traces what the pipeline changed.')
                     : null),
             /* Cancel, Esc and a click on the scrim all land here, and all mean the
@@ -2172,7 +2174,7 @@ export function MessagesView({ params, query }: any) {
             cornerToast(`${stageLabel(contentType)} content is not stored for message ${row.messageId}`, 'warn');
             return;
         }
-        const ref = refFromConnectorMessage(channelId, row.messageId, cm, contentType);
+        const ref = refFromConnectorMessage({ id: channelId, name: channelName }, row.messageId, cm, contentType);
         mode === 'select' ? takeAnchor(ref) : offerCandidate(ref);
     }
 
@@ -2708,7 +2710,7 @@ export function MessagesView({ params, query }: any) {
 
                 <div className="split-handle mx-[13px]" data-orient="v" data-resize="next" />
                 <div ref={detailPaneRef} className="flex-none h-[32px] overflow-hidden flex flex-col panel mx-[13px] mb-3">
-                    <DetailBody detail={detail} channelId={channelId} platform={platform}
+                    <DetailBody detail={detail} channelId={channelId} channelName={channelName} platform={platform}
                         anchor={anchor} onActiveStage={onActiveStage} onStageMenu={stageContextMenu} />
                 </div>
             </div>
@@ -2716,7 +2718,7 @@ export function MessagesView({ params, query }: any) {
             {/* Mounted INSIDE the view: navigating away unmounts it, which is the
                 teardown path that releases the fetched content. */}
             {comparePair && (
-                <CompareOverlay pair={comparePair} channelName={channelName}
+                <CompareOverlay pair={comparePair}
                     onClose={(info: any) => {
                         setComparePair(null);
                         // A session that ended is already telling the user what

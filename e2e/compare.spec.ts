@@ -12,6 +12,7 @@ import { mockEngine } from './mock.js';
  */
 
 const CID = 'c-started';
+const CID2 = 'c-stopped';
 const SENTINEL = 'ZZTEST^SENTINEL';
 
 /* Message 12345: a source with Raw + Transformed stored (no Processed Raw), and
@@ -71,7 +72,38 @@ const MESSAGE_B = {
     }
 };
 
+/* A DIFFERENT channel's message 12345 — ids restart per channel, so the same id
+   in two channels is ordinary, not contrived. */
+const MESSAGE_OTHER = {
+    messageId: '12345',
+    channelId: CID2,
+    processed: true,
+    receivedDate: { time: 1700000200000 },
+    connectorMessages: {
+        entry: [{
+            int: 0,
+            connectorMessage: {
+                metaDataId: 0,
+                connectorName: 'Source',
+                status: 'TRANSFORMED',
+                receivedDate: { time: 1700000200000 },
+                raw: { content: `MSH|^~\\&|OTHER^CHANNEL|FAC|RECV|FAC|20231103||ORU^R01|${SENTINEL}|P|2.3`, dataType: 'HL7V2' }
+            }
+        }]
+    }
+};
+
 const FIXTURES = {
+    [`GET /channels/${CID2}/messages`]: (req: any) => {
+        const offset = Number(new URL(req.url()).searchParams.get('offset') || 0);
+        return { list: { message: offset > 0 ? [] : [MESSAGE_OTHER] } };
+    },
+    [`GET /channels/${CID2}/messages/count`]: { long: 1 },
+    [`GET /channels/${CID2}/connectorNames`]: { map: { entry: [{ int: 0, string: 'Source' }] } },
+    [`GET /channels/${CID2}/metaDataColumns`]: '',
+    [`GET /channels/${CID2}/messages/12345`]: MESSAGE_OTHER,
+    [`GET /channels/${CID2}/messages/12345/attachments`]: '',
+
     [`GET /channels/${CID}/messages`]: (req: any) => {
         const offset = Number(new URL(req.url()).searchParams.get('offset') || 0);
         return { list: { message: offset > 0 ? [] : [MESSAGE_A, MESSAGE_B] } };
@@ -82,7 +114,10 @@ const FIXTURES = {
         { int: 1, string: 'HTTP Sender' }
     ] } },
     [`GET /channels/${CID}/metaDataColumns`]: '',
-    'GET /channels/idsAndNames': { map: { entry: [{ string: [CID, 'Demo Started'] }] } },
+    'GET /channels/idsAndNames': { map: { entry: [
+        { string: [CID, 'Demo Started'] },
+        { string: [CID2, 'Demo Stopped'] }
+    ] } },
     [`GET /channels/${CID}/messages/12345`]: MESSAGE_A,
     [`GET /channels/${CID}/messages/12346`]: MESSAGE_B,
     [`GET /channels/${CID}/messages/12345/attachments`]: '',
@@ -124,7 +159,7 @@ test('row → submenu → second row → confirm renders the diff', async ({ pag
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
     const chip = page.locator('.compare-chip');
     await expect(chip).toBeVisible();
-    await expect(chip).toContainText('Msg 12345 · Source · Raw');
+    await expect(chip).toContainText('Demo Started · Msg 12345 · Source · Raw');
     // The chip advertises the reference and nothing else.
     await expect(chip).not.toContainText(SENTINEL);
     // The anchored row is marked in the grid, and the status bar says so.
@@ -135,14 +170,14 @@ test('row → submenu → second row → confirm renders the diff', async ({ pag
 
     const confirm = page.getByRole('dialog').filter({ hasText: 'Compare selected content?' });
     await expect(confirm).toBeVisible();
-    await expect(confirm).toContainText('Msg 12345 · Source · Raw');
-    await expect(confirm).toContainText('Msg 12346 · Source · Raw');
+    await expect(confirm).toContainText('Demo Started · Msg 12345 · Source · Raw');
+    await expect(confirm).toContainText('Demo Started · Msg 12346 · Source · Raw');
     await confirm.getByRole('button', { name: 'Compare', exact: true }).click();
 
     const overlay = page.locator('.compare-overlay');
     await expect(overlay).toBeVisible();
-    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Msg 12345 · Source · Raw');
-    await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Msg 12346 · Source · Raw');
+    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Demo Started · Msg 12345 · Source · Raw');
+    await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Demo Started · Msg 12346 · Source · Raw');
     // Both sides actually loaded (neither pane is still spinning or errored).
     await expect(overlay.locator('.compare-pane-overlay')).toHaveCount(0);
 });
@@ -154,10 +189,10 @@ test('Swap exchanges the two sides', async ({ page }) => {
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
 
     const overlay = page.locator('.compare-overlay');
-    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Msg 12345 · Source · Raw');
+    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Demo Started · Msg 12345 · Source · Raw');
     await overlay.getByRole('button', { name: 'Swap' }).click();
-    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Msg 12346 · Source · Raw');
-    await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Msg 12345 · Source · Raw');
+    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Demo Started · Msg 12346 · Source · Raw');
+    await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Demo Started · Msg 12345 · Source · Raw');
 });
 
 test('a stage dropdown re-points one side without disturbing the other', async ({ page }) => {
@@ -168,8 +203,8 @@ test('a stage dropdown re-points one side without disturbing the other', async (
 
     const overlay = page.locator('.compare-overlay');
     await overlay.getByLabel('Left stage').selectOption('TRANSFORMED');
-    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Msg 12345 · Source · Transformed');
-    await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Msg 12346 · Source · Raw');
+    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Demo Started · Msg 12345 · Source · Transformed');
+    await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Demo Started · Msg 12346 · Source · Raw');
     await expect(overlay.locator('.compare-pane-overlay')).toHaveCount(0);
 });
 
@@ -181,7 +216,7 @@ test('a content tab captures the stage that is on screen', async ({ page }) => {
     await page.getByRole('tab', { name: 'Transformed', exact: true }).click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Select for Compare' }).click();
 
-    await expect(page.locator('.compare-chip')).toContainText('Msg 12345 · Source · Transformed');
+    await expect(page.locator('.compare-chip')).toContainText('Demo Started · Msg 12345 · Source · Transformed');
     // The captured tab is marked as the anchor.
     await expect(page.locator('.tabs .tab.compare-anchor')).toHaveText('Transformed');
 });
@@ -198,6 +233,40 @@ test('two stages of one message compare, and say so', async ({ page }) => {
     await expect(page.locator('.compare-pane-overlay')).toHaveCount(0);
 });
 
+/*
+ * Cross-channel: the anchor survives navigating to another channel's browser, and
+ * both channels have a message 12345 because message ids are a PER-CHANNEL
+ * sequence. That collision is the reason every reference names its channel — and
+ * the reason "two stages of the same message" must not fire on the message id
+ * alone.
+ */
+test('two channels that both have a message 12345 compare, distinguishably', async ({ page }) => {
+    await openBrowser(page);
+    await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
+
+    await page.goto(`/messages/${CID2}`);
+    await expect(row(page, '12345')).toBeVisible();
+    // The anchor outlives the navigation, and still says which channel it is from.
+    await expect(page.locator('.compare-chip')).toContainText('Demo Started · Msg 12345 · Source · Raw');
+    // …but it belongs to another channel, so nothing in THIS grid is marked.
+    await expect(page.locator('tr.compare-anchor')).toHaveCount(0);
+
+    await pickFromRow(page, '12345', 'Compare to Selection', 'Raw');
+    const confirm = page.getByRole('dialog').filter({ hasText: 'Compare selected content?' });
+    await expect(confirm).toContainText('Demo Started · Msg 12345 · Source · Raw');
+    await expect(confirm).toContainText('Demo Stopped · Msg 12345 · Source · Raw');
+    // Same id, different channels — NOT one message's pipeline.
+    await expect(confirm).not.toContainText('Two stages of the same message');
+    await confirm.getByRole('button', { name: 'Compare', exact: true }).click();
+
+    const overlay = page.locator('.compare-overlay');
+    await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Demo Started · Msg 12345 · Source · Raw');
+    await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Demo Stopped · Msg 12345 · Source · Raw');
+    // Each side fetched from its own channel, so both panes have content.
+    await expect(overlay.locator('.compare-pane-overlay')).toHaveCount(0);
+    expect(await domText(page)).toContain('OTHER^CHANNEL');
+});
+
 /* ---- guards and cancel semantics ---------------------------------------------- */
 
 test('the identical tuple is refused before the modal opens', async ({ page }) => {
@@ -208,7 +277,7 @@ test('the identical tuple is refused before the modal opens', async ({ page }) =
     await expect(page.getByRole('status').filter({ hasText: 'Same content already selected' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     // The anchor is untouched.
-    await expect(page.locator('.compare-chip')).toContainText('Msg 12345 · Source · Raw');
+    await expect(page.locator('.compare-chip')).toContainText('Demo Started · Msg 12345 · Source · Raw');
 });
 
 test('cancelling the confirmation discards only the second selection', async ({ page }) => {
@@ -221,7 +290,7 @@ test('cancelling the confirmation discards only the second selection', async ({ 
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.compare-overlay')).toHaveCount(0);
     // Anchor survives — the usual reason to back out is the wrong SECOND side.
-    await expect(page.locator('.compare-chip')).toContainText('Msg 12345 · Source · Raw');
+    await expect(page.locator('.compare-chip')).toContainText('Demo Started · Msg 12345 · Source · Raw');
     await expect(page.getByRole('status').filter({ hasText: 'second selection discarded' })).toBeVisible();
 });
 

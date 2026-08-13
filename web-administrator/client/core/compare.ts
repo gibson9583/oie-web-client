@@ -30,6 +30,8 @@ export type CompareContentType = 'RAW' | 'PROCESSED_RAW' | 'TRANSFORMED' | 'ENCO
 
 export interface CompareRef {
     channelId: string;
+    /** Display only, captured at selection time. See describeRef for why it matters. */
+    channelName?: string;
     messageId: number;
     /** 0 = source connector. */
     metaDataId: number;
@@ -94,7 +96,7 @@ export function storedContentTypes(cm: any): CompareContentType[] {
  * content itself is left where it is and re-fetched when the overlay opens.
  */
 export function refFromConnectorMessage(
-    channelId: string, messageId: number | string, cm: any, contentType: CompareContentType
+    channel: { id: string; name?: string }, messageId: number | string, cm: any, contentType: CompareContentType
 ): CompareRef {
     const metaDataId = Number(cm?.metaDataId ?? 0);
     const storedTypes = storedContentTypes(cm);
@@ -104,7 +106,8 @@ export function refFromConnectorMessage(
         if (dataType) dataTypes[type] = String(dataType);
     }
     return {
-        channelId: String(channelId),
+        channelId: String(channel.id),
+        channelName: channel.name ? String(channel.name) : undefined,
         messageId: Number(messageId),
         metaDataId,
         connectorName: cm?.connectorName || (metaDataId === 0 ? 'Source' : `Connector ${metaDataId}`),
@@ -123,10 +126,25 @@ export function samePair(a: CompareRef | null, b: CompareRef | null): boolean {
         && a.contentType === b.contentType;
 }
 
-/** "Msg 41207 · Source · Raw" — the reference, never the content. */
+/**
+ * "Orders In · Msg 41207 · Source · Raw" — the reference, never the content.
+ *
+ * The channel LEADS, and is never omitted, because a message id is a per-channel
+ * sequence: every channel has a message 1. Two references from different
+ * channels would otherwise render identically, which matters most in exactly the
+ * place it would be least noticed — the two side headers of a comparison. Falls
+ * back to the channel id on the rare path where the name hasn't loaded yet.
+ */
 export function describeRef(ref: CompareRef | null): string {
     if (!ref) return '';
-    return `Msg ${ref.messageId} · ${ref.connectorName || `Connector ${ref.metaDataId}`} · ${stageLabel(ref.contentType)}`;
+    const connector = ref.connectorName || `Connector ${ref.metaDataId}`;
+    return `${ref.channelName || ref.channelId} · Msg ${ref.messageId} · ${connector} · ${stageLabel(ref.contentType)}`;
+}
+
+/** True when both references are for the same message of the same channel. */
+export function sameMessage(a: CompareRef | null, b: CompareRef | null): boolean {
+    if (!a || !b) return false;
+    return String(a.channelId) === String(b.channelId) && Number(a.messageId) === Number(b.messageId);
 }
 
 /* ---- state (refs only) ------------------------------------------------------ */
