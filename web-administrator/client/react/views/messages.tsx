@@ -19,6 +19,11 @@
  * so dialogs/menus (which outlive the render that opened them) always invoke a
  * fresh closure.
  *
+ * Free-typed Text Search is intercepted by the message-search DLM
+ * (core/dlm.ts): before the expensive engine `textSearch` wildcard runs, the
+ * user picks a scope (message id / raw / source map / metadata / …) and the
+ * client emits only that isolated query param set.
+ *
  * The dialogs (Send Message, Advanced Search, Reprocessing Options, Export
  * Results) stay imperative modal() functions invoked from handlers — they are
  * self-contained and shared (openSendMessageDialog is called from the dashboard
@@ -41,7 +46,9 @@ import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../../core/content-highlight.js';
 import { formatSentProperties } from '../../core/sent-format.js';
 import { mappingEntries, parseResponse, toDisplayString } from '../../core/xstream.js';
-import { getPref } from '../../core/prefs.js';
+import { getPref, setPrefs } from '../../core/prefs.js';
+import { promptDlmSearchScope } from '../../core/dlm.js';
+import type { DlmDecision } from '../../core/dlm.js';
 import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
 import { createCodeEditor, createColumnManager } from '@oie/web-ui';
@@ -1753,7 +1760,7 @@ export function MessagesView({ params, query }: any) {
 
     /* ---- params + summary (built from the live criteria at search time) ---- */
 
-    function buildParams() {
+    function buildParams(dlmDecision: DlmDecision | null = null) {
         const adv = advRef.current;
         const params: any = {};
         const start = toCalendarParam(startDate);
@@ -1761,10 +1768,11 @@ export function MessagesView({ params, query }: any) {
         if (start) params.startDate = start;
         if (end) params.endDate = end;
         if (statusSel.size) params.status = [...statusSel];
-        const text = textSearch.trim();
-        if (text) {
-            params.textSearch = text;
-            if (textRegex) params.textSearchRegex = true;
+        // Text Search: the DLM turns the phrase into scoped params (content /
+        // maps / metadata / message id). Never emit the engine textSearch
+        // wildcard unless the user explicitly chose the legacy scope.
+        if (dlmDecision) {
+            Object.assign(params, dlmDecision.params);
         }
         // Connector inclusion: the advanced filter's table wins; otherwise the
         // quick Connector dropdown narrows to a single connector.
@@ -1812,7 +1820,7 @@ export function MessagesView({ params, query }: any) {
     /* Human-readable "Current Search" summary (Swing's labeled box) rather than a
        raw key=value dump. Statuses / Date Range / Connectors always show (with
        "(any)"); the rest appear only when set. */
-    function describeSearch() {
+    function describeSearch(dlmDecision: DlmDecision | null = null) {
         const adv = advRef.current;
         const range = (lo: any, hi: any) => {
             lo = String(lo ?? '').trim(); hi = String(hi ?? '').trim();
@@ -1825,8 +1833,9 @@ export function MessagesView({ params, query }: any) {
         const parts: any[] = [];
         parts.push(`Statuses: ${statusSel.size ? [...statusSel].join(', ') : '(any)'}`);
         parts.push(`Date Range: ${dt(startDate)} to ${dt(endDate)}`);
-        const text = textSearch.trim();
-        if (text) parts.push(`Text Search: "${text}"${textRegex ? ' (regex)' : ''}`);
+        if (dlmDecision?.summary?.length) {
+            parts.push(...dlmDecision.summary);
+        }
         parts.push(`Connectors: ${describeConnectors()}`);
         let r: any;
         if ((r = range(adv.minMessageId, adv.maxMessageId))) parts.push(`Message Id: ${r}`);
@@ -1855,12 +1864,33 @@ export function MessagesView({ params, query }: any) {
     const searchGenRef = useRef(0);
 
     async function runSearch(resetOffset: any) {
+        let dlmDecision: DlmDecision | null = null;
+        if (resetOffset) {
+            const text = textSearch.trim();
+            if (text) {
+                // Stepwise focus: phrase first, then scope — never fire the
+                // engine textSearch wildcard without an explicit Legacy pick.
+                dlmDecision = await promptDlmSearchScope({
+                    text,
+                    metaDataColumns,
+                    textSearchRegex: textRegex,
+                    initialScopes: getPref('messageSearchDlmScopes') || undefined,
+                    initialMetaColumns: getPref('messageSearchDlmMetaColumns') || undefined
+                });
+                if (!dlmDecision) return;   // cancelled — leave the current results alone
+                setPrefs({
+                    messageSearchDlmScopes: dlmDecision.scopes,
+                    messageSearchDlmMetaColumns: dlmDecision.metaColumns
+                });
+            }
+        }
+
         const gen = ++searchGenRef.current;
         if (resetOffset) {
             offsetRef.current = 0;
-            lastParamsRef.current = buildParams();
+            lastParamsRef.current = buildParams(dlmDecision);
             limitRef.current = Number(pageSize) || 20;
-            setSearchSummary(`Current Search: ${describeSearch()}`);
+            setSearchSummary(`Current Search: ${describeSearch(dlmDecision)}`);
             totalRef.current = null;   // lazily counted (Count button) or auto-resolved on the last page
         }
         try {
@@ -2003,7 +2033,11 @@ export function MessagesView({ params, query }: any) {
         e.preventDefault();
         selectMessage(m, metaDataId);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshMessages', group: 'message', onClick: () => searchRef.current(true) },
+            { label: 'Refresh', icon: 'refresh', task: 'doRefreshMessages', group: 'message', onClick: () => {
+                offsetRef.current = 0;
+                totalRef.current = null;
+                searchRef.current(false);
+            } },
             { label: 'Send Message', icon: 'send', task: 'doSendMessage', group: 'message', onClick: () => sendMessageTask() },
             '-',
             { label: 'Import Messages', icon: 'import', task: 'doImportMessages', group: 'message', onClick: () => importMessagesTask() },
@@ -2318,7 +2352,7 @@ export function MessagesView({ params, query }: any) {
                                     <input type="checkbox" checked={textRegex} onChange={(e: any) => setTextRegex(e.target.checked)} />
                                     Regex
                                 </label>
-                                <input type="text" placeholder="Search message content…" className="w-[198px]"
+                                <input type="text" placeholder="Phrase… Search will ask for a scope" className="w-[198px]"
                                     value={textSearch} onChange={(e: any) => setTextSearch(e.target.value)}
                                     onKeyDown={(e: any) => { if (e.key === 'Enter') runSearch(true); }} />
                             </div>
@@ -2358,7 +2392,12 @@ export function MessagesView({ params, query }: any) {
             {channelId && <ViewTasks>
                 <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
                     <div className="taskbar" data-pane-title="Message Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => {
+                            // Re-run the last scoped params — do not re-open the DLM prompt.
+                            offsetRef.current = 0;
+                            totalRef.current = null;
+                            runSearch(false);
+                        }} />
                         <TaskButton label="Send Message" icon="send" primary task="doSendMessage" onClick={sendMessageTask} />
                         <TaskButton label="Import Messages" icon="import" task="doImportMessages" onClick={importMessagesTask} />
                         <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={exportResultsTask} />

@@ -297,3 +297,35 @@ test('message table columns are resizable + reorderable (like the dashboard)', a
     await expect(table.locator('thead .col-resize').first()).toBeAttached();
     await expect(table.locator('thead th[draggable="true"]').first()).toBeAttached();
 });
+
+test('Text Search DLM prompts for scope and emits scoped params, not textSearch', async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: 800 });
+    await mockEngine(page, MESSAGE_FIXTURES);
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+
+    const text = page.getByPlaceholder('Phrase… Search will ask for a scope');
+    await text.fill('123456');
+
+    const searchReq = page.waitForRequest((r) =>
+        r.method() === 'GET'
+        && r.url().includes(`/api/channels/${CID}/messages?`)
+        && !r.url().includes('/count')
+        && !r.url().includes('/attachments')
+        && new URL(r.url()).searchParams.has('sourceMapContentSearch')
+    );
+
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByText('Focus search scope')).toBeVisible();
+    await expect(page.getByText('Searching for:')).toBeVisible();
+    // Numeric phrase suggests Message Id — also tick Source Map for a scoped content hit.
+    await page.getByLabel('Source Map', { exact: true }).check();
+    await page.getByRole('button', { name: 'Search', exact: true }).last().click();
+
+    const req = await searchReq;
+    const params = new URL(req.url()).searchParams;
+    expect(params.getAll('sourceMapContentSearch')).toEqual(['123456']);
+    expect(params.get('minMessageId')).toBe('123456');
+    expect(params.get('maxMessageId')).toBe('123456');
+    expect(params.has('textSearch')).toBe(false);
+});

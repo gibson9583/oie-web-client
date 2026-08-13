@@ -6,9 +6,6 @@
  * filter, sort, display toggles) is React state. The status board is the
  * controlled <TreeTable> (column resize/reorder/hide + persistence); the filter
  * bar is <DashFilterBar> below (chips + typeahead + segmented display toggles).
- * Free-typed filter text goes through core/dlm.ts (Deterministic Language Model)
- * so operational phrases ("stopped", "with errors") become structured filters
- * while plain names still use the legacy substring wildcard.
  *
  * Menu/task actions take EXPLICIT channel-id lists (computed where the action
  * is offered) rather than reading selection state, so a context menu built
@@ -32,7 +29,6 @@ import { Icon } from '../bridges.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { iconPath } from '../../core/icons.js';
-import { dlmDecide, dlmMatchesChannel } from '../../core/dlm.js';
 import * as Tabs from '@radix-ui/react-tabs';   // shadcn/Radix dock tabs
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import * as Popover from '@radix-ui/react-popover';
@@ -370,7 +366,7 @@ function DashFilterBar({
                 )}
                 {/* combobox over the suggestion list: the arrow-key cursor was
                     visual only, so a screen reader never heard the active item. */}
-                <input ref={inputRef} type="text" placeholder="Channel, tag, or status (e.g. stopped, errored)" autoComplete="off"
+                <input ref={inputRef} type="text" placeholder="Enter channel tag or name" autoComplete="off"
                     className="flex-1 min-w-0" value={filterText}
                     role="combobox"
                     aria-expanded={String(taOpen && taItems.length > 0) as any}
@@ -650,19 +646,14 @@ function DashboardView({ onToggleView }: any) {
             }
         }
 
-        // Free-typed text → DLM decision (operational phrases → state/stat
-        // filters) with the legacy name/tag substring wildcard as fallback.
-        // See core/dlm.ts. Tag names that themselves contain the needle still
-        // contribute their channel ids via the decision's nameNeedle path.
-        const decision = text ? dlmDecide(text) : null;
-        const tagNamesByChannel = new Map();
-        if (decision?.nameNeedle) {
+        // Free-typed text → substring (wildcard) across name + tag names.
+        const needle = text.toLowerCase();
+        let textTagged: any = null;
+        if (needle) {
+            textTagged = new Set();
             for (const tag of tags) {
-                const tname = String(tag.name || '');
-                for (const id of api.asList(tag.channelIds, 'string')) {
-                    const list = tagNamesByChannel.get(id) || [];
-                    list.push(tname);
-                    tagNamesByChannel.set(id, list);
+                if (String(tag.name || '').toLowerCase().includes(needle)) {
+                    api.asList(tag.channelIds, 'string').forEach(id => textTagged.add(id));
                 }
             }
         }
@@ -670,14 +661,8 @@ function DashboardView({ onToggleView }: any) {
         return members.filter((s: any) => {
             if (chipChannelIds.has(s.channelId)) return true;
             if (chipChannelNames.has(String(s.name || '').toLowerCase())) return true;
-            if (!decision) return false;
-            return dlmMatchesChannel({
-                channelId: s.channelId,
-                name: s.name,
-                state: s.state,
-                stats: statsOf(s, lifetime),
-                tagNames: tagNamesByChannel.get(s.channelId) || []
-            }, decision);
+            if (needle && (String(s.name || '').toLowerCase().includes(needle) || textTagged.has(s.channelId))) return true;
+            return false;
         });
     }
 
