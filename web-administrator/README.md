@@ -105,6 +105,14 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
 - **Message browser** — search (date, status, text, connector), pagination,
   full content tabs (raw → response), errors, mappings, attachments,
   send/reprocess/remove/export.
+- **Compare content** — pick any stored content (message × connector × stage)
+  as an anchor, pick a second, and read them side by side in the diff viewer:
+  across messages, across a message's destinations, or between two stages of
+  one message to see what the pipeline changed. Content is fetched fresh each
+  time it is shown and is never written to disk by this feature — no local
+  storage, no cache, no message identity in the URL — and it is released when
+  the comparison closes, you navigate away, or the session ends (sign-out, idle
+  auto-logout, or an expired session).
 - **Events**, **Alerts** (triggers, channels, actions; classic editor or guided
   wizard), **Users** (incl.
   password rules), **Settings** (server/SMTP, configuration map, tags,
