@@ -204,8 +204,13 @@ let toastRenderer: ((message: string, type: ToastType, timeout: number) => UiHan
 export function setToastRenderer(fn: ((message: string, type: ToastType, timeout: number) => UiHandle) | null): void { toastRenderer = fn; }
 
 /* Low-level corner toast: transient, non-blocking. Used for info/success and
-   for feedback that must never steal focus (e.g. clipboard results). */
-function cornerToast(message: string, type: ToastType = 'info', timeout = 4200): UiHandle {
+   for feedback that must never steal focus (e.g. clipboard results).
+   Exported for the narrow case toast() cannot serve: a WARNING that is about the
+   user's own click rather than the engine — a guard on a mis-click — where the
+   acknowledge-to-dismiss dialog below would be an interruption out of all
+   proportion, and would land a dialog on top of whatever the click was aimed at.
+   Anything the user must not miss still goes through toast(msg, 'warn'). */
+export function cornerToast(message: string, type: ToastType = 'info', timeout = 4200): UiHandle {
     if (toastRenderer) return toastRenderer(String(message), type, timeout);
     return domCornerToast(message, type, timeout);
 }

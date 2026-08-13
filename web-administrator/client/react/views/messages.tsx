@@ -35,7 +35,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as Popover from '@radix-ui/react-popover';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { h, icon, toast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, icon, toast, cornerToast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../../core/content-highlight.js';
@@ -2101,12 +2101,17 @@ export function MessagesView({ params, query }: any) {
         selectForCompare(ref);
     }
 
+    /* These guards use cornerToast rather than toast(msg,'warn'): they answer a
+       mis-click ("you picked the same content twice"), and the app's warn
+       notification is an acknowledge-to-dismiss dialog, which would land on top
+       of the row the user was aiming at and have to be dismissed before they
+       could correct themselves. Engine failures below still use toast(). */
     function offerCandidate(ref: any) {
         const result = proposeCompare(ref);
-        if (result === 'none') { toast('Select content for compare first', 'warn'); return; }
+        if (result === 'none') { cornerToast('Select content for compare first', 'warn'); return; }
         // Diffing content against itself is never the question being asked, so
         // this stops before the modal rather than after it.
-        if (result === 'same') { toast('Same content already selected for compare', 'warn'); return; }
+        if (result === 'same') { cornerToast('Same content already selected for compare', 'warn'); return; }
         openCompareConfirm();
     }
 
@@ -2164,9 +2169,9 @@ export function MessagesView({ params, query }: any) {
             return;
         }
         const cm = connectorMessagesOf(message).find(c => Number(c.metaDataId) === Number(metaDataId));
-        if (!cm) { toast(`Connector ${metaDataId} is no longer part of message ${row.messageId}`, 'warn'); return; }
+        if (!cm) { cornerToast(`Connector ${metaDataId} is no longer part of message ${row.messageId}`, 'warn'); return; }
         if (!storedContentTypes(cm).includes(contentType)) {
-            toast(`${stageLabel(contentType)} content is not stored for message ${row.messageId}`, 'warn');
+            cornerToast(`${stageLabel(contentType)} content is not stored for message ${row.messageId}`, 'warn');
             return;
         }
         const ref = refFromConnectorMessage(channelId, row.messageId, cm, contentType);
@@ -2208,13 +2213,13 @@ export function MessagesView({ params, query }: any) {
 
     function selectForCompareTask() {
         const ref = activeStageRef.current;
-        if (!ref) { toast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
+        if (!ref) { cornerToast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
         takeAnchor(ref);
     }
 
     function compareWithSelectionTask() {
         const ref = activeStageRef.current;
-        if (!ref) { toast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
+        if (!ref) { cornerToast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
         offerCandidate(ref);
     }
 

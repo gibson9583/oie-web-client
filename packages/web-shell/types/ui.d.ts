@@ -112,6 +112,7 @@ export declare function fmtDate(value: any): string;
 export declare function escapeHtml(s: unknown): string;
 /** Register the app's toast renderer. Pass null to fall back to the DOM one. */
 export declare function setToastRenderer(fn: ((message: string, type: ToastType, timeout: number) => UiHandle) | null): void;
+export declare function cornerToast(message: string, type?: ToastType, timeout?: number): UiHandle;
 export declare function toast(message: any, type?: ToastType, timeout?: number): UiHandle;
 /** Register the app's dialog renderer. Pass null to fall back to the DOM one. */
 export declare function setDialogRenderer(fn: ((options: ModalOptions) => ModalHandle) | null): void;
