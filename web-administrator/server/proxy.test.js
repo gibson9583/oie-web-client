@@ -124,5 +124,51 @@ test('forceNoStore: overrides upstream cache headers rather than only filling in
     assert.strictEqual(h['pragma'], undefined);
 });
 
-if (failures) { console.error(`\n${failures} test(s) failed`); process.exit(1); }
-console.log('  all passed');
+/* A round trip through the real proxy, against a stub standing in for the engine.
+   forceNoStore is unit-tested above, but only this pins that the proxy actually
+   RUNS it on the way back — and message content is the response where getting it
+   wrong writes PHI into the browser's on-disk cache. */
+async function testAsync(name, fn) {
+    try { await fn(); console.log('  ok  -', name); }
+    catch (e) { failures++; console.error('  FAIL -', name, '\n      ', e.message); }
+}
+
+(async () => {
+    await testAsync('proxy round trip: a message-content response is marked no-store', async () => {
+        const http = require('http');
+        const { createApiProxy } = require('./proxy.js');
+        const listen = (server) => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+
+        // The "engine": answers with the cache headers a stock Jetty would.
+        const engine = http.createServer((req, res) => {
+            res.writeHead(200, {
+                'content-type': 'application/json',
+                'cache-control': 'public, max-age=600',
+                'expires': 'Thu, 01 Jan 2026 00:00:00 GMT'
+            });
+            res.end(JSON.stringify({ message: { messageId: 1 } }));
+        });
+        const enginePort = await listen(engine);
+
+        const proxy = createApiProxy(cfg({
+            engines: [{ name: 'stub', url: `http://127.0.0.1:${enginePort}`, verifyTls: false }]
+        }));
+        // The proxy takes plain node request/response objects; express only adds
+        // originalUrl, which the mount would have set.
+        const front = http.createServer((req, res) => { req.originalUrl = req.url; proxy(req, res); });
+        const frontPort = await listen(front);
+
+        try {
+            const response = await fetch(`http://127.0.0.1:${frontPort}/api/channels/c1/messages/1`);
+            assert.strictEqual(response.status, 200);
+            assert.strictEqual(response.headers.get('cache-control'), 'no-store');
+            assert.strictEqual(response.headers.get('expires'), null);
+        } finally {
+            front.close();
+            engine.close();
+        }
+    });
+
+    if (failures) { console.error(`\n${failures} test(s) failed`); process.exit(1); }
+    console.log('  all passed');
+})();
