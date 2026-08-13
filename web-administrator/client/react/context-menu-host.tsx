@@ -53,6 +53,54 @@ function IconSlot({ name }: any) {
     return <span ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon(name)); }} />;
 }
 
+/* One entry, at any depth. An item carrying `items` becomes a real Radix
+   submenu — its own portal, roving focus, type-ahead and hover-open — which is
+   what "Select for Compare ▸" needs to offer a stage list without turning the
+   row menu into a wall of items. */
+function MenuItems({ items, close }: any) {
+    return items.map((item: any, i: any) => {
+        if (item === '-') return <DropdownMenu.Separator key={i} className="ctx-sep" />;
+        if (item.header) {
+            return (
+                <DropdownMenu.Label key={i} className="ctx-head">
+                    <div className="ctx-head-name">{item.label}</div>
+                    {item.sub ? <div className="ctx-head-sub">{item.sub}</div> : null}
+                </DropdownMenu.Label>
+            );
+        }
+        if (item.items) {
+            return (
+                <DropdownMenu.Sub key={i}>
+                    <DropdownMenu.SubTrigger className="ctx-item" disabled={item.disabled}
+                        textValue={String(item.label)}>
+                        {item.icon ? <IconSlot name={item.icon} /> : null}
+                        {item.label}
+                        <span className="ctx-sub-arrow" aria-hidden="true">▸</span>
+                    </DropdownMenu.SubTrigger>
+                    <DropdownMenu.Portal>
+                        <DropdownMenu.SubContent className="ctx-surface" sideOffset={2} collisionPadding={8}>
+                            <MenuItems items={item.items} close={close} />
+                        </DropdownMenu.SubContent>
+                    </DropdownMenu.Portal>
+                </DropdownMenu.Sub>
+            );
+        }
+        return (
+            <DropdownMenu.Item key={i}
+                className={'ctx-item' + (item.danger ? ' danger' : '')}
+                disabled={item.disabled}
+                /* Given, not derived: Radix otherwise reads an item's
+                   type-ahead text out of the DOM in an effect, which
+                   races the first keypress after the menu opens. */
+                textValue={String(item.label)}
+                onSelect={() => { close({ restore: false }); item.onClick && item.onClick(); }}>
+                {item.icon ? <IconSlot name={item.icon} /> : null}
+                {item.label}
+            </DropdownMenu.Item>
+        );
+    });
+}
+
 function Menu({ entry }: any) {
     const { x, y, items, close } = entry;
 
@@ -75,30 +123,7 @@ function Menu({ entry }: any) {
                         // Radix run would drop it on the zero-size trigger.
                         e.preventDefault();
                     }}>
-                    {items.map((item: any, i: any) => {
-                        if (item === '-') return <DropdownMenu.Separator key={i} className="ctx-sep" />;
-                        if (item.header) {
-                            return (
-                                <DropdownMenu.Label key={i} className="ctx-head">
-                                    <div className="ctx-head-name">{item.label}</div>
-                                    {item.sub ? <div className="ctx-head-sub">{item.sub}</div> : null}
-                                </DropdownMenu.Label>
-                            );
-                        }
-                        return (
-                            <DropdownMenu.Item key={i}
-                                className={'ctx-item' + (item.danger ? ' danger' : '')}
-                                disabled={item.disabled}
-                                /* Given, not derived: Radix otherwise reads an item's
-                                   type-ahead text out of the DOM in an effect, which
-                                   races the first keypress after the menu opens. */
-                                textValue={String(item.label)}
-                                onSelect={() => { close({ restore: false }); item.onClick && item.onClick(); }}>
-                                {item.icon ? <IconSlot name={item.icon} /> : null}
-                                {item.label}
-                            </DropdownMenu.Item>
-                        );
-                    })}
+                    <MenuItems items={items} close={close} />
                 </DropdownMenu.Content>
             </DropdownMenu.Portal>
         </DropdownMenu.Root>

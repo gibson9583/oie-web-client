@@ -53,6 +53,11 @@ export interface ContextMenuItem extends TaskRef {
     /** Non-interactive heading row (e.g. "signed in as"), with optional sub line. */
     header?: boolean;
     sub?: string;
+    /** Nested submenu ("Select for Compare ▸"). The item itself is then a
+        disclosure, not a command — any `onClick` on it is ignored. Children are
+        RBAC-filtered like any other item, and a submenu left with nothing to
+        show is dropped along with its parent. */
+    items?: MenuEntry[];
     onClick?: () => void;
 }
 export type MenuEntry = ContextMenuItem | '-';
@@ -107,6 +112,7 @@ export declare function fmtDate(value: any): string;
 export declare function escapeHtml(s: unknown): string;
 /** Register the app's toast renderer. Pass null to fall back to the DOM one. */
 export declare function setToastRenderer(fn: ((message: string, type: ToastType, timeout: number) => UiHandle) | null): void;
+export declare function cornerToast(message: string, type?: ToastType, timeout?: number): UiHandle;
 export declare function toast(message: any, type?: ToastType, timeout?: number): UiHandle;
 /** Register the app's dialog renderer. Pass null to fall back to the DOM one. */
 export declare function setDialogRenderer(fn: ((options: ModalOptions) => ModalHandle) | null): void;

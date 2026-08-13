@@ -1340,6 +1340,150 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .toast[data-swipe="end"] { animation: toast-out 0.1s ease-out; }
 @keyframes toast-out { to { opacity: 0; transform: translateX(var(--radix-toast-swipe-end-x)); } }
 
+/* ---- Compare Messages (react/compare-chip.jsx, react/compare-overlay.jsx) ------------------- */
+
+/* The anchor chip: bottom-right, above the view but below the toasts it shares
+   the corner with, so a "selection cleared" toast is never hidden by the chip it
+   is reporting on. */
+.compare-chip {
+    position: fixed;
+    right: 16px;
+    bottom: 64px;
+    z-index: 150;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    max-width: 342px;
+    padding: 9px 10px 9px 12px;
+    background: var(--bg2);
+    border: 1px solid var(--line-strong);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    font-size: 11px;
+}
+.compare-chip > svg { color: var(--accent); flex: none; margin-top: 1px; }
+.compare-chip-body { min-width: 0; }
+.compare-chip-title { font-weight: 600; }
+.compare-chip-ref { color: var(--text-dim); font-size: 10.5px; margin-top: 2px; word-break: break-word; }
+
+/* Marks on the things the anchor points at: the results row, and the content tab
+   the reference was captured from. Inset bars, so neither changes any metric the
+   grid or the tab strip is laid out by. */
+.msg-table tr.compare-anchor > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.msg-table tr.compare-anchor .compare-mark { color: var(--accent); margin-left: 4px; }
+.tabs .tab.compare-anchor { box-shadow: inset 0 3px 0 var(--accent); }
+
+.compare-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 160;
+    background: color-mix(in srgb, var(--bg0) 82%, transparent);
+    display: flex;
+}
+
+/* Full-viewport, deliberately not a route: a URL would put the channel and
+   message ids of a comparison into the browser history, which is on disk. */
+.compare-overlay {
+    position: fixed;
+    inset: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--bg1);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+
+.compare-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex: none;
+    padding: 9px 13px;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg2);
+}
+.compare-title { font-size: 12px; font-weight: 600; margin: 0; }
+
+.compare-heads { display: flex; flex: none; border-bottom: 1px solid var(--line); }
+.compare-side-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 50%;
+    min-width: 0;
+    padding: 7px 13px;
+    font-size: 11px;
+}
+.compare-side-head + .compare-side-head { border-left: 1px solid var(--line); }
+.compare-side-ref { color: var(--text-dim); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-side-stage { margin-left: auto; flex: none; }
+.compare-side-stage select { font-size: 10.5px; padding: 2px 6px; }
+
+.compare-body { position: relative; flex: 1; min-height: 0; display: flex; }
+.compare-diff { flex: 1; min-width: 0; min-height: 0; }
+
+/* A per-side loading/error state covers only its own half — the other pane keeps
+   whatever it successfully fetched. */
+.compare-pane-overlay {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: color-mix(in srgb, var(--bg1) 92%, transparent);
+}
+.compare-pane-overlay.left { left: 0; }
+.compare-pane-overlay.right { right: 0; }
+.compare-pane-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    max-width: 300px;
+}
+.compare-pane-error svg { color: var(--warn); }
+
+/* The colour key for the two panes, and nothing else — it sits to the right so
+   it reads as a legend for the diff above rather than a caption on the overlay. */
+.compare-foot {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    flex: none;
+    padding: 6px 13px;
+    border-top: 1px solid var(--line);
+    background: var(--bg2);
+    color: var(--text-faint);
+    font-size: 10px;
+}
+.compare-legend { display: inline-flex; align-items: center; gap: 5px; }
+.compare-legend .swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.compare-legend .swatch.left { background: color-mix(in srgb, var(--err) 55%, transparent); }
+.compare-legend .swatch.right { background: color-mix(in srgb, var(--ok) 55%, transparent); }
+
+/* The confirm dialog's two-reference layout (built with h(), so it is classes
+   rather than JSX). */
+.compare-confirm-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 0;
+    font-size: 11px;
+}
+.compare-confirm-row + .compare-confirm-row { border-top: 1px solid var(--line); }
+.compare-confirm-note { color: var(--text-dim); font-size: 10.5px; margin-top: 11px; }
+
 /* ---- Date + time field (react/date-time-field.jsx) ------------------------------------------ */
 
 /* The trigger stands in for the text input it replaced, so it has to match the
@@ -1532,6 +1676,13 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
    whether or not an item is checked. */
 .ctx-surface .ctx-check { width: 12px; flex: none; color: var(--accent); }
 .ctx-surface .ctx-item:has(.ctx-check) { gap: 5px; }
+/* Submenu disclosure ("Select for Compare ▸"). The arrow is pushed to the far
+   edge so a parent reads as a disclosure rather than a command. */
+.ctx-surface .ctx-sub-arrow { margin-left: auto; padding-left: 12px; color: var(--text-faint); }
+.ctx-surface .ctx-item[data-state="open"] { background: var(--bg3); }
+/* The DOM fallback menu has no hover-out submenus; it inlines the children under
+   a heading, and this is the indent that keeps them legible as a group. */
+.ctx-menu .ctx-item-nested { padding-left: 20px; }
 .ctx-menu .ctx-head,
 .ctx-surface .ctx-head { padding: 4px 9px 6px; cursor: default; }
 .ctx-menu .ctx-head-name,
@@ -2758,6 +2909,8 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
     text-underline-offset: 2px;
 }
 .statusbar .status-retry:hover { color: var(--text); text-decoration-style: solid; }
+/* Compare selection indicator — the state, not what is in it. */
+.statusbar .status-compare { flex: none; color: var(--accent); }
 
 /* Full-height blocks: prefer dynamic viewport units (mobile browser-toolbar 100vh trap). */
 @supports (height: 100dvh) {

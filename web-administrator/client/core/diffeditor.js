@@ -32,7 +32,9 @@ export function createDiffEditor(opts = {}) {
     let current = {
         original: opts.original || '',
         modified: opts.modified || '',
-        language: opts.language || 'xml'
+        language: opts.language || 'xml',
+        originalLanguage: opts.originalLanguage || opts.language || 'xml',
+        modifiedLanguage: opts.modifiedLanguage || opts.language || 'xml'
     };
     const renderSideBySide = opts.renderSideBySide !== false;
     function disposeModels() {
@@ -52,8 +54,8 @@ export function createDiffEditor(opts = {}) {
         if (disposed || !monacoRef || !editor)
             return;
         disposeModels();
-        const original = monacoRef.editor.createModel(current.original, current.language);
-        const modified = monacoRef.editor.createModel(current.modified, current.language);
+        const original = monacoRef.editor.createModel(current.original, current.originalLanguage);
+        const modified = monacoRef.editor.createModel(current.modified, current.modifiedLanguage);
         models = { original, modified };
         editor.setModel({ original, modified });
     }
@@ -107,10 +109,16 @@ export function createDiffEditor(opts = {}) {
     return {
         el,
         setModels(next = {}) {
+            const language = next.language || current.language;
             current = {
                 original: next.original != null ? next.original : current.original,
                 modified: next.modified != null ? next.modified : current.modified,
-                language: next.language || current.language
+                language,
+                // A new `language` re-bases both sides unless the caller overrode
+                // one; without that, swapping the panes would leave the old
+                // per-side languages behind.
+                originalLanguage: next.originalLanguage || (next.language ? language : current.originalLanguage),
+                modifiedLanguage: next.modifiedLanguage || (next.language ? language : current.modifiedLanguage)
             };
             if (monacoRef)
                 applyMonaco();
