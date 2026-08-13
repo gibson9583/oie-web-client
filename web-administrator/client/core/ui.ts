@@ -71,6 +71,11 @@ export interface ContextMenuItem extends TaskRef {
     /** Non-interactive heading row (e.g. "signed in as"), with optional sub line. */
     header?: boolean;
     sub?: string;
+    /** Nested submenu ("Select for Compare ▸"). The item itself is then a
+        disclosure, not a command — any `onClick` on it is ignored. Children are
+        RBAC-filtered like any other item, and a submenu left with nothing to
+        show is dropped along with its parent. */
+    items?: MenuEntry[];
     onClick?: () => void;
 }
 export type MenuEntry = ContextMenuItem | '-';
@@ -499,13 +504,24 @@ export function setContextMenuRenderer(fn: ContextMenuRenderer | null): void { c
    decided in exactly one place. Separators are passed through as-is — collapsing
    the ones left dangling by a filtered-out item would change existing menus. */
 function visibleMenuItems(items: MenuEntry[], group?: string): MenuEntry[] {
-    return items.filter((item) => {
-        if (item === '-' || item.header) return true;
-        if (item.hidden) return false;
+    const out: MenuEntry[] = [];
+    for (const item of items) {
+        if (item === '-' || item.header) { out.push(item); continue; }
+        if (item.hidden) continue;
         // RBAC: hide an item the user isn't authorized for (Swing's paired popup
         // task). `group` (the task-pane key) may be set per item or for the menu.
-        return !(item.task && !checkTask(item.group || group, item.task));
-    });
+        if (item.task && !checkTask(item.group || group, item.task)) continue;
+        if (item.items) {
+            // A submenu is filtered by the same rules; one whose children are all
+            // hidden is a disclosure onto nothing, so it goes too.
+            const children = visibleMenuItems(item.items, item.group || group);
+            if (!children.some(c => c !== '-')) continue;
+            out.push({ ...item, items: children });
+            continue;
+        }
+        out.push(item);
+    }
+    return out;
 }
 
 export function contextMenu(x: number, y: number, items: MenuEntry[], group?: string): HTMLElement | null {
@@ -527,23 +543,33 @@ function domContextMenu(x: number, y: number, items: MenuEntry[]): HTMLElement {
     // .ctx-surface is the shared menu look; .ctx-menu only adds the coordinate
     // placement this menu does for itself (a Radix menu is placed by Radix).
     const menu = h('div.ctx-menu.ctx-surface', { role: 'menu' });
-    for (const item of items) {
-        if (item === '-') { menu.appendChild(h('div.ctx-sep', { role: 'separator' })); continue; }
+    const render = (item: MenuEntry, nested: boolean): void => {
+        if (item === '-') { menu.appendChild(h('div.ctx-sep', { role: 'separator' })); return; }
         // Non-interactive heading row (e.g. the account menu's "signed in as").
         if (item.header) {
             menu.appendChild(h('div.ctx-head', { role: 'presentation' },
                 h('div.ctx-head-name', item.label),
                 item.sub ? h('div.ctx-head-sub', item.sub) : null));
-            continue;
+            return;
         }
-        menu.appendChild(h(`button.ctx-item${item.danger ? '.danger' : ''}`, {
+        // No hover-out submenus in the DOM menu (this renderer is the fallback for
+        // plugin/no-React contexts; the app's Radix one does real submenus). The
+        // children are inlined under their label instead, so nothing is lost.
+        if (item.items) {
+            menu.appendChild(h('div.ctx-head', { role: 'presentation' },
+                h('div.ctx-head-name', item.label)));
+            for (const child of item.items) render(child, true);
+            return;
+        }
+        menu.appendChild(h(`button.ctx-item${item.danger ? '.danger' : ''}${nested ? '.ctx-item-nested' : ''}`, {
             role: 'menuitem',
             // Roving focus: the menu is one stop, arrows move within it.
             tabindex: '-1',
             disabled: item.disabled,
             onClick: () => { closeContextMenu({ restore: false }); item.onClick && item.onClick(); }
         }, item.icon ? icon(item.icon) : null, item.label));
-    }
+    };
+    for (const item of items) render(item, false);
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
     menu.style.left = Math.min(x, window.innerWidth - rect.width - 8) + 'px';

@@ -1532,6 +1532,13 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
    whether or not an item is checked. */
 .ctx-surface .ctx-check { width: 12px; flex: none; color: var(--accent); }
 .ctx-surface .ctx-item:has(.ctx-check) { gap: 5px; }
+/* Submenu disclosure ("Select for Compare ▸"). The arrow is pushed to the far
+   edge so a parent reads as a disclosure rather than a command. */
+.ctx-surface .ctx-sub-arrow { margin-left: auto; padding-left: 12px; color: var(--text-faint); }
+.ctx-surface .ctx-item[data-state="open"] { background: var(--bg3); }
+/* The DOM fallback menu has no hover-out submenus; it inlines the children under
+   a heading, and this is the indent that keeps them legible as a group. */
+.ctx-menu .ctx-item-nested { padding-left: 20px; }
 .ctx-menu .ctx-head,
 .ctx-surface .ctx-head { padding: 4px 9px 6px; cursor: default; }
 .ctx-menu .ctx-head-name,
