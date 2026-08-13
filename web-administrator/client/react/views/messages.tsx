@@ -2723,7 +2723,15 @@ export function MessagesView({ params, query }: any) {
                         setComparePair(null);
                         // A session that ended is already telling the user what
                         // happened on the login screen; don't stack a toast on it.
-                        if (!info?.sessionEnded) toast('Comparison closed — content released');
+                        if (info?.sessionEnded) return;
+                        /* Closing keeps the anchor so the next comparison can reuse
+                           it, which is easy to miss once a full-viewport overlay
+                           disappears — so the toast names what is still live rather
+                           than what went away. */
+                        const kept = info?.cleared ? null : getAnchor();
+                        toast(kept
+                            ? `Comparison closed — ${describeRef(kept)} is still selected for compare`
+                            : 'Comparison closed');
                     }} />
             )}
         </div>

@@ -36,7 +36,7 @@ import { formatSentProperties } from '../core/sent-format.js';
 import { parseResponse, toDisplayString } from '../core/xstream.js';
 import { on } from '../core/store.js';
 import {
-    COMPARE_STAGES, describeRef, stageKey, stageLabel, storedContentTypes
+    COMPARE_STAGES, clearCompare, describeRef, stageKey, stageLabel, storedContentTypes
 } from '../core/compare.js';
 import { Icon } from './bridges.jsx';
 
@@ -267,8 +267,22 @@ export function CompareOverlay({ pair, onClose }: any) {
                             <button className="btn" onClick={swap} title="Swap the two sides">
                                 <Icon name="transform" />Swap
                             </button>
+                            {/* Two exits, because closing a comparison means two
+                                different things: one more thing to compare against
+                                the same reference, or done with that reference. */}
+                            {/* `clear`, not a second `x`: side by side, two X glyphs
+                                read as the same action twice, which is the one thing
+                                these buttons exist to distinguish. */}
+                            <button className="btn" onClick={() => { clearCompare(); onClose({ cleared: true }); }}
+                                title="Close and drop the compare selection">
+                                <Icon name="clear" />Clear and Close
+                            </button>
+                            {/* Esc and a click outside land here too — the exit that
+                                changes the least. */}
                             <Dialog.Close asChild>
-                                <button className="btn compare-close"><Icon name="x" />Close comparison</button>
+                                <button className="btn compare-close" title="Close, keeping the selection for another comparison">
+                                    <Icon name="x" />Close
+                                </button>
                             </Dialog.Close>
                         </div>
 

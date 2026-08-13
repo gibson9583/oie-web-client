@@ -267,6 +267,52 @@ test('two channels that both have a message 12345 compare, distinguishably', asy
     expect(await domText(page)).toContain('OTHER^CHANNEL');
 });
 
+/* ---- the two exits ------------------------------------------------------------ */
+
+/* Closing keeps the reference so it can be compared against something else — the
+   "one known-good message vs. each of today's failures" loop. Clear and Close is
+   the way out when you are done with that reference. */
+async function openComparison(page: any) {
+    await openBrowser(page);
+    await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
+    await page.getByRole('button', { name: 'Compare', exact: true }).click();
+    const overlay = page.locator('.compare-overlay');
+    await expect(overlay).toBeVisible();
+    return overlay;
+}
+
+test('Close keeps the selection, and says so', async ({ page }) => {
+    const overlay = await openComparison(page);
+    await overlay.getByRole('button', { name: 'Close', exact: true }).click();
+
+    await expect(overlay).toHaveCount(0);
+    await expect(page.locator('.compare-chip')).toContainText('Demo Started · Msg 12345 · Source · Raw');
+    await expect(page.locator('tr.compare-anchor')).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Compare to Selection' })).toBeEnabled();
+    // The overlay filled the viewport a moment ago, so what SURVIVED is the part
+    // worth announcing.
+    await expect(page.getByRole('status').filter({ hasText: 'is still selected for compare' })).toBeVisible();
+});
+
+test('Escape closes without clearing, like Close', async ({ page }) => {
+    const overlay = await openComparison(page);
+    await page.keyboard.press('Escape');
+    await expect(overlay).toHaveCount(0);
+    await expect(page.locator('.compare-chip')).toContainText('Demo Started · Msg 12345 · Source · Raw');
+});
+
+test('Clear and Close ends the whole thing', async ({ page }) => {
+    const overlay = await openComparison(page);
+    await overlay.getByRole('button', { name: 'Clear and Close' }).click();
+
+    await expect(overlay).toHaveCount(0);
+    await expect(page.locator('.compare-chip')).toHaveCount(0);
+    await expect(page.locator('tr.compare-anchor')).toHaveCount(0);
+    await expect(page.locator('.status-compare')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Compare to Selection' })).toBeDisabled();
+});
+
 /* ---- guards and cancel semantics ---------------------------------------------- */
 
 test('the identical tuple is refused before the modal opens', async ({ page }) => {
@@ -360,7 +406,7 @@ test('a full compare cycle writes nothing to browser storage', async ({ page }) 
     // While it is open, and after it closes.
     for (const phase of ['open', 'closed']) {
         if (phase === 'closed') {
-            await overlay.getByRole('button', { name: 'Close comparison' }).click();
+            await overlay.getByRole('button', { name: 'Close', exact: true }).click();
             await expect(overlay).toHaveCount(0);
         }
         const traces = await persistedTraces(page, SENTINEL);
@@ -386,7 +432,7 @@ test('closing the comparison disposes its Monaco models', async ({ page }) => {
         () => !!(window as any).monaco && (window as any).monaco.editor.getModels().length > 0,
         undefined, { timeout: 15000 }).then(() => true, () => false);
 
-    await overlay.getByRole('button', { name: 'Close comparison' }).click();
+    await overlay.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(overlay).toHaveCount(0);
     if (loaded) {
         await expect.poll(() => page.evaluate(() => (window as any).monaco.editor.getModels().length))
@@ -428,7 +474,7 @@ test('the comparison never enters the URL', async ({ page }) => {
     // which is written to disk.
     expect(page.url()).toBe(url);
 
-    await page.getByRole('button', { name: 'Close comparison' }).click();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
     expect(page.url()).toBe(url);
 });
 
