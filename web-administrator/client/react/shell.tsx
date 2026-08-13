@@ -775,6 +775,12 @@ export function App() {
         // Explicit sign-out abandons any stash (an expiry stash is a safety net;
         // a deliberate logout on a shared workstation must not leave one behind).
         clearChannelDraft();
+        /* The client-side counterpart to core/api.js's session-expired hook: a
+           deliberate sign-out is never a 401, so anything holding session-scoped
+           data (core/compare.js's selection, and the compare overlay's in-memory
+           message content) has no other way to hear about it. Fired by the idle
+           auto-logout below too — both are "this session is over". */
+        store.emit('session:logout');
         store.setState('user', null);
         store.setState('navGuard', null);
         scrubSessionState();
@@ -859,6 +865,7 @@ export function App() {
             stashChannelDraft();
             // Swing parity: the dedicated inactivity operation, audited distinctly.
             try { await api.auth.inactivityLogout(); } catch { /* session may already be gone */ }
+            store.emit('session:logout');
             store.setState('user', null);
             store.setState('navGuard', null);
             scrubSessionState();

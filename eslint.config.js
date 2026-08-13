@@ -125,6 +125,31 @@ export default [
         },
     },
 
+    /* Compare Messages handles stored message content, which must never reach
+       disk: no browser storage in the modules that touch it, generated .js twins
+       included. Cheap insurance against a future edit that adds a "remember the
+       last comparison" convenience — see the PHI notes in core/compare.ts. */
+    {
+        files: [
+            'web-administrator/client/core/compare.{ts,js}',
+            'web-administrator/client/react/compare-*.{tsx,ts,js}',
+        ],
+        rules: {
+            'no-restricted-globals': ['error',
+                { name: 'localStorage', message: 'Compare Messages must never persist content or references — memory only.' },
+                { name: 'sessionStorage', message: 'Compare Messages must never persist content or references — memory only.' },
+                { name: 'indexedDB', message: 'Compare Messages must never persist content or references — memory only.' },
+                { name: 'caches', message: 'Compare Messages must never persist content or references — memory only.' },
+            ],
+            'no-restricted-properties': ['error',
+                { object: 'window', property: 'localStorage', message: 'Compare Messages must never persist content or references — memory only.' },
+                { object: 'window', property: 'sessionStorage', message: 'Compare Messages must never persist content or references — memory only.' },
+                { object: 'window', property: 'indexedDB', message: 'Compare Messages must never persist content or references — memory only.' },
+                { object: 'window', property: 'caches', message: 'Compare Messages must never persist content or references — memory only.' },
+            ],
+        },
+    },
+
     // Server + build/tooling + tests — node runtime.
     {
         files: [
