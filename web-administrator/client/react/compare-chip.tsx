@@ -27,7 +27,6 @@ export function CompareChip() {
             <div className="compare-chip-body">
                 <div className="compare-chip-title">Selected for compare</div>
                 <div className="compare-chip-ref mono">{describeRef(anchor)}</div>
-                <div className="compare-chip-hint">reference only, no content stored</div>
             </div>
             <button type="button" className="icon-btn" title="Clear compare selection"
                 aria-label="Clear compare selection"

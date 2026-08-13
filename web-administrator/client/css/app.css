@@ -1366,7 +1366,6 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .compare-chip-body { min-width: 0; }
 .compare-chip-title { font-weight: 600; }
 .compare-chip-ref { color: var(--text-dim); font-size: 10.5px; margin-top: 2px; word-break: break-word; }
-.compare-chip-hint { color: var(--text-faint); font-size: 10px; margin-top: 2px; }
 
 /* Marks on the things the anchor points at: the results row, and the content tab
    the reference was captured from. Inset bars, so neither changes any metric the
@@ -1454,10 +1453,13 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 }
 .compare-pane-error svg { color: var(--warn); }
 
+/* The colour key for the two panes, and nothing else — it sits to the right so
+   it reads as a legend for the diff above rather than a caption on the overlay. */
 .compare-foot {
     display: flex;
     align-items: center;
-    gap: 7px;
+    justify-content: flex-end;
+    gap: 14px;
     flex: none;
     padding: 6px 13px;
     border-top: 1px solid var(--line);
@@ -1465,7 +1467,6 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     color: var(--text-faint);
     font-size: 10px;
 }
-.compare-foot > svg { color: var(--text-faint); flex: none; }
 .compare-legend { display: inline-flex; align-items: center; gap: 5px; }
 .compare-legend .swatch { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .compare-legend .swatch.left { background: color-mix(in srgb, var(--err) 55%, transparent); }
@@ -1482,14 +1483,6 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 }
 .compare-confirm-row + .compare-confirm-row { border-top: 1px solid var(--line); }
 .compare-confirm-note { color: var(--text-dim); font-size: 10.5px; margin-top: 11px; }
-.compare-confirm-phi {
-    display: flex;
-    align-items: flex-start;
-    gap: 7px;
-    color: var(--text-faint);
-    font-size: 10px;
-    margin-top: 9px;
-}
 
 /* ---- Date + time field (react/date-time-field.jsx) ------------------------------------------ */
 

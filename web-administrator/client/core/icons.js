@@ -40,7 +40,6 @@ const P = {
     copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
     // Two panes with a divider — side-by-side comparison.
     compare: 'M4 5h6v14H4zM14 5h6v14h-6zM12 3v18',
-    lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
     export: 'M12 15V3M8 7l4-4 4 4M5 21h14v-7',
     import: 'M12 3v12M8 11l4 4 4-4M5 21h14v-7',
     send: 'M22 2L11 13M22 2l-7 20-4-9-9-4z',

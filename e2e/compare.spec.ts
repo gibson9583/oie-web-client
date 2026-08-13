@@ -137,14 +137,12 @@ test('row → submenu → second row → confirm renders the diff', async ({ pag
     await expect(confirm).toBeVisible();
     await expect(confirm).toContainText('Msg 12345 · Source · Raw');
     await expect(confirm).toContainText('Msg 12346 · Source · Raw');
-    await expect(confirm).toContainText('Nothing is written to disk');
     await confirm.getByRole('button', { name: 'Compare', exact: true }).click();
 
     const overlay = page.locator('.compare-overlay');
     await expect(overlay).toBeVisible();
     await expect(overlay.locator('.compare-side-ref').first()).toHaveText('Msg 12345 · Source · Raw');
     await expect(overlay.locator('.compare-side-ref').nth(1)).toHaveText('Msg 12346 · Source · Raw');
-    await expect(overlay).toContainText('no cache, no storage');
     // Both sides actually loaded (neither pane is still spinning or errored).
     await expect(overlay.locator('.compare-pane-overlay')).toHaveCount(0);
 });

@@ -287,9 +287,6 @@ export function CompareOverlay({ pair, channelName, onClose }: any) {
                         </div>
 
                         <div className="compare-foot">
-                            <Icon name="lock" size={13} />
-                            <span>content in memory only — no cache, no storage · cleared on close / navigation / session end</span>
-                            <span className="flex-1" />
                             <span className="compare-legend"><i className="swatch left" />Left only</span>
                             <span className="compare-legend"><i className="swatch right" />Right only</span>
                         </div>

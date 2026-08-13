@@ -35,7 +35,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as Popover from '@radix-ui/react-popover';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { h, icon, toast, cornerToast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, toast, cornerToast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../../core/content-highlight.js';
@@ -2133,9 +2133,7 @@ export function MessagesView({ params, query }: any) {
                 sideRow('Right', right, 'amber'),
                 Number(left.messageId) === Number(right.messageId)
                     ? h('div.compare-confirm-note', 'Two stages of the same message — this traces what the pipeline changed.')
-                    : null,
-                h('div.compare-confirm-phi', icon('lock', 13),
-                    h('span', 'Nothing is written to disk. The comparison is cleared when you close it, navigate away, or your session ends.'))),
+                    : null),
             /* Cancel, Esc and a click on the scrim all land here, and all mean the
                same thing: drop the SECOND selection, keep the anchor — the usual
                reason to back out is having picked the wrong second side. */
