@@ -144,7 +144,7 @@ task/`JPopupMenu` behavior.
 - `doRemoveMessage` — Remove Message
 - `doReprocessFilteredMessages` — Reprocess Results · `doReprocessMessage` — Reprocess Message
 - `viewImage` — View Attachment · `doExportAttachment` — Export Attachment
-- `doSelectForCompare` — Select for Compare · `doCompareWithSelection` — Compare with
+- `doSelectForCompare` — Select for Compare · `doCompareWithSelection` — Compare to
   Selection (task pane + the content-tab and row right-click menus). Neither grants
   any access of its own: comparing content is reading message content, which the
   engine authorizes per fetch. Deny them to remove the compare workflow from the UI.

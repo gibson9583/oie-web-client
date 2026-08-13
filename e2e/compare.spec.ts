@@ -131,7 +131,7 @@ test('row → submenu → second row → confirm renders the diff', async ({ pag
     await expect(page.locator('tr.compare-anchor')).toHaveCount(1);
     await expect(page.locator('.status-compare')).toBeVisible();
 
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
 
     const confirm = page.getByRole('dialog').filter({ hasText: 'Compare selected content?' });
     await expect(confirm).toBeVisible();
@@ -152,7 +152,7 @@ test('row → submenu → second row → confirm renders the diff', async ({ pag
 test('Swap exchanges the two sides', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
 
     const overlay = page.locator('.compare-overlay');
@@ -165,7 +165,7 @@ test('Swap exchanges the two sides', async ({ page }) => {
 test('a stage dropdown re-points one side without disturbing the other', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
 
     const overlay = page.locator('.compare-overlay');
@@ -191,7 +191,7 @@ test('a content tab captures the stage that is on screen', async ({ page }) => {
 test('two stages of one message compare, and say so', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12345', 'Compare with Selection', 'Transformed');
+    await pickFromRow(page, '12345', 'Compare to Selection', 'Transformed');
 
     const confirm = page.getByRole('dialog').filter({ hasText: 'Compare selected content?' });
     await expect(confirm).toContainText('Two stages of the same message');
@@ -205,7 +205,7 @@ test('two stages of one message compare, and say so', async ({ page }) => {
 test('the identical tuple is refused before the modal opens', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12345', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12345', 'Compare to Selection', 'Raw');
 
     await expect(page.getByRole('status').filter({ hasText: 'Same content already selected' })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -216,7 +216,7 @@ test('the identical tuple is refused before the modal opens', async ({ page }) =
 test('cancelling the confirmation discards only the second selection', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
 
     await expect(page.getByRole('dialog')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -229,7 +229,7 @@ test('cancelling the confirmation discards only the second selection', async ({ 
 
 test('the chip clears the selection and re-disables the task', async ({ page }) => {
     await openBrowser(page);
-    const compareTask = page.getByRole('button', { name: 'Compare with Selection…' });
+    const compareTask = page.getByRole('button', { name: 'Compare to Selection' });
     await expect(compareTask).toBeDisabled();
 
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
@@ -284,7 +284,7 @@ test('a full compare cycle writes nothing to browser storage', async ({ page }) 
     const before = await persistedTraces(page, SENTINEL);
 
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
     const overlay = page.locator('.compare-overlay');
     await expect(overlay).toBeVisible();
@@ -308,7 +308,7 @@ test('a full compare cycle writes nothing to browser storage', async ({ page }) 
 test('closing the comparison disposes its Monaco models', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
 
     const overlay = page.locator('.compare-overlay');
@@ -330,7 +330,7 @@ test('closing the comparison disposes its Monaco models', async ({ page }) => {
 test('an expired session tears the comparison down before the login screen', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
     const overlay = page.locator('.compare-overlay');
     await expect(overlay).toBeVisible();
@@ -354,7 +354,7 @@ test('the comparison never enters the URL', async ({ page }) => {
     const url = page.url();
 
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
     await expect(page.locator('.compare-overlay')).toBeVisible();
     // A route would put the channel + message ids of a comparison into history,
@@ -368,7 +368,7 @@ test('the comparison never enters the URL', async ({ page }) => {
 test('navigating away releases the comparison', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
     await expect(page.locator('.compare-overlay')).toBeVisible();
 
@@ -382,7 +382,7 @@ test('navigating away releases the comparison', async ({ page }) => {
 test('the overlay is a labelled dialog that traps focus, and Escape closes it', async ({ page }) => {
     await openBrowser(page);
     await pickFromRow(page, '12345', 'Select for Compare', 'Raw');
-    await pickFromRow(page, '12346', 'Compare with Selection', 'Raw');
+    await pickFromRow(page, '12346', 'Compare to Selection', 'Raw');
     await page.getByRole('button', { name: 'Compare', exact: true }).click();
 
     await expect(page.locator('.compare-overlay')).toBeVisible();

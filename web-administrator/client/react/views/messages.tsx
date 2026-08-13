@@ -2205,7 +2205,7 @@ export function MessagesView({ params, query }: any) {
                 onClick: () => takeAnchor(ref)
             },
             {
-                label: 'Compare with Selection…', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
+                label: 'Compare to Selection', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
                 disabled: !getAnchor(), onClick: () => offerCandidate(ref)
             }
         ]);
@@ -2248,7 +2248,7 @@ export function MessagesView({ params, query }: any) {
                 items: compareStageItems(m, metaDataId, 'select')
             },
             {
-                label: 'Compare with Selection…', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
+                label: 'Compare to Selection', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
                 disabled: !getAnchor(), items: compareStageItems(m, metaDataId, 'compare')
             },
             '-',
@@ -2609,7 +2609,7 @@ export function MessagesView({ params, query }: any) {
                             title={activeStage ? `Select ${describeRef(activeStage)} for comparison` : undefined} />
                         {/* Greyed rather than hidden: the task exists, it just has
                             nothing to compare against yet (Swing's task-rail idiom). */}
-                        <TaskButton label="Compare with Selection…" icon="compare" task="doCompareWithSelection"
+                        <TaskButton label="Compare to Selection" icon="compare" task="doCompareWithSelection"
                             disabled={!anchor} onClick={compareWithSelectionTask}
                             title={anchor ? `Compare against ${describeRef(anchor)}` : 'Select content for compare first'} />
                     </div>
