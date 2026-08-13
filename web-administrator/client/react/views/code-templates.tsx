@@ -19,7 +19,7 @@
  * refetch the new scope.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
@@ -31,6 +31,7 @@ import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { RailPane, TaskButton, CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
+import { ListFilterTypeahead, parseListFilter, rowMatchesFilter, type ListFilterSuggestion } from '../list-filter.jsx';
 
 
 const CT_COLUMNS = [
@@ -154,6 +155,7 @@ export function CodeTemplatesView() {
     const [dirty, setDirty] = useState(false);
     const dirtyRef = useRef(false);
     const [filterText, setFilterText] = useState('');
+    const deferredFilter = useDeferredValue(filterText);
     const [focusName, setFocusName] = useState(false);   // focus the Name field after creating
     const [collapsed, setCollapsed] = useState(() => new Set());   // collapsed library keys ('library:<id>')
 
@@ -199,12 +201,53 @@ export function CodeTemplatesView() {
 
     /* ---- table (Swing Code Templates tree-table) -------------------------------- */
 
-    function templateMatches(template: any, term: any) {
-        if (!term) return true;
-        return (template.name || '').toLowerCase().includes(term)
-            || (template.id || '').toLowerCase().includes(term)
-            || templateDescription(template).toLowerCase().includes(term);
+    function templateMatches(template: any, field: string | null, needle: string) {
+        if (!needle) return true;
+        const name = String(template.name || '').toLowerCase();
+        const id = String(template.id || '').toLowerCase();
+        const desc = templateDescription(template).toLowerCase();
+        if (field === 'tpl' || field === 'name') return name.includes(needle);
+        if (field === 'id') return id.includes(needle);
+        if (field === 'lib') return false;
+        return name.includes(needle) || id.includes(needle) || desc.includes(needle);
     }
+
+    function libraryMatches(library: any, field: string | null, needle: string) {
+        if (!needle) return true;
+        const name = String(library.name || '').toLowerCase();
+        const id = String(library.id || '').toLowerCase();
+        if (field === 'lib' || field === 'name') return name.includes(needle);
+        if (field === 'id') return id.includes(needle);
+        if (field === 'tpl') return false;
+        return name.includes(needle) || id.includes(needle);
+    }
+
+    const filterSuggestions = useMemo(() => {
+        const needle = deferredFilter.trim().toLowerCase();
+        const out: ListFilterSuggestion[] = [];
+        const seen = new Set<string>();
+        for (const en of entries) {
+            const libName = String(en.library?.name || '').trim();
+            if (libName && !seen.has(`lib:${libName}`)) {
+                seen.add(`lib:${libName}`);
+                out.push({ value: libName, kind: 'lib', icon: 'folder' });
+            }
+        }
+        if (needle) {
+            for (const en of entries) {
+                for (const t of en.templates || []) {
+                    const name = String(t.name || '').trim();
+                    if (!name || seen.has(`tpl:${name}`)) continue;
+                    if (!name.toLowerCase().includes(needle)) continue;
+                    seen.add(`tpl:${name}`);
+                    out.push({ value: name, kind: 'tpl', icon: 'file' });
+                    if (out.length >= 40) break;
+                }
+                if (out.length >= 40) break;
+            }
+        }
+        return out;
+    }, [entries, deferredFilter]);
 
     // Columns/data/filter for the JSX <TreeTable> (libraries -> code templates).
     function treeColumns() {
@@ -639,9 +682,22 @@ export function CodeTemplatesView() {
         kind: 'library', id: entry.library.id, lib: entry.library,
         children: entry.templates.map((t: any) => ({ kind: 'template', id: t.id, tpl: t }))
     }));
-    const term = filterText.trim().toLowerCase();
-    const ctMatches = term
-        ? (n: any) => (n.kind === 'library' ? (n.lib.name || '').toLowerCase().includes(term) : templateMatches(n.tpl, term))
+    const { field: filterField, needle: filterNeedle } = parseListFilter(deferredFilter);
+    const ctMatches = filterNeedle
+        ? (n: any) => {
+            if (filterField === 'lib') {
+                if (n.kind === 'library') return libraryMatches(n.lib, filterField, filterNeedle);
+                const parent = entries.find((en: any) => en.templates.some((t: any) => t.id === n.id));
+                return parent ? libraryMatches(parent.library, filterField, filterNeedle) : false;
+            }
+            if (filterField === 'tpl') {
+                if (n.kind === 'library') return false;
+                return templateMatches(n.tpl, filterField, filterNeedle);
+            }
+            return n.kind === 'library'
+                ? libraryMatches(n.lib, filterField, filterNeedle)
+                : templateMatches(n.tpl, filterField, filterNeedle);
+        }
         : undefined;
     const totalTemplates = entries.reduce((sum: any, en: any) => sum + en.templates.length, 0);
     const countsText = `${entries.length} Librar${entries.length === 1 ? 'y' : 'ies'}, ${totalTemplates} Code Template${totalTemplates === 1 ? '' : 's'}`;
@@ -703,8 +759,13 @@ export function CodeTemplatesView() {
                             <span className="counts">{countsText}</span>
                             <span className="ml-auto inline-flex items-center gap-1.5">
                                 <label>Filter:</label>
-                                <input type="text" placeholder="Filter…" className="max-w-[234px]" value={filterText}
-                                    onChange={(e: any) => setFilterText(e.target.value)} />
+                                <ListFilterTypeahead
+                                    id="codetemplates-filter-typeahead"
+                                    value={filterText}
+                                    onChange={setFilterText}
+                                    suggestions={filterSuggestions}
+                                    placeholder="Filter…"
+                                />
                             </span>
                         </div>
                     </div>
@@ -812,8 +873,22 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
         }
     }
 
-    const term = chFilter.trim().toLowerCase();
-    const visible = (channels || []).filter((r: any) => !term || r.name.toLowerCase().includes(term));
+    const visible = (channels || []).filter((r: any) => rowMatchesFilter(chFilter, { name: r.name, id: r.id }));
+    const channelSuggestions = useMemo(() => {
+        const needle = chFilter.trim().toLowerCase();
+        const out: ListFilterSuggestion[] = [];
+        if (!needle || !channels) return out;
+        const seen = new Set<string>();
+        for (const r of channels) {
+            const name = String(r.name || '').trim();
+            if (name && name.toLowerCase().includes(needle) && !seen.has(`name:${name}`)) {
+                seen.add(`name:${name}`);
+                out.push({ value: name, kind: 'name', icon: 'channels' });
+            }
+            if (out.length >= 40) break;
+        }
+        return out;
+    }, [channels, chFilter]);
 
     return (
         <div className="flex flex-col flex-1 min-h-0">
@@ -849,8 +924,14 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
                             <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAllChannels(false); }}>Deselect All</a>
                         </span>
                     </div>
-                    <input type="text" placeholder="Filter…" className="w-full mb-1.5" value={chFilter}
-                        onChange={(e: any) => setChFilter(e.target.value)} />
+                    <ListFilterTypeahead
+                        id="codetemplate-lib-channels-filter"
+                        value={chFilter}
+                        onChange={setChFilter}
+                        suggestions={channelSuggestions}
+                        placeholder="Filter…"
+                        className="w-full mb-1.5"
+                    />
                     <div className="overflow-auto flex-1">
                         {chError ? <div className="text-text-faint">{`Channels unavailable: ${chError}`}</div>
                             : channels === null ? <div className="loading-block"><div className="spinner" />Loading channels…</div>

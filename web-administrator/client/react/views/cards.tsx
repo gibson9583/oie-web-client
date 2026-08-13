@@ -19,6 +19,7 @@ import { RailPane, TaskButton } from '../ui.jsx';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { statsOf } from './dashboard.jsx';
+import { ListFilterTypeahead, rowMatchesFilter, type ListFilterSuggestion } from '../list-filter.jsx';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const EMPTY_LIST: any[] = [];  // stable fallback while queries load (memo-dep friendly)
@@ -176,13 +177,43 @@ function CardsView({ onToggleView }: any) {
     const tagsFor = (id: any) => tagsByChannel.get(id) || [];
 
     const all = useMemo(() => statuses || [], [statuses]);
+    const filterSuggestions = useMemo(() => {
+        const out: ListFilterSuggestion[] = [];
+        const seen = new Set<string>();
+        for (const t of tags) {
+            const name = String(t.name || '').trim();
+            if (!name || seen.has(`tag:${name}`)) continue;
+            seen.add(`tag:${name}`);
+            out.push({ value: name, kind: 'tag', icon: 'tag' });
+        }
+        const needle = query.trim().toLowerCase();
+        if (needle) {
+            for (const s of all) {
+                const name = String(s.name || '').trim();
+                if (name && name.toLowerCase().includes(needle) && !seen.has(`name:${name}`)) {
+                    seen.add(`name:${name}`);
+                    out.push({ value: name, kind: 'name', icon: 'channels' });
+                }
+                const id = String(s.channelId || '').trim();
+                if (id && id.toLowerCase().includes(needle) && !seen.has(`id:${id}`)) {
+                    seen.add(`id:${id}`);
+                    out.push({ value: id, kind: 'id', icon: 'search' });
+                }
+                if (out.length >= 40) break;
+            }
+        }
+        return out;
+    }, [tags, all, query]);
+
     const filtered = useMemo(() => {
-        const q = query.trim().toLowerCase();
         return all.filter((s: any) => {
             if (stateFilter && s.state !== stateFilter) return false;
-            if (!q) return true;
-            if (String(s.name || '').toLowerCase().includes(q)) return true;
-            return tagsFor(s.channelId).some((t: any) => String(t.name || '').toLowerCase().includes(q));
+            const tagNames = tagsFor(s.channelId).map((t: any) => String(t.name || '')).join(' ');
+            return rowMatchesFilter(query, {
+                name: s.name,
+                id: s.channelId,
+                tag: tagNames
+            });
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [all, query, stateFilter, tagsByChannel]);
@@ -339,8 +370,15 @@ function CardsView({ onToggleView }: any) {
             <div className="panel flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3.5 py-2.5 mx-[13px] mb-3 overflow-visible">
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                     <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-faint"><Icon name="search" size={14} /></span>
-                        <input type="text" className="w-[198px] max-w-full !pl-7" placeholder="Filter channels & tags…" value={query} onChange={(e: any) => setQuery(e.target.value)} />
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-faint z-[1]"><Icon name="search" size={14} /></span>
+                        <ListFilterTypeahead
+                            id="cards-filter-typeahead"
+                            value={query}
+                            onChange={setQuery}
+                            suggestions={filterSuggestions}
+                            placeholder="Filter channels & tags…"
+                            className="w-[198px] max-w-full !pl-7"
+                        />
                     </div>
                     <label className="flex items-center gap-2 text-[11px] text-text-dim whitespace-nowrap">Group by
                         <select value={groupBy} onChange={(e: any) => setGroupBy(e.target.value)}>

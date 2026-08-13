@@ -28,6 +28,7 @@ import { checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { setTheme, setTableDensity, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
+import { ListFilterTypeahead, rowMatchesFilter, type ListFilterSuggestion } from '../list-filter.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, DataTableHost } from '../ui.jsx';
@@ -903,9 +904,32 @@ function TagsTab({ ctx }: any) {
     }
 
     function visibleChannels() {
-        const filter = chFilter.trim().toLowerCase();
-        return filter ? allChannels.filter(c => c.name.toLowerCase().includes(filter)) : allChannels;
+        return allChannels.filter((c: any) => rowMatchesFilter(chFilter, {
+            name: c.name,
+            id: c.id
+        }));
     }
+
+    const channelSuggestions = useMemo(() => {
+        const needle = chFilter.trim().toLowerCase();
+        const out: ListFilterSuggestion[] = [];
+        if (!needle) return out;
+        const seen = new Set<string>();
+        for (const c of allChannels) {
+            const name = String(c.name || '').trim();
+            if (name && name.toLowerCase().includes(needle) && !seen.has(`name:${name}`)) {
+                seen.add(`name:${name}`);
+                out.push({ value: name, kind: 'name', icon: 'channels' });
+            }
+            const id = String(c.id || '').trim();
+            if (id && id.toLowerCase().includes(needle) && !seen.has(`id:${id}`)) {
+                seen.add(`id:${id}`);
+                out.push({ value: id, kind: 'id', icon: 'search' });
+            }
+            if (out.length >= 40) break;
+        }
+        return out;
+    }, [allChannels, chFilter]);
 
     function toggleChannel(tag: any, id: any, on: any) {
         const cur = new Set(tagChannelIds(tag));
@@ -1060,8 +1084,14 @@ function TagsTab({ ctx }: any) {
                 <div className="panel-body">
                     <div className="hint mb-[14px]">Channel selections will be applied to the currently selected tag.</div>
                     <div className="flex items-center gap-2 mb-[14px]">
-                        <input type="text" placeholder="Filter channels" className="max-w-[280px]"
-                            value={chFilter} onChange={(e: any) => setChFilter(e.target.value)} />
+                        <ListFilterTypeahead
+                            id="settings-tags-channel-filter"
+                            value={chFilter}
+                            onChange={setChFilter}
+                            suggestions={channelSuggestions}
+                            placeholder="Filter channels"
+                            className="max-w-[280px]"
+                        />
                         <button type="button" className="btn" onClick={() => bulkSelect(true)}>Select All</button>
                         <button type="button" className="btn" onClick={() => bulkSelect(false)}>Deselect All</button>
                     </div>
@@ -1240,19 +1270,37 @@ function ConfigurationMapTab({ ctx }: any) {
 
     /* Visible-row set, frozen between filter/structure changes (see above). */
     const visibleIds = useMemo(() => {
-        const q = filterText.trim().toLowerCase();
         const matches = (row: any) => {
-            if (!q) return true;
+            if (!filterText.trim()) return true;
             // Blank rows (e.g. a just-added row) always show so adding while
             // filtering isn't hidden.
             if (!row.key && !row.value && !row.comment) return true;
-            return row.key.toLowerCase().includes(q)
-                || row.value.toLowerCase().includes(q)
-                || row.comment.toLowerCase().includes(q);
+            return rowMatchesFilter(filterText, {
+                key: row.key,
+                name: row.key,
+                value: row.value,
+                comment: row.comment
+            });
         };
         return new Set((rowsNowRef.current || []).filter(matches).map((r: any) => r._id));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filterText, structureVersion]);
+
+    const cfgSuggestions = useMemo(() => {
+        const needle = filterText.trim().toLowerCase();
+        const out: ListFilterSuggestion[] = [];
+        if (!needle || !rows) return out;
+        const seen = new Set<string>();
+        for (const row of rows) {
+            const key = String(row.key || '').trim();
+            if (key && key.toLowerCase().includes(needle) && !seen.has(`key:${key}`)) {
+                seen.add(`key:${key}`);
+                out.push({ value: key, kind: 'key', icon: 'search' });
+            }
+            if (out.length >= 40) break;
+        }
+        return out;
+    }, [rows, filterText]);
 
     if (loadError) return <TabLoadFailed error={loadError} />;
     if (!rows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
@@ -1273,9 +1321,14 @@ function ConfigurationMapTab({ ctx }: any) {
                 <div className="panel-tools">
                     <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius)] border border-line-strong bg-bg2 text-text-dim min-w-[260px]">
                         <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('search', 15)); }} />
-                        <input type="search" placeholder="Filter entries…" autoComplete="off"
+                        <ListFilterTypeahead
+                            id="settings-cfgmap-filter"
+                            value={filterText}
+                            onChange={setFilterText}
+                            suggestions={cfgSuggestions}
+                            placeholder="Filter entries…"
                             className="flex-1 min-w-0 bg-transparent border-0 outline-none text-text"
-                            value={filterText} onChange={(e: any) => setFilterText(e.target.value)} />
+                        />
                     </div>
                     <label className="check">
                         <input type="checkbox" checked={showValues} onChange={(e: any) => setShowValues(e.target.checked)} />

@@ -244,6 +244,13 @@ function DashFilterBar({
         };
         for (const st of statuses) if (st.name) add(String(st.name), 'channel');
         for (const tag of tags) if (tag.name) add(String(tag.name), 'tag');
+        // Channel ids after the user types — keep the empty-focus list light.
+        if (needle) {
+            for (const st of statuses) {
+                const id = String(st.channelId || '');
+                if (id && id.toLowerCase().includes(needle)) add(id, 'id');
+            }
+        }
         out.sort((a: any, b: any) => a.value.localeCompare(b.value));
         return out.slice(0, TYPEAHEAD_MAX);
     }, [taOpen, filterText, chips, statuses, tags]);
@@ -349,11 +356,12 @@ function DashFilterBar({
                         {chips.map((chip: any) => {
                             const isTag = chip.kind === 'tag';
                             const tag = isTag ? tags.find((t: any) => String(t.name) === chip.value) : null;
+                            const iconName = isTag ? 'tag' : (chip.kind === 'id' ? 'search' : 'server');
                             return (
                                 <span key={chip.kind + ':' + chip.value}
                                     className="tag inline-flex items-center gap-1 py-px pr-1 pl-[6px]"
                                     style={{ background: isTag ? (tagRgb(tag, 0.25) || 'var(--bg3)') : 'var(--bg3)' }}>
-                                    <Icon name={isTag ? 'tag' : 'server'} size={12} />
+                                    <Icon name={iconName} size={12} />
                                     <span>{chip.value}</span>
                                     <button title="Remove"
                                         className="appearance-none border-none cursor-pointer text-inherit text-[12.5px] leading-none py-0 px-px"
@@ -413,7 +421,7 @@ function DashFilterBar({
                             className={'typeahead-item' + (i === taIndex ? ' active' : '')}
                             onMouseDown={(e: any) => e.preventDefault()}   // keep input focus so blur doesn't race the click
                             onClick={() => pickSuggestion(item)}>
-                            <Icon name={item.kind === 'tag' ? 'tag' : 'server'} size={14} />
+                            <Icon name={item.kind === 'tag' ? 'tag' : (item.kind === 'id' ? 'search' : 'server')} size={14} />
                             <span className="typeahead-label">{item.value}</span>
                             <span className="typeahead-kind">{item.kind}</span>
                         </div>
@@ -634,6 +642,7 @@ function DashboardView({ onToggleView }: any) {
         // tag, or matching any selected channel name. Multiple picks are OR'd.
         const chipChannelIds = new Set();
         const chipChannelNames = new Set();
+        const chipIds = new Set();
         for (const chip of chips) {
             if (chip.kind === 'tag') {
                 for (const tag of tags) {
@@ -641,6 +650,8 @@ function DashboardView({ onToggleView }: any) {
                         api.asList(tag.channelIds, 'string').forEach(id => chipChannelIds.add(id));
                     }
                 }
+            } else if (chip.kind === 'id') {
+                chipIds.add(String(chip.value));
             } else {
                 chipChannelNames.add(String(chip.value).toLowerCase());
             }
@@ -660,8 +671,13 @@ function DashboardView({ onToggleView }: any) {
 
         return members.filter((s: any) => {
             if (chipChannelIds.has(s.channelId)) return true;
+            if (chipIds.has(String(s.channelId))) return true;
             if (chipChannelNames.has(String(s.name || '').toLowerCase())) return true;
-            if (needle && (String(s.name || '').toLowerCase().includes(needle) || textTagged.has(s.channelId))) return true;
+            if (needle && (
+                String(s.name || '').toLowerCase().includes(needle)
+                || String(s.channelId || '').toLowerCase().includes(needle)
+                || textTagged.has(s.channelId)
+            )) return true;
             return false;
         });
     }

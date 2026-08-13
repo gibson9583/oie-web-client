@@ -6,8 +6,8 @@
  * The engine's `textSearch` query is a wildcard: it walks message content,
  * maps, and related stores in one shot and is expensive on busy channels.
  * After the user enters a phrase (e.g. "123456") and presses Search, the
- * companion prompt (promptDlmSearchScope) asks for a *scope* and
- * dlmBuildDecision builds an isolated query from the scoped params the
+ * companion prompt (promptDlmSearchScope) asks for a *scope* via typeahead
+ * and dlmBuildDecision builds an isolated query from the scoped params the
  * servlet already exposes (rawContentSearch, sourceMapContentSearch,
  * metaDataSearch, message-id bounds, …) — never inventing a server API.
  *
@@ -15,29 +15,30 @@
  */
 /** Catalog of scopes — phrasing suggestions are signals; this list is the product. */
 export const DLM_SCOPES = [
-    { id: 'message_id', group: 'Identifiers', label: 'Message Id (exact)', kind: 'message_id', suggestWeight: 40 },
+    { id: 'message_id', group: 'Identifiers', label: 'Message Id (exact)', kind: 'message_id', suggestWeight: 40, keywords: ['id', 'msgid'] },
     { id: 'raw', group: 'Message content', label: 'Raw', kind: 'content', param: 'rawContentSearch', suggestWeight: 20 },
-    { id: 'processed_raw', group: 'Message content', label: 'Processed Raw', kind: 'content', param: 'processedRawContentSearch' },
+    { id: 'processed_raw', group: 'Message content', label: 'Processed Raw', kind: 'content', param: 'processedRawContentSearch', keywords: ['processed'] },
     { id: 'transformed', group: 'Message content', label: 'Transformed', kind: 'content', param: 'transformedContentSearch', suggestWeight: 15 },
     { id: 'encoded', group: 'Message content', label: 'Encoded', kind: 'content', param: 'encodedContentSearch' },
     { id: 'sent', group: 'Message content', label: 'Sent', kind: 'content', param: 'sentContentSearch' },
-    { id: 'response', group: 'Message content', label: 'Response', kind: 'content', param: 'responseContentSearch' },
+    { id: 'response', group: 'Message content', label: 'Response', kind: 'content', param: 'responseContentSearch', keywords: ['ack'] },
     { id: 'response_transformed', group: 'Message content', label: 'Response Transformed', kind: 'content', param: 'responseTransformedContentSearch' },
     { id: 'processed_response', group: 'Message content', label: 'Processed Response', kind: 'content', param: 'processedResponseContentSearch' },
-    { id: 'source_map', group: 'Maps', label: 'Source Map', kind: 'content', param: 'sourceMapContentSearch', suggestWeight: 25 },
-    { id: 'channel_map', group: 'Maps', label: 'Channel Map', kind: 'content', param: 'channelMapContentSearch', suggestWeight: 10 },
+    { id: 'source_map', group: 'Maps', label: 'Source Map', kind: 'content', param: 'sourceMapContentSearch', suggestWeight: 25, keywords: ['sourcemap', 'source'] },
+    { id: 'channel_map', group: 'Maps', label: 'Channel Map', kind: 'content', param: 'channelMapContentSearch', keywords: ['channelmap'] },
     { id: 'connector_map', group: 'Maps', label: 'Connector Map', kind: 'content', param: 'connectorMapContentSearch' },
     { id: 'response_map', group: 'Maps', label: 'Response Map', kind: 'content', param: 'responseMapContentSearch' },
-    { id: 'processing_error', group: 'Errors', label: 'Processing Error', kind: 'content', param: 'processingErrorContentSearch' },
+    { id: 'processing_error', group: 'Errors', label: 'Processing Error', kind: 'content', param: 'processingErrorContentSearch', keywords: ['error'] },
     { id: 'postprocessor_error', group: 'Errors', label: 'Postprocessor Error', kind: 'content', param: 'postprocessorErrorContentSearch' },
     { id: 'response_error', group: 'Errors', label: 'Response Error', kind: 'content', param: 'responseErrorContentSearch' },
-    { id: 'metadata', group: 'Metadata', label: 'Custom Metadata column(s)', kind: 'metadata', suggestWeight: 15 },
+    { id: 'metadata', group: 'Metadata', label: 'Custom Metadata column(s)', kind: 'metadata', suggestWeight: 15, keywords: ['meta', 'column'] },
     {
         id: 'legacy_text',
         group: 'Legacy',
         label: 'All content (engine textSearch — slow)',
         kind: 'legacy_text',
-        suggestWeight: 0
+        suggestWeight: 0,
+        keywords: ['wildcard', 'all', 'everything']
     }
 ];
 export function dlmNormalize(raw) {
@@ -61,6 +62,18 @@ export function dlmSuggestScopeIds(text, metaColumns = []) {
     if (metaColumns.some((c) => c && c.name))
         out.push('metadata');
     return out;
+}
+/** Filter the catalog for typeahead — label, group, keywords, id. */
+export function dlmFilterScopes(needle, available) {
+    const q = needle.trim().toLowerCase();
+    if (!q)
+        return available.slice();
+    return available.filter((s) => {
+        const hay = [s.id, s.label, s.group, ...(s.keywords || [])]
+            .join(' ')
+            .toLowerCase();
+        return hay.includes(q) || q.split(/\s+/).every((w) => hay.includes(w));
+    });
 }
 /**
  * Turn (phrase + chosen scopes) into engine query params.
@@ -153,61 +166,21 @@ export function dlmBuildDecision(raw, opts) {
     };
 }
 /**
- * Stepwise scope prompt. Resolves to a DlmDecision on Search, or null on cancel.
- * Keeps the expensive wildcard (`textSearch`) behind an explicit Legacy choice.
+ * Stepwise scope prompt — typeahead chips, not a checkbox wall.
+ * Resolves to a DlmDecision on Search, or null on cancel.
  */
 export async function promptDlmSearchScope(opts) {
-    const { h, modal, checkbox } = await import('./ui.js');
+    const { h, modal } = await import('./ui.js');
     const text = dlmNormalize(opts.text);
     const metaCols = (opts.metaDataColumns || []).map((c) => String(c?.name || '').trim()).filter(Boolean);
-    const suggested = opts.initialScopes?.length
-        ? opts.initialScopes
-        : dlmSuggestScopeIds(text, opts.metaDataColumns || []);
+    const available = DLM_SCOPES.filter((s) => !(s.kind === 'metadata' && !metaCols.length));
+    const byId = new Map(available.map((s) => [s.id, s]));
+    const selected = new Set((opts.initialScopes?.length ? opts.initialScopes : dlmSuggestScopeIds(text, opts.metaDataColumns || []))
+        .filter((id) => byId.has(id)));
+    const selectedMeta = new Set(opts.initialMetaColumns?.length
+        ? opts.initialMetaColumns.filter((n) => metaCols.includes(n))
+        : (selected.has('metadata') ? metaCols.slice() : []));
     return new Promise((resolve) => {
-        const checks = new Map();
-        const metaChecks = new Map();
-        const groups = new Map();
-        for (const scope of DLM_SCOPES) {
-            if (scope.kind === 'metadata' && !metaCols.length)
-                continue;
-            const list = groups.get(scope.group) || [];
-            list.push(scope);
-            groups.set(scope.group, list);
-        }
-        const body = h('div.dlm-scope-prompt');
-        body.appendChild(h('p', { class: 'mb-2' }, 'Text Search walks every content store (wildcard) and is expensive. ', 'Pick one or more scopes so the query stays isolated.'));
-        body.appendChild(h('p', { class: 'mb-3 text-text-dim' }, 'Searching for: ', h('strong', text)));
-        const metaBlock = h('div.dlm-meta-cols', { class: 'ml-5 mb-2 hidden' });
-        if (metaCols.length) {
-            metaBlock.appendChild(h('div', { class: 'text-text-dim mb-1' }, 'Metadata columns:'));
-            const initialMeta = new Set(opts.initialMetaColumns?.length ? opts.initialMetaColumns : metaCols);
-            for (const name of metaCols) {
-                const row = checkbox(name, initialMeta.has(name));
-                metaChecks.set(name, row.input);
-                metaBlock.appendChild(h('div', { class: 'mb-1' }, row.el));
-            }
-        }
-        for (const [group, scopes] of groups) {
-            body.appendChild(h('div', { class: 'font-medium mt-2 mb-1' }, group));
-            for (const scope of scopes) {
-                const checked = suggested.includes(scope.id);
-                const row = checkbox(scope.label, checked);
-                const input = row.input;
-                checks.set(scope.id, { input, scope });
-                body.appendChild(h('div', { class: 'mb-1' }, row.el));
-                if (scope.id === 'metadata') {
-                    body.appendChild(metaBlock);
-                    const syncMeta = () => {
-                        metaBlock.classList.toggle('hidden', !input.checked);
-                    };
-                    input.addEventListener('change', syncMeta);
-                    syncMeta();
-                }
-                if (scope.id === 'legacy_text') {
-                    body.appendChild(h('div', { class: 'ml-5 mb-2 text-text-faint' }, 'Uses the engine textSearch wildcard. Prefer scoped content/maps/metadata.'));
-                }
-            }
-        }
         let settled = false;
         const finish = (decision) => {
             if (settled)
@@ -215,6 +188,195 @@ export async function promptDlmSearchScope(opts) {
             settled = true;
             resolve(decision);
         };
+        const body = h('div.dlm-scope-prompt');
+        body.appendChild(h('p', { class: 'mb-2' }, 'Text Search walks every content store (wildcard) and is expensive. ', 'Type a scope to add — keep the query isolated.'));
+        body.appendChild(h('p', { class: 'mb-3 text-text-dim' }, 'Searching for: ', h('strong', text)));
+        const chipHost = h('div.dlm-chips', {
+            class: 'flex flex-wrap gap-1 mb-2 min-h-[28px]',
+            'aria-label': 'Selected scopes'
+        });
+        const input = h('input', {
+            type: 'search',
+            placeholder: 'Type scope — raw, source map, metadata…',
+            autocomplete: 'off',
+            class: 'w-full',
+            'aria-autocomplete': 'list',
+            'aria-controls': 'dlm-scope-list'
+        });
+        const list = h('div#dlm-scope-list', {
+            role: 'listbox',
+            class: 'dlm-scope-list max-h-[220px] overflow-auto border border-[var(--line)] rounded mt-1'
+        });
+        const metaHost = h('div.dlm-meta-block', { class: 'mt-3 hidden' });
+        metaHost.appendChild(h('div', { class: 'text-text-dim mb-1' }, 'Metadata columns'));
+        const metaChipHost = h('div', { class: 'flex flex-wrap gap-1 mb-1 min-h-[24px]' });
+        const metaInput = h('input', {
+            type: 'search',
+            placeholder: 'Type a metadata column…',
+            autocomplete: 'off',
+            class: 'w-full'
+        });
+        const metaList = h('div', {
+            role: 'listbox',
+            class: 'max-h-[140px] overflow-auto border border-[var(--line)] rounded mt-1'
+        });
+        metaHost.append(metaChipHost, metaInput, metaList);
+        let active = 0;
+        let filtered = [];
+        const showWarn = (msg) => {
+            const warn = body.querySelector('.dlm-scope-warn');
+            if (warn)
+                warn.remove();
+            body.insertBefore(h('p.dlm-scope-warn', { class: 'text-err mb-2' }, msg), body.firstChild);
+        };
+        const renderChips = () => {
+            chipHost.replaceChildren();
+            for (const id of selected) {
+                const scope = byId.get(id);
+                if (!scope)
+                    continue;
+                const btn = h('button', {
+                    type: 'button',
+                    class: 'btn',
+                    title: 'Remove',
+                    onClick: () => {
+                        selected.delete(id);
+                        if (id === 'metadata')
+                            selectedMeta.clear();
+                        renderChips();
+                        renderList();
+                        renderMeta();
+                        input.focus();
+                    }
+                }, `${scope.label} ×`);
+                chipHost.appendChild(btn);
+            }
+            if (!selected.size) {
+                chipHost.appendChild(h('span', { class: 'text-text-faint' }, 'No scopes yet — type below'));
+            }
+        };
+        const renderList = () => {
+            const needle = input.value;
+            filtered = dlmFilterScopes(needle, available.filter((s) => !selected.has(s.id)));
+            if (active >= filtered.length)
+                active = Math.max(0, filtered.length - 1);
+            list.replaceChildren();
+            if (!filtered.length) {
+                list.appendChild(h('div', { class: 'p-2 text-text-faint' }, needle.trim() ? 'No matching scopes' : 'All scopes already added'));
+                return;
+            }
+            filtered.forEach((scope, i) => {
+                const row = h('div', {
+                    role: 'option',
+                    'aria-selected': String(i === active),
+                    class: `px-2 py-1.5 cursor-pointer ${i === active ? 'bg-[var(--bg3)]' : ''}`,
+                    onMouseEnter: () => { active = i; renderList(); },
+                    onMouseDown: (e) => { e.preventDefault(); addScope(scope.id); }
+                }, h('div', scope.label), h('div', { class: 'text-text-faint text-[10px]' }, scope.group));
+                list.appendChild(row);
+            });
+        };
+        const addScope = (id) => {
+            if (!byId.has(id) || selected.has(id))
+                return;
+            selected.add(id);
+            if (id === 'metadata' && !selectedMeta.size) {
+                for (const c of metaCols)
+                    selectedMeta.add(c);
+            }
+            input.value = '';
+            active = 0;
+            renderChips();
+            renderList();
+            renderMeta();
+            input.focus();
+        };
+        const renderMeta = () => {
+            const on = selected.has('metadata');
+            metaHost.classList.toggle('hidden', !on);
+            if (!on)
+                return;
+            metaChipHost.replaceChildren();
+            for (const name of selectedMeta) {
+                metaChipHost.appendChild(h('button', {
+                    type: 'button',
+                    class: 'btn',
+                    onClick: () => {
+                        selectedMeta.delete(name);
+                        renderMeta();
+                        metaInput.focus();
+                    }
+                }, `${name} ×`));
+            }
+            const q = metaInput.value.trim().toLowerCase();
+            const opts = metaCols.filter((n) => !selectedMeta.has(n) && (!q || n.toLowerCase().includes(q)));
+            metaList.replaceChildren();
+            for (const name of opts) {
+                metaList.appendChild(h('div', {
+                    class: 'px-2 py-1 cursor-pointer hover:bg-[var(--bg3)]',
+                    onMouseDown: (e) => {
+                        e.preventDefault();
+                        selectedMeta.add(name);
+                        metaInput.value = '';
+                        renderMeta();
+                        metaInput.focus();
+                    }
+                }, name));
+            }
+            if (!opts.length) {
+                metaList.appendChild(h('div', { class: 'p-2 text-text-faint' }, q ? 'No matching columns' : 'All columns selected'));
+            }
+        };
+        input.addEventListener('input', () => { active = 0; renderList(); });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (filtered.length) {
+                    active = (active + 1) % filtered.length;
+                    renderList();
+                }
+            }
+            else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (filtered.length) {
+                    active = (active - 1 + filtered.length) % filtered.length;
+                    renderList();
+                }
+            }
+            else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (filtered[active])
+                    addScope(filtered[active].id);
+            }
+            else if (e.key === 'Backspace' && !input.value && selected.size) {
+                const last = [...selected].pop();
+                if (last) {
+                    selected.delete(last);
+                    if (last === 'metadata')
+                        selectedMeta.clear();
+                    renderChips();
+                    renderList();
+                    renderMeta();
+                }
+            }
+        });
+        metaInput.addEventListener('input', () => renderMeta());
+        metaInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const q = metaInput.value.trim().toLowerCase();
+                const hit = metaCols.find((n) => !selectedMeta.has(n) && n.toLowerCase().includes(q));
+                if (hit) {
+                    selectedMeta.add(hit);
+                    metaInput.value = '';
+                    renderMeta();
+                }
+            }
+        });
+        body.append(chipHost, input, list, metaHost);
+        renderChips();
+        renderList();
+        renderMeta();
         modal({
             title: 'Focus search scope',
             size: 'md',
@@ -226,37 +388,24 @@ export async function promptDlmSearchScope(opts) {
                     label: 'Search',
                     primary: true,
                     onClick: () => {
-                        const selected = [...checks.entries()]
-                            .filter(([, v]) => v.input.checked)
-                            .map(([id]) => id);
-                        if (!selected.length) {
-                            const warn = body.querySelector('.dlm-scope-warn');
-                            if (warn)
-                                warn.remove();
-                            body.insertBefore(h('p.dlm-scope-warn', { class: 'text-err mb-2' }, 'Choose at least one scope.'), body.firstChild);
+                        if (!selected.size) {
+                            showWarn('Add at least one scope.');
+                            input.focus();
                             return false;
                         }
-                        const metaSelected = [...metaChecks.entries()]
-                            .filter(([, input]) => input.checked)
-                            .map(([name]) => name);
-                        if (selected.includes('metadata') && !metaSelected.length) {
-                            const warn = body.querySelector('.dlm-scope-warn');
-                            if (warn)
-                                warn.remove();
-                            body.insertBefore(h('p.dlm-scope-warn', { class: 'text-err mb-2' }, 'Pick at least one metadata column.'), body.firstChild);
+                        if (selected.has('metadata') && !selectedMeta.size) {
+                            showWarn('Add at least one metadata column.');
+                            metaInput.focus();
                             return false;
                         }
                         const decision = dlmBuildDecision(text, {
-                            scopes: selected,
-                            metaColumns: metaSelected,
+                            scopes: [...selected],
+                            metaColumns: [...selectedMeta],
                             metaIgnoreCase: true,
                             textSearchRegex: !!opts.textSearchRegex
                         });
                         if (decision.operation === 'UNSUPPORTED') {
-                            const warn = body.querySelector('.dlm-scope-warn');
-                            if (warn)
-                                warn.remove();
-                            body.insertBefore(h('p.dlm-scope-warn', { class: 'text-err mb-2' }, 'That scope cannot be applied to this phrase (e.g. Message Id needs digits).'), body.firstChild);
+                            showWarn('That scope cannot be applied to this phrase (e.g. Message Id needs digits).');
                             return false;
                         }
                         finish(decision);
@@ -265,5 +414,6 @@ export async function promptDlmSearchScope(opts) {
                 }
             ]
         });
+        setTimeout(() => input.focus(), 0);
     });
 }

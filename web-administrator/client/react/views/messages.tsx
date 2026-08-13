@@ -20,9 +20,10 @@
  * fresh closure.
  *
  * Free-typed Text Search is intercepted by the message-search DLM
- * (core/dlm.ts): before the expensive engine `textSearch` wildcard runs, the
- * user picks a scope (message id / raw / source map / metadata / …) and the
- * client emits only that isolated query param set.
+ * (core/dlm.ts). Scopes can be picked with the inline typeahead; if the user
+ * hits Search with a phrase and no scope yet, the Focus-search-scope prompt
+ * opens. Either path builds an isolated query — never the engine `textSearch`
+ * wildcard unless Legacy is chosen explicitly.
  *
  * The dialogs (Send Message, Advanced Search, Reprocessing Options, Export
  * Results) stay imperative modal() functions invoked from handlers — they are
@@ -37,6 +38,7 @@
  */
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as Popover from '@radix-ui/react-popover';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Collapsible from '@radix-ui/react-collapsible';
@@ -47,8 +49,10 @@ import { renderHighlighted, detectType } from '../../core/content-highlight.js';
 import { formatSentProperties } from '../../core/sent-format.js';
 import { mappingEntries, parseResponse, toDisplayString } from '../../core/xstream.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
-import { promptDlmSearchScope } from '../../core/dlm.js';
-import type { DlmDecision } from '../../core/dlm.js';
+import {
+    DLM_SCOPES, dlmBuildDecision, dlmFilterScopes, promptDlmSearchScope
+} from '../../core/dlm.js';
+import type { DlmDecision, DlmScope } from '../../core/dlm.js';
 import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
 import { createCodeEditor, createColumnManager } from '@oie/web-ui';
@@ -63,6 +67,147 @@ import { DateTimeField } from '../date-time-field.jsx';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
+
+/** Inline scope typeahead for Text Search — chips + filtered catalog. */
+function DlmScopeField({
+    scopes, onScopes, metaColumns, selectedMeta, onMeta, disabledMeta
+}: {
+    scopes: string[];
+    onScopes: (ids: string[]) => void;
+    metaColumns: string[];
+    selectedMeta: string[];
+    onMeta: (cols: string[]) => void;
+    disabledMeta?: boolean;
+}) {
+    const [needle, setNeedle] = useState('');
+    const [open, setOpen] = useState(false);
+    const [active, setActive] = useState(0);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const listRef = useRef<HTMLDivElement | null>(null);
+    const byId = useMemo(() => new Map(DLM_SCOPES.map((s) => [s.id, s])), []);
+    const available = useMemo(
+        () => DLM_SCOPES.filter((s) => !(s.kind === 'metadata' && (disabledMeta || !metaColumns.length))),
+        [disabledMeta, metaColumns.length]
+    );
+    const filtered = useMemo(
+        () => dlmFilterScopes(needle, available.filter((s) => !scopes.includes(s.id))),
+        [needle, available, scopes]
+    );
+
+    useLayoutEffect(() => {
+        const el = listRef.current, input = inputRef.current;
+        if (!open || !filtered.length || !el || !input) return;
+        const r = input.getBoundingClientRect();
+        el.style.minWidth = `${Math.max(220, r.width)}px`;
+        el.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - el.offsetWidth - 4))}px`;
+        el.style.top = `${r.bottom + 2}px`;
+        el.style.bottom = 'auto';
+        if (el.getBoundingClientRect().bottom > window.innerHeight - 4) {
+            el.style.top = 'auto';
+            el.style.bottom = `${window.innerHeight - r.top + 2}px`;
+        }
+    }, [open, filtered]);
+
+    const addScope = (id: string) => {
+        if (!byId.has(id) || scopes.includes(id)) return;
+        const next = [...scopes, id];
+        onScopes(next);
+        if (id === 'metadata' && !selectedMeta.length && metaColumns.length) {
+            onMeta(metaColumns.slice());
+        }
+        setNeedle('');
+        setActive(0);
+        setOpen(false);
+        inputRef.current?.focus();
+    };
+    const removeScope = (id: string) => {
+        onScopes(scopes.filter((s) => s !== id));
+        if (id === 'metadata') onMeta([]);
+        inputRef.current?.focus();
+    };
+
+    const onKeyDown = (e: any) => {
+        const listOpen = open && filtered.length > 0;
+        if (e.key === 'Backspace' && !needle && scopes.length) {
+            e.preventDefault();
+            removeScope(scopes[scopes.length - 1]);
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!listOpen) { setOpen(true); return; }
+            const delta = e.key === 'ArrowDown' ? 1 : -1;
+            setActive((i) => (i + delta + filtered.length) % filtered.length);
+        } else if (e.key === 'Enter' && listOpen) {
+            e.preventDefault();
+            addScope(filtered[active >= 0 ? active : 0].id);
+        } else if (e.key === 'Escape' && open) {
+            e.preventDefault();
+            setOpen(false);
+        }
+    };
+
+    return (
+        <div className="field relative min-w-[198px]">
+            <label>Scope</label>
+            <div className="flex flex-wrap items-center gap-1 min-h-[28px]">
+                {scopes.map((id) => {
+                    const scope = byId.get(id);
+                    if (!scope) return null;
+                    return (
+                        <span key={id} className="tag inline-flex items-center gap-1 py-px pr-1 pl-[6px]"
+                            style={{ background: 'var(--bg3)' }}>
+                            <span>{scope.label}</span>
+                            <button type="button" title="Remove"
+                                className="appearance-none border-none cursor-pointer text-inherit text-[12.5px] leading-none py-0 px-px"
+                                style={{ background: 'none', fontFamily: 'inherit' }}
+                                onClick={() => removeScope(id)}>×</button>
+                        </span>
+                    );
+                })}
+                <input ref={inputRef} type="search" className="flex-1 min-w-[120px]"
+                    placeholder={scopes.length ? 'Add scope…' : 'Type scope…'}
+                    autoComplete="off" value={needle}
+                    role="combobox" aria-autocomplete="list"
+                    aria-expanded={open && filtered.length > 0}
+                    aria-controls="msg-dlm-scope-list"
+                    onChange={(e) => { setNeedle(e.target.value); setOpen(true); setActive(0); }}
+                    onFocus={() => setOpen(true)}
+                    onBlur={() => setTimeout(() => setOpen(false), 150)}
+                    onKeyDown={onKeyDown} />
+            </div>
+            {open && filtered.length > 0 && createPortal(
+                <div ref={listRef} id="msg-dlm-scope-list" role="listbox"
+                    className="fixed z-[80] max-h-[220px] overflow-auto border border-[var(--line)] rounded bg-[var(--bg)] shadow-lg">
+                    {filtered.map((scope: DlmScope, i) => (
+                        <div key={scope.id} role="option" aria-selected={i === active}
+                            className={`px-2 py-1.5 cursor-pointer ${i === active ? 'bg-[var(--bg3)]' : ''}`}
+                            onMouseEnter={() => setActive(i)}
+                            onMouseDown={(e) => { e.preventDefault(); addScope(scope.id); }}>
+                            <div>{scope.label}</div>
+                            <div className="text-text-faint text-[10px]">{scope.group}</div>
+                        </div>
+                    ))}
+                </div>,
+                document.body
+            )}
+            {scopes.includes('metadata') && metaColumns.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                    {metaColumns.map((name) => {
+                        const on = selectedMeta.includes(name);
+                        return (
+                            <button key={name} type="button" className="btn"
+                                aria-pressed={on}
+                                onClick={() => onMeta(on
+                                    ? selectedMeta.filter((c) => c !== name)
+                                    : [...selectedMeta, name])}>
+                                {name}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
 
 
 /* ---- XStream JSON normalization helpers -------------------------------------- */
@@ -1701,6 +1846,8 @@ export function MessagesView({ params, query }: any) {
     const [statusSel, setStatusSel] = useState(() => new Set());
     const [textSearch, setTextSearch] = useState('');
     const [textRegex, setTextRegex] = useState(false);
+    const [dlmScopes, setDlmScopes] = useState<string[]>([]);
+    const [dlmMetaColumns, setDlmMetaColumns] = useState<string[]>([]);
     const [connectorVal, setConnectorVal] = useState('');
     const [pageSize, setPageSize] = useState(() => String(Number(getPref('messagePageSize')) || 20));
     const [advOn, setAdvOn] = useState(() => advIsActive(advRef.current));
@@ -1868,16 +2015,29 @@ export function MessagesView({ params, query }: any) {
         if (resetOffset) {
             const text = textSearch.trim();
             if (text) {
-                // Stepwise focus: phrase first, then scope — never fire the
-                // engine textSearch wildcard without an explicit Legacy pick.
-                dlmDecision = await promptDlmSearchScope({
-                    text,
-                    metaDataColumns,
-                    textSearchRegex: textRegex,
-                    initialScopes: getPref('messageSearchDlmScopes') || undefined,
-                    initialMetaColumns: getPref('messageSearchDlmMetaColumns') || undefined
-                });
-                if (!dlmDecision) return;   // cancelled — leave the current results alone
+                // Scope already on the bar → build immediately. Otherwise open
+                // the DLM prompt so Text Search never becomes an unscoped wildcard.
+                if (dlmScopes.length) {
+                    dlmDecision = dlmBuildDecision(text, {
+                        scopes: dlmScopes,
+                        metaColumns: dlmMetaColumns,
+                        metaIgnoreCase: true,
+                        textSearchRegex: textRegex
+                    });
+                    if (dlmDecision.operation === 'UNSUPPORTED') {
+                        toast('That scope cannot be applied to this phrase (e.g. Message Id needs digits).', 'error');
+                        return;
+                    }
+                } else {
+                    dlmDecision = await promptDlmSearchScope({
+                        text,
+                        metaDataColumns,
+                        textSearchRegex: textRegex
+                    });
+                    if (!dlmDecision) return;   // cancelled — leave the current results alone
+                    setDlmScopes(dlmDecision.scopes);
+                    setDlmMetaColumns(dlmDecision.metaColumns);
+                }
                 setPrefs({
                     messageSearchDlmScopes: dlmDecision.scopes,
                     messageSearchDlmMetaColumns: dlmDecision.metaColumns
@@ -2197,6 +2357,9 @@ export function MessagesView({ params, query }: any) {
         closeStatusMenu();
         setTextSearch('');
         setTextRegex(false);
+        setDlmScopes([]);
+        setDlmMetaColumns([]);
+        setPrefs({ messageSearchDlmScopes: [], messageSearchDlmMetaColumns: [] });
         setConnectorVal('');
         setPageSize(String(Number(getPref('messagePageSize')) || 20));
         advRef.current = defaultAdvancedCriteria();
@@ -2352,10 +2515,17 @@ export function MessagesView({ params, query }: any) {
                                     <input type="checkbox" checked={textRegex} onChange={(e: any) => setTextRegex(e.target.checked)} />
                                     Regex
                                 </label>
-                                <input type="text" placeholder="Phrase… Search will ask for a scope" className="w-[198px]"
+                                <input type="text" placeholder="Phrase…" className="w-[198px]"
                                     value={textSearch} onChange={(e: any) => setTextSearch(e.target.value)}
                                     onKeyDown={(e: any) => { if (e.key === 'Enter') runSearch(true); }} />
                             </div>
+                            <DlmScopeField
+                                scopes={dlmScopes}
+                                onScopes={setDlmScopes}
+                                metaColumns={metaDataColumns.map((c: any) => String(c?.name || '').trim()).filter(Boolean)}
+                                selectedMeta={dlmMetaColumns}
+                                onMeta={setDlmMetaColumns}
+                            />
                             <Field label="Connector">
                                 <select value={connectorVal} onChange={(e: any) => setConnectorVal(e.target.value)}>
                                     <option value="">Any</option>

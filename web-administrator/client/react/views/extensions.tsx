@@ -11,13 +11,14 @@
  * including the webadmin:restart-pending dispatch — are reused VERBATIM.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { h, toast, modal, confirmDialog, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { toDisplayString } from '../../core/xstream.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon, useStoreKey } from '../bridges.jsx';
+import { PanelSearch, rowMatchesFilter, type ListFilterSuggestion } from '../list-filter.jsx';
 
 
 /* GET /extensions/connectors and /extensions/plugins return XStream maps:
@@ -127,12 +128,63 @@ export function ExtensionsView() {
     const [connectors, setConnectors] = useState([] as any[]);
     const [plugins, setPlugins] = useState([] as any[]);
     const [loadError, setLoadError] = useState<any>(null);
+    const [filterText, setFilterText] = useState('');
     // The table instances are kept ONLY for clearSelection(): mutually-exclusive
     // selection across two independent tables is an imperative DataTable API.
     const connRef = useRef<any>(null);
     const plugRef = useRef<any>(null);
 
     const webPlugins = useStoreKey('webPlugins') || [];
+
+    const matchExt = (r: any) => rowMatchesFilter(filterText, {
+        name: r.name || r.meta?.name,
+        id: r.name || r.meta?.name,
+        author: r.meta?.author,
+        version: r.meta?.pluginVersion
+    });
+    const matchWeb = (p: any) => rowMatchesFilter(filterText, {
+        name: p.name || p.id,
+        id: p.id,
+        author: p.author,
+        version: p.version
+    });
+
+    const visibleConnectors = useMemo(
+        () => (filterText.trim() ? connectors.filter(matchExt) : connectors),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [connectors, filterText]
+    );
+    const visiblePlugins = useMemo(
+        () => (filterText.trim() ? plugins.filter(matchExt) : plugins),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [plugins, filterText]
+    );
+    const visibleWebPlugins = useMemo(() => {
+        const rows = webPlugins as any[];
+        return filterText.trim() ? rows.filter(matchWeb) : rows;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [webPlugins, filterText]);
+
+    const suggestions = useMemo(() => {
+        const out: ListFilterSuggestion[] = [];
+        const seen = new Set<string>();
+        const add = (value: string, kind: string, iconName: string) => {
+            const v = value.trim();
+            if (!v || seen.has(`${kind}:${v}`)) return;
+            seen.add(`${kind}:${v}`);
+            out.push({ value: v, kind, icon: iconName });
+        };
+        for (const r of [...connectors, ...plugins]) {
+            add(String(r.name || r.meta?.name || ''), 'name', 'puzzle');
+            add(String(r.meta?.author || ''), 'author', 'users');
+        }
+        for (const p of webPlugins as any[]) {
+            add(String(p.name || p.id || ''), 'name', 'puzzle');
+            add(String(p.id || ''), 'id', 'search');
+            add(String(p.author || ''), 'author', 'users');
+        }
+        return out;
+    }, [connectors, plugins, webPlugins]);
 
     /* ---- selection helpers --------------------------------------------- */
 
@@ -334,7 +386,19 @@ export function ExtensionsView() {
             </ViewTasks>
             <div className="view-body">
                 <div className="panel">
-                    <div className="panel-header">Connectors</div>
+                    <div className="panel-header">
+                        <span>Connectors</span>
+                        <PanelSearch
+                            id="extensions-search"
+                            value={filterText}
+                            onChange={setFilterText}
+                            suggestions={suggestions}
+                            placeholder="Name, author…"
+                            counts={filterText.trim()
+                                ? `${visibleConnectors.length + visiblePlugins.length + visibleWebPlugins.length} shown`
+                                : `${connectors.length + plugins.length + (webPlugins as any[]).length}`}
+                        />
+                    </div>
                     <div className="panel-body flush">
                         {loadError ? (
                             <div className="dt-empty">
@@ -343,7 +407,7 @@ export function ExtensionsView() {
                                 <div className="text-text-faint mt-[13px]">{loadError}</div>
                             </div>
                         ) : (
-                            <DataTableHost columns={connColumns} options={connOptions} rows={connectors}
+                            <DataTableHost columns={connColumns} options={connOptions} rows={visibleConnectors}
                                 onReady={(t: any) => { connRef.current = t; }} />
                         )}
                     </div>
@@ -352,7 +416,7 @@ export function ExtensionsView() {
                     <div className="panel-header">Plugins</div>
                     <div className="panel-body flush">
                         {loadError ? null : (
-                            <DataTableHost columns={plugColumns} options={plugOptions} rows={plugins}
+                            <DataTableHost columns={plugColumns} options={plugOptions} rows={visiblePlugins}
                                 onReady={(t: any) => { plugRef.current = t; }} />
                         )}
                     </div>
@@ -360,7 +424,7 @@ export function ExtensionsView() {
                 <div className="panel">
                     <div className="panel-header">Web Administrator Plugins</div>
                     <div className="panel-body flush">
-                        <DataTableHost columns={WEB_COLUMNS} options={WEB_OPTIONS} rows={webPlugins} />
+                        <DataTableHost columns={WEB_COLUMNS} options={WEB_OPTIONS} rows={visibleWebPlugins} />
                     </div>
                 </div>
             </div>

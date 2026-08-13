@@ -6,7 +6,7 @@
  * a ref'd host. Both halves register here.
  */
 
-import { useState, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { h, icon, modal, toast, confirmDialog, contextMenu, saveFile, pickFile } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
@@ -18,6 +18,7 @@ import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 import { newAlert } from './alert-editor.jsx';
+import { PanelSearch, rowMatchesFilter, type ListFilterSuggestion } from '../list-filter.jsx';
 
 
 const COLUMNS = [
@@ -40,7 +41,31 @@ export function AlertsList() {
     const alertsQuery = useAlerts();
     const alerts = alertsQuery.data ?? [];
     const [sel, setSel] = useState([] as any[]);
+    const [filterText, setFilterText] = useState('');
     const tableRef = useRef<any>(null);
+
+    const suggestions = useMemo(() => {
+        const out: ListFilterSuggestion[] = [];
+        const seen = new Set<string>();
+        for (const a of alerts) {
+            const name = String(a.name || '').trim();
+            if (name && !seen.has(`name:${name}`)) {
+                seen.add(`name:${name}`);
+                out.push({ value: name, kind: 'name', icon: 'alerts' });
+            }
+            const id = String(a.id || '').trim();
+            if (id && !seen.has(`id:${id}`)) {
+                seen.add(`id:${id}`);
+                out.push({ value: id, kind: 'id', icon: 'search' });
+            }
+        }
+        return out;
+    }, [alerts]);
+
+    const visible = useMemo(() => alerts.filter((a: any) => rowMatchesFilter(filterText, {
+        name: a.name,
+        id: a.id
+    })), [alerts, filterText]);
 
     const selectedRows = () => (tableRef.current ? tableRef.current.selectedRows() : []);
 
@@ -225,7 +250,21 @@ export function AlertsList() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body">
-                <div className="panel"><div className="panel-body flush">
+                <div className="panel">
+                    <div className="panel-header">
+                        <span>Alerts</span>
+                        {alerts.length > 0 && (
+                            <PanelSearch
+                                id="alerts-search"
+                                value={filterText}
+                                onChange={setFilterText}
+                                suggestions={suggestions}
+                                placeholder="Name or id…"
+                                counts={filterText.trim() ? `${visible.length} of ${alerts.length}` : String(alerts.length)}
+                            />
+                        )}
+                    </div>
+                    <div className="panel-body flush">
                     {alertsQuery.data === undefined ? (
                         <div className="loading-block"><div className="spinner" />Loading alerts…</div>
                     ) : alerts.length === 0 ? (
@@ -248,10 +287,11 @@ export function AlertsList() {
                             </div>
                         </div>
                     ) : (
-                        <DataTableHost columns={COLUMNS} options={options} rows={alerts}
+                        <DataTableHost columns={COLUMNS} options={options} rows={visible}
                             onReady={(t: any) => { tableRef.current = t; }} />
                     )}
-                </div></div>
+                    </div>
+                </div>
             </div>
         </div>
     );

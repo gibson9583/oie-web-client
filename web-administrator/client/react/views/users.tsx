@@ -5,7 +5,7 @@
  * handlers); the task pane is React, portaled into the rail via <ViewTasks>.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { h, toast, confirmDialog, contextMenu, modal, fmtDate } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
@@ -16,6 +16,7 @@ import {
     USER_FIELDS, userForm, passwordFields, passwordViolations,
     openEditUserModal, openChangePasswordModal
 } from './user-modals.js';
+import { PanelSearch, rowMatchesFilter, type ListFilterSuggestion } from '../list-filter.jsx';
 
 
 const COLUMNS = [
@@ -42,6 +43,7 @@ export function UsersView() {
     const usersQuery = useUsers();
     const users = usersQuery.data ?? [];
     const [sel, setSel] = useState([] as any[]);
+    const [filterText, setFilterText] = useState('');
     const tableRef = useRef<any>(null);
     const invalidate = useInvalidate();
 
@@ -51,6 +53,38 @@ export function UsersView() {
     }, [usersQuery.error]);
 
     const refresh = () => { invalidate(['users']); setSel([]); };
+
+    const suggestions = useMemo(() => {
+        const out: ListFilterSuggestion[] = [];
+        const seen = new Set<string>();
+        for (const u of users) {
+            const username = String(u.username || '').trim();
+            if (username && !seen.has(`username:${username}`)) {
+                seen.add(`username:${username}`);
+                out.push({ value: username, kind: 'username', icon: 'users' });
+            }
+            const id = String(u.id ?? '').trim();
+            if (id && !seen.has(`id:${id}`)) {
+                seen.add(`id:${id}`);
+                out.push({ value: id, kind: 'id', icon: 'search' });
+            }
+            const email = String(u.email || '').trim();
+            if (email && !seen.has(`email:${email}`)) {
+                seen.add(`email:${email}`);
+                out.push({ value: email, kind: 'email', icon: 'mail' });
+            }
+        }
+        return out;
+    }, [users]);
+
+    const visible = useMemo(() => users.filter((u: any) => rowMatchesFilter(filterText, {
+        username: u.username,
+        name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+        id: u.id,
+        email: u.email,
+        org: u.organization,
+        phone: u.phoneNumber
+    })), [users, filterText]);
 
     const single = () => (sel.length === 1 ? sel[0] : null);
 
@@ -153,6 +187,9 @@ export function UsersView() {
     }).current;
 
     const hasSel = sel.length > 0;
+    const counts = filterText.trim()
+        ? `${visible.length} of ${users.length}`
+        : String(users.length);
 
     return (
         <div className="view">
@@ -167,10 +204,23 @@ export function UsersView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body">
-                <div className="panel"><div className="panel-body flush">
-                    <DataTableHost columns={COLUMNS} options={options} rows={users}
-                        onReady={(t: any) => { tableRef.current = t; }} />
-                </div></div>
+                <div className="panel">
+                    <div className="panel-header">
+                        <span>Users</span>
+                        <PanelSearch
+                            id="users-search"
+                            value={filterText}
+                            onChange={setFilterText}
+                            suggestions={suggestions}
+                            placeholder="Username, id, email…"
+                            counts={counts}
+                        />
+                    </div>
+                    <div className="panel-body flush">
+                        <DataTableHost columns={COLUMNS} options={options} rows={visible}
+                            onReady={(t: any) => { tableRef.current = t; }} />
+                    </div>
+                </div>
             </div>
         </div>
     );

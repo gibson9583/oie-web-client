@@ -17,7 +17,7 @@
  * the channel editor — a React view registered at /channels/:channelId/edit.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorModal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
@@ -29,6 +29,7 @@ import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
+import { ListFilterTypeahead, parseListFilter, type ListFilterSuggestion } from '../list-filter.jsx';
 
 
 // Canonical data columns (the Name column carries the tree twisty/indent), with
@@ -351,6 +352,8 @@ export function ChannelsView() {
     const [lastGroupId, setLastGroupId] = useState<any>(null);    // last-clicked group row (for Delete Group)
     const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());   // group ids (default expanded)
     const [filterText, setFilterText] = useState('');
+    // Defer the expensive tree filter so keystrokes stay on the typeahead path.
+    const deferredFilter = useDeferredValue(filterText);
 
     /* ---- grouping --------------------------------------------------------- */
 
@@ -384,11 +387,52 @@ export function ChannelsView() {
     }
 
     function matchesFilter(channel: any) {
-        const needle = filterText.trim().toLowerCase();
+        const { field, needle } = parseListFilter(deferredFilter);
         if (!needle) return true;
-        if (String(channel.name || '').toLowerCase().includes(needle)) return true;
-        return channelTags(channel).some(t => String(t.name || '').toLowerCase().includes(needle));
+        const name = String(channel.name || '').toLowerCase();
+        const id = String(channel.id || '').toLowerCase();
+        const tagNames = channelTags(channel).map((t: any) => String(t.name || '').toLowerCase());
+        if (field === 'name') return name.includes(needle);
+        if (field === 'id') return id.includes(needle);
+        if (field === 'tag') return tagNames.some((t: string) => t.includes(needle));
+        if (field === 'group') {
+            return groupedChannels().some((g: any) =>
+                String(g.name || '').toLowerCase().includes(needle)
+                && g.channels.some((c: any) => c.id === channel.id));
+        }
+        return name.includes(needle) || id.includes(needle) || tagNames.some((t: string) => t.includes(needle));
     }
+
+    const filterSuggestions = useMemo(() => {
+        const needle = deferredFilter.trim().toLowerCase();
+        const out: ListFilterSuggestion[] = [];
+        const seen = new Set<string>();
+        for (const t of tags) {
+            const name = String(t.name || '').trim();
+            if (!name || seen.has(`tag:${name}`)) continue;
+            seen.add(`tag:${name}`);
+            out.push({ value: name, kind: 'tag', icon: 'tag' });
+        }
+        for (const g of groups) {
+            const name = String(g.name || '').trim();
+            if (!name || seen.has(`group:${name}`)) continue;
+            seen.add(`group:${name}`);
+            out.push({ value: name, kind: 'group', icon: 'folder' });
+        }
+        // Channel names only after the user types — keeps the suggestion list
+        // small on huge channel sets (matching still filters the tree fully).
+        if (needle) {
+            for (const c of channels) {
+                const name = String(c.name || '').trim();
+                if (!name || seen.has(`name:${name}`)) continue;
+                if (!name.toLowerCase().includes(needle)) continue;
+                seen.add(`name:${name}`);
+                out.push({ value: name, kind: 'name', icon: 'channels' });
+                if (out.length >= 40) break;
+            }
+        }
+        return out;
+    }, [channels, tags, groups, deferredFilter]);
 
     /* ---- table (Swing channel group tree-table, the declarative <TreeTable>) -- */
 
@@ -1210,7 +1254,8 @@ export function ChannelsView() {
     const showGroupDelete = realGroup;
 
     /* ---- tree data + filter + counts for the <TreeTable> ---- */
-    const hasFilter = !!filterText.trim();
+    const parsedFilter = parseListFilter(deferredFilter);
+    const hasFilter = !!parsedFilter.needle;
     // Group nodes with their (name-sorted) channel children. When there are no
     // channels at all we pass [] so TreeTable shows its empty state (Swing parity:
     // the synthetic Default Group row is not drawn over an empty engine).
@@ -1224,10 +1269,22 @@ export function ChannelsView() {
                 .map((channel: any) => ({ kind: 'channel', channel }))
         }))
         : [];
-    // Filter: groups don't self-match (legacy filters channels); a group is kept
-    // by TreeTable when a descendant channel matches.
+    // Filter: groups match under group: scope (and then keep their channels);
+    // otherwise a group stays when a descendant channel matches.
     const treeMatches = hasFilter
-        ? (n: any) => (n.kind === 'group' ? false : matchesFilter(n.channel))
+        ? (n: any) => {
+            if (parsedFilter.field === 'group') {
+                if (n.kind === 'group') {
+                    return String(n.group?.name || '').toLowerCase().includes(parsedFilter.needle);
+                }
+                // Keep every channel under a matching group (parent already matched).
+                return groupedChannels().some((g: any) =>
+                    String(g.name || '').toLowerCase().includes(parsedFilter.needle)
+                    && g.channels.some((c: any) => c.id === n.channel.id));
+            }
+            if (n.kind === 'group') return false;
+            return matchesFilter(n.channel);
+        }
         : undefined;
     // Collapsed groups, keyed by the channel-tree rowKey ('grp:<id>').
     const collapsedKeys = new Set([...collapsedGroups].map((id: any) => 'grp:' + id));
@@ -1321,8 +1378,13 @@ export function ChannelsView() {
                 </div>
                 <div className="filterbar panel overflow-visible mx-[13px] mb-3">
                     <label>Filter:</label>
-                    <input type="text" placeholder="Enter channel tag or name" value={filterText}
-                        onChange={(e: any) => setFilterText(e.target.value)} />
+                    <ListFilterTypeahead
+                        id="channels-filter-typeahead"
+                        value={filterText}
+                        onChange={setFilterText}
+                        suggestions={filterSuggestions}
+                        placeholder="Enter channel tag or name"
+                    />
                     <span className="counts">{countsText}</span>
                 </div>
             </div>

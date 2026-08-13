@@ -1,6 +1,6 @@
 /* Unit tests for the message-search DLM (Deterministic Language Model). */
 import {
-    dlmBuildDecision, dlmLooksLikeMessageId, dlmNormalize, dlmSuggestScopeIds
+    DLM_SCOPES, dlmBuildDecision, dlmFilterScopes, dlmLooksLikeMessageId, dlmNormalize, dlmSuggestScopeIds
 } from './dlm.js';
 
 let pass = 0, fail = 0;
@@ -15,6 +15,13 @@ ok(dlmSuggestScopeIds('abc').includes('raw') && dlmSuggestScopeIds('abc').includ
     'text phrase suggests raw + source map');
 ok(dlmSuggestScopeIds('abc', [{ name: 'SOURCE' }]).includes('metadata'),
     'metadata suggested when columns exist');
+
+const resp = dlmFilterScopes('Resp', DLM_SCOPES);
+ok(resp.some((s) => s.id === 'response') && resp.some((s) => s.id === 'processed_response'),
+    'typeahead Resp matches response scopes');
+ok(dlmFilterScopes('source', DLM_SCOPES).some((s) => s.id === 'source_map'),
+    'typeahead source matches Source Map');
+ok(dlmFilterScopes('zzzz', DLM_SCOPES).length === 0, 'typeahead miss returns empty');
 
 const idHit = dlmBuildDecision('42', { scopes: ['message_id'] });
 ok(idHit.operation === 'MESSAGE_ID', 'message id → MESSAGE_ID');

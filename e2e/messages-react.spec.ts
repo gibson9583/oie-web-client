@@ -301,10 +301,19 @@ test('message table columns are resizable + reorderable (like the dashboard)', a
 test('Text Search DLM prompts for scope and emits scoped params, not textSearch', async ({ page }) => {
     await page.setViewportSize({ width: 1500, height: 800 });
     await mockEngine(page, MESSAGE_FIXTURES);
+    await page.addInitScript(() => {
+        try {
+            const raw = localStorage.getItem('webadmin-prefs');
+            const prefs = raw ? JSON.parse(raw) : {};
+            delete prefs.messageSearchDlmScopes;
+            delete prefs.messageSearchDlmMetaColumns;
+            localStorage.setItem('webadmin-prefs', JSON.stringify(prefs));
+        } catch { /* ignore */ }
+    });
     await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
 
-    const text = page.getByPlaceholder('Phrase… Search will ask for a scope');
+    const text = page.getByPlaceholder('Phrase…');
     await text.fill('123456');
 
     const searchReq = page.waitForRequest((r) =>
@@ -315,11 +324,14 @@ test('Text Search DLM prompts for scope and emits scoped params, not textSearch'
         && new URL(r.url()).searchParams.has('sourceMapContentSearch')
     );
 
+    // No scope on the bar → Search must open the DLM prompt.
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await expect(page.getByText('Focus search scope')).toBeVisible();
     await expect(page.getByText('Searching for:')).toBeVisible();
-    // Numeric phrase suggests Message Id — also tick Source Map for a scoped content hit.
-    await page.getByLabel('Source Map', { exact: true }).check();
+    const scopeInput = page.getByPlaceholder('Type scope — raw, source map, metadata…');
+    await expect(page.getByRole('button', { name: /Message Id \(exact\)/ })).toBeVisible();
+    await scopeInput.fill('source map');
+    await page.getByRole('option').filter({ hasText: 'Source Map' }).click();
     await page.getByRole('button', { name: 'Search', exact: true }).last().click();
 
     const req = await searchReq;
