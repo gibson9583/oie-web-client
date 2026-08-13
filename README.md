@@ -284,6 +284,23 @@ Run from the repo root:
 | `npm run gen:userapi` | Regenerate `client/core/userapi.generated.js` from the engine's REST surface |
 | `npm run vendor:zip` | Rebuild the vendored `client/vendor/zipjs.min.js` bundle from `@zip.js/zip.js` |
 
+### Releasing
+
+**Bump `web-administrator/package.json`'s `version` in the same commit you tag.**
+That field is what the app reports as its version — in the About dialog, in the
+startup banner, and in `/webadmin/config.json` — and nothing derives it from the
+tag. Ship a `v0.6.0` tag without bumping it and every build of that release
+identifies as the previous version.
+
+Git supplies only the build *metadata* beside it (commit, build date, and a
+`dirty` flag when the tree had uncommitted changes), stamped into a gitignored
+`build-info.json` by `tools/build-info.mjs` on every build. CI and the Docker
+build pass the commit in as a build arg, since `.git` is never in the image
+context.
+
+So a release is: bump the version, commit, tag `vX.Y.Z`, push the tag. The Docker
+workflow cuts `X.Y.Z` / `X.Y` image tags from it; `latest` keeps tracking `main`.
+
 ## Documentation
 
 - [`web-administrator/README.md`](web-administrator/README.md) — full feature
