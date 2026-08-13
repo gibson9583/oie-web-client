@@ -25,13 +25,23 @@ export interface DiffEditorOptions {
     original?: string;
     modified?: string;
     language?: string;
+    /** Per-side overrides — the two panes need not be the same language (an HL7
+        message against the XML it was transformed into). Default: `language`. */
+    originalLanguage?: string;
+    modifiedLanguage?: string;
     /** false = unified/inline view; default side-by-side. */
     renderSideBySide?: boolean;
 }
 
 export interface DiffEditorHandle {
     el: HTMLDivElement;
-    setModels(next?: { original?: string | null; modified?: string | null; language?: string | null }): void;
+    setModels(next?: {
+        original?: string | null;
+        modified?: string | null;
+        language?: string | null;
+        originalLanguage?: string | null;
+        modifiedLanguage?: string | null;
+    }): void;
     layout(): void;
     dispose(): void;
 }
@@ -50,7 +60,9 @@ export function createDiffEditor(opts: DiffEditorOptions = {}): DiffEditorHandle
     let current = {
         original: opts.original || '',
         modified: opts.modified || '',
-        language: opts.language || 'xml'
+        language: opts.language || 'xml',
+        originalLanguage: opts.originalLanguage || opts.language || 'xml',
+        modifiedLanguage: opts.modifiedLanguage || opts.language || 'xml'
     };
     const renderSideBySide = opts.renderSideBySide !== false;
 
@@ -65,8 +77,8 @@ export function createDiffEditor(opts: DiffEditorOptions = {}): DiffEditorHandle
     function applyMonaco(): void {
         if (disposed || !monacoRef || !editor) return;
         disposeModels();
-        const original = monacoRef.editor.createModel(current.original, current.language);
-        const modified = monacoRef.editor.createModel(current.modified, current.language);
+        const original = monacoRef.editor.createModel(current.original, current.originalLanguage);
+        const modified = monacoRef.editor.createModel(current.modified, current.modifiedLanguage);
         models = { original, modified };
         editor.setModel({ original, modified });
     }
@@ -118,10 +130,16 @@ export function createDiffEditor(opts: DiffEditorOptions = {}): DiffEditorHandle
     return {
         el,
         setModels(next = {}) {
+            const language = next.language || current.language;
             current = {
                 original: next.original != null ? next.original : current.original,
                 modified: next.modified != null ? next.modified : current.modified,
-                language: next.language || current.language
+                language,
+                // A new `language` re-bases both sides unless the caller overrode
+                // one; without that, swapping the panes would leave the old
+                // per-side languages behind.
+                originalLanguage: next.originalLanguage || (next.language ? language : current.originalLanguage),
+                modifiedLanguage: next.modifiedLanguage || (next.language ? language : current.modifiedLanguage)
             };
             if (monacoRef) applyMonaco();
             else if (fallbackEl) renderFallback();

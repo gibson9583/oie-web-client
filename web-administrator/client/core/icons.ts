@@ -38,6 +38,9 @@ const P: Record<string, string> = {
     edit: 'M4 20l4-1L20 7l-3-3L5 16zM14 6l3 3',
     trash: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10 11v6M14 11v6',
     copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+    // Two panes with a divider — side-by-side comparison.
+    compare: 'M4 5h6v14H4zM14 5h6v14h-6zM12 3v18',
+    lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
     export: 'M12 15V3M8 7l4-4 4 4M5 21h14v-7',
     import: 'M12 3v12M8 11l4 4 4-4M5 21h14v-7',
     send: 'M22 2L11 13M22 2l-7 20-4-9-9-4z',
