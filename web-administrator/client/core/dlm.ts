@@ -224,6 +224,25 @@ export function dlmBuildDecision(raw: string, opts: DlmBuildOptions): DlmDecisio
     };
 }
 
+/** Human + param lines for the scope-prompt query preview. */
+export function dlmFormatQueryPreview(decision: DlmDecision): { summary: string[]; params: string[] } {
+    if (!decision || decision.operation === 'UNSUPPORTED' || !Object.keys(decision.params || {}).length) {
+        return { summary: [], params: [] };
+    }
+    const params: string[] = [];
+    for (const [key, value] of Object.entries(decision.params)) {
+        if (Array.isArray(value)) {
+            for (const v of value) params.push(`${key}=${v}`);
+        } else if (value === true) {
+            params.push(`${key}=true`);
+        } else if (value != null && value !== '') {
+            params.push(`${key}=${value}`);
+        }
+    }
+    params.sort();
+    return { summary: decision.summary.slice(), params };
+}
+
 /**
  * Stepwise scope prompt — typeahead chips, not a checkbox wall.
  * Resolves to a DlmDecision on Search, or null on cancel.
@@ -291,6 +310,11 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
         });
         metaHost.append(metaChipHost, metaInput, metaList);
 
+        const previewHost = h('div.dlm-query-preview', {
+            class: 'mt-3 p-2 rounded border border-[var(--line)] bg-[var(--bg2)]',
+            'aria-live': 'polite'
+        });
+
         let active = 0;
         let filtered: DlmScope[] = [];
 
@@ -298,6 +322,43 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
             const warn = body.querySelector('.dlm-scope-warn') as HTMLElement | null;
             if (warn) warn.remove();
             body.insertBefore(h('p.dlm-scope-warn', { class: 'text-err mb-2' }, msg), body.firstChild);
+        };
+
+        const currentDecision = () => dlmBuildDecision(text, {
+            scopes: [...selected],
+            metaColumns: [...selectedMeta],
+            metaIgnoreCase: true,
+            textSearchRegex: !!opts.textSearchRegex
+        });
+
+        const renderPreview = () => {
+            previewHost.replaceChildren();
+            previewHost.appendChild(h('div', {
+                class: 'text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5'
+            }, 'Query preview'));
+            if (!selected.size) {
+                previewHost.appendChild(h('div', { class: 'text-text-faint text-[11px]' },
+                    'Add a scope to see the isolated query params.'));
+                return;
+            }
+            const decision = currentDecision();
+            const preview = dlmFormatQueryPreview(decision);
+            if (!preview.params.length) {
+                previewHost.appendChild(h('div', { class: 'text-err text-[11px]' },
+                    'That scope cannot be applied to this phrase (e.g. Message Id needs digits).'));
+                return;
+            }
+            for (const line of preview.summary) {
+                previewHost.appendChild(h('div', { class: 'text-[11px] text-text-dim mb-0.5' }, line));
+            }
+            const code = h('pre', {
+                class: 'mt-1.5 mb-0 text-[11px] font-mono text-text overflow-auto max-h-[120px] whitespace-pre-wrap break-all'
+            }, preview.params.join('\n'));
+            previewHost.appendChild(code);
+            if (decision.operation === 'LEGACY_TEXT') {
+                previewHost.appendChild(h('div', { class: 'text-warn text-[11px] mt-1' },
+                    'Legacy textSearch — walks every content store.'));
+            }
         };
 
         const renderChips = () => {
@@ -315,6 +376,7 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
                         renderChips();
                         renderList();
                         renderMeta();
+                        renderPreview();
                         input.focus();
                     }
                 }, `${scope.label} ×`);
@@ -323,6 +385,7 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
             if (!selected.size) {
                 chipHost.appendChild(h('span', { class: 'text-text-faint' }, 'No scopes yet — type below'));
             }
+            renderPreview();
         };
 
         const renderList = () => {
@@ -367,7 +430,10 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
         const renderMeta = () => {
             const on = selected.has('metadata');
             metaHost.classList.toggle('hidden', !on);
-            if (!on) return;
+            if (!on) {
+                renderPreview();
+                return;
+            }
             metaChipHost.replaceChildren();
             for (const name of selectedMeta) {
                 metaChipHost.appendChild(h('button', {
@@ -399,6 +465,7 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
                 metaList.appendChild(h('div', { class: 'p-2 text-text-faint' },
                     q ? 'No matching columns' : 'All columns selected'));
             }
+            renderPreview();
         };
 
         input.addEventListener('input', () => { active = 0; renderList(); });
@@ -437,7 +504,7 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
             }
         });
 
-        body.append(chipHost, input, list, metaHost);
+        body.append(chipHost, input, list, metaHost, previewHost);
         renderChips();
         renderList();
         renderMeta();
@@ -463,12 +530,7 @@ export async function promptDlmSearchScope(opts: DlmPromptOptions): Promise<DlmD
                             metaInput.focus();
                             return false;
                         }
-                        const decision = dlmBuildDecision(text, {
-                            scopes: [...selected],
-                            metaColumns: [...selectedMeta],
-                            metaIgnoreCase: true,
-                            textSearchRegex: !!opts.textSearchRegex
-                        });
+                        const decision = currentDecision();
                         if (decision.operation === 'UNSUPPORTED') {
                             showWarn('That scope cannot be applied to this phrase (e.g. Message Id needs digits).');
                             return false;

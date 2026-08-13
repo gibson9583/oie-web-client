@@ -1,6 +1,6 @@
 /* Unit tests for the message-search DLM (Deterministic Language Model). */
 import {
-    DLM_SCOPES, dlmBuildDecision, dlmFilterScopes, dlmLooksLikeMessageId, dlmNormalize, dlmSuggestScopeIds
+    DLM_SCOPES, dlmBuildDecision, dlmFilterScopes, dlmFormatQueryPreview, dlmLooksLikeMessageId, dlmNormalize, dlmSuggestScopeIds
 } from './dlm.js';
 
 let pass = 0, fail = 0;
@@ -57,6 +57,12 @@ ok(badId.operation === 'UNSUPPORTED', 'non-numeric message_id alone is unsupport
 
 const empty = dlmBuildDecision('abc', { scopes: [] });
 ok(empty.operation === 'UNSUPPORTED', 'no scopes → unsupported');
+
+const preview = dlmFormatQueryPreview(dlmBuildDecision('123456', { scopes: ['message_id', 'source_map'] }));
+ok(preview.params.includes('minMessageId=123456') && preview.params.includes('sourceMapContentSearch=123456'),
+    'preview lists isolated query params');
+ok(preview.summary.some((s) => /Source Map/i.test(s)), 'preview includes human summary');
+ok(dlmFormatQueryPreview(empty).params.length === 0, 'unsupported preview is empty');
 
 console.log(`dlm: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
