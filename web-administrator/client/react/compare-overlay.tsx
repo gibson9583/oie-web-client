@@ -212,7 +212,7 @@ export function CompareOverlay({ pair, channelName, onClose }: any) {
     /* Session end (explicit logout, idle logout, a background 401) closes the
        overlay so no content is left on an unattended screen — before the login
        screen renders, since this unmounts on the same tick. */
-    useEffect(() => on('compare:end', () => onClose()), [onClose]);
+    useEffect(() => on('compare:end', () => onClose({ sessionEnded: true })), [onClose]);
 
     const swap = () => {
         setLeft(right);

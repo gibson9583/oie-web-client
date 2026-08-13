@@ -2916,6 +2916,8 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
     text-underline-offset: 2px;
 }
 .statusbar .status-retry:hover { color: var(--text); text-decoration-style: solid; }
+/* Compare selection indicator — the state, not what is in it. */
+.statusbar .status-compare { flex: none; color: var(--accent); }
 
 /* Full-height blocks: prefer dynamic viewport units (mobile browser-toolbar 100vh trap). */
 @supports (height: 100dvh) {

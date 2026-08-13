@@ -31,11 +31,11 @@
  * (which otherwise resets the banner to the static route title).
  */
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { h, toast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { h, icon, toast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../../core/content-highlight.js';
@@ -53,6 +53,13 @@ import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import * as router from '../../core/router.js';
 import { DateTimeField } from '../date-time-field.jsx';
+import { on } from '../../core/store.js';
+import {
+    COMPARE_STAGES, cancelPending, confirmCompare, describeRef, getAnchor, getPending,
+    proposeCompare, refFromConnectorMessage, selectForCompare, stageLabel, storedContentTypes
+} from '../../core/compare.js';
+import { CompareChip } from '../compare-chip.jsx';
+import { CompareOverlay } from '../compare-overlay.jsx';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
@@ -487,7 +494,7 @@ function Cell({ value, cls, indent }: any) {
  * out through callbacks — the table renders pure state.
  */
 function ResultsTable({
-    cols, mgr, rows, expandedIds, allExpanded, selKey,
+    cols, mgr, rows, expandedIds, allExpanded, selKey, anchorKey,
     sortKey, sortDir, onSort, onToggleAll, onToggleRow, onSelect, onRowMenu,
     onColumnMenu, onColumnsChange
 }: any) {
@@ -609,16 +616,23 @@ function ResultsTable({
     }
 
     const bodyRows: any[] = [];
+    // The row the compare anchor points at, marked with an inset accent bar and a
+    // ⇄ in the twisty column — a marker, never any of the content it refers to.
+    const anchorMark = (key: any) => key === anchorKey
+        ? <span className="compare-mark" title="Selected for compare" aria-label="Selected for compare">⇄</span>
+        : null;
     for (const m of rows) {
         const source = sourceOf(m);
         // Not-yet-processed messages render gray italic across all columns,
         // on the parent and its children (Swing's italic cell renderer).
         const unprocessed = m.processed === false || m.processed === 'false';
-        const rowCls = (key: any) => [key, unprocessed ? 'unprocessed' : ''].filter(Boolean).join(' ') || undefined;
+        const rowCls = (key: any, anchored: any) => [key, unprocessed ? 'unprocessed' : '', anchored ? 'compare-anchor' : '']
+            .filter(Boolean).join(' ') || undefined;
         const dests = connectorMessagesOf(m).filter(cm => Number(cm.metaDataId) > 0);
         const expanded = expandedIds.has(String(m.messageId));
         bodyRows.push(
-            <tr key={`m:${m.messageId}`} className={rowCls(selKey === `${m.messageId}:0` ? 'selected' : '')}
+            <tr key={`m:${m.messageId}`}
+                className={rowCls(selKey === `${m.messageId}:0` ? 'selected' : '', anchorKey === `${m.messageId}:0`)}
                 onClick={() => onSelect(m, 0)}
                 onContextMenu={(e: any) => onRowMenu(m, 0, e)}>
                 <td>
@@ -626,17 +640,19 @@ function ResultsTable({
                         onClick={dests.length ? (e: any) => { e.stopPropagation(); onToggleRow(String(m.messageId)); } : undefined}>
                         {dests.length ? (expanded ? '▾' : '▸') : ''}
                     </span>
+                    {anchorMark(`${m.messageId}:0`)}
                 </td>
                 {cols.map((c: any) => <Cell key={c.key} value={c.parent(m, source)} cls={c.cls} />)}
             </tr>
         );
         if (expanded) for (const cm of dests) {
+            const key = `${m.messageId}:${cm.metaDataId}`;
             bodyRows.push(
-                <tr key={`m:${m.messageId}:${cm.metaDataId}`}
-                    className={'child ' + (rowCls(selKey === `${m.messageId}:${cm.metaDataId}` ? 'selected' : '') || '')}
+                <tr key={`m:${key}`}
+                    className={'child ' + (rowCls(selKey === key ? 'selected' : '', anchorKey === key) || '')}
                     onClick={() => onSelect(m, Number(cm.metaDataId))}
                     onContextMenu={(e: any) => onRowMenu(m, Number(cm.metaDataId), e)}>
-                    <td></td>
+                    <td>{anchorMark(key)}</td>
                     {cols.map((c: any) => <Cell key={c.key} value={c.child(cm)} cls={c.cls} indent={c.key === 'connector'} />)}
                 </tr>
             );
@@ -945,20 +961,33 @@ async function exportAttachmentTask(platform: any, channelId: any, m: any) {
    default and HL7 descriptions, and the scroll position resets (legacy parity).
    The parent keys this component by connector so switching rows resets to the
    first tab. */
-function DetailTabs({ defs }: any) {
+function DetailTabs({ defs, anchorType, onActiveStage, onStageMenu }: any) {
     const [active, setActive] = useState(0);
-    if (!defs.length) return null;
-    const current = defs[Math.min(active, defs.length - 1)];
+    const current = defs.length ? defs[Math.min(active, defs.length - 1)] : null;
+    /* Tell the view which stage is on screen, so the task rail's "Select for
+       Compare" captures what the user is actually looking at rather than guessing
+       a stage. onActiveStage is stable (useCallback up the tree), so this only
+       runs when the tab itself changes. */
+    useEffect(() => { if (onActiveStage) onActiveStage(current); }, [current, onActiveStage]);
+    if (!current) return null;
+    const stageMenu = onStageMenu ? (def: any) => (e: any) => onStageMenu(def, e) : () => undefined;
     return (
         <TabsPrimitive.Root value={String(active)} onValueChange={(v: any) => setActive(Number(v))}
             className="flex-1 min-h-0 flex flex-col">
             <TabsPrimitive.List className="tabs flex-none" aria-label="Message sections">
                 {defs.map((def: any, i: any) => (
                     <TabsPrimitive.Trigger key={def.label} value={String(i)}
-                        className={'tab' + (i === active ? ' active' : '')}>{def.label}</TabsPrimitive.Trigger>
+                        onContextMenu={stageMenu(def)}
+                        className={'tab' + (i === active ? ' active' : '')
+                            + (anchorType && def.contentType === anchorType ? ' compare-anchor' : '')}>
+                        {def.label}
+                    </TabsPrimitive.Trigger>
                 ))}
             </TabsPrimitive.List>
+            {/* The content pane carries the same menu as its tab: right-clicking
+                what you are reading is the shortest path to comparing it. */}
             <TabsPrimitive.Content key={current.label} value={String(active)}
+                onContextMenu={stageMenu(current)}
                 className="flex-1 min-h-0 overflow-auto">{current.node}</TabsPrimitive.Content>
         </TabsPrimitive.Root>
     );
@@ -966,12 +995,35 @@ function DetailTabs({ defs }: any) {
 
 /* Tab set for one connector message (content stages, errors, mappings,
    attachments) — mirrors the Swing browser's per-connector tabs. */
-function ConnectorTabs({ message, cm, channelId, platform }: any) {
+function ConnectorTabs({ message, cm, channelId, platform, anchor, onActiveStage, onStageMenu }: any) {
     const contentDefs = [
         ['Raw', 'raw'], ['Processed Raw', 'processedRaw'], ['Transformed', 'transformed'],
         ['Encoded', 'encoded'], ['Sent', 'sent'], ['Response', 'response'],
         ['Response Transformed', 'responseTransformed'], ['Processed Response', 'processedResponse']
     ];
+    // Which of these tabs Compare understands (the six pipeline stages).
+    const comparable = new Map(COMPARE_STAGES.map(s => [s.key, s.type]));
+
+    /* The tabs speak in labels; compare speaks in references. Both conversions
+       happen here, where the loaded connector message is in hand — so the stage
+       list and the data-type hints are the message's own truth, not a guess from
+       the channel's storage mode. */
+    const refForDef = useCallback((def: any) => (def && def.contentType
+        ? refFromConnectorMessage(channelId, message.messageId, cm, def.contentType)
+        : null), [channelId, message, cm]);
+    const activeStage = useCallback((def: any) => { if (onActiveStage) onActiveStage(refForDef(def)); },
+        [onActiveStage, refForDef]);
+    const stageMenu = useCallback((def: any, e: any) => {
+        const ref = refForDef(def);
+        if (ref && onStageMenu) onStageMenu(ref, e);
+    }, [onStageMenu, refForDef]);
+
+    // The anchor's stage, when the anchor is this very connector message.
+    const anchorType = anchor
+        && String(anchor.channelId) === String(channelId)
+        && Number(anchor.messageId) === Number(message.messageId)
+        && Number(anchor.metaDataId) === Number(cm.metaDataId ?? 0)
+        ? anchor.contentType : null;
 
     const defs: any[] = [];
     for (const [label, key] of contentDefs) {
@@ -987,7 +1039,10 @@ function ConnectorTabs({ message, cm, channelId, platform }: any) {
             const formatted = formatSentProperties(content);
             if (formatted != null) { content = formatted; dataType = 'TEXT'; }
         }
-        defs.push({ label, node: <ContentView content={content} dataType={dataType} responseEnvelope={responseEnvelope} /> });
+        defs.push({
+            label, contentType: comparable.get(key) ?? null,
+            node: <ContentView content={content} dataType={dataType} responseEnvelope={responseEnvelope} />
+        });
     }
 
     const errorDefs = [
@@ -1024,14 +1079,15 @@ function ConnectorTabs({ message, cm, channelId, platform }: any) {
         });
     }
 
-    return <DetailTabs defs={defs} />;
+    return <DetailTabs defs={defs} anchorType={anchorType}
+        onActiveStage={activeStage} onStageMenu={stageMenu} />;
 }
 
 /* Detail pane content: empty strip / loading / the selected message's header +
    connector tabs. The connector shown is chosen by selecting the source or
    destination row in the tree above, so the header is just the message label —
    no status pill or connector dropdown. */
-function DetailBody({ detail, channelId, platform }: any) {
+function DetailBody({ detail, channelId, platform, anchor, onActiveStage, onStageMenu }: any) {
     if (detail.status === 'empty') {
         return <div className="text-text-faint flex-none py-[8px] px-3.5">Select a message to view its contents.</div>;
     }
@@ -1053,7 +1109,8 @@ function DetailBody({ detail, channelId, platform }: any) {
         <>
             <div className="panel-header flex-none">{`Message ${message.messageId}`}</div>
             <ConnectorTabs key={`${message.messageId}:${cm.metaDataId}`}
-                message={message} cm={cm} channelId={channelId} platform={platform} />
+                message={message} cm={cm} channelId={channelId} platform={platform}
+                anchor={anchor} onActiveStage={onActiveStage} onStageMenu={onStageMenu} />
         </>
     );
 }
@@ -1719,6 +1776,25 @@ export function MessagesView({ params, query }: any) {
     const [selected, setSelected] = useState<any>(null);             // {m, metaDataId}
     const [detail, setDetail] = useState<any>({ status: 'empty' });
 
+    /* ---- compare state ------------------------------------------------------
+       The anchor lives in core/compare.js (it has to survive this view and be
+       resettable by non-React code — the api layer clears it when the session
+       dies), so this is a mirror kept in step with its event. The open pair is
+       local: the overlay is a component, not a route, so navigating away
+       unmounts it and releases the content it holds. */
+    const [anchor, setAnchor] = useState<any>(() => getAnchor());
+    const [comparePair, setComparePair] = useState<any>(null);
+    useEffect(() => on('compare:changed', () => setAnchor(getAnchor())), []);
+    // The stage currently on screen in the detail pane, as a reference — what the
+    // task-rail buttons act on. Mirrored into a ref for handlers that outlive the
+    // render that created them.
+    const activeStageRef = useRef<any>(null);
+    const [activeStage, setActiveStage] = useState<any>(null);
+    const onActiveStage = useCallback((ref: any) => {
+        activeStageRef.current = ref;
+        setActiveStage(ref);
+    }, []);
+
     /* Column visibility (persisted separately from the manager, matching the
        legacy webadmin-msg-columns store — `def` flags are the fallback). */
     const [columnVis, setColumnVis] = useState(() => {
@@ -1876,6 +1952,7 @@ export function MessagesView({ params, query }: any) {
             selectedRef.current = null;
             setSelected(null);
             setDetail({ status: 'empty' });
+            onActiveStage(null);
             // Destinations expanded by default, matching the Swing browser.
             const exp = new Set();
             for (const m of list) {
@@ -1922,6 +1999,9 @@ export function MessagesView({ params, query }: any) {
     function selectMessage(m: any, metaDataId: any) {
         selectedRef.current = { m, metaDataId };
         setSelected({ m, metaDataId });
+        // The detail pane is about to change what it's showing; the compare tasks
+        // must not keep acting on the stage that is on its way out.
+        onActiveStage(null);
         // The parent (source) row is a placeholder when the source connector
         // message isn't in the result (e.g. a destination-only status filter):
         // there's no connector in context, so show nothing rather than fetching
@@ -1953,6 +2033,11 @@ export function MessagesView({ params, query }: any) {
        during drags, so React never renders the height — a layout effect applies
        the 36px collapsed strip / restored expanded height only on transitions,
        preserving the user-dragged height across selections (legacy parity). */
+    // Latest detail mirror, for menus built outside the render that loaded it
+    // (the compare stage submenu asks what the open message actually stored).
+    const detailRef = useRef<any>(detail);
+    detailRef.current = detail;
+
     const detailPaneRef = useRef<any>(null);
     const detailHeightRef = useRef('38%');   // last expanded height
     const prevExpandedRef = useRef(false);
@@ -1995,6 +2080,144 @@ export function MessagesView({ params, query }: any) {
         contextMenu(e.clientX, e.clientY, items as any);
     }
 
+    /* ---- compare ------------------------------------------------------------
+       Two entry points. From a content tab we already hold the loaded connector
+       message, so the reference is exact. From a row we may not — the search
+       results carry no content — so the stage submenu offers what the loaded
+       detail knows and the choice is validated against a FRESH fetch, which is
+       also what tells us whether the content is still there. */
+
+    // The connector message currently loaded in the detail pane, when it is the
+    // one being asked about. The only stored-stage knowledge available without
+    // going back to the engine.
+    function loadedConnectorMessage(row: any, metaDataId: any) {
+        const d = detailRef.current;
+        if (!d || d.status !== 'ready') return null;
+        if (String(d.message?.messageId) !== String(row.messageId)) return null;
+        return connectorMessagesOf(d.message).find(cm => Number(cm.metaDataId) === Number(metaDataId)) || null;
+    }
+
+    function takeAnchor(ref: any) {
+        selectForCompare(ref);
+    }
+
+    function offerCandidate(ref: any) {
+        const result = proposeCompare(ref);
+        if (result === 'none') { toast('Select content for compare first', 'warn'); return; }
+        // Diffing content against itself is never the question being asked, so
+        // this stops before the modal rather than after it.
+        if (result === 'same') { toast('Same content already selected for compare', 'warn'); return; }
+        openCompareConfirm();
+    }
+
+    /* The confirm step. Titled for content, not messages: two stages of ONE
+       message is a first-class case (what did the transformer change?), and
+       "compare these two messages" would read as a mistake there. */
+    function openCompareConfirm() {
+        const left = getAnchor();
+        const right = getPending();
+        if (!left || !right) return;
+        let confirmed = false;
+        const sideRow = (side: any, ref: any, tone: any) => h('div.compare-confirm-row',
+            h('span', { class: 'tag ' + tone }, side),
+            h('span.mono', describeRef(ref)));
+        modal({
+            title: 'Compare selected content?',
+            body: h('div',
+                sideRow('Left', left, 'accent'),
+                sideRow('Right', right, 'amber'),
+                Number(left.messageId) === Number(right.messageId)
+                    ? h('div.compare-confirm-note', 'Two stages of the same message — this traces what the pipeline changed.')
+                    : null,
+                h('div.compare-confirm-phi', icon('lock', 13),
+                    h('span', 'Nothing is written to disk. The comparison is cleared when you close it, navigate away, or your session ends.'))),
+            /* Cancel, Esc and a click on the scrim all land here, and all mean the
+               same thing: drop the SECOND selection, keep the anchor — the usual
+               reason to back out is having picked the wrong second side. */
+            onClose: () => {
+                if (confirmed) return;
+                cancelPending();
+                toast('Cancelled — second selection discarded');
+            },
+            buttons: [
+                { label: 'Cancel' },
+                {
+                    label: 'Compare', primary: true, onClick: () => {
+                        confirmed = true;
+                        const pair = confirmCompare();
+                        if (pair) setComparePair(pair);
+                    }
+                }
+            ]
+        });
+    }
+
+    /* Row-menu path: resolve the stage against a fresh fetch. Deliberately not
+       cached — the message may have been reprocessed or pruned since it was
+       listed, and the engine re-checks authorization on every read. */
+    async function pickRowStage(row: any, metaDataId: any, contentType: any, mode: any) {
+        let message;
+        try {
+            message = await api.messages.get(channelId, row.messageId);
+        } catch (e: any) {
+            toast(`Failed to load message content: ${e.message}`, 'error');
+            return;
+        }
+        const cm = connectorMessagesOf(message).find(c => Number(c.metaDataId) === Number(metaDataId));
+        if (!cm) { toast(`Connector ${metaDataId} is no longer part of message ${row.messageId}`, 'warn'); return; }
+        if (!storedContentTypes(cm).includes(contentType)) {
+            toast(`${stageLabel(contentType)} content is not stored for message ${row.messageId}`, 'warn');
+            return;
+        }
+        const ref = refFromConnectorMessage(channelId, row.messageId, cm, contentType);
+        mode === 'select' ? takeAnchor(ref) : offerCandidate(ref);
+    }
+
+    /* The stage submenu. Stages the engine did not store are greyed with the
+       reason, when the detail pane has told us which those are; before it has,
+       every stage is offered and pickRowStage answers with the truth. */
+    function compareStageItems(row: any, metaDataId: any, mode: any) {
+        const cm = loadedConnectorMessage(row, metaDataId);
+        const stored = cm ? storedContentTypes(cm) : null;
+        return COMPARE_STAGES
+            // The source connector has no Sent stage — it is not "not stored", it
+            // does not exist, so it is not offered at all.
+            .filter(s => !(s.type === 'SENT' && Number(metaDataId) === 0))
+            .map(s => ({
+                label: s.label + (stored && !stored.includes(s.type) ? '  (not stored)' : ''),
+                disabled: !!stored && !stored.includes(s.type),
+                onClick: () => pickRowStage(row, metaDataId, s.type, mode)
+            }));
+    }
+
+    /* Tab-context capture: the reference is for exactly what is on screen. */
+    function stageContextMenu(ref: any, e: any) {
+        e.preventDefault();
+        contextMenu(e.clientX, e.clientY, [
+            { header: true, label: 'Compare', sub: `${ref.connectorName} · ${stageLabel(ref.contentType)}` },
+            {
+                label: 'Select for Compare', icon: 'compare', task: 'doSelectForCompare', group: 'message',
+                onClick: () => takeAnchor(ref)
+            },
+            {
+                label: 'Compare with Selection…', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
+                disabled: !getAnchor(), onClick: () => offerCandidate(ref)
+            }
+        ]);
+    }
+
+    function selectForCompareTask() {
+        const ref = activeStageRef.current;
+        if (!ref) { toast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
+        takeAnchor(ref);
+    }
+
+    function compareWithSelectionTask() {
+        const ref = activeStageRef.current;
+        if (!ref) { toast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
+        offerCandidate(ref);
+    }
+
     // Right-click parity with the Swing Message Browser (Frame.messagePopupMenu —
     // the full Message Tasks list). Per-message items take this row explicitly —
     // the menu outlives the render that opened it, so it never reads selection
@@ -2014,6 +2237,15 @@ export function MessagesView({ params, query }: any) {
             '-',
             { label: 'View Attachment', icon: 'eye', task: 'viewImage', group: 'message', onClick: () => viewAttachmentsModal(platform, channelId, m) },
             { label: 'Export Attachment', icon: 'export', task: 'doExportAttachment', group: 'message', onClick: () => exportAttachmentTask(platform, channelId, m) },
+            '-',
+            {
+                label: 'Select for Compare', icon: 'compare', task: 'doSelectForCompare', group: 'message',
+                items: compareStageItems(m, metaDataId, 'select')
+            },
+            {
+                label: 'Compare with Selection…', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
+                disabled: !getAnchor(), items: compareStageItems(m, metaDataId, 'compare')
+            },
             '-',
             { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask(m) },
             { label: 'Remove Results', icon: 'trash', danger: true, task: 'doRemoveFilteredMessages', group: 'message', onClick: () => removeResultsTask() },
@@ -2367,6 +2599,14 @@ export function MessagesView({ params, query }: any) {
                         {hasSel && <TaskButton label="Remove Message" icon="trash" danger task="doRemoveMessage" onClick={() => removeMessageTask()} />}
                         <TaskButton label="Reprocess Results" icon="transform" task="doReprocessFilteredMessages" onClick={reprocessResultsTask} />
                         {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
+                        <TaskButton label="Select for Compare" icon="compare" task="doSelectForCompare"
+                            onClick={selectForCompareTask}
+                            title={activeStage ? `Select ${describeRef(activeStage)} for comparison` : undefined} />
+                        {/* Greyed rather than hidden: the task exists, it just has
+                            nothing to compare against yet (Swing's task-rail idiom). */}
+                        <TaskButton label="Compare with Selection…" icon="compare" task="doCompareWithSelection"
+                            disabled={!anchor} onClick={compareWithSelectionTask}
+                            title={anchor ? `Compare against ${describeRef(anchor)}` : 'Select content for compare first'} />
                     </div>
                 </RailPane>
             </ViewTasks>}
@@ -2424,6 +2664,8 @@ export function MessagesView({ params, query }: any) {
                         cols={visibleCols} mgr={mgr} rows={sortedMessages}
                         expandedIds={expandedIds} allExpanded={allExpanded}
                         selKey={selected ? `${selected.m.messageId}:${selected.metaDataId}` : null}
+                        anchorKey={anchor && String(anchor.channelId) === String(channelId)
+                            ? `${anchor.messageId}:${anchor.metaDataId}` : null}
                         sortKey={sort.key} sortDir={sort.dir}
                         onSort={(key: any) => setSort((s: any) => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 })}
                         onToggleAll={toggleAll}
@@ -2463,9 +2705,22 @@ export function MessagesView({ params, query }: any) {
 
                 <div className="split-handle mx-[13px]" data-orient="v" data-resize="next" />
                 <div ref={detailPaneRef} className="flex-none h-[32px] overflow-hidden flex flex-col panel mx-[13px] mb-3">
-                    <DetailBody detail={detail} channelId={channelId} platform={platform} />
+                    <DetailBody detail={detail} channelId={channelId} platform={platform}
+                        anchor={anchor} onActiveStage={onActiveStage} onStageMenu={stageContextMenu} />
                 </div>
             </div>
+            <CompareChip />
+            {/* Mounted INSIDE the view: navigating away unmounts it, which is the
+                teardown path that releases the fetched content. */}
+            {comparePair && (
+                <CompareOverlay pair={comparePair} channelName={channelName}
+                    onClose={(info: any) => {
+                        setComparePair(null);
+                        // A session that ended is already telling the user what
+                        // happened on the login screen; don't stack a toast on it.
+                        if (!info?.sessionEnded) toast('Comparison closed — content released');
+                    }} />
+            )}
         </div>
     );
 }

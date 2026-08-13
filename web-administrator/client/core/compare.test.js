@@ -5,7 +5,8 @@ import api, { resetSessionExpired } from './api.js';
 import { emit, on } from './store.js';
 import {
     selectForCompare, proposeCompare, confirmCompare, cancelPending, clearCompare,
-    getAnchor, getPending, samePair, describeRef, storedContentTypes, stageLabel, stageKey
+    getAnchor, getPending, samePair, describeRef, storedContentTypes, stageLabel, stageKey,
+    refFromConnectorMessage
 } from './compare.js';
 
 let pass = 0, fail = 0;
@@ -37,6 +38,22 @@ const destCm = { metaDataId: 1, encoded: { content: '<x/>' }, sent: { content: '
 ok(String(storedContentTypes(destCm)) === 'ENCODED,SENT,RESPONSE', 'a destination offers Sent and Response');
 ok(storedContentTypes(null).length === 0, 'no connector message → no stages');
 ok(storedContentTypes({ metaDataId: 1 }).length === 0, 'a connector message with no content → no stages');
+
+/* ---- building a reference from a loaded connector message ---- */
+
+const built = refFromConnectorMessage('c1', '41207', {
+    metaDataId: 0, connectorName: 'Source',
+    raw: { content: 'MSH|', dataType: 'HL7V2' },
+    encoded: { content: '<x/>', dataType: 'XML' }
+}, 'RAW');
+ok(built.messageId === 41207 && typeof built.messageId === 'number', 'the message id is numeric');
+ok(built.channelId === 'c1' && built.metaDataId === 0, 'the coordinates carry over');
+ok(String(built.storedTypes) === 'RAW,ENCODED', 'stored stages come from the connector message');
+ok(built.dataTypes.RAW === 'HL7V2' && built.dataTypes.ENCODED === 'XML', 'per-stage data types are captured as a language hint');
+ok(!JSON.stringify(built).includes('MSH|'), 'a reference carries no content');
+
+const unnamed = refFromConnectorMessage('c1', 1, { metaDataId: 2, encoded: { content: 'x' } }, 'ENCODED');
+ok(unnamed.connectorName === 'Connector 2', 'an unnamed destination falls back to its id');
 
 /* ---- identical-tuple comparison ---- */
 

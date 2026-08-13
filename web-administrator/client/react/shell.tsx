@@ -24,6 +24,7 @@ import { CommandPalette } from './command-palette.jsx';
 import { getPref } from '../core/prefs.js';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
+import { getAnchor, describeRef } from '../core/compare.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
 import { hasUnsavedWork } from '../core/unsaved.js';
 import { stashChannelDraft, peekChannelDraft, clearChannelDraft } from '../core/channel-draft.js';
@@ -450,6 +451,10 @@ function UserMenu({ user, onLogout }: any) {
 function StatusBar({ user, serverInfo, conn }: any) {
     const config = useStoreKey('webadminConfig') || {};
     const [clock, setClock] = useState('');
+    /* A compare selection outlives the view it was made in, so the status bar is
+       where it stays visible — the reference only, never any content. */
+    const [compareAnchor, setCompareAnchor] = useState(() => getAnchor());
+    useEffect(() => store.on('compare:changed', () => setCompareAnchor(getAnchor())), []);
     useEffect(() => {
         const tick = () => setClock(new Intl.DateTimeFormat([], {
             hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
@@ -490,7 +495,12 @@ function StatusBar({ user, serverInfo, conn }: any) {
                         title="Retry the connection now instead of waiting for the countdown.">{left}</button>
                     : <span className="status-text">{left}</span>}
             </span>
-            <span className="ml-auto">{clock}</span>
+            {compareAnchor && (
+                <span className="status-compare ml-auto" title={describeRef(compareAnchor)}>
+                    <span aria-hidden="true">⇄</span> selected for compare
+                </span>
+            )}
+            <span className={compareAnchor ? '' : 'ml-auto'}>{clock}</span>
         </footer>
     );
 }

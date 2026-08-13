@@ -53,6 +53,11 @@ export interface ContextMenuItem extends TaskRef {
     /** Non-interactive heading row (e.g. "signed in as"), with optional sub line. */
     header?: boolean;
     sub?: string;
+    /** Nested submenu ("Select for Compare ▸"). The item itself is then a
+        disclosure, not a command — any `onClick` on it is ignored. Children are
+        RBAC-filtered like any other item, and a submenu left with nothing to
+        show is dropped along with its parent. */
+    items?: MenuEntry[];
     onClick?: () => void;
 }
 export type MenuEntry = ContextMenuItem | '-';

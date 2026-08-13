@@ -88,6 +88,32 @@ export function storedContentTypes(cm: any): CompareContentType[] {
         .map(s => s.type);
 }
 
+/**
+ * Build a reference from a loaded connector message. Reads only the coordinates
+ * and the per-stage data types (a hint for the diff editor's language) — the
+ * content itself is left where it is and re-fetched when the overlay opens.
+ */
+export function refFromConnectorMessage(
+    channelId: string, messageId: number | string, cm: any, contentType: CompareContentType
+): CompareRef {
+    const metaDataId = Number(cm?.metaDataId ?? 0);
+    const storedTypes = storedContentTypes(cm);
+    const dataTypes: Partial<Record<CompareContentType, string>> = {};
+    for (const type of storedTypes) {
+        const dataType = cm?.[stageKey(type)]?.dataType;
+        if (dataType) dataTypes[type] = String(dataType);
+    }
+    return {
+        channelId: String(channelId),
+        messageId: Number(messageId),
+        metaDataId,
+        connectorName: cm?.connectorName || (metaDataId === 0 ? 'Source' : `Connector ${metaDataId}`),
+        contentType,
+        storedTypes,
+        dataTypes
+    };
+}
+
 /** True when two refs point at exactly the same stored content. */
 export function samePair(a: CompareRef | null, b: CompareRef | null): boolean {
     if (!a || !b) return false;

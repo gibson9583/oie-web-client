@@ -80,11 +80,18 @@ export function RailPane({
 /* Task-pane button (parity with core/ui.js taskButton). `task` (the Swing action
    constant, e.g. "doNewChannel") + the pane's group gate visibility via RBAC: an
    unauthorized task renders nothing, exactly like Swing hiding the task. */
-export function TaskButton({ label, icon, onClick, primary, danger, task, group }: any) {
+export function TaskButton({ label, icon, onClick, primary, danger, task, group, disabled, title }: any) {
     const ctxGroup = useContext(TaskGroupContext);
     if (task && !checkTask(group || ctxGroup, task)) return null;
     const cls = 'btn' + (primary ? ' btn-primary' : '') + (danger ? ' btn-danger' : '');
-    return <button className={cls} onClick={onClick}>{icon ? <Icon name={icon} /> : null}{label}</button>;
+    // `disabled` is for a task that exists but has nothing to act on yet (Swing's
+    // greyed task), as opposed to one the user may not run at all — that is RBAC's
+    // job above, and it hides the button outright.
+    return (
+        <button className={cls} onClick={onClick} disabled={disabled} title={title}>
+            {icon ? <Icon name={icon} /> : null}{label}
+        </button>
+    );
 }
 
 /* Mounts a core/ui.js DataTable and keeps its rows in sync. onReady hands the
