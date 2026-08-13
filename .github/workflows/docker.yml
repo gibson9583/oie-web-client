@@ -11,9 +11,15 @@ permissions:
   contents: read
 
 # Superseded main-branch builds are cancelled; tag builds always run to completion.
+#
+# The PR-close cleanup gets a group of its OWN. Merging fires the PR's `closed`
+# event and the push to main in the same instant, and both resolve to
+# refs/heads/main — so keyed on the ref alone they landed in one group and the
+# main build cancelled the cleanup two seconds in, every time. It is a one-shot
+# tag deletion, so it must also never be superseded.
 concurrency:
-  group: docker-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+  group: ${{ github.event.action == 'closed' && format('docker-cleanup-pr-{0}', github.event.pull_request.number) || format('docker-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event.action != 'closed' && github.ref_type == 'branch' }}
 
 # Overridable per fork/deployment via repository variables — no workflow edits
 # needed. Credentials come from repository secrets:
