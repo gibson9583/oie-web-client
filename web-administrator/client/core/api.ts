@@ -1,8 +1,9 @@
 /*
  * Engine REST API client.
  *
- * All requests go through the Node server's /api reverse proxy. We ask the
- * engine for JSON (Accept: application/json); its XStream-based serializer
+ * Requests use the deployment's engine API root: the Node server's /api reverse
+ * proxy for standalone/Docker installs, or the co-located engine API for a WAR.
+ * We ask the engine for JSON (Accept: application/json); its XStream serializer
  * wraps every payload in a single root key (e.g. {"list": ...},
  * {"channel": ...}) which is unwrapped here. Some endpoints still answer in
  * XML or plain text, so parsing falls back gracefully.
@@ -14,6 +15,7 @@
  */
 
 import * as oie from './oie.js';
+import { API_BASE } from './deployment.js';
 import type {
     AlertModel, AlertStatus, Attachment, Channel, ChannelDependency, ChannelGroup,
     ChannelStatistics, ChannelTag, CodeTemplate, CodeTemplateLibrary, DashboardStatus,
@@ -50,7 +52,7 @@ export interface WriteOptions extends RequestOptions {
     wrapKey?: string;
 }
 
-const BASE = '/api';
+const BASE = API_BASE;
 
 const listeners: { sessionExpired: Array<() => void> } = { sessionExpired: [] };
 let sessionExpiredFired = false;

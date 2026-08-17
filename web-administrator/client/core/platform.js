@@ -36,6 +36,7 @@ import { createDiffEditor } from './diffeditor.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
 import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
+import { apiUrl, appUrl } from './deployment.js';
 /* ---- @oie/* plugin API contract version --------------------------------------
  * The version of the framework surface (the `platform` registries + the @oie/web-*
  * exports) that this web admin implements. Tracks the OIE engine release line it
@@ -220,10 +221,14 @@ async function fetchEngineManifests() {
         return []; // unreachable / not logged in yet — nothing to add
     }
     const results = await Promise.all(paths.map(async (path) => {
-        const base = `/api${wsBase}/webplugins/${encodeURIComponent(path)}`;
+        const base = apiUrl(`${wsBase}/webplugins/${encodeURIComponent(path)}`);
         try {
             // Served raw by the engine (not XStream-wrapped), so read it as plain JSON.
-            const res = await fetch(`${base}/plugin.json`, { credentials: 'same-origin', signal: AbortSignal.timeout(120_000) });
+            const res = await fetch(`${base}/plugin.json`, {
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
+                signal: AbortSignal.timeout(120_000)
+            });
             if (!res.ok)
                 return null;
             const m = await res.json();
@@ -252,7 +257,7 @@ async function fetchEngineManifests() {
 export async function loadPlugins() {
     let manifests = [];
     try {
-        const res = await fetch('/webadmin/plugins.json', { signal: AbortSignal.timeout(120_000) });
+        const res = await fetch(appUrl('/webadmin/plugins.json'), { signal: AbortSignal.timeout(120_000) });
         if (res.ok)
             manifests = await res.json();
     }
@@ -265,6 +270,14 @@ export async function loadPlugins() {
     // In practice the two sets are disjoint: /webadmin/plugins.json is the bundled
     // framework plugins (connectors, data types, viewers, …) that ship with the web
     // admin, and /api/webplugins is whatever the connected engine has installed.
+    // Bundled manifests use logical root paths so the same JSON works in Node
+    // and in a WAR context. Turn those into physical app URLs before import().
+    manifests = manifests.map((manifest) => ({
+        ...manifest,
+        entry: manifest.entry && manifest.entry.startsWith('/plugins/')
+            ? appUrl(manifest.entry)
+            : manifest.entry
+    }));
     const engineManifests = await fetchEngineManifests();
     const engineIds = new Set(engineManifests.map((m) => m.id).filter(Boolean));
     manifests = manifests.filter((m) => !engineIds.has(m.id)).concat(engineManifests);
@@ -291,7 +304,34 @@ export async function loadPlugins() {
             return { manifest, module: null };
         // Plugin entries are runtime URLs (/plugins/<id>/…), not build-time paths —
         // tell Vite/Rollup not to analyze/bundle this import (it's loaded live).
+        //
+        // OIE protects every /api request with X-Requested-With. Browser import()
+        // cannot attach that header, so a WAR (which talks to OIE directly rather
+        // than through the Node proxy) fetches the single-file plugin module with
+        // the header and imports its authenticated contents. Bare @oie/* imports
+        // still resolve through the page import map. Node/Docker retain direct URL
+        // imports, including support for plugins that split relative modules.
         try {
+            if (manifest.source === 'engine' && store.getState('webadminConfig')?.deployment === 'war') {
+                const res = await fetch(manifest.entry, {
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
+                    signal: AbortSignal.timeout(120_000)
+                });
+                if (!res.ok)
+                    throw new Error(`plugin module request failed (${res.status})`);
+                const source = await res.text();
+                const objectUrl = URL.createObjectURL(new Blob([
+                    source,
+                    `\n//# sourceURL=${manifest.entry}\n`
+                ], { type: 'text/javascript' }));
+                try {
+                    return { manifest, module: await import(/* @vite-ignore */ objectUrl) };
+                }
+                finally {
+                    URL.revokeObjectURL(objectUrl);
+                }
+            }
             return { manifest, module: await import(/* @vite-ignore */ manifest.entry) };
         }
         catch (e) {

@@ -9,6 +9,7 @@
  * POST so it (and every later /api call) routes to that engine (server/proxy.js).
  */
 import { getLoginAuthenticator } from '../../core/login-auth.js';
+import { appUrl } from '../../core/deployment.js';
 
 import { useState, useRef, useEffect } from 'react';
 import { useStoreKey } from '../bridges.jsx';
@@ -178,8 +179,8 @@ export function LoginForm({ onSuccess }: any) {
                 }}>
                 <div className="login-brand">
                     <span>
-                        <img className="logo-on-light block w-[108px]" src="/assets/oie_logo_bottom_text.svg" alt="Open Integration Engine" />
-                        <img className="logo-on-dark block w-[169px]" src="/assets/oie_white_logo_banner_text_215x30.png" alt="Open Integration Engine" />
+                        <img className="logo-on-light block w-[108px]" src={appUrl('/assets/oie_logo_bottom_text.svg')} alt="Open Integration Engine" />
+                        <img className="logo-on-dark block w-[169px]" src={appUrl('/assets/oie_white_logo_banner_text_215x30.png')} alt="Open Integration Engine" />
                     </span>
                     <div className="brand-sub">WEB ADMINISTRATOR</div>
                 </div>

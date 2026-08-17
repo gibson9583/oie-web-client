@@ -1,8 +1,9 @@
 # OIE Web Administrator
 
-A standalone, web-based administrator for **Open Integration Engine** — a browser
-replacement for the Swing Administrator client. It runs as its own NodeJS app,
-talks to any engine over the REST API, and is **pluggable**: third-party
+A web-based administrator for **Open Integration Engine** — a browser
+replacement for the Swing Administrator client. It can run as its own NodeJS
+app or as a WAR inside an existing OIE server, talks to the engine over the REST
+API, and is **pluggable**: third-party
 developers extend it by dropping a folder into `plugins/` (the web equivalent of
 the engine's `plugin.xml` extension model).
 
@@ -26,6 +27,21 @@ cd web-administrator
 OIE_URL=https://localhost:8443 npm start
 # open http://localhost:3030 and sign in with your engine credentials (admin/admin by default)
 ```
+
+## OIE-hosted WAR
+
+The simplest option is the Web Support plugin's
+`websupport-web-client-<version>.zip`: install it through the Swing
+Administrator and restart OIE to install both the required APIs and the WAR.
+Choose the API-only `websupport-<version>.zip` instead when using Node, Docker,
+or a separately managed WAR.
+
+For a separate WAR, run `npm run build:war` from the repository root. Copy the resulting
+`dist/oie-web-client.war` to `<OIE_HOME>/webapps/`, restart OIE, and open
+`https://<host>:8443/oie-web-client/`. The WAR filename controls the URL context
+and may be changed. WAR mode always uses its hosting OIE engine; use the Node or
+Docker deployment for multi-engine routing, local plugin directories,
+confidential-client OIDC, or independent TLS/listener configuration.
 
 ## Configuration
 

@@ -1,8 +1,9 @@
 # OIE Web Client
 
-A standalone, web-based administrator for **[Open Integration Engine](https://github.com/openintegrationengine)** (OIE / Mirth Connect) — a browser
-replacement for the Swing Administrator client. It runs as its own Node.js app,
-talks to any engine over the REST API, and is **pluggable**: extension
+A web-based administrator for **[Open Integration Engine](https://github.com/openintegrationengine)** (OIE / Mirth Connect) — a browser
+replacement for the Swing Administrator client. Run it as a standalone Node.js
+app, use the published Docker image, or deploy its optional WAR directly into an
+existing OIE server. It talks to the engine over the REST API and is **pluggable**: extension
 developers add features by dropping a folder into `plugins/` (the web equivalent
 of the engine's `plugin.xml` extension model).
 
@@ -53,14 +54,15 @@ oie-web-client/
 |---|---|---|
 | **Node.js** | **22 LTS recommended** (20.19+ minimum) | Runs the server, the Vite build, and the tests; bundles a compatible npm. Check with `node -v`. Vite 8 requires 20.19+, and the lint toolchain (Babel 8) wants 22.18+; the built server alone still runs on 18+. |
 | **npm** | **9+** (ships with Node 18+) | This is an npm-**workspaces** monorepo (npm 7+ required). Yarn/pnpm are not used. |
+| **JDK** | **17+** (WAR builds only) | Supplies the standard `jar` tool used by `npm run build:war`; it is not needed to run the Node/Docker deployment. |
 | **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. This release line targets OIE 4.6.0. |
-| **OIE Web Support plugin** | latest | **Required.** Installs the engine REST endpoints the web client uses for byte-exact message-tree serialization and JavaScript validation/formatting — these aren't in the core 4.6.0 engine. Install it into the engine's `extensions/` and restart. → **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)** |
+| **OIE Web Support plugin** | latest | **Required.** Installs the engine REST endpoints the web client uses for byte-exact message-tree serialization and JavaScript validation/formatting — these aren't in the core 4.6.0 engine. The same releases ship a companion **OIE Web Client** extension that can deploy this client's WAR into the engine (see WAR deployment below). → **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)** |
 | **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
 
 Contributors running the end-to-end tests also install Playwright's browser once:
 `npx playwright install chromium`.
 
-## Quick start
+## Quick start from source
 
 > **Prerequisite — install the web support plugin first.** Your engine needs the
 > **[OIE Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin)**
@@ -98,6 +100,49 @@ start` serves when present (otherwise it serves the source directly). Either pat
 keeps the framework a single shared instance, so runtime-loaded plugins resolve
 against the same copy.
 
+## Deploy into an existing OIE server (WAR)
+
+The WAR is the smallest production deployment: OIE's embedded Jetty already
+loads every `*.war` in its `webapps/` directory, so no Node process, reverse
+proxy, or extra port is required.
+
+For the easiest installation, download `websupport-web-client-<version>.zip`
+(the **OIE Web Client** extension) from the
+[Web Support release](https://github.com/gibson9583/oie-web-support-plugin/releases),
+install it through the Swing Administrator, and restart OIE. It extracts
+`oie-web-client.war` into `<OIE_HOME>/webapps/` before Jetty discovers web
+applications. Install the **Web Support** APIs (`websupport-<version>.zip`)
+alongside it for message trees and script validation.
+
+To build and copy the WAR yourself instead:
+
+```bash
+# From the repository root (after npm install):
+npm run build:war
+
+# Stop OIE, copy the artifact, then start OIE again:
+cp web-administrator/dist/oie-web-client.war /path/to/OIE/webapps/
+```
+
+Open `https://<oie-host>:8443/oie-web-client/`. OIE derives the URL context from
+the filename, so renaming the artifact to `admin.war` deploys it at `/admin/`.
+The generated JSP discovers both that name and a non-root OIE
+`http.contextpath` at runtime; the WAR does not bake in a server URL. Use the
+HTTPS listener—the engine API is HTTPS-only unless `server.api.allowhttp` is
+explicitly enabled.
+
+WAR mode is intentionally tied to the OIE server hosting it. Local login/MFA,
+engine extension install/uninstall, bundled plugins, and engine-served plugin UIs
+work directly against that server. Features that need the Node server—multiple
+engine targets, a user-entered engine URL, `pluginDirs`, Node-managed TLS, and
+confidential-client OIDC—remain available through the source or Docker modes.
+This separation keeps client secrets out of a static WAR and leaves the existing
+deployment paths unchanged.
+
+Web Support (the APIs) and OIE Web Client (the WAR host) are independent
+extensions—install either or both. Source and Docker deployments install only
+Web Support, so they never acquire a WAR during an update.
+
 ## Run with Docker
 
 Prebuilt images are published to Docker Hub as
@@ -116,7 +161,7 @@ Inside a container `localhost` is the container itself — use
 Desktop), or the engine's real hostname otherwise.
 
 The image bakes in **no configuration** — it reads the same settings as a source
-install (see [Configuration](#configuration)). Env vars cover the per-setting
+install (see [Node/Docker configuration](#nodedocker-configuration)). Env vars cover the per-setting
 overrides; for the full config document — `allowedUrls`, `tls`, `pluginDirs`,
 plugin settings — mount a file or pass the JSON inline:
 
@@ -137,7 +182,7 @@ terminate TLS in front, or configure [built-in TLS](#serving-over-https) with
 mounted PEMs. Build the image yourself with `docker build -t oie-web-client .`
 from the repo root.
 
-## Configuration
+## Node/Docker configuration
 
 Settings load from a single JSON **config document**, then per-setting
 environment-variable overrides on top. The document comes from the first of
@@ -161,7 +206,7 @@ than silently booting on defaults. Start from
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` (HTTP) | Serve the UI over **HTTPS** directly — set `{ "key", "cert", "passphrase"? }` to PEM file paths (both key and cert required). Off by default; see [Serving over HTTPS](#serving-over-https) |
 
-### Deployment modes
+### Engine routing modes
 
 - **Single engine** (default): set `engine.url`; every login goes to that engine.
 - **Multiple engines**: list them in `allowedUrls` — the login screen shows a
@@ -234,6 +279,7 @@ plugin UIs are disabled with a notice. Format Document runs entirely client-side
 | TLS / certificate errors reaching the engine | Keep `engine.verifyTls` = `false` for a self-signed engine (the default). |
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
 | Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22 LTS (`node -v`); Node < 20.19 can't run Vite 8 and the test tooling. |
+| WAR URL returns 404 after copying | OIE discovers WARs only at startup. Put the file directly in `<OIE_HOME>/webapps/`, restart OIE, and use the context matching the WAR filename. |
 | Message trees, Validate Script, or plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install `websupport-<version>.zip` from the Extensions page and restart the engine. |
 
 ## Plugins & the Community Store
@@ -279,6 +325,7 @@ Run from the repo root:
 |---|---|
 | `npm run lint` | ESLint across the repo, including the `@oie/*` import-boundary rules |
 | `npm run typecheck` | `tsc` over six projects — the `@oie/*` public type surface (`type-tests/`), the client, server, plugins, views, and the e2e suite |
+| `npm run build:war` | Build the optimized client and package `web-administrator/dist/oie-web-client.war` for OIE's `webapps/` directory |
 | `npm run e2e` | Playwright suite; `/api/*` is mocked in-browser, so it runs with no engine |
 | `npm run e2e:live` | The same specs against a real engine (opt-in via `E2E_LIVE=1`) |
 | `npm run gen:userapi` | Regenerate `client/core/userapi.generated.js` from the engine's REST surface |

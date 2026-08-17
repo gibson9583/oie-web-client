@@ -32,6 +32,7 @@ import { queryClient } from './queries';
 import { resetPaneCollapsed } from './ui';
 import { disposeDetachedMonaco } from '../core/monaco.js';
 import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
+import { apiUrl, appUrl, routeUrl } from '../core/deployment.js';
 import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
@@ -216,7 +217,7 @@ function startEngine() {
         platform.reactView = reactView;
 
         try {
-            const res = await fetch('/webadmin/config.json');
+            const res = await fetch(appUrl('/webadmin/config.json'));
             if (res.ok) store.setState('webadminConfig', await res.json());
         } catch { /* optional */ }
 
@@ -254,7 +255,7 @@ function openApiDocs() {
     // than the engine URL directly — carries the session, and avoids the
     // engine's self-signed-cert interstitial. The server no longer exposes the
     // engine URL to the browser (see /webadmin/config.json).
-    window.open('/api/', '_blank');
+    window.open(apiUrl('/'), '_blank');
 }
 
 // "0.5.0-beta (ab12cd3, built 2026-08-11)" — the package version plus the build
@@ -294,7 +295,7 @@ async function showAbout() {
     modal({
         title: 'About Open Integration Engine',
         body: h('div',
-            h('div.flex.items-center.gap-2.mb-[13px]', h('img', { src: '/assets/oie_logo_bottom_text.svg', alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
+            h('div.flex.items-center.gap-2.mb-[13px]', h('img', { src: appUrl('/assets/oie_logo_bottom_text.svg'), alt: 'Open Integration Engine', style: { width: '120px', margin: '0 auto', display: 'block' } })),
             kv),
         buttons: [{ label: 'Close', primary: true }]
     });
@@ -484,7 +485,7 @@ function StatusBar({ user, serverInfo, conn }: any) {
         const t = setInterval(tick, 30000);
         return () => clearInterval(t);
     }, []);
-    const engine = currentEngineLabel(config) || '/api';
+    const engine = currentEngineLabel(config) || apiUrl();
     let left = 'Connecting…';
     // Live connection state outranks the one-shot identity fetch: the identity is
     // from load time, whereas this is how the last request actually went.
@@ -579,7 +580,7 @@ function AppShell({ user, onLogout }: any) {
             router.setOutlet(outletRef.current);
             // Land on the dashboard for a bare root URL; a deep link (refresh /
             // bookmark of /channels/x/edit) is left intact for the router to match.
-            if (router.currentPath() === '/') history.replaceState(null, '', '/dashboard');
+            if (router.currentPath() === '/') history.replaceState(null, '', routeUrl('/dashboard'));
             router.start();
         })();
         return () => { cancelled = true; };
@@ -620,7 +621,7 @@ function AppShell({ user, onLogout }: any) {
                         collapsed: it is a banner lockup, illegible at 56px, and its inline width
                         would beat any CSS that tried to hide it. */}
                     {!railCollapsed && (
-                        <img src="/assets/oie_logo_banner_text_white.svg" alt="Open Integration Engine"
+                        <img src={appUrl('/assets/oie_logo_banner_text_white.svg')} alt="Open Integration Engine"
                             style={{ width: '100%', height: 'auto', display: 'block' }} />
                     )}
                 </div>
@@ -715,7 +716,7 @@ export function App() {
             // Fetch the web-admin config (engine list, devMode) BEFORE the auth check
             // so the login screen can render the engine picker if there's a choice.
             try {
-                const res = await fetch('/webadmin/config.json');
+                const res = await fetch(appUrl('/webadmin/config.json'));
                 if (res.ok && alive) store.setState('webadminConfig', await res.json());
             } catch { /* optional */ }
             try {
@@ -743,7 +744,7 @@ export function App() {
             scrubSessionState();
             // The deep link (which channel was open) must not sit in the address
             // bar over the login card for the next person to read (#24).
-            history.replaceState(null, '', '/');
+            history.replaceState(null, '', routeUrl('/'));
         });
         return () => { alive = false; off(); };
     }, []);
@@ -817,7 +818,7 @@ export function App() {
         scrubSessionState();
         store.setPrefScope(null, null);   // next sign-in re-scopes to that user
         resetSessionExpired();
-        history.replaceState(null, '', '/');
+        history.replaceState(null, '', routeUrl('/'));
     };
 
     const onLoginSuccess = async (u: any, { graceMessage = null } = {}) => {
@@ -902,7 +903,7 @@ export function App() {
             scrubSessionState();
             store.setPrefScope(null, null);
             resetSessionExpired();
-            history.replaceState(null, '', '/');
+            history.replaceState(null, '', routeUrl('/'));
             store.setState('loginNotice', 'You were signed out after a period of inactivity.');
         });
         return () => stopIdleLogout();

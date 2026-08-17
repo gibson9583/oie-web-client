@@ -38,6 +38,10 @@ function externalFramework() {
 
 export default defineConfig({
     root: 'client',
+    // WAR assets must be context-relative because OIE derives the servlet
+    // context from the artifact filename. The normal Node/Docker build stays
+    // rooted at `/`; build-war opts into `./` without changing that pipeline.
+    base: process.env.OIE_WEBADMIN_BUILD_BASE || '/',
     // react() transforms JSX (and Fast Refresh in dev). tailwindcss() processes
     // the @import "tailwindcss" + @theme/@source in client/css/app.css (the design
     // tokens + utilities). externalFramework keeps core/connectors imports as

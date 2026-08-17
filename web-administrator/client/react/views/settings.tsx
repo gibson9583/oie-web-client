@@ -31,6 +31,7 @@ import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColo
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, DataTableHost } from '../ui.jsx';
+import { apiUrl } from '../../core/deployment.js';
 
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
 const CONFIGURATION_PROPERTY_CLASS = 'com.mirth.connect.util.ConfigurationProperty';
@@ -343,7 +344,7 @@ function ServerTab({ ctx }: any) {
         try {
             // Open the Save dialog within the click gesture; fetch inside the callback.
             await saveFile('server-configuration.xml', 'application/xml', async () => {
-                const res = await fetch('/api/server/configuration', {
+                const res = await fetch(apiUrl('/server/configuration'), {
                     headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                     credentials: 'same-origin'
                 });

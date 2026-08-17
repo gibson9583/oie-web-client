@@ -60,6 +60,7 @@ import {
 } from '../../core/compare.js';
 import { CompareChip } from '../compare-chip.jsx';
 import { CompareOverlay } from '../compare-overlay.jsx';
+import { apiUrl } from '../../core/deployment.js';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
@@ -1568,7 +1569,7 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
                 count++;
                 const base = applyFilePattern(pattern, m, count, channelId);
                 if (opt.xml) {
-                    const resp = await fetch(`/api/channels/${channelId}/messages/${m.messageId}`, {
+                    const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}`), {
                         headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                         credentials: 'same-origin'
                     });
@@ -1595,7 +1596,7 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
     async function sinkAttachments(sink: any, m: any, base: any) {
         let n = 0;
         try {
-            const resp = await fetch(`/api/channels/${channelId}/messages/${m.messageId}/attachments?includeContent=true`, {
+            const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}/attachments?includeContent=true`), {
                 headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                 credentials: 'same-origin'
             });
