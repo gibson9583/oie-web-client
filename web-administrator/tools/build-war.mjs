@@ -17,7 +17,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(root, '..');
 const clientDir = path.join(root, 'client');
 const packageInfo = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
-const artifactName = process.env.OIE_WAR_NAME || 'oie-web-client.war';
+const artifactName = process.env.OIE_WAR_NAME || 'oie-webadmin.war';
 
 if (!/^[a-zA-Z0-9._-]+\.war$/.test(artifactName)) {
     throw new Error('OIE_WAR_NAME must be a simple filename ending in .war');

@@ -4,7 +4,7 @@
  *
  * The standalone Node server hosts the application at `/` and proxies the
  * engine at `/api`. An OIE-hosted WAR is mounted below the engine context (for
- * example `/oie-web-client`) while the engine API remains its sibling (`/api`).
+ * example `/oie-webadmin`) while the engine API remains its sibling (`/api`).
  * Keep those physical paths out of feature code: routes are app-relative,
  * static resources are context-relative, and API requests use the endpoint
  * advertised by index.html/index.jsp.

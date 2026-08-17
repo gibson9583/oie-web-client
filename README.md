@@ -56,7 +56,7 @@ oie-web-client/
 | **npm** | **9+** (ships with Node 18+) | This is an npm-**workspaces** monorepo (npm 7+ required). Yarn/pnpm are not used. |
 | **JDK** | **17+** (WAR builds only) | Supplies the standard `jar` tool used by `npm run build:war`; it is not needed to run the Node/Docker deployment. |
 | **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. This release line targets OIE 4.6.0. |
-| **OIE Web Support plugin** | latest | **Required.** Installs the engine REST endpoints the web client uses for byte-exact message-tree serialization and JavaScript validation/formatting — these aren't in the core 4.6.0 engine. The same releases ship a companion **OIE Web Client** extension that can deploy this client's WAR into the engine (see WAR deployment below). → **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)** |
+| **OIE Web Support plugin** | latest | **Required.** Installs the engine REST endpoints the web client uses for byte-exact message-tree serialization and JavaScript validation/formatting, together with an embedded copy of this web administrator. → **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)** |
 | **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
 
 Contributors running the end-to-end tests also install Playwright's browser once:
@@ -106,13 +106,11 @@ The WAR is the smallest production deployment: OIE's embedded Jetty already
 loads every `*.war` in its `webapps/` directory, so no Node process, reverse
 proxy, or extra port is required.
 
-For the easiest installation, download `websupport-web-client-<version>.zip`
-(the **OIE Web Client** extension) from the
+For the easiest installation, download `websupport-<version>.zip` from the
 [Web Support release](https://github.com/gibson9583/oie-web-support-plugin/releases),
-install it through the Swing Administrator, and restart OIE. It extracts
-`oie-web-client.war` into `<OIE_HOME>/webapps/` before Jetty discovers web
-applications. Install the **Web Support** APIs (`websupport-<version>.zip`)
-alongside it for message trees and script validation.
+install it through the Swing Administrator, and restart OIE. That single plugin
+installs the APIs and extracts `oie-webadmin.war` into `<OIE_HOME>/webapps/`
+before Jetty discovers web applications.
 
 To build and copy the WAR yourself instead:
 
@@ -121,10 +119,10 @@ To build and copy the WAR yourself instead:
 npm run build:war
 
 # Stop OIE, copy the artifact, then start OIE again:
-cp web-administrator/dist/oie-web-client.war /path/to/OIE/webapps/
+cp web-administrator/dist/oie-webadmin.war /path/to/OIE/webapps/
 ```
 
-Open `https://<oie-host>:8443/oie-web-client/`. OIE derives the URL context from
+Open `https://<oie-host>:8443/oie-webadmin/`. OIE derives the URL context from
 the filename, so renaming the artifact to `admin.war` deploys it at `/admin/`.
 The generated JSP discovers both that name and a non-root OIE
 `http.contextpath` at runtime; the WAR does not bake in a server URL. Use the
@@ -139,9 +137,9 @@ confidential-client OIDC—remain available through the source or Docker modes.
 This separation keeps client secrets out of a static WAR and leaves the existing
 deployment paths unchanged.
 
-Web Support (the APIs) and OIE Web Client (the WAR host) are independent
-extensions—install either or both. Source and Docker deployments install only
-Web Support, so they never acquire a WAR during an update.
+Web Support always installs the embedded WAR. You can still run the Node.js or
+Docker deployment instead; the embedded copy simply remains available at
+`/oie-webadmin/`.
 
 ## Run with Docker
 
@@ -325,7 +323,7 @@ Run from the repo root:
 |---|---|
 | `npm run lint` | ESLint across the repo, including the `@oie/*` import-boundary rules |
 | `npm run typecheck` | `tsc` over six projects — the `@oie/*` public type surface (`type-tests/`), the client, server, plugins, views, and the e2e suite |
-| `npm run build:war` | Build the optimized client and package `web-administrator/dist/oie-web-client.war` for OIE's `webapps/` directory |
+| `npm run build:war` | Build the optimized client and package `web-administrator/dist/oie-webadmin.war` for OIE's `webapps/` directory |
 | `npm run e2e` | Playwright suite; `/api/*` is mocked in-browser, so it runs with no engine |
 | `npm run e2e:live` | The same specs against a real engine (opt-in via `E2E_LIVE=1`) |
 | `npm run gen:userapi` | Regenerate `client/core/userapi.generated.js` from the engine's REST surface |
@@ -338,6 +336,11 @@ That field is what the app reports as its version — in the About dialog, in th
 startup banner, and in `/webadmin/config.json` — and nothing derives it from the
 tag. Ship a `v0.6.0` tag without bumping it and every build of that release
 identifies as the previous version.
+
+Pushing a `v*` tag also publishes `oie-webadmin.war` as a GitHub Release asset.
+The Web Support release pipeline consumes the version declared by its
+`webclient.version` build property and records this repository's resolved tag and
+the WAR SHA-256 in its own release notes.
 
 Git supplies only the build *metadata* beside it (commit, build date, and a
 `dirty` flag when the tree had uncommitted changes), stamped into a gitignored

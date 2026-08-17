@@ -30,15 +30,13 @@ OIE_URL=https://localhost:8443 npm start
 
 ## OIE-hosted WAR
 
-The simplest option is the Web Support plugin's
-`websupport-web-client-<version>.zip`: install it through the Swing
-Administrator and restart OIE to install both the required APIs and the WAR.
-Choose the API-only `websupport-<version>.zip` instead when using Node, Docker,
-or a separately managed WAR.
+The simplest option is the Web Support plugin's `websupport-<version>.zip`:
+install it through the Swing Administrator and restart OIE to install both the
+required APIs and the embedded WAR.
 
 For a separate WAR, run `npm run build:war` from the repository root. Copy the resulting
-`dist/oie-web-client.war` to `<OIE_HOME>/webapps/`, restart OIE, and open
-`https://<host>:8443/oie-web-client/`. The WAR filename controls the URL context
+`dist/oie-webadmin.war` to `<OIE_HOME>/webapps/`, restart OIE, and open
+`https://<host>:8443/oie-webadmin/`. The WAR filename controls the URL context
 and may be changed. WAR mode always uses its hosting OIE engine; use the Node or
 Docker deployment for multi-engine routing, local plugin directories,
 confidential-client OIDC, or independent TLS/listener configuration.
