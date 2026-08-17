@@ -205,6 +205,56 @@ test.describe('OIDC login', () => {
         expect(received.login!.get('username')).toBe('jdoe');
     });
 
+    /*
+     * An SSO user has no engine password — the credential lives at the IdP, and
+     * the engine-local one it would set is never consulted. Offering "Change
+     * Password" invites someone to create a credential that does nothing.
+     * Paired with the break-glass case below: the suppression is scoped to HOW
+     * the session was established, not to the account.
+     */
+    test('an SSO session is not offered a password to change', async ({ page }) => {
+        await mockEngine(page, {
+            'GET /users/current': (req: any) => (String(req.headers()['cookie'] || '').includes('JSESSIONID=e2e-engine-session')
+                ? { user: { id: 1, username: 'jdoe' } } : { __status: 401 }),
+        });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+
+        await page.locator('button.user-chip').click();
+        const menu = page.getByRole('menu');
+        // Edit Account proves the menu opened — otherwise the absence below
+        // would pass against a menu that never rendered.
+        await expect(menu.getByRole('menuitem', { name: 'Edit Account' })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Change Password' })).toHaveCount(0);
+
+        // The profile modal still opens, with its password pair greyed and the
+        // reason shown rather than silently missing.
+        await menu.getByRole('menuitem', { name: 'Edit Account' }).click();
+        await expect(page.getByText('Your password is managed by your identity provider.')).toBeVisible();
+        await expect(page.locator('.modal input[type=password]').first()).toBeDisabled();
+    });
+
+    test('a break-glass local sign-in keeps its password controls', async ({ page }) => {
+        let authed = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 }),
+            'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+        });
+        await page.goto(appUrl + '/');
+
+        await page.getByRole('button', { name: 'Use local sign-in' }).click();
+        await page.getByPlaceholder('admin').fill('admin');
+        await page.locator('input[type=password]').fill('admin');
+        await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+
+        // Signing in with a local password means there IS one to change — even
+        // on an account the IdP also knows.
+        await page.locator('button.user-chip').click();
+        await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Change Password' })).toBeVisible();
+    });
+
     test('toggles to local sign-in (break-glass) and back', async ({ page }) => {
         let authed = false;
         await mockEngine(page, {

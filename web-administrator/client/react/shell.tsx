@@ -35,6 +35,7 @@ import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm, takeOidcResult } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
+import { markSsoSession, clearSsoSession, isSsoSession } from './sso-session.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -434,7 +435,10 @@ function UserMenu({ user, onLogout }: any) {
                     </DropdownMenu.Label>
                     <DropdownMenu.Separator className="ctx-sep" />
                     {item('Edit Account', 'edit', () => openEditUserModal(store.getState('user') || me, { onSaved: refreshMe }))}
-                    {item('Change Password', 'key', () => openChangePasswordModal(store.getState('user') || me))}
+                    {/* An SSO session has no engine password to change — offering it
+                        would set a local credential that SSO never consults. Omitted
+                        rather than greyed: a disabled row in a short menu is noise. */}
+                    {!isSsoSession() && item('Change Password', 'key', () => openChangePasswordModal(store.getState('user') || me))}
                     {can('view', 'doShowSettings') && item('Settings', 'settings', () => router.navigate('/settings?tab=administrator'))}
                     <DropdownMenu.Separator className="ctx-sep" />
                     {engineChoiceAvailable(config) && item('Switch Engine', 'link', () => switchEngine(onLogout))}
@@ -692,6 +696,10 @@ export function App() {
                 if (u && u.username && alive) {
                     const oidc = takeOidcResult();
                     if (oidc && (oidc.status === 'SUCCESS' || oidc.status === 'SUCCESS_GRACE_PERIOD')) {
+                        // Remember HOW this session began before the result cookie is
+                        // gone: takeOidcResult consumed it, so a later refresh has no
+                        // other way to know these credentials live at the IdP.
+                        markSsoSession();
                         // A callback-created session is already live before the SPA
                         // boots; run the same consent/welcome/draft path as form login.
                         await onLoginSuccess(u, { graceMessage: oidc.message || null });
@@ -774,6 +782,9 @@ export function App() {
         store.setState('editingChannel', null);
         store.setState('editingChannelNew', false);
         store.setState('editingChannelDirty', false);
+        // The next sign-in in this tab may be local (break-glass) — it must get
+        // its password controls back.
+        clearSsoSession();
         document.cookie = 'oie-engine-url=; Max-Age=0; path=/';
     };
 
