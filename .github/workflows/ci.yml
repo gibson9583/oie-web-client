@@ -39,7 +39,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
   build-drift:
-    name: Build-artifact drift
+    name: WAR build · artifact drift
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -49,13 +49,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Rebuild the generated twins, plugin bundles, and package declarations
-        working-directory: web-administrator
-        run: |
-          node tools/build-core.mjs
-          node tools/build-server.mjs
-          node tools/build-plugins.mjs
-          npm run gen:types
+      - name: Build the WAR and regenerate committed artifacts
+        # ubuntu-latest includes a JDK, whose standard `jar` tool is the only
+        # non-Node requirement. build:war also runs the normal production build.
+        run: npm run build:war
       - name: Fail if any generated artifact drifted from its TypeScript source
         run: |
           if ! git diff --exit-code -- \

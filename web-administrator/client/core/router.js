@@ -6,9 +6,10 @@
  * renders into the outlet itself and returns null).
  *
  * Navigation uses the History API (history.pushState + popstate) for clean URLs
- * with no '#'. The Node server serves index.html for unknown deep paths (SPA
- * fallback), so a refresh/bookmark of /channels/x/edit boots straight into it.
+ * with no '#'. Both the Node server and WAR serve the shell for unknown deep
+ * paths, so a refresh/bookmark of /channels/x/edit boots straight into it.
  */
+import { currentRoutePath, routeUrl } from './deployment.js';
 const routes = [];
 let outlet = null;
 let notFound = null;
@@ -45,11 +46,11 @@ export function navigate(path) {
         handleChange().catch(() => { });
         return;
     } // re-render in place
-    history.pushState(null, '', target);
+    history.pushState(null, '', routeUrl(target));
     handleChange().catch(() => { });
 }
 export function currentPath() {
-    return (location.pathname + location.search) || '/';
+    return currentRoutePath();
 }
 function parseQuery(qsStr) {
     const query = {};
@@ -84,7 +85,7 @@ async function handleChange() {
                 // stayed on screen. pushState does not re-fire popstate, so this
                 // does not re-enter handleChange.
                 if (acceptedPath !== null && currentPath() !== acceptedPath) {
-                    history.pushState(null, '', acceptedPath);
+                    history.pushState(null, '', routeUrl(acceptedPath));
                 }
                 return;
             }

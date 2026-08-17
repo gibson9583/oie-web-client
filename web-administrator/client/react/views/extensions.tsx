@@ -133,6 +133,7 @@ export function ExtensionsView() {
     const plugRef = useRef<any>(null);
 
     const webPlugins = useStoreKey('webPlugins') || [];
+    const directEngineApi = useStoreKey('webadminConfig')?.deployment === 'war';
 
     /* ---- selection helpers --------------------------------------------- */
 
@@ -200,7 +201,7 @@ export function ExtensionsView() {
                 form.append('file', file, file.name);
                 // The engine installs the extension and serves any web UI it carries
                 // (via /api/webplugins); both load after the engine restarts.
-                await api.post('/_webadmin/plugins/_install', form);
+                await api.post(directEngineApi ? '/extensions/_install' : '/_webadmin/plugins/_install', form);
                 toast(`"${file.name}" installed — restart the engine to load it.`);
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e: any) {
@@ -228,9 +229,11 @@ export function ExtensionsView() {
             `Uninstall "${s.name}"? Its server-side files will be removed on the next engine restart. This cannot be undone.`,
             { danger: true, okLabel: 'Uninstall' })) {
             try {
-                await api.post('/_webadmin/plugins/_uninstall',
-                    JSON.stringify({ path: String(path) }),
-                    { contentType: 'application/json' });
+                await api.post(
+                    directEngineApi ? '/extensions/_uninstall' : '/_webadmin/plugins/_uninstall',
+                    directEngineApi ? String(path) : JSON.stringify({ path: String(path) }),
+                    { contentType: 'application/json' }
+                );
                 toast(`${s.name} uninstalled — restart the engine to apply.`);
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e: any) {

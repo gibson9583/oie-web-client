@@ -21,10 +21,11 @@ import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
 import { getActiveCompletions, getActiveLibs, onActiveLibsChange, type TemplateLib } from './script-completions.js';
+import { appUrl } from './deployment.js';
 
 // Where the server serves the vendored Monaco worker bundles. The editor bundle
 // itself is imported via the 'monaco-editor' specifier (import map / Vite).
-const MONACO_VENDOR = '/vendor/monaco';
+const MONACO_VENDOR = appUrl('/vendor/monaco');
 const LOAD_TIMEOUT_MS = 10000;
 
 type Monaco = typeof MonacoNs;

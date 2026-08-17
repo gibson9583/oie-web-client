@@ -57,6 +57,54 @@ test('loads an engine plugin that declares a compatible @oie apiMin', async ({ p
     await expect(page.getByRole('button', { name: 'Compatible Plugin' })).toBeVisible();
 });
 
+test('WAR mode authenticates engine plugin assets before importing them', async ({ page }) => {
+    let manifestHeader = '';
+    let moduleHeader = '';
+
+    // The Node test server has a stricter script-src policy than OIE's WAR
+    // context. Mirror the deployed WAR response here so Chromium can execute
+    // the authenticated temporary module URL this test exists to exercise.
+    await page.route('**/dashboard', async (route) => {
+        const response = await route.fetch();
+        const headers = response.headers();
+        headers['content-security-policy'] = "frame-ancestors 'none'";
+        await route.fulfill({ response, headers });
+    });
+    await page.route('**/webadmin/config.json', (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ engines: [{ name: 'This OIE server' }], deployment: 'war' })
+    }));
+    await mockEngine(page, {
+        // Force discovery through the extension endpoint used by a stock OIE
+        // server rather than the optional engine-native endpoint.
+        'GET /webplugins': { __status: 404 },
+        'GET /extensions/websupport/webplugins': ['warplug'],
+        'GET /extensions/websupport/webplugins/warplug/plugin.json': (req: any) => {
+            manifestHeader = req.headers()['x-requested-with'] || '';
+            return {
+                id: 'war-plug', name: 'WAR Plugin', version: '1.0.0',
+                client: { entry: 'web/plugin.js' }
+            };
+        }
+    });
+    await page.route('**/api/extensions/websupport/webplugins/warplug/web/plugin.js*', (route) => {
+        moduleHeader = route.request().headers()['x-requested-with'] || '';
+        return route.fulfill({
+            status: 200,
+            contentType: 'text/javascript',
+            body: "import { platform as sharedPlatform } from '@oie/web-shell'; export function register(platform){ window.__warPluginLoaded = sharedPlatform === platform; platform.registerNavItem({id:'war-plug',label:'WAR Plugin',icon:'puzzle',path:'/war-plug',section:'Plugins'}); }"
+        });
+    });
+
+    await page.goto('/dashboard');
+
+    await expect.poll(() => page.evaluate(() => (window as any).__warPluginLoaded === true)).toBe(true);
+    expect(manifestHeader).toBe('OpenIntegrationEngine-WebAdmin');
+    expect(moduleHeader).toBe('OpenIntegrationEngine-WebAdmin');
+    await expect(page.getByRole('button', { name: 'WAR Plugin' })).toBeVisible();
+});
+
 test('skips (before import) an engine plugin that needs a newer @oie apiMin', async ({ page }) => {
     await mockEngine(page, {
         'GET /webplugins': ['newplug'],
