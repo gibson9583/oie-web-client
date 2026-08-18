@@ -14,6 +14,7 @@ import { Icon } from './bridges.jsx';
 import { DataTable } from '@oie/web-ui';
 import { createCodeEditor } from '../core/codeeditor.js';
 import { checkTask } from '../core/authorization.js';
+import { scopedKey } from '../core/store.js';
 
 // Rail-pane collapse state, shared across the shell's nav panes and view task
 // panes; persists for the session.
@@ -90,6 +91,50 @@ export function TaskButton({ label, icon, onClick, primary, danger, task, group,
     return (
         <button className={cls} onClick={onClick} disabled={disabled} title={title}>
             {icon ? <Icon name={icon} /> : null}{label}
+        </button>
+    );
+}
+
+/* ---- collapsible side rails ---------------------------------------------------
+   The reference / mappings rails beside editors collapse to a slim strip and
+   come back on a click. The flag persists per rail name in localStorage (per
+   engine + user via scopedKey, like the nav rail's collapse), and rails that
+   mean the same thing share a name — "Destination Mappings" collapsed in the
+   classic editor stays collapsed in the wizard. */
+export function useSideCollapse(key: any): [boolean, (v: any) => void] {
+    const storageKey = scopedKey(`webadmin-side-collapsed:${key}`);
+    const [collapsed, setCollapsedState] = useState(() => {
+        try { return localStorage.getItem(storageKey) === '1'; } catch { return false; }
+    });
+    const setCollapsed = (v: any) => {
+        setCollapsedState(!!v);
+        try { localStorage.setItem(storageKey, v ? '1' : '0'); } catch { /* private mode */ }
+    };
+    return [collapsed, setCollapsed];
+}
+
+/* What remains of a collapsed rail: a slim full-height strip with the rail's
+   name set sideways; clicking anywhere on it brings the rail back. Layouts that
+   stack the rail under its editor on narrow viewports lay the strip flat again
+   through the same breakpoints (app.css). */
+export function CollapsedSideStrip({ label, onExpand, className }: any) {
+    return (
+        <button type="button" className={'side-strip' + (className ? ' ' + className : '')}
+            title={`Show ${label}`} aria-label={`Show ${label}`} aria-expanded="false"
+            onClick={onExpand}>
+            <Icon name="chevL" size={13} />
+            <span className="side-strip-label">{label}</span>
+        </button>
+    );
+}
+
+/* The matching header affordance on the expanded rail. */
+export function SideCollapseButton({ label, onCollapse }: any) {
+    return (
+        <button type="button" className="icon-btn side-collapse-btn"
+            title={`Hide ${label}`} aria-label={`Hide ${label}`} aria-expanded="true"
+            onClick={onCollapse}>
+            <Icon name="chevR" size={14} />
         </button>
     );
 }

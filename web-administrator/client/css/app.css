@@ -2976,6 +2976,15 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
     /* Inside the stacked editor column, cap the step grid so the step form keeps
        room (its desktop 40% share would waste height on a single-row grid). */
     .split-reflow > .split-a > .split-a[data-editor-overtake] { height: auto !important; flex: 0 0 auto !important; max-height: 126px; }
+
+    /* A collapsed reference panel stays a slim bar once stacked, not a 270px
+       pane of nothing (the strip itself lies flat via the unlayered rules
+       near the .side-strip definition). */
+    .split-reflow > .split-b.side-collapsed {
+        width: auto !important;
+        flex: 0 0 auto !important;
+        min-height: 0;
+    }
 }
 
 @media (max-width: 640px) {
@@ -3217,6 +3226,66 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
 .split > .split-handle:hover::after, .split.dragging > .split-handle::after { background: var(--accent); }
 /* Dashboard dock handle keeps its card-width inset. */
 .dash-split { margin: 4px 13px; }
+
+/* ── Collapsible side rails (reference panel, Destination Mappings) ──
+   A rail collapses to this slim strip — its name set sideways, one click brings
+   it back. The breakpoints that stack a rail under its editor lay the strip
+   flat again (see the responsive blocks above). */
+.side-strip {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 5px;
+    border: 0;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.side-strip:hover { background: var(--bg3); color: var(--text); }
+.side-strip svg { flex: none; }
+.side-strip-label { writing-mode: vertical-rl; }
+/* Stacked layouts (narrow viewports drop these rails under their editor — same
+   breakpoints as the rails' own stacking rules) lay the strip flat. These sit
+   OUTSIDE @layer components on purpose: the base rules above are unlayered, so
+   layered overrides could never beat them. */
+@media (max-width: 768px) {
+    .dest-layout > .side-strip, .split-reflow .side-strip {
+        flex-direction: row;
+        justify-content: center;
+        padding: 5px 13px;
+    }
+    .dest-layout > .side-strip .side-strip-label,
+    .split-reflow .side-strip .side-strip-label { writing-mode: horizontal-tb; }
+}
+@media (max-width: 1023px) {
+    /* The wizard rail stacks at Tailwind's lg breakpoint (w-full lg:w-[216px]). */
+    .wiz-mappings-strip { flex-direction: row; justify-content: center; padding: 5px 13px; }
+    .wiz-mappings-strip .side-strip-label { writing-mode: horizontal-tb; }
+}
+/* Standalone rails (the mappings panels) keep their card outline as a strip. */
+.side-strip.panel-strip {
+    background: var(--bg2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--elev);
+}
+/* The header/tab-bar affordance that hides the rail. */
+.side-collapse-btn { width: 24px; height: 24px; align-self: center; margin-left: auto; }
+
+/* The filter/transformer reference panel collapses by squeezing its fixed-width
+   wrapper down to the strip (!important outranks the splitter's inline width);
+   the splitter next to it disappears — nothing left to drag. */
+.split-b.side-collapsed { width: 30px !important; min-width: 0; }
+.split-handle:has(+ .side-collapsed) { display: none; }
+/* Inside the code-view overlay the moved-in panel sits in a fixed-width pane —
+   when only the strip is showing, let the pane shrink to it. */
+.ce-popout-sidepanel:has(.side-strip) { width: auto; flex-basis: auto; }
 
 /* ── Reusable card vocabulary (apply across views for one consistent look) ─
    `panel`         → the card surface (border + radius + elev); clips to its

@@ -52,7 +52,7 @@ import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
-import { RailPane, TaskButton } from '../ui.jsx';
+import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 const KINDS = {
@@ -1060,13 +1060,29 @@ function TreesTab({ target, isFilter, dragRef, onAddStep }: any) {
 /* Side tabs mirror the Swing client: Reference, Message Trees, Message
    Templates. The active tab is KEYED so switching remounts it — each tab
    re-reads the current steps (Reference's Available Variables) and template
-   edits on activation, matching the legacy rebuild-on-switch. */
+   edits on activation, matching the legacy rebuild-on-switch. The whole panel
+   collapses to a strip; its fixed-width wrapper and the splitter live in the
+   MAIN tree (this is a separate root), so the flag is mirrored out through
+   ctx.onSideCollapsed for the wrapper to follow. */
 function SidePanel({ ctx }: any) {
     const [active, setActive] = useState(0);
+    const [collapsed, setCollapsed] = useSideCollapse('ft-reference');
     const { isFilter } = ctx;
     const labels = isFilter ? ['Reference'] : ['Reference', 'Message Trees', 'Message Templates'];
 
+    useLayoutEffect(() => {
+        if (ctx.onSideCollapsed) ctx.onSideCollapsed(collapsed);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [collapsed]);
+
     const label = labels[Math.min(active, labels.length - 1)];
+
+    if (collapsed) {
+        // The strip is named after the ACTIVE tab — it says what expanding
+        // brings back (the tab state survives the collapse; only the body hides).
+        return <CollapsedSideStrip className="flex-1" label={label} onExpand={() => setCollapsed(false)} />;
+    }
+
     let body: any = null;
     if (label === 'Reference') {
         body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId} getElements={ctx.getElements} />;
@@ -1080,12 +1096,17 @@ function SidePanel({ ctx }: any) {
         <TabsPrimitive.Root value={String(Math.min(active, labels.length - 1))}
             onValueChange={(v: any) => setActive(Number(v))}
             className="flex flex-col flex-1 overflow-hidden min-h-0">
-            <TabsPrimitive.List className="tabs" aria-label="Reference panel sections">
-                {labels.map((l: any, i: any) => (
-                    <TabsPrimitive.Trigger key={l} value={String(i)}
-                        className={'tab' + (i === active ? ' active' : '')}>{l}</TabsPrimitive.Trigger>
-                ))}
-            </TabsPrimitive.List>
+            {/* The collapse chevron sits OUTSIDE the pill: the tab list hugs and
+                scrolls its content, so a button inside it would scroll away. */}
+            <div className="flex items-center min-w-0 pr-2">
+                <TabsPrimitive.List className="tabs" aria-label="Reference panel sections">
+                    {labels.map((l: any, i: any) => (
+                        <TabsPrimitive.Trigger key={l} value={String(i)}
+                            className={'tab' + (i === active ? ' active' : '')}>{l}</TabsPrimitive.Trigger>
+                    ))}
+                </TabsPrimitive.List>
+                <SideCollapseButton label="the reference panel" onCollapse={() => setCollapsed(true)} />
+            </div>
             <TabsPrimitive.Content value={String(Math.min(active, labels.length - 1))} className="tab-body">
                 {body}
             </TabsPrimitive.Content>
@@ -1729,7 +1750,16 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             dragRef,
             getElements: () => elementsRef.current,
             commit: () => commitRef.current(),
-            onAddStep: (typeId: any, label: any, baseName: any, setup: any) => addTreeStepRef.current(typeId, label, baseName, setup)
+            onAddStep: (typeId: any, label: any, baseName: any, setup: any) => addTreeStepRef.current(typeId, label, baseName, setup),
+            // The panel's collapse flag, mirrored onto the wrapper the MAIN tree
+            // renders: .side-collapsed squeezes the fixed width down to the strip
+            // (its splitter hides via CSS :has — nothing left to drag). Class
+            // toggling is safe against re-renders: React never rewrites a
+            // className it did not change.
+            onSideCollapsed: (c: any) => {
+                const wrap = sideWrapRef.current;
+                if (wrap) wrap.classList.toggle('side-collapsed', c);
+            }
         };
         const teardown = mountReact(host, <SidePanel ctx={sideCtx} />);
         return () => {

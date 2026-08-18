@@ -46,7 +46,7 @@ import { ViewTasks, mountReact } from '../mount.jsx';
 import { DomTabs } from '../dom-tabs.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
-import { RailPane, TaskButton } from '../ui.jsx';
+import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
@@ -2023,9 +2023,20 @@ function DestEditor({ dest, channel, version, engineTypes, markDirty, syncRows }
 }
 
 function MappingsRail({ onInsert, dragRef }: any) {
+    // Shares its collapse flag with the wizard's rail — same rail, same choice.
+    const [collapsed, setCollapsed] = useSideCollapse('dest-mappings');
+    if (collapsed) {
+        return <CollapsedSideStrip className="panel-strip" label="Destination Mappings"
+            onExpand={() => setCollapsed(false)} />;
+    }
     return (
         <div className="panel dest-mappings w-[216px] flex-[0_0_240px] flex flex-col self-stretch mt-0">
-            <div className="panel-header">Destination Mappings</div>
+            <div className="panel-header">
+                Destination Mappings
+                <div className="panel-tools">
+                    <SideCollapseButton label="Destination Mappings" onCollapse={() => setCollapsed(true)} />
+                </div>
+            </div>
             <div className="overflow-auto flex-1 py-1 px-0">
                 {DESTINATION_MAPPINGS.map(([label, token]) => (
                     <div key={token} draggable title={token}
@@ -2366,7 +2377,13 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         <div className="flex-1 min-h-0 dest-layout flex gap-3.5 items-stretch"
             onDragOver={onMappingDragOver} onDrop={onMappingDrop}>
             <div className="flex-auto min-w-0 flex flex-col min-h-0" onFocus={trackFocus}>
-                <div className="panel flex-none"><div className="panel-body flush" ref={tableHostRef} /></div>
+                {/* The editor area below reserves a scrollbar gutter; reserve the
+                    identical gutter here (overflow-y creates the scroll container
+                    the property needs) so the grid's right edge lines up with the
+                    settings panels. */}
+                <div className="flex-none overflow-y-hidden [scrollbar-gutter:stable]">
+                    <div className="panel"><div className="panel-body flush" ref={tableHostRef} /></div>
+                </div>
                 <div className="mt-[13px] flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
                     <DestEditor dest={selectedDest()} channel={channel} version={version}
                         engineTypes={engineTypes} markDirty={markDirty}
