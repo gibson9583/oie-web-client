@@ -60,11 +60,10 @@ function createServer(handler: http.RequestListener, tls: TlsConfig | null): htt
 app.disable('x-powered-by');
 
 // --- Content-Security-Policy -------------------------------------------------
-// Same-origin by default. Monaco is now served locally (/vendor/monaco, see
-// below) so it needs no CDN — the only external origin left is Google Fonts
-// (fonts.googleapis.com / fonts.gstatic.com), which degrades gracefully to the
-// system font fallbacks when unreachable (air-gapped). data: covers the
-// attachment viewers' inline images/frames.
+// Fully same-origin: Monaco (/vendor/monaco) and the webfonts (/vendor/fonts,
+// both built by tools/build-vendor.mjs) are served locally, so no external
+// origin is needed at all and the app renders as designed air-gapped. data:
+// covers the attachment viewers' inline images/frames.
 //
 // script-src carries no 'unsafe-inline'/'unsafe-eval': the shell's ONE inline
 // script (the importmap) is authorized by a per-response nonce the shell route
@@ -76,8 +75,8 @@ const cspFor = (nonce: string) => [
     "default-src 'self'",
     DEV ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
         : `script-src 'self' 'nonce-${nonce}'`,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data:",
     "worker-src 'self' blob:",
     `connect-src 'self'${DEV ? ' ws: wss:' : ''}`,
@@ -142,6 +141,12 @@ app.get('/webadmin/config.json', (req: Request, res: Response) => {
 // fall back to the plain textarea. Files are (re)built per install, so revalidate
 // rather than cache immutably.
 app.use('/vendor/monaco', express.static(path.join(clientDir, 'vendor', 'monaco'),
+    { maxAge: '1d', dotfiles: 'deny' }));
+
+// Webfonts (Archivo + IBM Plex Mono), vendored from the Fontsource packages by
+// the same script — index.html links /vendor/fonts/fonts.css in place of the
+// Google Fonts CDN. Same serving rationale as Monaco above.
+app.use('/vendor/fonts', express.static(path.join(clientDir, 'vendor', 'fonts'),
     { maxAge: '1d', dotfiles: 'deny' }));
 
 // --- Plugins -----------------------------------------------------------------
