@@ -25,7 +25,7 @@ import { getPref } from '../../core/prefs.js';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { mountReact, ViewTasks } from '../mount.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
-import { RailPane, TaskButton } from '../ui.jsx';
+import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { useWizardModel, useWizardSteps, useLeaveGuard, WizardStepper, WizardHeader } from './wizard-frame.jsx';
 import { createEmbeddedEditor } from './filter-transformer.jsx';
@@ -53,6 +53,28 @@ function connectorIcon(name: any) {
     if (n.includes('smtp') || n.includes('jms') || n.includes('mail')) return 'mail';
     if (n.includes('dicom')) return 'file';
     return 'puzzle';
+}
+
+/** Steps/rules configured on a connector sub-editor (classic editor parity:
+    the task rail's "Edit Filter (2)" labels use the same count). */
+function stepCount(connector: any, key: any) {
+    const el = connector && connector[key];
+    return el ? oie.elementsToArray(el.elements).length : 0;
+}
+const withCount = (label: any, n: any) => (n > 0 ? `${label} (${n})` : label);
+
+// Tab label → the connector field its count comes from.
+const STEP_KEYS: any = { Filter: 'filter', Transformer: 'transformer', Response: 'responseTransformer' };
+
+/* A compact rule/step count on a destination card; zero renders nothing —
+   a bare card IS the "no logic here" signal. */
+function CountBadge({ icon, n, what }: any) {
+    if (!n) return null;
+    return (
+        <span className="dest-badge" title={`${n} ${what}${n === 1 ? '' : 's'}`}>
+            <Icon name={icon} size={9} />{n}
+        </span>
+    );
 }
 
 /** Registered connector transport names for a mode (excludes the '*' fallback). */
@@ -145,7 +167,7 @@ function TransportPicker({ mode, current, onPick }: any) {
 // preview. Its tasks (add/delete/iterator/import/export/validate) are surfaced as an
 // inline toolbar; Save/Back are omitted (the wizard owns those). The editor reads the
 // channel from the store, so we point store.editingChannel at the wizard's channel.
-function EmbeddedElementEditor({ channel, metaDataId, kind, onChange }: any) {
+function EmbeddedElementEditor({ channel, metaDataId, kind, onChange, viewportOffset = 340 }: any) {
     const hostRef = useRef<any>(null);
     const [ctx, setCtx] = useState<any>(null);
     const [, forceBar] = useReducer((x: any) => x + 1, 0);
@@ -195,7 +217,13 @@ function EmbeddedElementEditor({ channel, metaDataId, kind, onChange }: any) {
                 {t && <button type="button" className="btn btn-sm" onClick={t.exportElements}><Icon name="export" size={13} />Export</button>}
                 {t && <button type="button" className="btn btn-sm" onClick={t.validateElements}><Icon name="check" size={13} />Validate</button>}
             </div>
-            <div ref={hostRef} className="flex flex-col h-[576px] border border-line rounded-md overflow-hidden" />
+            {/* Grow with the window instead of a fixed 576px box — the wizard's
+                steps otherwise leave the space under the editor dead. The offset
+                approximates the chrome above/below (header, stepper, tabs,
+                toolbar, footer); when the window is too short for that, the 576px
+                floor keeps the grid usable and the step body scrolls as before. */}
+            <div ref={hostRef} className="flex flex-col border border-line rounded-md overflow-hidden"
+                style={{ height: `max(576px, calc(100dvh - ${viewportOffset}px))` }} />
         </div>
     );
 }
@@ -254,6 +282,9 @@ function insertIntoTarget(target: any, token: any, position?: any) {
 function DestinationMappingsRail({ hostRef }: any) {
     const targetRef = useRef<any>(null);   // last focused insertable inside hostRef
     const dragTokenRef = useRef<any>(null);
+    // Shares its collapse flag with the classic editor's rail (same rail). The
+    // early return sits AFTER every hook so the hook order never changes.
+    const [collapsed, setCollapsed] = useSideCollapse('dest-mappings');
 
     useEffect(() => {
         const host = hostRef.current;
@@ -305,9 +336,19 @@ function DestinationMappingsRail({ hostRef }: any) {
         }
     };
 
+    if (collapsed) {
+        return <CollapsedSideStrip className="panel-strip wiz-mappings-strip" label="Destination Mappings"
+            onExpand={() => setCollapsed(false)} />;
+    }
+
     return (
         <div className="panel !mt-0 w-full lg:w-[216px] flex-none self-stretch">
-            <div className="panel-header">Destination Mappings</div>
+            <div className="panel-header">
+                Destination Mappings
+                <div className="panel-tools">
+                    <SideCollapseButton label="Destination Mappings" onCollapse={() => setCollapsed(true)} />
+                </div>
+            </div>
             <div className="panel-body flex flex-col gap-2">
                 <div className="border border-line rounded overflow-auto max-h-[324px] min-h-[108px]">
                     {DESTINATION_MAPPINGS.map(([label, token]) => (
@@ -334,15 +375,25 @@ function DestinationMappingsRail({ hostRef }: any) {
 function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex }: any) {
     const isDest = mode === 'DESTINATION';
     const TABS = isDest ? ['Settings', 'Filter', 'Transformer', 'Response'] : ['Settings', 'Filter', 'Transformer'];
+    // Wizard chrome above/below the embedded editor (header, stepper, tab bar,
+    // toolbar, footer); the Destinations step adds its name row above the tabs.
+    const editorOffset = isDest ? 395 : 350;
     const [tab, setTab] = useState('Settings');
     const settingsHostRef = useRef<any>(null);   // focus/drop scope for the Destination Mappings rail
     return (
         <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-4">
-            <TabsPrimitive.List className="tabs overflow-x-auto"
+            {/* m-0 drops .tabs' built-in 7x13 margins so the pill left-aligns
+                with the section content below (the Root's gap spaces the rows). */}
+            <TabsPrimitive.List className="tabs overflow-x-auto m-0"
                 aria-label={isDest ? 'Destination sections' : 'Source sections'}>
                 {TABS.map((t: any) => (
                     <TabsPrimitive.Trigger key={t} value={t}
-                        className={`tab whitespace-nowrap ${tab === t ? 'active' : ''}`}>{t}</TabsPrimitive.Trigger>
+                        className={`tab whitespace-nowrap ${tab === t ? 'active' : ''}`}>
+                        {/* "Filter (2)" at a glance; zero-count labels stay bare. An
+                            edit in the embedded editor bumps the wizard, so the
+                            counts track live. */}
+                        {STEP_KEYS[t] ? withCount(t, stepCount(connector, STEP_KEYS[t])) : t}
+                    </TabsPrimitive.Trigger>
                 ))}
             </TabsPrimitive.List>
 
@@ -386,16 +437,16 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
             )}</TabsPrimitive.Content>
 
             <TabsPrimitive.Content value="Filter">
-                {tab === 'Filter' && <EmbeddedElementEditor key={`f-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="filter" onChange={onChange} />}
+                {tab === 'Filter' && <EmbeddedElementEditor key={`f-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="filter" onChange={onChange} viewportOffset={editorOffset} />}
             </TabsPrimitive.Content>
 
             <TabsPrimitive.Content value="Transformer">
-                {tab === 'Transformer' && <EmbeddedElementEditor key={`t-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="transformer" onChange={onChange} />}
+                {tab === 'Transformer' && <EmbeddedElementEditor key={`t-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="transformer" onChange={onChange} viewportOffset={editorOffset} />}
             </TabsPrimitive.Content>
 
             {isDest && (
                 <TabsPrimitive.Content value="Response">
-                    {tab === 'Response' && <EmbeddedElementEditor key={`r-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="response" onChange={onChange} />}
+                    {tab === 'Response' && <EmbeddedElementEditor key={`r-${connector.metaDataId}`} channel={channel} metaDataId={connector.metaDataId} kind="response" onChange={onChange} viewportOffset={editorOffset} />}
                 </TabsPrimitive.Content>
             )}
         </TabsPrimitive.Root>
@@ -444,22 +495,38 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
     const sel = dests[selected] || dests[0];
     return (
         <div className="flex flex-col lg:flex-row gap-4 items-start">
-            <div className="w-full lg:w-[216px] flex-none flex flex-col gap-2">
+            {/* The rail rides along while the (long) connector editor scrolls;
+                past ~a dozen destinations the list scrolls on its own instead of
+                growing past the viewport. Both only make sense side-by-side, so
+                they gate on the same lg breakpoint that stacks the layout. */}
+            <div className="w-full lg:w-[216px] flex-none flex flex-col gap-2 lg:sticky lg:top-0">
                 <div className="cform-section-title">Destinations</div>
-                <div className="step-list panel overflow-visible p-1.5 min-h-[126px]">
+                <div className="step-list panel overflow-auto p-1.5 min-h-[126px] lg:max-h-[calc(100dvh_-_290px)]">
                     {dests.map((d: any, i: any) => (
-                        <div key={d.metaDataId} className={`step-item min-w-0 ${i === selected ? 'selected' : ''}`} onClick={() => onSelect(i)}
+                        /* Two-line card (name / connector type), not the one cramped
+                           row both used to truncate into. flex-col + items-stretch
+                           override .step-item's row layout (utilities outrank
+                           @layer components). */
+                        <div key={d.metaDataId} className={`step-item flex-col items-stretch gap-1 min-w-0 ${i === selected ? 'selected' : ''}`}
+                            onClick={() => onSelect(i)}
                             title={`${d.metaDataId}: ${d.name} — ${d.transportName}`}>
                             <div className="flex items-center gap-2 min-w-0">
+                                <div className="flex-1 min-w-0 truncate font-semibold">{d.name}</div>
                                 {/* The metadata id, as the classic editor's destination table
                                     shows it: it is what response/queue references and the
                                     Destination Mappings are written against, so it has to be
-                                    readable here too — the names truncate at this width. */}
+                                    readable here too. */}
                                 <span className="step-id">{d.metaDataId}</span>
-                                <Icon name={connectorIcon(d.transportName)} size={14} />
-                                <div className="flex-1 min-w-0 truncate">{d.name}</div>
                             </div>
-                            <div className="step-type truncate">{d.transportName}</div>
+                            <div className="step-type flex items-center gap-1.5 min-w-0">
+                                <Icon name={connectorIcon(d.transportName)} size={12} />
+                                <span className="truncate">{d.transportName}</span>
+                                <span className="ml-auto flex-none flex items-center gap-1">
+                                    <CountBadge icon="filter" n={stepCount(d, 'filter')} what="filter rule" />
+                                    <CountBadge icon="transform" n={stepCount(d, 'transformer')} what="transformer step" />
+                                    <CountBadge icon="undo" n={stepCount(d, 'responseTransformer')} what="response transformer step" />
+                                </span>
+                            </div>
                         </div>
                     ))}
                 </div>

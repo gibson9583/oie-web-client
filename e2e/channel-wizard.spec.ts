@@ -165,6 +165,30 @@ test.describe('channel wizard', () => {
         await expect(page.getByText('Mapper', { exact: true }).first()).toBeVisible();
     });
 
+    test('tab labels and destination cards carry live rule/step counts', async ({ page }) => {
+        await mockEngine(page);
+        await page.goto('/channels/new/guided');
+        await page.locator('.view-body input').first().fill('Count Channel');
+        await next(page).click();   // Dependencies
+        await next(page).click();   // Channel Options
+        await next(page).click();   // Source
+
+        // Zero-count labels stay bare; adding a step renames the tab in place.
+        await page.getByRole('tab', { name: 'Transformer', exact: true }).click();
+        await page.getByRole('button', { name: /Add Step/ }).click();
+        await page.locator('.modal .step-item', { hasText: 'Mapper' }).first().click();
+        await expect(page.getByRole('tab', { name: 'Transformer (1)', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Filter', exact: true })).toBeVisible();
+
+        // A destination filter rule shows in its tab AND as a badge on the card.
+        await next(page).click();   // Destinations
+        await page.getByRole('tab', { name: 'Filter', exact: true }).click();
+        await page.getByRole('button', { name: /Add Rule/ }).click();
+        await page.locator('.modal .step-item', { hasText: 'Rule Builder' }).first().click();
+        await expect(page.getByRole('tab', { name: 'Filter (1)', exact: true })).toBeVisible();
+        await expect(page.locator('.step-list .dest-badge', { hasText: '1' })).toHaveCount(1);
+    });
+
     test('data types are settable on the connector Settings tab', async ({ page }) => {
         await mockEngine(page);
         await page.goto('/channels/new/guided');

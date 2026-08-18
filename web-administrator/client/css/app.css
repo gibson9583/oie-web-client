@@ -2208,6 +2208,23 @@ input.grid-name::placeholder { color: var(--text-faint); }
     text-align: right;
 }
 .step-item .step-type { font-size: 9.5px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
+/* Wizard destination cards: per-connector rule/step counts riding the type
+   line — smaller than .tag so the connector name still leads the card. */
+.dest-badge {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2.5px;
+    padding: 1px 4.5px;
+    border: 1px solid var(--line-strong);
+    border-radius: 89px;
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: normal;
+    color: var(--text-dim);
+    background: var(--bg2);
+}
+.dest-badge svg { width: 9px; height: 9px; }
 
 /* ---- Sidebar task panes (classic Administrator layout) ---------------------------------------------------------------------------------- */
 
