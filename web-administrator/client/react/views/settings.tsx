@@ -178,9 +178,8 @@ const DEFAULT_META_COLUMNS = {
 };
 
 function ServerTab({ ctx }: any) {
-    // Round-trip objects (mutated on save; unknown fields survive).
+    // Round-trip object (mutated on save; unknown fields survive).
     const settingsRef = useRef<any>(null);        // ServerSettings
-    const updateSettingsRef = useRef<any>(null);  // UpdateSettings {statsEnabled,...} | null
     const [form, setForm] = useState<any>(null);  // null = loading
     const [loadError, setLoadError] = useState<any>(null);
     const patch = (p: any) => setForm((f: any) => ({ ...f, ...p }));
@@ -195,14 +194,6 @@ function ServerTab({ ctx }: any) {
             setLoadError(String(e.message || e));
             return;
         }
-        /* GET /server/updateSettings (verified in ConfigurationServletInterface;
-           model UpdateSettings.statsEnabled). Best effort — the radios are
-           simply omitted if it cannot be loaded. */
-        try {
-            updateSettingsRef.current = (await api.server.updateSettings()) || {};
-        } catch {
-            updateSettingsRef.current = null;
-        }
         const s = settingsRef.current;
         const metaCols = api.asList(s.defaultMetaDataColumns, 'metaDataColumn')
             .filter(c => c && typeof c === 'object');
@@ -213,9 +204,6 @@ function ServerTab({ ctx }: any) {
             bgColor: colorToHex(s.defaultAdministratorBackgroundColor, '#2a75b2'),
             autoLogout: s.administratorAutoLogoutIntervalEnabled === true,
             autoLogoutInterval: String(s.administratorAutoLogoutIntervalField ?? 5),
-            /* Default is "yes" when statsEnabled is null/absent, matching the
-               Swing SettingsPanelServer behavior. */
-            usageStats: updateSettingsRef.current ? updateSettingsRef.current.statsEnabled !== false : null,
             clearMap: s.clearGlobalMap === true,
             queueBuffer: String(s.queueBufferSize ?? ''),
             metaCols,
@@ -275,10 +263,6 @@ function ServerTab({ ctx }: any) {
             settings.loginNotificationMessage = f.loginNotificationMessage;
 
             await api.server.setSettings(settings);
-            if (f.usageStats !== null && updateSettingsRef.current) {
-                updateSettingsRef.current.statsEnabled = f.usageStats;
-                await api.server.setUpdateSettings(updateSettingsRef.current);
-            }
             // Re-tint the rail + topbar live with the saved color.
             applyEnvironmentColor(settings.defaultAdministratorBackgroundColor);
             toast('Server settings saved');
@@ -510,11 +494,6 @@ function ServerTab({ ctx }: any) {
                         <input type="number" min="1" disabled={!form.autoLogout} value={form.autoLogoutInterval}
                             onChange={(e: any) => patch({ autoLogoutInterval: e.target.value })} />
                     </Field>
-                    {form.usageStats !== null && (
-                        <Field label="Provide usage statistics">
-                            <YesNo value={form.usageStats} onChange={(v: any) => patch({ usageStats: v })} />
-                        </Field>
-                    )}
                 </div></div>
             </div>
             <div className="panel">
