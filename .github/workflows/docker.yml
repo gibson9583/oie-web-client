@@ -53,18 +53,20 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_NAME }}
-          # main -> latest; a vX.Y.Z tag -> X.Y.Z and X.Y (latest is NOT moved
-          # by releases — it tracks the latest main commit); a PR -> pr-N,
-          # updated on every push to the PR.
+          # main -> main (a rolling build of the branch tip); a vX.Y.Z release
+          # tag -> X.Y.Z, X.Y and latest; a PR -> pr-N, updated on every push
+          # to the PR. `latest` therefore always means "newest release" — the
+          # Docker Hub convention `docker pull` relies on when no tag is given.
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=pr
-          # latest=auto would also move `latest` on release tags; only the
-          # explicit rule above (main pushes) may set it.
+          # latest=auto pins `latest` to non-prerelease semver tag builds only:
+          # branch pushes never move it, and a v0.7.0-beta gets 0.7.0-beta
+          # without touching it.
           flavor: |
-            latest=false
+            latest=auto
       - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:

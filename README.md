@@ -145,8 +145,9 @@ Docker deployment instead; the embedded copy simply remains available at
 
 Prebuilt images are published to Docker Hub as
 [`gibson9583/oie-web-client`](https://hub.docker.com/r/gibson9583/oie-web-client):
-`latest` tracks the latest `main` commit, `X.Y.Z` / `X.Y` are cut from releases,
-and `pr-N` previews open pull requests (removed when the PR closes).
+`latest` is the latest release, `X.Y.Z` / `X.Y` pin specific releases, `main`
+is a rolling build of the `main` branch tip, and `pr-N` previews open pull
+requests (removed when the PR closes).
 
 ```bash
 docker run --rm -p 3030:3030 \
