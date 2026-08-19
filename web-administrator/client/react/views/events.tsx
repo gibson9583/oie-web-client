@@ -135,7 +135,7 @@ function Field({ label, children }: any) {
 /* ---- detail pane ---- */
 
 function EventDetail({ event, username }: any) {
-    if (!event) return <div className="dt-empty">Select an event to view its details.</div>;
+    if (!event) return <div className="text-text-faint flex-none py-[8px] px-3.5">Select an event to view its details.</div>;
     const kv = (label: any, value: any) => (
         <span className="flex items-center gap-[4px]">
             <span className="text-text-faint text-[9.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
@@ -154,6 +154,7 @@ function EventDetail({ event, username }: any) {
                 {kv('User', username(event.userId))}
                 {kv('IP', displayValue(event.ipAddress))}
             </div>
+            <div className="flex-1 min-h-0 overflow-auto">
             {attributes.length
                 ? <table className="dt">
                     <thead><tr><th className="w-[1%]">Name</th><th>Value</th></tr></thead>
@@ -165,6 +166,7 @@ function EventDetail({ event, username }: any) {
                     ))}</tbody>
                 </table>
                 : <div className="text-text-faint py-3 px-3.5">This event has no attributes.</div>}
+            </div>
         </>
     );
 }
@@ -323,6 +325,27 @@ export function EventsView() {
         searchRef.current();
     }, []);
 
+    /* Detail pane height: collapsed to the slim strip while nothing is
+       selected, restored to the last expanded/dragged height on selection.
+       The global .split-handle mutates style.height directly during drags, so
+       React never renders the height — the layout effect applies it only on
+       open/close transitions (same mechanism as the message browser). */
+    const detailPaneRef = useRef<any>(null);
+    const detailHeightRef = useRef('35%');   // last expanded height
+    const prevDetailOpenRef = useRef(false);
+    const detailOpen = !!selected;
+    useLayoutEffect(() => {
+        const el = detailPaneRef.current;
+        if (!el) return;
+        if (detailOpen && !prevDetailOpenRef.current) {
+            el.style.height = detailHeightRef.current;
+        } else if (!detailOpen) {
+            if (prevDetailOpenRef.current) detailHeightRef.current = el.style.height || detailHeightRef.current;
+            el.style.height = '';            // the h-[36px] class governs the strip
+        }
+        prevDetailOpenRef.current = detailOpen;
+    }, [detailOpen]);
+
     const enterSearch = (e: any) => { if (e.key === 'Enter') search(); };
     const from = page.total === 0 ? 0 : page.offset + 1;
     const to = Math.min(page.offset + page.limit, page.total);
@@ -413,7 +436,7 @@ export function EventsView() {
                     <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(page.total)}`}</span>
                 </div>
                 <div className="split-handle mx-[13px] my-1" data-orient="v" data-resize="next" />
-                <div className="flex-none h-[35%] min-h-[43px] overflow-auto panel mx-[13px] mb-3">
+                <div ref={detailPaneRef} className="flex-none h-[36px] overflow-hidden flex flex-col panel mx-[13px] mb-3">
                     <EventDetail event={selected} username={username} />
                 </div>
             </div>

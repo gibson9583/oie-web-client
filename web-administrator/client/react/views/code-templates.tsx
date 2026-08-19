@@ -19,7 +19,7 @@
  * refetch the new scope.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
@@ -631,6 +631,33 @@ export function CodeTemplatesView() {
 
     // Selection-dependent task visibility (Swing Code Template Tasks pane).
     const found = resolve(selected);
+
+    /* Editor pane collapse: while nothing is selected the tree pane (the
+       .split-handle's drag target) flexes to fill the column and the editor
+       shrinks to a slim strip; selection restores the class-default or last
+       dragged tree height. The handle mutates style.height directly during
+       drags, so the layout effect writes styles only on open/close transitions
+       (the message browser's detail-pane mechanism, inverted for this
+       geometry). */
+    const treePaneRef = useRef<any>(null);
+    const treeHeightRef = useRef('');         // '' = the h-[288px] class default
+    const prevEditorOpenRef = useRef(false);
+    const editorOpen = !!found;
+    useLayoutEffect(() => {
+        const el = treePaneRef.current;
+        if (!el) return;
+        if (editorOpen) {
+            if (!prevEditorOpenRef.current) {
+                el.style.flex = '';
+                el.style.height = treeHeightRef.current;
+            }
+        } else {
+            if (prevEditorOpenRef.current) treeHeightRef.current = el.style.height || treeHeightRef.current;
+            el.style.flex = '1 1 0%';
+            el.style.height = 'auto';
+        }
+        prevEditorOpenRef.current = editorOpen;
+    }, [editorOpen]);
     const isTemplate = !!found && selected && selected.kind === 'template';
     const isLibrary = !!found && selected && selected.kind === 'library';
 
@@ -674,7 +701,7 @@ export function CodeTemplatesView() {
                     When maximized, the top pane (data-editor-overtake) is hidden so the
                     editor fills the column; the right Context panel stays. */}
                 <div className={'split vertical flex-1 min-w-0' + (editorMax ? ' is-editor-max' : '')}>
-                    <div className="split-a h-[288px] flex-none flex flex-col min-h-0" data-editor-overtake>
+                    <div ref={treePaneRef} className="split-a h-[288px] flex-none flex flex-col min-h-0" data-editor-overtake>
                         <div className="flex-1 min-h-0 overflow-auto oie-tablecard px-[13px] pt-3">
                             <TreeTable
                                 data={treeData}
@@ -708,19 +735,21 @@ export function CodeTemplatesView() {
                             </span>
                         </div>
                     </div>
-                    <div className="split-handle mx-[13px]" data-orient="v" data-resize="prev" data-editor-overtake />
-                    <div className="split-b flex flex-col min-h-0">
-                        <div className="flex flex-col flex-1 min-h-0 py-3.5 px-4 overflow-auto">
-                            <EditorPane found={found} kind={selected && selected.kind}
-                                entries={entries}
-                                markDirty={markDirty}
-                                focusName={focusName}
-                                onFocusConsumed={() => setFocusName(false)}
-                                onMoveTemplate={moveTemplate}
-                                maximized={editorMax}
-                                onToggleMax={() => setEditorMax((m: any) => !m)} />
+                    {found ? <>
+                        <div className="split-handle mx-[13px]" data-orient="v" data-resize="prev" data-editor-overtake />
+                        <div className="split-b flex flex-col min-h-0">
+                            <div className="flex flex-col flex-1 min-h-0 py-3.5 px-4 overflow-auto">
+                                <EditorPane found={found} kind={selected && selected.kind}
+                                    entries={entries}
+                                    markDirty={markDirty}
+                                    focusName={focusName}
+                                    onFocusConsumed={() => setFocusName(false)}
+                                    onMoveTemplate={moveTemplate}
+                                    maximized={editorMax}
+                                    onToggleMax={() => setEditorMax((m: any) => !m)} />
+                            </div>
                         </div>
-                    </div>
+                    </> : <div className="split-b flex-none text-text-faint py-[8px] px-3.5">Select a library or code template to edit it.</div>}
                 </div>
             </div>
         </div>
@@ -731,14 +760,6 @@ export function CodeTemplatesView() {
    library / template editors. Keyed on the selected id so per-selection state
    (channel filter, focus) resets when the selection changes. */
 function EditorPane({ found, kind, entries, markDirty, focusName, onFocusConsumed, onMoveTemplate, maximized, onToggleMax }: any) {
-    if (!found) {
-        return (
-            <div className="dt-empty">
-                <div className="empty-icon"><Icon name="code" size={30} /></div>
-                <div>Select a library or code template</div>
-            </div>
-        );
-    }
     if (kind === 'library') {
         return <LibraryEditor key={'lib:' + found.entry.library.id} entry={found.entry}
             markDirty={markDirty} focusName={focusName} onFocusConsumed={onFocusConsumed} />;
