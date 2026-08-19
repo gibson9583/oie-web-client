@@ -915,6 +915,39 @@ export class DataTable<T = any> {
     }
 }
 
+/* Delegated hover tooltips for truncated table cells: any `.dt` cell whose
+   content is ellipsized (the cell itself, or a `truncate` span inside it) gets
+   its full text as a native title — every table, React or imperative, plugin
+   or built-in, with no per-view wiring. Cells that set their own title keep it
+   (only titles marked as ours are ever written or cleared). Wired once at boot
+   next to initSplitters(). */
+let truncationTitlesInstalled = false;
+export function initTruncationTitles(): void {
+    if (truncationTitlesInstalled) return;
+    truncationTitlesInstalled = true;
+    document.addEventListener('mouseover', (e) => {
+        const target = e.target instanceof Element ? e.target : null;
+        const cell = target?.closest<HTMLElement>('table.dt td, table.dt th');
+        if (!cell) return;
+        if (cell.title && cell.dataset.autoTitle === undefined) return;  // renderer's own title
+        // The ellipsis may sit on the cell or on a clipped element inside it
+        // (e.g. a max-width `truncate` span): check the hovered chain up to the cell.
+        let truncated = false;
+        for (let el: HTMLElement | null = target as HTMLElement; el; el = el === cell ? null : el.parentElement) {
+            if (el.scrollWidth > el.clientWidth + 1) { truncated = true; break; }
+            if (el === cell) break;
+        }
+        const text = truncated ? (cell.textContent || '').trim() : '';
+        if (text) {
+            cell.title = text;
+            cell.dataset.autoTitle = '1';
+        } else if (cell.dataset.autoTitle !== undefined) {
+            cell.removeAttribute('title');
+            delete cell.dataset.autoTitle;
+        }
+    });
+}
+
 /* ---- form field helpers ------------------------------------------------------------------------------ */
 
 export function field(label: string | Node, control: Node, hint?: string): HTMLElement {

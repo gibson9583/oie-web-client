@@ -206,6 +206,7 @@ export declare class DataTable<T = any> {
     render(): void;
     handleSelect(row: T, e: MouseEvent): void;
 }
+export declare function initTruncationTitles(): void;
 export declare function field(label: string | Node, control: Node, hint?: string): HTMLElement;
 export declare function textInput(value?: string, attrs?: ElementAttrs): HTMLInputElement;
 export declare function numberInput(value?: string | number, attrs?: ElementAttrs): HTMLInputElement;

@@ -19,7 +19,7 @@ import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
-import { h, icon, modal, toast, confirmDialog } from '@oie/web-ui';
+import { h, icon, modal, toast, confirmDialog, initTruncationTitles } from '@oie/web-ui';
 import { CommandPalette } from './command-palette.jsx';
 import { getPref } from '../core/prefs.js';
 import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
@@ -711,6 +711,7 @@ export function App() {
         store.initTheme();
         store.initRailCollapsed();
         initSplitters();
+        initTruncationTitles();
         let alive = true;
         (async () => {
             // Fetch the web-admin config (engine list, devMode) BEFORE the auth check
