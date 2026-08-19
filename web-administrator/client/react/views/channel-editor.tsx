@@ -2862,7 +2862,11 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         <div className="view-body flex flex-col flex-1 min-h-0">
             <TabsPrimitive.Root value={activeTab} onValueChange={setActiveTab}
                 className="flex flex-col flex-1 overflow-hidden min-h-0">
-                <TabsPrimitive.List className="tabs" aria-label="Channel sections">
+                {/* mx-0/max-w-full: .tabs carries 13px side margins for flush-body
+                    views (Settings), but THIS view-body is padded (16px) and the
+                    section cards below sit flush against that padding — the strip
+                    must too, or it floats 13px right of every card edge. */}
+                <TabsPrimitive.List className="tabs mx-0 max-w-full" aria-label="Channel sections">
                     {tabLabels.map((label: any) => (
                         <TabsPrimitive.Trigger key={label} value={label}
                             className={'tab' + (label === activeTab ? ' active' : '')}>{label}</TabsPrimitive.Trigger>
