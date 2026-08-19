@@ -1,6 +1,6 @@
 {
   "name": "oie-web-client",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "OIE Web Client monorepo: the web administrator app + the @oie/web-* framework packages plugin authors build against.",
