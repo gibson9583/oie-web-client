@@ -107,7 +107,6 @@ task/`JPopupMenu` behavior.
 - `doRefreshChannels` — Refresh
 - `doRedeployAll` — Redeploy All
 - `doDeployChannel` — Deploy Channel *(Debug Channel is `channelEdit/doDebugDeployFromChannelView`, in the channel editor)*
-- `doEditGlobalScripts` — Edit Global Scripts · `doEditCodeTemplates` — Edit Code Templates
 - `doNewChannel` — New Channel · `doImportChannel` — Import Channel
 - `doExportAllChannels` — Export All Channels · `doExportChannel` — Export Channel
 - `doDeleteChannel` — Delete Channel · `doCloneChannel` — Clone Channel

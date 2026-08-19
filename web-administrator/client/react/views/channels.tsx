@@ -584,10 +584,7 @@ export function ChannelsView() {
             '-',
             { label: 'New Group', icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
             { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
-            { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() },
-            '-',
-            { label: 'Edit Global Scripts', icon: 'scripts', task: 'doEditGlobalScripts', group: 'channel', onClick: () => router.navigate('/global-scripts') },
-            { label: 'Edit Code Templates', icon: 'code', task: 'doEditCodeTemplates', group: 'channel', onClick: () => router.navigate('/code-templates') }
+            { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() }
         ]);
     }
 
@@ -639,9 +636,6 @@ export function ChannelsView() {
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
             { label: 'Redeploy All', icon: 'deploy', task: 'doRedeployAll', group: 'channel', onClick: () => redeployAllTask() },
-            '-',
-            { label: 'Edit Global Scripts', icon: 'scripts', task: 'doEditGlobalScripts', group: 'channel', onClick: () => router.navigate('/global-scripts') },
-            { label: 'Edit Code Templates', icon: 'code', task: 'doEditCodeTemplates', group: 'channel', onClick: () => router.navigate('/code-templates') },
             '-',
             { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
             { label: 'Import Channel', icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
@@ -1251,8 +1245,6 @@ export function ChannelsView() {
                         <TaskButton label="Refresh" icon="refresh" task="doRefreshChannels" onClick={() => refresh()} />
                         <TaskButton label="Redeploy All" icon="deploy" task="doRedeployAll" onClick={redeployAllTask} />
                         {showDeploy && <TaskButton label="Deploy Channel" icon="deploy" task="doDeployChannel" onClick={() => deployTask(effectiveChannels())} />}
-                        <TaskButton label="Edit Global Scripts" icon="scripts" task="doEditGlobalScripts" onClick={() => router.navigate('/global-scripts')} />
-                        <TaskButton label="Edit Code Templates" icon="code" task="doEditCodeTemplates" onClick={() => router.navigate('/code-templates')} />
                         <TaskButton label="New Channel" icon="plus" primary task="doNewChannel" onClick={newTask} />
                         <TaskButton label="Import Channel" icon="import" task="doImportChannel" onClick={importTask} />
                         {showExport && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={() => exportTask(selectedChannels())} />}
