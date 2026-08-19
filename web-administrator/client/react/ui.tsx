@@ -32,6 +32,10 @@ const TaskGroupContext = createContext(null);
    `group` (optional) is the RBAC task-pane key, provided to child TaskButtons. */
 export function RailPane({
     title, paneKey, group, className, children,
+    /* Flat mode (the view task panes, set by ViewTasks): the header is a plain
+       caption — no disclosure, no chevron — because the task COLUMN collapses as
+       one unit instead of section by section. */
+    flat,
     /* Nav-rail customization hooks (see react/nav-rail.jsx). While customizing,
        `onHeaderClick` replaces the collapse action with a rename, so the header
        stops being a disclosure and drops its expanded state accordingly. */
@@ -40,16 +44,20 @@ export function RailPane({
 }: any) {
     const k = paneKey || title;
     const [collapsed, setCollapsed] = useState(() => paneCollapsed.get(k) || false);
-    const disclosure = !onHeaderClick;
+    const disclosure = !onHeaderClick && !flat;
 
     /* A real <button>: Radix's Trigger wires aria-expanded/aria-controls and the
        element itself brings Enter/Space, which the old div had to reimplement.
        Preflight already strips a button's chrome, so .rail-pane-header only needed
-       a width/alignment line to look identical. */
+       a width/alignment line to look identical.
+       Flat headers are a <div>: a button that does nothing would still be announced
+       as actionable, and the column's hide control (headerExtra) can't nest inside
+       another button. */
+    const HeaderEl: any = flat ? 'div' : 'button';
     const header = (
-        <button type="button" className="rail-pane-header"
-            aria-label={disclosure ? undefined : `Rename group ${title}`}
-            onClick={disclosure ? undefined : onHeaderClick}
+        <HeaderEl {...(flat ? {} : { type: 'button' })} className="rail-pane-header"
+            aria-label={disclosure || flat ? undefined : `Rename group ${title}`}
+            onClick={disclosure || flat ? undefined : onHeaderClick}
             draggable={headerDraggable || undefined}
             onDragStart={onHeaderDragStart}
             onDragEnd={onHeaderDragEnd}
@@ -58,7 +66,7 @@ export function RailPane({
             {headerTitle !== undefined ? headerTitle : <span className="pane-title">{title}</span>}
             {headerExtra}
             {disclosure ? <span className="pane-chevron" aria-hidden="true">▲</span> : null}
-        </button>
+        </HeaderEl>
     );
 
     return (
@@ -116,25 +124,27 @@ export function useSideCollapse(key: any): [boolean, (v: any) => void] {
 /* What remains of a collapsed rail: a slim full-height strip with the rail's
    name set sideways; clicking anywhere on it brings the rail back. Layouts that
    stack the rail under its editor on narrow viewports lay the strip flat again
-   through the same breakpoints (app.css). */
-export function CollapsedSideStrip({ label, onExpand, className }: any) {
+   through the same breakpoints (app.css). The default arrows suit a rail on the
+   RIGHT of its content; a left-hand rail (the view task column) passes the
+   opposite chevrons. */
+export function CollapsedSideStrip({ label, onExpand, className, icon = 'chevL' }: any) {
     return (
         <button type="button" className={'side-strip' + (className ? ' ' + className : '')}
             title={`Show ${label}`} aria-label={`Show ${label}`} aria-expanded="false"
             onClick={onExpand}>
-            <Icon name="chevL" size={13} />
+            <Icon name={icon} size={13} />
             <span className="side-strip-label">{label}</span>
         </button>
     );
 }
 
 /* The matching header affordance on the expanded rail. */
-export function SideCollapseButton({ label, onCollapse }: any) {
+export function SideCollapseButton({ label, onCollapse, icon = 'chevR' }: any) {
     return (
         <button type="button" className="icon-btn side-collapse-btn"
             title={`Hide ${label}`} aria-label={`Hide ${label}`} aria-expanded="true"
             onClick={onCollapse}>
-            <Icon name="chevR" size={14} />
+            <Icon name={icon} size={14} />
         </button>
     );
 }

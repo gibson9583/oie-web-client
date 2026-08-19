@@ -160,3 +160,17 @@ test('unsaved settings edits prompt on tab switch and on leaving the view', asyn
     await page.getByRole('button', { name: "Don't Save", exact: true }).click();
     await expect(page).toHaveURL(/\/channels/);
 });
+
+test('the task-pane column collapse reaches the Settings pane (TasksPane forwards it)', async ({ page }) => {
+    // Settings is the one view whose pane is wrapped (TasksPane hosts the legacy
+    // taskbar DOM); the wrapper must forward ViewTasks' cloned collapse props to
+    // its RailPane or this view alone loses the hide control.
+    await mockEngine(page, FIXTURES);
+    await page.goto('/settings');
+    await page.waitForSelector('.view-tasks .taskbar');
+    await page.locator('.view-tasks .tasks-collapse-btn').click();
+    await expect(page.locator('.view-tasks .side-strip')).toBeVisible();
+    await expect(page.locator('.view-tasks .taskbar')).toHaveCount(0);
+    await page.locator('.view-tasks .side-strip').click();
+    await expect(page.locator('.view-tasks .taskbar')).toBeVisible();
+});

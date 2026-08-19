@@ -251,21 +251,29 @@ test('the dashboard segmented toggles are radiogroups and move on arrows', async
     await expect.poll(async () => (await page.locator('.dash-kpis-wrap').boundingBox())!.height).toBe(0);
 });
 
-test('a task pane collapse is operable and announced', async ({ page }) => {
+test('the task-pane collapse is operable and announced', async ({ page }) => {
     await page.goto('/dashboard');
+    // The COLUMN collapses as one unit; its control rides the first pane header.
+    // The section headers themselves are plain captions — no aria-expanded, no
+    // button role — so nothing announces a disclosure that no longer exists.
     const header = page.locator('.rail-pane-header', { hasText: 'Dashboard Tasks' });
-    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    expect(await header.getAttribute('aria-expanded')).toBeNull();
 
-    const bodyId = await header.getAttribute('aria-controls');
-    expect(bodyId).toBeTruthy();
-    await expect(page.locator(`#${bodyId}`)).toBeVisible();
+    const hide = page.locator('.view-tasks .tasks-collapse-btn');
+    await expect(hide).toHaveAttribute('aria-expanded', 'true');
 
-    // Keyboard-operable: it was a click-only div.
-    await header.focus();
+    // Keyboard-operable both ways. Collapsing unmounts the button, so focus is
+    // re-established on the strip for the return trip.
+    await hide.focus();
     await page.keyboard.press('Enter');
-    await expect(header).toHaveAttribute('aria-expanded', 'false');
+    const strip = page.locator('.view-tasks .side-strip');
+    await expect(strip).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.view-tasks .taskbar')).toHaveCount(0);
+
+    await strip.focus();
     await page.keyboard.press('Enter');
-    await expect(header).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.view-tasks .tasks-collapse-btn')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.view-tasks .taskbar').first()).toBeVisible();
 });
 
 /* ---- typeahead ------------------------------------------------------------- */

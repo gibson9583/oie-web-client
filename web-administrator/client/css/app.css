@@ -2630,8 +2630,8 @@ input.grid-name::placeholder { color: var(--text-faint); }
     padding-top: 7px;
 }
 
-/* Header stays a group caption. Collapsing is kept here — unlike a toolbar this
-   column has vertical space worth reclaiming when a view has several panes. */
+/* Headers are plain group captions here — the COLUMN collapses as one unit via
+   the control in the first header (see ViewTasks), so the panes render flat. */
 .view-tasks .rail-pane-header { padding: 4px 5px 4px; }
 .view-tasks .pane-title {
     font-size: 9px;
@@ -2639,7 +2639,6 @@ input.grid-name::placeholder { color: var(--text-faint); }
     text-transform: uppercase;
     color: var(--text-faint);
 }
-.view-tasks .pane-chevron { color: var(--text-faint); }
 
 .view-tasks .rail-pane-body { --pane-pad-t: 0px; --pane-pad-b: 0px; padding: 0; }
 .view-tasks .rail-pane-body .taskbar {
@@ -2712,7 +2711,6 @@ input.grid-name::placeholder { color: var(--text-faint); }
         padding-left: 9px;
     }
     .view-tasks .rail-pane-header { padding: 0; pointer-events: none; }
-    .view-tasks .pane-chevron { display: none; }
     .view-tasks .rail-pane-body .taskbar { flex-direction: row; flex-wrap: nowrap; gap: 4px; }
     .view-tasks .rail-pane-body .taskbar .btn { width: auto; flex: none; white-space: nowrap; }
     .view-tasks .rail-pane-body .taskbar .sep { width: 1px; height: 14px; margin: 0 2px; }
@@ -3303,6 +3301,44 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
 /* Inside the code-view overlay the moved-in panel sits in a fixed-width pane —
    when only the strip is showing, let the pane shrink to it. */
 .ce-popout-sidepanel:has(.side-strip) { width: auto; flex-basis: auto; }
+
+/* The view task column collapses as ONE unit (see ViewTasks): the hide control
+   rides the first pane's existing header row, and the slim strip replaces the
+   panes as the portal's content — the card shrinks around it, a slim shelf
+   still attached to the rail. flex:1 keeps the whole strip height clickable.
+
+   The width GLIDES like the nav rail's (same 0.22s ease): both states carry
+   explicit widths (auto can't transition — 24px = 5px strip padding + 13px
+   chevron + 5px + 1px card border), and the panes keep their full 139px layout
+   (153px minus the card padding) so the closing box clips them instead of
+   reflowing their buttons. Route changes never animate: a task-less view's
+   column is display:none, and display:none → visible paints fresh. */
+.view-tasks { transition: width 0.22s ease, padding 0.22s ease; overflow-x: hidden; }
+.view-tasks > .rail-pane { min-width: 139px; }
+.view-tasks:has(> .side-strip) { width: 24px; padding: 0; }
+.view-tasks > .side-strip { flex: 1; }
+/* text-dim, not text-faint: a 13px STROKED chevron needs the darker tone the
+   task icons use — faint was legible on the old filled ▲ but vanishes here.
+   padding:0 — the UA button padding (1px 6px) survives under .icon-btn, and at
+   this 18px size it would flex-crush the svg to a 4px sliver. */
+.view-tasks .tasks-collapse-btn { margin-left: auto; width: 18px; height: 18px; padding: 0; color: var(--text-dim); }
+.view-tasks .tasks-collapse-btn svg { width: 13px; height: 13px; }
+/* In the narrow-viewport top-bar layout the column costs height, not width: no
+   hide control there (the headers are inert in bar mode anyway), and a
+   collapsed-from-desktop strip lays flat as a full-width tap target, like the
+   stacked editor rails. Bar mode also unwinds the desktop glide plumbing —
+   auto widths (nothing to animate), no pinned pane layout. */
+@media (max-width: 900px) {
+    .view-tasks { transition: none; }
+    .view-tasks > .rail-pane { min-width: 0; }
+    .view-tasks:has(> .side-strip) { width: auto; }
+    .view-tasks .tasks-collapse-btn { display: none; }
+    .view-tasks > .side-strip { flex-direction: row; justify-content: center; padding: 5px 13px; }
+    .view-tasks > .side-strip .side-strip-label { writing-mode: horizontal-tb; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .view-tasks { transition: none; }
+}
 
 /* ── Reusable card vocabulary (apply across views for one consistent look) ─
    `panel`         → the card surface (border + radius + elev); clips to its

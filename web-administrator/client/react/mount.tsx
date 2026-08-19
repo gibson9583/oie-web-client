@@ -19,11 +19,13 @@
 
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, Children, cloneElement, isValidElement } from 'react';
 import { createPortal } from 'react-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './queries.js';
 import { ErrorBoundary } from './error-boundary.jsx';
+import { useSideCollapse, CollapsedSideStrip } from './ui.jsx';
+import { Icon } from './bridges.jsx';
 
 // The rail element React views portal their task panes into. Set by the shell
 // on mount, read when each view mounts.
@@ -75,9 +77,38 @@ export function mountReact(hostEl: any, element: any, { label = 'This panel fail
 }
 
 // Render task panes into the rail. Children should be <RailPane> nodes (one per
-// task group), matching the classic stacked task-pane look.
+// task group), matching the classic stacked task-pane look — or components that
+// forward extra props to their RailPane (settings' TasksPane), since the
+// collapse wiring below arrives via cloneElement.
+//
+// The COLUMN is what collapses (one shared flag across views, persisted like
+// the editor side rails): its hide control rides the first pane's existing
+// header row, and the panes render flat — the per-section disclosures retired
+// in favor of the one collapse that reclaims real space. Collapsed, the slim
+// strip REPLACES the panes as the portal's content, so a view that declares no
+// tasks still portals nothing and `.view-tasks:empty` keeps hiding the column.
+// Arrows point opposite the editor rails' because this rail sits left of the
+// content it serves.
 export function ViewTasks({ children }: any) {
     const host = useContext(TasksHostContext);
+    const [collapsed, setCollapsed] = useSideCollapse('view-tasks');
     if (!host) return null;
-    return createPortal(children, host);
+    if (collapsed) {
+        return createPortal(
+            <CollapsedSideStrip label="Tasks" icon="chevR" onExpand={() => setCollapsed(false)} />,
+            host);
+    }
+    const hideBtn = (
+        <button type="button" className="icon-btn tasks-collapse-btn"
+            title="Hide the task pane" aria-label="Hide the task pane" aria-expanded="true"
+            onClick={() => setCollapsed(true)}>
+            <Icon name="chevL" size={12} />
+        </button>
+    );
+    return createPortal(
+        Children.toArray(children).map((pane: any, i: number) =>
+            isValidElement(pane)
+                ? cloneElement(pane as any, { flat: true, ...(i === 0 ? { headerExtra: hideBtn } : {}) })
+                : pane),
+        host);
 }

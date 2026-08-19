@@ -1777,7 +1777,11 @@ function SettingsTab({ def, ctx }: any) {
 
 // Hosts the legacy taskbar DOM (built by the active tab via setTasks) inside the
 // rail. Rebuilds the .taskbar children whenever the tab's task spec changes.
-function TasksPane({ title, items }: any) {
+// Extra props pass through to the RailPane: ViewTasks clones its children with
+// the column-collapse wiring (`flat`, and the hide chevron as `headerExtra`),
+// and a wrapper that swallowed them left Settings the one view that couldn't
+// collapse its task pane.
+function TasksPane({ title, items, ...paneProps }: any) {
     const ref = useRef<any>(null);
     useEffect(() => {
         const host = ref.current;
@@ -1792,7 +1796,7 @@ function TasksPane({ title, items }: any) {
         return () => host.replaceChildren();
     }, [title, items]);
     return (
-        <RailPane title={title} paneKey={'tasks:' + title}>
+        <RailPane title={title} paneKey={'tasks:' + title} {...paneProps}>
             <div ref={ref} className="[display:contents]" />
         </RailPane>
     );
