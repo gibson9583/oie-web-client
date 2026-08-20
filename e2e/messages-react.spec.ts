@@ -71,6 +71,10 @@ const MESSAGE_FIXTURES = {
     [`GET /channels/${CID}/metaDataColumns`]: '',
     // Channel name lookup for the 'Channel Messages - <name>' banner title.
     'GET /channels/idsAndNames': { map: { entry: [{ string: [CID, 'Demo Started'] }] } },
+    // Remove All uses this to offer Swing's stop/remove/restart behavior.
+    [`GET /channels/${CID}/status`]: { dashboardStatus: {
+        channelId: CID, name: 'Demo Started', state: 'STARTED', statistics: {}
+    } },
     // Full message + attachments fetched when a row is selected (detail pane).
     [`GET /channels/${CID}/messages/12345`]: MESSAGE,
     [`GET /channels/${CID}/messages/12345/attachments`]: ''
@@ -96,6 +100,33 @@ test('renders results and the Message Tasks pane', async ({ page }) => {
     await expect(page.getByRole('button', { name: 'Remove All Messages', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Remove Results', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Reprocess Results', exact: true })).toBeVisible();
+});
+
+test('Remove All can temporarily stop and restart a running channel', async ({ page }) => {
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Remove All Messages', exact: true }).click();
+    const options = page.getByRole('dialog', { name: 'Remove All Messages' });
+    const includeRunning = options.getByRole('checkbox', { name: /Include selected channels that are not stopped/ });
+    await expect(includeRunning).toBeEnabled();
+    await expect(includeRunning).not.toBeChecked();
+    await expect(options.getByRole('checkbox', { name: 'Clear statistics for affected channels' })).toBeChecked();
+    await includeRunning.check();
+    await options.getByRole('button', { name: 'Remove All', exact: true }).click();
+
+    const confirmation = page.getByRole('dialog', { name: 'Remove All Messages' }).last();
+    await confirmation.getByRole('textbox').fill('REMOVEALL');
+    const requestPromise = page.waitForRequest((request) =>
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === `/api/channels/${CID}/messages/_removeAll`);
+    await confirmation.getByRole('button', { name: 'OK', exact: true }).click();
+
+    const request = await requestPromise;
+    const params = new URL(request.url()).searchParams;
+    expect(params.get('restartRunningChannels')).toBe('true');
+    expect(params.get('clearStatistics')).toBe('true');
+    await expect(page.getByText('All messages removed', { exact: true })).toBeVisible();
 });
 
 test('selection gates Remove/Reprocess Message', async ({ page }) => {

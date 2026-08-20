@@ -61,6 +61,7 @@ import {
 import { CompareChip } from '../compare-chip.jsx';
 import { CompareOverlay } from '../compare-overlay.jsx';
 import { apiUrl } from '../../core/deployment.js';
+import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
@@ -2293,15 +2294,22 @@ export function MessagesView({ params, query }: any) {
     }
 
     async function removeAllTask() {
-        if (getPref('confirmReprocessRemove') !== false &&
-            !await confirmDialog('Remove all messages', `Permanently remove ALL messages from ${channelName}? This cannot be undone.`, { danger: true, okLabel: 'Remove All' })) return;
+        // An undeployed channel has no dashboard status (404) and is safe to
+        // treat like a stopped channel for message removal.
+        let state: string | null = null;
         try {
-            await api.messages.removeAll(channelId);
-            toast('All messages removed');
-            searchRef.current(true);
+            const status: any = await api.status.one(channelId);
+            state = status?.state ? String(status.state).toUpperCase() : null;
         } catch (e: any) {
-            toast(`Remove all failed: ${e.message}`, 'error');
+            if (e?.status !== 404) {
+                toast(`Could not determine channel state: ${e.message}`, 'error');
+                return;
+            }
         }
+        openRemoveAllMessagesDialog({
+            channels: [{ channelId, name: channelName, state }],
+            onDone: () => searchRef.current(true)
+        });
     }
 
     /* ---- results operations (operate on the current search filter) ---- */

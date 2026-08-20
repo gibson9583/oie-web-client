@@ -33,6 +33,7 @@ import * as Tabs from '@radix-ui/react-tabs';   // shadcn/Radix dock tabs
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import * as Popover from '@radix-ui/react-popover';
 import { CardsView } from './cards.jsx';
+import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
 
 // Loaded on demand. This dialog is the dashboard's ONLY use of the message
 // browser, and importing it statically drags that whole view — the largest in the
@@ -590,15 +591,13 @@ function DashboardView({ onToggleView }: any) {
     function viewMessagesTask(ids: any) {
         if (needIds(ids)) router.navigate(`/messages/${ids[0]}`);
     }
-    async function removeAllTask(ids: any) {
+    function removeAllTask(ids: any) {
         if (!needIds(ids)) return;
-        if (await confirmDialog('Remove all messages', `Permanently remove ALL messages from ${ids.length} channel(s)? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) {
-            for (const id of ids) {
-                try { await api.messages.removeAll(id); } catch (e: any) { toast(e.message, 'error'); }
-            }
-            toast('Messages removed');
-            refresh();
-        }
+        const byId = new Map(statuses.map(status => [status.channelId, status]));
+        openRemoveAllMessagesDialog({
+            channels: ids.map((id: string) => byId.get(id)).filter(Boolean),
+            onDone: () => refresh()
+        });
     }
 
     /* ---- grouping ---- */

@@ -493,7 +493,9 @@ export const messages = {
         params: { replace, filterDestinations, metaDataId: metaDataIds }
     }),
     remove: (channelId, messageId) => del(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
-    removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) => del(`/channels/${enc(channelId)}/messages/_removeAll`, { restartRunningChannels, clearStatistics })
+    // The engine waits for stop/remove/restart to finish before responding, so a
+    // large message table can legitimately outlast the normal request ceiling.
+    removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) => del(`/channels/${enc(channelId)}/messages/_removeAll`, { restartRunningChannels, clearStatistics }, { timeoutMs: null })
 };
 /* ===========================================================================
    Events                                                          /events

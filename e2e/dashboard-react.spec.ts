@@ -101,6 +101,42 @@ test('selecting a started channel reveals Pause and Stop (not Start)', async ({ 
     await expect(page.getByRole('button', { name: 'Clear Statistics', exact: true })).toBeVisible();
 });
 
+test('Remove All can include running channels from a dashboard selection', async ({ page }) => {
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+
+    await page.locator('tr', { hasText: 'Demo Started' }).first().click();
+    await page.locator('tr', { hasText: 'Demo Stopped' }).first().click({ modifiers: ['ControlOrMeta'] });
+    await page.getByRole('button', { name: 'Remove All Messages', exact: true }).click();
+
+    const options = page.getByRole('dialog', { name: 'Remove All Messages' });
+    await expect(options.getByText(/2 selected channels/)).toBeVisible();
+    const includeRunning = options.getByRole('checkbox', { name: /Include selected channels that are not stopped/ });
+    await expect(includeRunning).toBeEnabled();
+    await expect(includeRunning).not.toBeChecked();
+    await expect(options.getByRole('checkbox', { name: 'Clear statistics for affected channels' })).toBeChecked();
+    await includeRunning.check();
+    await options.getByRole('button', { name: 'Remove All', exact: true }).click();
+
+    const confirmation = page.getByRole('dialog', { name: 'Remove All Messages' }).last();
+    await confirmation.getByRole('textbox').fill('REMOVEALL');
+    const startedRequest = page.waitForRequest((request) =>
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === '/api/channels/c-started/messages/_removeAll');
+    const stoppedRequest = page.waitForRequest((request) =>
+        request.method() === 'DELETE' &&
+        new URL(request.url()).pathname === '/api/channels/c-stopped/messages/_removeAll');
+    await confirmation.getByRole('button', { name: 'OK', exact: true }).click();
+
+    for (const request of await Promise.all([startedRequest, stoppedRequest])) {
+        const params = new URL(request.url()).searchParams;
+        expect(params.get('restartRunningChannels')).toBe('true');
+        expect(params.get('clearStatistics')).toBe('true');
+    }
+    await expect(page.getByText('Messages removed from 2 channels', { exact: true })).toBeVisible();
+});
+
 test('re-emits dashboard:selection on channel selection', async ({ page }) => {
     await mockEngine(page);
     await page.goto('/dashboard');
