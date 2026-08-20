@@ -50,6 +50,28 @@ test('renders the status board with the Dashboard Tasks pane', async ({ page }) 
     await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
 });
 
+test('shows a persistent pip marker on each dashboard column resize handle', async ({ page }) => {
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+
+    const handle = page.locator('table[role="treegrid"] thead .col-resize').first();
+    await expect(handle).toBeAttached();
+    const marker = await handle.evaluate((element) => {
+        const style = getComputedStyle(element, '::after');
+        return {
+            content: style.content,
+            height: style.height,
+            opacity: style.opacity,
+            backgroundImage: style.backgroundImage,
+        };
+    });
+    expect(marker.content).not.toBe('none');
+    expect(marker.height).toBe('12px');
+    expect(Number(marker.opacity)).toBeGreaterThan(0);
+    expect(marker.backgroundImage).toContain('radial-gradient');
+});
+
 test('selecting a stopped channel reveals Start and POSTs _start', async ({ page }) => {
     await mockEngine(page);
     await page.goto('/dashboard');

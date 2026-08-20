@@ -704,10 +704,23 @@ table.dt th .sort-arrow { color: var(--accent); margin-left: 4px; }
 .dt-resizable th.col-dragging { opacity: 0.45; }
 .dt-resizable th.col-drop { box-shadow: inset 2px 0 0 var(--accent); }
 .col-resize {
-    position: absolute; top: 0; right: 0; width: 6px; height: 100%;
+    position: absolute; top: 0; right: 0; width: 10px; height: 100%;
     cursor: col-resize; z-index: 3; user-select: none;
 }
-.col-resize:hover { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.col-resize::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 1px;
+    width: 3px;
+    height: 12px;
+    transform: translateY(-50%);
+    border-radius: 2px;
+    background: radial-gradient(circle, var(--text-faint) 0.8px, transparent 1.2px) center / 3px 4px repeat-y;
+    opacity: 0.38;
+}
+.col-resize:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.col-resize:hover::after { background-image: radial-gradient(circle, var(--accent) 0.9px, transparent 1.3px); opacity: 0.82; }
 
 table.dt td {
     padding: var(--row-pad-y) 11px;
