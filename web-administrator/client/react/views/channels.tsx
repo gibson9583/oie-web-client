@@ -221,9 +221,12 @@ async function importLibraryElementsXml(bundledEls: any) {
 }
 
 // Import a channel XML export: resolve a name/id collision (warn + overwrite or
-// rename), handle bundled libraries, then create or overwrite. Returns false if
-// the user cancelled. `existing` is the current channel list (for collision).
-async function importChannelXml(xml: any, existing: any) {
+// rename), handle bundled libraries, then create or overwrite. Returns the final
+// channel identity (which may change during collision resolution), or false if the
+// user cancelled. `existing` is the current channel list (for collision). Group
+// imports already perform migration confirmation for the enclosing document, so
+// they can disable the otherwise-standard per-channel version check.
+async function importChannelXml(xml: any, existing: any, { checkVersion = true }: any = {}) {
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'channel') {
         throw new Error('Not a valid channel XML file');
@@ -232,13 +235,15 @@ async function importChannelXml(xml: any, existing: any) {
     // Swing promptObjectMigration: block newer-than-server exports (alertInformation),
     // confirm the automatic conversion for older/unknown ones (Yes/No "Select an
     // Option"), import same-version silently.
-    const verdict = checkImportVersion(channelEl.getAttribute('version'), 'channel');
-    if (verdict.action === 'block') {
-        await alertInformation(verdict.message);
-        return false;
-    }
-    if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) {
-        return false;
+    if (checkVersion) {
+        const verdict = checkImportVersion(channelEl.getAttribute('version'), 'channel');
+        if (verdict.action === 'block') {
+            await alertInformation(verdict.message);
+            return false;
+        }
+        if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) {
+            return false;
+        }
     }
     const directChild = (tag: any) => [...channelEl.children].find(c => c.tagName === tag);
     const setChild = (tag: any, value: any) => {
@@ -277,7 +282,7 @@ async function importChannelXml(xml: any, existing: any) {
     const body = new XMLSerializer().serializeToString(doc);
     if (resolved.overwrite) await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override: true });
     else await api.post('/channels', body, { contentType: 'application/xml' });
-    return true;
+    return resolved;
 }
 
 // Merge bundled libraries into the existing server set (port of
@@ -1071,8 +1076,9 @@ export function ChannelsView() {
     }
 
     /* The engine has no direct group import endpoint (only the multipart
-       _bulkUpdate), so Swing-format group XML is parsed client-side into
-       {id, name, description, channels} and merged via bulkUpdate. */
+       _bulkUpdate), so Swing-format group XML is parsed client-side. Swing group
+       exports embed complete <channel> objects; keep those objects available for
+       import instead of reducing them to group membership references. */
     function parseGroupXml(text: any) {
         const doc = new DOMParser().parseFromString(String(text || '').trim(), 'text/xml');
         if (doc.querySelector('parsererror')) throw new Error('Not a valid XML file');
@@ -1086,16 +1092,27 @@ export function ChannelsView() {
                 const child = [...el.children].find(c => c.tagName === tag);
                 return child ? child.textContent : '';
             };
-            const refs = [...el.querySelectorAll(':scope > channels > channel')]
-                .map(c => ({ id: [...c.children].find(x => x.tagName === 'id')?.textContent }))
-                .filter(ref => ref.id);
-            return {
+            const embeddedChannels = [...el.querySelectorAll(':scope > channels > channel')]
+                .map(channelEl => {
+                    const child = (tag: any) => [...channelEl.children].find(x => x.tagName === tag);
+                    return {
+                        id: child('id')?.textContent || '',
+                        // Group records returned by the engine can contain id-only
+                        // references. A Swing export has a direct <name> and the
+                        // rest of the complete channel definition.
+                        isDefinition: Boolean(child('name')),
+                        xml: new XMLSerializer().serializeToString(channelEl)
+                    };
+                })
+                .filter(channel => channel.id);
+            const group: any = {
                 id: childText('id') || uuid(),
                 name: childText('name') || 'Imported Group',
                 revision: 0,
                 description: childText('description'),
-                channels: refs.length ? { channel: refs } : null
+                channels: null
             };
+            return { group, embeddedChannels };
         });
     }
 
@@ -1109,7 +1126,34 @@ export function ChannelsView() {
                 new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml'), 'group');
             if (verdict.action === 'block') { await alertInformation(verdict.message); return; }
             if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return;
-            const imported = parseGroupXml(file.content);
+            const parsed = parseGroupXml(file.content);
+            const knownChannels = structuredClone(channels);
+            const resolvedChannelIds = new Map();
+            const imported = [];
+
+            // Match Swing's ChannelPanel.importGroup ordering: import every full
+            // channel first, then save the group set using the final IDs produced
+            // by channel name/id collision handling. ID-only channel entries are
+            // already-existing membership references and do not need re-importing.
+            for (const { group, embeddedChannels } of parsed) {
+                const refs = [];
+                for (const embedded of embeddedChannels) {
+                    let finalId = resolvedChannelIds.get(embedded.id) || embedded.id;
+                    if (embedded.isDefinition && !resolvedChannelIds.has(embedded.id)) {
+                        const resolved = await importChannelXml(embedded.xml, knownChannels, { checkVersion: false });
+                        if (resolved === false) return;
+                        finalId = resolved.id;
+                        resolvedChannelIds.set(embedded.id, finalId);
+
+                        const existing = knownChannels.find((channel: any) => channel.id === finalId);
+                        if (existing) Object.assign(existing, resolved);
+                        else knownChannels.push(resolved);
+                    }
+                    refs.push({ id: finalId });
+                }
+                group.channels = refs.length ? { channel: refs } : null;
+                imported.push(group);
+            }
             const importedIds = new Set(imported.map(g => g.id));
             const importedChannelIds = new Set(imported.flatMap(g =>
                 api.asList(g.channels, 'channel').map(ref => ref.id)));
@@ -1129,21 +1173,76 @@ export function ChannelsView() {
         }
     }
 
-    /* The engine has no single-group XML GET, so fetch the full Swing-format
-       <list> and extract the one <channelGroup> element verbatim. */
+    /* GET /channelgroups returns membership references, while Swing's exported
+       ChannelGroup contains complete Channel objects. Hydrate those references
+       from GET /channels before serializing so this file can recreate both the
+       group and its channels when imported on another server. */
+    async function channelGroupExportXml(groupId?: any) {
+        const groupsXml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
+        const groupsDoc = new DOMParser().parseFromString(groupsXml, 'text/xml');
+        if (groupsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
+
+        const groupsRoot = groupsDoc.documentElement;
+        const allGroups = groupsRoot.tagName === 'channelGroup'
+            ? [groupsRoot]
+            : [...groupsRoot.querySelectorAll(':scope > channelGroup')];
+        const exportGroups = groupId == null
+            ? allGroups
+            : allGroups.filter(groupEl =>
+                [...groupEl.children].find(c => c.tagName === 'id')?.textContent === groupId);
+        if (groupId != null && !exportGroups.length) throw new Error('Channel group not found in the engine XML');
+
+        const refsByGroup = new Map<any, { container: any; refs: string[] }>();
+        const channelIds = new Set<string>();
+        for (const groupEl of exportGroups) {
+            const container = [...groupEl.children].find(c => c.tagName === 'channels');
+            const refs = container
+                ? [...container.children]
+                    .filter(c => c.tagName === 'channel')
+                    .map(c => [...c.children].find(x => x.tagName === 'id')?.textContent || '')
+                    .filter(Boolean)
+                : [];
+            refsByGroup.set(groupEl, { container, refs });
+            refs.forEach(id => channelIds.add(id));
+        }
+
+        const channelById = new Map<string, Element>();
+        if (channelIds.size) {
+            const channelsXml = await api.getXml('/channels', { channelId: [...channelIds] }, { timeoutMs: null });
+            const channelsDoc = new DOMParser().parseFromString(channelsXml, 'text/xml');
+            if (channelsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel XML');
+            const channelsRoot = channelsDoc.documentElement;
+            const fullChannels = channelsRoot.tagName === 'channel'
+                ? [channelsRoot]
+                : [...channelsRoot.querySelectorAll(':scope > channel')];
+            for (const channelEl of fullChannels) {
+                const id = [...channelEl.children].find(c => c.tagName === 'id')?.textContent;
+                if (id) channelById.set(id, channelEl);
+            }
+        }
+
+        for (const groupEl of exportGroups) {
+            const entry = refsByGroup.get(groupEl)!;
+            let container = entry.container;
+            if (!container) {
+                container = groupsDoc.createElement('channels');
+                groupEl.appendChild(container);
+            }
+            container.replaceChildren();
+            for (const id of entry.refs) {
+                const channelEl = channelById.get(id);
+                if (channelEl) container.appendChild(groupsDoc.importNode(channelEl, true));
+            }
+        }
+
+        return new XMLSerializer().serializeToString(groupId == null ? groupsDoc : exportGroups[0]);
+    }
+
     async function exportGroupTask(g: any) {
         const group = requireGroup(g);
         if (!group) return;
         try {
-            await saveFile(`${group.name || group.id}.xml`, 'application/xml', async () => {
-                const xml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
-                const doc = new DOMParser().parseFromString(xml, 'text/xml');
-                if (doc.querySelector('parsererror')) throw new Error('Engine returned invalid XML');
-                const el = [...doc.querySelectorAll('channelGroup')].find(node =>
-                    [...node.children].find(c => c.tagName === 'id')?.textContent === group.id);
-                if (!el) throw new Error(`Group "${group.name}" not found in the engine's XML`);
-                return new XMLSerializer().serializeToString(el);
-            });
+            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id));
         } catch (e: any) {
             toast(e.message, 'error');
         }
@@ -1151,9 +1250,7 @@ export function ChannelsView() {
 
     async function exportGroupsTask() {
         try {
-            // The group export embeds every channel — same open-ended engine
-            // serialization as Export All Channels, so no client ceiling.
-            await saveFile('channel-groups.xml', 'application/xml', () => api.getXml('/channelgroups', undefined, { timeoutMs: null }));
+            await saveFile('channel-groups.xml', 'application/xml', () => channelGroupExportXml());
         } catch (e: any) {
             toast(e.message, 'error');
         }

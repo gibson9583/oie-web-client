@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { mockEngine } from './mock.js';
 
 /*
@@ -110,6 +111,79 @@ test.describe('Channels React view', () => {
         await expect(page.getByRole('button', { name: 'Export Group', exact: true })).toBeVisible();
         // A group selection makes Deploy Channel deployable (acts on the group's channels).
         await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toBeVisible();
+    });
+
+    test('imports the full channels embedded in a Swing channel-group export', async ({ page }) => {
+        await gotoChannels(page);
+
+        const channelRequest = page.waitForRequest((request: any) => {
+            const url = new URL(request.url());
+            return request.method() === 'POST' && url.pathname === '/api/channels';
+        });
+        const groupRequest = page.waitForRequest((request: any) => {
+            const url = new URL(request.url());
+            return request.method() === 'POST' && url.pathname === '/api/channelgroups/_bulkUpdate';
+        });
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Import Group', exact: true }).click();
+        await (await chooser).setFiles({
+            name: 'imported-group.xml',
+            mimeType: 'application/xml',
+            buffer: Buffer.from(`
+                <channelGroup version="4.5.0">
+                  <id>g-imported</id>
+                  <name>Imported Group</name>
+                  <revision>1</revision>
+                  <description>Swing export</description>
+                  <channels>
+                    <channel version="4.5.0">
+                      <id>c-imported</id>
+                      <name>Imported Channel</name>
+                      <revision>1</revision>
+                    </channel>
+                  </channels>
+                </channelGroup>`)
+        });
+
+        const importedChannel = await channelRequest;
+        expect(importedChannel.postData()).toContain('<id>c-imported</id>');
+        expect(importedChannel.postData()).toContain('<name>Imported Channel</name>');
+
+        const importedGroup = await groupRequest;
+        expect(importedGroup.postData()).toContain('g-imported');
+        expect(importedGroup.postData()).toContain('c-imported');
+        await expect(page.getByText('Imported 1 group(s) from imported-group.xml', { exact: true })).toBeVisible();
+    });
+
+    test('exports full associated channels for one group and all groups', async ({ page }) => {
+        await page.addInitScript(() => { delete (window as any).showSaveFilePicker; });
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /channelgroups': (request: any) => request.headers()['accept']?.includes('application/xml')
+                ? `<list><channelGroup version="4.5.0"><id>g-1</id><name>Demo Group</name><revision>1</revision><description>A demo channel group</description><channels><channel version="4.5.0"><id>c-started</id><revision>1</revision></channel></channels></channelGroup></list>`
+                : GROUPS_FIXTURE['GET /channelgroups'],
+            'GET /channels': (request: any) => request.headers()['accept']?.includes('application/xml')
+                ? `<list><channel version="4.5.0"><id>c-started</id><nextMetaDataId>2</nextMetaDataId><name>Demo Started</name><revision>1</revision><sourceConnector><name>Source</name></sourceConnector><exportData><metadata><enabled>true</enabled></metadata></exportData></channel></list>`
+                : { list: { channel: [
+                    { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1 },
+                    { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1 },
+                ] } },
+        });
+        await gotoChannels(page);
+        await page.getByRole('gridcell', { name: '[Demo Group]', exact: true }).click();
+
+        const assertFullChannelExport = async (buttonName: string) => {
+            const downloadPromise = page.waitForEvent('download');
+            await page.getByRole('button', { name: buttonName, exact: true }).click();
+            const download = await downloadPromise;
+            const xml = await readFile(await download.path(), 'utf8');
+            expect(xml).toContain('<id>g-1</id>');
+            expect(xml).toMatch(/<channels><channel[^>]*>[\s\S]*<id>c-started<\/id>[\s\S]*<name>Demo Started<\/name>/);
+            expect(xml).toContain('<sourceConnector><name>Source</name></sourceConnector>');
+        };
+
+        await assertFullChannelExport('Export Group');
+        await assertFullChannelExport('Export All Groups');
     });
 
     test('Deploy Channel moves to the dashboard on success', async ({ page }) => {
