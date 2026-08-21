@@ -1865,15 +1865,17 @@ export function MessagesView({ params, query }: any) {
        bare /messages route — and the picker is how you choose. */
     const [channelList, setChannelList] = useState([] as any[]);
     const [metaDataColumns, setMetaDataColumns] = useState([] as any[]);
+    const [metaDataLoadState, setMetaDataLoadState] = useState(channelId ? 'loading' : 'ready');
+    const [metaDataLoadError, setMetaDataLoadError] = useState('');
 
     /* Cures Act PHI auditing (Swing MessageBrowser): "Accessed PHI" and "Queried
        PHI" fire only on channels that declare a custom metadata column named
        PATIENT_ID. Channels without one emit nothing, so the gate is the column
-       list the browser already fetches. Both events are advisory — a failure is
-       surfaced but never blocks browsing, and it is reported once per mount so a
-       server that has the operations disabled cannot bury the UI in toasts. */
+       list the browser already fetches. An audit-write failure remains advisory,
+       but failure to load the gate itself blocks searching: treating a 403/5xx as
+       "no PATIENT_ID" would silently browse PHI without either audit event. */
     const phiAuditedRef = useRef(false);
-    phiAuditedRef.current = metaDataColumns.some((c: any) => String(c.name || '').toUpperCase() === 'PATIENT_ID');
+    const phiAuditGateRef = useRef(channelId ? 'loading' : 'ready');
     const channelNameRef = useRef(channelId);
     channelNameRef.current = channelName;
     const auditWarnedRef = useRef(false);
@@ -2048,6 +2050,12 @@ export function MessagesView({ params, query }: any) {
     const searchGenRef = useRef(0);
 
     async function runSearch(resetOffset: any) {
+        if (phiAuditGateRef.current !== 'ready') {
+            if (phiAuditGateRef.current === 'error') {
+                toast('Search is unavailable because the channel metadata columns could not be loaded. Reload the view to retry.', 'error');
+            }
+            return;
+        }
         const gen = ++searchGenRef.current;
         if (resetOffset) {
             offsetRef.current = 0;
@@ -2587,6 +2595,7 @@ export function MessagesView({ params, query }: any) {
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            let metadataReady = !channelId;
             if (channelId) {
                 try {
                     const names = await api.channels.connectorNames(channelId);
@@ -2596,8 +2605,22 @@ export function MessagesView({ params, query }: any) {
                 }
                 try {
                     const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
-                    if (!cancelled && cols.length) setMetaDataColumns(cols);
-                } catch { /* channel has no custom metadata columns */ }
+                    if (!cancelled) {
+                        phiAuditedRef.current = cols.some((column: any) =>
+                            String(column.name || '').toUpperCase() === 'PATIENT_ID');
+                        phiAuditGateRef.current = 'ready';
+                        metadataReady = true;
+                        setMetaDataColumns(cols);
+                        setMetaDataLoadError('');
+                        setMetaDataLoadState('ready');
+                    }
+                } catch (e: any) {
+                    if (!cancelled) {
+                        phiAuditGateRef.current = 'error';
+                        setMetaDataLoadError(e.message || 'Unknown error');
+                        setMetaDataLoadState('error');
+                    }
+                }
             }
             try {
                 const map = await api.channels.idsAndNames();
@@ -2615,7 +2638,7 @@ export function MessagesView({ params, query }: any) {
                 }
             } catch { /* keep the channel id as the label */ }
             // Nothing to search until a channel is chosen.
-            if (!cancelled && channelId) searchRef.current(true);
+            if (!cancelled && channelId && metadataReady) searchRef.current(true);
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
         return () => { cancelled = true; closeStatusMenu(); };
@@ -2723,7 +2746,8 @@ export function MessagesView({ params, query }: any) {
                                     {[20, 50, 100].map(n => <option key={n} value={String(n)}>{n}</option>)}
                                 </select>
                             </Field>
-                            <button className="btn btn-primary" onClick={() => runSearch(true)}><Icon name="search" />Search</button>
+                            <button className="btn btn-primary" disabled={metaDataLoadState !== 'ready'}
+                                onClick={() => runSearch(true)}><Icon name="search" />Search</button>
                             <button className="btn" onClick={resetSearch}>Reset</button>
                             {/* The Advanced… button carries a dot whenever any advanced
                                 criterion is staged. Applying advanced criteria does NOT
@@ -2746,7 +2770,8 @@ export function MessagesView({ params, query }: any) {
             {channelId && <ViewTasks>
                 <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
                     <div className="taskbar" data-pane-title="Message Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages"
+                            disabled={metaDataLoadState !== 'ready'} onClick={() => runSearch(true)} />
                         <TaskButton label="Send Message" icon="send" primary task="doSendMessage" onClick={sendMessageTask} />
                         <TaskButton label="Import Messages" icon="import" task="doImportMessages" onClick={importMessagesTask} />
                         <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={exportResultsTask} />
@@ -2809,6 +2834,12 @@ export function MessagesView({ params, query }: any) {
                         </Collapsible.Root>
                     )}
                 </div>
+                {metaDataLoadError && (
+                    <div role="alert" className="mx-[13px] mb-3 px-3 py-2 rounded border text-[11px]"
+                        style={{ color: 'var(--err)', borderColor: 'var(--err)', background: 'color-mix(in srgb, var(--err) 8%, transparent)' }}>
+                        Could not load channel metadata columns: {metaDataLoadError}. Message search is disabled because the PHI audit requirement cannot be determined.
+                    </div>
+                )}
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[13px] pt-3 pb-3">
                     {!channelId ? (
                         <div className="dt-empty">

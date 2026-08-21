@@ -80,6 +80,30 @@ test('a channel without a PATIENT_ID column emits no accessed/queried events', a
     expect(audits.filter(a => a.op.includes('PHIMessage'))).toHaveLength(0);
 });
 
+test('a metadata-column failure blocks browsing instead of assuming non-PHI', async ({ page }) => {
+    let searches = 0;
+    let phiAudits = 0;
+    await mockEngine(page, {
+        [`GET /channels/${CID}/metaDataColumns`]: {
+            __status: 403,
+            body: { message: 'User does not have permission' }
+        },
+        [`GET /channels/${CID}/messages`]: () => { searches++; return { list: '' }; }
+    });
+    await page.route('**/api/channels/_audit*', async route => {
+        phiAudits++;
+        await route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
+    });
+
+    await page.goto(`/messages/${CID}`);
+    const alert = page.getByRole('alert');
+    await expect(alert).toContainText('Could not load channel metadata columns');
+    await expect(alert).toContainText('PHI audit requirement cannot be determined');
+    await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeDisabled();
+    expect(searches).toBe(0);
+    expect(phiAudits).toBe(0);
+});
+
 test('exporting brackets the export with the audit pair, and a failed pre-audit aborts it', async ({ page }) => {
     let exportCalls = 0;
     await mockEngine(page, {
