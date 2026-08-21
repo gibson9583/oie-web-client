@@ -24,6 +24,7 @@ import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
+import { alertInformation, optionYesNo, resolveImportName as resolveImportIdentity } from './import-dialogs.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
@@ -52,36 +53,6 @@ const DEFAULT_GROUP_ID = '__default__';
    Export uses the engine (includeCodeTemplateLibraries) to bundle libraries into the
    channel XML. Import must merge those libraries itself — the engine doesn't auto-import
    exportData.codeTemplateLibraries on channel create (ChannelPanel does it client-side). */
-
-// OK-only warning (Swing alertWarning).
-function alertWarning(message: any) {
-    return new Promise(resolve => modal({
-        title: 'Warning', body: h('div', String(message)), onClose: resolve as any,
-        buttons: [{ label: 'OK', primary: true, onClick: resolve as any }]
-    }));
-}
-
-// OK-only info (Swing alertInformation, title "Information"). pre-line renders the
-// message's \n line breaks the way JOptionPane does.
-function alertInformation(message: any) {
-    return new Promise(resolve => modal({
-        title: 'Information',
-        body: h('div', { style: 'white-space: pre-line' }, String(message)),
-        onClose: resolve as any,
-        buttons: [{ label: 'OK', primary: true, onClick: resolve as any }]
-    }));
-}
-
-// Yes / No option (Swing alertOption): resolves true on Yes, false on No/closed.
-function optionYesNo(title: any, message: any) {
-    return new Promise(resolve => modal({
-        title, body: h('div', { style: 'white-space: pre-line' }, String(message)), onClose: () => resolve(false),
-        buttons: [
-            { label: 'No', onClick: () => resolve(false) },
-            { label: 'Yes', primary: true, onClick: () => resolve(true) }
-        ]
-    }));
-}
 
 // "Channel X has code template libraries included — import them?" — Yes/No/Cancel
 // with an "always" checkbox that persists the importLibrariesWithChannels pref.
@@ -154,41 +125,20 @@ function promptExportLibraries(names: any) {
 
 const CHANNEL_NAME_RE = /^[a-zA-Z_0-9\-\s]*$/;
 
-/* Resolve a name/id collision on channel import, mirroring Swing's
-   ChannelPanel.importChannel + Frame.checkChannelName: warn that the channel
-   exists, then offer overwrite (reuse the existing id + revision) or create-new
-   (prompt for a free name, fresh id). Returns { id, name, revision, overwrite }
-   to apply to the imported channel, or null to abort. `existing` is the current
-   channel list (for collision). */
-async function resolveImportName(name: any, id: any, existing: any) {
-    const tempId = uuid();
-    const nameClash = (n: any, candidateId: any) => existing.some((c: any) =>
-        String(c.name || '').toLowerCase() === String(n).toLowerCase() && c.id !== candidateId);
-
-    async function checkName(n: any, candidateId: any) {
-        if (!n) { await alertWarning('Channel name cannot be empty.'); return false; }
-        if (n.length > 40) { await alertWarning('Channel name cannot be longer than 40 characters.'); return false; }
-        if (!CHANNEL_NAME_RE.test(n)) { await alertWarning('Channel name cannot have special characters besides hyphen, underscore, and space.'); return false; }
-        if (nameClash(n, candidateId)) { await alertWarning(`Channel "${n}" already exists.`); return false; }
-        return true;
+/* Channel naming rules on import (Swing Frame.checkChannelName), handed to the
+   shared collision resolver in import-dialogs. */
+const CHANNEL_IMPORT_RULES = {
+    title: 'Import Channel',
+    noun: 'Channel',
+    validate: (n: string) => {
+        if (n.length > 40) return 'Channel name cannot be longer than 40 characters.';
+        if (!CHANNEL_NAME_RE.test(n)) return 'Channel name cannot have special characters besides hyphen, underscore, and space.';
+        return null;
     }
+};
 
-    if (!(await checkName(name, tempId))) {
-        if (!(await optionYesNo('Import Channel', "Would you like to overwrite the existing channel?  Choose 'No' to create a new channel."))) {
-            let newName = name;
-            do {
-                newName = await promptDialog('Import Channel', 'Please enter a new name for the channel.', newName);
-                if (newName == null) return null;             // Cancel → abort
-            } while (!(await checkName(newName, tempId)));
-            return { id: tempId, name: newName, revision: 0, overwrite: false };
-        }
-        const match = existing.find((c: any) => String(c.name || '').toLowerCase() === String(name).toLowerCase());
-        return { id: match ? match.id : id, name, revision: match ? (Number(match.revision) || 0) : 0, overwrite: true };
-    }
-    // No name collision — make sure the id is free too.
-    const idClash = existing.some((c: any) => c.id === id);
-    return { id: idClash ? tempId : id, name, revision: 0, overwrite: false };
-}
+const resolveImportName = (name: any, id: any, existing: any) =>
+    resolveImportIdentity(name, id, existing, CHANNEL_IMPORT_RULES);
 
 // Merge bundled <codeTemplateLibrary> elements (from a channel XML export) into the
 // server's library list, appending any not already present (by id), and save their

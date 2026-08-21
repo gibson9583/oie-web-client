@@ -18,6 +18,11 @@ import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 import { newAlert } from './alert-editor.jsx';
+import { resolveImportName } from './import-dialogs.js';
+
+/* Alerts carry no charset or length restriction on the name (unlike channels),
+   so the shared resolver only enforces non-empty and unique. */
+const ALERT_IMPORT_RULES = { title: 'Import Alert', noun: 'Alert' };
 
 
 const COLUMNS = [
@@ -118,16 +123,44 @@ export function AlertsList() {
         }
         refresh();
     }
+    /* Resolve the incoming alert's identity against what's already here before
+       posting anything (Swing Frame.importAlert). The engine's createAlert
+       delegates to updateAlert, so it is create-or-replace by id: posting a file
+       as-is silently replaced an existing alert whenever the ids matched. A name
+       clash under a different id was rejected engine-side and surfaced as a raw
+       error toast with no way forward.
+
+       No version gate here, deliberately: Swing guards channels, groups and
+       server configuration with promptObjectMigration but not alerts, whose
+       import relies on the serializer's forward migration (see core/import-guard). */
     async function importTask() {
         const file = await pickFile('.xml,.json');
         if (!file) return;
         try {
             const content = String(file.content || '').trim();
             if (content.startsWith('<')) {
-                await api.postXml('/alerts', content);
+                const doc = new DOMParser().parseFromString(content, 'text/xml');
+                if (doc.querySelector('parsererror')) throw new Error('Not a valid alert XML file');
+                const root = doc.documentElement;
+                const childOf = (tag: string) => [...root.children].find(c => c.tagName === tag);
+                const setChild = (tag: string, value: string) => {
+                    let el = childOf(tag);
+                    if (!el) { el = doc.createElement(tag); root.appendChild(el); }
+                    el.textContent = value;
+                };
+                const resolved = await resolveImportName(
+                    childOf('name')?.textContent || '', childOf('id')?.textContent || '', alerts, ALERT_IMPORT_RULES);
+                if (!resolved) return;                       // cancelled
+                setChild('id', resolved.id);
+                setChild('name', resolved.name);
+                await api.postXml('/alerts', new XMLSerializer().serializeToString(doc));
             } else {
                 let obj = JSON.parse(content);
                 if (obj && typeof obj === 'object' && obj.alertModel) obj = obj.alertModel;
+                const resolved = await resolveImportName(obj.name || '', obj.id || '', alerts, ALERT_IMPORT_RULES);
+                if (!resolved) return;                       // cancelled
+                obj.id = resolved.id;
+                obj.name = resolved.name;
                 await api.alerts.create(obj);
             }
             toast(`Imported ${file.name}`);
