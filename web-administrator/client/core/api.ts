@@ -580,6 +580,19 @@ export interface CodeTemplatesApi {
     update(id: string, codeTemplate: CodeTemplate | OieObject, override?: boolean): Promise<Json>;
     remove(id: string): Promise<Json>;
     updateLibraries(libraries: CodeTemplateLibrary[] | OieObject[], override?: boolean): Promise<Json>;
+    /**
+     * Update libraries, templates and removals in ONE engine transaction
+     * (updateLibrariesAndTemplates). The alternative — a per-template PUT
+     * sequence followed by a library PUT — leaves libraries and templates
+     * inconsistent if it fails partway.
+     */
+    bulkUpdate(
+        libraries: CodeTemplateLibrary[] | OieObject[],
+        updatedCodeTemplates?: CodeTemplate[] | OieObject[],
+        removedLibraryIds?: string[],
+        removedCodeTemplateIds?: string[],
+        override?: boolean
+    ): Promise<Json>;
 }
 
 export interface ExtensionsApi {
@@ -938,7 +951,21 @@ export const codeTemplates: CodeTemplatesApi = {
     update: (id, codeTemplate, override = true) => put(`/codeTemplates/${enc(id)}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override } }),
     remove: (id) => del(`/codeTemplates/${enc(id)}`),
     updateLibraries: (libraries, override = true) =>
-        put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } })
+        put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } }),
+
+    /* One transaction for the whole save. Same multipart shape as
+       channelGroups.bulkUpdate: each part is a JSON Blob, because a bare string
+       part arrives without a content type and the engine's provider refuses it. */
+    bulkUpdate: (libraries, updatedCodeTemplates = [], removedLibraryIds = [], removedCodeTemplateIds = [], override = true) => {
+        const form = new FormData();
+        const part = (name: string, value: any) =>
+            form.append(name, new Blob([JSON.stringify(value)], { type: 'application/json' }));
+        part('libraries', { set: { codeTemplateLibrary: libraries } });
+        part('updatedCodeTemplates', { set: { codeTemplate: updatedCodeTemplates } });
+        part('removedLibraryIds', { set: { string: removedLibraryIds } });
+        part('removedCodeTemplateIds', { set: { string: removedCodeTemplateIds } });
+        return post('/codeTemplateLibraries/_bulkUpdate', form, { params: { override } });
+    }
 };
 
 /* ===========================================================================

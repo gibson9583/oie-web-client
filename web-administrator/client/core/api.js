@@ -626,7 +626,19 @@ export const codeTemplates = {
     // revision no longer matches the server's (someone else saved since it was read).
     update: (id, codeTemplate, override = true) => put(`/codeTemplates/${enc(id)}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override } }),
     remove: (id) => del(`/codeTemplates/${enc(id)}`),
-    updateLibraries: (libraries, override = true) => put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } })
+    updateLibraries: (libraries, override = true) => put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } }),
+    /* One transaction for the whole save. Same multipart shape as
+       channelGroups.bulkUpdate: each part is a JSON Blob, because a bare string
+       part arrives without a content type and the engine's provider refuses it. */
+    bulkUpdate: (libraries, updatedCodeTemplates = [], removedLibraryIds = [], removedCodeTemplateIds = [], override = true) => {
+        const form = new FormData();
+        const part = (name, value) => form.append(name, new Blob([JSON.stringify(value)], { type: 'application/json' }));
+        part('libraries', { set: { codeTemplateLibrary: libraries } });
+        part('updatedCodeTemplates', { set: { codeTemplate: updatedCodeTemplates } });
+        part('removedLibraryIds', { set: { string: removedLibraryIds } });
+        part('removedCodeTemplateIds', { set: { string: removedCodeTemplateIds } });
+        return post('/codeTemplateLibraries/_bulkUpdate', form, { params: { override } });
+    }
 };
 /* ===========================================================================
    Extensions                                                  /extensions

@@ -215,6 +215,13 @@ export interface CodeTemplatesApi {
     update(id: string, codeTemplate: CodeTemplate | OieObject, override?: boolean): Promise<Json>;
     remove(id: string): Promise<Json>;
     updateLibraries(libraries: CodeTemplateLibrary[] | OieObject[], override?: boolean): Promise<Json>;
+    /**
+     * Update libraries, templates and removals in ONE engine transaction
+     * (updateLibrariesAndTemplates). The alternative — a per-template PUT
+     * sequence followed by a library PUT — leaves libraries and templates
+     * inconsistent if it fails partway.
+     */
+    bulkUpdate(libraries: CodeTemplateLibrary[] | OieObject[], updatedCodeTemplates?: CodeTemplate[] | OieObject[], removedLibraryIds?: string[], removedCodeTemplateIds?: string[], override?: boolean): Promise<Json>;
 }
 export interface ExtensionsApi {
     connectors(): Promise<OieObject>;

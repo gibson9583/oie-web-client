@@ -6,15 +6,17 @@
  * <ContextPanel> checkbox tree).
  *
  * The libraries/templates are an EDIT-SESSION MODEL: the objects are mutated in
- * place (their identity is what saveAll PUTs, with the engine's round-trip
+ * place (their identity is what saveAll sends, with the engine's round-trip
  * fields preserved) and markDirty() bumps the container identity so React
  * repaints. Two documented refs bridge mount-captured contracts: dirtyRef (the
  * navGuard/tab-close guards registered once) and entriesNowRef (save/import
  * mutations act on the latest-known list, never a render-stale snapshot).
  *
- * Saving mirrors the Swing client: each template is PUT individually
- * (/codeTemplates/{id}?override=true), then the libraries are PUT as a full set
- * (/codeTemplateLibraries?override=true) with id-only template references. The
+ * Saving mirrors Swing's CodeTemplatePanel: the full library set (with id-only
+ * template references) and every full template go out TOGETHER in one engine
+ * transaction (POST /codeTemplateLibraries/_bulkUpdate). The PUT-per-template
+ * sequence this replaced left the library records pointing at templates that
+ * had not been written whenever it failed partway through. The
  * script-completions cache is invalidate()d on every mutation so script editors
  * refetch the new scope.
  */
@@ -129,6 +131,79 @@ function templateDescription(template: any) {
             && !/^template is recommended/i.test(line)) return line;
     }
     return '';
+}
+
+/* ---- XML import -> the JSON shape _bulkUpdate consumes ------------------------
+   The multipart _bulkUpdate parts are JSON, so a Swing XML export has to be
+   converted here rather than handed to the engine verbatim. XML ATTRIBUTES
+   carry the polymorphic '@class' and the migrator's '@version', so they survive
+   as '@'-prefixed keys and are emitted FIRST — the engine turns this JSON back
+   into XML and cannot place an attribute after a child element. Text stays a
+   string: every XML scalar is text anyway, and coercing would mangle a code
+   body that happens to look numeric. */
+function xmlToJson(el: any): any {
+    const obj: any = {};
+    for (const attr of el.attributes) obj['@' + attr.name] = attr.value;
+    if (!el.children.length) {
+        const text = el.textContent || '';
+        // A leaf with attributes keeps its text under '$' (the XStream-JSON
+        // convention the engine's own base64 template fields arrive in).
+        if (!Object.keys(obj).length) return text;
+        if (text) obj.$ = text;
+        return obj;
+    }
+    for (const child of el.children) {
+        const value = xmlToJson(child);
+        if (Object.prototype.hasOwnProperty.call(obj, child.tagName)) {
+            if (!Array.isArray(obj[child.tagName])) obj[child.tagName] = [obj[child.tagName]];
+            obj[child.tagName].push(value);
+        } else {
+            obj[child.tagName] = value;
+        }
+    }
+    return obj;
+}
+
+// An imported <codeTemplate> element as a save-ready object. '@version' is
+// stamped on the template and its properties because the engine migrates every
+// write and 500s without it; a hand-edited export missing its <id> gets one so
+// the library reference cannot dangle.
+function templateFromXml(el: any, v: any) {
+    const template: any = xmlToJson(el);
+    if (!template.id) template.id = uuid();
+    if (template.properties && typeof template.properties === 'object' && !template.properties['@version']) {
+        template.properties = { '@version': v, ...template.properties };
+    }
+    return { '@version': template['@version'] || v, ...template };
+}
+
+/* ---- _bulkUpdate result reading -----------------------------------------------
+   _bulkUpdate answers with a CodeTemplateLibrarySaveResult, not the bare "false"
+   the per-object PUTs returned. overrideNeeded is that same someone-else-saved
+   revision conflict; librariesSuccess and the per-template results carry an
+   engine-side failure that never reaches the HTTP status. Booleans are compared
+   as text because XStream-JSON and the XML fallback disagree on their type. */
+function needsOverride(result: any) {
+    return Boolean(result) && typeof result === 'object' && String(result.overrideNeeded) === 'true';
+}
+
+function saveFailure(result: any) {
+    if (!result || typeof result !== 'object') return '';   // no body = nothing to report
+    const causeOf = (cause: any) => (cause && (cause.message || cause.localizedMessage)) || '';
+    const problems: string[] = [];
+    if (String(result.librariesSuccess) === 'false') {
+        problems.push(causeOf(result.cause) || 'the library set could not be saved');
+    }
+    // codeTemplateResults is a Java Map, whose XStream encoding varies with the
+    // key type, so scan the subtree for a failed result rather than assume one.
+    const scan = (node: any) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(scan); return; }
+        if (String(node.success) === 'false') problems.push(causeOf(node.cause) || 'a code template could not be saved');
+        else Object.values(node).forEach(scan);
+    };
+    scan(result.codeTemplateResults);
+    return problems.join('; ');
 }
 
 export function CodeTemplatesView() {
@@ -384,8 +459,8 @@ export function CodeTemplatesView() {
     async function saveAll(overrideConflicts = false): Promise<any> {
         // Swing-parity conflict handling: save with override=false and the revisions AS
         // LOADED (the engine bumps them itself; sending a self-bumped revision would read
-        // as a conflict on every save). A "false" response means someone else saved since
-        // this view loaded — prompt once, then retry everything with override=true.
+        // as a conflict on every save). An overrideNeeded result means someone else saved
+        // since this view loaded — prompt once, then retry everything with override=true.
         const conflict = async (): Promise<any> => {
             const overwrite = await confirmDialog('Code Templates Modified',
                 'One or more code templates or libraries have been modified since you opened them. Are you sure you want to overwrite them with your changes?',
@@ -395,19 +470,17 @@ export function CodeTemplatesView() {
         };
         try {
             const v = store.getState('serverVersion') || '4.5.2';
-            const libraries = entriesNowRef.current;
-            // 1. PUT each template individually (the Swing client's update path).
-            for (const entry of libraries) {
+            const current = entriesNowRef.current;
+            const templates: any[] = [];
+            for (const entry of current) {
                 for (const template of entry.templates) {
                     // Defensive: the engine's migrator 500s without '@version'.
                     if (!template['@version']) template['@version'] = v;
                     if (template.properties && !template.properties['@version']) template.properties['@version'] = v;
-                    const ok = await api.codeTemplates.update(template.id, template, overrideConflicts);
-                    if (String(ok) === 'false') return conflict();
+                    templates.push(template);
                 }
             }
-            // 2. PUT the full library set with id-only template references.
-            const payload = libraries.map(entry => ({
+            const payload = current.map(entry => ({
                 '@version': entry.library['@version'] || v,
                 ...entry.library,
                 codeTemplates: entry.templates.length
@@ -416,8 +489,12 @@ export function CodeTemplatesView() {
                     ? { codeTemplate: entry.templates.map((t: any) => ({ '@version': t['@version'] || v, id: t.id })) }
                     : null
             }));
-            const ok = await api.codeTemplates.updateLibraries(payload, overrideConflicts);
-            if (String(ok) === 'false') return conflict();
+            // Libraries and their templates in ONE transaction. Deletions already
+            // went out as their own DELETEs, so nothing is removed here.
+            const result = await api.codeTemplates.bulkUpdate(payload, templates, [], [], overrideConflicts);
+            if (needsOverride(result)) return conflict();
+            const failure = saveFailure(result);
+            if (failure) throw new Error(failure);
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast('Code templates saved');
             await load();
@@ -471,10 +548,11 @@ export function CodeTemplatesView() {
     }
 
     /* Accepts a Swing/web export: a <list> of <codeTemplateLibrary> (or one
-       bare <codeTemplateLibrary>). PUT /codeTemplateLibraries persists only the
-       library records — embedded templates are reduced to id references by the
-       server — so each embedded <codeTemplate> element is PUT individually
-       first (the same order the Swing client saves in). */
+       bare <codeTemplateLibrary>). The library records only ever persist id
+       references to their templates, so the embedded <codeTemplate> elements
+       travel as _bulkUpdate's updatedCodeTemplates — one transaction instead of
+       the PUT-per-template-then-PUT-the-list sequence, which imported half a
+       file whenever it failed partway. */
     async function importLibraries() {
         const file = await pickFile('.xml');
         if (!file) return;
@@ -482,26 +560,42 @@ export function CodeTemplatesView() {
             `Import "${file.name}"? This replaces the entire code template library list on the server — libraries not present in the file will be removed.`,
             { danger: true, okLabel: 'Import' })) return;
         try {
-            let xml = String(file.content || '').trim();
-            const doc = new DOMParser().parseFromString(xml, 'text/xml');
+            const doc = new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml');
             if (doc.querySelector('parsererror')) throw new Error('Not a valid XML file');
             const root = doc.documentElement;
-            if (root.tagName === 'codeTemplateLibrary') {
-                // Single-library export: wrap into the <list> the PUT expects.
-                xml = `<list>${new XMLSerializer().serializeToString(root)}</list>`;
-            } else if (root.tagName !== 'list') {
+            if (root.tagName !== 'list' && root.tagName !== 'codeTemplateLibrary') {
                 throw new Error('Expected a <list> of <codeTemplateLibrary> elements');
             }
-            // Full templates (more than an <id> ref) are saved individually.
-            const fullTemplates = [...doc.querySelectorAll('codeTemplates > codeTemplate')]
-                .filter(el => [...el.children].some(c => c.tagName !== 'id'));
-            for (const el of fullTemplates) {
-                const id = [...el.children].find(c => c.tagName === 'id')?.textContent;
-                if (!id) continue;
-                await api.putXml(`/codeTemplates/${encodeURIComponent(id)}`,
-                    new XMLSerializer().serializeToString(el), { override: true });
-            }
-            await api.putXml('/codeTemplateLibraries', xml, { override: true });
+            const libraryEls = root.tagName === 'codeTemplateLibrary'
+                ? [root]   // single-library export
+                : [...root.querySelectorAll(':scope > codeTemplateLibrary')];
+            if (!libraryEls.length) throw new Error('No <codeTemplateLibrary> elements found in the file');
+
+            const v = store.getState('serverVersion') || '4.5.2';
+            const templates: any[] = [];
+            const payload = libraryEls.map(el => {
+                const library: any = xmlToJson(el);
+                const refs: any[] = [];
+                for (const tplEl of el.querySelectorAll(':scope > codeTemplates > codeTemplate')) {
+                    // A full template (more than a bare <id> ref) is written in the
+                    // same transaction and reduced to the id ref the library keeps.
+                    if ([...tplEl.children].some(c => c.tagName !== 'id')) {
+                        const template = templateFromXml(tplEl, v);
+                        templates.push(template);
+                        refs.push({ '@version': template['@version'], id: template.id });
+                        continue;
+                    }
+                    const id = [...tplEl.children].find(c => c.tagName === 'id')?.textContent;
+                    if (id) refs.push({ '@version': v, id });
+                }
+                return {
+                    '@version': library['@version'] || v,
+                    ...library,
+                    codeTemplates: refs.length ? { codeTemplate: refs } : null
+                };
+            });
+            const failure = saveFailure(await api.codeTemplates.bulkUpdate(payload, templates, [], [], true));
+            if (failure) throw new Error(failure);
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${file.name}`);
             setSelected(null);
@@ -512,9 +606,10 @@ export function CodeTemplatesView() {
     }
 
     /* Import individual code templates into the selected library (Swing's
-       "Import Code Templates"). Each <codeTemplate> is PUT to the server, then
-       the target library's references are rewritten — so this commits like
-       Import Libraries rather than editing the working copy. */
+       "Import Code Templates"). Also a multi-object write — the templates AND
+       the rewritten library references have to land together, or the templates
+       exist with nothing pointing at them — so it goes out as one _bulkUpdate.
+       This commits like Import Libraries rather than editing the working copy. */
     async function importCodeTemplates(entryArg: any) {
         // Re-resolve the target by id (the offering menu may have outlived a reload).
         let target = entryArg && entriesNowRef.current.find(en => en.library.id === entryArg.library.id);
@@ -537,21 +632,11 @@ export function CodeTemplatesView() {
             if (!els.length) throw new Error('No <codeTemplate> elements found in the file');
 
             const v = store.getState('serverVersion') || '4.5.2';
-            const newIds: any[] = [];
-            for (const el of els) {
-                let id = [...el.children].find(c => c.tagName === 'id')?.textContent;
-                if (!id) {
-                    id = uuid();
-                    const idEl = doc.createElement('id');
-                    idEl.textContent = id;
-                    el.insertBefore(idEl, el.firstChild);
-                }
-                await api.putXml(`/codeTemplates/${encodeURIComponent(id)}`,
-                    new XMLSerializer().serializeToString(el), { override: true });
-                newIds.push(id);
-            }
+            const imported = els.map(el => templateFromXml(el, v));
+            const newIds = imported.map((t: any) => t.id);
             // Rewrite the library set with the new refs appended to the target —
-            // matched by id, not object identity (the awaits above may span a reload).
+            // matched by id, not object identity (the pickFile/confirm awaits
+            // above may span a reload).
             const payload = entriesNowRef.current.map(en => {
                 const ids = en.library.id === targetId
                     ? [...en.templates.map((t: any) => t.id), ...newIds]
@@ -563,7 +648,8 @@ export function CodeTemplatesView() {
                     codeTemplates: ids.length ? { codeTemplate: ids.map((id: any) => ({ '@version': v, id })) } : null
                 };
             });
-            await api.codeTemplates.updateLibraries(payload);
+            const failure = saveFailure(await api.codeTemplates.bulkUpdate(payload, imported, [], [], true));
+            if (failure) throw new Error(failure);
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${els.length} code template${els.length === 1 ? '' : 's'} into "${target.library.name || 'library'}"`);
             await load();
