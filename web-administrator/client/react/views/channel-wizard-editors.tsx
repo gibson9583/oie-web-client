@@ -104,6 +104,14 @@ function objToEntries(obj: any) {
         ? { '@class': 'linked-hash-map', entry: keys.map((id: any) => ({ string: [id, obj[id]] })) }
         : { '@class': 'linked-hash-map' };
 }
+/* Marks one failed picker load so a Promise.all can carry per-source failures
+   alongside the sources that did load, instead of collapsing them to an empty
+   list that reads as "there are none". */
+class LoadFailure {
+    constructor(readonly label: string, readonly error: any) { }
+    describe() { return `${this.label} (${this.error?.message || this.error})`; }
+}
+
 // Every resourceIds holder in a channel (channel scripts + source + destinations).
 function resourceHolders(channel: any) {
     const holders: any[] = [];
@@ -217,15 +225,26 @@ export function DependenciesStep({ channel, libState, depState }: any) {
     const [expanded, setExpanded] = useState(() => new Set());   // expanded library ids (show templates)
     const dataRef = useRef<any>({ libraries: [], resources: [], names: new Map() });
 
+    /* Each picker used to swallow its own failure into an empty list, so a 403 for
+       a restricted user or a 500 rendered as "this server has no libraries /
+       resources / channels" — a wrong answer on the step whose whole job is
+       associating the channel with them. Collect the failures and name them. The
+       global 401 handler fires ahead of these, so only 403/5xx land here. */
+    const [loadErrors, setLoadErrors] = useState<string[]>([]);
+
     useEffect(() => {
         let alive = true;
+        const orFail = (label: string) => (e: any) => new LoadFailure(label, e);
         Promise.all([
-            api.codeTemplates.libraries(true).catch(() => []),
-            api.server.resources().catch(() => null),
-            api.server.channelDependencies().catch(() => []),
-            api.channels.idsAndNames().catch(() => null)
-        ]).then(([libraries, resourcesRaw, channelDeps, idsAndNames]) => {
+            api.codeTemplates.libraries(true).catch(orFail('code template libraries')),
+            api.server.resources().catch(orFail('library resources')),
+            api.server.channelDependencies().catch(orFail('channel dependencies')),
+            api.channels.idsAndNames().catch(orFail('the channel list'))
+        ]).then((settled) => {
             if (!alive) return;
+            setLoadErrors(settled.filter(v => v instanceof LoadFailure).map((f: any) => f.describe()));
+            const [libraries, resourcesRaw, channelDeps, idsAndNames] =
+                settled.map(v => (v instanceof LoadFailure ? null : v)) as any[];
             // Deploy/start dependencies: full server list (setChannelDependencies replaces
             // it wholesale) + a name lookup for the picker. Held in depState so edits
             // survive step changes and can be persisted after Create.
@@ -333,6 +352,11 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             </TabsPrimitive.List>
 
             {!loaded && <div className="hint">Loading…</div>}
+            {loadErrors.length > 0 && (
+                <div className="text-[11px]" style={{ color: 'var(--err)' }}>
+                    Could not load {loadErrors.join('; ')}. The lists below are incomplete.
+                </div>
+            )}
 
             <TabsPrimitive.Content value="libraries">
             {loaded && tab === 'libraries' && (

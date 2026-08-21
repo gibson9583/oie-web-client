@@ -77,19 +77,33 @@ function AlertWizardInner({ alert, isNew }: any) {
     const [nameTouched, setNameTouched] = useState(!isNew);   // don't flag a blank name until touched
     const [saving, setSaving] = useState(false);
     const [data, setData] = useState<any>({ channels: [], protocols: [], recipients: {} });
+    const [loadError, setLoadError] = useState<any>(null);
     const [chFilter, setChFilter] = useState('');
 
+    /* A 403 for a restricted user or a 500 used to render as "No channels." —
+       indistinguishable from a server that genuinely has none, on the step whose
+       whole job is picking channels. Record the failure and say so instead; the
+       global 401 handler still fires ahead of these, so only 403/5xx land here. */
     useEffect(() => {
         let alive = true;
-        Promise.all([api.channels.idsAndNames().catch(() => null), api.alerts.options().catch(() => null)]).then(([ch, opts]) => {
+        Promise.all([
+            api.channels.idsAndNames().catch((e: any) => e),
+            api.alerts.options().catch((e: any) => e)
+        ]).then(([ch, opts]) => {
             if (!alive) return;
+            const failed = [
+                ch instanceof Error ? `channels (${ch.message})` : null,
+                opts instanceof Error ? `alert options (${opts.message})` : null
+            ].filter(Boolean);
+            setLoadError(failed.length ? `Could not load ${failed.join(' and ')}.` : null);
             const channels: any[] = [];
-            for (const en of api.asList(ch && ch.entry)) {
+            for (const en of api.asList(!(ch instanceof Error) && ch && ch.entry)) {
                 const p = api.asList(en && en.string);
                 if (p.length >= 2) channels.push({ id: String(p[0]), name: String(p[1]) });
             }
             channels.sort((a: any, b: any) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-            setData({ channels, protocols: protocolsOf(opts), recipients: recipientOptionsOf(opts) });
+            const options = opts instanceof Error ? null : opts;
+            setData({ channels, protocols: protocolsOf(options), recipients: recipientOptionsOf(options) });
         });
         return () => { alive = false; };
     }, []);
@@ -301,9 +315,10 @@ function AlertWizardInner({ alert, isNew }: any) {
                         <div className="panel !mt-0 max-w-[648px]">
                             <div className="panel-header">Channels to watch</div>
                             <div className="panel-body flex flex-col gap-2">
+                                {loadError && <div className="text-[11px]" style={{ color: 'var(--err)' }}>{loadError}</div>}
                                 {data.channels.length > 6 && <input type="text" placeholder="Filter channels…" value={chFilter} onChange={(e: any) => setChFilter(e.target.value)} />}
                                 <div className="flex flex-col border border-line rounded-md max-h-[288px] overflow-auto divide-y divide-line">
-                                    {channels.length === 0 && <div className="p-2 text-text-faint text-[11px]">No channels.</div>}
+                                    {channels.length === 0 && <div className="p-2 text-text-faint text-[11px]">{loadError ? 'Channel list unavailable.' : 'No channels.'}</div>}
                                     {channels.map((c: any) => (
                                         <label key={c.id} className="flex items-center gap-2 px-2.5 py-2 hover:bg-bg1 cursor-pointer" title={c.name}>
                                             <input type="checkbox" checked={enabledChannels.has(c.id)} onChange={(e: any) => setChannel(c.id, e.target.checked)} />

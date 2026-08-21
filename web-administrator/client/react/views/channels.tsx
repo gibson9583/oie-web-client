@@ -514,6 +514,10 @@ export function ChannelsView() {
     const [tags, setTags] = useState([] as any[]);
     const [groups, setGroups] = useState([] as any[]);
     const [statusById, setStatusById] = useState({} as any);        // channelId -> dashboardStatus
+    // Set when a secondary load (groups/tags/states) failed while the channel
+    // list itself succeeded — the view still works, but it is not showing
+    // everything, and that has to be visible.
+    const [partialLoadError, setPartialLoadError] = useState<any>(null);
     const [selected, setSelected] = useState(() => new Set());   // channel ids
     const lastClickedRef = useRef<any>(null);                     // shift-range anchor (interaction-only)
     const [lastGroupId, setLastGroupId] = useState<any>(null);    // last-clicked group row (for Delete Group)
@@ -856,12 +860,25 @@ export function ChannelsView() {
        channels:changed listener can safely call the first render's closure. */
     async function refresh() {
         try {
+            /* The three secondary loads used to swallow their failure into an empty
+               list, so a 403 for a restricted user or a 500 rendered as "this
+               server has no groups / no tags / no deployed channels" — wrong
+               answers that look exactly like right ones. Keep the view usable on
+               whichever ones did load, and say which did not. The global 401
+               handler fires ahead of these, so session expiry is not what lands
+               here; 403 and 5xx are. */
+            const failures: string[] = [];
+            const orEmpty = (label: string) => (e: any) => {
+                failures.push(`${label} (${e?.message || e})`);
+                return [] as any[];
+            };
             const [channelList, groupList, tagList, statusList] = await Promise.all([
                 api.channels.list(),
-                api.channelGroups.list().catch(() => []),
-                api.server.channelTags().catch(() => []),
-                api.status.list().catch(() => [])
+                api.channelGroups.list().catch(orEmpty('groups')),
+                api.server.channelTags().catch(orEmpty('tags')),
+                api.status.list().catch(orEmpty('channel states'))
             ]);
+            setPartialLoadError(failures.length ? `Could not load ${failures.join(', ')}.` : null);
             const nextChannels = channelList.filter(c => c && c.id);
             const nextGroups = groupList.filter(g => g && g.id);
             const byId: any = {};
@@ -1579,6 +1596,11 @@ export function ChannelsView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col overflow-hidden">
+                {partialLoadError && (
+                    <div className="mx-[13px] mt-3 text-[11px]" style={{ color: 'var(--err)' }} role="status">
+                        {partialLoadError} Groups, tags and channel states may be incomplete.
+                    </div>
+                )}
                 {/* Grid so the TreeTable's own .dt-wrap stretches to fill the
                     region (a flex child wouldn't grow on the main axis); this
                     leaves clickable empty space below a short tree for

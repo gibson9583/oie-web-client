@@ -948,7 +948,13 @@ function viewAttachmentsModal(platform: any, channelId: any, m: any) {
 // Export Attachment (Swing MESSAGE_EXPORT_ATTACHMENT) — export directly when
 // there's exactly one, otherwise open the viewer to pick.
 async function exportAttachmentTask(platform: any, channelId: any, m: any) {
-    const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId).catch(() => []);
+    // A failed lookup is not "no attachments": reporting it as such on the export
+    // path tells the user there was nothing to export when there may have been.
+    let attachments = m.__attachments;
+    if (attachments === undefined) {
+        try { attachments = await api.messages.attachments(channelId, m.messageId); }
+        catch (e: any) { toast(`Could not list attachments: ${e.message}`, 'error'); return; }
+    }
     m.__attachments = attachments;
     if (!attachments.length) { toast('No attachments on this message', 'warn'); return; }
     if (attachments.length === 1) { exportAttachment(channelId, m, attachments[0]); return; }
@@ -2138,11 +2144,19 @@ export function MessagesView({ params, query }: any) {
             const [full, attachments] = await Promise.all([
                 api.messages.get(channelId, row.messageId),
                 // Fetch attachments up front so the Attachments tab only appears when
-                // the message actually has any (matching the Swing browser).
-                api.messages.attachments(channelId, row.messageId).catch(() => [])
+                // the message actually has any (matching the Swing browser). A failed
+                // lookup must not render as "no attachments" — that hides a message's
+                // attachments behind a missing tab — so it is reported and the tab is
+                // suppressed rather than silently shown empty.
+                api.messages.attachments(channelId, row.messageId).catch((e: any) => e)
             ]);
             if (full && typeof full === 'object') message = full;
-            message.__attachments = Array.isArray(attachments) ? attachments : [];
+            if (attachments instanceof Error) {
+                toast(`Could not list this message's attachments: ${attachments.message}`, 'warn');
+                message.__attachments = [];
+            } else {
+                message.__attachments = Array.isArray(attachments) ? attachments : [];
+            }
         } catch (e: any) {
             toast(`Failed to load message content: ${e.message}`, 'error');
         }
