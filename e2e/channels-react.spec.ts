@@ -211,6 +211,31 @@ test.describe('Channels React view', () => {
         await expect(page).toHaveURL(/\/dashboard/);
     });
 
+    test('Deploy Channel offers and submits deploy dependencies', async ({ page }) => {
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /server/channelDependencies': {
+                set: { channelDependency: [{ dependentId: 'c-stopped', dependencyId: 'c-started' }] }
+            },
+            'POST /channels/_deploy': ''
+        });
+        await gotoChannels(page);
+        await page.getByText('Demo Stopped', { exact: true }).click();
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+
+        const prompt = page.getByRole('dialog', { name: 'Channel Dependencies' });
+        await expect(prompt.getByText('Demo Started', { exact: true })).toBeVisible();
+        const requestPromise = page.waitForRequest(request =>
+            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_deploy');
+        await prompt.getByRole('button', { name: 'Include', exact: true }).click();
+
+        const request = await requestPromise;
+        expect(JSON.parse(request.postData() || '{}')).toEqual({
+            set: { string: ['c-stopped', 'c-started'] }
+        });
+        await expect(page).toHaveURL(/\/dashboard/);
+    });
+
     test('a deploy failure shows the error detail modal and stays on Channels', async ({ page }) => {
         await mockEngine(page, {
             ...GROUPS_FIXTURE,

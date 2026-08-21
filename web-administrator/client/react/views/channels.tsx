@@ -31,6 +31,8 @@ import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
+import { xmlToJson } from './code-template-xml.js';
+import { withDependencies } from './channel-lifecycle.js';
 
 
 // Canonical data columns (the Name column carries the tree twisty/indent), with
@@ -192,34 +194,55 @@ const CHANNEL_IMPORT_RULES = {
 const resolveImportName = (name: any, id: any, existing: any) =>
     resolveImportIdentity(name, id, existing, CHANNEL_IMPORT_RULES);
 
-// Merge bundled <codeTemplateLibrary> elements (from a channel XML export) into the
-// server's library list, appending any not already present (by id), and save their
-// full code templates first (the library PUT may keep only refs).
-async function importLibraryElementsXml(bundledEls: any) {
-    const existingXml = await api.getXml('/codeTemplateLibraries');
-    let doc = new DOMParser().parseFromString(existingXml && existingXml.trim() ? existingXml : '<list/>', 'text/xml');
-    if (!doc.documentElement || doc.documentElement.nodeName !== 'list' || doc.querySelector('parsererror')) {
-        doc = new DOMParser().parseFromString('<list/>', 'text/xml');
+// Bundled libraries are a multi-object write: the rewritten library references
+// and every new full template must land in the same _bulkUpdate transaction.
+// This is shared by XML and JSON channel imports so neither path can leave a
+// half-imported code-template graph after a mid-sequence failure.
+async function saveImportedLibraries(existing: any, imported: any, channelId: any) {
+    const version = store.getState('serverVersion') || '4.5.2';
+    const templatesOf = (lib: any) => api.asList(lib.codeTemplates, 'codeTemplate')
+        .filter((template: any) => template && typeof template === 'object' && template.id);
+    const existingTemplateIds = new Set(existing.flatMap(templatesOf).map((template: any) => String(template.id)));
+    const updatedTemplates: any[] = [];
+    for (const library of imported) for (const original of templatesOf(library)) {
+        if (existingTemplateIds.has(String(original.id))) continue;
+        existingTemplateIds.add(String(original.id));
+        const properties = original.properties && typeof original.properties === 'object'
+            ? { '@version': original.properties['@version'] || version, ...original.properties }
+            : original.properties;
+        updatedTemplates.push({ '@version': original['@version'] || version, ...original, properties });
     }
-    const list = doc.documentElement;
-    const idOf = (el: any) => [...el.children].find(c => c.tagName === 'id')?.textContent;
-    const existingIds = new Set([...list.children].filter(c => c.tagName === 'codeTemplateLibrary').map(idOf).filter(Boolean));
-    let added = 0;
-    for (const lib of bundledEls) {
-        const id = idOf(lib);
-        if (id && existingIds.has(id)) continue;   // simple merge: keep existing as-is
-        list.appendChild(doc.importNode(lib, true));
-        added++;
+
+    const merged = mergeImportedLibraries(structuredClone(existing), structuredClone(imported), channelId);
+    const libraryPayload = merged.map((library: any) => {
+        const templates = templatesOf(library);
+        return {
+            '@version': library['@version'] || version,
+            ...library,
+            codeTemplates: templates.length
+                ? { codeTemplate: templates.map((template: any) => ({ '@version': template['@version'] || version, id: template.id })) }
+                : null
+        };
+    });
+    const result: any = await api.codeTemplates.bulkUpdate(libraryPayload, updatedTemplates, [], [], true);
+    if (result && typeof result === 'object' && String(result.librariesSuccess) === 'false') {
+        throw new Error(result.cause?.message || result.cause?.localizedMessage || 'the code-template libraries could not be saved');
     }
-    if (!added) return;
-    const fullTemplates = [...list.querySelectorAll('codeTemplates > codeTemplate')]
-        .filter(el => [...el.children].some(c => c.tagName !== 'id'));
-    for (const el of fullTemplates) {
-        const id = idOf(el);
-        if (!id) continue;
-        await api.putXml(`/codeTemplates/${encodeURIComponent(id)}`, new XMLSerializer().serializeToString(el), { override: true });
-    }
-    await api.putXml('/codeTemplateLibraries', new XMLSerializer().serializeToString(doc), { override: true });
+    const templateFailures: string[] = [];
+    const scan = (node: any) => {
+        if (!node || typeof node !== 'object') return;
+        if (Array.isArray(node)) { node.forEach(scan); return; }
+        if (String(node.success) === 'false') {
+            templateFailures.push(node.cause?.message || node.cause?.localizedMessage || 'a code template could not be saved');
+        } else Object.values(node).forEach(scan);
+    };
+    scan(result?.codeTemplateResults);
+    if (templateFailures.length) throw new Error(templateFailures.join('; '));
+}
+
+async function importLibraryElementsXml(bundledEls: any, channelId: any) {
+    const existing = await api.codeTemplates.libraries(true);
+    await saveImportedLibraries(existing, bundledEls.map((element: any) => xmlToJson(element)), channelId);
 }
 
 /* Take the deploy/start edges out of a channel export and rewrite them against
@@ -251,6 +274,21 @@ function takeDependencyEdges(channelEl: any, channelId: any) {
         ...dependencyIds.map((id: any) => ({ dependentId: String(channelId), dependencyId: id })),
         ...dependentIds.map((id: any) => ({ dependentId: id, dependencyId: String(channelId) }))
     ].filter(e => e.dependentId !== e.dependencyId);
+}
+
+// A multi-channel import cannot finalize an edge when only one endpoint has
+// been collision-resolved. Defer the dependency PUT until every source id has
+// a final target id, then rewrite BOTH sides of every edge.
+function rewriteDependencyEdges(edges: any[], resolvedIds: Map<any, any>) {
+    return edges.map(edge => ({
+        dependentId: String(resolvedIds.get(String(edge.dependentId)) || edge.dependentId),
+        dependencyId: String(resolvedIds.get(String(edge.dependencyId)) || edge.dependencyId)
+    })).filter(edge => edge.dependentId !== edge.dependencyId);
+}
+
+function importedIdentity(result: any) {
+    const { sourceId: _sourceId, dependencyEdges: _dependencyEdges, ...identity } = result;
+    return identity;
 }
 
 /* Add edges to the server's dependency set, keeping what is already there.
@@ -329,7 +367,7 @@ async function remapImportedResourceIds(channelEl: any) {
 // is why a channel lifted out of a <list> gets a document of its own. Group and
 // list imports already perform migration confirmation for the enclosing document,
 // so they can disable the otherwise-standard per-channel version check.
-async function importChannelDoc(doc: any, existing: any, { checkVersion = true }: any = {}) {
+async function importChannelDoc(doc: any, existing: any, { checkVersion = true, deferDependencies = false }: any = {}) {
     const channelEl = doc.documentElement;
     // Swing promptObjectMigration: block newer-than-server exports (alertInformation),
     // confirm the automatic conversion for older/unknown ones (Yes/No "Select an
@@ -373,7 +411,7 @@ async function importChannelDoc(doc: any, existing: any, { checkVersion = true }
     if (bundled.length) {
         const choice = await promptImportLibraries(resolved.name, bundled.length);
         if (choice === 'cancel') return false;
-        if (choice === 'yes') await importLibraryElementsXml(bundled);
+        if (choice === 'yes') await importLibraryElementsXml(bundled, resolved.id);
     }
     // The engine ignores bundled libraries on create; strip them from the channel.
     if (libsContainer && libsContainer.parentNode) libsContainer.parentNode.removeChild(libsContainer);
@@ -385,12 +423,14 @@ async function importChannelDoc(doc: any, existing: any, { checkVersion = true }
     if (resolved.overwrite) await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override: true });
     else await api.post('/channels', body, { contentType: 'application/xml' });
 
-    // After the upload: an edge pointing at a channel that failed to import
-    // would be a dependency on something that isn't there. A dependency PUT
-    // that fails must not report the channel import itself as failed.
+    const result = { ...resolved, sourceId: String(id), dependencyEdges };
+    if (deferDependencies) return result;
+
+    // A dependency PUT that fails must not report the channel upload itself as
+    // failed. Multi-channel callers defer this until all identities resolve.
     try { await mergeChannelDependencies(dependencyEdges); }
     catch (e: any) { toast(`Channel imported, but its deploy/start dependencies could not be saved: ${e.message}`, 'warn'); }
-    return resolved;
+    return result;
 }
 
 /* Import a channel XML file. Accepts BOTH shapes the engine and the Swing client
@@ -402,11 +442,11 @@ async function importChannelDoc(doc: any, existing: any, { checkVersion = true }
 
    Returns the resolved identity for a single channel, an { list, imported,
    skipped } summary for a list, or false when the user cancelled outright. */
-async function importChannelXml(xml: any, existing: any, { checkVersion = true }: any = {}): Promise<any> {
+async function importChannelXml(xml: any, existing: any, { checkVersion = true, deferDependencies = false }: any = {}): Promise<any> {
     const doc = new DOMParser().parseFromString(String(xml || ''), 'text/xml');
     if (doc.querySelector('parsererror') || !doc.documentElement) throw new Error('Not a valid channel XML file');
     const root = doc.documentElement;
-    if (root.nodeName === 'channel') return importChannelDoc(doc, existing, { checkVersion });
+    if (root.nodeName === 'channel') return importChannelDoc(doc, existing, { checkVersion, deferDependencies });
     if (root.nodeName !== 'list') throw new Error('Not a valid channel XML file');
 
     // XStream stamps the version on the element it serialized as the root, so a
@@ -426,6 +466,8 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
        Cancelling or failing ONE channel skips it and keeps going: the alternative
        is abandoning a 200-channel import halfway with no way to resume. */
     const known = structuredClone(existing);
+    const resolvedIds = new Map<string, string>();
+    const dependencyEdges: any[] = [];
     let imported = 0;
     let skipped = 0;
     for (const channelEl of channelEls) {
@@ -433,7 +475,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
         single.appendChild(single.importNode(channelEl, true));
         let resolved: any;
         try {
-            resolved = await importChannelDoc(single, known, { checkVersion: false });
+            resolved = await importChannelDoc(single, known, { checkVersion: false, deferDependencies: true });
         } catch (e: any) {
             toast(`Could not import channel: ${e.message}`, 'warn');
             skipped++;
@@ -441,10 +483,15 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
         }
         if (resolved === false) { skipped++; continue; }
         imported++;
-        const match = known.find((c: any) => c.id === resolved.id);
-        if (match) Object.assign(match, resolved);
-        else known.push(resolved);
+        resolvedIds.set(String(resolved.sourceId), String(resolved.id));
+        dependencyEdges.push(...resolved.dependencyEdges);
+        const identity = importedIdentity(resolved);
+        const match = known.find((c: any) => c.id === identity.id);
+        if (match) Object.assign(match, identity);
+        else known.push(identity);
     }
+    try { await mergeChannelDependencies(rewriteDependencyEdges(dependencyEdges, resolvedIds)); }
+    catch (e: any) { toast(`Channels imported, but their deploy/start dependencies could not be saved: ${e.message}`, 'warn'); }
     return { list: true, imported, skipped };
 }
 
@@ -1027,7 +1074,7 @@ export function ChannelsView() {
                     if (choice === 'cancel') return;
                     if (choice === 'yes') {
                         const existing = await api.codeTemplates.libraries(true);
-                        await api.codeTemplates.updateLibraries(mergeImportedLibraries(existing, bundled, obj.id) as any);
+                        await saveImportedLibraries(existing, bundled, obj.id);
                     }
                 }
                 // Libraries are saved separately; strip them before saving the channel.
@@ -1133,9 +1180,18 @@ export function ChannelsView() {
     async function deployTask(rows: any) {
         if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         try {
-            await api.engine.deployMany(rows.map((c: any) => c.id));
+            const selectedIds = rows.map((channel: any) => channel.id);
+            const nameById = new Map(channels.map((channel: any) => [String(channel.id), channel.name]));
+            const targets = await withDependencies(
+                selectedIds,
+                'dependencies',
+                'Deploy',
+                (id: any) => nameById.get(String(id)) || id
+            );
+            if (targets === null) return;
+            await api.engine.deployMany(targets);
             // Move to the Dashboard to watch deployment (matches Swing).
-            toast(rows.length === 1 ? `Deploying ${rows[0].name}` : `Deploying ${rows.length} channels`);
+            toast(targets.length === 1 ? `Deploying ${rows[0].name}` : `Deploying ${targets.length} channels`);
             router.navigate('/dashboard');
         } catch (e: any) {
             // Deploy compile failures return the engine's full exception — show it
@@ -1328,6 +1384,7 @@ export function ChannelsView() {
             const parsed = parseGroupXml(file.content);
             const knownChannels = structuredClone(channels);
             const resolvedChannelIds = new Map();
+            const dependencyEdges: any[] = [];
             const imported = [];
 
             // Match Swing's ChannelPanel.importGroup ordering: import every full
@@ -1339,19 +1396,29 @@ export function ChannelsView() {
                 for (const embedded of embeddedChannels) {
                     let finalId = resolvedChannelIds.get(embedded.id) || embedded.id;
                     if (embedded.isDefinition && !resolvedChannelIds.has(embedded.id)) {
-                        const resolved = await importChannelXml(embedded.xml, knownChannels, { checkVersion: false });
+                        const resolved = await importChannelXml(embedded.xml, knownChannels, {
+                            checkVersion: false,
+                            deferDependencies: true
+                        });
                         if (resolved === false) return;
                         finalId = resolved.id;
                         resolvedChannelIds.set(embedded.id, finalId);
+                        dependencyEdges.push(...resolved.dependencyEdges);
 
+                        const identity = importedIdentity(resolved);
                         const existing = knownChannels.find((channel: any) => channel.id === finalId);
-                        if (existing) Object.assign(existing, resolved);
-                        else knownChannels.push(resolved);
+                        if (existing) Object.assign(existing, identity);
+                        else knownChannels.push(identity);
                     }
                     refs.push({ id: finalId });
                 }
                 group.channels = refs.length ? { channel: refs } : null;
                 imported.push(group);
+            }
+            try {
+                await mergeChannelDependencies(rewriteDependencyEdges(dependencyEdges, resolvedChannelIds));
+            } catch (e: any) {
+                toast(`Channels imported, but their deploy/start dependencies could not be saved: ${e.message}`, 'warn');
             }
             const importedIds = new Set(imported.map(g => g.id));
             const importedChannelIds = new Set(imported.flatMap(g =>
