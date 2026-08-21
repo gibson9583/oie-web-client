@@ -22,6 +22,7 @@ import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorM
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
+import { createZip } from '../../core/zip.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { alertInformation, optionYesNo, resolveImportName as resolveImportIdentity } from './import-dialogs.js';
@@ -83,16 +84,18 @@ function promptImportLibraries(channelName: any, count: any) {
     });
 }
 
-// Code template library names linked to a channel (same predicate as the Set
-// Dependencies modal): enabled for the channel, or include-new and not disabled.
-async function linkedLibraryNames(channelId: any) {
+// Code template library names linked to any of these channels (same predicate as
+// the Set Dependencies modal): enabled for the channel, or include-new and not
+// disabled. A group export asks about the union over the group's channels, so
+// one call answers for the whole export.
+async function linkedLibraryNames(channelIds: any) {
     try {
         const libs = await api.codeTemplates.libraries(false);
         const idSet = (v: any) => api.asList(v, 'string').map(String);
-        const cid = String(channelId);
-        return libs.filter(lib =>
+        const cids = [...new Set(api.asList(channelIds).map(String))];
+        return libs.filter(lib => cids.some(cid =>
             idSet(lib.enabledChannelIds).includes(cid) ||
-            (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(cid)))
+            (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(cid))))
             .map(lib => lib.name || '(unnamed library)');
     } catch { return []; }
 }
@@ -121,6 +124,55 @@ function promptExportLibraries(names: any) {
             ]
         });
     });
+}
+
+/* Ask — once, up front, before any save dialog — whether an export should bundle
+   the code template libraries linked to `channelIds`, honoring/persisting the
+   exportLibrariesWithChannels pref. Swing asks this for channel AND group
+   exports, so both paths run through here. Returns true/false, or null when the
+   user cancelled the export outright. Nothing linked means nothing to ask. */
+async function promptIncludeLibraries(channelIds: any) {
+    const pref = getPref('exportLibrariesWithChannels');
+    if (pref === 'yes' || pref === 'no') return pref === 'yes';
+    const linked = await linkedLibraryNames(channelIds);
+    if (!linked.length) return false;
+    const choice = await promptExportLibraries(linked);
+    if (choice === 'cancel') return null;
+    return choice === 'yes';
+}
+
+/* ---- per-object export files (Swing writes one file per object) -------------
+   Swing's "Export All" asks for a DIRECTORY and drops one <channel>/<channelGroup>
+   file into it; the engine's combined <list> response is not a document any
+   importer deserializes. The web client has no directory to write into, so the
+   per-object files go into a ZIP instead. */
+
+/* Split an engine <list> response into standalone per-object elements. XStream
+   stamps the version attribute on whatever element it serialized as the root, so
+   a child lifted out of a <list> can carry none — inherit the list's, or the
+   file reads as "unknown version" and prompts for migration on import. */
+function detachListElements(doc: any, tag: any) {
+    const root = doc.documentElement;
+    if (!root) return [];
+    if (root.tagName === tag) return [root];
+    const els = [...root.querySelectorAll(`:scope > ${tag}`)];
+    const version = root.getAttribute('version');
+    if (version) for (const el of els) if (!el.getAttribute('version')) el.setAttribute('version', version);
+    return els;
+}
+
+/* Name one ZIP entry after the object it holds, the way Swing names the files it
+   writes into an export directory. Characters no filesystem accepts are folded
+   to '_', and collisions are numbered — two channels may share a name (they only
+   have to differ in id), and ZIP readers silently keep just one of two identical
+   entry names. Matched case-insensitively: Windows/macOS would collide anyway. */
+function exportEntryName(name: any, fallback: any, used: Set<string>) {
+    const base = String(name || '').trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/^\.+/, '_')
+        || String(fallback || 'export');
+    let entry = `${base}.xml`;
+    for (let n = 2; used.has(entry.toLowerCase()); n++) entry = `${base} (${n}).xml`;
+    used.add(entry.toLowerCase());
+    return entry;
 }
 
 const CHANNEL_NAME_RE = /^[a-zA-Z_0-9\-\s]*$/;
@@ -269,17 +321,15 @@ async function remapImportedResourceIds(channelEl: any) {
     }
 }
 
-// Import a channel XML export: resolve a name/id collision (warn + overwrite or
+// Import ONE channel document: resolve a name/id collision (warn + overwrite or
 // rename), handle bundled libraries, then create or overwrite. Returns the final
 // channel identity (which may change during collision resolution), or false if the
-// user cancelled. `existing` is the current channel list (for collision). Group
-// imports already perform migration confirmation for the enclosing document, so
-// they can disable the otherwise-standard per-channel version check.
-async function importChannelXml(xml: any, existing: any, { checkVersion = true }: any = {}) {
-    const doc = new DOMParser().parseFromString(xml, 'text/xml');
-    if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'channel') {
-        throw new Error('Not a valid channel XML file');
-    }
+// user cancelled. `existing` is the current channel list (for collision). `doc`
+// must have a <channel> root — it is serialized WHOLE as the upload body, which
+// is why a channel lifted out of a <list> gets a document of its own. Group and
+// list imports already perform migration confirmation for the enclosing document,
+// so they can disable the otherwise-standard per-channel version check.
+async function importChannelDoc(doc: any, existing: any, { checkVersion = true }: any = {}) {
     const channelEl = doc.documentElement;
     // Swing promptObjectMigration: block newer-than-server exports (alertInformation),
     // confirm the automatic conversion for older/unknown ones (Yes/No "Select an
@@ -341,6 +391,61 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
     try { await mergeChannelDependencies(dependencyEdges); }
     catch (e: any) { toast(`Channel imported, but its deploy/start dependencies could not be saved: ${e.message}`, 'warn'); }
     return resolved;
+}
+
+/* Import a channel XML file. Accepts BOTH shapes the engine and the Swing client
+   produce: a single <channel> root, and the <list> of <channel> elements that
+   GET /channels returns (what our own Export All used to write, and what a Swing
+   user gets by feeding the endpoint straight to a file). Every channel in a list
+   goes through the single-channel path, so collision resolution, bundled
+   libraries, resource re-mapping and dependency edges behave identically.
+
+   Returns the resolved identity for a single channel, an { list, imported,
+   skipped } summary for a list, or false when the user cancelled outright. */
+async function importChannelXml(xml: any, existing: any, { checkVersion = true }: any = {}): Promise<any> {
+    const doc = new DOMParser().parseFromString(String(xml || ''), 'text/xml');
+    if (doc.querySelector('parsererror') || !doc.documentElement) throw new Error('Not a valid channel XML file');
+    const root = doc.documentElement;
+    if (root.nodeName === 'channel') return importChannelDoc(doc, existing, { checkVersion });
+    if (root.nodeName !== 'list') throw new Error('Not a valid channel XML file');
+
+    // XStream stamps the version on the element it serialized as the root, so a
+    // <list> carries ONE version for the whole file — prompt for migration here,
+    // once, and let the per-channel path skip its own check (as group imports do).
+    if (checkVersion) {
+        const verdict = checkImportVersion(root.getAttribute('version'), 'channel');
+        if (verdict.action === 'block') { await alertInformation(verdict.message); return false; }
+        if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return false;
+    }
+    const channelEls = detachListElements(doc, 'channel');
+    if (!channelEls.length) throw new Error('No <channel> elements found in the file');
+
+    /* Collisions are resolved against the channels already on the server PLUS the
+       ones this file has just created — a list may well contain two channels with
+       the same name, and the second must not silently overwrite the first.
+       Cancelling or failing ONE channel skips it and keeps going: the alternative
+       is abandoning a 200-channel import halfway with no way to resume. */
+    const known = structuredClone(existing);
+    let imported = 0;
+    let skipped = 0;
+    for (const channelEl of channelEls) {
+        const single = doc.implementation.createDocument(null, null, null);
+        single.appendChild(single.importNode(channelEl, true));
+        let resolved: any;
+        try {
+            resolved = await importChannelDoc(single, known, { checkVersion: false });
+        } catch (e: any) {
+            toast(`Could not import channel: ${e.message}`, 'warn');
+            skipped++;
+            continue;
+        }
+        if (resolved === false) { skipped++; continue; }
+        imported++;
+        const match = known.find((c: any) => c.id === resolved.id);
+        if (match) Object.assign(match, resolved);
+        else known.push(resolved);
+    }
+    return { list: true, imported, skipped };
 }
 
 // Merge bundled libraries into the existing server set (port of
@@ -869,8 +974,18 @@ export function ChannelsView() {
         try {
             const content = String(file.content || '').trim();
             if (content.startsWith('<')) {
-                // XML export — name/id collision flow + bundled libraries.
-                if (await importChannelXml(content, channels) === false) return;
+                // XML export — name/id collision flow + bundled libraries. A
+                // <list> file imports every channel in it, so it reports a tally
+                // (some may have been cancelled or failed) rather than a name.
+                const result = await importChannelXml(content, channels);
+                if (result === false) return;
+                if (result.list) {
+                    toast(`Imported ${result.imported} channel(s) from ${file.name}`
+                        + (result.skipped ? `, skipped ${result.skipped}` : ''),
+                        result.imported ? undefined : 'warn');
+                    refresh();
+                    return;
+                }
             } else {
                 let obj = JSON.parse(content);
                 if (obj && typeof obj === 'object' && obj.channel) obj = obj.channel;
@@ -921,20 +1036,8 @@ export function ChannelsView() {
         // libraries — only when the channel actually has linked ones. saveFile
         // falls back to a normal download if the native picker can't engage
         // outside the click gesture.
-        const pref = getPref('exportLibrariesWithChannels');
-        let includeLibs: any;
-        if (pref === 'yes' || pref === 'no') {
-            includeLibs = pref === 'yes';
-        } else {
-            const linked = await linkedLibraryNames(channel.id);
-            if (!linked.length) {
-                includeLibs = false;   // nothing to bundle — no prompt
-            } else {
-                const choice = await promptExportLibraries(linked);
-                if (choice === 'cancel') return;   // abort the export
-                includeLibs = choice === 'yes';
-            }
-        }
+        const includeLibs = await promptIncludeLibraries(channel.id);
+        if (includeLibs === null) return;   // cancelled the export
         try {
             await saveFile(`${channel.name || channel.id}.xml`, 'application/xml',
                 () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined));
@@ -943,13 +1046,34 @@ export function ChannelsView() {
         }
     }
 
+    /* Export All writes ONE FILE PER CHANNEL into a ZIP. The engine's combined
+       <list> we used to save is a document no importer deserializes — Swing
+       reads a single Channel, and our own Import Channel rejected the file it
+       had just written. Swing's Export All picks a directory and drops a file
+       per channel into it; a ZIP is the browser's version of that directory. */
     async function exportAllTask() {
         if (!channels.length) { toast('No channels to export', 'warn'); return; }
+        const includeLibs = await promptIncludeLibraries(channels.map((c: any) => c.id));
+        if (includeLibs === null) return;   // cancelled the export
         try {
-            // One combined Swing-format <list> of <channel> elements. Serializing
-            // every channel takes the engine minutes on a big server — no client
-            // ceiling (timeoutMs: null).
-            await saveFile('channels.xml', 'application/xml', () => api.getXml('/channels', undefined, { timeoutMs: null }));
+            await saveFile('channels.zip', 'application/zip', async () => {
+                // Serializing every channel takes the engine minutes on a big
+                // server — no client ceiling (timeoutMs: null).
+                const xml = await api.getXml('/channels',
+                    includeLibs ? { includeCodeTemplateLibraries: true } : undefined, { timeoutMs: null });
+                const doc = new DOMParser().parseFromString(xml, 'text/xml');
+                if (doc.querySelector('parsererror')) throw new Error('Engine returned invalid channel XML');
+                const els = detachListElements(doc, 'channel');
+                if (!els.length) throw new Error('No channels to export');
+                const zip = createZip();
+                const used = new Set<string>();
+                for (const el of els) {
+                    const child = (tag: any) => [...el.children].find((c: any) => c.tagName === tag)?.textContent;
+                    zip.add(exportEntryName(child('name'), child('id'), used),
+                        new XMLSerializer().serializeToString(el));
+                }
+                return zip.blob();
+            });
         } catch (e: any) {
             toast(e.message, 'error');
         }
@@ -1233,17 +1357,15 @@ export function ChannelsView() {
 
     /* GET /channelgroups returns membership references, while Swing's exported
        ChannelGroup contains complete Channel objects. Hydrate those references
-       from GET /channels before serializing so this file can recreate both the
-       group and its channels when imported on another server. */
-    async function channelGroupExportXml(groupId?: any) {
+       from GET /channels so an export can recreate both the group and its
+       channels when imported on another server. Returns the ready-to-serialize
+       <channelGroup> elements (one file each), all of them or just `groupId`. */
+    async function hydratedGroupElements(groupId?: any, includeLibs?: any) {
         const groupsXml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
         const groupsDoc = new DOMParser().parseFromString(groupsXml, 'text/xml');
         if (groupsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
 
-        const groupsRoot = groupsDoc.documentElement;
-        const allGroups = groupsRoot.tagName === 'channelGroup'
-            ? [groupsRoot]
-            : [...groupsRoot.querySelectorAll(':scope > channelGroup')];
+        const allGroups = detachListElements(groupsDoc, 'channelGroup');
         const exportGroups = groupId == null
             ? allGroups
             : allGroups.filter(groupEl =>
@@ -1266,14 +1388,12 @@ export function ChannelsView() {
 
         const channelById = new Map<string, Element>();
         if (channelIds.size) {
-            const channelsXml = await api.getXml('/channels', { channelId: [...channelIds] }, { timeoutMs: null });
+            const params: any = { channelId: [...channelIds] };
+            if (includeLibs) params.includeCodeTemplateLibraries = true;
+            const channelsXml = await api.getXml('/channels', params, { timeoutMs: null });
             const channelsDoc = new DOMParser().parseFromString(channelsXml, 'text/xml');
             if (channelsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel XML');
-            const channelsRoot = channelsDoc.documentElement;
-            const fullChannels = channelsRoot.tagName === 'channel'
-                ? [channelsRoot]
-                : [...channelsRoot.querySelectorAll(':scope > channel')];
-            for (const channelEl of fullChannels) {
+            for (const channelEl of detachListElements(channelsDoc, 'channel')) {
                 const id = [...channelEl.children].find(c => c.tagName === 'id')?.textContent;
                 if (id) channelById.set(id, channelEl);
             }
@@ -1293,22 +1413,49 @@ export function ChannelsView() {
             }
         }
 
-        return new XMLSerializer().serializeToString(groupId == null ? groupsDoc : exportGroups[0]);
+        return exportGroups;
     }
+
+    // The channels a group export will carry, for the "include libraries?" prompt.
+    const groupChannelIds = (list: any[]) => list.flatMap((g: any) =>
+        api.asList(g.channels, 'channel').map((ref: any) => ref && ref.id).filter(Boolean));
 
     async function exportGroupTask(g: any) {
         const group = requireGroup(g);
         if (!group) return;
+        // Swing asks about bundling linked libraries for a GROUP export too — the
+        // group's channels are exported whole, so they carry (or don't) the same
+        // exportData the single-channel export does.
+        const includeLibs = await promptIncludeLibraries(groupChannelIds([group]));
+        if (includeLibs === null) return;
         try {
-            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id));
+            await saveFile(`${group.name || group.id}.xml`, 'application/xml', async () => {
+                const els = await hydratedGroupElements(group.id, includeLibs);
+                return new XMLSerializer().serializeToString(els[0]);
+            });
         } catch (e: any) {
             toast(e.message, 'error');
         }
     }
 
+    /* Export All Groups, like Export All Channels, writes one file per group into
+       a ZIP: a <list> of <channelGroup> is not a document Swing can read back. */
     async function exportGroupsTask() {
+        const includeLibs = await promptIncludeLibraries(groupChannelIds(groups));
+        if (includeLibs === null) return;
         try {
-            await saveFile('channel-groups.xml', 'application/xml', () => channelGroupExportXml());
+            await saveFile('channel-groups.zip', 'application/zip', async () => {
+                const els = await hydratedGroupElements(undefined, includeLibs);
+                if (!els.length) throw new Error('No channel groups to export');
+                const zip = createZip();
+                const used = new Set<string>();
+                for (const el of els) {
+                    const child = (tag: any) => [...el.children].find((c: any) => c.tagName === tag)?.textContent;
+                    zip.add(exportEntryName(child('name'), child('id'), used),
+                        new XMLSerializer().serializeToString(el));
+                }
+                return zip.blob();
+            });
         } catch (e: any) {
             toast(e.message, 'error');
         }

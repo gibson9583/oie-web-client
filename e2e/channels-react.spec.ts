@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { mockEngine } from './mock.js';
+import * as zipjs from '../web-administrator/client/vendor/zipjs.min.js';
+
+zipjs.configure({ useWebWorkers: false });
 
 /*
  * Focused coverage for the React Channels view (the grouped channel tree). The
@@ -172,11 +175,25 @@ test.describe('Channels React view', () => {
         await gotoChannels(page);
         await page.getByRole('gridcell', { name: '[Demo Group]', exact: true }).click();
 
+        // Export Group saves the one group as a plain XML document; Export All
+        // Groups saves ONE FILE PER GROUP into a ZIP (Swing writes them into a
+        // chosen directory — a <list> of <channelGroup> is not a document any
+        // importer reads). Either way the group carries its full channels.
         const assertFullChannelExport = async (buttonName: string) => {
             const downloadPromise = page.waitForEvent('download');
             await page.getByRole('button', { name: buttonName, exact: true }).click();
             const download = await downloadPromise;
-            const xml = await readFile(await download.path(), 'utf8');
+            const path = await download.path();
+            let xml: string;
+            if (download.suggestedFilename().endsWith('.zip')) {
+                const reader = new zipjs.ZipReader(new zipjs.BlobReader(new Blob([await readFile(path)])));
+                const entries = await reader.getEntries();
+                expect(entries.map((e: any) => e.filename)).toEqual(['Demo Group.xml']);
+                xml = await entries[0].getData(new zipjs.TextWriter());
+                await reader.close();
+            } else {
+                xml = await readFile(path, 'utf8');
+            }
             expect(xml).toContain('<id>g-1</id>');
             expect(xml).toMatch(/<channels><channel[^>]*>[\s\S]*<id>c-started<\/id>[\s\S]*<name>Demo Started<\/name>/);
             expect(xml).toContain('<sourceConnector><name>Source</name></sourceConnector>');
