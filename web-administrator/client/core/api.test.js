@@ -95,5 +95,39 @@ for (const [label, call] of [
     ok(lastInit && !lastInit.signal, `${label} runs without the client ceiling`);
 }
 
+/* ---- Cures Act functional audit operations ---- */
+
+// Each posts an XStream Map<String,String> to its own endpoint. The engine's
+// map converter rejects a bare JSON object, so the body must be <map> XML.
+let lastUrl = null, lastBody = null, lastCt = null;
+globalThis.fetch = async (url, init) => {
+    lastUrl = String(url); lastBody = init.body; lastCt = (init.headers || {})['Content-Type'];
+    return new Response('{}', { status: 200 });
+};
+
+for (const [label, call, path] of [
+    ['auditAccessedPHI', (a) => api.messages.auditAccessedPHI(a), '/channels/_auditAccessedPHIMessage'],
+    ['auditQueriedPHI', (a) => api.messages.auditQueriedPHI(a), '/channels/_auditQueriedPHIMessage'],
+    ['auditExport', (a) => api.messages.auditExport(a), '/channels/_auditExportMessages'],
+    ['auditExportSuccess', (a) => api.messages.auditExportSuccess(a), '/channels/_auditExportMessagesSuccess']
+]) {
+    await call({ patientId: 'PID-1' });
+    ok(lastUrl.endsWith(path), `${label} posts to ${path}`);
+    ok(lastCt === 'application/xml', `${label} sends application/xml`);
+    ok(lastBody === '<map><entry><string>patientId</string><string>PID-1</string></entry></map>',
+        `${label} serializes the attribute map as XStream XML`);
+}
+
+// XML metacharacters in an attribute value would otherwise break the document
+// (a patient id or file pattern is user-controlled).
+await api.messages.auditAccessedPHI({ 'a&b': '<x>' });
+ok(lastBody === '<map><entry><string>a&amp;b</string><string>&lt;x&gt;</string></entry></map>',
+    'audit attributes are XML-escaped');
+
+// A missing metadata value must not serialize as the string "undefined".
+await api.messages.auditAccessedPHI({ patientId: undefined, channel: 'c1' });
+ok(lastBody === '<map><entry><string>channel</string><string>c1</string></entry></map>',
+    'null/undefined audit attributes are dropped');
+
 console.log(`api.test: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

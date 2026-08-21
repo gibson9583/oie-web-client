@@ -131,6 +131,14 @@ export interface MessagesApi {
     reprocess(channelId: string, messageId: string | number, replace?: boolean, filterDestinations?: boolean, metaDataIds?: number[]): Promise<Json>;
     remove(channelId: string, messageId: string | number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;
+    /** Audit that the user viewed a message on a PHI-bearing channel. */
+    auditAccessedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit that the user searched a PHI-bearing channel's message browser. */
+    auditQueriedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit the start of a message export. Callers must await this and abort on failure. */
+    auditExport(attributes: Record<string, string>): Promise<Json>;
+    /** Audit a message export that completed. */
+    auditExportSuccess(attributes: Record<string, string>): Promise<Json>;
 }
 export interface EventsApi {
     search(params?: QueryParams): Promise<ServerEvent[]>;

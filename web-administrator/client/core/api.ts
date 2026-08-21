@@ -487,6 +487,14 @@ export interface MessagesApi {
     ): Promise<Json>;
     remove(channelId: string, messageId: string | number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;
+    /** Audit that the user viewed a message on a PHI-bearing channel. */
+    auditAccessedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit that the user searched a PHI-bearing channel's message browser. */
+    auditQueriedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit the start of a message export. Callers must await this and abort on failure. */
+    auditExport(attributes: Record<string, string>): Promise<Json>;
+    /** Audit a message export that completed. */
+    auditExportSuccess(attributes: Record<string, string>): Promise<Json>;
 }
 
 export interface EventsApi {
@@ -774,8 +782,29 @@ export const messages: MessagesApi = {
     // large message table can legitimately outlast the normal request ceiling.
     removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) =>
         del(`/channels/${enc(channelId)}/messages/_removeAll`,
-            { restartRunningChannels, clearStatistics }, { timeoutMs: null })
+            { restartRunningChannels, clearStatistics }, { timeoutMs: null }),
+
+    /* ---- Cures Act functional audit operations -----------------------------
+       Each takes a Map<String,String> of attributes and writes a ServerEvent
+       ("Accessed PHI" / "Queried PHI" / "Export all messages" / "Successfully
+       exported messages") to the event log. Serialized as XStream XML: a JSON
+       object body deserializes to a bare LinkedHashMap the engine's map
+       converter rejects, and the Swing client sends the same XML. */
+    auditAccessedPHI: (attributes) => postXml('/channels/_auditAccessedPHIMessage', attributeMapXml(attributes)),
+    auditQueriedPHI: (attributes) => postXml('/channels/_auditQueriedPHIMessage', attributeMapXml(attributes)),
+    auditExport: (attributes) => postXml('/channels/_auditExportMessages', attributeMapXml(attributes)),
+    auditExportSuccess: (attributes) => postXml('/channels/_auditExportMessagesSuccess', attributeMapXml(attributes))
 };
+
+/* XStream's native Map<String,String> form. Entries with a null/undefined value
+   are dropped rather than serialized as the string "undefined". */
+function attributeMapXml(attributes: Record<string, unknown>): string {
+    const esc = (s: unknown) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+    const entries = Object.entries(attributes || {})
+        .filter(([, v]) => v !== undefined && v !== null)
+        .map(([k, v]) => `<entry><string>${esc(k)}</string><string>${esc(v)}</string></entry>`);
+    return `<map>${entries.join('')}</map>`;
+}
 
 /* ===========================================================================
    Events                                                          /events

@@ -1462,6 +1462,42 @@ function suffixName(name: any, suffix: any) {
    dialog, or one file per message into a chosen folder); Server export
    defers the whole job to POST /messages/_export (which holds the
    encryption key, so content Encrypt is fully supported there). */
+/* Cures Act export auditing (Swing MessageExportDialog). Both events fire on
+   every export, on every channel — unlike the accessed/queried pair there is no
+   PATIENT_ID gate. The descriptor is shared by the two events so the "started"
+   and "succeeded" records line up in the event log. */
+function exportAuditAttributes(o: any) {
+    return {
+        rootPath: o.rootFolder || 'My Computer',
+        filePattern: o.pattern,
+        contentType: o.opt.xml ? 'XML' : String(o.opt.ct || ''),
+        encrypted: String(!!o.encryptContent),
+        includeAttachments: String(!!o.includeAttachments),
+        compressionFormat: o.compression === 'zip' ? 'zip' : 'none',
+        passwordProtected: String(!!o.pwProtect)
+    };
+}
+
+// Blocking: Swing aborts the export when the pre-export audit fails, so an
+// unauditable export never writes PHI anywhere.
+async function auditExportStart(o: any) {
+    try {
+        await api.messages.auditExport(exportAuditAttributes(o));
+        return true;
+    } catch (e: any) {
+        toast(`Export cancelled — the export audit event could not be written: ${e.message}`, 'error');
+        return false;
+    }
+}
+
+// Non-blocking: the export already happened, so a failed success event must not
+// report the export itself as failed — but it must still be visible, or the
+// audit trail loses a record with nothing on screen to say so.
+function auditExportSuccess(o: any, exportCount: any) {
+    api.messages.auditExportSuccess({ ...exportAuditAttributes(o), exportCount: String(exportCount) })
+        .catch((e: any) => toast(`Export finished, but its audit event could not be written: ${e.message}`, 'warn'));
+}
+
 function exportResultsDialog({ channelId, total, lastParams }: any) {
     let aborted = false, running = false;
 
@@ -1642,6 +1678,7 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             // The engine writes every matching message to its filesystem before
             // answering — minutes for a big filter — so no client ceiling.
             const count = await api.post(`/channels/${channelId}/messages/_export`, null, { params, timeoutMs: null });
+            auditExportSuccess(o, Number(count) || 0);
             toast(`Server exported ${fmtNumber(Number(count) || 0)} message(s) to ${o.rootFolder}`);
             dlg.close();
         } catch (e: any) {
@@ -1663,7 +1700,11 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
         if ((toServer as any).checked) {
             if (!(rootInput as any).value.trim()) { toast('Enter a Root Path for server export', 'warn'); return; }
             if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
-            return runServerExport({ opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder: (rootInput as any).value.trim() });
+            const o = { opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder: (rootInput as any).value.trim() };
+            // Audit after validation (a bounced dialog is not an export attempt)
+            // but before any message leaves the engine.
+            if (!await auditExportStart(o)) return;
+            return runServerExport(o);
         }
 
         // My Computer (browser) export.
@@ -1672,6 +1713,9 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             return;
         }
         if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
+
+        const auditDescriptor = { opt, compression, pattern, encryptContent, includeAttachments, pwProtect, rootFolder: '' };
+        if (!await auditExportStart(auditDescriptor)) return;
 
         running = true; aborted = false; setDisabled(true); barWrap.style.display = '';
         const now = new Date();
@@ -1695,6 +1739,7 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             // buildZip.result is unset if the user cancelled the Save dialog.
             if ((buildZip as any).result) {
                 const r = (buildZip as any).result;
+                auditExportSuccess(auditDescriptor, r.done);
                 toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
                 dlg.close();
             } else {
@@ -1767,6 +1812,23 @@ export function MessagesView({ params, query }: any) {
        bare /messages route — and the picker is how you choose. */
     const [channelList, setChannelList] = useState([] as any[]);
     const [metaDataColumns, setMetaDataColumns] = useState([] as any[]);
+
+    /* Cures Act PHI auditing (Swing MessageBrowser): "Accessed PHI" and "Queried
+       PHI" fire only on channels that declare a custom metadata column named
+       PATIENT_ID. Channels without one emit nothing, so the gate is the column
+       list the browser already fetches. Both events are advisory — a failure is
+       surfaced but never blocks browsing, and it is reported once per mount so a
+       server that has the operations disabled cannot bury the UI in toasts. */
+    const phiAuditedRef = useRef(false);
+    phiAuditedRef.current = metaDataColumns.some((c: any) => String(c.name || '').toUpperCase() === 'PATIENT_ID');
+    const channelNameRef = useRef(channelId);
+    channelNameRef.current = channelName;
+    const auditWarnedRef = useRef(false);
+    const onAuditFailure = (e: any) => {
+        if (auditWarnedRef.current) return;
+        auditWarnedRef.current = true;
+        toast(`PHI audit event could not be written: ${e.message}`, 'warn');
+    };
     const [messages, setMessages] = useState([] as any[]);
     // shown: null = no search has completed yet (blank counts label, legacy
     // parity) — distinct from a completed search with zero rows ('No results').
@@ -1964,6 +2026,16 @@ export function MessagesView({ params, query }: any) {
             setAllExpanded(true);
             setMessages(list);
             setPager({ offset: offsetRef.current, shown: list.length, total: totalRef.current, hasNext });
+            // "Queried PHI" carries the filter that ran, per the engine's
+            // attributes-map contract for this operation.
+            if (phiAuditedRef.current) {
+                const attrs: Record<string, string> = { channel: channelNameRef.current || channelId };
+                for (const [k, v] of Object.entries(lastParamsRef.current || {})) {
+                    if (v === undefined || v === null || v === '') continue;
+                    attrs[k] = Array.isArray(v) ? v.join(', ') : String(v);
+                }
+                api.messages.auditQueriedPHI(attrs).catch(onAuditFailure);
+            }
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
             toast(`Search failed: ${e.message}`, 'error');
@@ -2028,6 +2100,15 @@ export function MessagesView({ params, query }: any) {
             toast(`Failed to load message content: ${e.message}`, 'error');
         }
         if (selectedRef.current?.m !== row) return; // selection changed while loading
+        // "Accessed PHI" fires for the message the user actually opened, so it
+        // waits for the load and the stale-selection guard above.
+        if (phiAuditedRef.current) {
+            api.messages.auditAccessedPHI({
+                patientId: metaDataValue(message, 'PATIENT_ID'),
+                channel: channelNameRef.current || channelId,
+                messageId: String(row.messageId)
+            }).catch(onAuditFailure);
+        }
         setDetail({ status: 'ready', message, metaDataId });
     }
 

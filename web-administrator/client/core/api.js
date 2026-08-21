@@ -495,8 +495,27 @@ export const messages = {
     remove: (channelId, messageId) => del(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
     // The engine waits for stop/remove/restart to finish before responding, so a
     // large message table can legitimately outlast the normal request ceiling.
-    removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) => del(`/channels/${enc(channelId)}/messages/_removeAll`, { restartRunningChannels, clearStatistics }, { timeoutMs: null })
+    removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) => del(`/channels/${enc(channelId)}/messages/_removeAll`, { restartRunningChannels, clearStatistics }, { timeoutMs: null }),
+    /* ---- Cures Act functional audit operations -----------------------------
+       Each takes a Map<String,String> of attributes and writes a ServerEvent
+       ("Accessed PHI" / "Queried PHI" / "Export all messages" / "Successfully
+       exported messages") to the event log. Serialized as XStream XML: a JSON
+       object body deserializes to a bare LinkedHashMap the engine's map
+       converter rejects, and the Swing client sends the same XML. */
+    auditAccessedPHI: (attributes) => postXml('/channels/_auditAccessedPHIMessage', attributeMapXml(attributes)),
+    auditQueriedPHI: (attributes) => postXml('/channels/_auditQueriedPHIMessage', attributeMapXml(attributes)),
+    auditExport: (attributes) => postXml('/channels/_auditExportMessages', attributeMapXml(attributes)),
+    auditExportSuccess: (attributes) => postXml('/channels/_auditExportMessagesSuccess', attributeMapXml(attributes))
 };
+/* XStream's native Map<String,String> form. Entries with a null/undefined value
+   are dropped rather than serialized as the string "undefined". */
+function attributeMapXml(attributes) {
+    const esc = (s) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const entries = Object.entries(attributes || {})
+        .filter(([, v]) => v !== undefined && v !== null)
+        .map(([k, v]) => `<entry><string>${esc(k)}</string><string>${esc(v)}</string></entry>`);
+    return `<map>${entries.join('')}</map>`;
+}
 /* ===========================================================================
    Events                                                          /events
    ========================================================================== */
