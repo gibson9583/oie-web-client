@@ -103,6 +103,11 @@ export interface StatusApi {
     resume(channelId: string): Promise<Json>;
     startConnector(channelId: string, metaDataId: number): Promise<Json>;
     stopConnector(channelId: string, metaDataId: number): Promise<Json>;
+    startMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    stopMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    haltMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    pauseMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    resumeMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
 }
 export interface StatisticsApi {
     list(channelIds?: string | string[], includeUndeployed?: boolean): Promise<ChannelStatistics[]>;

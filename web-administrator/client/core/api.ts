@@ -439,6 +439,15 @@ export interface StatusApi {
     resume(channelId: string): Promise<Json>;
     startConnector(channelId: string, metaDataId: number): Promise<Json>;
     stopConnector(channelId: string, metaDataId: number): Promise<Json>;
+    /* Bulk lifecycle. The engine dependency-orders the whole set server-side
+       (DonkeyEngineController orders tiers, reversed for start/resume), which it
+       can only do when it receives the set — a loop of single-channel calls runs
+       in whatever order the caller happened to iterate. */
+    startMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    stopMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    haltMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    pauseMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    resumeMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
 }
 
 export interface StatisticsApi {
@@ -703,8 +712,29 @@ export const status: StatusApi = {
     pause: (channelId) => post(`/channels/${enc(channelId)}/_pause`),
     resume: (channelId) => post(`/channels/${enc(channelId)}/_resume`),
     startConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_start`),
-    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`)
+    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`),
+
+    /* The bulk lifecycle endpoints take form-urlencoded `channelId` repeated —
+       NOT the JSON set that _deploy/_undeploy take (startChannels et al are
+       declared application/x-www-form-urlencoded in the engine's API). */
+    startMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_start', channelIds, returnErrors),
+    stopMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_stop', channelIds, returnErrors),
+    haltMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_halt', channelIds, returnErrors),
+    pauseMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_pause', channelIds, returnErrors),
+    resumeMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_resume', channelIds, returnErrors)
 };
+
+function postChannelIdForm(path: string, channelIds: string[], returnErrors: boolean): Promise<Json> {
+    const form = new URLSearchParams();
+    for (const id of channelIds) form.append('channelId', id);
+    // A bulk stop/start waits for every channel in the set to settle, so it can
+    // legitimately outlast the normal request ceiling.
+    return post(path, form.toString(), {
+        contentType: 'application/x-www-form-urlencoded',
+        params: { returnErrors },
+        timeoutMs: null
+    });
+}
 
 export const statistics: StatisticsApi = {
     list: (channelIds, includeUndeployed) =>

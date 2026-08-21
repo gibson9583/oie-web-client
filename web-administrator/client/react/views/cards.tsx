@@ -18,7 +18,7 @@ import { useDeployedStatuses, useChannelGroups, useChannelTags } from '../querie
 import { RailPane, TaskButton } from '../ui.jsx';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
-import { statsOf } from './dashboard.jsx';
+import { statsOf, submitLifecycle, withDependencies } from './dashboard.jsx';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const EMPTY_LIST: any[] = [];  // stable fallback while queries load (memo-dep friendly)
@@ -212,17 +212,43 @@ function CardsView({ onToggleView }: any) {
     const clearSelection = () => setSelected(new Set());
     const openMessages = (status: any) => router.navigate(`/messages/${status.channelId}`);
 
+    // Channel name for the dependency prompt; a related channel that isn't
+    // deployed has no card here, so fall back to its id rather than blank.
+    const nameOf = (id: any) => String(all.find((s: any) => s.channelId === id)?.name ?? id);
+
     async function bulkControl(kind: any, targets: any) {
-        const ids = targets.map((s: any) => s.channelId);
-        if (!ids.length) return;
+        if (!targets.length) return;
+        /* Same dependency walk as the classic dashboard: starting pulls in what
+           the selection DEPENDS ON, stopping/undeploying pulls in what depends
+           ON it. Halt and Pause do not prompt (Swing offers the related channels
+           for deploy/undeploy/start/stop only). */
+        const direction = kind === 'start' ? 'dependencies'
+            : (kind === 'stop' || kind === 'undeploy') ? 'dependents' : null;
+        const verb = kind.charAt(0).toUpperCase() + kind.slice(1);
+        const ids = direction
+            ? await withDependencies(targets.map((s: any) => s.channelId), direction, verb, nameOf)
+            : targets.map((s: any) => s.channelId);
+        if (!ids) return;                                      // dependency prompt cancelled
+
         if (kind === 'undeploy' && !await confirmDialog('Undeploy', `Undeploy ${ids.length} channel${ids.length > 1 ? 's' : ''}?`, { okLabel: 'Undeploy' })) return;
         if (kind === 'halt' && !await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) return;
         try {
             if (kind === 'undeploy') await api.engine.undeployMany(ids);
-            // "Start" on a PAUSED channel resumes it (restarts the stopped source):
-            // the engine's _start (Channel.start) only acts on a STOPPED/DEPLOYING
-            // channel and is a no-op when PAUSED. Matches Swing's Frame.doStart.
-            else for (const s of targets) await (api.status as any)[(kind === 'start' && s.state === 'PAUSED') ? 'resume' : kind](s.channelId);
+            else {
+                /* "Start" on a PAUSED channel resumes it (restarts the stopped
+                   source): the engine's _start (Channel.start) only acts on a
+                   STOPPED/DEPLOYING channel and is a no-op when PAUSED. Matches
+                   Swing's Frame.doStart. A single bulk _start cannot express
+                   "start these, resume those", so the set is partitioned by state
+                   and each half goes out as ONE call — the engine can only
+                   dependency-order a set it receives whole. */
+                const stateById = new Map(all.map((s: any) => [s.channelId, s.state]));
+                const paused = new Set(kind === 'start'
+                    ? ids.filter((id: any) => stateById.get(id) === 'PAUSED') : []);
+                const rest = ids.filter((id: any) => !paused.has(id));
+                if (rest.length) await submitLifecycle(kind, rest);
+                if (paused.size) await submitLifecycle('resume', [...paused]);
+            }
             refresh();
         } catch (e: any) { toast(e && e.message ? e.message : 'Action failed', 'error'); }
     }

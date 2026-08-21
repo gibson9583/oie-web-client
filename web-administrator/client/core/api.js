@@ -430,8 +430,28 @@ export const status = {
     pause: (channelId) => post(`/channels/${enc(channelId)}/_pause`),
     resume: (channelId) => post(`/channels/${enc(channelId)}/_resume`),
     startConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_start`),
-    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`)
+    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`),
+    /* The bulk lifecycle endpoints take form-urlencoded `channelId` repeated —
+       NOT the JSON set that _deploy/_undeploy take (startChannels et al are
+       declared application/x-www-form-urlencoded in the engine's API). */
+    startMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_start', channelIds, returnErrors),
+    stopMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_stop', channelIds, returnErrors),
+    haltMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_halt', channelIds, returnErrors),
+    pauseMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_pause', channelIds, returnErrors),
+    resumeMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_resume', channelIds, returnErrors)
 };
+function postChannelIdForm(path, channelIds, returnErrors) {
+    const form = new URLSearchParams();
+    for (const id of channelIds)
+        form.append('channelId', id);
+    // A bulk stop/start waits for every channel in the set to settle, so it can
+    // legitimately outlast the normal request ceiling.
+    return post(path, form.toString(), {
+        contentType: 'application/x-www-form-urlencoded',
+        params: { returnErrors },
+        timeoutMs: null
+    });
+}
 export const statistics = {
     list: (channelIds, includeUndeployed) => get('/channels/statistics', { channelId: channelIds, includeUndeployed })
         .then(v => asList(v, 'channelStatistics')),
