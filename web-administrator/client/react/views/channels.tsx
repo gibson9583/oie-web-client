@@ -220,6 +220,105 @@ async function importLibraryElementsXml(bundledEls: any) {
     await api.putXml('/codeTemplateLibraries', new XMLSerializer().serializeToString(doc), { override: true });
 }
 
+/* Take the deploy/start edges out of a channel export and rewrite them against
+   the channel's final id.
+
+   A channel export carries its edges in exportData.dependencyIds (channels this
+   one waits for) and exportData.dependentIds (channels that wait for this one).
+   The engine applies only metadata and tags from exportData on create/update, so
+   an importer that ignores these drops the channel's ordering silently. Swing
+   (ChannelPanel.importChannel) merges them into the global dependency set and
+   PUTs it, which is what mergeChannelDependencies below does.
+
+   The elements are stripped either way: the engine ignores them, and leaving
+   them in the uploaded XML would contradict the set we are about to PUT. */
+function takeDependencyEdges(channelEl: any, channelId: any) {
+    const holder = (tag: any) => channelEl.querySelector(`:scope > exportData > ${tag}`);
+    const idsIn = (tag: any) => {
+        const el = holder(tag);
+        return el ? [...el.children].filter((c: any) => c.tagName === 'string')
+            .map((c: any) => String(c.textContent || '').trim()).filter(Boolean) : [];
+    };
+    const dependencyIds = idsIn('dependencyIds');
+    const dependentIds = idsIn('dependentIds');
+    for (const tag of ['dependencyIds', 'dependentIds']) {
+        const el = holder(tag);
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+    return [
+        ...dependencyIds.map((id: any) => ({ dependentId: String(channelId), dependencyId: id })),
+        ...dependentIds.map((id: any) => ({ dependentId: id, dependencyId: String(channelId) }))
+    ].filter(e => e.dependentId !== e.dependencyId);
+}
+
+/* Add edges to the server's dependency set, keeping what is already there.
+   Edges naming a channel that isn't on this server yet are kept rather than
+   dropped: a group import creates its channels one at a time, so an edge
+   between two of them is dangling until the second one lands. The merge is
+   additive and keyed, so importing in any order converges on the same set. */
+async function mergeChannelDependencies(edges: any[]) {
+    if (!edges.length) return;
+    const key = (d: any) => `${d.dependentId}|${d.dependencyId}`;
+    const existing = await api.server.channelDependencies();
+    const merged = new Map(existing.map((d: any) => [key(d), { dependentId: String(d.dependentId), dependencyId: String(d.dependencyId) }]));
+    let added = 0;
+    for (const e of edges) if (!merged.has(key(e))) { merged.set(key(e), e); added++; }
+    if (!added) return;
+    await api.server.setChannelDependencies([...merged.values()]);
+}
+
+/* Re-point library resource assignments at the target server's resources.
+
+   Channel and connector `resourceIds` are id→name maps. A channel moved between
+   servers keeps the source server's resource UUIDs, which mean nothing here, so
+   it deploys without its libraries. Swing (Frame.updateResourceNames) re-points
+   any id the target doesn't know by matching the resource NAME. An id that
+   matches no name is left as-is, as in Swing — the assignment is visibly wrong
+   in the editor rather than silently dropped. */
+async function remapImportedResourceIds(channelEl: any) {
+    const maps = [...channelEl.querySelectorAll('resourceIds')];
+    if (!maps.length) return;
+
+    let raw: any;
+    try { raw = await api.server.resources(); }
+    catch (e: any) {
+        toast(`Could not check library resources: ${e.message}. Imported resource assignments were left unchanged.`, 'warn');
+        return;
+    }
+    const resources: any[] = [];
+    if (Array.isArray(raw)) resources.push(...raw.filter((o: any) => o && typeof o === 'object'));
+    else for (const [className, value] of Object.entries(raw || {})) {
+        if (className.startsWith('@')) continue;
+        for (const obj of api.asList(value)) if (obj && typeof obj === 'object') resources.push(obj);
+    }
+
+    const knownIds = new Set(resources.map((r: any) => String(r.id || '')).filter(Boolean));
+    const idByName = new Map<string, string>();
+    for (const r of resources) {
+        const name = String(r.name ?? '').trim();
+        if (name && r.id && !idByName.has(name)) idByName.set(name, String(r.id));
+    }
+
+    let remapped = 0;
+    const unmatched = new Set<string>();
+    for (const map of maps) {
+        for (const entry of [...map.children].filter((c: any) => c.tagName === 'entry')) {
+            const strings = [...entry.children].filter((c: any) => c.tagName === 'string');
+            if (strings.length < 2) continue;
+            const id = String(strings[0].textContent || '').trim();
+            const name = String(strings[1].textContent || '').trim();
+            if (!id || knownIds.has(id)) continue;
+            const targetId = idByName.get(name);
+            if (targetId) { strings[0].textContent = targetId; remapped++; }
+            else unmatched.add(name || id);
+        }
+    }
+    if (remapped) toast(`Re-mapped ${remapped} library resource assignment(s) to this server`);
+    if (unmatched.size) {
+        toast(`No library resource named ${[...unmatched].map(n => `"${n}"`).join(', ')} on this server — the channel will deploy without it.`, 'warn');
+    }
+}
+
 // Import a channel XML export: resolve a name/id collision (warn + overwrite or
 // rename), handle bundled libraries, then create or overwrite. Returns the final
 // channel identity (which may change during collision resolution), or false if the
@@ -279,9 +378,18 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
     // The engine ignores bundled libraries on create; strip them from the channel.
     if (libsContainer && libsContainer.parentNode) libsContainer.parentNode.removeChild(libsContainer);
 
+    await remapImportedResourceIds(channelEl);
+    const dependencyEdges = takeDependencyEdges(channelEl, resolved.id);
+
     const body = new XMLSerializer().serializeToString(doc);
     if (resolved.overwrite) await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override: true });
     else await api.post('/channels', body, { contentType: 'application/xml' });
+
+    // After the upload: an edge pointing at a channel that failed to import
+    // would be a dependency on something that isn't there. A dependency PUT
+    // that fails must not report the channel import itself as failed.
+    try { await mergeChannelDependencies(dependencyEdges); }
+    catch (e: any) { toast(`Channel imported, but its deploy/start dependencies could not be saved: ${e.message}`, 'warn'); }
     return resolved;
 }
 
