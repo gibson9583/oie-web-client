@@ -18,7 +18,8 @@ import { useDeployedStatuses, useChannelGroups, useChannelTags } from '../querie
 import { RailPane, TaskButton } from '../ui.jsx';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
-import { statsOf, submitLifecycle, withDependencies } from './dashboard.jsx';
+import { statsOf, submitLifecycle } from './dashboard.jsx';
+import { withDependencies } from './channel-lifecycle.js';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const EMPTY_LIST: any[] = [];  // stable fallback while queries load (memo-dep friendly)

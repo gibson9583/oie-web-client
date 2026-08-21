@@ -37,6 +37,7 @@ import {
 // the wizard has no other reason to reference the classic editor, and that lone
 // import is what would otherwise chain the two into one bundle chunk.
 import { DESTINATION_MAPPINGS } from '../../core/mappings.js';
+import { withDependencies } from './channel-lifecycle.js';
 
 const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinations', 'Scripts', 'Review'];
 
@@ -671,6 +672,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     const [existingNames, setExistingNames] = useState<any>(null);
     const [saving, setSaving] = useState(false);
     const [deploying, setDeploying] = useState(false);
+    const deployCancelledRef = useRef(false);
     const libStateRef = useRef<any>(null);            // code-template library selections (persisted after Create)
     const depStateRef = useRef<any>(null);            // deploy/start channel dependencies (persisted after Create)
 
@@ -807,6 +809,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     // dependency choices. No navigation — callers decide where to go. Returns true
     // on success. On a validation problem it jumps to the offending step.
     async function saveChannel(deploy: any) {
+        deployCancelledRef.current = false;
         const probs = allProblems();
         if (probs.length) {
             const s = firstProblemStep();
@@ -843,7 +846,11 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             // shouldn't discard that. Surface the engine's full exception in the
             // detail modal (not the generic save toast) and still return saved.
             if (deploy) {
-                try { await api.engine.deploy(channel.id); }
+                try {
+                    const targets = await withDependencies([channel.id], 'dependencies', 'Deploy');
+                    if (targets === null) deployCancelledRef.current = true;
+                    else await api.engine.deployMany(targets);
+                }
                 catch (e: any) { errorModal('Channel Deployment Failed', e, channel.name); }
             }
             savedRef.current = true;
@@ -863,8 +870,9 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
         if (!ok) { setSaving(false); setDeploying(false); return; }
         store.setState('navGuard', null);   // don't prompt on our own navigation
         const verb = isNew ? 'created' : 'saved';
-        toast(deploy ? `${isNew ? 'Created' : 'Saved'} and deploying “${channel.name}”.` : `Channel “${channel.name}” ${verb}.`, 'info');
-        router.navigate(deploy ? '/dashboard' : '/channels');
+        const didDeploy = deploy && !deployCancelledRef.current;
+        toast(didDeploy ? `${isNew ? 'Created' : 'Saved'} and deploying “${channel.name}”.` : `Channel “${channel.name}” ${verb}.`, 'info');
+        router.navigate(didDeploy ? '/dashboard' : '/channels');
     }
 
     // Existing channel with no unsaved edits: deploy the saved version directly,
@@ -873,7 +881,9 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
         if (busy) return;
         setDeploying(true);
         try {
-            await api.engine.deploy(channel.id);
+            const targets = await withDependencies([channel.id], 'dependencies', 'Deploy');
+            if (targets === null) { setDeploying(false); return; }
+            await api.engine.deployMany(targets);
             store.setState('navGuard', null);
             toast(`Deploying “${channel.name}”.`, 'info');
             router.navigate('/dashboard');

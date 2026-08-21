@@ -48,6 +48,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { withDependencies } from './channel-lifecycle.js';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
 
@@ -2711,7 +2712,9 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             return;
         }
         try {
-            await api.engine.deploy(channel.id);
+            const targets = await withDependencies([channel.id], 'dependencies', 'Deploy');
+            if (targets === null) return;
+            await api.engine.deployMany(targets);
             // Switch to the Dashboard to watch deployment (matches Swing).
             toast(`Deploying ${channel.name}`);
             router.navigate('/dashboard');

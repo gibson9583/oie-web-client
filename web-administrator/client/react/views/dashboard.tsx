@@ -34,6 +34,7 @@ import * as RadioGroup from '@radix-ui/react-radio-group';
 import * as Popover from '@radix-ui/react-popover';
 import { CardsView } from './cards.jsx';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
+import { withDependencies } from './channel-lifecycle.js';
 
 // Loaded on demand. This dialog is the dashboard's ONLY use of the message
 // browser, and importing it statically drags that whole view — the largest in the
@@ -129,69 +130,6 @@ export function submitLifecycle(action: any, ids: any) {
     return ids.length === 1
         ? (api.status as any)[action](ids[0])
         : (api.status as any)[LIFECYCLE_MANY[action]](ids);
-}
-
-/* Swing Frame.getStatusesWithDependencies: an action taken on a selection also
-   concerns the channels wired to it in the server's dependency set, and the
-   engine never pulls those in for you. Which way the walk runs is the whole
-   point — a channel cannot start before the channels it DEPENDS ON, and
-   stopping one strands the channels that DEPEND ON it — so 'dependencies'
-   follows dependencyId edges (start, deploy) and 'dependents' follows
-   dependentId edges (stop, undeploy).
-
-   Transitive, and visited-guarded: the dependency set is user-edited and the
-   server happily stores a cycle, so an unguarded walk would never terminate. */
-async function relatedChannelIds(ids: any, direction: any) {
-    let deps: any[];
-    // Dependency data is advisory. A failed read must not block the action the
-    // user actually asked for, so fall back to "nothing related".
-    try { deps = await api.server.channelDependencies(); } catch { return []; }
-    const edges = new Map();
-    for (const dep of deps || []) {
-        const from = String((direction === 'dependencies' ? dep.dependentId : dep.dependencyId) ?? '');
-        const to = String((direction === 'dependencies' ? dep.dependencyId : dep.dependentId) ?? '');
-        if (!from || !to || from === to) continue;
-        if (!edges.has(from)) edges.set(from, []);
-        edges.get(from).push(to);
-    }
-    const seen = new Set(ids.map(String));
-    const queue = [...seen];
-    const extra: any[] = [];
-    while (queue.length) {
-        for (const next of edges.get(queue.shift()) || []) {
-            if (seen.has(next)) continue;
-            seen.add(next); extra.push(next); queue.push(next);
-        }
-    }
-    return extra;
-}
-
-/* Swing's ChannelDependenciesWarningDialog: offer the related channels, let the
-   user take them or leave them, and let Cancel abort the action outright.
-   Resolves to the id list to submit, or null when the user cancelled — so a
-   caller checks for null rather than for an empty list. */
-export async function withDependencies(ids: any, direction: any, verb: any, nameOf: any) {
-    const extra = await relatedChannelIds(ids, direction);
-    if (!extra.length) return ids;
-    const lead = direction === 'dependencies'
-        ? `The selected channel(s) depend on ${extra.length} channel(s) that are not selected:`
-        : `${extra.length} channel(s) not selected depend on the selected channel(s):`;
-    return new Promise((resolve: any) => {
-        modal({
-            title: 'Channel Dependencies',
-            body: h('div',
-                h('div.mb-[13px]', lead),
-                h('ul', { class: 'mb-[13px] pl-[18px] list-disc max-h-[180px] overflow-auto' },
-                    extra.map((id: any) => h('li', nameOf(id)))),
-                h('div', `Include them in the ${verb.toLowerCase()}?`)),
-            onClose: () => resolve(null),
-            buttons: [
-                { label: 'Cancel', onClick: () => { resolve(null); } },
-                { label: 'Selected Only', onClick: () => { resolve(ids); } },
-                { label: 'Include', primary: true, onClick: () => { resolve([...ids, ...extra]); } }
-            ]
-        });
-    });
 }
 
 function lsGet(key: any, fallback: any) {
