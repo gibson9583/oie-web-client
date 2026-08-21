@@ -1456,6 +1456,35 @@ function suffixName(name: any, suffix: any) {
     return dot > name.lastIndexOf('/') ? `${name.slice(0, dot)}_${suffix}${name.slice(dot)}` : `${name}_${suffix}`;
 }
 
+const xmlEscape = (s: any) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+
+/* GET /messages/{id} answers from the message table alone, so the <attachments>
+   element it serializes is always empty — while Import Messages feeds that very
+   XML straight back to /messages/_import, which is the only channel the importer
+   has for attachment content (the sidecar files the export also writes are not
+   something it can consume). Splice the separately-fetched attachments into the
+   element the engine left empty so an exported message round-trips intact. */
+const ATTACHMENTS_EL = /<attachments\s*\/>|<attachments>[\s\S]*?<\/attachments>/;
+
+function spliceAttachments(xml: any, atts: any[]) {
+    if (!atts.length) return xml;
+    // XStream aliases Attachment to <attachment> and writes its byte[] content
+    // as base64 — exactly the form the attachments endpoint already hands back,
+    // minus any wrapping the transport introduced.
+    const body = atts.map(a => '<attachment>'
+        + `<id>${xmlEscape(a.id)}</id>`
+        + `<type>${xmlEscape(a.type)}</type>`
+        + `<content>${xmlEscape(String(a.content).replace(/\s+/g, ''))}</content>`
+        + '</attachment>').join('');
+    const el = `<attachments>${body}</attachments>`;
+    // Only Message declares an attachments field (ConnectorMessage has none) and
+    // XStream escapes every payload it writes, so a match is the real element
+    // and never a fragment of exported content.
+    if (ATTACHMENTS_EL.test(xml)) return xml.replace(ATTACHMENTS_EL, () => el);
+    const close = xml.lastIndexOf('</message>');
+    return close < 0 ? xml : xml.slice(0, close) + el + xml.slice(close);
+}
+
 /* Full Swing-style "Export Results" dialog (MessageExportDialog /
    MessageExportPanel). Operates on the whole result set for the current
    search filter. My Computer exports run in the browser (ZIP via the Save
@@ -1606,12 +1635,15 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
                 count++;
                 const base = applyFilePattern(pattern, m, count, channelId);
                 if (opt.xml) {
+                    // One fetch feeds both consumers: the XML the importer reads
+                    // and the sidecar files that stand on their own.
+                    const atts = includeAttachments ? await fetchAttachments(m) : [];
                     const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}`), {
                         headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                         credentials: 'same-origin'
                     });
-                    if (resp.ok) { await sink(base, await resp.text()); files++; }
-                    if (includeAttachments) files += await sinkAttachments(sink, m, base);
+                    if (resp.ok) { await sink(base, spliceAttachments(await resp.text(), atts)); files++; }
+                    files += await sinkAttachments(sink, atts, base);
                 } else {
                     const cms = connectorMessagesOf(m).filter(cm => opt.dest ? Number(cm.metaDataId) > 0 : Number(cm.metaDataId) === 0);
                     for (const cm of cms) {
@@ -1628,35 +1660,50 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
         return { done, files };
     }
 
-    // Best-effort: write each attachment alongside the message file (My
-    // Computer mode). Server export embeds attachments natively instead.
-    async function sinkAttachments(sink: any, m: any, base: any) {
-        let n = 0;
+    // Attachment content for one message, base64 as the engine stores it —
+    // api.messages.attachments() is the same call without includeContent, which
+    // is the whole point here, so this goes through the generic get.
+    //
+    // Failures propagate instead of yielding an empty list: swallowing them let
+    // an export finish, toast "Exported n file(s)" and hand back an archive with
+    // no attachments in it — the one thing the user asked for, missing, with
+    // nothing on screen to say so.
+    async function fetchAttachments(m: any) {
+        let raw;
         try {
-            const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}/attachments?includeContent=true`), {
-                headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
-                credentials: 'same-origin'
-            });
-            if (!resp.ok) return 0;
-            const raw = parseResponse(await resp.text());
-            const noExt = base.replace(/\.[^./]+$/, '');
-            for (const att of api.asList((raw as any)?.list?.attachment ?? (raw as any)?.attachment ?? raw)) {
-                const id = displayValue(att?.id); if (!id) continue;
-                const type = displayValue(att?.type) || '';
-                let content = att?.content ?? att;
-                if (typeof content !== 'string') content = displayValue(content);
-                let payload = content;
-                try {
-                    const bin = atob(String(content).replace(/\s+/g, ''));
-                    const bytes = new Uint8Array(bin.length);
-                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                    payload = isTextualAttachment(type) ? new TextDecoder().decode(bytes) : bytes;
-                } catch { /* not base64 */ }
-                await sink(`${noExt}_attachment_${id}${attachmentExtension(type)}`, payload);
-                n++;
-            }
-        } catch { /* attachments are best-effort */ }
-        return n;
+            raw = await api.get(`/channels/${channelId}/messages/${m.messageId}/attachments`, { includeContent: true });
+        } catch (e: any) {
+            throw new Error(`could not read attachments for message ${m.messageId}: ${e.message}`);
+        }
+        const out: any[] = [];
+        for (const att of api.asList(raw, 'attachment')) {
+            const id = displayValue((att as any)?.id); if (!id) continue;
+            let content = (att as any)?.content ?? att;
+            // Attachment.content is a byte[]: base64 text, but the schema also
+            // allows the chunked string[] form some serializers emit.
+            if (Array.isArray(content)) content = content.join('');
+            if (typeof content !== 'string') content = displayValue(content);
+            out.push({ id, type: displayValue((att as any)?.type) || '', content: content == null ? '' : content });
+        }
+        return out;
+    }
+
+    // Write each attachment alongside the message file (My Computer mode), on
+    // top of the copy spliced into the message XML — decoded, so the sidecar is
+    // a usable file rather than base64. Server export embeds attachments natively.
+    async function sinkAttachments(sink: any, atts: any[], base: any) {
+        const noExt = base.replace(/\.[^./]+$/, '');
+        for (const att of atts) {
+            let payload: any = att.content;
+            try {
+                const bin = atob(String(att.content).replace(/\s+/g, ''));
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                payload = isTextualAttachment(att.type) ? new TextDecoder().decode(bytes) : bytes;
+            } catch { /* not base64 */ }
+            await sink(`${noExt}_attachment_${att.id}${attachmentExtension(att.type)}`, payload);
+        }
+        return atts.length;
     }
 
     async function runServerExport(o: any) {
