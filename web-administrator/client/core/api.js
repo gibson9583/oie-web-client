@@ -633,8 +633,11 @@ export const codeTemplates = {
     bulkUpdate: (libraries, updatedCodeTemplates = [], removedLibraryIds = [], removedCodeTemplateIds = [], override = true) => {
         const form = new FormData();
         const part = (name, value) => form.append(name, new Blob([JSON.stringify(value)], { type: 'application/json' }));
-        part('libraries', { set: { codeTemplateLibrary: libraries } });
-        part('updatedCodeTemplates', { set: { codeTemplate: updatedCodeTemplates } });
+        // The servlet declares these two parameters as java.util.List. Its JSON
+        // provider therefore looks for the XStream <list> envelope; a <set>
+        // envelope is treated as one malformed list item by deserializeList().
+        part('libraries', { list: { codeTemplateLibrary: libraries } });
+        part('updatedCodeTemplates', { list: { codeTemplate: updatedCodeTemplates } });
         part('removedLibraryIds', { set: { string: removedLibraryIds } });
         part('removedCodeTemplateIds', { set: { string: removedCodeTemplateIds } });
         return post('/codeTemplateLibraries/_bulkUpdate', form, { params: { override } });

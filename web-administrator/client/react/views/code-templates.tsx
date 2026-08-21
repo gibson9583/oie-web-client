@@ -33,6 +33,7 @@ import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { RailPane, TaskButton, CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
+import { xmlToJson, templateFromXml } from './code-template-xml.js';
 
 
 const CT_COLUMNS = [
@@ -133,50 +134,6 @@ function templateDescription(template: any) {
     return '';
 }
 
-/* ---- XML import -> the JSON shape _bulkUpdate consumes ------------------------
-   The multipart _bulkUpdate parts are JSON, so a Swing XML export has to be
-   converted here rather than handed to the engine verbatim. XML ATTRIBUTES
-   carry the polymorphic '@class' and the migrator's '@version', so they survive
-   as '@'-prefixed keys and are emitted FIRST — the engine turns this JSON back
-   into XML and cannot place an attribute after a child element. Text stays a
-   string: every XML scalar is text anyway, and coercing would mangle a code
-   body that happens to look numeric. */
-function xmlToJson(el: any): any {
-    const obj: any = {};
-    for (const attr of el.attributes) obj['@' + attr.name] = attr.value;
-    if (!el.children.length) {
-        const text = el.textContent || '';
-        // A leaf with attributes keeps its text under '$' (the XStream-JSON
-        // convention the engine's own base64 template fields arrive in).
-        if (!Object.keys(obj).length) return text;
-        if (text) obj.$ = text;
-        return obj;
-    }
-    for (const child of el.children) {
-        const value = xmlToJson(child);
-        if (Object.prototype.hasOwnProperty.call(obj, child.tagName)) {
-            if (!Array.isArray(obj[child.tagName])) obj[child.tagName] = [obj[child.tagName]];
-            obj[child.tagName].push(value);
-        } else {
-            obj[child.tagName] = value;
-        }
-    }
-    return obj;
-}
-
-// An imported <codeTemplate> element as a save-ready object. '@version' is
-// stamped on the template and its properties because the engine migrates every
-// write and 500s without it; a hand-edited export missing its <id> gets one so
-// the library reference cannot dangle.
-function templateFromXml(el: any, v: any) {
-    const template: any = xmlToJson(el);
-    if (!template.id) template.id = uuid();
-    if (template.properties && typeof template.properties === 'object' && !template.properties['@version']) {
-        template.properties = { '@version': v, ...template.properties };
-    }
-    return { '@version': template['@version'] || v, ...template };
-}
-
 /* ---- _bulkUpdate result reading -----------------------------------------------
    _bulkUpdate answers with a CodeTemplateLibrarySaveResult, not the bare "false"
    the per-object PUTs returned. overrideNeeded is that same someone-else-saved
@@ -228,6 +185,13 @@ export function CodeTemplatesView() {
     const [selected, setSelected] = useState<any>(null);   // { kind: 'library'|'template', id }
     const [dirty, setDirty] = useState(false);
     const dirtyRef = useRef(false);
+    // Save-session tombstones. Swing defers both library and template deletes
+    // until Save All, then sends them with the replacement library snapshot so
+    // revision checking and the transaction cover the whole edit session.
+    const persistedLibraryIdsRef = useRef(new Set<string>());
+    const persistedTemplateIdsRef = useRef(new Set<string>());
+    const removedLibraryIdsRef = useRef(new Set<string>());
+    const removedTemplateIdsRef = useRef(new Set<string>());
     const [filterText, setFilterText] = useState('');
     const [focusName, setFocusName] = useState(false);   // focus the Name field after creating
     const [collapsed, setCollapsed] = useState(() => new Set());   // collapsed library keys ('library:<id>')
@@ -264,6 +228,10 @@ export function CodeTemplatesView() {
         try {
             const list = await api.codeTemplates.libraries(true);
             const next = list.map(library => ({ library, templates: templatesOf(library) }));
+            persistedLibraryIdsRef.current = new Set(next.map(entry => String(entry.library.id)));
+            persistedTemplateIdsRef.current = new Set(next.flatMap(entry => entry.templates.map((template: any) => String(template.id))));
+            removedLibraryIdsRef.current.clear();
+            removedTemplateIdsRef.current.clear();
             setEntries(next);
             markClean();
             setSelected((prev: any) => (prev && resolve(prev, next) ? prev : null));
@@ -439,15 +407,20 @@ export function CodeTemplatesView() {
             found = resolve(sel, entriesNowRef.current);
             if (!found) { toast('The library no longer exists (the list was reloaded)', 'warn'); return; }
             const entry = found.entry;
-            for (const template of entry.templates) {
-                try { await api.codeTemplates.remove(template.id); } catch { /* not yet saved */ }
+            if (persistedLibraryIdsRef.current.has(String(entry.library.id))) {
+                removedLibraryIdsRef.current.add(String(entry.library.id));
+            }
+            for (const template of entry.templates) if (persistedTemplateIdsRef.current.has(String(template.id))) {
+                removedTemplateIdsRef.current.add(String(template.id));
             }
             setEntries(prev => prev.filter(en => en !== entry));
         } else {
             if (!await confirmDialog('Delete Code Template', `Delete code template "${found.template.name}"?`, { danger: true, okLabel: 'Delete' })) return;
             found = resolve(sel, entriesNowRef.current);
             if (!found) { toast('The code template no longer exists (the list was reloaded)', 'warn'); return; }
-            try { await api.codeTemplates.remove(found.template.id); } catch { /* not yet saved */ }
+            if (persistedTemplateIdsRef.current.has(String(found.template.id))) {
+                removedTemplateIdsRef.current.add(String(found.template.id));
+            }
             found.entry.templates = found.entry.templates.filter((t: any) => t !== found!.template!);
         }
         invalidateCompletions();   // deleted templates no longer autocomplete
@@ -489,9 +462,16 @@ export function CodeTemplatesView() {
                     ? { codeTemplate: entry.templates.map((t: any) => ({ '@version': t['@version'] || v, id: t.id })) }
                     : null
             }));
-            // Libraries and their templates in ONE transaction. Deletions already
-            // went out as their own DELETEs, so nothing is removed here.
-            const result = await api.codeTemplates.bulkUpdate(payload, templates, [], [], overrideConflicts);
+            // Libraries, templates, and deferred removals land in ONE revision-
+            // checked transaction. A failed/cancelled save leaves the server
+            // untouched and the tombstones available for the conflict retry.
+            const result = await api.codeTemplates.bulkUpdate(
+                payload,
+                templates,
+                [...removedLibraryIdsRef.current],
+                [...removedTemplateIdsRef.current],
+                overrideConflicts
+            );
             if (needsOverride(result)) return conflict();
             const failure = saveFailure(result);
             if (failure) throw new Error(failure);

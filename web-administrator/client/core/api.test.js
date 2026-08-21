@@ -129,5 +129,35 @@ await api.messages.auditAccessedPHI({ patientId: undefined, channel: 'c1' });
 ok(lastBody === '<map><entry><string>channel</string><string>c1</string></entry></map>',
     'null/undefined audit attributes are dropped');
 
+/* ---- code-template bulk-save multipart contracts ---- */
+
+// CodeTemplateServletInterface declares the first two multipart parameters as
+// List and the removal parameters as Set. The engine's JSON provider dispatches
+// those types to different XStream envelope readers, so this shape is part of
+// the wire contract (using `set` for a List reaches the servlet malformed).
+let bulkBody = null;
+globalThis.fetch = async (_url, init) => {
+    bulkBody = init.body;
+    return new Response('{}', { status: 200 });
+};
+await api.codeTemplates.bulkUpdate(
+    [{ id: 'lib-1' }],
+    [{ id: 'template-1' }],
+    ['lib-old'],
+    ['template-old'],
+    false
+);
+const bulkParts = Object.fromEntries(await Promise.all(
+    [...bulkBody.entries()].map(async ([name, blob]) => [name, JSON.parse(await blob.text())])
+));
+ok(bulkParts.libraries.list.codeTemplateLibrary[0].id === 'lib-1',
+    'bulkUpdate sends libraries in a list envelope');
+ok(bulkParts.updatedCodeTemplates.list.codeTemplate[0].id === 'template-1',
+    'bulkUpdate sends updated templates in a list envelope');
+ok(bulkParts.removedLibraryIds.set.string[0] === 'lib-old',
+    'bulkUpdate sends removed library ids in a set envelope');
+ok(bulkParts.removedCodeTemplateIds.set.string[0] === 'template-old',
+    'bulkUpdate sends removed template ids in a set envelope');
+
 console.log(`api.test: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

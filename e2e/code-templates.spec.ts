@@ -58,3 +58,30 @@ test('Code Templates lists libraries/templates, gates tasks on selection, and ed
     await page.keyboard.type('return msg.trim();');
     await expect(page.getByRole('button', { name: 'Save Changes', exact: true })).toBeVisible();
 });
+
+test('deletion stays local until Save Changes includes its tombstone', async ({ page }) => {
+    let deleteCalls = 0;
+    let bulkBody = '';
+    page.on('request', request => {
+        const path = new URL(request.url()).pathname;
+        if (request.method() === 'DELETE' && path.includes('/api/codeTemplates/')) deleteCalls++;
+        if (request.method() === 'POST' && path === '/api/codeTemplateLibraries/_bulkUpdate') {
+            bulkBody = request.postData() || '';
+        }
+    });
+
+    await page.goto('/code-templates');
+    await page.locator('tr', { hasText: 'Trim Whitespace' }).first().click();
+    await page.getByRole('button', { name: 'Delete Code Template', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Delete Code Template' })
+        .getByRole('button', { name: 'Delete', exact: true }).click();
+
+    await expect(page.getByText('Trim Whitespace', { exact: true })).toHaveCount(0);
+    expect(deleteCalls).toBe(0);
+    expect(bulkBody).toBe('');
+
+    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+    await expect.poll(() => bulkBody).toContain('tpl-1');
+    expect(bulkBody).toContain('removedCodeTemplateIds');
+    expect(deleteCalls).toBe(0);
+});
