@@ -9,7 +9,9 @@ import * as zipjs from '../web-administrator/client/vendor/zipjs.min.js';
  * that wrote attachment content to sidecar files alone re-imported empty. This
  * pins the fix: with "Include Attachments" ticked, the message XML in the ZIP
  * carries the attachment inline (spliced into the <attachments> element the
- * engine serializes empty), while the sidecar file is still written too.
+ * engine serializes empty), while the sidecar file is still written too. It
+ * then imports that exact XML to cover nested Response.message elements, which
+ * must not be mistaken for additional top-level Message objects.
  */
 zipjs.configure({ useWebWorkers: false });
 
@@ -18,20 +20,44 @@ const MID = '987654321';
 const MESSAGE = { messageId: MID, channelId: CID, serverId: 's1', connectorMessages: {} };
 // "Hello, attachment!" — the engine hands attachment content back as base64.
 const CONTENT_B64 = 'SGVsbG8sIGF0dGFjaG1lbnQh';
+const SERIALIZED_MESSAGE = `<message>
+  <messageId>${MID}</messageId>
+  <serverId>s1</serverId>
+  <channelId>${CID}</channelId>
+  <processed>true</processed>
+  <attachments/>
+  <connectorMessages class="linked-hash-map">
+    <entry>
+      <int>0</int>
+      <connectorMessage>
+        <messageId>${MID}</messageId>
+        <metaDataId>0</metaDataId>
+        <responseMap>
+          <entry><string>first</string><response><message>nested response one</message></response></entry>
+          <entry><string>second</string><response><message>nested response two</message></response></entry>
+        </responseMap>
+      </connectorMessage>
+    </entry>
+  </connectorMessages>
+</message>`;
 
-test('Export with attachments embeds them in the message XML', async ({ page }) => {
+test('Export with attachments embeds and re-imports the complete message XML', async ({ page }) => {
+    let importedXml = '';
     await mockEngine(page, {
         [`GET /channels/${CID}/messages`]: (req: any) => {
             const offset = Number(new URL(req.url()).searchParams.get('offset') || 0);
             return { list: { message: offset > 0 ? [] : [MESSAGE] } };
         },
         [`GET /channels/${CID}/messages/count`]: { long: 1 },
-        // GET /messages/{id} answers from the message table only: <attachments>
-        // comes back empty, which is exactly what the export has to fill in.
-        [`GET /channels/${CID}/messages/${MID}`]:
-            `<message><messageId>${MID}</messageId><attachments/></message>`,
+        // Attachments are loaded separately, so the serialized Message starts
+        // with an empty list which the browser export has to fill in.
+        [`GET /channels/${CID}/messages/${MID}`]: SERIALIZED_MESSAGE,
         [`GET /channels/${CID}/messages/${MID}/attachments`]: {
             list: { attachment: [{ id: 'att-1', type: 'text/plain', content: CONTENT_B64 }] }
+        },
+        [`POST /channels/${CID}/messages/_import`]: (req: any) => {
+            importedXml = req.postData() || '';
+            return {};
         }
     });
     // Force the download fallback (no File System Access pickers this run) so the
@@ -71,4 +97,40 @@ test('Export with attachments embeds them in the message XML', async ({ page }) 
 
     // The sidecar file is still written — decoded, and useful on its own.
     expect(entries.some((e: any) => e.filename === `${CID}_message_${MID}_attachment_att-1.txt`)).toBe(true);
+
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Import Messages', exact: true }).click();
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+        name: `${CID}_message_${MID}.xml`,
+        mimeType: 'application/xml',
+        buffer: Buffer.from(xml)
+    });
+
+    await expect.poll(() => importedXml).not.toBe('');
+    expect(importedXml).toContain('<connectorMessages class="linked-hash-map">');
+    expect(importedXml).toContain('<message>nested response one</message>');
+    expect(importedXml).toContain('<message>nested response two</message>');
+    expect(importedXml).toContain('<attachments><attachment>');
+    await expect(page.getByText('Imported 1 message(s)', { exact: true })).toBeVisible();
+});
+
+test('Import rejects payload XML that is not a serialized engine Message', async ({ page }) => {
+    let posts = 0;
+    await mockEngine(page, {
+        [`POST /channels/${CID}/messages/_import`]: () => { posts++; return {}; }
+    });
+    await page.goto(`/messages/${CID}`);
+
+    const chooserPromise = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Import Messages', exact: true }).click();
+    const chooser = await chooserPromise;
+    await chooser.setFiles({
+        name: 'payload.xml',
+        mimeType: 'application/xml',
+        buffer: Buffer.from('<message><patient>not an engine object</patient></message>')
+    });
+
+    await expect(page.getByText(/No serialized messages found/)).toBeVisible();
+    expect(posts).toBe(0);
 });

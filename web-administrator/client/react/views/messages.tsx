@@ -1491,6 +1491,50 @@ function spliceAttachments(xml: any, atts: any[]) {
     return close < 0 ? xml : xml.slice(0, close) + el + xml.slice(close);
 }
 
+/* A serialized ConnectorMessage may itself contain fields named <message>
+   (notably Response.message). A flat /<message>.*?<\/message>/ scan therefore
+   cuts a valid exported Message off at the first nested response and submits a
+   half-built object whose connectorMessages field is null. Parse under a
+   synthetic root instead, so adjacent exported messages are also accepted,
+   and only import top-level Message objects with the connector map the engine
+   requires. */
+function extractSerializedMessages(source: any) {
+    const input = String(source).replace(/^\uFEFF/, '').replace(/<\?xml\s[^?]*\?>/gi, '');
+    const doc = new DOMParser().parseFromString(`<messageImport>${input}</messageImport>`, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) {
+        return { messages: [] as string[], rejected: 0, error: 'The selected file is not valid XML' };
+    }
+
+    const isMessage = (el: Element) => el.localName === 'message';
+    const topLevel: Element[] = [];
+    for (const child of Array.from(doc.documentElement.children)) {
+        if (isMessage(child)) {
+            topLevel.push(child);
+        } else {
+            // Engine list exports wrap Message objects one level deep. Do not
+            // search all descendants: connector response fields also use the
+            // name <message> and are data, not objects to import.
+            topLevel.push(...Array.from(child.children).filter(isMessage));
+        }
+    }
+
+    const messages: string[] = [];
+    let rejected = 0;
+    const serializer = new XMLSerializer();
+    for (const message of topLevel) {
+        const connectorMap = Array.from(message.children).find(el => el.localName === 'connectorMessages');
+        const entries = connectorMap
+            ? Array.from(connectorMap.children).filter(el => el.localName === 'entry')
+            : [];
+        if (!entries.length) {
+            rejected++;
+            continue;
+        }
+        messages.push(serializer.serializeToString(message));
+    }
+    return { messages, rejected, error: null as string | null };
+}
+
 /* Full Swing-style "Export Results" dialog (MessageExportDialog /
    MessageExportPanel). Operates on the whole result set for the current
    search filter. My Computer exports run in the browser (ZIP via the Save
@@ -2505,19 +2549,26 @@ export function MessagesView({ params, query }: any) {
     async function importMessagesTask() {
         const file = await pickFile('.xml,application/xml,text/xml');
         if (!file) return;
-        // Engine-exported files hold serialized <message>...</message> blocks
-        // (optionally inside <list>), exactly what the Swing MessageImporter
-        // scans for. POST /messages/_import takes one Message per request; the
-        // server assigns a fresh message ID and keeps the original as importId
-        // (Channel.importMessage), so the XML is posted unmodified.
-        const blocks = String(file.content).match(/<message>[\s\S]*?<\/message>/g) || [];
+        // POST /messages/_import takes one serialized Message per request; the
+        // server assigns a fresh ID and keeps the original as importId.
+        const extracted = extractSerializedMessages(file.content);
+        if (extracted.error) {
+            toast(`Import failed: ${extracted.error}`, 'error');
+            return;
+        }
+        const blocks = extracted.messages;
         if (!blocks.length) {
-            toast('No <message> elements found — pick an XML file exported by the engine', 'warn');
+            const detail = extracted.rejected
+                ? `; ${extracted.rejected} top-level <message> element(s) lacked connector data`
+                : '';
+            toast(`No serialized messages found${detail} — pick an XML Serialized Message export`, 'warn');
             return;
         }
         let imported = 0;
-        let failed = 0;
-        let lastError: any = null;
+        let failed = extracted.rejected;
+        let lastError: any = extracted.rejected
+            ? new Error(`${extracted.rejected} top-level <message> element(s) lacked connector data`)
+            : null;
         for (const xml of blocks) {
             try {
                 await api.post(`/channels/${channelId}/messages/_import`, xml, { contentType: 'application/xml' });
