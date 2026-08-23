@@ -187,10 +187,17 @@ test('list import remaps both dependency endpoints after id collisions resolve',
 });
 
 test('bundled XML libraries and templates use one atomic bulk update', async ({ page }) => {
+    const overrides: string[] = [];
     await mockEngine(page, {
         'GET /server/channelDependencies': { set: '' },
         'GET /server/resources': { list: '' },
-        'POST /codeTemplateLibraries/_bulkUpdate': ''
+        'POST /codeTemplateLibraries/_bulkUpdate': (req: any) => {
+            const override = new URL(req.url()).searchParams.get('override') || '';
+            overrides.push(override);
+            return override === 'false'
+                ? { overrideNeeded: true, librariesSuccess: false, codeTemplateResults: {} }
+                : { overrideNeeded: false, librariesSuccess: true, codeTemplateResults: {} };
+        }
     });
     let bulkBody = '';
     let sequentialPuts = 0;
@@ -228,9 +235,16 @@ test('bundled XML libraries and templates use one atomic bulk update', async ({ 
     await expect(prompt.getByText(/code template librar/i)).toBeVisible();
     await prompt.getByRole('button', { name: 'Yes', exact: true }).click();
 
+    const conflict = page.getByRole('dialog', { name: 'Code Template Libraries Modified' });
+    await expect(conflict).toContainText(/changed while the channel import was being prepared/i);
+    expect(overrides).toEqual(['false']);
+    await conflict.getByRole('button', { name: 'Overwrite', exact: true }).click();
+
     await expect(page.getByText('Imported with-library.xml', { exact: true })).toBeVisible();
+    expect(overrides).toEqual(['false', 'true']);
     expect(bulkBody).toContain('lib-imported');
     expect(bulkBody).toContain('tpl-imported');
     expect(bulkBody).toContain('"list"');
+    expect((bulkBody.match(/"revision":0/g) || []).length).toBeGreaterThanOrEqual(2);
     expect(sequentialPuts).toBe(0);
 });

@@ -86,23 +86,30 @@ function AlertWizardInner({ alert, isNew }: any) {
        global 401 handler still fires ahead of these, so only 403/5xx land here. */
     useEffect(() => {
         let alive = true;
+        const capture = (promise: Promise<any>): Promise<
+            { ok: true; value: any } | { ok: false; error: any }
+        > => promise.then(
+            value => ({ ok: true as const, value }),
+            error => ({ ok: false as const, error })
+        );
         Promise.all([
-            api.channels.idsAndNames().catch((e: any) => e),
-            api.alerts.options().catch((e: any) => e)
-        ]).then(([ch, opts]) => {
+            capture(api.channels.idsAndNames()),
+            capture(api.alerts.options())
+        ]).then(([channelResult, optionsResult]) => {
             if (!alive) return;
+            const errorMessage = (error: any) => error?.message || String(error || 'request failed');
             const failed = [
-                ch instanceof Error ? `channels (${ch.message})` : null,
-                opts instanceof Error ? `alert options (${opts.message})` : null
+                !channelResult.ok ? `channels (${errorMessage(channelResult.error)})` : null,
+                !optionsResult.ok ? `alert options (${errorMessage(optionsResult.error)})` : null
             ].filter(Boolean);
             setLoadError(failed.length ? `Could not load ${failed.join(' and ')}.` : null);
             const channels: any[] = [];
-            for (const en of api.asList(!(ch instanceof Error) && ch && ch.entry)) {
+            for (const en of api.asList(channelResult.ok && channelResult.value?.entry)) {
                 const p = api.asList(en && en.string);
                 if (p.length >= 2) channels.push({ id: String(p[0]), name: String(p[1]) });
             }
             channels.sort((a: any, b: any) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-            const options = opts instanceof Error ? null : opts;
+            const options = optionsResult.ok ? optionsResult.value : null;
             setData({ channels, protocols: protocolsOf(options), recipients: recipientOptionsOf(options) });
         });
         return () => { alive = false; };

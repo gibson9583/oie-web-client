@@ -85,3 +85,84 @@ test('deletion stays local until Save Changes includes its tombstone', async ({ 
     expect(bulkBody).toContain('removedCodeTemplateIds');
     expect(deleteCalls).toBe(0);
 });
+
+test('code-template import detects a concurrent edit before allowing overwrite', async ({ page }) => {
+    const overrides: string[] = [];
+    await mockEngine(page, {
+        'POST /codeTemplateLibraries/_bulkUpdate': (req: any) => {
+            const override = new URL(req.url()).searchParams.get('override') || '';
+            overrides.push(override);
+            return override === 'false'
+                ? { overrideNeeded: true, librariesSuccess: false, codeTemplateResults: {} }
+                : { overrideNeeded: false, librariesSuccess: true, codeTemplateResults: {} };
+        }
+    });
+
+    await page.goto('/code-templates');
+    await expect(page.getByText('Demo Library', { exact: true })).toBeVisible();
+
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Import Code Templates', exact: true }).click();
+    await (await chooser).setFiles({
+        name: 'imported-template.xml',
+        mimeType: 'application/xml',
+        buffer: Buffer.from(`<codeTemplate version="4.5.0">
+          <id>tpl-imported</id><name>Imported Template</name><revision>9</revision>
+          <properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties" version="4.5.0">
+            <type>FUNCTION</type><code>function imported() { return true; }</code>
+          </properties>
+        </codeTemplate>`)
+    });
+
+    const conflict = page.getByRole('dialog', { name: 'Code Templates Modified' });
+    await expect(conflict).toContainText(/changed while the import was being prepared/i);
+    expect(overrides).toEqual(['false']);
+    await conflict.getByRole('button', { name: 'Overwrite', exact: true }).click();
+
+    await expect.poll(() => overrides).toEqual(['false', 'true']);
+    await expect(page.getByText(/Imported 1 code template/)).toBeVisible();
+});
+
+test('library import confirms an atomic replacement and resets source-server revisions', async ({ page }) => {
+    let bulkBody = '';
+    const overrides: string[] = [];
+    await mockEngine(page, {
+        'POST /codeTemplateLibraries/_bulkUpdate': (req: any) => {
+            overrides.push(new URL(req.url()).searchParams.get('override') || '');
+            bulkBody = req.postData() || '';
+            return { overrideNeeded: false, librariesSuccess: true, codeTemplateResults: {} };
+        }
+    });
+
+    await page.goto('/code-templates');
+    await expect(page.getByText('Demo Library', { exact: true })).toBeVisible();
+
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Import Libraries', exact: true }).click();
+    await (await chooser).setFiles({
+        name: 'additional-library.xml',
+        mimeType: 'application/xml',
+        buffer: Buffer.from(`<codeTemplateLibrary version="4.5.0">
+          <id>lib-imported</id><name>Additional Library</name><revision>19</revision>
+          <codeTemplates><codeTemplate version="4.5.0">
+            <id>tpl-imported</id><name>Imported Template</name><revision>23</revision>
+            <properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties" version="4.5.0">
+              <type>FUNCTION</type><code>function imported() { return true; }</code>
+            </properties>
+          </codeTemplate></codeTemplates>
+        </codeTemplateLibrary>`)
+    });
+
+    const confirmation = page.getByRole('dialog', { name: 'Import Libraries' });
+    await expect(confirmation).toContainText(/libraries not present in the file will be removed/i);
+    await confirmation.getByRole('button', { name: 'Import', exact: true }).click();
+
+    await expect(page.getByText('Imported additional-library.xml', { exact: true })).toBeVisible();
+    expect(overrides).toEqual(['false']);
+    expect(bulkBody).toContain('lib-imported');
+    expect(bulkBody).toContain('tpl-imported');
+    expect(bulkBody).toContain('lib-1');
+    expect(bulkBody).not.toContain('"revision":19');
+    expect(bulkBody).not.toContain('"revision":23');
+    expect((bulkBody.match(/"revision":0/g) || []).length).toBeGreaterThanOrEqual(2);
+});

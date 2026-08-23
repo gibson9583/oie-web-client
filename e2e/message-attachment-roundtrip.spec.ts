@@ -134,3 +134,33 @@ test('Import rejects payload XML that is not a serialized engine Message', async
     await expect(page.getByText(/No serialized messages found/)).toBeVisible();
     expect(posts).toBe(0);
 });
+
+test('Export with attachments fails visibly instead of producing an incomplete archive', async ({ page }) => {
+    await mockEngine(page, {
+        [`GET /channels/${CID}/messages`]: (req: any) => {
+            const offset = Number(new URL(req.url()).searchParams.get('offset') || 0);
+            return { list: { message: offset > 0 ? [] : [MESSAGE] } };
+        },
+        [`GET /channels/${CID}/messages/count`]: { long: 1 },
+        [`GET /channels/${CID}/messages/${MID}`]: SERIALIZED_MESSAGE,
+        [`GET /channels/${CID}/messages/${MID}/attachments`]: {
+            __status: 500,
+            body: { message: 'attachment store offline' }
+        }
+    });
+    await page.addInitScript(() => {
+        delete (window as any).showSaveFilePicker;
+        delete (window as any).showDirectoryPicker;
+    });
+    let downloads = 0;
+    page.on('download', () => { downloads++; });
+
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText(MID)).toBeVisible();
+    await page.getByRole('button', { name: 'Export Results' }).click();
+    await page.getByRole('checkbox', { name: 'Include Attachments' }).check();
+    await page.getByRole('button', { name: 'Export', exact: true }).click();
+
+    await expect(page.getByText(/Export failed: could not read attachments.*attachment store offline/i)).toBeVisible();
+    expect(downloads).toBe(0);
+});

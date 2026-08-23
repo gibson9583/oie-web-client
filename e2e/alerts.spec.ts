@@ -58,3 +58,51 @@ test('an empty alert list lands on the create/import empty state', async ({ page
     await page.getByRole('button', { name: 'Create Alert' }).click();
     await expect(page.getByText('Classic editor')).toBeVisible();
 });
+
+test('importing the same alert twice prompts before replacing it', async ({ page }) => {
+    const imported: any[] = [];
+    let posts = 0;
+    await mockEngine(page, {
+        'GET /alerts': () => ({ list: { alertModel: [
+            { id: 'al-1', name: 'Error Alert', enabled: true },
+            { id: 'al-2', name: 'Deploy Alert', enabled: false },
+            ...imported
+        ] } }),
+        'POST /alerts': (req: any) => {
+            posts++;
+            const body = req.postData() || '';
+            const value = (tag: string) => body.match(new RegExp(`<${tag}>([^<]*)</${tag}>`))?.[1] || '';
+            const alert = { id: value('id'), name: value('name'), enabled: true };
+            const at = imported.findIndex(item => item.id === alert.id);
+            if (at >= 0) imported[at] = alert; else imported.push(alert);
+            return '';
+        }
+    });
+
+    const xml = '<alertModel><id>al-imported</id><name>Imported Alert</name><enabled>true</enabled></alertModel>';
+    const chooseFile = async () => {
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Import Alert', exact: true }).first().click();
+        await (await chooser).setFiles({
+            name: 'imported-alert.xml', mimeType: 'application/xml', buffer: Buffer.from(xml)
+        });
+    };
+
+    await page.goto('/alerts');
+    await chooseFile();
+    await expect.poll(() => posts).toBe(1);
+    await expect(page.getByText('Imported Alert', { exact: true })).toBeVisible();
+
+    await chooseFile();
+    // Duplicate-name validation is acknowledged first, then the Swing-style
+    // overwrite-or-create-new decision appears. Nothing has been posted yet.
+    const warning = page.getByRole('dialog', { name: 'Warning' });
+    await expect(warning).toContainText('already exists');
+    await warning.getByRole('button', { name: 'OK', exact: true }).click();
+
+    const collision = page.getByRole('dialog', { name: 'Import Alert' });
+    await expect(collision).toContainText(/overwrite the existing alert/i);
+    expect(posts).toBe(1);
+    await collision.getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect.poll(() => posts).toBe(2);
+});

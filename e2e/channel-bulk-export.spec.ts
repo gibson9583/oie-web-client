@@ -92,6 +92,30 @@ test('Export All Channels writes one file per channel into a ZIP', async ({ page
     }
 });
 
+test('Export All Channels aborts visibly when linked libraries cannot be loaded', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /codeTemplateLibraries': {
+            __status: 500,
+            body: { message: 'code-template service unavailable' }
+        }
+    });
+    let exportFetches = 0;
+    page.on('request', request => {
+        const url = new URL(request.url());
+        if (request.method() === 'GET' && url.pathname === '/api/channels'
+            && (request.headers()['accept'] || '').includes('xml')) exportFetches++;
+    });
+
+    await page.goto('/channels');
+    const row = page.getByText('Demo Started').first();
+    await expect(row).toBeVisible();
+    await row.click({ button: 'right' });
+    await page.getByRole('menu').getByRole('menuitem', { name: 'Export All Channels' }).click();
+
+    await expect(page.getByText(/Export failed:.*code-template service unavailable/i)).toBeVisible();
+    expect(exportFetches).toBe(0);
+});
+
 test('Export All Groups writes one file per group, channels hydrated', async ({ page }) => {
     await mockEngine(page, {
         'GET /channels': xmlOr(CHANNELS_XML, { list: { channel: [
@@ -116,6 +140,37 @@ test('Export All Groups writes one file per group, channels hydrated', async ({ 
     // can recreate the group AND its channels on another server.
     expect(files['Group A.xml']).toContain('<name>Demo Started</name>');
     expect(files['Group B.xml']).toContain('<name>Demo/Stopped</name>');
+});
+
+test('group export offers and includes linked code-template libraries', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /channels': xmlOr(CHANNELS_XML, { list: { channel: [
+            { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1 },
+            { '@version': '4.5.0', id: 'c-stopped', name: 'Demo/Stopped', revision: 1 }
+        ] } }),
+        'GET /channelgroups': xmlOr(GROUPS_XML, GROUPS_JSON),
+        'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [{
+            id: 'lib-linked', name: 'Linked Helpers', includeNewChannels: false,
+            enabledChannelIds: { string: ['c-started'] }, disabledChannelIds: ''
+        }] } }
+    });
+
+    await page.goto('/channels');
+    await expect(page.getByText('[Group A]').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Export All Groups' }).first().click();
+
+    const prompt = page.getByRole('dialog', { name: 'Export Channel' });
+    await expect(prompt.getByText('Linked Helpers', { exact: true })).toBeVisible();
+    const bundledRequest = page.waitForRequest(request => {
+        const url = new URL(request.url());
+        return request.method() === 'GET' && url.pathname === '/api/channels'
+            && url.searchParams.get('includeCodeTemplateLibraries') === 'true';
+    });
+    const download = page.waitForEvent('download');
+    await prompt.getByRole('button', { name: 'Yes', exact: true }).click();
+
+    await bundledRequest;
+    await download;
 });
 
 test('Import Channel accepts a <list> file and imports every channel in it', async ({ page }) => {

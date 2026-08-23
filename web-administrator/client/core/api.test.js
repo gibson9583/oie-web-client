@@ -71,6 +71,15 @@ globalThis.fetch = async () => new Response('{}', { status: 200 });
 await api.get('/up');
 ok(isEngineReachable() === true, 'any engine answer restores reachability');
 
+// XStream unwrapping turns a one-property { message: ... } body into the bare
+// value. Non-OK handling must still surface that useful message, not raw JSON.
+globalThis.fetch = async () => new Response(JSON.stringify({ message: 'library service unavailable' }), {
+    status: 500, headers: { 'Content-Type': 'application/json' }
+});
+msg = '';
+try { await api.get('/broken'); } catch (e) { msg = e.message; }
+ok(msg === 'library service unavailable', 'a one-property JSON error surfaces its message');
+
 /* ---- the long-running operations opt out of the ceiling ---- */
 
 // Capture what send() hands to fetch: the default path must carry an abort

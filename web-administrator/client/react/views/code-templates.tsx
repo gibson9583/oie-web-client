@@ -163,6 +163,36 @@ function saveFailure(result: any) {
     return problems.join('; ');
 }
 
+/* Imports commit immediately, so they need the same optimistic-concurrency
+   handshake as Save Changes: submit the revisions that were loaded with
+   override=false, then ask before retrying with override=true. The old import
+   paths always forced override=true and could silently erase an edit made by
+   another administrator while the file picker/dialog was open. */
+async function bulkImportWithConflictCheck(
+    libraries: any[],
+    updatedCodeTemplates: any[],
+    removedLibraryIds: any[] = [],
+    removedCodeTemplateIds: any[] = []
+) {
+    let result = await api.codeTemplates.bulkUpdate(
+        libraries, updatedCodeTemplates, removedLibraryIds, removedCodeTemplateIds, false);
+    if (needsOverride(result)) {
+        const overwrite = await confirmDialog('Code Templates Modified',
+            'One or more code templates or libraries changed while the import was being prepared. Overwrite those newer changes?',
+            { danger: true, okLabel: 'Overwrite' });
+        if (!overwrite) {
+            toast('Import cancelled — Refresh to load the latest code templates', 'warn');
+            return false;
+        }
+        result = await api.codeTemplates.bulkUpdate(
+            libraries, updatedCodeTemplates, removedLibraryIds, removedCodeTemplateIds, true);
+        if (needsOverride(result)) throw new Error('the server still requires an override after confirmation');
+    }
+    const failure = saveFailure(result);
+    if (failure) throw new Error(failure);
+    return true;
+}
+
 export function CodeTemplatesView() {
     // Maximize: grow the Code editor over the library list (top) and the
     // Name/Library/Type form, keeping the right-hand Context panel. Esc restores.
@@ -552,6 +582,9 @@ export function CodeTemplatesView() {
             if (!libraryEls.length) throw new Error('No <codeTemplateLibrary> elements found in the file');
 
             const v = store.getState('serverVersion') || '4.5.2';
+            const currentLibraries = new Map(entriesNowRef.current.map(en => [String(en.library.id), en.library]));
+            const currentTemplates = new Map(entriesNowRef.current
+                .flatMap(en => en.templates).map(template => [String(template.id), template]));
             const templates: any[] = [];
             const payload = libraryEls.map(el => {
                 const library: any = xmlToJson(el);
@@ -561,6 +594,11 @@ export function CodeTemplatesView() {
                     // same transaction and reduced to the id ref the library keeps.
                     if ([...tplEl.children].some(c => c.tagName !== 'id')) {
                         const template = templateFromXml(tplEl, v);
+                        const current = currentTemplates.get(String(template.id));
+                        // The target server's loaded revision is the concurrency
+                        // baseline; an export from another server carries a
+                        // revision that is meaningless here.
+                        template.revision = current ? current.revision : 0;
                         templates.push(template);
                         refs.push({ '@version': template['@version'], id: template.id });
                         continue;
@@ -571,11 +609,16 @@ export function CodeTemplatesView() {
                 return {
                     '@version': library['@version'] || v,
                     ...library,
+                    revision: currentLibraries.get(String(library.id))?.revision ?? 0,
                     codeTemplates: refs.length ? { codeTemplate: refs } : null
                 };
             });
-            const failure = saveFailure(await api.codeTemplates.bulkUpdate(payload, templates, [], [], true));
-            if (failure) throw new Error(failure);
+            // This command is an explicitly confirmed full-list replacement.
+            // _bulkUpdate requires absent libraries as tombstones; omitting them
+            // would contradict the warning and leave stale libraries behind.
+            const importedIds = new Set(payload.map(library => String(library.id)));
+            const removedLibraryIds = [...currentLibraries.keys()].filter(id => !importedIds.has(id));
+            if (!await bulkImportWithConflictCheck(payload, templates, removedLibraryIds)) return;
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${file.name}`);
             setSelected(null);
@@ -612,7 +655,14 @@ export function CodeTemplatesView() {
             if (!els.length) throw new Error('No <codeTemplate> elements found in the file');
 
             const v = store.getState('serverVersion') || '4.5.2';
-            const imported = els.map(el => templateFromXml(el, v));
+            const currentTemplates = new Map(entriesNowRef.current
+                .flatMap(en => en.templates).map(template => [String(template.id), template]));
+            const imported = els.map(el => {
+                const template = templateFromXml(el, v);
+                const current = currentTemplates.get(String(template.id));
+                template.revision = current ? current.revision : 0;
+                return template;
+            });
             const newIds = imported.map((t: any) => t.id);
             // Rewrite the library set with the new refs appended to the target —
             // matched by id, not object identity (the pickFile/confirm awaits
@@ -624,12 +674,13 @@ export function CodeTemplatesView() {
                 return {
                     '@version': en.library['@version'] || v,
                     ...en.library,
-                    revision: (Number(en.library.revision) || 0) + 1,
+                    // Send the revision as loaded. The engine increments it;
+                    // self-bumping defeats its override=false conflict check.
+                    revision: Number(en.library.revision) || 0,
                     codeTemplates: ids.length ? { codeTemplate: ids.map((id: any) => ({ '@version': v, id })) } : null
                 };
             });
-            const failure = saveFailure(await api.codeTemplates.bulkUpdate(payload, imported, [], [], true));
-            if (failure) throw new Error(failure);
+            if (!await bulkImportWithConflictCheck(payload, imported)) return;
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${els.length} code template${els.length === 1 ? '' : 's'} into "${target.library.name || 'library'}"`);
             await load();

@@ -63,3 +63,55 @@ test('a failed attachment lookup is reported, not shown as "no attachments"', as
     // toast(..., 'warn') renders a modal in this app, not a corner toast.
     await expect(page.getByText(/Could not list this message's attachments/i)).toBeVisible();
 });
+
+test('the alert wizard reports a failed channel/options picker load', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /channels/idsAndNames': {
+            __status: 403,
+            body: { message: 'channel picker forbidden' }
+        },
+        'GET /alerts/options': {
+            __status: 500,
+            body: { message: 'alert options unavailable' }
+        }
+    });
+
+    await page.goto('/alerts/new/guided');
+    await page.getByRole('textbox', { name: 'Alert name' }).fill('Picker load test');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    const failure = page.getByText(/Could not load/i);
+    await expect(failure).toContainText('channels');
+    await expect(failure).toContainText('alert options');
+});
+
+test('the channel wizard reports incomplete dependency pickers', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /codeTemplateLibraries': {
+            __status: 500,
+            body: { message: 'libraries unavailable' }
+        },
+        'GET /server/resources': {
+            __status: 403,
+            body: { message: 'resources forbidden' }
+        },
+        'GET /server/channelDependencies': {
+            __status: 500,
+            body: { message: 'dependencies unavailable' }
+        },
+        'GET /channels/idsAndNames': {
+            __status: 500,
+            body: { message: 'channels unavailable' }
+        }
+    });
+
+    await page.goto('/channels/new/guided');
+    await page.locator('.view-body input').first().fill('Picker Failure Channel');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+
+    const failure = page.getByText(/The lists below are incomplete/i);
+    await expect(failure).toContainText('code template libraries');
+    await expect(failure).toContainText('library resources');
+    await expect(failure).toContainText('channel dependencies');
+    await expect(failure).toContainText('the channel list');
+});

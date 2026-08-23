@@ -100,3 +100,26 @@ test('undeploying a depended-on channel offers to include its dependents', async
         set: { string: ['c-alpha', 'c-bravo'] },
     });
 });
+
+test('a failed dependency lookup is reported and aborts the lifecycle action', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /channels/statuses': TWO_STOPPED,
+        'GET /server/channelDependencies': {
+            __status: 500,
+            body: { message: 'dependency service unavailable' }
+        }
+    });
+    const starts: string[] = [];
+    page.on('request', request => {
+        const path = new URL(request.url()).pathname;
+        if (request.method() === 'POST' && /_start$/.test(path)) starts.push(path);
+    });
+
+    await page.goto('/dashboard');
+    await expect(page.getByText('Alpha Channel', { exact: true })).toBeVisible();
+    await page.locator('tr', { hasText: 'Alpha Channel' }).first().click();
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+    await expect(page.getByText(/Start cancelled — channel dependencies could not be loaded/i)).toBeVisible();
+    expect(starts).toEqual([]);
+});

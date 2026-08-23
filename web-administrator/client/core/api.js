@@ -213,6 +213,12 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
         if (parsed && typeof parsed === 'object') {
             message = parsed.message || parsed.detailedError || parsed.error || message;
         }
+        else if (typeof parsed === 'string' && parsed.trim()) {
+            // A one-property JSON error such as {"message":"..."} is
+            // intentionally unwrapped by parseBody. Preserve the useful value
+            // instead of exposing the raw JSON document to the user.
+            message = parsed;
+        }
         throw new ApiError(response.status, message, text);
     }
     if (raw)

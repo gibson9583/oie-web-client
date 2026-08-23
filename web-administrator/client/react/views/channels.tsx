@@ -91,15 +91,13 @@ function promptImportLibraries(channelName: any, count: any) {
 // disabled. A group export asks about the union over the group's channels, so
 // one call answers for the whole export.
 async function linkedLibraryNames(channelIds: any) {
-    try {
-        const libs = await api.codeTemplates.libraries(false);
-        const idSet = (v: any) => api.asList(v, 'string').map(String);
-        const cids = [...new Set(api.asList(channelIds).map(String))];
-        return libs.filter(lib => cids.some(cid =>
-            idSet(lib.enabledChannelIds).includes(cid) ||
-            (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(cid))))
-            .map(lib => lib.name || '(unnamed library)');
-    } catch { return []; }
+    const libs = await api.codeTemplates.libraries(false);
+    const idSet = (v: any) => api.asList(v, 'string').map(String);
+    const cids = [...new Set(api.asList(channelIds).map(String))];
+    return libs.filter(lib => cids.some(cid =>
+        idSet(lib.enabledChannelIds).includes(cid) ||
+        (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(cid))))
+        .map(lib => lib.name || '(unnamed library)');
 }
 
 // Swing channel-export dialog: lists the linked libraries and asks whether to
@@ -202,6 +200,9 @@ async function saveImportedLibraries(existing: any, imported: any, channelId: an
     const version = store.getState('serverVersion') || '4.5.2';
     const templatesOf = (lib: any) => api.asList(lib.codeTemplates, 'codeTemplate')
         .filter((template: any) => template && typeof template === 'object' && template.id);
+    const existingLibraryRevisions = new Map(existing
+        .filter((library: any) => library?.id)
+        .map((library: any) => [String(library.id), library.revision]));
     const existingTemplateIds = new Set(existing.flatMap(templatesOf).map((template: any) => String(template.id)));
     const updatedTemplates: any[] = [];
     for (const library of imported) for (const original of templatesOf(library)) {
@@ -210,7 +211,10 @@ async function saveImportedLibraries(existing: any, imported: any, channelId: an
         const properties = original.properties && typeof original.properties === 'object'
             ? { '@version': original.properties['@version'] || version, ...original.properties }
             : original.properties;
-        updatedTemplates.push({ '@version': original['@version'] || version, ...original, properties });
+        // A source-server revision has no meaning on this target. Every
+        // template reaching this list is new here, so use the engine's new
+        // object baseline rather than forcing it through with override=true.
+        updatedTemplates.push({ '@version': original['@version'] || version, ...original, revision: 0, properties });
     }
 
     const merged = mergeImportedLibraries(structuredClone(existing), structuredClone(imported), channelId);
@@ -219,12 +223,26 @@ async function saveImportedLibraries(existing: any, imported: any, channelId: an
         return {
             '@version': library['@version'] || version,
             ...library,
+            revision: existingLibraryRevisions.get(String(library.id)) ?? 0,
             codeTemplates: templates.length
                 ? { codeTemplate: templates.map((template: any) => ({ '@version': template['@version'] || version, id: template.id })) }
                 : null
         };
     });
-    const result: any = await api.codeTemplates.bulkUpdate(libraryPayload, updatedTemplates, [], [], true);
+    // Use the revisions fetched immediately before this merge as an optimistic
+    // concurrency guard. A newer server revision must be acknowledged instead
+    // of being silently overwritten just because this is an import path.
+    let result: any = await api.codeTemplates.bulkUpdate(libraryPayload, updatedTemplates, [], [], false);
+    if (result && typeof result === 'object' && String(result.overrideNeeded) === 'true') {
+        const overwrite = await confirmDialog('Code Template Libraries Modified',
+            'One or more code template libraries changed while the channel import was being prepared. Overwrite those newer changes?',
+            { danger: true, okLabel: 'Overwrite' });
+        if (!overwrite) throw new Error('Code-template library import cancelled — refresh and try again');
+        result = await api.codeTemplates.bulkUpdate(libraryPayload, updatedTemplates, [], [], true);
+        if (result && typeof result === 'object' && String(result.overrideNeeded) === 'true') {
+            throw new Error('the server still requires an override after confirmation');
+        }
+    }
     if (result && typeof result === 'object' && String(result.librariesSuccess) === 'false') {
         throw new Error(result.cause?.message || result.cause?.localizedMessage || 'the code-template libraries could not be saved');
     }
@@ -1096,17 +1114,16 @@ export function ChannelsView() {
     async function exportTask(rows: any) {
         const channel = requireSingle(rows);
         if (!channel) return;
-        // Ask up front (before the save dialog) whether to bundle code template
-        // libraries — only when the channel actually has linked ones. saveFile
-        // falls back to a normal download if the native picker can't engage
-        // outside the click gesture.
-        const includeLibs = await promptIncludeLibraries(channel.id);
-        if (includeLibs === null) return;   // cancelled the export
         try {
+            // Ask up front (before the save dialog) whether to bundle code
+            // template libraries. A failed lookup aborts visibly: treating it
+            // as "none linked" would create a valid-looking incomplete export.
+            const includeLibs = await promptIncludeLibraries(channel.id);
+            if (includeLibs === null) return;   // cancelled the export
             await saveFile(`${channel.name || channel.id}.xml`, 'application/xml',
                 () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined));
         } catch (e: any) {
-            toast(e.message, 'error');
+            toast(`Export failed: ${e.message}`, 'error');
         }
     }
 
@@ -1117,9 +1134,9 @@ export function ChannelsView() {
        per channel into it; a ZIP is the browser's version of that directory. */
     async function exportAllTask() {
         if (!channels.length) { toast('No channels to export', 'warn'); return; }
-        const includeLibs = await promptIncludeLibraries(channels.map((c: any) => c.id));
-        if (includeLibs === null) return;   // cancelled the export
         try {
+            const includeLibs = await promptIncludeLibraries(channels.map((c: any) => c.id));
+            if (includeLibs === null) return;   // cancelled the export
             await saveFile('channels.zip', 'application/zip', async () => {
                 // Serializing every channel takes the engine minutes on a big
                 // server — no client ceiling (timeoutMs: null).
@@ -1139,7 +1156,7 @@ export function ChannelsView() {
                 return zip.blob();
             });
         } catch (e: any) {
-            toast(e.message, 'error');
+            toast(`Export failed: ${e.message}`, 'error');
         }
     }
 
@@ -1507,27 +1524,27 @@ export function ChannelsView() {
     async function exportGroupTask(g: any) {
         const group = requireGroup(g);
         if (!group) return;
-        // Swing asks about bundling linked libraries for a GROUP export too — the
-        // group's channels are exported whole, so they carry (or don't) the same
-        // exportData the single-channel export does.
-        const includeLibs = await promptIncludeLibraries(groupChannelIds([group]));
-        if (includeLibs === null) return;
         try {
+            // Swing asks about bundling linked libraries for a GROUP export too —
+            // the group's channels are exported whole, so they carry (or don't)
+            // the same exportData the single-channel export does.
+            const includeLibs = await promptIncludeLibraries(groupChannelIds([group]));
+            if (includeLibs === null) return;
             await saveFile(`${group.name || group.id}.xml`, 'application/xml', async () => {
                 const els = await hydratedGroupElements(group.id, includeLibs);
                 return new XMLSerializer().serializeToString(els[0]);
             });
         } catch (e: any) {
-            toast(e.message, 'error');
+            toast(`Export failed: ${e.message}`, 'error');
         }
     }
 
     /* Export All Groups, like Export All Channels, writes one file per group into
        a ZIP: a <list> of <channelGroup> is not a document Swing can read back. */
     async function exportGroupsTask() {
-        const includeLibs = await promptIncludeLibraries(groupChannelIds(groups));
-        if (includeLibs === null) return;
         try {
+            const includeLibs = await promptIncludeLibraries(groupChannelIds(groups));
+            if (includeLibs === null) return;
             await saveFile('channel-groups.zip', 'application/zip', async () => {
                 const els = await hydratedGroupElements(undefined, includeLibs);
                 if (!els.length) throw new Error('No channel groups to export');
@@ -1541,7 +1558,7 @@ export function ChannelsView() {
                 return zip.blob();
             });
         } catch (e: any) {
-            toast(e.message, 'error');
+            toast(`Export failed: ${e.message}`, 'error');
         }
     }
 

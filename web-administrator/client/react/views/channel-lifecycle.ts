@@ -3,13 +3,10 @@
    channels to that set; Swing's warning dialog does that client-side. */
 
 import api from '@oie/web-api';
-import { h, modal } from '@oie/web-ui';
+import { h, modal, toast } from '@oie/web-ui';
 
 async function relatedChannelIds(ids: any, direction: any) {
-    let deps: any[];
-    // Dependency data is advisory. A failed read must not block the action the
-    // user actually asked for, so fall back to "nothing related".
-    try { deps = await api.server.channelDependencies(); } catch { return []; }
+    const deps: any[] = await api.server.channelDependencies();
     const edges = new Map();
     for (const dep of deps || []) {
         const from = String((direction === 'dependencies' ? dep.dependentId : dep.dependencyId) ?? '');
@@ -36,7 +33,16 @@ export async function withDependencies(
     verb: any,
     nameOf: any = (id: any) => id
 ) {
-    const extra = await relatedChannelIds(ids, direction);
+    let extra: any[];
+    try {
+        extra = await relatedChannelIds(ids, direction);
+    } catch (e: any) {
+        // Proceeding with "nothing related" after a 403/5xx defeats the whole
+        // dependency safety check and can start/deploy in the wrong order or
+        // strand dependents. Surface the failure and abort the action instead.
+        toast(`${verb} cancelled — channel dependencies could not be loaded: ${e?.message || e}`, 'error');
+        return null;
+    }
     if (!extra.length) return ids;
     const lead = direction === 'dependencies'
         ? `The selected channel(s) depend on ${extra.length} channel(s) that are not selected:`
