@@ -37,6 +37,10 @@ const FONT_CSS = [
     '@fontsource/ibm-plex-mono/500.css',
     '@fontsource/ibm-plex-mono/600.css'
 ];
+const FONT_LICENSES = {
+    '@fontsource-variable/archivo/LICENSE': 'LICENSE-Archivo.txt',
+    '@fontsource/ibm-plex-mono/LICENSE': 'LICENSE-IBM-Plex-Mono.txt'
+};
 const fontsOut = resolve(clientDir, 'vendor', 'fonts');
 mkdirSync(resolve(fontsOut, 'files'), { recursive: true });
 const requireHere = createRequire(import.meta.url);
@@ -53,8 +57,11 @@ for (const spec of FONT_CSS) {
     }
     fontsCss += text + '\n';
 }
+for (const [spec, name] of Object.entries(FONT_LICENSES)) {
+    copyFileSync(requireHere.resolve(spec), resolve(fontsOut, name));
+}
 writeFileSync(resolve(fontsOut, 'fonts.css'), fontsCss);
-console.log(`[build-vendor] fonts -> client/vendor/fonts/ (fonts.css + ${fontFiles} woff2)`);
+console.log(`[build-vendor] fonts -> client/vendor/fonts/ (fonts.css + ${fontFiles} woff2 + ${Object.keys(FONT_LICENSES).length} licenses)`);
 
 // esbuild is a devDependency. On a production install (`npm ci --omit=dev`)
 // it is absent — and that is fine: the vendored bundles it produces are

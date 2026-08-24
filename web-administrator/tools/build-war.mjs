@@ -201,7 +201,15 @@ try {
     execFileSync('jar', ['--create', '--file', artifact, '-C', stage, '.'], { stdio: 'inherit' });
 
     const entries = execFileSync('jar', ['--list', '--file', artifact], { encoding: 'utf8' });
-    for (const required of ['index.jsp', 'WEB-INF/web.xml', 'webadmin/config.json', 'webadmin/plugins.json']) {
+    const requiredEntries = [
+        'index.jsp',
+        'WEB-INF/web.xml',
+        'webadmin/config.json',
+        'webadmin/plugins.json',
+        'vendor/fonts/LICENSE-Archivo.txt',
+        'vendor/fonts/LICENSE-IBM-Plex-Mono.txt'
+    ];
+    for (const required of requiredEntries) {
         if (!entries.split(/\r?\n/).includes(required)) throw new Error(`WAR validation failed: missing ${required}`);
     }
     const sizeMiB = (statSync(artifact).size / 1024 / 1024).toFixed(1);
