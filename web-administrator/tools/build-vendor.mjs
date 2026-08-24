@@ -12,6 +12,56 @@
  */
 
 import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const clientDir = resolve(here, '..', 'client');
+
+// --- Webfonts (self-hosted, for air-gapped installs) -------------------------
+// client/index.html links /vendor/fonts/fonts.css instead of the Google Fonts
+// CDN, so the intended typography renders with no internet access and page
+// loads leak no IPs to a third party (the CSP stays fully same-origin — see
+// server/index.ts). The Fontsource packages ship the same per-script subsets +
+// unicode-range rules Google serves; concatenate their CSS, rename the variable
+// family to the 'Archivo' name app.css uses, drop the legacy woff duplicates
+// (woff2 is universal in supported browsers), and copy only the referenced
+// files. This runs BEFORE the esbuild guard below: the packages are regular
+// dependencies (like monaco-editor), so fonts vendor even on a production
+// install where esbuild is absent.
+const FONT_CSS = [
+    '@fontsource-variable/archivo/wdth.css',    // variable: wght 100-900, wdth 62-125%
+    '@fontsource/ibm-plex-mono/400.css',
+    '@fontsource/ibm-plex-mono/400-italic.css',
+    '@fontsource/ibm-plex-mono/500.css',
+    '@fontsource/ibm-plex-mono/600.css'
+];
+const FONT_LICENSES = {
+    '@fontsource-variable/archivo/LICENSE': 'LICENSE-Archivo.txt',
+    '@fontsource/ibm-plex-mono/LICENSE': 'LICENSE-IBM-Plex-Mono.txt'
+};
+const fontsOut = resolve(clientDir, 'vendor', 'fonts');
+mkdirSync(resolve(fontsOut, 'files'), { recursive: true });
+const requireHere = createRequire(import.meta.url);
+let fontsCss = '';
+let fontFiles = 0;
+for (const spec of FONT_CSS) {
+    const cssPath = requireHere.resolve(spec);
+    const text = readFileSync(cssPath, 'utf8')
+        .replaceAll("'Archivo Variable'", "'Archivo'")
+        .replace(/,\s*url\(\.\/files\/[^)]+\.woff\) format\('woff'\)/g, '');
+    for (const [, name] of text.matchAll(/url\(\.\/files\/([^)]+\.woff2)\)/g)) {
+        copyFileSync(resolve(dirname(cssPath), 'files', name), resolve(fontsOut, 'files', name));
+        fontFiles++;
+    }
+    fontsCss += text + '\n';
+}
+for (const [spec, name] of Object.entries(FONT_LICENSES)) {
+    copyFileSync(requireHere.resolve(spec), resolve(fontsOut, name));
+}
+writeFileSync(resolve(fontsOut, 'fonts.css'), fontsCss);
+console.log(`[build-vendor] fonts -> client/vendor/fonts/ (fonts.css + ${fontFiles} woff2 + ${Object.keys(FONT_LICENSES).length} licenses)`);
 
 // esbuild is a devDependency. On a production install (`npm ci --omit=dev`)
 // it is absent — and that is fine: the vendored bundles it produces are
@@ -23,10 +73,6 @@ catch {
     console.log('[build-vendor] esbuild not installed (production install?) — using the committed vendor bundles.');
     process.exit(0);
 }
-import { dirname, resolve } from 'node:path';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const clientDir = resolve(here, '..', 'client');
 
 // Bare specifier -> entry that re-exports it. Add future core-imported deps here.
 const VENDOR = {
