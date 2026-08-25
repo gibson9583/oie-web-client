@@ -68,7 +68,7 @@ const MESSAGE_FIXTURES = {
         { int: 0, string: 'Source' },
         { int: 1, string: 'HTTP Sender' }
     ] } },
-    [`GET /channels/${CID}/metaDataColumns`]: '',
+    [`GET /channels/${CID}/metaDataColumns`]: { list: '' },
     // Channel name lookup for the 'Channel Messages - <name>' banner title.
     'GET /channels/idsAndNames': { map: { entry: [{ string: [CID, 'Demo Started'] }] } },
     // Remove All uses this to offer Swing's stop/remove/restart behavior.

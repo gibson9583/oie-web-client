@@ -100,7 +100,7 @@ const FIXTURES = {
     },
     [`GET /channels/${CID2}/messages/count`]: { long: 1 },
     [`GET /channels/${CID2}/connectorNames`]: { map: { entry: [{ int: 0, string: 'Source' }] } },
-    [`GET /channels/${CID2}/metaDataColumns`]: '',
+    [`GET /channels/${CID2}/metaDataColumns`]: { list: '' },
     [`GET /channels/${CID2}/messages/12345`]: MESSAGE_OTHER,
     [`GET /channels/${CID2}/messages/12345/attachments`]: '',
 
@@ -113,7 +113,7 @@ const FIXTURES = {
         { int: 0, string: 'Source' },
         { int: 1, string: 'HTTP Sender' }
     ] } },
-    [`GET /channels/${CID}/metaDataColumns`]: '',
+    [`GET /channels/${CID}/metaDataColumns`]: { list: '' },
     'GET /channels/idsAndNames': { map: { entry: [
         { string: [CID, 'Demo Started'] },
         { string: [CID2, 'Demo Stopped'] }

@@ -30,15 +30,17 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import api from '@oie/web-api';
+import { toast } from '@oie/web-ui';
 import { createDiffEditor } from '../core/diffeditor.js';
 import { detectType } from '../core/content-highlight.js';
 import { formatSentProperties } from '../core/sent-format.js';
-import { parseResponse, toDisplayString } from '../core/xstream.js';
+import { mappingEntries, parseResponse, toDisplayString } from '../core/xstream.js';
 import { on } from '../core/store.js';
 import {
     COMPARE_STAGES, clearCompare, describeRef, stageKey, stageLabel, storedContentTypes
 } from '../core/compare.js';
 import { Icon } from './bridges.jsx';
+import { hasPatientIdColumn, readMetaDataColumnsStrict, requireFreshMessage } from '../core/message-safety.js';
 
 /* ---- content extraction (the same rules the detail pane renders by) --------- */
 
@@ -77,6 +79,36 @@ function monacoLanguage(text: any, dataType: any): string {
     return kind === 'xml' ? 'xml' : kind === 'json' ? 'json' : 'plaintext';
 }
 
+/* ---- Cures Act audit --------------------------------------------------------
+   The overlay reads full message content outside the browser's detail pane, so
+   it owes the same "Accessed PHI" event on PATIENT_ID-gated channels — checked
+   per SIDE, because a comparison may span two channels with different gates.
+   Fails CLOSED: when a side's gate cannot be determined, that side shows an
+   error instead of unaudited PHI, the same rule the message browser applies
+   to search. */
+
+async function phiGateFor(channelId: any): Promise<boolean> {
+    try {
+        return hasPatientIdColumn(await readMetaDataColumnsStrict(channelId));
+    } catch {
+        throw new Error("Could not verify this channel's PHI audit requirements — content withheld. Close the compare and retry.");
+    }
+}
+
+function patientIdOf(cm: any): string {
+    for (const [k, v] of mappingEntries(cm?.metaDataMap)) {
+        if (String(k).toUpperCase() === 'PATIENT_ID' && v !== '') return v;
+    }
+    return '';
+}
+
+let auditWarned = false;
+function onAuditFailure(e: any) {
+    if (auditWarned) return;
+    auditWarned = true;
+    toast(`PHI audit event could not be written: ${e.message}`, 'warn');
+}
+
 /* ---- one side ---------------------------------------------------------------- */
 
 const LOADING = { status: 'loading' as const, text: '', language: 'plaintext', storedTypes: null as any, error: '' };
@@ -89,10 +121,13 @@ function useSideContent(ref: any, gen: number) {
         setState(LOADING);
         (async () => {
             try {
+                const phiGated = await phiGateFor(ref.channelId);
                 // Deliberately the full message, fetched now: the engine re-checks
                 // authorization and answers with current truth, which a cached row
                 // object cannot.
-                const message = await api.messages.get(ref.channelId, ref.messageId);
+                const message = requireFreshMessage(
+                    await api.messages.get(ref.channelId, ref.messageId),
+                    { channelId: ref.channelId, messageId: ref.messageId, metaDataId: ref.metaDataId });
                 if (stale) return;
                 const entries = message?.connectorMessages?.entry ?? message?.connectorMessages;
                 const cms = api.asList(entries)
@@ -102,6 +137,15 @@ function useSideContent(ref: any, gen: number) {
                 if (!cm) {
                     setState({ ...LOADING, status: 'missing', error: `Connector ${ref.metaDataId} is no longer part of message ${ref.messageId}.` });
                     return;
+                }
+                // The content is in memory from here on, whatever stage checks
+                // conclude below — that is the access the event records.
+                if (phiGated) {
+                    api.messages.auditAccessedPHI({
+                        patientId: patientIdOf(cm),
+                        channel: `Channel[id=${ref.channelId},name=${ref.channelName || ''}]`,
+                        messageId: String(ref.messageId)
+                    }).catch(onAuditFailure);
                 }
                 const storedTypes = storedContentTypes(cm);
                 const content = stageContent(cm, ref.contentType);
@@ -124,7 +168,7 @@ function useSideContent(ref: any, gen: number) {
         // A side that is superseded (stage pivot, swap, retry) must not write its
         // content into the pane that moved on.
         return () => { stale = true; };
-    }, [ref.channelId, ref.messageId, ref.metaDataId, ref.contentType, ref.dataTypes, gen]);
+    }, [ref.channelId, ref.channelName, ref.messageId, ref.metaDataId, ref.contentType, ref.dataTypes, gen]);
 
     return state;
 }

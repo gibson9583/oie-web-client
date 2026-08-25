@@ -62,6 +62,7 @@ import { CompareChip } from '../compare-chip.jsx';
 import { CompareOverlay } from '../compare-overlay.jsx';
 import { apiUrl } from '../../core/deployment.js';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
+import { hasPatientIdColumn, readMetaDataColumnsStrict, requireFreshMessage } from '../../core/message-safety.js';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
@@ -217,6 +218,21 @@ const META_SEARCH_OPERATORS = [
     '=', '!=', '<', '<=', '>', '>=', 'CONTAINS', 'DOES NOT CONTAIN',
     'STARTS WITH', 'DOES NOT START WITH', 'ENDS WITH', 'DOES NOT END WITH'
 ];
+
+/* The patientId a "Queried PHI" audit event should carry (Swing MessageBrowser:
+   the value of a PATIENT_ID metadata search whose operator is exactly "=").
+   buildParams has already flattened those criteria into the engine's
+   "COLUMN OPERATOR value" query-param form, so read them back from there —
+   both the case-sensitive and case-insensitive params carry the same shape. */
+function patientIdFromFilter(params: any) {
+    for (const key of ['metaDataSearch', 'metaDataCaseInsensitiveSearch']) {
+        for (const term of (Array.isArray(params?.[key]) ? params[key] : [])) {
+            const m = /^\s*PATIENT_ID\s+=\s+(.*)$/i.exec(String(term));
+            if (m && m[1].trim()) return m[1].trim();
+        }
+    }
+    return '';
+}
 
 /* Advanced search criteria defaults (cleared by the dialog's Reset button). */
 function defaultAdvancedCriteria() {
@@ -948,7 +964,13 @@ function viewAttachmentsModal(platform: any, channelId: any, m: any) {
 // Export Attachment (Swing MESSAGE_EXPORT_ATTACHMENT) — export directly when
 // there's exactly one, otherwise open the viewer to pick.
 async function exportAttachmentTask(platform: any, channelId: any, m: any) {
-    const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId).catch(() => []);
+    // A failed lookup is not "no attachments": reporting it as such on the export
+    // path tells the user there was nothing to export when there may have been.
+    let attachments = m.__attachments;
+    if (attachments === undefined) {
+        try { attachments = await api.messages.attachments(channelId, m.messageId); }
+        catch (e: any) { toast(`Could not list attachments: ${e.message}`, 'error'); return; }
+    }
     m.__attachments = attachments;
     if (!attachments.length) { toast('No attachments on this message', 'warn'); return; }
     if (attachments.length === 1) { exportAttachment(channelId, m, attachments[0]); return; }
@@ -1095,6 +1117,13 @@ function DetailBody({ detail, channelId, channelName, platform, anchor, onActive
     }
     if (detail.status === 'loading') {
         return <div className="py-3 px-3.5"><Loading text="Loading message…" /></div>;
+    }
+    if (detail.status === 'error') {
+        return (
+            <div className="flex-none py-[8px] px-3.5" style={{ color: 'var(--err)' }}>
+                Failed to load message content: {detail.error}
+            </div>
+        );
     }
     const { message, metaDataId } = detail;
     const cms = connectorMessagesOf(message);
@@ -1456,12 +1485,127 @@ function suffixName(name: any, suffix: any) {
     return dot > name.lastIndexOf('/') ? `${name.slice(0, dot)}_${suffix}${name.slice(dot)}` : `${name}_${suffix}`;
 }
 
+const xmlEscape = (s: any) => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+
+/* GET /messages/{id} answers from the message table alone, so the <attachments>
+   element it serializes is always empty — while Import Messages feeds that very
+   XML straight back to /messages/_import, which is the only channel the importer
+   has for attachment content (the sidecar files the export also writes are not
+   something it can consume). Splice the separately-fetched attachments into the
+   element the engine left empty so an exported message round-trips intact. */
+const ATTACHMENTS_EL = /<attachments\s*\/>|<attachments>[\s\S]*?<\/attachments>/;
+
+function spliceAttachments(xml: any, atts: any[]) {
+    // Validate the message shape whether or not attachments ride along: an
+    // answer with no closing element is malformed, and exporting it as-is
+    // writes garbage presented as a message.
+    if (String(xml).lastIndexOf('</message>') < 0) {
+        throw new Error('the engine returned malformed message XML (no closing element)');
+    }
+    if (!atts.length) return xml;
+    // XStream aliases Attachment to <attachment> and writes its byte[] content
+    // as base64 — exactly the form the attachments endpoint already hands back,
+    // minus any wrapping the transport introduced.
+    const body = atts.map(a => '<attachment>'
+        + `<id>${xmlEscape(a.id)}</id>`
+        + `<type>${xmlEscape(a.type)}</type>`
+        + `<content>${xmlEscape(String(a.content).replace(/\s+/g, ''))}</content>`
+        + '</attachment>').join('');
+    const el = `<attachments>${body}</attachments>`;
+    // Only Message declares an attachments field (ConnectorMessage has none) and
+    // XStream escapes every payload it writes, so a match is the real element
+    // and never a fragment of exported content.
+    if (ATTACHMENTS_EL.test(xml)) return xml.replace(ATTACHMENTS_EL, () => el);
+    const close = xml.lastIndexOf('</message>');
+    return xml.slice(0, close) + el + xml.slice(close);
+}
+
+/* A serialized ConnectorMessage may itself contain fields named <message>
+   (notably Response.message). A flat /<message>.*?<\/message>/ scan therefore
+   cuts a valid exported Message off at the first nested response and submits a
+   half-built object whose connectorMessages field is null. Parse under a
+   synthetic root instead, so adjacent exported messages are also accepted,
+   and only import top-level Message objects with the connector map the engine
+   requires. */
+function extractSerializedMessages(source: any) {
+    const input = String(source).replace(/^\uFEFF/, '').replace(/<\?xml\s[^?]*\?>/gi, '');
+    const doc = new DOMParser().parseFromString(`<messageImport>${input}</messageImport>`, 'application/xml');
+    if (doc.getElementsByTagName('parsererror').length) {
+        return { messages: [] as string[], rejected: 0, error: 'The selected file is not valid XML' };
+    }
+
+    const isMessage = (el: Element) => el.localName === 'message';
+    const topLevel: Element[] = [];
+    for (const child of Array.from(doc.documentElement.children)) {
+        if (isMessage(child)) {
+            topLevel.push(child);
+        } else {
+            // Engine list exports wrap Message objects one level deep. Do not
+            // search all descendants: connector response fields also use the
+            // name <message> and are data, not objects to import.
+            topLevel.push(...Array.from(child.children).filter(isMessage));
+        }
+    }
+
+    const messages: string[] = [];
+    let rejected = 0;
+    const serializer = new XMLSerializer();
+    for (const message of topLevel) {
+        const connectorMap = Array.from(message.children).find(el => el.localName === 'connectorMessages');
+        const entries = connectorMap
+            ? Array.from(connectorMap.children).filter(el => el.localName === 'entry')
+            : [];
+        if (!entries.length) {
+            rejected++;
+            continue;
+        }
+        messages.push(serializer.serializeToString(message));
+    }
+    return { messages, rejected, error: null as string | null };
+}
+
 /* Full Swing-style "Export Results" dialog (MessageExportDialog /
    MessageExportPanel). Operates on the whole result set for the current
    search filter. My Computer exports run in the browser (ZIP via the Save
    dialog, or one file per message into a chosen folder); Server export
    defers the whole job to POST /messages/_export (which holds the
    encryption key, so content Encrypt is fully supported there). */
+/* Cures Act export auditing (Swing MessageExportDialog). Both events fire on
+   every export, on every channel — unlike the accessed/queried pair there is no
+   PATIENT_ID gate. The descriptor is shared by the two events so the "started"
+   and "succeeded" records line up in the event log. */
+function exportAuditAttributes(o: any) {
+    return {
+        rootPath: o.rootFolder || 'My Computer',
+        filePattern: o.pattern,
+        contentType: o.opt.xml ? 'XML' : String(o.opt.ct || ''),
+        encrypted: String(!!o.encryptContent),
+        includeAttachments: String(!!o.includeAttachments),
+        compressionFormat: o.compression === 'zip' ? 'zip' : 'none',
+        passwordProtected: String(!!o.pwProtect)
+    };
+}
+
+// Blocking: Swing aborts the export when the pre-export audit fails, so an
+// unauditable export never writes PHI anywhere.
+async function auditExportStart(o: any) {
+    try {
+        await api.messages.auditExport(exportAuditAttributes(o));
+        return true;
+    } catch (e: any) {
+        toast(`Export cancelled — the export audit event could not be written: ${e.message}`, 'error');
+        return false;
+    }
+}
+
+// Non-blocking: the export already happened, so a failed success event must not
+// report the export itself as failed — but it must still be visible, or the
+// audit trail loses a record with nothing on screen to say so.
+function auditExportSuccess(o: any, exportCount: any) {
+    api.messages.auditExportSuccess({ ...exportAuditAttributes(o), exportCount: String(exportCount) })
+        .catch((e: any) => toast(`Export finished, but its audit event could not be written: ${e.message}`, 'warn'));
+}
+
 function exportResultsDialog({ channelId, total, lastParams }: any) {
     let aborted = false, running = false;
 
@@ -1563,19 +1707,43 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
     async function eachFile(sink: any, opt: any, pattern: any, includeAttachments: any) {
         const BATCH = 100;
         let done = 0, files = 0, count = 0;
+        const exportedIds = new Set<string>();
         for (let off = 0; off < total && !aborted; off += BATCH) {
             const rows = await api.messages.search(channelId, { ...lastParams, offset: off, limit: BATCH, includeContent: !opt.xml });
             for (const m of rows) {
                 if (aborted) break;
+                exportedIds.add(String(m.messageId));
                 count++;
                 const base = applyFilePattern(pattern, m, count, channelId);
                 if (opt.xml) {
+                    // One fetch feeds both consumers: the XML the importer reads
+                    // and the sidecar files that stand on their own.
+                    const atts = includeAttachments ? await fetchAttachments(m) : [];
                     const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}`), {
                         headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                         credentials: 'same-origin'
                     });
-                    if (resp.ok) { await sink(base, await resp.text()); files++; }
-                    if (includeAttachments) files += await sinkAttachments(sink, m, base);
+                    // A message the export cannot read fails the export — quietly
+                    // skipping it would report success on an incomplete archive,
+                    // which is exactly what the attachment fetch above refuses to do.
+                    if (!resp.ok) throw new Error(`could not read message ${m.messageId} (HTTP ${resp.status})`);
+                    const messageXml = await resp.text();
+                    /* And it must BE this row's serialized Message: a <message>
+                       ROOT whose own direct <messageId> equals the requested
+                       row. Grepping for the first nested id accepted any
+                       document that happened to contain one (a <list> wrapper,
+                       another object embedding a message). */
+                    const msgDoc = new DOMParser().parseFromString(messageXml, 'text/xml');
+                    const msgRoot = msgDoc.documentElement;
+                    const rootId = msgRoot && msgRoot.nodeName === 'message'
+                        ? [...msgRoot.children].find((c: any) => c.tagName === 'messageId')?.textContent
+                        : null;
+                    if (msgDoc.querySelector('parsererror') || rootId !== String(m.messageId)) {
+                        throw new Error(`the engine did not answer with serialized message ${m.messageId}`
+                            + `${rootId ? ` (it sent message ${rootId})` : ''} — export aborted`);
+                    }
+                    await sink(base, spliceAttachments(messageXml, atts)); files++;
+                    files += await sinkAttachments(sink, atts, base);
                 } else {
                     const cms = connectorMessagesOf(m).filter(cm => opt.dest ? Number(cm.metaDataId) > 0 : Number(cm.metaDataId) === 0);
                     for (const cm of cms) {
@@ -1589,38 +1757,78 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
                 progress(done);
             }
         }
+        /* The dialog promised `total` messages (the count the search reported),
+           and completeness is judged on DISTINCT ids: a page boundary that
+           serves the same message twice would otherwise satisfy the count while
+           another message is silently missing. */
+        if (!aborted && exportedIds.size < total) {
+            throw new Error(`the engine returned ${fmtNumber(exportedIds.size)} of ${fmtNumber(total)} distinct message(s) — export aborted rather than writing an incomplete archive`);
+        }
         return { done, files };
     }
 
-    // Best-effort: write each attachment alongside the message file (My
-    // Computer mode). Server export embeds attachments natively instead.
-    async function sinkAttachments(sink: any, m: any, base: any) {
-        let n = 0;
+    // Attachment content for one message, base64 as the engine stores it —
+    // api.messages.attachments() is the same call without includeContent, which
+    // is the whole point here, so this goes through the generic get.
+    //
+    // Failures propagate instead of yielding an empty list: swallowing them let
+    // an export finish, toast "Exported n file(s)" and hand back an archive with
+    // no attachments in it — the one thing the user asked for, missing, with
+    // nothing on screen to say so.
+    async function fetchAttachments(m: any) {
+        let raw;
         try {
-            const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}/attachments?includeContent=true`), {
-                headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
-                credentials: 'same-origin'
-            });
-            if (!resp.ok) return 0;
-            const raw = parseResponse(await resp.text());
-            const noExt = base.replace(/\.[^./]+$/, '');
-            for (const att of api.asList((raw as any)?.list?.attachment ?? (raw as any)?.attachment ?? raw)) {
-                const id = displayValue(att?.id); if (!id) continue;
-                const type = displayValue(att?.type) || '';
-                let content = att?.content ?? att;
-                if (typeof content !== 'string') content = displayValue(content);
-                let payload = content;
-                try {
-                    const bin = atob(String(content).replace(/\s+/g, ''));
-                    const bytes = new Uint8Array(bin.length);
-                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                    payload = isTextualAttachment(type) ? new TextDecoder().decode(bytes) : bytes;
-                } catch { /* not base64 */ }
-                await sink(`${noExt}_attachment_${id}${attachmentExtension(type)}`, payload);
-                n++;
+            raw = await api.get(`/channels/${channelId}/messages/${m.messageId}/attachments`, { includeContent: true });
+        } catch (e: any) {
+            throw new Error(`could not read attachments for message ${m.messageId}: ${e.message}`);
+        }
+        const out: any[] = [];
+        for (const att of api.asList(raw, 'attachment')) {
+            // An attachment without an id cannot be named, spliced, or
+            // re-imported — dropping it silently thins the archive.
+            const id = displayValue((att as any)?.id);
+            if (!id) throw new Error(`an attachment of message ${m.messageId} came back without an id`);
+            let content = (att as any)?.content;
+            // Attachment.content is a byte[]: base64 text, but the schema also
+            // allows the chunked string[] form some serializers emit.
+            if (Array.isArray(content)) content = content.join('');
+            /* An ABSENT content property is a failed read, not an empty
+               attachment: any fallback here gets stringified into <content> as
+               the attachment's bytes while the export reports success. An
+               explicitly empty string stays valid (a zero-byte attachment). */
+            if (content === undefined || content === null) {
+                throw new Error(`attachment ${id} of message ${m.messageId} came back without content`);
             }
-        } catch { /* attachments are best-effort */ }
-        return n;
+            if (typeof content !== 'string') content = displayValue(content);
+            /* Attachment.content is base64 (XStream's byte[] form). Anything
+               else embedded into <content> imports as corrupt bytes — refuse it
+               rather than exporting garbage under a success toast. An empty
+               string stays valid (a zero-byte attachment). */
+            const b64 = String(content).replace(/\s+/g, '');
+            if (b64 && (b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64))) {
+                throw new Error(`attachment ${id} of message ${m.messageId} is not valid base64 — refusing to export corrupt bytes`);
+            }
+            out.push({ id, type: displayValue((att as any)?.type) || '', content });
+        }
+        return out;
+    }
+
+    // Write each attachment alongside the message file (My Computer mode), on
+    // top of the copy spliced into the message XML — decoded, so the sidecar is
+    // a usable file rather than base64. Server export embeds attachments natively.
+    async function sinkAttachments(sink: any, atts: any[], base: any) {
+        const noExt = base.replace(/\.[^./]+$/, '');
+        for (const att of atts) {
+            let payload: any = att.content;
+            try {
+                const bin = atob(String(att.content).replace(/\s+/g, ''));
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                payload = isTextualAttachment(att.type) ? new TextDecoder().decode(bytes) : bytes;
+            } catch { /* not base64 */ }
+            await sink(`${noExt}_attachment_${att.id}${attachmentExtension(att.type)}`, payload);
+        }
+        return atts.length;
     }
 
     async function runServerExport(o: any) {
@@ -1642,7 +1850,18 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             // The engine writes every matching message to its filesystem before
             // answering — minutes for a big filter — so no client ceiling.
             const count = await api.post(`/channels/${channelId}/messages/_export`, null, { params, timeoutMs: null });
-            toast(`Server exported ${fmtNumber(Number(count) || 0)} message(s) to ${o.rootFolder}`);
+            /* Only an actual NUMBER counts. Number() coercion made boolean
+               false, empty arrays and similar malformed answers read as a
+               "successful" zero-count export — the engine's numeric count is
+               the only proof anything was written. */
+            const exported = typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count
+                : (typeof count === 'string' && /^\d+$/.test(count.trim())) ? Number(count.trim())
+                : null;
+            if (exported == null) {
+                throw new Error('the engine did not return an export count — verify the export folder before trusting this export');
+            }
+            auditExportSuccess(o, exported);
+            toast(`Server exported ${fmtNumber(exported)} message(s) to ${o.rootFolder}`);
             dlg.close();
         } catch (e: any) {
             toast(`Server export failed: ${e.message}`, 'error');
@@ -1663,7 +1882,11 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
         if ((toServer as any).checked) {
             if (!(rootInput as any).value.trim()) { toast('Enter a Root Path for server export', 'warn'); return; }
             if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
-            return runServerExport({ opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder: (rootInput as any).value.trim() });
+            const o = { opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder: (rootInput as any).value.trim() };
+            // Audit after validation (a bounced dialog is not an export attempt)
+            // but before any message leaves the engine.
+            if (!await auditExportStart(o)) return;
+            return runServerExport(o);
         }
 
         // My Computer (browser) export.
@@ -1672,6 +1895,9 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             return;
         }
         if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
+
+        const auditDescriptor = { opt, compression, pattern, encryptContent, includeAttachments, pwProtect, rootFolder: '' };
+        if (!await auditExportStart(auditDescriptor)) return;
 
         running = true; aborted = false; setDisabled(true); barWrap.style.display = '';
         const now = new Date();
@@ -1695,6 +1921,7 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             // buildZip.result is unset if the user cancelled the Save dialog.
             if ((buildZip as any).result) {
                 const r = (buildZip as any).result;
+                auditExportSuccess(auditDescriptor, r.done);
                 toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
                 dlg.close();
             } else {
@@ -1767,6 +1994,56 @@ export function MessagesView({ params, query }: any) {
        bare /messages route — and the picker is how you choose. */
     const [channelList, setChannelList] = useState([] as any[]);
     const [metaDataColumns, setMetaDataColumns] = useState([] as any[]);
+    const [metaDataLoadState, setMetaDataLoadState] = useState(channelId ? 'loading' : 'ready');
+    const [metaDataLoadError, setMetaDataLoadError] = useState('');
+
+    /* Cures Act PHI auditing (Swing MessageBrowser): "Accessed PHI" and "Queried
+       PHI" fire only on channels that declare a custom metadata column named
+       PATIENT_ID. Channels without one emit nothing, so the gate is the column
+       list the browser already fetches. An audit-write failure remains advisory,
+       but failure to load the gate itself blocks searching: treating a 403/5xx as
+       "no PATIENT_ID" would silently browse PHI without either audit event. */
+    const phiAuditedRef = useRef(false);
+    const phiAuditGateRef = useRef(channelId ? 'loading' : 'ready');
+    const channelNameRef = useRef(channelId);
+    channelNameRef.current = channelName;
+    /* Both events carry the channel in the engine's audit-attribute form,
+       "Channel[id=<id>,name=<name>]" (MessageBrowser builds this string by hand).
+       A report that greps these events for an id has to find one — a bare display
+       name is not a channel reference and is not even unique. */
+    const auditChannelAttr = () => `Channel[id=${channelId},name=${channelNameRef.current || ''}]`;
+    const auditWarnedRef = useRef(false);
+    const onAuditFailure = (e: any) => {
+        if (auditWarnedRef.current) return;
+        auditWarnedRef.current = true;
+        toast(`PHI audit event could not be written: ${e.message}`, 'warn');
+    };
+    async function loadPhiAuditGate() {
+        const columns = await readMetaDataColumnsStrict(channelId);
+        return { columns, audited: hasPatientIdColumn(columns) };
+    }
+    function commitPhiAuditGate(gate: { columns: any[]; audited: boolean }) {
+        phiAuditedRef.current = gate.audited;
+        phiAuditGateRef.current = 'ready';
+        setMetaDataColumns(gate.columns);
+        setMetaDataLoadError('');
+        setMetaDataLoadState('ready');
+    }
+    function commitPhiAuditGateError(error: any) {
+        phiAuditGateRef.current = 'error';
+        setMetaDataLoadError(error?.message || String(error));
+        setMetaDataLoadState('error');
+    }
+    async function refreshPhiAuditGate() {
+        try {
+            const gate = await loadPhiAuditGate();
+            commitPhiAuditGate(gate);
+            return gate.audited;
+        } catch (e: any) {
+            commitPhiAuditGateError(e);
+            throw e;
+        }
+    }
     const [messages, setMessages] = useState([] as any[]);
     // shown: null = no search has completed yet (blank counts label, legacy
     // parity) — distinct from a completed search with zero rows ('No results').
@@ -1934,6 +2211,21 @@ export function MessagesView({ params, query }: any) {
 
     async function runSearch(resetOffset: any) {
         const gen = ++searchGenRef.current;
+        let phiAuditedForSearch = false;
+        try {
+            // Re-check at the action boundary. A channel can gain PATIENT_ID while
+            // this long-lived browser is open; the mount-time answer must not make
+            // later searches unaudited.
+            const gate = await loadPhiAuditGate();
+            if (gen !== searchGenRef.current) return;
+            commitPhiAuditGate(gate);
+            phiAuditedForSearch = gate.audited;
+        } catch (e: any) {
+            if (gen !== searchGenRef.current) return;
+            commitPhiAuditGateError(e);
+            toast('Search is unavailable because the channel metadata columns could not be verified. Reload the view to retry.', 'error');
+            return;
+        }
         if (resetOffset) {
             offsetRef.current = 0;
             lastParamsRef.current = buildParams();
@@ -1964,6 +2256,33 @@ export function MessagesView({ params, query }: any) {
             setAllExpanded(true);
             setMessages(list);
             setPager({ offset: offsetRef.current, shown: list.length, total: totalRef.current, hasNext });
+            /* "Queried PHI" carries the filter that ran. It fires when criteria are
+               APPLIED, not when the result set is paged: Swing audits from
+               runSearch() only, and loadPageNumber/jumpToPageNumber deliberately
+               do not — otherwise walking a 20-page result set writes 20 events
+               and buries the queries that were actually issued.
+
+               Swing sends the filter as one toString() blob plus a patientId
+               attribute lifted out of a "PATIENT_ID =" metadata search. The
+               engine query params are kept as individual attributes (strictly
+               more legible than the blob), and patientId is lifted the same way
+               Swing lifts it — it is the attribute a Cures report keys on.
+
+               One deliberate deviation: Swing suppresses the event for the
+               automatic search that runs as the browser opens
+               (isChannelMessagesPanelFirstLoadSearch). That search displays PHI
+               like any other, so it is audited here — for a compliance control,
+               a record too many beats a record missing. */
+            if (phiAuditedForSearch && resetOffset) {
+                const attrs: Record<string, string> = { channel: auditChannelAttr() };
+                for (const [k, v] of Object.entries(lastParamsRef.current || {})) {
+                    if (v === undefined || v === null || v === '') continue;
+                    attrs[k] = Array.isArray(v) ? v.join(', ') : String(v);
+                }
+                const patientId = patientIdFromFilter(lastParamsRef.current);
+                if (patientId) attrs.patientId = patientId;
+                api.messages.auditQueriedPHI(attrs).catch(onAuditFailure);
+            }
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
             toast(`Search failed: ${e.message}`, 'error');
@@ -2014,20 +2333,61 @@ export function MessagesView({ params, query }: any) {
 
     async function showDetail(row: any, metaDataId: any) {
         setDetail({ status: 'loading' });
-        let message = row;
+        let message: any;
+        let phiAuditedForDetail = false;
+        const selectionIsCurrent = () => selectedRef.current?.m === row
+            && Number(selectedRef.current?.metaDataId) === Number(metaDataId);
         try {
+            // Verify the audit gate before reading content, and do it now rather
+            // than trusting the view's mount-time metadata snapshot.
+            const gate = await loadPhiAuditGate();
+            if (!selectionIsCurrent()) return;
+            commitPhiAuditGate(gate);
+            phiAuditedForDetail = gate.audited;
             const [full, attachments] = await Promise.all([
                 api.messages.get(channelId, row.messageId),
                 // Fetch attachments up front so the Attachments tab only appears when
-                // the message actually has any (matching the Swing browser).
-                api.messages.attachments(channelId, row.messageId).catch(() => [])
+                // the message actually has any (matching the Swing browser). A failed
+                // lookup must not render as "no attachments" — that hides a message's
+                // attachments behind a missing tab — so it is reported and the tab is
+                // suppressed rather than silently shown empty.
+                api.messages.attachments(channelId, row.messageId).catch((e: any) => e)
             ]);
-            if (full && typeof full === 'object') message = full;
-            message.__attachments = Array.isArray(attachments) ? attachments : [];
+            message = requireFreshMessage(full, { channelId, messageId: row.messageId, metaDataId });
+            if (attachments instanceof Error) {
+                toast(`Could not list this message's attachments: ${attachments.message}`, 'warn');
+                message.__attachments = [];
+            } else {
+                message.__attachments = Array.isArray(attachments) ? attachments : [];
+            }
         } catch (e: any) {
             toast(`Failed to load message content: ${e.message}`, 'error');
+            // Fail CLOSED: the row's cached copy must not render as if it were
+            // the engine's answer (the re-fetch is how authorization and pruning
+            // get re-checked), and no "Accessed PHI" event may be written for a
+            // read that failed — a false access record is worse than none.
+            if (selectionIsCurrent()) setDetail({ status: 'error', error: e.message });
+            return;
         }
-        if (selectedRef.current?.m !== row) return; // selection changed while loading
+        if (!selectionIsCurrent()) return; // row or connector changed while loading
+        // "Accessed PHI" fires for the message the user actually opened, so it
+        // waits for the load and the stale-selection guard above.
+        if (phiAuditedForDetail) {
+            /* The patient id comes from the connector message the user actually
+               OPENED, not from whichever one in the message happens to carry a
+               PATIENT_ID first. Swing reads the selected connectorMessage's
+               metaDataMap (MessageBrowser ~:1817); a destination row can carry a
+               different PATIENT_ID than its source, and an audit that names the
+               wrong patient for the row on screen is worse than no audit. Absent
+               = empty string, as in Swing. */
+            const openedCm = connectorMessagesOf(message)
+                .find((cm: any) => Number(cm.metaDataId) === Number(metaDataId));
+            api.messages.auditAccessedPHI({
+                patientId: openedCm ? metaOfCm(openedCm, 'PATIENT_ID') : '',
+                channel: auditChannelAttr(),
+                messageId: String(row.messageId)
+            }).catch(onAuditFailure);
+        }
         setDetail({ status: 'ready', message, metaDataId });
     }
 
@@ -2165,13 +2525,25 @@ export function MessagesView({ params, query }: any) {
     async function pickRowStage(row: any, metaDataId: any, contentType: any, mode: any) {
         let message;
         try {
-            message = await api.messages.get(channelId, row.messageId);
+            await refreshPhiAuditGate();
+            message = requireFreshMessage(
+                await api.messages.get(channelId, row.messageId),
+                { channelId, messageId: row.messageId, metaDataId });
         } catch (e: any) {
             toast(`Failed to load message content: ${e.message}`, 'error');
             return;
         }
         const cm = connectorMessagesOf(message).find(c => Number(c.metaDataId) === Number(metaDataId));
         if (!cm) { cornerToast(`Connector ${metaDataId} is no longer part of message ${row.messageId}`, 'warn'); return; }
+        // Reading content on a PATIENT_ID channel is an access, whichever menu
+        // it came through — same Cures rule as the detail pane.
+        if (phiAuditedRef.current) {
+            api.messages.auditAccessedPHI({
+                patientId: metaOfCm(cm, 'PATIENT_ID'),
+                channel: auditChannelAttr(),
+                messageId: String(row.messageId)
+            }).catch(onAuditFailure);
+        }
         if (!storedContentTypes(cm).includes(contentType)) {
             cornerToast(`${stageLabel(contentType)} content is not stored for message ${row.messageId}`, 'warn');
             return;
@@ -2355,19 +2727,26 @@ export function MessagesView({ params, query }: any) {
     async function importMessagesTask() {
         const file = await pickFile('.xml,application/xml,text/xml');
         if (!file) return;
-        // Engine-exported files hold serialized <message>...</message> blocks
-        // (optionally inside <list>), exactly what the Swing MessageImporter
-        // scans for. POST /messages/_import takes one Message per request; the
-        // server assigns a fresh message ID and keeps the original as importId
-        // (Channel.importMessage), so the XML is posted unmodified.
-        const blocks = String(file.content).match(/<message>[\s\S]*?<\/message>/g) || [];
+        // POST /messages/_import takes one serialized Message per request; the
+        // server assigns a fresh ID and keeps the original as importId.
+        const extracted = extractSerializedMessages(file.content);
+        if (extracted.error) {
+            toast(`Import failed: ${extracted.error}`, 'error');
+            return;
+        }
+        const blocks = extracted.messages;
         if (!blocks.length) {
-            toast('No <message> elements found — pick an XML file exported by the engine', 'warn');
+            const detail = extracted.rejected
+                ? `; ${extracted.rejected} top-level <message> element(s) lacked connector data`
+                : '';
+            toast(`No serialized messages found${detail} — pick an XML Serialized Message export`, 'warn');
             return;
         }
         let imported = 0;
-        let failed = 0;
-        let lastError: any = null;
+        let failed = extracted.rejected;
+        let lastError: any = extracted.rejected
+            ? new Error(`${extracted.rejected} top-level <message> element(s) lacked connector data`)
+            : null;
         for (const xml of blocks) {
             try {
                 await api.post(`/channels/${channelId}/messages/_import`, xml, { contentType: 'application/xml' });
@@ -2445,6 +2824,7 @@ export function MessagesView({ params, query }: any) {
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            let metadataReady = !channelId;
             if (channelId) {
                 try {
                     const names = await api.channels.connectorNames(channelId);
@@ -2453,9 +2833,22 @@ export function MessagesView({ params, query }: any) {
                     toast(`Failed to load connectors: ${e.message}`, 'error');
                 }
                 try {
-                    const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
-                    if (!cancelled && cols.length) setMetaDataColumns(cols);
-                } catch { /* channel has no custom metadata columns */ }
+                    const cols = await readMetaDataColumnsStrict(channelId);
+                    if (!cancelled) {
+                        phiAuditedRef.current = hasPatientIdColumn(cols);
+                        phiAuditGateRef.current = 'ready';
+                        metadataReady = true;
+                        setMetaDataColumns(cols);
+                        setMetaDataLoadError('');
+                        setMetaDataLoadState('ready');
+                    }
+                } catch (e: any) {
+                    if (!cancelled) {
+                        phiAuditGateRef.current = 'error';
+                        setMetaDataLoadError(e.message || 'Unknown error');
+                        setMetaDataLoadState('error');
+                    }
+                }
             }
             try {
                 const map = await api.channels.idsAndNames();
@@ -2473,7 +2866,7 @@ export function MessagesView({ params, query }: any) {
                 }
             } catch { /* keep the channel id as the label */ }
             // Nothing to search until a channel is chosen.
-            if (!cancelled && channelId) searchRef.current(true);
+            if (!cancelled && channelId && metadataReady) searchRef.current(true);
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
         return () => { cancelled = true; closeStatusMenu(); };
@@ -2581,7 +2974,8 @@ export function MessagesView({ params, query }: any) {
                                     {[20, 50, 100].map(n => <option key={n} value={String(n)}>{n}</option>)}
                                 </select>
                             </Field>
-                            <button className="btn btn-primary" onClick={() => runSearch(true)}><Icon name="search" />Search</button>
+                            <button className="btn btn-primary" disabled={metaDataLoadState !== 'ready'}
+                                onClick={() => runSearch(true)}><Icon name="search" />Search</button>
                             <button className="btn" onClick={resetSearch}>Reset</button>
                             {/* The Advanced… button carries a dot whenever any advanced
                                 criterion is staged. Applying advanced criteria does NOT
@@ -2604,7 +2998,8 @@ export function MessagesView({ params, query }: any) {
             {channelId && <ViewTasks>
                 <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
                     <div className="taskbar" data-pane-title="Message Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
+                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages"
+                            disabled={metaDataLoadState !== 'ready'} onClick={() => runSearch(true)} />
                         <TaskButton label="Send Message" icon="send" primary task="doSendMessage" onClick={sendMessageTask} />
                         <TaskButton label="Import Messages" icon="import" task="doImportMessages" onClick={importMessagesTask} />
                         <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={exportResultsTask} />
@@ -2667,6 +3062,12 @@ export function MessagesView({ params, query }: any) {
                         </Collapsible.Root>
                     )}
                 </div>
+                {metaDataLoadError && (
+                    <div role="alert" className="mx-[13px] mb-3 px-3 py-2 rounded border text-[11px]"
+                        style={{ color: 'var(--err)', borderColor: 'var(--err)', background: 'color-mix(in srgb, var(--err) 8%, transparent)' }}>
+                        Could not load channel metadata columns: {metaDataLoadError}. Message search is disabled because the PHI audit requirement cannot be determined.
+                    </div>
+                )}
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[13px] pt-3 pb-3">
                     {!channelId ? (
                         <div className="dt-empty">
