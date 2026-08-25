@@ -147,6 +147,137 @@ test('selection gates Remove/Reprocess Message', async ({ page }) => {
     await expect(page.getByRole('tab', { name: 'Mappings', exact: true })).toBeVisible();
 });
 
+test('a slower detail request cannot replace a newer connector selection from the same message', async ({ page }) => {
+    let detailRequests = 0;
+    await page.route(`**/api/channels/${CID}/messages/12345`, async route => {
+        detailRequests++;
+        await new Promise(resolve => setTimeout(resolve, detailRequests === 1 ? 150 : 10));
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MESSAGE) });
+    });
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+
+    await page.getByText('12345', { exact: true }).click();
+    await page.getByText('HTTP Sender', { exact: true }).click();
+
+    await expect(page.getByRole('tab', { name: 'Encoded', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Raw', exact: true })).toHaveCount(0);
+});
+
+test('audits explicit PHI searches and accessed connector messages, but not the initial search', async ({ page }) => {
+    const phiMessage = JSON.parse(JSON.stringify(MESSAGE));
+    phiMessage.connectorMessages.entry[0].connectorMessage.metaDataMap = {
+        entry: [{ string: ['PATIENT_ID', 'patient-42'] }]
+    };
+    let queried = 0;
+    page.on('request', request => {
+        if (new URL(request.url()).pathname === '/api/channels/_auditQueriedPHIMessage') queried++;
+    });
+    await mockEngine(page, {
+        ...MESSAGE_FIXTURES,
+        [`GET /channels/${CID}/metaDataColumns`]: { list: { metaDataColumn: [{ name: 'PATIENT_ID', type: 'STRING' }] } },
+        [`GET /channels/${CID}/messages/12345`]: phiMessage,
+    });
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+    expect(queried).toBe(0);
+
+    await page.getByRole('button', { name: 'Advanced…', exact: true }).click();
+    const advanced = page.getByRole('dialog', { name: 'Advanced Search Filter' });
+    await advanced.getByRole('button', { name: 'New', exact: true }).nth(1).click();
+    const metadataTable = advanced.locator('table', { hasText: 'Metadata' });
+    await metadataTable.locator('select').nth(1).selectOption('=');
+    await metadataTable.locator('input[type="text"]').fill('patient-query');
+    await metadataTable.locator('input[type="checkbox"]').check();
+    await advanced.getByRole('button', { name: 'OK', exact: true }).click();
+
+    const queriedRequest = page.waitForRequest(request =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_auditQueriedPHIMessage');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    const queryBody = (await queriedRequest).postData() || '';
+    expect(queryBody).toContain('Channel[id=c-started,name=Demo Started]');
+    expect(queryBody).toContain('<string>patientId</string><string>patient-query</string>');
+    expect(queried).toBe(1);
+
+    const accessedRequest = page.waitForRequest(request =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_auditAccessedPHIMessage');
+    await page.getByText('12345', { exact: true }).click();
+    const accessedBody = (await accessedRequest).postData() || '';
+    expect(accessedBody).toContain('<string>patientId</string><string>patient-42</string>');
+    expect(accessedBody).toContain('<string>messageId</string><string>12345</string>');
+});
+
+test('audits the first explicit PHI search after metadata loading recovers', async ({ page }) => {
+    let metadataLoads = 0;
+    let messageSearches = 0;
+    let queried = 0;
+    page.on('request', request => {
+        if (new URL(request.url()).pathname === '/api/channels/_auditQueriedPHIMessage') queried++;
+    });
+    await mockEngine(page, {
+        ...MESSAGE_FIXTURES,
+        [`GET /channels/${CID}/metaDataColumns`]: () => ++metadataLoads === 1
+            ? { __status: 500, body: { error: 'metadata temporarily unavailable' } }
+            : { list: { metaDataColumn: [{ name: 'PATIENT_ID', type: 'STRING' }] } },
+        [`GET /channels/${CID}/messages`]: () => {
+            messageSearches++;
+            return { list: { message: [MESSAGE] } };
+        }
+    });
+    await page.goto(`/messages/${CID}`);
+
+    const errorDialog = page.getByRole('dialog', { name: 'Error' });
+    await expect(errorDialog).toContainText('metadata temporarily unavailable');
+    await errorDialog.getByRole('button', { name: 'Close' }).last().click();
+    expect(messageSearches).toBe(0);
+    expect(queried).toBe(0);
+
+    const queriedRequest = page.waitForRequest(request =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_auditQueriedPHIMessage');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await queriedRequest;
+
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+    expect(metadataLoads).toBe(2);
+    expect(messageSearches).toBe(1);
+    expect(queried).toBe(1);
+});
+
+test('audits a submitted PHI query even when the message search fails', async ({ page }) => {
+    let searches = 0;
+    await mockEngine(page, {
+        ...MESSAGE_FIXTURES,
+        [`GET /channels/${CID}/metaDataColumns`]: { list: { metaDataColumn: [{ name: 'PATIENT_ID', type: 'STRING' }] } },
+        [`GET /channels/${CID}/messages`]: () => ++searches === 1
+            ? { list: { message: [MESSAGE] } }
+            : { __status: 500, body: { error: 'message query unavailable' } }
+    });
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+
+    const queriedRequest = page.waitForRequest(request =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_auditQueriedPHIMessage');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+
+    await queriedRequest;
+    await expect(page.getByRole('dialog', { name: 'Error' })).toContainText('message query unavailable');
+});
+
+test('surfaces attachment-list failures in the selected message detail', async ({ page }) => {
+    await mockEngine(page, {
+        ...MESSAGE_FIXTURES,
+        [`GET /channels/${CID}/messages/12345/attachments`]: { __status: 500, body: { error: 'attachment store unavailable' } }
+    });
+    await page.goto(`/messages/${CID}`);
+    await page.getByText('12345', { exact: true }).click();
+
+    const errorDialog = page.getByRole('dialog', { name: 'Error' });
+    await expect(errorDialog).toContainText('attachment store unavailable');
+    await errorDialog.getByRole('button', { name: 'Close' }).last().click();
+    await page.getByRole('tab', { name: 'Attachments', exact: true }).click();
+    await expect(page.getByText(/Failed to load attachments:.*attachment store unavailable/).last()).toBeVisible();
+});
+
 test('Mappings tab is a sortable table with a sticky header banner', async ({ page }) => {
     await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
