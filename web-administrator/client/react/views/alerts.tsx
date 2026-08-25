@@ -7,8 +7,8 @@
  */
 
 import { useState, useRef } from 'react';
-import { h, icon, modal, toast, confirmDialog, contextMenu, saveFile, pickFile } from '@oie/web-ui';
-import api from '@oie/web-api';
+import { h, icon, modal, toast, confirmDialog, promptDialog, contextMenu, saveFile, pickFile } from '@oie/web-ui';
+import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
@@ -18,6 +18,7 @@ import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 import { newAlert } from './alert-editor.jsx';
+import { checkImportVersion } from '../../core/import-guard.js';
 
 
 const COLUMNS = [
@@ -123,14 +124,105 @@ export function AlertsList() {
         if (!file) return;
         try {
             const content = String(file.content || '').trim();
+            // Re-read after the file picker closes so a poll or another user
+            // cannot turn a render-time non-conflict into a silent overwrite.
+            const currentAlerts = await api.alerts.list();
+            const known = currentAlerts.map(alert => ({ id: String(alert.id), name: String(alert.name || '') }));
+            const validName = (name: string) => !!name && /^[a-zA-Z_0-9\-\s]*$/.test(name);
+            const resolveIdentity = async (nameValue: any, idValue: any) => {
+                let name = String(nameValue || '');
+                let id = String(idValue || uuid());
+                const clash = known.find(alert => alert.name.toLowerCase() === name.toLowerCase());
+                if (clash) {
+                    const overwrite = await new Promise<boolean>(resolve => modal({
+                        title: 'Import Alert',
+                        body: h('div', 'Would you like to overwrite the existing alert?'),
+                        onClose: () => resolve(false),
+                        buttons: [
+                            { label: 'Create New', onClick: () => resolve(false) },
+                            { label: 'Overwrite', primary: true, onClick: () => resolve(true) }
+                        ]
+                    }));
+                    if (overwrite) id = clash.id;
+                    else {
+                        do {
+                            name = await promptDialog('Import Alert', 'Please enter a new name for the alert.', name) as any;
+                            if (name == null) return null;
+                            if (!validName(name)) toast(name ? 'Alert name cannot contain special characters besides hyphen, underscore, and space.' : 'Alert name cannot be empty.', 'warn');
+                            else if (known.some(alert => alert.name.toLowerCase() === name.toLowerCase())) toast(`Alert "${name}" already exists.`, 'warn');
+                        } while (!validName(name) || known.some(alert => alert.name.toLowerCase() === name.toLowerCase()));
+                        id = uuid();
+                    }
+                }
+                return { id, name };
+            };
+            const allowVersion = (version: any) => {
+                const verdict = checkImportVersion(version, 'alert');
+                if (verdict.action === 'ok') return Promise.resolve(true);
+                return new Promise<boolean>(resolve => modal({
+                    title: verdict.action === 'block' ? 'Information' : 'Select an Option',
+                    body: h('div', { style: 'white-space: pre-line' }, verdict.message),
+                    onClose: () => resolve(false),
+                    buttons: verdict.action === 'block'
+                        ? [{ label: 'OK', primary: true, onClick: () => resolve(false) }]
+                        : [
+                            { label: 'No', onClick: () => resolve(false) },
+                            { label: 'Yes', primary: true, onClick: () => resolve(true) }
+                        ]
+                }));
+            };
+            const allowVersions = async (versions: any[]) => {
+                for (const version of [...new Set(versions.map(value => String(value || '')))]) {
+                    if (!await allowVersion(version || undefined)) return false;
+                }
+                return true;
+            };
+
+            let imported = 0;
             if (content.startsWith('<')) {
-                await api.postXml('/alerts', content);
+                const doc = new DOMParser().parseFromString(content, 'text/xml');
+                if (doc.querySelector('parsererror')) throw new Error('Not a valid XML file');
+                const root = doc.documentElement;
+                const elements = root.tagName === 'alertModel' ? [root] : [...root.querySelectorAll(':scope > alertModel')];
+                if (!elements.length) throw new Error('No alerts found in the file');
+                const rootVersion = root.getAttribute('version');
+                if (!await allowVersions(rootVersion ? [rootVersion] : elements.map(element => element.getAttribute('version')))) return;
+                for (const element of elements) {
+                    const direct = (tag: string) => [...element.children].find(child => child.tagName === tag);
+                    const identity = await resolveIdentity(direct('name')?.textContent, direct('id')?.textContent);
+                    if (!identity) break;
+                    for (const [tag, value] of Object.entries(identity)) {
+                        let child = direct(tag);
+                        if (!child) { child = doc.createElement(tag); element.appendChild(child); }
+                        child.textContent = value;
+                    }
+                    try {
+                        await api.postXml('/alerts', new XMLSerializer().serializeToString(element));
+                        known.push(identity);
+                        imported++;
+                    } catch (e: any) {
+                        toast(`Error importing alert: ${e.message || e}`, 'error');
+                    }
+                }
             } else {
-                let obj = JSON.parse(content);
-                if (obj && typeof obj === 'object' && obj.alertModel) obj = obj.alertModel;
-                await api.alerts.create(obj);
+                let parsed = JSON.parse(content);
+                if (parsed && typeof parsed === 'object' && parsed.list) parsed = parsed.list;
+                const objects = api.asList(parsed && parsed.alertModel !== undefined ? parsed.alertModel : parsed);
+                if (!objects.length) throw new Error('No alerts found in the file');
+                if (!await allowVersions(parsed?.['@version'] ? [parsed['@version']] : objects.map(object => object?.['@version']))) return;
+                for (const object of objects) {
+                    const identity = await resolveIdentity(object?.name, object?.id);
+                    if (!identity) break;
+                    try {
+                        await api.alerts.create({ ...object, ...identity });
+                        known.push(identity);
+                        imported++;
+                    } catch (e: any) {
+                        toast(`Error importing alert: ${e.message || e}`, 'error');
+                    }
+                }
             }
-            toast(`Imported ${file.name}`);
+            if (imported) toast(`Imported ${imported} alert${imported === 1 ? '' : 's'} from ${file.name}`);
             refresh();
         } catch (e: any) {
             toast(`Import failed: ${e.message}`, 'error');
