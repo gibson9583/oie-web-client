@@ -430,8 +430,23 @@ export const status = {
     pause: (channelId) => post(`/channels/${enc(channelId)}/_pause`),
     resume: (channelId) => post(`/channels/${enc(channelId)}/_resume`),
     startConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_start`),
-    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`)
+    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`),
+    startMany: (channelIds) => postChannelIdForm('/channels/_start', channelIds),
+    stopMany: (channelIds) => postChannelIdForm('/channels/_stop', channelIds),
+    haltMany: (channelIds) => postChannelIdForm('/channels/_halt', channelIds),
+    pauseMany: (channelIds) => postChannelIdForm('/channels/_pause', channelIds),
+    resumeMany: (channelIds) => postChannelIdForm('/channels/_resume', channelIds)
 };
+function postChannelIdForm(path, channelIds) {
+    const form = new URLSearchParams();
+    for (const id of channelIds)
+        form.append('channelId', id);
+    return post(path, form.toString(), {
+        contentType: 'application/x-www-form-urlencoded',
+        params: { returnErrors: true },
+        timeoutMs: null
+    });
+}
 export const statistics = {
     list: (channelIds, includeUndeployed) => get('/channels/statistics', { channelId: channelIds, includeUndeployed })
         .then(v => asList(v, 'channelStatistics')),
@@ -473,7 +488,8 @@ export const messages = {
     count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params, { timeoutMs: null }),
     get: (channelId, messageId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
     maxMessageId: (channelId) => get(`/channels/${enc(channelId)}/messages/maxMessageId`),
-    attachments: (channelId, messageId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments`).then(v => asList(v, 'attachment')),
+    attachments: (channelId, messageId, includeContent = false) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments`, { includeContent })
+        .then(v => asList(v, 'attachment')),
     attachment: (channelId, messageId, attachmentId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments/${encodeURIComponent(attachmentId)}`),
     // Reattach a DICOM message's pixel-data attachment(s) and return the full,
     // raw Base64 DICOM (Swing getDICOMMessage). Body is the ConnectorMessage.
@@ -495,8 +511,18 @@ export const messages = {
     remove: (channelId, messageId) => del(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
     // The engine waits for stop/remove/restart to finish before responding, so a
     // large message table can legitimately outlast the normal request ceiling.
-    removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) => del(`/channels/${enc(channelId)}/messages/_removeAll`, { restartRunningChannels, clearStatistics }, { timeoutMs: null })
+    removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) => del(`/channels/${enc(channelId)}/messages/_removeAll`, { restartRunningChannels, clearStatistics }, { timeoutMs: null }),
+    auditAccessedPHI: (attributes) => postXml('/channels/_auditAccessedPHIMessage', attributeMapXml(attributes)),
+    auditQueriedPHI: (attributes) => postXml('/channels/_auditQueriedPHIMessage', attributeMapXml(attributes)),
+    auditExport: (attributes) => postXml('/channels/_auditExportMessages', attributeMapXml(attributes)),
+    auditExportSuccess: (attributes) => postXml('/channels/_auditExportMessagesSuccess', attributeMapXml(attributes))
 };
+function attributeMapXml(attributes) {
+    const esc = (value) => String(value).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    return `<map>${Object.entries(attributes)
+        .map(([key, value]) => `<entry><string>${esc(key)}</string><string>${esc(value)}</string></entry>`)
+        .join('')}</map>`;
+}
 /* ===========================================================================
    Events                                                          /events
    ========================================================================== */
@@ -587,7 +613,16 @@ export const codeTemplates = {
     // revision no longer matches the server's (someone else saved since it was read).
     update: (id, codeTemplate, override = true) => put(`/codeTemplates/${enc(id)}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override } }),
     remove: (id) => del(`/codeTemplates/${enc(id)}`),
-    updateLibraries: (libraries, override = true) => put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } })
+    updateLibraries: (libraries, override = true) => put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } }),
+    bulkUpdate: (libraries, updatedCodeTemplates = [], removedLibraryIds = [], removedCodeTemplateIds = [], override = true) => {
+        const form = new FormData();
+        const part = (name, value) => form.append(name, new Blob([JSON.stringify(value)], { type: 'application/json' }));
+        part('libraries', { list: { codeTemplateLibrary: libraries } });
+        part('updatedCodeTemplates', { list: { codeTemplate: updatedCodeTemplates } });
+        part('removedLibraryIds', { set: { string: removedLibraryIds } });
+        part('removedCodeTemplateIds', { set: { string: removedCodeTemplateIds } });
+        return post('/codeTemplateLibraries/_bulkUpdate', form, { params: { override } });
+    }
 };
 /* ===========================================================================
    Extensions                                                  /extensions
