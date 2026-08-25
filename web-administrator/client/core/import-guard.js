@@ -16,9 +16,9 @@
  *   - Message strings are verbatim from Frame.promptObjectMigration with the
  *     product name "Open Integration Engine" (BrandingConstants.PRODUCT_NAME).
  *
- * Swing guards channels, channel groups, and server configuration with this — NOT
- * alerts or code templates (their import paths rely on the serializer's forward
- * migration). Match that coverage at the call sites.
+ * Swing guards channels, channel groups, and server configuration with this.
+ * Alert imports also use it because issue #40 explicitly requires the same
+ * forward-version protection alongside alert collision handling.
  */
 import * as store from './store.js';
 const PRODUCT = 'Open Integration Engine';
