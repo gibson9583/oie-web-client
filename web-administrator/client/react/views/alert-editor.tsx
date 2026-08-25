@@ -329,21 +329,39 @@ export function AlertEditor({ params, query = {} }: any) {
                 detail: { title: isNew ? 'Edit Alert' : `Edit Alert - ${model.name || model.id}` }
             })));
 
-            // Full channel models give us per-connector granularity (cached for
-            // the lifetime of this editor); fall back to channel-level only.
+            /* Full channel models give us per-connector granularity (cached for
+               the lifetime of this editor); fall back to channel-level only.
+
+               Neither picker may fail into an empty list unremarked: "this
+               server has no channels" and "this server would not tell me its
+               channels" look identical on the two panels whose whole job is
+               choosing among them, and the second is a 403 for a restricted user
+               or a 5xx. (The global 401 handler fires ahead of both, so session
+               expiry is not what lands here.) */
             const [channelModels, optionsRaw] = await Promise.all([
                 api.channels.list().catch(() => null),
-                api.alerts.options().catch(() => null)
+                api.alerts.options().catch((e: any) => e instanceof Error ? e : new Error(String(e)))
             ]);
+            // One combined notice, not one per picker: two stacked modals over a
+            // freshly opened editor is worse than the silence it replaces.
+            const problems: string[] = [];
             let channelEntries: any;
-            let includeConnectors = channelModels !== null;
+            const includeConnectors = channelModels !== null;
             if (includeConnectors) {
                 channelEntries = channelConnectorEntriesOf(channelModels);
             } else {
-                toast('Could not load channel connectors; channel-level granularity only', 'warn');
-                channelEntries = channelEntriesOf(await api.channels.idsAndNames().catch(() => null));
+                const fallback = await api.channels.idsAndNames().catch(() => null);
+                problems.push(fallback === null
+                    ? 'the channel list — the Channels panel is empty because the request failed, not because there are none'
+                    : 'the channel connectors — the Channels panel offers channel-level granularity only');
+                channelEntries = channelEntriesOf(fallback);
             }
-            initForm(channelEntries, includeConnectors, protocolsOf(optionsRaw), recipientOptionsOf(optionsRaw));
+            const options = optionsRaw instanceof Error ? null : optionsRaw;
+            if (optionsRaw instanceof Error) {
+                problems.push(`the alert options (${optionsRaw.message}) — the protocol and recipient lists are empty because the request failed`);
+            }
+            if (problems.length) toast(`Could not load ${problems.join('; and ')}.`, 'warn');
+            initForm(channelEntries, includeConnectors, protocolsOf(options), recipientOptionsOf(options));
         } catch (e: any) {
             modelRef.current = null;
             setForm(null);
