@@ -77,6 +77,17 @@ test.describe('channel wizard', () => {
         expect(posted).toBe(true);
     });
 
+    test('surfaces failures loading dependency choices instead of showing empty pickers', async ({ page }) => {
+        await mockEngine(page, {
+            'GET /server/channelDependencies': { __status: 500, body: { error: 'dependency service unavailable' } }
+        });
+        await page.goto('/channels/new/guided');
+        await page.locator('.view-body input').first().fill('Dependency Error');
+        await next(page).click();
+        await expect(page.getByRole('dialog', { name: 'Error' })).toContainText('dependency service unavailable');
+        await expect(page.getByText('No code template libraries on this engine.')).toHaveCount(0);
+    });
+
     test('lets you jump back to any visited step via the stepper', async ({ page }) => {
         await mockEngine(page);
         await page.goto('/channels/new/guided');

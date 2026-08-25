@@ -13,6 +13,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
+import { toast } from '@oie/web-ui';
 import * as oie from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { PluginSlot } from '../plugin-slot.jsx';
@@ -211,6 +212,8 @@ export function DependenciesStep({ channel, libState, depState }: any) {
     const [, tick] = useReducer((x: any) => x + 1, 0);
     const [tab, setTab] = useState('libraries');
     const [loaded, setLoaded] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [failedLoads, setFailedLoads] = useState(() => new Set<string>());
     const [picker, setPicker] = useState<any>(null);   // { kind, ids } when the channel picker is open
     const [libQuery, setLibQuery] = useState('');
     const [resQuery, setResQuery] = useState('');
@@ -219,19 +222,25 @@ export function DependenciesStep({ channel, libState, depState }: any) {
 
     useEffect(() => {
         let alive = true;
-        Promise.all([
-            api.codeTemplates.libraries(true).catch(() => []),
-            api.server.resources().catch(() => null),
-            api.server.channelDependencies().catch(() => []),
-            api.channels.idsAndNames().catch(() => null)
-        ]).then(([libraries, resourcesRaw, channelDeps, idsAndNames]) => {
+        Promise.allSettled([
+            api.codeTemplates.libraries(true),
+            api.server.resources(),
+            api.server.channelDependencies(),
+            api.channels.idsAndNames()
+        ]).then(([libraryResult, resourceResult, dependencyResult, nameResult]) => {
             if (!alive) return;
+            const libraries = libraryResult.status === 'fulfilled' ? libraryResult.value : [];
+            const resourcesRaw = resourceResult.status === 'fulfilled' ? resourceResult.value : null;
+            const channelDeps = dependencyResult.status === 'fulfilled' ? dependencyResult.value : [];
+            const idsAndNames = nameResult.status === 'fulfilled' ? nameResult.value : null;
             // Deploy/start dependencies: full server list (setChannelDependencies replaces
             // it wholesale) + a name lookup for the picker. Held in depState so edits
             // survive step changes and can be persisted after Create.
             const deps = (Array.isArray(channelDeps) ? channelDeps : [])
                 .map((d: any) => ({ dependentId: String(d.dependentId), dependencyId: String(d.dependencyId) }));
-            if (!depState.current) depState.current = { all: deps, initial: deps.map((d: any) => d.dependentId + '>' + d.dependencyId).sort().join('|') };
+            if (dependencyResult.status === 'fulfilled' && !depState.current) {
+                depState.current = { all: deps, initial: deps.map((d: any) => d.dependentId + '>' + d.dependencyId).sort().join('|') };
+            }
             const names = new Map();
             for (const en of api.asList(idsAndNames && idsAndNames.entry)) {
                 const pair = api.asList(en && en.string);
@@ -239,7 +248,7 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             }
             const libs = Array.isArray(libraries) ? libraries : [];
             // Seed the shared library-selection state once.
-            if (!libState.current) {
+            if (libraryResult.status === 'fulfilled' && !libState.current) {
                 const checked = new Map(libs.map((l: any) => [l.id, libEnabledFor(l, channel.id)]));
                 libState.current = { libraries: libs, checked, initial: new Map(checked) };
             }
@@ -262,7 +271,17 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             }
             resources.sort((a: any, b: any) => a.name.localeCompare(b.name));
             dataRef.current = { libraries: libs, resources, names };
+            const results = [libraryResult, resourceResult, dependencyResult, nameResult];
+            const keys = ['libraries', 'resources', 'dependencies', 'names'];
+            const failed = new Set(keys.filter((_key, index) => results[index].status === 'rejected'));
+            const message = results
+                .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+                .map(result => String(result.reason?.message || result.reason))
+                .join('; ');
+            setFailedLoads(failed);
+            setLoadError(message || null);
             setLoaded(true);
+            if (message) toast(`Failed to load dependencies: ${message}`, 'error');
         });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -333,9 +352,12 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             </TabsPrimitive.List>
 
             {!loaded && <div className="hint">Loading…</div>}
+            {loadError && <div className="panel border-danger text-danger" role="alert">
+                Failed to load dependency choices: {loadError}
+            </div>}
 
             <TabsPrimitive.Content value="libraries">
-            {loaded && tab === 'libraries' && (
+            {loaded && !failedLoads.has('libraries') && tab === 'libraries' && (
                 <div className="panel !mt-0">
                     <div className="panel-header flex flex-wrap items-center gap-2">
                         <span>Code Template Libraries</span>
@@ -389,7 +411,7 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             </TabsPrimitive.Content>
 
             <TabsPrimitive.Content value="resources">
-            {loaded && tab === 'resources' && (
+            {loaded && !failedLoads.has('resources') && tab === 'resources' && (
                 <div className="panel !mt-0">
                     <div className="panel-header">Library Resources</div>
                     <div className="panel-body flex flex-col gap-1.5">
@@ -411,7 +433,7 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             </TabsPrimitive.Content>
 
             <TabsPrimitive.Content value="deploy">
-            {loaded && tab === 'deploy' && (
+            {loaded && !failedLoads.has('dependencies') && tab === 'deploy' && (
                 <div className="panel !mt-0">
                     <div className="panel-header">Deploy / Start Dependencies</div>
                     <div className="panel-body grid sm:grid-cols-2 gap-6">

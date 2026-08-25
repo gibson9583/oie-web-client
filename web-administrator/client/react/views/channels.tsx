@@ -88,10 +88,10 @@ function optionYesNo(title: any, message: any) {
     }));
 }
 
-// "Channel X has code template libraries included — import them?" — Yes/No/Cancel
+// "Channel/Group X has code template libraries included — import them?" — Yes/No/Cancel
 // with an "always" checkbox that persists the importLibrariesWithChannels pref.
 // Returns 'yes' | 'no' | 'cancel'.
-function promptImportLibraries(channelName: any, count: any) {
+function promptImportLibraries(objectName: any, count: any, objectType = 'Channel') {
     const pref = getPref('importLibrariesWithChannels');
     if (pref === 'yes') return Promise.resolve('yes');
     if (pref === 'no') return Promise.resolve('no');
@@ -101,10 +101,10 @@ function promptImportLibraries(channelName: any, count: any) {
         const always = h('input', { type: 'checkbox' });
         const remember = (choice: any) => { if ((always as any).checked) setPrefs({ importLibrariesWithChannels: choice }); return choice; };
         modal({
-            title: 'Import Channel',
+            title: `Import ${objectType}`,
             body: h('div',
                 h('div', { class: 'mb-2.5' },
-                    `Channel "${channelName}" has code template librar${plural} included with it. Would you like to import ${them}?`),
+                    `${objectType} "${objectName}" has code template librar${plural} included with it. Would you like to import ${them}?`),
                 h('label', { class: 'flex items-center gap-1.5 text-[11px]' },
                     always, 'Always choose this option by default in the future (may be changed in Settings)')),
             onClose: () => resolve('cancel'),
@@ -160,7 +160,16 @@ function promptExportLibraries(names: any) {
 async function chooseExportLibraries(channelIds: any[]) {
     const pref = getPref('exportLibrariesWithChannels');
     if (pref === 'yes' || pref === 'no') return pref === 'yes';
-    const names = [...new Set(await linkedLibraryNames(channelIds))];
+    let names: any[];
+    try {
+        names = [...new Set(await linkedLibraryNames(channelIds))];
+    } catch (e: any) {
+        // Code-template viewing is independently authorized. Swing consults its
+        // cache and still exports the channel when that data is unavailable; keep
+        // the backup usable while making the omitted libraries explicit.
+        toast(`Could not check linked code template libraries: ${e.message || e}. Exporting without them.`, 'warn');
+        return false;
+    }
     if (!names.length) return false;
     const choice = await promptExportLibraries(names);
     return choice === 'cancel' ? null : choice === 'yes';
@@ -219,7 +228,7 @@ async function importLibraryElementsXml(bundledEls: Element[], channelId: string
     const imported = bundledEls.map(element => xstreamObject(element)).filter(library => library?.id);
     if (!imported.length) return;
     const existing = await api.codeTemplates.libraries(true);
-    await importLibraryObjectsJson(existing, imported, channelId);
+    await importLibraryObjectsJson(existing, imported, [channelId]);
 }
 
 function resourceList(resourcesRaw: any) {
@@ -275,7 +284,7 @@ function remapResourceIds(channelEl: Element, resourcesRaw: any) {
 // user cancelled. `existing` is the current channel list (for collision). Group
 // imports already perform migration confirmation for the enclosing document, so
 // they can disable the otherwise-standard per-channel version check.
-async function importChannelXml(xml: any, existing: any, { checkVersion = true }: any = {}) {
+async function importChannelXml(xml: any, existing: any, { checkVersion = true, importLibraries = true }: any = {}) {
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'channel') {
         throw new Error('Not a valid channel XML file');
@@ -320,7 +329,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
 
     const libsContainer = channelEl.querySelector('exportData > codeTemplateLibraries');
     const bundled = libsContainer ? [...libsContainer.children].filter(c => c.tagName === 'codeTemplateLibrary') : [];
-    if (bundled.length) {
+    if (bundled.length && importLibraries) {
         const choice = await promptImportLibraries(resolved.name, bundled.length);
         if (choice === 'cancel') return false;
         if (choice === 'yes') await importLibraryElementsXml(bundled, resolved.id);
@@ -377,9 +386,10 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
 // Merge bundled libraries into the existing server set (port of
 // ChannelPanel.importChannel): dedupe code templates by id, union the
 // enabled/disabled channel ids, and ensure the imported channel is enabled.
-function mergeImportedLibraries(existing: any, imported: any, channelId: any) {
+function mergeImportedLibraries(existing: any, imported: any, channelIds: any = []) {
     const templatesOf = (lib: any) => api.asList(lib.codeTemplates, 'codeTemplate').filter(t => t && t.id);
     const stringsOf = (v: any) => api.asList(v, 'string').map(String);
+    const enabledChannelIds = (Array.isArray(channelIds) ? channelIds : [channelIds]).map(String).filter(Boolean);
     const byId = new Map(existing.map((l: any) => [l.id, l]));
     const seen = new Set();
     for (const lib of existing) for (const t of templatesOf(lib)) seen.add(t.id);
@@ -391,7 +401,7 @@ function mergeImportedLibraries(existing: any, imported: any, channelId: any) {
             const merged = templatesOf(match).slice();
             for (const t of templatesOf(lib)) if (seen.add(t.id)) merged.push(t);
             (match as any).codeTemplates = { codeTemplate: merged };
-            const enabled = new Set([...stringsOf((match as any).enabledChannelIds), ...stringsOf(lib.enabledChannelIds), channelId]);
+            const enabled = new Set([...stringsOf((match as any).enabledChannelIds), ...stringsOf(lib.enabledChannelIds), ...enabledChannelIds]);
             const disabled = new Set([...stringsOf((match as any).disabledChannelIds), ...stringsOf(lib.disabledChannelIds)]);
             for (const id of enabled) disabled.delete(id);
             (match as any).enabledChannelIds = { string: [...enabled] };
@@ -400,14 +410,18 @@ function mergeImportedLibraries(existing: any, imported: any, channelId: any) {
             const tpls: any[] = [];
             for (const t of templatesOf(lib)) if (seen.add(t.id)) tpls.push(t);
             lib.codeTemplates = { codeTemplate: tpls };
-            lib.enabledChannelIds = { string: [...new Set([...stringsOf(lib.enabledChannelIds), channelId])] };
+            const enabled = new Set([...stringsOf(lib.enabledChannelIds), ...enabledChannelIds]);
+            const disabled = new Set(stringsOf(lib.disabledChannelIds));
+            for (const id of enabled) disabled.delete(id);
+            lib.enabledChannelIds = { string: [...enabled] };
+            lib.disabledChannelIds = { string: [...disabled] };
             byId.set(lib.id, lib);
         }
     }
     return [...byId.values()];
 }
 
-async function importLibraryObjectsJson(existing: any[], imported: any[], channelId: string) {
+async function importLibraryObjectsJson(existing: any[], imported: any[], channelIds: string[] = []) {
     const version = store.getState('serverVersion') || '4.5.2';
     const existingLibraryIds = new Set(existing.map(library => String(library.id)));
     const existingTemplateIds = new Set(existing.flatMap(library =>
@@ -425,7 +439,7 @@ async function importLibraryObjectsJson(existing: any[], imported: any[], channe
                 : template.properties
         });
     }
-    const libraries = mergeImportedLibraries(existing, imported, channelId).map((library: any) => {
+    const libraries = mergeImportedLibraries(existing, imported, channelIds).map((library: any) => {
         const refs = api.asList(library.codeTemplates, 'codeTemplate')
             .filter((template: any) => template && template.id)
             .map((template: any) => ({ '@version': template['@version'] || version, id: template.id }));
@@ -1005,7 +1019,7 @@ export function ChannelsView() {
                     if (choice === 'cancel') return;
                     if (choice === 'yes') {
                         const existing = await api.codeTemplates.libraries(true);
-                        await importLibraryObjectsJson(existing, bundled, obj.id);
+                        await importLibraryObjectsJson(existing, bundled, [obj.id]);
                     }
                 }
                 // Libraries are saved separately; strip them before saving the channel.
@@ -1305,10 +1319,33 @@ export function ChannelsView() {
             const imported = [];
             let processedGroups = 0;
 
-            // Match Swing's ChannelPanel.importGroup ordering: import every full
-            // channel first, then save the group set using the final IDs produced
-            // by channel name/id collision handling. ID-only channel entries are
-            // already-existing membership references and do not need re-importing.
+            // Swing consolidates every bundled library across the group, prompts
+            // once, and saves that complete set before importing any channel. This
+            // avoids repeated prompts/requests and prevents a later library failure
+            // from leaving an earlier channel imported on its own.
+            let bundledLibraries: any[] = [];
+            for (const { embeddedChannels } of parsed) {
+                for (const embedded of embeddedChannels) {
+                    if (!embedded.isDefinition) continue;
+                    const channelDoc = new DOMParser().parseFromString(embedded.xml, 'text/xml');
+                    const elements = [...channelDoc.querySelectorAll('exportData > codeTemplateLibraries > codeTemplateLibrary')];
+                    const objects = elements.map(element => xstreamObject(element)).filter(library => library?.id);
+                    bundledLibraries = mergeImportedLibraries(bundledLibraries, objects, [embedded.id]);
+                }
+            }
+            if (bundledLibraries.length) {
+                const groupName = parsed.length === 1 ? parsed[0].group.name : file.name;
+                const choice = await promptImportLibraries(groupName, bundledLibraries.length, 'Group');
+                if (choice === 'cancel') return;
+                if (choice === 'yes') {
+                    const existing = await api.codeTemplates.libraries(true);
+                    await importLibraryObjectsJson(existing, bundledLibraries);
+                }
+            }
+
+            // With libraries handled above, import every full channel, then save
+            // the group set using the final IDs produced by collision handling.
+            // ID-only entries are existing membership references.
             for (const { group, embeddedChannels } of parsed) {
                 processedGroups++;
                 const refs = [];
@@ -1317,7 +1354,10 @@ export function ChannelsView() {
                     if (embedded.isDefinition && !resolvedChannelIds.has(embedded.id)) {
                         let resolved: any;
                         try {
-                            resolved = await importChannelXml(embedded.xml, knownChannels, { checkVersion: false });
+                            resolved = await importChannelXml(embedded.xml, knownChannels, {
+                                checkVersion: false,
+                                importLibraries: false
+                            });
                         } catch (e: any) {
                             toast(`Error importing channel: ${e.message || e}`, 'error');
                             continue;

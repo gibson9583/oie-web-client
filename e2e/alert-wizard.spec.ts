@@ -62,6 +62,25 @@ test.describe('alert wizard', () => {
         await expect(page.locator('select:has(option[value="Email"])')).toBeVisible();
     });
 
+    test('surfaces failures loading channel and recipient choices', async ({ page }) => {
+        await mockEngine(page, {
+            'GET /channels/idsAndNames': { __status: 500, body: { error: 'channel picker unavailable' } }
+        });
+        await page.goto('/alerts/new/guided');
+        const error = page.getByRole('dialog', { name: 'Error' });
+        await expect(error).toContainText('channel picker unavailable');
+        await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+
+        // The independent alert-options request succeeded, so its action types
+        // remain usable despite the failed channel picker request.
+        await nameField(page).fill('Partial Choices');
+        await next(page).click();
+        await next(page).click();
+        await next(page).click();
+        await page.getByRole('button', { name: /Add action/ }).click();
+        await expect(page.locator('select:has(option[value="Email"])')).toBeVisible();
+    });
+
     test('an invalid error-filter regex blocks advancing', async ({ page }) => {
         await mockEngine(page);
         await page.goto('/alerts/new/guided');
