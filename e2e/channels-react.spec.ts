@@ -170,6 +170,112 @@ test.describe('Channels React view', () => {
         await expect(page.getByText('Imported 1 group(s) from imported-group.xml', { exact: true })).toBeVisible();
     });
 
+    test('consolidates a group\'s bundled libraries before importing any channel like Swing', async ({ page }) => {
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [] } },
+            'POST /codeTemplateLibraries/_bulkUpdate': {
+                codeTemplateLibrarySaveResult: { overrideNeeded: false, librariesSuccess: true, codeTemplateResults: {} }
+            }
+        });
+        const order: string[] = [];
+        const bulkBodies: string[] = [];
+        page.on('request', request => {
+            const path = new URL(request.url()).pathname;
+            if (request.method() === 'POST' && path === '/api/codeTemplateLibraries/_bulkUpdate') {
+                order.push('libraries');
+                bulkBodies.push(request.postData() || '');
+            }
+            if (request.method() === 'POST' && path === '/api/channels') order.push('channel');
+        });
+        await gotoChannels(page);
+
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Import Group', exact: true }).click();
+        await (await chooser).setFiles({
+            name: 'libraries-group.xml',
+            mimeType: 'application/xml',
+            buffer: Buffer.from(`<channelGroup version="4.5.0">
+                <id>group-with-libraries</id><name>Group With Libraries</name><revision>1</revision>
+                <channels>
+                    <channel version="4.5.0"><id>group-channel-a</id><name>Group Channel A</name><revision>1</revision>
+                        <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.5.0">
+                            <id>group-library</id><name>Group Library</name><revision>1</revision>
+                            <codeTemplates><codeTemplate version="4.5.0"><id>group-template-a</id><name>Template A</name><revision>0</revision>
+                                <properties version="4.5.0"><type>FUNCTION</type><code>function a() {}</code></properties>
+                            </codeTemplate></codeTemplates><includeNewChannels>false</includeNewChannels>
+                            <enabledChannelIds/><disabledChannelIds/>
+                        </codeTemplateLibrary></codeTemplateLibraries></exportData>
+                    </channel>
+                    <channel version="4.5.0"><id>group-channel-b</id><name>Group Channel B</name><revision>1</revision>
+                        <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.5.0">
+                            <id>group-library</id><name>Group Library</name><revision>1</revision>
+                            <codeTemplates><codeTemplate version="4.5.0"><id>group-template-b</id><name>Template B</name><revision>0</revision>
+                                <properties version="4.5.0"><type>FUNCTION</type><code>function b() {}</code></properties>
+                            </codeTemplate></codeTemplates><includeNewChannels>false</includeNewChannels>
+                            <enabledChannelIds/><disabledChannelIds/>
+                        </codeTemplateLibrary></codeTemplateLibraries></exportData>
+                    </channel>
+                </channels>
+            </channelGroup>`)
+        });
+
+        const dialog = page.getByRole('dialog', { name: 'Import Group' });
+        await expect(dialog).toContainText('Group With Libraries');
+        await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+        await expect(page.getByText('Imported 1 group(s) from libraries-group.xml', { exact: true })).toBeVisible();
+
+        expect(bulkBodies).toHaveLength(1);
+        expect(order).toEqual(['libraries', 'channel', 'channel']);
+        expect(bulkBodies[0]).toContain('group-channel-a');
+        expect(bulkBodies[0]).toContain('group-channel-b');
+        expect(bulkBodies[0]).toContain('group-template-a');
+        expect(bulkBodies[0]).toContain('group-template-b');
+    });
+
+    test('does not import group channels when the consolidated library save fails', async ({ page }) => {
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [] } },
+            'POST /codeTemplateLibraries/_bulkUpdate': {
+                codeTemplateLibrarySaveResult: {
+                    overrideNeeded: false,
+                    librariesSuccess: false,
+                    librariesCause: { detailMessage: 'library set rejected' },
+                    codeTemplateResults: {}
+                }
+            }
+        });
+        let channelWrites = 0;
+        let groupWrites = 0;
+        page.on('request', request => {
+            const path = new URL(request.url()).pathname;
+            if (request.method() === 'POST' && path === '/api/channels') channelWrites++;
+            if (request.method() === 'POST' && path === '/api/channelgroups/_bulkUpdate') groupWrites++;
+        });
+        await gotoChannels(page);
+
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Import Group', exact: true }).click();
+        await (await chooser).setFiles({
+            name: 'rejected-libraries-group.xml',
+            mimeType: 'application/xml',
+            buffer: Buffer.from(`<channelGroup version="4.5.0"><id>rejected-group</id><name>Rejected Group</name>
+                <channels><channel version="4.5.0"><id>rejected-channel</id><name>Rejected Channel</name><revision>1</revision>
+                    <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.5.0">
+                        <id>rejected-library</id><name>Rejected Library</name><revision>0</revision>
+                        <codeTemplates/><includeNewChannels>false</includeNewChannels><enabledChannelIds/><disabledChannelIds/>
+                    </codeTemplateLibrary></codeTemplateLibraries></exportData>
+                </channel></channels></channelGroup>`)
+        });
+
+        const dialog = page.getByRole('dialog', { name: 'Import Group' });
+        await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Error' })).toContainText('library set rejected');
+        expect(channelWrites).toBe(0);
+        expect(groupWrites).toBe(0);
+    });
+
     test('exports full associated channels for one group and all groups', async ({ page }) => {
         await page.addInitScript(() => { delete (window as any).showSaveFilePicker; });
         await mockEngine(page, {
@@ -275,6 +381,27 @@ test.describe('Channels React view', () => {
         await download;
     });
 
+    test('exports without libraries when linked-library discovery is forbidden', async ({ page }) => {
+        await page.addInitScript(() => { delete (window as any).showSaveFilePicker; });
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /codeTemplateLibraries': { __status: 403, body: { error: 'library view forbidden' } },
+            'GET /channels/c-stopped': '<channel version="4.5.0"><id>c-stopped</id><name>Demo Stopped</name></channel>'
+        });
+        await gotoChannels(page);
+        await page.getByText('Demo Stopped', { exact: true }).click();
+
+        const channelRequest = page.waitForRequest(request =>
+            request.method() === 'GET' && new URL(request.url()).pathname === '/api/channels/c-stopped');
+        const download = page.waitForEvent('download');
+        await page.getByRole('button', { name: 'Export Channel', exact: true }).click();
+        const request = await channelRequest;
+        await download;
+
+        expect(new URL(request.url()).searchParams.has('includeCodeTemplateLibraries')).toBe(false);
+        await expect(page.getByText(/Could not check linked code template libraries:.*library view forbidden.*Exporting without them/)).toBeVisible();
+    });
+
     test('imports Swing Default Group channels without persisting the reserved group', async ({ page }) => {
         await gotoChannels(page);
         let groupUpdate = false;
@@ -370,7 +497,7 @@ test.describe('Channels React view', () => {
         await expect(page.getByRole('dialog', { name: 'Error' })).toContainText('dependency write failed');
     });
 
-    test('JSON channel bundles import libraries and templates in one atomic request', async ({ page }) => {
+    test('JSON channel bundles import libraries and templates in one bulk request', async ({ page }) => {
         await mockEngine(page, {
             ...GROUPS_FIXTURE,
             'POST /codeTemplateLibraries/_bulkUpdate': {
@@ -418,7 +545,7 @@ test.describe('Channels React view', () => {
         expect(legacyLibraryPut).toBe(false);
     });
 
-    test('XML channel bundles atomically merge an existing library association like Swing', async ({ page }) => {
+    test('XML channel bundles merge an existing library association in one bulk request like Swing', async ({ page }) => {
         await mockEngine(page, {
             ...GROUPS_FIXTURE,
             'POST /codeTemplateLibraries/_bulkUpdate': {

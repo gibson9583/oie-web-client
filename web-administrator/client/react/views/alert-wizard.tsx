@@ -77,12 +77,15 @@ function AlertWizardInner({ alert, isNew }: any) {
     const [nameTouched, setNameTouched] = useState(!isNew);   // don't flag a blank name until touched
     const [saving, setSaving] = useState(false);
     const [data, setData] = useState<any>({ channels: [], protocols: [], recipients: {} });
+    const [dataError, setDataError] = useState<string | null>(null);
     const [chFilter, setChFilter] = useState('');
 
     useEffect(() => {
         let alive = true;
-        Promise.all([api.channels.idsAndNames().catch(() => null), api.alerts.options().catch(() => null)]).then(([ch, opts]) => {
+        Promise.allSettled([api.channels.idsAndNames(), api.alerts.options()]).then(([channelResult, optionResult]) => {
             if (!alive) return;
+            const ch = channelResult.status === 'fulfilled' ? channelResult.value : null;
+            const opts = optionResult.status === 'fulfilled' ? optionResult.value : null;
             const channels: any[] = [];
             for (const en of api.asList(ch && ch.entry)) {
                 const p = api.asList(en && en.string);
@@ -90,6 +93,12 @@ function AlertWizardInner({ alert, isNew }: any) {
             }
             channels.sort((a: any, b: any) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
             setData({ channels, protocols: protocolsOf(opts), recipients: recipientOptionsOf(opts) });
+            const failures = [channelResult, optionResult]
+                .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+                .map(result => String(result.reason?.message || result.reason));
+            const message = failures.join('; ');
+            setDataError(message || null);
+            if (message) toast(`Failed to load alert choices: ${message}`, 'error');
         });
         return () => { alive = false; };
     }, []);
@@ -250,6 +259,9 @@ function AlertWizardInner({ alert, isNew }: any) {
             <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onStep={setStep} />
 
             <div className="view-body overflow-x-hidden">
+                {dataError && <div className="panel border-danger text-danger max-w-[738px]" role="alert">
+                    Failed to load channel and recipient choices: {dataError}
+                </div>}
                 <div className="wiz-pane" key={step}>
                     {/* ---- Basics ---- */}
                     {stepName === 'Basics' && (
