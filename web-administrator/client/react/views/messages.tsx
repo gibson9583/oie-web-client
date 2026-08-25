@@ -60,7 +60,6 @@ import {
 } from '../../core/compare.js';
 import { CompareChip } from '../compare-chip.jsx';
 import { CompareOverlay } from '../compare-overlay.jsx';
-import { apiUrl } from '../../core/deployment.js';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
@@ -893,8 +892,13 @@ function AttachmentFallback({ channelId, message, attachment }: any) {
    pane's Attachments tab and the View Attachment modal — React owns the viewer
    lifecycles in both. */
 function AttachmentList({ platform, channelId, message }: any) {
-    const [state, setState] = useState<any>({ status: 'loading' });
+    const [state, setState] = useState<any>(() => message.__attachmentsError
+        ? { status: 'error', error: message.__attachmentsError }
+        : message.__attachments
+            ? { status: 'ready', attachments: message.__attachments }
+            : { status: 'loading' });
     useEffect(() => {
+        if (message.__attachmentsError || message.__attachments) return undefined;
         let stale = false;
         (async () => {
             try {
@@ -948,11 +952,15 @@ function viewAttachmentsModal(platform: any, channelId: any, m: any) {
 // Export Attachment (Swing MESSAGE_EXPORT_ATTACHMENT) — export directly when
 // there's exactly one, otherwise open the viewer to pick.
 async function exportAttachmentTask(platform: any, channelId: any, m: any) {
-    const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId).catch(() => []);
-    m.__attachments = attachments;
-    if (!attachments.length) { toast('No attachments on this message', 'warn'); return; }
-    if (attachments.length === 1) { exportAttachment(channelId, m, attachments[0]); return; }
-    viewAttachmentsModal(platform, channelId, m);
+    try {
+        const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId);
+        m.__attachments = attachments;
+        if (!attachments.length) { toast('No attachments on this message', 'warn'); return; }
+        if (attachments.length === 1) { await exportAttachment(channelId, m, attachments[0]); return; }
+        viewAttachmentsModal(platform, channelId, m);
+    } catch (e: any) {
+        toast(`Failed to load attachments: ${e.message || e}`, 'error');
+    }
 }
 
 /* Detail tab strip sized to the pane: fixed bar, scrolling body. Only the
@@ -1069,8 +1077,9 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
     }
 
     defs.push({ label: 'Mappings', node: <MappingsTable cm={cm} /> });
-    // Attachments tab only when the message actually has attachments.
-    if (message.__attachments && message.__attachments.length) {
+    // Keep the tab visible on a failed attachment request so the failure cannot
+    // masquerade as a message with no attachments.
+    if (message.__attachmentsError || (message.__attachments && message.__attachments.length)) {
         defs.push({
             label: 'Attachments',
             node: (
@@ -1095,6 +1104,9 @@ function DetailBody({ detail, channelId, channelName, platform, anchor, onActive
     }
     if (detail.status === 'loading') {
         return <div className="py-3 px-3.5"><Loading text="Loading message…" /></div>;
+    }
+    if (detail.status === 'error') {
+        return <div className="text-danger py-3 px-3.5" role="alert">{detail.error}</div>;
     }
     const { message, metaDataId } = detail;
     const cms = connectorMessagesOf(message);
@@ -1456,6 +1468,38 @@ function suffixName(name: any, suffix: any) {
     return dot > name.lastIndexOf('/') ? `${name.slice(0, dot)}_${suffix}${name.slice(dot)}` : `${name}_${suffix}`;
 }
 
+/* Swing's XML MessageWriter serializes fetched attachments inside the Message
+   object. Keep that exact importer-compatible shape for browser exports. */
+function xmlWithAttachments(xml: string, attachments: any[]) {
+    const doc = new DOMParser().parseFromString(xml, 'text/xml');
+    if (doc.querySelector('parsererror') || doc.documentElement.tagName !== 'message') {
+        throw new Error('Engine returned invalid message XML');
+    }
+    const message = doc.documentElement;
+    const old = [...message.children].find(child => child.tagName === 'attachments');
+    old?.remove();
+    if (attachments.length) {
+        const container = doc.createElement('attachments');
+        for (const attachment of attachments) {
+            const element = doc.createElement('attachment');
+            const add = (tag: string, value: any) => {
+                if (value === null || value === undefined) return;
+                const child = doc.createElement(tag);
+                child.textContent = typeof value === 'string' ? value : displayValue(value);
+                element.appendChild(child);
+            };
+            add('id', attachment?.id);
+            add('content', attachment?.content);
+            add('type', attachment?.type);
+            add('encrypt', attachment?.encrypt ?? false);
+            add('encryptionHeader', attachment?.encryptionHeader);
+            container.appendChild(element);
+        }
+        message.appendChild(container);
+    }
+    return new XMLSerializer().serializeToString(message);
+}
+
 /* Full Swing-style "Export Results" dialog (MessageExportDialog /
    MessageExportPanel). Operates on the whole result set for the current
    search filter. My Computer exports run in the browser (ZIP via the Save
@@ -1559,6 +1603,20 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
         status.textContent = `Exporting… ${fmtNumber(done)} / ${fmtNumber(total)}`;
     }
 
+    async function auditExportSuccess(o: any, exportCount: number, rootPath: string) {
+        if (exportCount <= 0) return;
+        await api.messages.auditExportSuccess({
+            rootPath,
+            filePattern: o.pattern,
+            exportCount: String(exportCount),
+            contentType: o.opt.ct || '',
+            encrypted: String(!!o.encryptContent),
+            includeAttachments: String(!!o.includeAttachments),
+            compressionFormat: o.compression === 'zip' ? 'zip' : '',
+            passwordProtected: String(!!o.pwProtect)
+        });
+    }
+
     // Stream every export file to `sink(name, content)`; returns counts.
     async function eachFile(sink: any, opt: any, pattern: any, includeAttachments: any) {
         const BATCH = 100;
@@ -1570,12 +1628,13 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
                 count++;
                 const base = applyFilePattern(pattern, m, count, channelId);
                 if (opt.xml) {
-                    const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}`), {
-                        headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
-                        credentials: 'same-origin'
-                    });
-                    if (resp.ok) { await sink(base, await resp.text()); files++; }
-                    if (includeAttachments) files += await sinkAttachments(sink, m, base);
+                    const messageId = String(m.messageId);
+                    const xml = await api.getXml(`/channels/${channelId}/messages/${messageId}`);
+                    const attachments = includeAttachments
+                        ? await api.messages.attachments(channelId, messageId, true)
+                        : [];
+                    await sink(base, includeAttachments ? xmlWithAttachments(xml, attachments) : xml);
+                    files++;
                 } else {
                     const cms = connectorMessagesOf(m).filter(cm => opt.dest ? Number(cm.metaDataId) > 0 : Number(cm.metaDataId) === 0);
                     for (const cm of cms) {
@@ -1590,37 +1649,6 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             }
         }
         return { done, files };
-    }
-
-    // Best-effort: write each attachment alongside the message file (My
-    // Computer mode). Server export embeds attachments natively instead.
-    async function sinkAttachments(sink: any, m: any, base: any) {
-        let n = 0;
-        try {
-            const resp = await fetch(apiUrl(`/channels/${channelId}/messages/${m.messageId}/attachments?includeContent=true`), {
-                headers: { 'Accept': 'application/xml', 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
-                credentials: 'same-origin'
-            });
-            if (!resp.ok) return 0;
-            const raw = parseResponse(await resp.text());
-            const noExt = base.replace(/\.[^./]+$/, '');
-            for (const att of api.asList((raw as any)?.list?.attachment ?? (raw as any)?.attachment ?? raw)) {
-                const id = displayValue(att?.id); if (!id) continue;
-                const type = displayValue(att?.type) || '';
-                let content = att?.content ?? att;
-                if (typeof content !== 'string') content = displayValue(content);
-                let payload = content;
-                try {
-                    const bin = atob(String(content).replace(/\s+/g, ''));
-                    const bytes = new Uint8Array(bin.length);
-                    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-                    payload = isTextualAttachment(type) ? new TextDecoder().decode(bytes) : bytes;
-                } catch { /* not base64 */ }
-                await sink(`${noExt}_attachment_${id}${attachmentExtension(type)}`, payload);
-                n++;
-            }
-        } catch { /* attachments are best-effort */ }
-        return n;
     }
 
     async function runServerExport(o: any) {
@@ -1641,9 +1669,15 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             }
             // The engine writes every matching message to its filesystem before
             // answering — minutes for a big filter — so no client ceiling.
-            const count = await api.post(`/channels/${channelId}/messages/_export`, null, { params, timeoutMs: null });
-            toast(`Server exported ${fmtNumber(Number(count) || 0)} message(s) to ${o.rootFolder}`);
+            const count = toCount(await api.post(`/channels/${channelId}/messages/_export`, null, { params, timeoutMs: null }));
             dlg.close();
+            try {
+                await auditExportSuccess(o, count, o.rootFolder);
+            } catch (e: any) {
+                toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                return;
+            }
+            toast(`Server exported ${fmtNumber(count)} message(s) to ${o.rootFolder}`);
         } catch (e: any) {
             toast(`Server export failed: ${e.message}`, 'error');
             running = false; setDisabled(false);
@@ -1663,6 +1697,8 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
         if ((toServer as any).checked) {
             if (!(rootInput as any).value.trim()) { toast('Enter a Root Path for server export', 'warn'); return; }
             if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
+            try { await api.messages.auditExport({}); }
+            catch (e: any) { toast(`Export audit failed: ${e.message || e}`, 'error'); return; }
             return runServerExport({ opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder: (rootInput as any).value.trim() });
         }
 
@@ -1672,6 +1708,9 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             return;
         }
         if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
+
+        try { await api.messages.auditExport({}); }
+        catch (e: any) { toast(`Export audit failed: ${e.message || e}`, 'error'); return; }
 
         running = true; aborted = false; setDisabled(true); barWrap.style.display = '';
         const now = new Date();
@@ -1695,8 +1734,14 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             // buildZip.result is unset if the user cancelled the Save dialog.
             if ((buildZip as any).result) {
                 const r = (buildZip as any).result;
-                toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
                 dlg.close();
+                try {
+                    await auditExportSuccess({ opt, compression: 'zip', pattern, encryptContent, includeAttachments, pwProtect }, r.done, 'My Computer');
+                } catch (e: any) {
+                    toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                    return;
+                }
+                toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
             } else {
                 running = false; setDisabled(false); barWrap.style.display = 'none';
             }
@@ -1735,6 +1780,9 @@ export function MessagesView({ params, query }: any) {
     // Latest selection mirror: async detail loads guard against a stale row, and
     // task-pane buttons resolve their target at execution time.
     const selectedRef = useRef<any>(null);
+    const phiEnabledRef = useRef(false);
+    const metaDataReadyRef = useRef(!channelId);
+    const channelNameRef = useRef(channelId);
 
     // Staged advanced criteria (the dialog stages; Search runs). Deep-link from
     // the dashboard (double-click a connector row): pre-filter the search to
@@ -1767,6 +1815,7 @@ export function MessagesView({ params, query }: any) {
        bare /messages route — and the picker is how you choose. */
     const [channelList, setChannelList] = useState([] as any[]);
     const [metaDataColumns, setMetaDataColumns] = useState([] as any[]);
+    const [metaDataError, setMetaDataError] = useState<string | null>(null);
     const [messages, setMessages] = useState([] as any[]);
     // shown: null = no search has completed yet (blank counts label, legacy
     // parity) — distinct from a completed search with zero rows ('No results').
@@ -1928,11 +1977,34 @@ export function MessagesView({ params, query }: any) {
 
     /* ---- search (explicit command) ---- */
 
+    async function loadMetaDataColumns() {
+        if (!channelId) return true;
+        try {
+            const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
+            setMetaDataColumns(cols);
+            phiEnabledRef.current = cols.some(col => String(col.name).toLowerCase() === 'patient_id');
+            metaDataReadyRef.current = true;
+            setMetaDataError(null);
+            return true;
+        } catch (e: any) {
+            const error = String(e.message || e);
+            metaDataReadyRef.current = false;
+            setMetaDataError(error);
+            toast(`Failed to load channel metadata: ${error}`, 'error');
+            return false;
+        }
+    }
+
     // Search responses can resolve out of order (a slow page-1 landing after a
     // fast page-2); only the newest issued search may write results.
     const searchGenRef = useRef(0);
 
-    async function runSearch(resetOffset: any) {
+    async function runSearch(resetOffset: any, { automatic = false }: any = {}) {
+        if (!metaDataReadyRef.current && !await loadMetaDataColumns()) return;
+        // Swing suppresses only the search it runs automatically while opening the
+        // channel browser. A user-submitted search is audited even when it first has
+        // to recover from a failed metadata-column load.
+        const auditQuery = !!resetOffset && phiEnabledRef.current && !automatic;
         const gen = ++searchGenRef.current;
         if (resetOffset) {
             offsetRef.current = 0;
@@ -1944,7 +2016,25 @@ export function MessagesView({ params, query }: any) {
         try {
             // Fetch one extra row to learn whether a next page exists, instead of
             // paying for a COUNT on every search (Swing's lazy-count model).
-            const rows = await api.messages.search(channelId, { ...lastParamsRef.current, offset: offsetRef.current, limit: limitRef.current + 1 });
+            const search = api.messages.search(channelId, { ...lastParamsRef.current, offset: offsetRef.current, limit: limitRef.current + 1 });
+            // Swing starts loading the page and immediately audits the submitted
+            // filter. Do not wait for the result: failed and superseded searches
+            // are still PHI queries initiated by the user.
+            if (auditQuery) {
+                const attributes: Record<string, string> = {
+                    channel: `Channel[id=${channelId},name=${channelNameRef.current}]`,
+                    filter: JSON.stringify(lastParamsRef.current)
+                };
+                for (const key of ['metaDataSearch', 'metaDataCaseInsensitiveSearch']) {
+                    for (const criterion of api.asList(lastParamsRef.current[key])) {
+                        const match = String(criterion).match(/^PATIENT_ID\s*=\s*(.*)$/i);
+                        if (match) attributes.patientId = match[1];
+                    }
+                }
+                api.messages.auditQueriedPHI(attributes).catch((e: any) =>
+                    toast(`Unable to audit queried PHI: ${e.message || e}`, 'error'));
+            }
+            const rows = await search;
             if (gen !== searchGenRef.current) return;   // superseded by a newer search
             const list = rows.filter(m => m && typeof m === 'object');
             const hasNext = list.length > limitRef.current;
@@ -2014,21 +2104,41 @@ export function MessagesView({ params, query }: any) {
 
     async function showDetail(row: any, metaDataId: any) {
         setDetail({ status: 'loading' });
-        let message = row;
+        const isCurrentSelection = () => selectedRef.current?.m === row
+            && String(selectedRef.current?.metaDataId) === String(metaDataId);
+        let message: any;
         try {
-            const [full, attachments] = await Promise.all([
-                api.messages.get(channelId, row.messageId),
-                // Fetch attachments up front so the Attachments tab only appears when
-                // the message actually has any (matching the Swing browser).
-                api.messages.attachments(channelId, row.messageId).catch(() => [])
-            ]);
-            if (full && typeof full === 'object') message = full;
+            message = await api.messages.get(channelId, row.messageId);
+            if (!message || typeof message !== 'object') throw new Error('Engine returned an invalid message');
+        } catch (e: any) {
+            if (!isCurrentSelection()) return;
+            const error = `Failed to load message content: ${e.message || e}`;
+            toast(error, 'error');
+            setDetail({ status: 'error', error });
+            return;
+        }
+        if (!isCurrentSelection()) return; // row or connector changed while loading
+        try {
+            const attachments = await api.messages.attachments(channelId, row.messageId);
             message.__attachments = Array.isArray(attachments) ? attachments : [];
         } catch (e: any) {
-            toast(`Failed to load message content: ${e.message}`, 'error');
+            message.__attachments = [];
+            message.__attachmentsError = String(e.message || e);
+            toast(`Failed to load attachments: ${e.message || e}`, 'error');
         }
-        if (selectedRef.current?.m !== row) return; // selection changed while loading
+        if (!isCurrentSelection()) return;
         setDetail({ status: 'ready', message, metaDataId });
+        if (phiEnabledRef.current) {
+            const connector = connectorMessagesOf(message)
+                .find(cm => Number(cm.metaDataId) === Number(metaDataId));
+            if (connector) {
+                api.messages.auditAccessedPHI({
+                    patientId: String(metaOfCm(connector, 'PATIENT_ID') || ''),
+                    channel: `Channel[id=${channelId},name=${channelNameRef.current}]`,
+                    messageId: String(connector.messageId ?? message.messageId)
+                }).catch((e: any) => toast(`Unable to audit accessed PHI: ${e.message || e}`, 'error'));
+            }
+        }
     }
 
     /* Detail pane height: the global .split-handle mutates style.height directly
@@ -2452,10 +2562,7 @@ export function MessagesView({ params, query }: any) {
                 } catch (e: any) {
                     toast(`Failed to load connectors: ${e.message}`, 'error');
                 }
-                try {
-                    const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
-                    if (!cancelled && cols.length) setMetaDataColumns(cols);
-                } catch { /* channel has no custom metadata columns */ }
+                if (!cancelled) await loadMetaDataColumns();
             }
             try {
                 const map = await api.channels.idsAndNames();
@@ -2464,6 +2571,7 @@ export function MessagesView({ params, query }: any) {
                 const found = pairs.find(c => c.id === channelId);
                 if (found && !cancelled) {
                     setChannelName(found.name);
+                    channelNameRef.current = found.name;
                     // route:changed resets the banner to the static route title after
                     // this async handler returns; defer past it (rAF runs after that
                     // microtask, before paint) so the channel name sticks without a flash.
@@ -2471,9 +2579,9 @@ export function MessagesView({ params, query }: any) {
                         detail: { title: `Channel Messages - ${found.name}` }
                     })));
                 }
-            } catch { /* keep the channel id as the label */ }
+            } catch (e: any) { toast(`Failed to load channels: ${e.message || e}`, 'error'); }
             // Nothing to search until a channel is chosen.
-            if (!cancelled && channelId) searchRef.current(true);
+            if (!cancelled && channelId && metaDataReadyRef.current) searchRef.current(true, { automatic: true });
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
         return () => { cancelled = true; closeStatusMenu(); };
@@ -2625,6 +2733,9 @@ export function MessagesView({ params, query }: any) {
                 </RailPane>
             </ViewTasks>}
             <div className="view-body flush flex flex-col h-full min-h-0">
+                {metaDataError && <div className="panel border-danger text-danger mx-[13px] mt-3" role="alert">
+                    Failed to load channel metadata: {metaDataError}. Search will retry this request.
+                </div>}
                 {/* Wide: click the "Search Criteria" heading to collapse the criteria
                     in place. Narrow: they collapse into a "Filters" popover. */}
                 {/* Wide: the "Search Criteria" heading is a real disclosure over the
