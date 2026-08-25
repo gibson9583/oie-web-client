@@ -34,6 +34,7 @@ import * as RadioGroup from '@radix-ui/react-radio-group';
 import * as Popover from '@radix-ui/react-popover';
 import { CardsView } from './cards.jsx';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
+import { submitDeployment, submitStartResume, withDependencies } from './channel-lifecycle.js';
 
 // Loaded on demand. This dialog is the dashboard's ONLY use of the message
 // browser, and importing it statically drags that whole view — the largest in the
@@ -111,6 +112,65 @@ function childrenOf(status: any) {
     const kids = status?.childStatuses?.dashboardStatus ?? status?.childStatuses;
     if (!kids) return [];
     return Array.isArray(kids) ? kids : [kids];
+}
+
+/* ---- bulk lifecycle + channel dependencies -------------------------------- */
+
+/* A lifecycle action applied to a SET of channels in ONE request. The bulk
+   endpoints exist so the engine can dependency-order the set before it acts
+   (ChannelController sorts by the server's dependency graph); a per-channel
+   loop hands it one id at a time, so nothing can ever be ordered — which is
+   exactly the bug that made a start of A+B fail when B needed A up first.
+
+   A lone channel still goes to its own addressable endpoint, which is the one
+   that is @CheckAuthorizedChannelId: the bulk endpoints silently redact ids the
+   user may not touch, so a single channel gets a real 403 instead of a no-op;
+   multi-channel results are verified against fresh statuses below. returnErrors
+   is passed either way — without it the engine swallows the failure into a 204
+   and a failed start reports as success. */
+const LIFECYCLE_MANY: any = {
+    start: 'startMany', stop: 'stopMany', halt: 'haltMany', pause: 'pauseMany', resume: 'resumeMany'
+};
+const LIFECYCLE_RESULT_STATES: Record<string, Set<string>> = {
+    start: new Set(['STARTED']),
+    stop: new Set(['STOPPED']),
+    // A mixed selection may already contain stopped channels. The engine
+    // correctly no-ops those while pausing every running member.
+    pause: new Set(['PAUSED', 'STOPPED']),
+    resume: new Set(['STARTED']),
+    halt: new Set(['STOPPED'])
+};
+export async function submitLifecycle(action: any, ids: any) {
+    if (ids.length === 1) return (api.status as any)[action](ids[0], true);
+
+    await (api.status as any)[LIFECYCLE_MANY[action]](ids);
+
+    /* Bulk lifecycle endpoints silently redact channel ids this user is not
+       authorized to act on. Their otherwise-successful empty response cannot
+       distinguish complete success from an unreported partial action, so verify
+       every requested id after the engine's task handler has settled. This also
+       catches any other engine-side no-op that escaped returnErrors. */
+    let fresh: any[];
+    try {
+        fresh = await api.status.list(ids, undefined, true);
+    } catch (e: any) {
+        throw new Error(`the bulk ${action} request completed, but its result could not be verified: ${e?.message || e} — check current status before retrying`);
+    }
+    const expected = LIFECYCLE_RESULT_STATES[action] || new Set<string>();
+    const requested = ids.map(String);
+    const requestedSet = new Set(requested);
+    const states = new Map<string, string>();
+    const duplicates = new Set<string>();
+    for (const status of fresh || []) {
+        const id = String(status?.channelId ?? '');
+        if (!requestedSet.has(id)) continue;
+        if (states.has(id)) duplicates.add(id);
+        states.set(id, String(status?.state ?? ''));
+    }
+    const unconfirmed = requested.filter((id: string) => duplicates.has(id) || !expected.has(states.get(id) || ''));
+    if (unconfirmed.length) {
+        throw new Error(`the engine did not confirm ${action} for ${unconfirmed.join(', ')} — the operation may be partial because a channel was unauthorized or changed state; check current status before retrying`);
+    }
 }
 
 function lsGet(key: any, fallback: any) {
@@ -499,21 +559,44 @@ function DashboardView({ onToggleView }: any) {
     const isHaltable = (s: any) => !['STARTED', 'STOPPED', 'PAUSED'].includes(s);
     const isHaltableNonSyncing = (s: any) => isHaltable(s) && s !== 'SYNCING';
 
+    // Channel name for the dependency prompt; a related channel that isn't
+    // deployed has no status row, so fall back to its id rather than blank.
+    const nameOf = (id: any) => String(statuses.find(s => s.channelId === id)?.name ?? id);
+
     /* Every action takes an EXPLICIT id list computed where it is offered (task
        pane closure or context-menu builder) — no reads of selection state from
        long-lived closures, so a menu can never act on a stale selection. */
     async function controlChannels(action: any, label: any, ids: any) {
         if (!ids.length) { toast('Select a channel first', 'warn'); return; }
-        const byId = new Map(statuses.map(s => [s.channelId, s]));
-        for (const channelId of ids) {
-            // "Start" on a PAUSED channel must resume it, not start it: PAUSED means
-            // the source is stopped while destinations run, and the engine's _start
-            // (Channel.start) only acts on a STOPPED/DEPLOYING channel — it's a no-op
-            // when PAUSED, so only _resume restarts the source. Matches Swing's
-            // Frame.doStart (PAUSED -> resumeChannels, else startChannels).
-            const act = (action === 'start' && byId.get(channelId)?.state === 'PAUSED') ? 'resume' : action;
-            try { await (api.status as any)[act](channelId); }
-            catch (e: any) { toast(`${label} failed: ${e.message}`, 'error'); }
+        /* Start pulls in what the selection DEPENDS ON; stop and pause pull in
+           what depends ON them (Swing runs getStatusesWithDependencies for
+           START_RESUME, STOP and PAUSE alike). Halt is the only lifecycle action
+           with no ChannelTask and no prompt in Swing — an escape hatch has no
+           business widening its own blast radius. */
+        const expandable = action === 'start' || action === 'stop' || action === 'pause';
+        const targets = expandable ? await withDependencies(ids, action, label, nameOf) : ids;
+        if (!targets) return;                                  // dependency prompt cancelled
+
+        /* "Start" on a PAUSED channel must resume it, not start it: PAUSED means
+           the source is stopped while destinations run, and the engine's _start
+           (Channel.start) only acts on a STOPPED/DEPLOYING channel — it's a no-op
+           when PAUSED, so only _resume restarts the source. Matches Swing's
+           Frame.doStart (PAUSED -> resumeChannels, else startChannels).
+
+           A single bulk request cannot express "start these, resume those", and
+           the engine orders within ONE request only — submitStartResume
+           classifies each channel from a FRESH status read (never this render's
+           poll), tiers a mixed selection by the dependency graph, and aborts
+           the tiers after a failed prerequisite. Its submit callback must
+           reject on failure, so no per-batch catch here. */
+        try {
+            if (action === 'start') {
+                await submitStartResume(targets, (act: any, batch: any) => submitLifecycle(act, batch));
+            } else {
+                await submitLifecycle(action, targets);
+            }
+        } catch (e: any) {
+            toast(`${label} failed: ${e.message}`, 'error');
         }
         refresh();
     }
@@ -578,12 +661,19 @@ function DashboardView({ onToggleView }: any) {
     function clearStatsTask(ids: any) {
         if (needIds(ids)) openClearStatisticsDialog(ids);
     }
+    /* Undeploying a channel strands everything that depends on it, so the related
+       channels are offered BEFORE the confirmation — otherwise the confirmation
+       would quote a count the user is about to change. */
     async function undeployTask(ids: any) {
         if (!needIds(ids)) return;
-        if (await confirmDialog('Undeploy', `Undeploy ${ids.length} channel(s)?`, { okLabel: 'Undeploy' })) {
-            try { await api.engine.undeployMany(ids); } catch (e: any) { toast(e.message, 'error'); }
-            refresh();
-        }
+        // The final confirmation runs INSIDE withDependencies' revalidation
+        // boundary: it is more open-ended user time, and the offer recomputation
+        // has to follow the LAST dialog, not sit before it.
+        const targets = await withDependencies(ids, 'undeploy', 'Undeploy', nameOf,
+            (chosen: string[]) => confirmDialog('Undeploy', `Undeploy ${chosen.length} channel(s)?`, { okLabel: 'Undeploy' }));
+        if (!targets) return;
+        try { await submitDeployment('undeploy', targets); } catch (e: any) { toast(e.message, 'error'); }
+        refresh();
     }
     function sendMessageTask(ids: any) {
         if (needIds(ids)) openSendMessageDialog(platform, ids[0], () => refresh());
@@ -1068,7 +1158,11 @@ function DashboardView({ onToggleView }: any) {
             { label: 'Pause', icon: 'pause', hidden: !anyState((x: any) => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', 'Pause', ids) },
             { label: 'Stop', icon: 'stop', hidden: !anyState((x: any) => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', 'Stop', ids) },
             { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
-            { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err: any) { toast(err.message, 'error'); } refresh(); } },
+            // Through undeployTask like every other undeploy entry point: its
+            // `hidden` test already spans the selection, so undeploying only the
+            // right-clicked row left the rest of the selection behind — and it
+            // skipped both the dependency prompt and the confirmation.
+            { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) },
             '-',
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
             // Tagged with Swing's channelEdit constants (CHANNEL_EDIT_FILTER/_TRANSFORMER)

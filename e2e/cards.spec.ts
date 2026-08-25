@@ -74,6 +74,29 @@ test.describe('card view', () => {
         await expect(rail.getByText('Start', { exact: true })).toBeVisible();
     });
 
+    test('reports and refreshes a partially redacted bulk lifecycle action', async ({ page }) => {
+        let submitted = false;
+        await mockEngine(page, {
+            'GET /channels/statuses': () => ({ list: { dashboardStatus: [
+                { channelId: 'c-alpha', name: 'Alpha Channel', state: submitted ? 'STARTED' : 'STOPPED', statistics: {} },
+                { channelId: 'c-bravo', name: 'Bravo Channel', state: 'STOPPED', statistics: {} },
+            ] } }),
+            // Model the engine authorizing Alpha, silently redacting Bravo, and
+            // still returning the bulk endpoint's normal empty success body.
+            'POST /channels/_start': () => { submitted = true; return ''; }
+        });
+        await openCards(page);
+        await page.getByText('Alpha Channel').click();
+        await page.getByText('Bravo Channel').click({ modifiers: ['ControlOrMeta'] });
+        await page.locator('.taskbar').getByText('Start', { exact: true }).click();
+
+        await expect(page.getByText(/did not confirm start for c-bravo.*operation may be partial/i)).toBeVisible();
+        // The action did change Alpha, so the error path must still refresh the
+        // board instead of leaving both cards at their pre-submit state.
+        await expect(page.locator('.panel', { hasText: 'Alpha Channel' })
+            .getByText('Started', { exact: true })).toBeVisible();
+    });
+
     test('clicking a selected card again deselects it', async ({ page }) => {
         await mockEngine(page);
         await openCards(page);
@@ -124,10 +147,10 @@ test.describe('card view', () => {
 
         let startCalled = false;
         page.on('request', (r) => {
-            if (/\/api\/channels\/c-paused\/_start$/.test(r.url()) && r.method() === 'POST') startCalled = true;
+            if (new URL(r.url()).pathname === '/api/channels/c-paused/_start' && r.method() === 'POST') startCalled = true;
         });
         const resumed = page.waitForRequest(
-            (r) => /\/api\/channels\/c-paused\/_resume$/.test(r.url()) && r.method() === 'POST'
+            (r) => new URL(r.url()).pathname === '/api/channels/c-paused/_resume' && r.method() === 'POST'
         );
         await page.getByText('Demo Paused').click();
         await page.locator('.taskbar').getByText('Start', { exact: true }).click();

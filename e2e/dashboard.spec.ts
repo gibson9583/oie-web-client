@@ -22,7 +22,7 @@ test('starting a stopped channel POSTs _start', async ({ page }) => {
     await page.locator('tr', { hasText: 'Demo Stopped' }).first().click();
 
     const started = page.waitForRequest(
-        (r) => /\/api\/channels\/c-stopped\/_start$/.test(r.url()) && r.method() === 'POST'
+        (r) => new URL(r.url()).pathname === '/api/channels/c-stopped/_start' && r.method() === 'POST'
     );
     await page.getByRole('button', { name: 'Start' }).click();
     await started;
@@ -44,10 +44,10 @@ test('starting a PAUSED channel POSTs _resume, not _start (matches Swing doStart
     // Regression guard: _start must NOT be called for a paused channel.
     let startCalled = false;
     page.on('request', (r) => {
-        if (/\/api\/channels\/c-paused\/_start$/.test(r.url()) && r.method() === 'POST') startCalled = true;
+        if (new URL(r.url()).pathname === '/api/channels/c-paused/_start' && r.method() === 'POST') startCalled = true;
     });
     const resumed = page.waitForRequest(
-        (r) => /\/api\/channels\/c-paused\/_resume$/.test(r.url()) && r.method() === 'POST'
+        (r) => new URL(r.url()).pathname === '/api/channels/c-paused/_resume' && r.method() === 'POST'
     );
     await page.getByRole('button', { name: 'Start' }).click();
     await resumed;

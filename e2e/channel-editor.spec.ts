@@ -186,6 +186,31 @@ test.describe('Channel editor', () => {
         await expect(nameField).toHaveValue('Round Trip Channel');
     });
 
+    test('a single deploy uses the authorized endpoint and surfaces permission revocation', async ({ page }) => {
+        const deployPaths: string[] = [];
+        page.on('request', request => {
+            const path = new URL(request.url()).pathname;
+            if (request.method() === 'POST' && /_deploy$/.test(path)) deployPaths.push(path);
+        });
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES,
+            [`POST /channels/${CHANNEL_ID}/_deploy`]: {
+                __status: 403,
+                body: { message: 'Channel permission was revoked' }
+            }
+        });
+
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+        await page.getByRole('dialog', { name: 'Deploy Channel' })
+            .getByRole('button', { name: 'Deploy', exact: true }).click();
+
+        const error = page.getByRole('dialog', { name: 'Channel Deployment Failed' });
+        await expect(error).toContainText('Channel permission was revoked');
+        await expect(page).toHaveURL(new RegExp(`/channels/${CHANNEL_ID}/edit`));
+        expect(deployPaths).toEqual([`/api/channels/${CHANNEL_ID}/_deploy`]);
+    });
+
     /* The Set Dependencies dialog had no coverage at all, which is how a broken
        reference to the modal's DOM node survived in it. Its three panels are
        still built with h(); only the strip is Radix, and it renders a panel on
@@ -218,6 +243,221 @@ test.describe('Channel editor', () => {
         await page.keyboard.press('Home');
         await expect(libraries).toHaveAttribute('aria-selected', 'true');
     });
+
+    test('dependency save overlays the user edit on the action-time server graph', async ({ page }) => {
+        let dependencyReads = 0;
+        let dependencyPut = '';
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES,
+            'GET /channels/idsAndNames': { map: { entry: [
+                { string: [CHANNEL_ID, 'Round Trip Channel'] },
+                { string: ['dep-a', 'Dependency A'] },
+                { string: ['dep-b', 'Dependency B'] },
+                { string: ['other-x', 'Other X'] },
+                { string: ['other-y', 'Other Y'] }
+            ] } },
+            'GET /server/channelDependencies': () => {
+                dependencyReads++;
+                const initial = { dependentId: CHANNEL_ID, dependencyId: 'dep-a' };
+                const concurrent = { dependentId: 'other-x', dependencyId: 'other-y' };
+                return { set: { channelDependency: dependencyReads === 1
+                    ? [initial]
+                    : [initial, concurrent] } };
+            },
+            'PUT /server/channelDependencies': (req: any) => {
+                dependencyPut = req.postData() || '';
+                return '';
+            }
+        });
+
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Channel Dependencies' });
+        await dialog.getByRole('tab', { name: 'Deploy/Start Dependencies', exact: true }).click();
+        await dialog.getByRole('button', { name: 'Add', exact: true }).first().click();
+
+        const add = page.getByRole('dialog', { name: 'Add Dependency' });
+        await add.locator('input[type=checkbox]').first().check();
+        await add.getByRole('button', { name: 'OK', exact: true }).click();
+        await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+        await page.getByRole('dialog', { name: 'Save Dependencies' })
+            .getByRole('button', { name: 'OK', exact: true }).click();
+
+        await expect.poll(() => dependencyPut).not.toBe('');
+        expect(dependencyPut).toContain('dep-a');
+        expect(dependencyPut).toContain('dep-b');
+        expect(dependencyPut).toContain('other-x');
+        expect(dependencyPut).toContain('other-y');
+        expect(dependencyReads).toBeGreaterThanOrEqual(2);
+    });
+
+    const validLibrary = (overrides: any = {}) => ({
+        '@version': '4.5.0', id: 'lib-1', name: 'Demo Library', revision: 1,
+        includeNewChannels: false, enabledChannelIds: '', disabledChannelIds: '',
+        codeTemplates: '',
+        ...overrides
+    });
+
+    test('a valid action-time library re-read preserves the full typed set and saves the toggle', async ({ page }) => {
+        let bulkBody = '';
+        let bulkPosts = 0;
+        const libraries = [
+            validLibrary({ codeTemplates: { codeTemplate: [{ id: 'tpl-1' }] } }),
+            validLibrary({
+                id: 'lib-2', name: 'Other Library',
+                enabledChannelIds: { string: ['other-channel'] },
+                codeTemplates: { codeTemplate: [{ id: 'tpl-2' }] }
+            })
+        ];
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES,
+            'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: libraries } },
+            'POST /codeTemplateLibraries/_bulkUpdate': (request: any) => {
+                bulkBody = request.postData() || '';
+                bulkPosts++;
+                return bulkPosts === 1
+                    ? { overrideNeeded: true, librariesSuccess: false, codeTemplateResults: {} }
+                    : { overrideNeeded: false, librariesSuccess: true, codeTemplateResults: {} };
+            }
+        });
+
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+        const dependencies = page.getByRole('dialog', { name: 'Channel Dependencies' });
+        await dependencies.locator('input[type=checkbox]').first().check();
+        await dependencies.getByRole('button', { name: 'OK', exact: true }).click();
+        await page.getByRole('dialog', { name: 'Save Code Template Libraries' })
+            .getByRole('button', { name: 'OK', exact: true }).click();
+
+        await expect(page.getByText('Code template libraries saved', { exact: true })).toBeVisible();
+        expect(bulkBody).toContain(CHANNEL_ID);
+        expect(bulkBody).toContain('other-channel');
+        expect(bulkBody).toContain('lib-1');
+        expect(bulkBody).toContain('lib-2');
+        expect(bulkBody).toContain('tpl-1');
+        expect(bulkBody).toContain('tpl-2');
+        expect(bulkBody).not.toContain('[object Object]');
+        expect(bulkPosts).toBe(2);
+    });
+
+    const unusableLibraryRereads: Array<[string, any]> = [
+        ['empty-body', ''],
+        ['bare-array', []],
+        ['empty named wrapper', { list: { codeTemplateLibrary: [] } }],
+        ['id-less-member', { list: { codeTemplateLibrary: [{ name: 'Malformed Library' }] } }],
+        ['duplicate-id members', { list: { codeTemplateLibrary: [
+            validLibrary(), validLibrary({ name: 'Duplicate Library' })
+        ] } }],
+        ['missing enabled-channel ids', { list: { codeTemplateLibrary: [
+            validLibrary({ enabledChannelIds: undefined })
+        ] } }],
+        ['malformed enabled-channel wrapper', { list: { codeTemplateLibrary: [
+            validLibrary({ enabledChannelIds: {} })
+        ] } }],
+        ['non-string enabled-channel member', { list: { codeTemplateLibrary: [
+            validLibrary({ enabledChannelIds: { string: [{ id: 'c-bad' }] } })
+        ] } }],
+        ['duplicate enabled-channel ids', { list: { codeTemplateLibrary: [
+            validLibrary({ enabledChannelIds: { string: ['c-1', 'c-1'] } })
+        ] } }],
+        ['missing disabled-channel ids', { list: { codeTemplateLibrary: [
+            validLibrary({ disabledChannelIds: undefined })
+        ] } }],
+        ['malformed disabled-channel wrapper', { list: { codeTemplateLibrary: [
+            validLibrary({ disabledChannelIds: {} })
+        ] } }],
+        ['missing code-template references', { list: { codeTemplateLibrary: [
+            validLibrary({ codeTemplates: undefined })
+        ] } }],
+        ['malformed code-template wrapper', { list: { codeTemplateLibrary: [
+            validLibrary({ codeTemplates: {} })
+        ] } }],
+        ['id-less code-template reference', { list: { codeTemplateLibrary: [
+            validLibrary({ codeTemplates: { codeTemplate: [{ name: 'No Id' }] } })
+        ] } }],
+        ['duplicate code-template reference', { list: { codeTemplateLibrary: [
+            validLibrary({ codeTemplates: { codeTemplate: [{ id: 'tpl-1' }, { id: 'tpl-1' }] } })
+        ] } }],
+        ['code-template duplicated across libraries', { list: { codeTemplateLibrary: [
+            validLibrary({ codeTemplates: { codeTemplate: [{ id: 'tpl-1' }] } }),
+            validLibrary({ id: 'lib-2', name: 'Other Library', codeTemplates: { codeTemplate: [{ id: 'tpl-1' }] } })
+        ] } }],
+        ['missing include-new-channels flag', { list: { codeTemplateLibrary: [
+            validLibrary({ includeNewChannels: undefined })
+        ] } }],
+        ['missing revision', { list: { codeTemplateLibrary: [
+            validLibrary({ revision: undefined })
+        ] } }]
+    ];
+    for (const [wireCase, secondRead] of unusableLibraryRereads) {
+        test(`${wireCase} library re-read does not report associations saved`, async ({ page }) => {
+            let libraryReads = 0;
+            let bulkPosts = 0;
+            await mockEngine(page, {
+                ...CHANNEL_FIXTURES,
+                'GET /codeTemplateLibraries': () => {
+                    libraryReads++;
+                    return libraryReads === 1 ? {
+                        list: { codeTemplateLibrary: [{
+                            '@version': '4.5.0', id: 'lib-1', name: 'Demo Library', revision: 1,
+                            includeNewChannels: false, enabledChannelIds: '', disabledChannelIds: '',
+                            codeTemplates: ''
+                        }] }
+                    } : secondRead;
+                },
+                'POST /codeTemplateLibraries/_bulkUpdate': () => { bulkPosts++; return { librariesSuccess: true }; }
+            });
+
+            await page.goto(`/channels/${CHANNEL_ID}/edit`);
+            await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+            const dependencies = page.getByRole('dialog', { name: 'Channel Dependencies' });
+            await dependencies.locator('input[type=checkbox]').first().check();
+            await dependencies.getByRole('button', { name: 'OK', exact: true }).click();
+            await page.getByRole('dialog', { name: 'Save Code Template Libraries' })
+                .getByRole('button', { name: 'OK', exact: true }).click();
+
+            await expect(page.getByText(/unusable code template library list.*association was NOT saved/i).first()).toBeVisible();
+            await expect(page.getByText('Code template libraries saved', { exact: true })).toHaveCount(0);
+            expect(bulkPosts).toBe(0);
+            expect(libraryReads).toBe(2);
+        });
+    }
+
+    const removedLibraryRereads: Array<[string, any]> = [
+        ['genuinely empty', { list: '' }],
+        ['concurrently removed target', { list: { codeTemplateLibrary: [
+            validLibrary({ id: 'lib-other', name: 'Other Library' })
+        ] } }]
+    ];
+    for (const [wireCase, secondRead] of removedLibraryRereads) {
+        test(`${wireCase} library re-read reports the requested association was not saved`, async ({ page }) => {
+            let libraryReads = 0;
+            let bulkPosts = 0;
+            await mockEngine(page, {
+                ...CHANNEL_FIXTURES,
+                'GET /codeTemplateLibraries': () => {
+                    libraryReads++;
+                    return libraryReads === 1
+                        ? { list: { codeTemplateLibrary: [validLibrary()] } }
+                        : secondRead;
+                },
+                'POST /codeTemplateLibraries/_bulkUpdate': () => { bulkPosts++; return { librariesSuccess: true }; }
+            });
+
+            await page.goto(`/channels/${CHANNEL_ID}/edit`);
+            await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+            const dependencies = page.getByRole('dialog', { name: 'Channel Dependencies' });
+            await dependencies.locator('input[type=checkbox]').first().check();
+            await dependencies.getByRole('button', { name: 'OK', exact: true }).click();
+            await page.getByRole('dialog', { name: 'Save Code Template Libraries' })
+                .getByRole('button', { name: 'OK', exact: true }).click();
+
+            await expect(page.getByText(/library lib-1 no longer exists.*association was NOT saved/i).first()).toBeVisible();
+            await expect(page.getByText('Code template libraries saved', { exact: true })).toHaveCount(0);
+            expect(bulkPosts).toBe(0);
+            expect(libraryReads).toBe(2);
+        });
+    }
 
     /* A stale bookmark or a deleted channel. The engine does not 404 an unknown
        id — it answers 200 with an empty body — so this used to resolve, build an

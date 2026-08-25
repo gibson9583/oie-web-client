@@ -17,12 +17,14 @@ import * as oie from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { PluginSlot } from '../plugin-slot.jsx';
 import { mountReact } from '../mount.jsx';
+import { saveLibraryAssociations } from './code-template-xml.js';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
+import { readChannelDependencies, saveChannelDependencyEdits } from './channel-lifecycle.js';
 
 /* ---- per-connector data types (inbound/outbound + properties) ------------------ */
 
@@ -104,6 +106,14 @@ function objToEntries(obj: any) {
         ? { '@class': 'linked-hash-map', entry: keys.map((id: any) => ({ string: [id, obj[id]] })) }
         : { '@class': 'linked-hash-map' };
 }
+/* Marks one failed picker load so a Promise.all can carry per-source failures
+   alongside the sources that did load, instead of collapsing them to an empty
+   list that reads as "there are none". */
+class LoadFailure {
+    constructor(readonly label: string, readonly error: any) { }
+    describe() { return `${this.label} (${this.error?.message || this.error})`; }
+}
+
 // Every resourceIds holder in a channel (channel scripts + source + destinations).
 function resourceHolders(channel: any) {
     const holders: any[] = [];
@@ -134,34 +144,34 @@ export async function persistLibraryAssociations(channel: any, libState: any, ve
     if (!st) return;
     const changed = st.libraries.filter((lib: any) => st.checked.get(lib.id) !== st.initial.get(lib.id));
     if (!changed.length) return;
-    for (const lib of changed) {
-        const enabled = new Set(idSet(lib.enabledChannelIds));
-        const disabled = new Set(idSet(lib.disabledChannelIds));
-        if (st.checked.get(lib.id)) { enabled.add(channel.id); disabled.delete(channel.id); }
-        else { enabled.delete(channel.id); disabled.add(channel.id); }
-        lib.enabledChannelIds = enabled.size ? { string: [...enabled] } : '';
-        lib.disabledChannelIds = disabled.size ? { string: [...disabled] } : '';
-    }
-    const payload = st.libraries.map((lib: any) => {
-        const { '@version': _v, codeTemplates: _ct, ...rest } = lib;
-        const ids = api.asList(lib.codeTemplates, 'codeTemplate').map((t: any) => t && t.id).filter(Boolean);
-        return {
-            '@version': lib['@version'] || version,
-            ...rest,
-            codeTemplates: ids.length ? { codeTemplate: ids.map((id: any) => ({ '@version': version, id })) } : null
-        };
-    });
-    await api.codeTemplates.updateLibraries(payload);
+    // Membership toggles applied to the server's CURRENT list — not this step's
+    // snapshot — with the override=false conflict handshake every other library
+    // write uses. The old snapshot PUT could silently revert a concurrent edit.
+    const wanted = new Map<any, boolean>(changed.map((lib: any) => [lib.id, !!st.checked.get(lib.id)]));
+    await saveLibraryAssociations(channel.id, wanted, version);
 }
 
-// Persist deploy/start dependencies chosen in the Dependencies step (after Create).
-// setChannelDependencies replaces the whole server list, so we send the full set.
+/* Persist deploy/start dependencies chosen in the Dependencies step (after
+   Create). setChannelDependencies REPLACES the whole server list, so we send the
+   full set — which means the set we loaded is the only safe baseline to edit.
+
+   If that load failed, `all` is not the server's graph, it is an empty list
+   standing in for one. Writing an edit on top of it would delete every
+   dependency on the server. Refuse: `unavailable` is set by DependenciesStep
+   when the fetch failed, and the step also blocks the edits, so this is the
+   second of two locks on the same door. */
 export async function persistChannelDependencies(depState: any) {
     const d = depState && depState.current;
-    if (!d || !d.changed) return;
+    if (!d || d.unavailable || !d.changed) return;
     const curKey = d.all.map((x: any) => x.dependentId + '>' + x.dependencyId).sort().join('|');
     if (curKey === d.initial) return;
-    await api.server.setChannelDependencies(d.all.map((x: any) => ({ dependentId: x.dependentId, dependencyId: x.dependencyId })));
+    await saveChannelDependencyEdits(d.initialAll || [], d.all);
+    // This wizard may remain mounted after Save. Make the successfully-saved
+    // graph the next edit's baseline so a later remove can undo an edge added by
+    // the preceding save instead of treating it as someone else's edge.
+    d.initialAll = structuredClone(d.all);
+    d.initial = curKey;
+    d.changed = false;
 }
 
 // Filterable, scrollable multi-select modal — for picking from potentially large
@@ -217,21 +227,43 @@ export function DependenciesStep({ channel, libState, depState }: any) {
     const [expanded, setExpanded] = useState(() => new Set());   // expanded library ids (show templates)
     const dataRef = useRef<any>({ libraries: [], resources: [], names: new Map() });
 
+    /* Each picker used to swallow its own failure into an empty list, so a 403 for
+       a restricted user or a 500 rendered as "this server has no libraries /
+       resources / channels" — a wrong answer on the step whose whole job is
+       associating the channel with them. Collect the failures and name them. The
+       global 401 handler fires ahead of these, so only 403/5xx land here. */
+    const [loadErrors, setLoadErrors] = useState<string[]>([]);
+
     useEffect(() => {
         let alive = true;
+        const orFail = (label: string) => (e: any) => new LoadFailure(label, e);
         Promise.all([
-            api.codeTemplates.libraries(true).catch(() => []),
-            api.server.resources().catch(() => null),
-            api.server.channelDependencies().catch(() => []),
-            api.channels.idsAndNames().catch(() => null)
-        ]).then(([libraries, resourcesRaw, channelDeps, idsAndNames]) => {
+            api.codeTemplates.libraries(true).catch(orFail('code template libraries')),
+            api.server.resources().catch(orFail('library resources')),
+            readChannelDependencies().catch(orFail('channel dependencies')),
+            api.channels.idsAndNames().catch(orFail('the channel list'))
+        ]).then((settled) => {
             if (!alive) return;
+            setLoadErrors(settled.filter(v => v instanceof LoadFailure).map((f: any) => f.describe()));
+            const [libraries, resourcesRaw, channelDeps, idsAndNames] =
+                settled.map(v => (v instanceof LoadFailure ? null : v)) as any[];
             // Deploy/start dependencies: full server list (setChannelDependencies replaces
             // it wholesale) + a name lookup for the picker. Held in depState so edits
             // survive step changes and can be persisted after Create.
+            /* A failed fetch is NOT "this server has no dependencies". The set is
+               saved back wholesale, so an empty stand-in would erase the real
+               graph on Create — flag the baseline as unknown instead. */
+            const depsUnavailable = channelDeps === null;
             const deps = (Array.isArray(channelDeps) ? channelDeps : [])
                 .map((d: any) => ({ dependentId: String(d.dependentId), dependencyId: String(d.dependencyId) }));
-            if (!depState.current) depState.current = { all: deps, initial: deps.map((d: any) => d.dependentId + '>' + d.dependencyId).sort().join('|') };
+            if (!depState.current) {
+                depState.current = {
+                    all: deps,
+                    initialAll: structuredClone(deps),
+                    initial: deps.map((d: any) => d.dependentId + '>' + d.dependencyId).sort().join('|'),
+                    unavailable: depsUnavailable
+                };
+            }
             const names = new Map();
             for (const en of api.asList(idsAndNames && idsAndNames.entry)) {
                 const pair = api.asList(en && en.string);
@@ -310,12 +342,16 @@ export function DependenciesStep({ channel, libState, depState }: any) {
                     {ids.map((id: any) => (
                         <div key={id} className="step-item flex items-center gap-2 min-w-0" title={nameOf(id)}>
                             <span className="flex-1 min-w-0 truncate">{nameOf(id)}</span>
-                            <button type="button" className="btn btn-sm btn-danger flex-none" onClick={() => removeDep(kind, id)}><Icon name="trash" size={12} /></button>
+                            <button type="button" className="btn btn-sm btn-danger flex-none"
+                                disabled={dep.unavailable} onClick={() => removeDep(kind, id)}><Icon name="trash" size={12} /></button>
                         </div>
                     ))}
                 </div>
                 <div>
-                    <button type="button" className="btn btn-sm" disabled={!available.length} onClick={() => setPicker({ kind, ids })}>
+                    <button type="button" className="btn btn-sm"
+                        disabled={dep.unavailable || !available.length}
+                        title={dep.unavailable ? 'The server\u2019s dependency list could not be loaded' : undefined}
+                        onClick={() => setPicker({ kind, ids })}>
                         <Icon name="plus" size={12} />Add channel
                     </button>
                 </div>
@@ -333,6 +369,13 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             </TabsPrimitive.List>
 
             {!loaded && <div className="hint">Loading…</div>}
+            {loadErrors.length > 0 && (
+                <div className="text-[11px]" style={{ color: 'var(--err)' }}>
+                    Could not load {loadErrors.join('; ')}. The lists below are incomplete.
+                    {dep.unavailable && ' Deploy/start dependencies are read-only: saving them replaces the'
+                        + " server's entire list, which cannot be done safely without knowing what is on it."}
+                </div>
+            )}
 
             <TabsPrimitive.Content value="libraries">
             {loaded && tab === 'libraries' && (
@@ -727,7 +770,7 @@ function tagChipBg(color: any) {
 
 function ChannelTags({ channel, version }: any) {
     const [, tick] = useReducer((x: any) => x + 1, 0);
-    const st = useRef<any>({ all: [], assigned: new Set(), available: false, loaded: false });
+    const st = useRef<any>({ all: [], assigned: new Set(), available: false, loaded: false, error: '' });
     useEffect(() => {
         let alive = true;
         api.server.channelTags().then((tags: any) => {
@@ -740,9 +783,17 @@ function ChannelTags({ channel, version }: any) {
                 if (!all.some((t: any) => t.name === ct.name)) all.push({ id: ct.id || oie.uuid(), name: ct.name, channelIds: api.asList(ct.channelIds, 'string').map(String), backgroundColor: ct.backgroundColor });
                 assigned.add(String(ct.name));
             }
-            st.current = { all, assigned, available: true, loaded: true };
+            st.current = { all, assigned, available: true, loaded: true, error: '' };
             tick();
-        }).catch(() => { st.current.loaded = true; tick(); });
+        }).catch((e: any) => {
+            // A failed load renders as a failure, not as "No tags." — and the
+            // editor below disappears with it, because a tag typed here would be
+            // silently dropped by the apply() guard.
+            if (!alive) return;
+            st.current.loaded = true;
+            st.current.error = e?.message || String(e);
+            tick();
+        });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -777,7 +828,12 @@ function ChannelTags({ channel, version }: any) {
             <div className="panel-header">Tags</div>
             <div className="panel-body">
                 {!s.loaded && <div className="hint">Loading tags…</div>}
-                {s.loaded && (
+                {s.loaded && s.error && (
+                    <div className="text-[11px]" style={{ color: 'var(--err)' }}>
+                        Could not load channel tags: {s.error}. Tags cannot be edited for this channel until the list loads.
+                    </div>
+                )}
+                {s.loaded && !s.error && (
                     <div className="flex flex-wrap items-center gap-1.5">
                         {assigned.length === 0 && <span className="text-text-faint text-[11px]">No tags.</span>}
                         {assigned.map((name: any) => {

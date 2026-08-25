@@ -18,7 +18,8 @@ import { useDeployedStatuses, useChannelGroups, useChannelTags } from '../querie
 import { RailPane, TaskButton } from '../ui.jsx';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
-import { statsOf } from './dashboard.jsx';
+import { statsOf, submitLifecycle } from './dashboard.jsx';
+import { submitDeployment, submitStartResume, withDependencies } from './channel-lifecycle.js';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const EMPTY_LIST: any[] = [];  // stable fallback while queries load (memo-dep friendly)
@@ -212,19 +213,46 @@ function CardsView({ onToggleView }: any) {
     const clearSelection = () => setSelected(new Set());
     const openMessages = (status: any) => router.navigate(`/messages/${status.channelId}`);
 
+    // Channel name for the dependency prompt; a related channel that isn't
+    // deployed has no card here, so fall back to its id rather than blank.
+    const nameOf = (id: any) => String(all.find((s: any) => s.channelId === id)?.name ?? id);
+
     async function bulkControl(kind: any, targets: any) {
-        const ids = targets.map((s: any) => s.channelId);
-        if (!ids.length) return;
-        if (kind === 'undeploy' && !await confirmDialog('Undeploy', `Undeploy ${ids.length} channel${ids.length > 1 ? 's' : ''}?`, { okLabel: 'Undeploy' })) return;
+        if (!targets.length) return;
+        /* Same dependency walk as the classic dashboard: starting pulls in what
+           the selection DEPENDS ON, stopping/pausing/undeploying pulls in what
+           depends ON it. Halt is the one lifecycle action Swing never expands. */
+        const verb = kind.charAt(0).toUpperCase() + kind.slice(1);
+        // Undeploy's final confirmation runs INSIDE withDependencies'
+        // revalidation boundary — the offer recomputation must follow the LAST
+        // dialog (see the dashboard's undeployTask).
+        const confirmUndeploy = kind === 'undeploy'
+            ? (chosen: string[]) => confirmDialog('Undeploy', `Undeploy ${chosen.length} channel${chosen.length > 1 ? 's' : ''}?`, { okLabel: 'Undeploy' })
+            : undefined;
+        const ids = kind === 'halt'
+            ? targets.map((s: any) => s.channelId)
+            : await withDependencies(targets.map((s: any) => s.channelId), kind, verb, nameOf, confirmUndeploy);
+        if (!ids) return;                                      // dependency prompt cancelled
+
         if (kind === 'halt' && !await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) return;
         try {
-            if (kind === 'undeploy') await api.engine.undeployMany(ids);
-            // "Start" on a PAUSED channel resumes it (restarts the stopped source):
-            // the engine's _start (Channel.start) only acts on a STOPPED/DEPLOYING
-            // channel and is a no-op when PAUSED. Matches Swing's Frame.doStart.
-            else for (const s of targets) await (api.status as any)[(kind === 'start' && s.state === 'PAUSED') ? 'resume' : kind](s.channelId);
-            refresh();
+            if (kind === 'undeploy') await submitDeployment('undeploy', ids);
+            else if (kind === 'start') {
+                /* "Start" on a PAUSED channel resumes it (restarts the stopped
+                   source): the engine's _start (Channel.start) only acts on a
+                   STOPPED/DEPLOYING channel and is a no-op when PAUSED. Matches
+                   Swing's Frame.doStart. A single bulk request cannot express
+                   "start these, resume those", and the engine orders within ONE
+                   request only — submitStartResume classifies each channel from
+                   a FRESH status read (never this render's poll), tiers a mixed
+                   selection by the dependency graph, and aborts the tiers after
+                   a failed prerequisite. */
+                await submitStartResume(ids, (act: any, batch: any) => submitLifecycle(act, batch));
+            } else {
+                await submitLifecycle(kind, ids);
+            }
         } catch (e: any) { toast(e && e.message ? e.message : 'Action failed', 'error'); }
+        finally { refresh(); }
     }
     async function clearStats(targets: any) {
         if (!targets.length) return;

@@ -80,7 +80,7 @@ test('selecting a stopped channel reveals Start and POSTs _start', async ({ page
     await page.locator('tr', { hasText: 'Demo Stopped' }).first().click();
 
     const started = page.waitForRequest(
-        (r) => /\/api\/channels\/c-stopped\/_start$/.test(r.url()) && r.method() === 'POST'
+        (r) => new URL(r.url()).pathname === '/api/channels/c-stopped/_start' && r.method() === 'POST'
     );
     await page.getByRole('button', { name: 'Start', exact: true }).click();
     await started;

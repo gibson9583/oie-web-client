@@ -41,6 +41,7 @@ import { setActiveScope, clearActiveScope } from '../../core/script-completions.
 import { getPref } from '../../core/prefs.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
+import { saveLibraryAssociations } from './code-template-xml.js';
 import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { DomTabs } from '../dom-tabs.jsx';
@@ -48,6 +49,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { readChannelDependencies, saveChannelDependencyEdits, submitDeployment, withDependencies } from './channel-lifecycle.js';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
 
@@ -574,7 +576,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
     try {
         [idsAndNames, deps, libraries, resourcesRaw] = await Promise.all([
             api.channels.idsAndNames(),
-            api.server.channelDependencies(),
+            readChannelDependencies(),
             api.codeTemplates.libraries(true),
             api.server.resources()
         ]);
@@ -738,6 +740,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         .map(([id, name]) => ({ id, name })).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     let dependencies = deps.map((d: any) => ({ dependentId: String(d.dependentId), dependencyId: String(d.dependencyId) }));
+    const initialDependencies = structuredClone(dependencies);
     const depKey = (d: any) => `${d.dependentId}|${d.dependencyId}`;
     const initialDepKeys = new Set(dependencies.map(depKey));
     const directDeps = (id: any) => dependencies.filter((d: any) => d.dependentId === id).map((d: any) => d.dependencyId);
@@ -881,44 +884,23 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                             const ok = await confirmDialog('Save Dependencies',
                                 "You've made changes to deploy/start dependencies, which will be saved now. Are you sure you wish to continue?");
                             if (!ok) return false;
-                            await api.server.setChannelDependencies(
-                                dependencies.map((d: any) => ({ dependentId: d.dependentId, dependencyId: d.dependencyId })));
+                            await saveChannelDependencyEdits(initialDependencies, dependencies);
                             toast('Channel dependencies saved');
                         }
 
-                        // 2. Code template libraries — mutate this channel's
-                        //    membership, then PUT the full list. Changing a
-                        //    library's channel set edits the SHARED libraries,
-                        //    so confirm first (matches Swing).
+                        // 2. Code template libraries — this channel's membership
+                        //    toggles, applied to the server's CURRENT list (not
+                        //    the dialog's snapshot) with the same override=false
+                        //    conflict handshake as every other library write.
+                        //    Changing a library's channel set edits the SHARED
+                        //    libraries, so confirm first (matches Swing).
                         const changedLibs = libraries.filter((lib: any) => libChecked.get(lib.id) !== libInitial.get(lib.id));
                         if (changedLibs.length) {
                             const ok = await confirmDialog('Save Code Template Libraries',
                                 "You've made changes to code template libraries, which will be saved now. Are you sure you wish to continue?");
                             if (!ok) return false;
-                            for (const lib of changedLibs) {
-                                const enabled = new Set(idSet(lib.enabledChannelIds));
-                                const disabled = new Set(idSet(lib.disabledChannelIds));
-                                if (libChecked.get(lib.id)) { enabled.add(channel.id); disabled.delete(channel.id); }
-                                else { enabled.delete(channel.id); disabled.add(channel.id); }
-                                (lib as any).enabledChannelIds = enabled.size ? { string: [...enabled] } : '';
-                                (lib as any).disabledChannelIds = disabled.size ? { string: [...disabled] } : '';
-                            }
-                            // '@version' must be the FIRST key on both the library
-                            // and each template ref (array-nested; the engine's
-                            // JSON→XML reorder fallback doesn't run there).
-                            const payload = libraries.map((lib: any) => {
-                                const { '@version': _v, codeTemplates: _ct, ...rest } = lib as any;
-                                const ids = api.asList(lib.codeTemplates, 'codeTemplate')
-                                    .map(t => t && t.id).filter(Boolean);
-                                return {
-                                    '@version': (lib as any)['@version'] || version,
-                                    ...rest,
-                                    codeTemplates: ids.length
-                                        ? { codeTemplate: ids.map(id => ({ '@version': version, id })) }
-                                        : null
-                                };
-                            });
-                            await api.codeTemplates.updateLibraries(payload);
+                            const wanted = new Map<any, boolean>(changedLibs.map((lib: any) => [lib.id, !!libChecked.get(lib.id)]));
+                            await saveLibraryAssociations(channel.id, wanted, version);
                             toast('Code template libraries saved');
                         }
 
@@ -2711,7 +2693,9 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             return;
         }
         try {
-            await api.engine.deploy(channel.id);
+            const targets = await withDependencies([channel.id], 'deploy', 'Deploy');
+            if (targets === null) return;
+            await submitDeployment('deploy', targets);
             // Switch to the Dashboard to watch deployment (matches Swing).
             toast(`Deploying ${channel.name}`);
             router.navigate('/dashboard');
