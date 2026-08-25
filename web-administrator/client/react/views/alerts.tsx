@@ -18,6 +18,33 @@ import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 import { newAlert } from './alert-editor.jsx';
+import { alertInformation, assertImportIdentityCurrent, optionYesNo, resolveImportName } from './import-dialogs.js';
+import { checkImportVersionForElements, checkImportVersionForValues } from '../../core/import-guard.js';
+import { strictWireList } from '../../core/wire-safety.js';
+
+/* Swing's Frame.checkAlertName applies the same alphanumeric rule to alerts that
+   checkChannelName applies to channels, but nothing else in either client
+   enforces it — the web alert editor and wizard both accept any name, and so
+   does the engine. Enforcing it on import ALONE would reject files this very
+   client wrote, so the shared resolver is given only the rules that actually
+   hold here: non-empty and unique. */
+const ALERT_IMPORT_RULES = { title: 'Import Alert', noun: 'Alert' };
+
+async function readCurrentAlertIdentities() {
+    const raw: any = await api.get('/alerts');
+    let entries: any[];
+    try {
+        entries = strictWireList<any>(raw, 'alertModel', 'current alert list');
+    } catch {
+        throw new Error('the current alert list could not be verified — operation cancelled');
+    }
+    for (const entry of entries) {
+        if (!entry || typeof entry !== 'object' || !entry.id || !entry.name) {
+            throw new Error('the current alert list could not be verified — operation cancelled');
+        }
+    }
+    return entries.map((alert: any) => ({ id: String(alert.id), name: String(alert.name) }));
+}
 
 
 const COLUMNS = [
@@ -118,31 +145,167 @@ export function AlertsList() {
         }
         refresh();
     }
+    /* Resolve the incoming alert's identity against what's already here before
+       posting anything (Swing Frame.importAlert). The engine's createAlert
+       delegates to updateAlert, so it is create-or-replace by id: posting a file
+       as-is silently replaced an existing alert whenever the ids matched. A name
+       clash under a different id was rejected engine-side and surfaced as a raw
+       error toast with no way forward.
+
+       The XML path is version-gated like this client's channel and group imports
+       (issue #40). Swing itself never gates alerts (Frame.importAlert has no
+       promptObjectMigration; it leans on the serializer's forward migration),
+       but a newer-than-server file dying engine-side as a raw error is the worse
+       outcome — blocking it up front is the same protection the other imports
+       already give, and same/older files still import with at most one confirm. */
     async function importTask() {
         const file = await pickFile('.xml,.json');
         if (!file) return;
         try {
+            /* Collision resolution must see the server's CURRENT alerts, not
+               this render's — POST /alerts is create-or-replace by id
+               (createAlert delegates to updateAlert), so a decision made
+               against a stale list silently overwrites whatever appeared
+               since. The answer's SHAPE is validated too: a malformed 200
+               (like {}) is not an empty server, and trusting it skips the
+               collision confirmation entirely. '' is the engine's real empty
+               <list>. */
+            const current = await readCurrentAlertIdentities();
             const content = String(file.content || '').trim();
-            if (content.startsWith('<')) {
-                await api.postXml('/alerts', content);
-            } else {
-                let obj = JSON.parse(content);
-                if (obj && typeof obj === 'object' && obj.alertModel) obj = obj.alertModel;
-                await api.alerts.create(obj);
-            }
-            toast(`Imported ${file.name}`);
+            const imported = content.startsWith('<')
+                ? await importAlertsXml(content, current)
+                : await importAlertJson(content, current);
+            if (imported === null) return;                   // cancelled
+            toast(`Imported ${imported} alert(s) from ${file.name}`, imported ? undefined : 'warn');
             refresh();
         } catch (e: any) {
             toast(`Import failed: ${e.message}`, 'error');
         }
     }
+
+    /* POST /alerts takes ONE serialized AlertModel, but Swing's importAlert
+       deserializes a LIST and imports each — and Export All Alerts here writes
+       exactly that <list>. Accept both roots and post one alert per request, so
+       the view can read back every file it can write.
+
+       Each alert is resolved against the alerts already here PLUS the ones this
+       file just created, since a file may well carry two alerts with one name.
+       Returns the number imported, or null if the user cancelled outright. */
+    async function importAlertsXml(content: string, current: any[]) {
+        const doc = new DOMParser().parseFromString(content, 'text/xml');
+        if (doc.querySelector('parsererror') || !doc.documentElement) throw new Error('Not a valid alert XML file');
+        const root = doc.documentElement;
+        const alertEls = root.tagName === 'alertModel'
+            ? [root]
+            : [...root.children].filter(el => el.tagName === 'alertModel');
+        if (!alertEls.length) throw new Error('No <alertModel> elements found in the file');
+        /* XStream stamps the version on each OBJECT it serializes, so the engine's
+           `<list>` of alerts already carries `<alertModel version="…">` inside a
+           bare `<list>` (verified against 4.6.0). The copy-down here is the
+           fallback for a hand-written list whose children lost their stamp: the
+           engine reads a missing version as "older than 3.0.0" and would run a
+           migration the file never needed. */
+        const listVersion = root.getAttribute('version');
+        if (listVersion) for (const el of alertEls) if (!el.getAttribute('version')) el.setAttribute('version', listVersion);
+
+        // Version gate (issue #40): judge the children like the channel list
+        // import — a newer child blocks, one older/unknown child confirms once.
+        const verdict = checkImportVersionForElements(alertEls, 'alert');
+        if (verdict.action === 'block') { await alertInformation(verdict.message); return null; }
+        if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return null;
+
+        const known = current.slice();
+        let count = 0;
+        for (const alertEl of alertEls) {
+            const childOf = (tag: string) => [...alertEl.children].find(c => c.tagName === tag);
+            const setChild = (tag: string, value: string) => {
+                let el = childOf(tag);
+                if (!el) { el = doc.createElement(tag); alertEl.appendChild(el); }
+                el.textContent = value;
+            };
+            const resolved = await resolveImportName(
+                childOf('name')?.textContent || '', childOf('id')?.textContent || '', known, ALERT_IMPORT_RULES);
+            if (!resolved) return count ? count : null;       // cancelled
+            setChild('id', resolved.id);
+            setChild('name', resolved.name);
+            // Serialize the alert element itself: an <alertModel> root is what
+            // the endpoint deserializes, whether or not it came out of a <list>.
+            // One bad alert must not strand the rest of the file — Swing wraps
+            // each import in its own try/catch (Frame.importAlert) and keeps going.
+            try {
+                assertImportIdentityCurrent(resolved, await readCurrentAlertIdentities(), ALERT_IMPORT_RULES);
+                await api.postXml('/alerts', new XMLSerializer().serializeToString(alertEl));
+            } catch (e: any) {
+                toast(`Could not import alert "${resolved.name}": ${e.message}`, 'warn');
+                continue;
+            }
+            const match = known.find((a: any) => a.id === resolved.id);
+            if (match) match.name = resolved.name;
+            else known.push({ id: resolved.id, name: resolved.name });
+            count++;
+        }
+        return count;
+    }
+
+    /* JSON twin of the XML path: a bare alert object, an {alertModel:{…}}
+       wrapper, or the {"list":{"alertModel":[…]}} document GET /alerts answers
+       with. Same per-alert resolution, same keep-going-on-failure. */
+    async function importAlertJson(content: string, current: any[]) {
+        const parsed = JSON.parse(content);
+        let models: any[];
+        if (parsed && typeof parsed === 'object' && parsed.list !== undefined) {
+            models = api.asList(parsed.list, 'alertModel').filter((a: any) => a && typeof a === 'object');
+        } else {
+            const one = parsed && typeof parsed === 'object' && parsed.alertModel ? parsed.alertModel : parsed;
+            models = one && typeof one === 'object' ? [one] : [];
+        }
+        if (!models.length) throw new Error('No alerts found in the file');
+        // Same version gate as the XML path — the .json extension must not
+        // bypass it. Engine JSON carries the stamp as '@version'.
+        const verdict = checkImportVersionForValues(models.map((m: any) => m['@version']), 'alert');
+        if (verdict.action === 'block') { await alertInformation(verdict.message); return null; }
+        if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return null;
+        const known = current.slice();
+        let count = 0;
+        for (const model of models) {
+            const resolved = await resolveImportName(model.name || '', model.id || '', known, ALERT_IMPORT_RULES);
+            if (!resolved) return count ? count : null;       // cancelled
+            model.id = resolved.id;
+            model.name = resolved.name;
+            try {
+                assertImportIdentityCurrent(resolved, await readCurrentAlertIdentities(), ALERT_IMPORT_RULES);
+                await api.alerts.create(model);
+            } catch (e: any) {
+                toast(`Could not import alert "${resolved.name}": ${e.message}`, 'warn');
+                continue;
+            }
+            const match = known.find((a: any) => a.id === resolved.id);
+            if (match) match.name = resolved.name;
+            else known.push({ id: resolved.id, name: resolved.name });
+            count++;
+        }
+        return count;
+    }
+    /* The exported document must BE the requested alert: an empty answer, or
+       valid XML for a DIFFERENT alert, downloaded under this alert's filename
+       is a wrong backup nobody notices until restore time. */
+    function assertAlertXml(xml: any, alert: any) {
+        const doc = new DOMParser().parseFromString(String(xml || ''), 'text/xml');
+        const root = doc.documentElement;
+        const exportedId = root && root.nodeName === 'alertModel'
+            ? [...root.children].find((c: any) => c.tagName === 'id')?.textContent : null;
+        if (doc.querySelector('parsererror') || exportedId !== alert.id) {
+            throw new Error(`the engine did not return alert "${alert.name || alert.id}" — export aborted rather than writing a wrong or incomplete backup`);
+        }
+    }
+
     async function exportTask() {
         const alert = single();
         if (!alert) return;
         try {
             await saveFile(`${alert.name || alert.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/alerts/${alert.id}`);
-                if (!xml || !String(xml).trim()) throw new Error('Alert not found on the server');
+                assertAlertXml(xml, alert);
                 return xml;
             });
         } catch (e: any) {
@@ -150,15 +313,22 @@ export function AlertsList() {
         }
     }
     async function exportAllTask() {
-        const all = alerts;
-        if (!all.length) { toast('No alerts to export', 'warn'); return; }
         try {
+            // Export the action-time server set, not the last polling snapshot.
+            // Otherwise a newly-created alert is silently absent from a backup
+            // that still reports success.
+            const all = await readCurrentAlertIdentities();
+            if (!all.length) { toast('No alerts to export', 'warn'); return; }
             let count = 0;
             await saveFile('alerts.xml', 'application/xml', async () => {
                 const parts: any[] = [];
                 for (const a of all) {
+                    /* Every answer must be the alert that was asked for — an
+                       empty 200 or another alert's XML silently corrupts the
+                       backup (see assertAlertXml). */
                     const xml = await api.getXml(`/alerts/${a.id}`);
-                    if (xml && String(xml).trim()) parts.push(String(xml).replace(/^<\?xml[^>]*\?>\s*/, '').trim());
+                    assertAlertXml(xml, a);
+                    parts.push(String(xml).replace(/^<\?xml[^>]*\?>\s*/, '').trim());
                 }
                 count = parts.length;
                 return `<list>\n${parts.join('\n')}\n</list>`;
