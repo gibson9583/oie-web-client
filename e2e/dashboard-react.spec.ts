@@ -72,7 +72,7 @@ test('shows a persistent pip marker on each dashboard column resize handle', asy
     expect(marker.backgroundImage).toContain('radial-gradient');
 });
 
-test('selecting a stopped channel reveals Start and POSTs _start', async ({ page }) => {
+test('selecting a stopped channel reveals Start and POSTs the bulk _start endpoint', async ({ page }) => {
     await mockEngine(page);
     await page.goto('/dashboard');
     await expect(page.getByText('Demo Stopped', { exact: true })).toBeVisible();
@@ -80,10 +80,58 @@ test('selecting a stopped channel reveals Start and POSTs _start', async ({ page
     await page.locator('tr', { hasText: 'Demo Stopped' }).first().click();
 
     const started = page.waitForRequest(
-        (r) => /\/api\/channels\/c-stopped\/_start$/.test(r.url()) && r.method() === 'POST'
+        (r) => new URL(r.url()).pathname === '/api/channels/_start' && r.method() === 'POST'
     );
     await page.getByRole('button', { name: 'Start', exact: true }).click();
-    await started;
+    expect((await started).postData()).toBe('channelId=c-stopped');
+});
+
+test('Start can include prerequisite channels and lets the engine order one bulk request', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /channels/statuses': { list: { dashboardStatus: [
+            { channelId: 'dependent', name: 'Dependent', state: 'STOPPED', statistics: {} },
+            { channelId: 'middle', name: 'Middle', state: 'STOPPED', statistics: {} },
+            { channelId: 'prerequisite', name: 'Prerequisite', state: 'STOPPED', statistics: {} },
+        ] } },
+        'GET /server/channelDependencies': { set: { channelDependency: [
+            { dependentId: 'dependent', dependencyId: 'middle' },
+            { dependentId: 'middle', dependencyId: 'prerequisite' }
+        ] } },
+    });
+    await page.goto('/dashboard');
+    await page.locator('tr', { hasText: 'Dependent' }).first().click();
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Channel dependencies' });
+    await expect(dialog.getByText('Middle', { exact: true })).toBeVisible();
+    await expect(dialog.getByText('Prerequisite', { exact: true })).toBeVisible();
+    const requestPromise = page.waitForRequest(request =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_start');
+    await dialog.getByRole('button', { name: 'Include and start', exact: true }).click();
+    const body = (await requestPromise).postData() || '';
+    expect(new URLSearchParams(body).getAll('channelId').sort()).toEqual(['dependent', 'middle', 'prerequisite']);
+});
+
+test('Stop warns about dependents and can act on only the original selection', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /channels/statuses': { list: { dashboardStatus: [
+            { channelId: 'dependent', name: 'Dependent', state: 'STARTED', statistics: {} },
+            { channelId: 'prerequisite', name: 'Prerequisite', state: 'STARTED', statistics: {} },
+        ] } },
+        'GET /server/channelDependencies': { set: { channelDependency: [
+            { dependentId: 'dependent', dependencyId: 'prerequisite' }
+        ] } },
+    });
+    await page.goto('/dashboard');
+    await page.locator('tr', { hasText: 'Prerequisite' }).first().click();
+    await page.getByRole('button', { name: 'Stop', exact: true }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Channel dependencies' });
+    await expect(dialog.getByText('Dependent', { exact: true })).toBeVisible();
+    const requestPromise = page.waitForRequest(request =>
+        request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_stop');
+    await dialog.getByRole('button', { name: 'Selected only', exact: true }).click();
+    expect((await requestPromise).postData()).toBe('channelId=prerequisite');
 });
 
 test('selecting a started channel reveals Pause and Stop (not Start)', async ({ page }) => {

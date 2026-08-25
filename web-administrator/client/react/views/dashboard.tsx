@@ -33,6 +33,7 @@ import * as Tabs from '@radix-ui/react-tabs';   // shadcn/Radix dock tabs
 import * as RadioGroup from '@radix-ui/react-radio-group';
 import * as Popover from '@radix-ui/react-popover';
 import { CardsView } from './cards.jsx';
+import { runLifecycle } from './channel-lifecycle.js';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
 
 // Loaded on demand. This dialog is the dashboard's ONLY use of the message
@@ -504,18 +505,12 @@ function DashboardView({ onToggleView }: any) {
        long-lived closures, so a menu can never act on a stale selection. */
     async function controlChannels(action: any, label: any, ids: any) {
         if (!ids.length) { toast('Select a channel first', 'warn'); return; }
-        const byId = new Map(statuses.map(s => [s.channelId, s]));
-        for (const channelId of ids) {
-            // "Start" on a PAUSED channel must resume it, not start it: PAUSED means
-            // the source is stopped while destinations run, and the engine's _start
-            // (Channel.start) only acts on a STOPPED/DEPLOYING channel — it's a no-op
-            // when PAUSED, so only _resume restarts the source. Matches Swing's
-            // Frame.doStart (PAUSED -> resumeChannels, else startChannels).
-            const act = (action === 'start' && byId.get(channelId)?.state === 'PAUSED') ? 'resume' : action;
-            try { await (api.status as any)[act](channelId); }
-            catch (e: any) { toast(`${label} failed: ${e.message}`, 'error'); }
+        try {
+            if (await runLifecycle(action, ids)) refresh();
+        } catch (e: any) {
+            toast(`${label} failed: ${e.message}`, 'error');
+            refresh();
         }
-        refresh();
     }
 
     /* Classic Clear Statistics dialog: pick which counters to reset. The body
@@ -580,10 +575,8 @@ function DashboardView({ onToggleView }: any) {
     }
     async function undeployTask(ids: any) {
         if (!needIds(ids)) return;
-        if (await confirmDialog('Undeploy', `Undeploy ${ids.length} channel(s)?`, { okLabel: 'Undeploy' })) {
-            try { await api.engine.undeployMany(ids); } catch (e: any) { toast(e.message, 'error'); }
-            refresh();
-        }
+        try { if (await runLifecycle('undeploy', ids)) refresh(); }
+        catch (e: any) { toast(`Undeploy failed: ${e.message}`, 'error'); refresh(); }
     }
     function sendMessageTask(ids: any) {
         if (needIds(ids)) openSendMessageDialog(platform, ids[0], () => refresh());
@@ -1068,7 +1061,7 @@ function DashboardView({ onToggleView }: any) {
             { label: 'Pause', icon: 'pause', hidden: !anyState((x: any) => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', 'Pause', ids) },
             { label: 'Stop', icon: 'stop', hidden: !anyState((x: any) => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', 'Stop', ids) },
             { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
-            { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: async () => { try { await api.engine.undeploy(st.channelId); } catch (err: any) { toast(err.message, 'error'); } refresh(); } },
+            { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) },
             '-',
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
             // Tagged with Swing's channelEdit constants (CHANNEL_EDIT_FILTER/_TRANSFORMER)
