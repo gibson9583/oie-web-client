@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { mockEngine } from './mock.js';
+import * as zipjs from '../web-administrator/client/vendor/zipjs.min.js';
+
+zipjs.configure({ useWebWorkers: false });
 
 /*
  * Focused coverage for the React Channels view (the grouped channel tree). The
@@ -29,8 +32,9 @@ const GROUPS_FIXTURE = {
             ]
         }
     },
-    // bulkUpdate target (New Group / Assign To Group / Delete Group) — accept + no-op.
-    'POST /channelgroups/_bulkUpdate': ''
+    // bulkUpdate target (New Group / Assign To Group / Delete Group) — the real
+    // engine answers an explicit boolean, and the client refuses anything else.
+    'POST /channelgroups/_bulkUpdate': { boolean: true }
 };
 
 async function gotoChannels(page: any) {
@@ -152,7 +156,7 @@ test.describe('Channels React view', () => {
         const importedGroup = await groupRequest;
         expect(importedGroup.postData()).toContain('g-imported');
         expect(importedGroup.postData()).toContain('c-imported');
-        await expect(page.getByText('Imported 1 group(s) from imported-group.xml', { exact: true })).toBeVisible();
+        await expect(page.getByText('Imported 1 group(s), 1 channel(s) from imported-group.xml', { exact: true })).toBeVisible();
     });
 
     test('exports full associated channels for one group and all groups', async ({ page }) => {
@@ -172,11 +176,25 @@ test.describe('Channels React view', () => {
         await gotoChannels(page);
         await page.getByRole('gridcell', { name: '[Demo Group]', exact: true }).click();
 
+        // Export Group saves the one group as a plain XML document; Export All
+        // Groups saves ONE FILE PER GROUP into a ZIP (Swing writes them into a
+        // chosen directory — a <list> of <channelGroup> is not a document any
+        // importer reads). Either way the group carries its full channels.
         const assertFullChannelExport = async (buttonName: string) => {
             const downloadPromise = page.waitForEvent('download');
             await page.getByRole('button', { name: buttonName, exact: true }).click();
             const download = await downloadPromise;
-            const xml = await readFile(await download.path(), 'utf8');
+            const path = await download.path();
+            let xml: string;
+            if (download.suggestedFilename().endsWith('.zip')) {
+                const reader = new zipjs.ZipReader(new zipjs.BlobReader(new Blob([await readFile(path)])));
+                const entries = await reader.getEntries();
+                expect(entries.map((e: any) => e.filename)).toEqual(['Demo Group.xml']);
+                xml = await entries[0].getData(new zipjs.TextWriter());
+                await reader.close();
+            } else {
+                xml = await readFile(path, 'utf8');
+            }
             expect(xml).toContain('<id>g-1</id>');
             expect(xml).toMatch(/<channels><channel[^>]*>[\s\S]*<id>c-started<\/id>[\s\S]*<name>Demo Started<\/name>/);
             expect(xml).toContain('<sourceConnector><name>Source</name></sourceConnector>');
@@ -187,17 +205,129 @@ test.describe('Channels React view', () => {
     });
 
     test('Deploy Channel moves to the dashboard on success', async ({ page }) => {
-        await mockEngine(page, { ...GROUPS_FIXTURE, 'POST /channels/_deploy': '' });
+        const deployPaths: string[] = [];
+        page.on('request', request => {
+            const path = new URL(request.url()).pathname;
+            if (request.method() === 'POST' && /_deploy$/.test(path)) deployPaths.push(path);
+        });
+        await mockEngine(page, GROUPS_FIXTURE);
         await gotoChannels(page);
         await page.getByText('Demo Stopped', { exact: true }).click();
         await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+        await expect(page).toHaveURL(/\/dashboard/);
+        expect(deployPaths).toEqual(['/api/channels/c-stopped/_deploy']);
+    });
+
+    test('a redacted id makes a bulk deploy report partial completion', async ({ page }) => {
+        let submitted = false;
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /channels/c-stopped': () => submitted ? '' : {
+                channel: { id: 'c-stopped', name: 'Demo Stopped', revision: 1,
+                    exportData: { metadata: { enabled: true } } }
+            },
+            'GET /channels/c-stopped/status': () => submitted
+                ? { __status: 403, body: { message: 'Channel permission was revoked' } }
+                : { dashboardStatus: { channelId: 'c-stopped', state: 'STOPPED' } },
+            'GET /channels/statuses': () => ({ list: { dashboardStatus: submitted
+                ? [{ channelId: 'c-started', name: 'Demo Started', state: 'STARTED', statistics: {} }]
+                : [
+                    { channelId: 'c-started', name: 'Demo Started', state: 'STARTED', statistics: {} },
+                    { channelId: 'c-stopped', name: 'Demo Stopped', state: 'STOPPED', statistics: {} }
+                ] } }),
+            'POST /channels/_deploy': () => { submitted = true; return ''; }
+        });
+        await gotoChannels(page);
+        await page.getByText('Demo Started', { exact: true }).click();
+        await page.getByText('Demo Stopped', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+
+        const error = page.getByRole('dialog', { name: 'Channel Deployment Failed' });
+        await expect(error).toContainText(/did not confirm deploy.*c-stopped.*unauthorized/i);
+        await expect(page).toHaveURL(/\/channels/);
+    });
+
+    test('action-time redaction aborts a bulk deploy before partial execution', async ({ page }) => {
+        let bulkPosts = 0;
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /channels/c-stopped': '',
+            'GET /channels/statuses': (request: any) => {
+                const actionTimeCheck = new URL(request.url()).searchParams.get('includeUndeployed') === 'true';
+                return { list: { dashboardStatus: actionTimeCheck ? [
+                    { channelId: 'c-started', name: 'Demo Started', state: 'STARTED', statistics: {} }
+                ] : [
+                    { channelId: 'c-started', name: 'Demo Started', state: 'STARTED', statistics: {} },
+                    { channelId: 'c-stopped', name: 'Demo Stopped', state: 'STOPPED', statistics: {} }
+                ] } };
+            },
+            'POST /channels/_deploy': () => { bulkPosts++; return ''; }
+        });
+        await gotoChannels(page);
+        await page.getByText('Demo Started', { exact: true }).click();
+        await page.getByText('Demo Stopped', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+
+        const error = page.getByRole('dialog', { name: 'Channel Deployment Failed' });
+        await expect(error).toContainText(/was not submitted.*c-stopped.*unauthorized/i);
+        expect(bulkPosts).toBe(0);
+    });
+
+    test('an entirely redacted already-deployed set aborts before bulk redeploy', async ({ page }) => {
+        let bulkPosts = 0;
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            // The buggy filtered status endpoint returns the existing states for
+            // every channel when its authorization filter produces an empty set.
+            // Those states must not be accepted as an authorization preflight.
+            'GET /channels/statuses': { list: { dashboardStatus: [
+                { channelId: 'c-started', name: 'Demo Started', state: 'STARTED', statistics: {} },
+                { channelId: 'c-stopped', name: 'Demo Stopped', state: 'STARTED', statistics: {} }
+            ] } },
+            'GET /channels/c-started': '',
+            'GET /channels/c-stopped': '',
+            'POST /channels/_deploy': () => { bulkPosts++; return ''; }
+        });
+
+        await gotoChannels(page);
+        await page.getByText('Demo Started', { exact: true }).click();
+        await page.getByText('Demo Stopped', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+
+        const error = page.getByRole('dialog', { name: 'Channel Deployment Failed' });
+        await expect(error).toContainText(/was not submitted.*c-started, c-stopped.*unauthorized/i);
+        expect(bulkPosts).toBe(0);
+    });
+
+    test('Deploy Channel offers and submits deploy dependencies', async ({ page }) => {
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /server/channelDependencies': {
+                set: { channelDependency: [{ dependentId: 'c-stopped', dependencyId: 'c-started' }] }
+            },
+            'POST /channels/_deploy': ''
+        });
+        await gotoChannels(page);
+        await page.getByText('Demo Stopped', { exact: true }).click();
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+
+        const prompt = page.getByRole('dialog', { name: 'Channel Dependencies' });
+        await expect(prompt.getByText('Demo Started', { exact: true })).toBeVisible();
+        const requestPromise = page.waitForRequest(request =>
+            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_deploy');
+        await prompt.getByRole('button', { name: 'Include', exact: true }).click();
+
+        const request = await requestPromise;
+        expect(JSON.parse(request.postData() || '{}')).toEqual({
+            set: { string: ['c-stopped', 'c-started'] }
+        });
         await expect(page).toHaveURL(/\/dashboard/);
     });
 
     test('a deploy failure shows the error detail modal and stays on Channels', async ({ page }) => {
         await mockEngine(page, {
             ...GROUPS_FIXTURE,
-            'POST /channels/_deploy': { __status: 500, body: { error: 'compile failed' } },
+            'POST /channels/c-stopped/_deploy': { __status: 500, body: { error: 'compile failed' } },
         });
         await gotoChannels(page);
         await page.getByText('Demo Stopped', { exact: true }).click();
