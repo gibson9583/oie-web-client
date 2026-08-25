@@ -24,11 +24,14 @@ import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
+import { createZip } from '../../core/zip.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
+import { bulkUpdateWithConflict, xstreamObject } from './code-template-bulk.js';
+import { runLifecycle } from './channel-lifecycle.js';
 
 
 // Canonical data columns (the Name column carries the tree twisty/indent), with
@@ -47,6 +50,8 @@ const CHANNEL_COLUMNS = [
 const CHANNEL_COL_WIDTHS = Object.fromEntries(CHANNEL_COLUMNS.map(c => [c.key, c.width]));
 
 const DEFAULT_GROUP_ID = '__default__';
+const ENGINE_DEFAULT_GROUP_ID = 'Default Group';
+const ENGINE_DEFAULT_GROUP_NAME = '[Default Group]';
 
 /* ---- code template library bundling (Swing "import/export libraries with channels") ----
    Export uses the engine (includeCodeTemplateLibraries) to bundle libraries into the
@@ -114,16 +119,16 @@ function promptImportLibraries(channelName: any, count: any) {
 
 // Code template library names linked to a channel (same predicate as the Set
 // Dependencies modal): enabled for the channel, or include-new and not disabled.
-async function linkedLibraryNames(channelId: any) {
-    try {
-        const libs = await api.codeTemplates.libraries(false);
-        const idSet = (v: any) => api.asList(v, 'string').map(String);
-        const cid = String(channelId);
-        return libs.filter(lib =>
-            idSet(lib.enabledChannelIds).includes(cid) ||
-            (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(cid)))
-            .map(lib => lib.name || '(unnamed library)');
-    } catch { return []; }
+async function linkedLibraryNames(channelIds: any[]) {
+    const libs = await api.codeTemplates.libraries(false);
+    const idSet = (v: any) => api.asList(v, 'string').map(String);
+    const ids = channelIds.map(String);
+    return libs.filter(lib => {
+        const enabled = new Set(idSet(lib.enabledChannelIds));
+        const disabled = new Set(idSet(lib.disabledChannelIds));
+        return ids.some(id => enabled.has(id) || (lib.includeNewChannels === true && !disabled.has(id)));
+    })
+        .map(lib => lib.name || '(unnamed library)');
 }
 
 // Swing channel-export dialog: lists the linked libraries and asks whether to
@@ -150,6 +155,23 @@ function promptExportLibraries(names: any) {
             ]
         });
     });
+}
+
+async function chooseExportLibraries(channelIds: any[]) {
+    const pref = getPref('exportLibrariesWithChannels');
+    if (pref === 'yes' || pref === 'no') return pref === 'yes';
+    const names = [...new Set(await linkedLibraryNames(channelIds))];
+    if (!names.length) return false;
+    const choice = await promptExportLibraries(names);
+    return choice === 'cancel' ? null : choice === 'yes';
+}
+
+function exportFileName(name: any, fallback: string, used: Set<string>) {
+    const base = String(name || fallback).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || fallback;
+    let candidate = `${base}.xml`;
+    for (let suffix = 2; used.has(candidate.toLowerCase()); suffix++) candidate = `${base} (${suffix}).xml`;
+    used.add(candidate.toLowerCase());
+    return candidate;
 }
 
 const CHANNEL_NAME_RE = /^[a-zA-Z_0-9\-\s]*$/;
@@ -193,31 +215,58 @@ async function resolveImportName(name: any, id: any, existing: any) {
 // Merge bundled <codeTemplateLibrary> elements (from a channel XML export) into the
 // server's library list, appending any not already present (by id), and save their
 // full code templates first (the library PUT may keep only refs).
-async function importLibraryElementsXml(bundledEls: any) {
-    const existingXml = await api.getXml('/codeTemplateLibraries');
-    let doc = new DOMParser().parseFromString(existingXml && existingXml.trim() ? existingXml : '<list/>', 'text/xml');
-    if (!doc.documentElement || doc.documentElement.nodeName !== 'list' || doc.querySelector('parsererror')) {
-        doc = new DOMParser().parseFromString('<list/>', 'text/xml');
+async function importLibraryElementsXml(bundledEls: Element[], channelId: string) {
+    const imported = bundledEls.map(element => xstreamObject(element)).filter(library => library?.id);
+    if (!imported.length) return;
+    const existing = await api.codeTemplates.libraries(true);
+    await importLibraryObjectsJson(existing, imported, channelId);
+}
+
+function resourceList(resourcesRaw: any) {
+    const resources: any[] = [];
+    const seen = new Set<string>();
+    const list = resourcesRaw && typeof resourcesRaw === 'object'
+        ? (typeof resourcesRaw.list === 'object' ? resourcesRaw.list : resourcesRaw) : null;
+    if (!list) return resources;
+    for (const [key, value] of Object.entries(list)) {
+        if (key.startsWith('@')) continue;
+        for (const item of api.asList(value)) {
+            if (item && typeof item === 'object' && item.id && item.name && !seen.has(String(item.id))) {
+                seen.add(String(item.id));
+                resources.push({ id: String(item.id), name: String(item.name) });
+            }
+        }
     }
-    const list = doc.documentElement;
-    const idOf = (el: any) => [...el.children].find(c => c.tagName === 'id')?.textContent;
-    const existingIds = new Set([...list.children].filter(c => c.tagName === 'codeTemplateLibrary').map(idOf).filter(Boolean));
-    let added = 0;
-    for (const lib of bundledEls) {
-        const id = idOf(lib);
-        if (id && existingIds.has(id)) continue;   // simple merge: keep existing as-is
-        list.appendChild(doc.importNode(lib, true));
-        added++;
+    return resources;
+}
+
+function remapResourceIds(channelEl: Element, resourcesRaw: any) {
+    const resources = resourceList(resourcesRaw);
+    const byId = new Map(resources.map(resource => [resource.id, resource]));
+    for (const mapEl of [...channelEl.querySelectorAll('resourceIds')]
+        .filter(el => !el.closest('exportData'))) {
+        const entries = [...mapEl.children].filter(el => el.tagName === 'entry');
+        const currentIds = new Set(entries.map(entry =>
+            [...entry.children].find(el => el.tagName === 'string')?.textContent || ''));
+        for (const entry of entries) {
+            const strings = [...entry.children].filter(el => el.tagName === 'string');
+            if (strings.length < 2) continue;
+            const oldId = strings[0].textContent || '';
+            const oldName = strings[1].textContent || '';
+            const exact = byId.get(oldId);
+            if (exact) {
+                strings[1].textContent = exact.name;
+                continue;
+            }
+            const nameMatch = resources.find(resource => resource.name === oldName && !currentIds.has(resource.id));
+            if (nameMatch) {
+                currentIds.delete(oldId);
+                currentIds.add(nameMatch.id);
+                strings[0].textContent = nameMatch.id;
+                strings[1].textContent = nameMatch.name;
+            }
+        }
     }
-    if (!added) return;
-    const fullTemplates = [...list.querySelectorAll('codeTemplates > codeTemplate')]
-        .filter(el => [...el.children].some(c => c.tagName !== 'id'));
-    for (const el of fullTemplates) {
-        const id = idOf(el);
-        if (!id) continue;
-        await api.putXml(`/codeTemplates/${encodeURIComponent(id)}`, new XMLSerializer().serializeToString(el), { override: true });
-    }
-    await api.putXml('/codeTemplateLibraries', new XMLSerializer().serializeToString(doc), { override: true });
 }
 
 // Import a channel XML export: resolve a name/id collision (warn + overwrite or
@@ -274,10 +323,50 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true }
     if (bundled.length) {
         const choice = await promptImportLibraries(resolved.name, bundled.length);
         if (choice === 'cancel') return false;
-        if (choice === 'yes') await importLibraryElementsXml(bundled);
+        if (choice === 'yes') await importLibraryElementsXml(bundled, resolved.id);
     }
     // The engine ignores bundled libraries on create; strip them from the channel.
     if (libsContainer && libsContainer.parentNode) libsContainer.parentNode.removeChild(libsContainer);
+
+    const exportData = directChild('exportData');
+    const dependentIdsEl = exportData && [...exportData.children].find(c => c.tagName === 'dependentIds');
+    const dependencyIdsEl = exportData && [...exportData.children].find(c => c.tagName === 'dependencyIds');
+    const strings = (el: any) => el ? [...el.children]
+        .filter(c => c.tagName === 'string')
+        .map(c => String(c.textContent || '').trim())
+        .filter(Boolean) : [];
+    const dependentIds = strings(dependentIdsEl);
+    const dependencyIds = strings(dependencyIdsEl);
+    if (dependentIds.length || dependencyIds.length) {
+        const existingDependencies = await api.server.channelDependencies();
+        const dependencies = new Map<string, any>();
+        const add = (dependentId: any, dependencyId: any) => {
+            dependentId = String(dependentId || '').trim();
+            dependencyId = String(dependencyId || '').trim();
+            if (!dependentId || !dependencyId || dependentId === dependencyId) return;
+            dependencies.set(`${dependentId}>${dependencyId}`, { dependentId, dependencyId });
+        };
+        for (const dependency of existingDependencies || []) add(dependency.dependentId, dependency.dependencyId);
+        for (const dependentId of dependentIds) add(dependentId, resolved.id);
+        for (const dependencyId of dependencyIds) add(resolved.id, dependencyId);
+        try {
+            await api.server.setChannelDependencies([...dependencies.values()]);
+        } catch (e: any) {
+            // Swing reports this failure but still allows the channel import to
+            // continue, so retain that partial-completion behavior explicitly.
+            toast(`Unable to save channel dependencies: ${e.message || e}`, 'error');
+        }
+    }
+    dependentIdsEl?.remove();
+    dependencyIdsEl?.remove();
+
+    // Resource IDs are server-specific. Swing first refreshes names for IDs that
+    // still exist, then falls back to a same-name resource when an ID is stale.
+    // Do not make an unrelated resource API failure block channels that have no
+    // resource assignments to remap.
+    const hasResourceAssignments = [...channelEl.querySelectorAll('resourceIds')]
+        .some(element => !element.closest('exportData') && element.children.length > 0);
+    if (hasResourceAssignments) remapResourceIds(channelEl, await api.server.resources());
 
     const body = new XMLSerializer().serializeToString(doc);
     if (resolved.overwrite) await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override: true });
@@ -318,6 +407,40 @@ function mergeImportedLibraries(existing: any, imported: any, channelId: any) {
     return [...byId.values()];
 }
 
+async function importLibraryObjectsJson(existing: any[], imported: any[], channelId: string) {
+    const version = store.getState('serverVersion') || '4.5.2';
+    const existingLibraryIds = new Set(existing.map(library => String(library.id)));
+    const existingTemplateIds = new Set(existing.flatMap(library =>
+        api.asList(library.codeTemplates, 'codeTemplate').map((template: any) => String(template.id))));
+    const templatesById = new Map<string, any>();
+    for (const template of imported.flatMap(library => api.asList(library.codeTemplates, 'codeTemplate'))) {
+        if (!template?.id || existingTemplateIds.has(String(template.id))
+            || !Object.keys(template).some(key => key !== 'id' && key !== '@version')) continue;
+        templatesById.set(String(template.id), {
+            ...template,
+            '@version': template['@version'] || version,
+            revision: 0,
+            properties: template.properties
+                ? { ...template.properties, '@version': template.properties['@version'] || version }
+                : template.properties
+        });
+    }
+    const libraries = mergeImportedLibraries(existing, imported, channelId).map((library: any) => {
+        const refs = api.asList(library.codeTemplates, 'codeTemplate')
+            .filter((template: any) => template && template.id)
+            .map((template: any) => ({ '@version': template['@version'] || version, id: template.id }));
+        return {
+            ...library,
+            '@version': library['@version'] || version,
+            revision: existingLibraryIds.has(String(library.id)) ? library.revision : 0,
+            codeTemplates: refs.length ? { codeTemplate: refs } : null
+        };
+    });
+    if (!await bulkUpdateWithConflict(libraries, [...templatesById.values()])) {
+        throw new Error('Code template library import was cancelled');
+    }
+}
+
 /* Enabled flag lives at channel.exportData.metadata.enabled (ChannelMetadata,
    defaults true). Be defensive: InvalidChannel instances may lack exportData. */
 function isEnabled(channel: any) {
@@ -326,6 +449,27 @@ function isEnabled(channel: any) {
 
 function isInvalid(channel: any) {
     return String(channel?.['@class'] || '').includes('InvalidChannel');
+}
+
+function isChannelXmlElement(element: Element) {
+    return element.tagName === 'channel' || element.tagName.endsWith('.InvalidChannel');
+}
+
+// Depending on the engine serializer path, an InvalidChannel inside a list may
+// retain its concrete class name instead of the normal "channel" alias. Treat it
+// as a channel and normalize the standalone export root so the backup remains
+// directly importable if the missing extension is later restored.
+function channelXmlElements(root: Element) {
+    const elements = isChannelXmlElement(root)
+        ? [root]
+        : [...root.children].filter(isChannelXmlElement);
+    return elements.map(element => {
+        if (element.tagName === 'channel') return element;
+        const channel = element.ownerDocument!.createElement('channel');
+        for (const attribute of [...element.attributes]) channel.setAttribute(attribute.name, attribute.value);
+        for (const child of [...element.childNodes]) channel.appendChild(child.cloneNode(true));
+        return channel;
+    });
 }
 
 function tagColor(tag: any) {
@@ -351,6 +495,8 @@ export function ChannelsView() {
     const [tags, setTags] = useState([] as any[]);
     const [groups, setGroups] = useState([] as any[]);
     const [statusById, setStatusById] = useState({} as any);        // channelId -> dashboardStatus
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const refreshGenRef = useRef(0);
     const [selected, setSelected] = useState(() => new Set());   // channel ids
     const lastClickedRef = useRef<any>(null);                     // shift-range anchor (interaction-only)
     const [lastGroupId, setLastGroupId] = useState<any>(null);    // last-clicked group row (for Delete Group)
@@ -607,7 +753,7 @@ export function ChannelsView() {
                 { label: 'Delete Group', icon: 'trash', danger: true, task: 'doDeleteGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => deleteGroupTask(group) },
                 '-',
                 { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
-                { label: 'Export Group', icon: 'export', task: 'doExportGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => exportGroupTask(group) },
+                { label: 'Export Group', icon: 'export', task: 'doExportGroup', group: 'channelGroup', onClick: () => exportGroupTask(group) },
                 { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() },
                 '-',
                 { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() }
@@ -692,32 +838,54 @@ export function ChannelsView() {
     /* Reads nothing (only fetches + functional setState), so the mount-captured
        channels:changed listener can safely call the first render's closure. */
     async function refresh() {
-        try {
-            const [channelList, groupList, tagList, statusList] = await Promise.all([
-                api.channels.list(),
-                api.channelGroups.list().catch(() => []),
-                api.server.channelTags().catch(() => []),
-                api.status.list().catch(() => [])
-            ]);
-            const nextChannels = channelList.filter(c => c && c.id);
-            const nextGroups = groupList.filter(g => g && g.id);
-            const byId: any = {};
-            for (const st of statusList) {
-                if (st && st.channelId) byId[st.channelId] = st;
-            }
+        const gen = ++refreshGenRef.current;
+        const results: any[] = await Promise.allSettled([
+            api.channels.list(),
+            api.channelGroups.list(),
+            api.server.channelTags(),
+            api.status.list()
+        ]);
+        if (gen !== refreshGenRef.current) return;
+        const [channelResult, groupResult, tagResult, statusResult] = results;
+        const failures = [
+            ['channels', channelResult],
+            ['groups', groupResult],
+            ['tags', tagResult],
+            ['statuses', statusResult]
+        ].filter(([, result]: any) => result.status === 'rejected')
+            .map(([label, result]: any) => `${label}: ${result.reason?.message || result.reason}`);
+
+        if (channelResult.status === 'fulfilled') {
+            const channelList = channelResult.value;
+            const nextChannels = channelList.filter((c: any) => c && c.id);
             setChannels(nextChannels);
-            setGroups(nextGroups);
-            setTags(tagList);
-            setStatusById(byId);
-            // Prune a selection the reload invalidated (channel/group deleted).
-            const ids = new Set(nextChannels.map(c => c.id));
+            // Prune only when the authoritative channel request succeeded.
+            const ids = new Set(nextChannels.map((c: any) => c.id));
             setSelected(prev => {
                 const next = new Set([...prev].filter((id: any) => ids.has(id)));
                 return next.size === prev.size ? prev : next;
             });
-            setLastGroupId((prev: any) => (prev && prev !== DEFAULT_GROUP_ID && !nextGroups.some(g => g.id === prev) ? null : prev));
-        } catch (e: any) {
-            toast(e.message, 'error');
+        }
+        if (groupResult.status === 'fulfilled') {
+            const nextGroups = groupResult.value.filter((g: any) => g && g.id);
+            setGroups(nextGroups);
+            setLastGroupId((prev: any) => (prev && prev !== DEFAULT_GROUP_ID && !nextGroups.some((g: any) => g.id === prev) ? null : prev));
+        }
+        if (tagResult.status === 'fulfilled') setTags(tagResult.value);
+        if (statusResult.status === 'fulfilled') {
+            const byId: any = {};
+            for (const st of statusResult.value) {
+                if (st && st.channelId) byId[st.channelId] = st;
+            }
+            setStatusById(byId);
+        }
+
+        if (failures.length) {
+            const message = failures.join('; ');
+            setLoadError(message);
+            toast(`Failed to load ${message}`, 'error');
+        } else {
+            setLoadError(null);
         }
     }
 
@@ -837,7 +1005,7 @@ export function ChannelsView() {
                     if (choice === 'cancel') return;
                     if (choice === 'yes') {
                         const existing = await api.codeTemplates.libraries(true);
-                        await api.codeTemplates.updateLibraries(mergeImportedLibraries(existing, bundled, obj.id) as any);
+                        await importLibraryObjectsJson(existing, bundled, obj.id);
                     }
                 }
                 // Libraries are saved separately; strip them before saving the channel.
@@ -863,21 +1031,9 @@ export function ChannelsView() {
         // libraries — only when the channel actually has linked ones. saveFile
         // falls back to a normal download if the native picker can't engage
         // outside the click gesture.
-        const pref = getPref('exportLibrariesWithChannels');
-        let includeLibs: any;
-        if (pref === 'yes' || pref === 'no') {
-            includeLibs = pref === 'yes';
-        } else {
-            const linked = await linkedLibraryNames(channel.id);
-            if (!linked.length) {
-                includeLibs = false;   // nothing to bundle — no prompt
-            } else {
-                const choice = await promptExportLibraries(linked);
-                if (choice === 'cancel') return;   // abort the export
-                includeLibs = choice === 'yes';
-            }
-        }
         try {
+            const includeLibs = await chooseExportLibraries([channel.id]);
+            if (includeLibs == null) return;
             await saveFile(`${channel.name || channel.id}.xml`, 'application/xml',
                 () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined));
         } catch (e: any) {
@@ -888,10 +1044,26 @@ export function ChannelsView() {
     async function exportAllTask() {
         if (!channels.length) { toast('No channels to export', 'warn'); return; }
         try {
-            // One combined Swing-format <list> of <channel> elements. Serializing
-            // every channel takes the engine minutes on a big server — no client
-            // ceiling (timeoutMs: null).
-            await saveFile('channels.xml', 'application/xml', () => api.getXml('/channels', undefined, { timeoutMs: null }));
+            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id));
+            if (includeLibs == null) return;
+            await saveFile('channels.zip', 'application/zip', async () => {
+                const xml = await api.getXml('/channels', includeLibs ? { includeCodeTemplateLibraries: true } : undefined, { timeoutMs: null });
+                const doc = new DOMParser().parseFromString(xml, 'text/xml');
+                if (doc.querySelector('parsererror')) throw new Error('Engine returned invalid channel XML');
+                const root = doc.documentElement;
+                const elements = channelXmlElements(root);
+                const returnedIds = new Set(elements.map(element =>
+                    [...element.children].find(c => c.tagName === 'id')?.textContent).filter(Boolean));
+                const missing = channels.filter(channel => !returnedIds.has(String(channel.id)));
+                if (missing.length) throw new Error(`The engine omitted ${missing.length} channel${missing.length === 1 ? '' : 's'} from the export`);
+                const zip = createZip();
+                const used = new Set<string>();
+                for (const element of elements) {
+                    const direct = (tag: string) => [...element.children].find(c => c.tagName === tag)?.textContent;
+                    zip.add(exportFileName(direct('name'), direct('id') || 'channel', used), new XMLSerializer().serializeToString(element));
+                }
+                return zip.blob();
+            });
         } catch (e: any) {
             toast(e.message, 'error');
         }
@@ -934,7 +1106,7 @@ export function ChannelsView() {
     async function deployTask(rows: any) {
         if (!rows.length) { toast('Select a channel or group first', 'warn'); return; }
         try {
-            await api.engine.deployMany(rows.map((c: any) => c.id));
+            if (!await runLifecycle('deploy', rows.map((c: any) => c.id))) return;
             // Move to the Dashboard to watch deployment (matches Swing).
             toast(rows.length === 1 ? `Deploying ${rows[0].name}` : `Deploying ${rows.length} channels`);
             router.navigate('/dashboard');
@@ -1092,7 +1264,8 @@ export function ChannelsView() {
                 const child = [...el.children].find(c => c.tagName === tag);
                 return child ? child.textContent : '';
             };
-            const embeddedChannels = [...el.querySelectorAll(':scope > channels > channel')]
+            const channelContainer = [...el.children].find(child => child.tagName === 'channels');
+            const embeddedChannels = (channelContainer ? channelXmlElements(channelContainer) : [])
                 .map(channelEl => {
                     const child = (tag: any) => [...channelEl.children].find(x => x.tagName === tag);
                     return {
@@ -1130,18 +1303,28 @@ export function ChannelsView() {
             const knownChannels = structuredClone(channels);
             const resolvedChannelIds = new Map();
             const imported = [];
+            let processedGroups = 0;
 
             // Match Swing's ChannelPanel.importGroup ordering: import every full
             // channel first, then save the group set using the final IDs produced
             // by channel name/id collision handling. ID-only channel entries are
             // already-existing membership references and do not need re-importing.
             for (const { group, embeddedChannels } of parsed) {
+                processedGroups++;
                 const refs = [];
                 for (const embedded of embeddedChannels) {
                     let finalId = resolvedChannelIds.get(embedded.id) || embedded.id;
                     if (embedded.isDefinition && !resolvedChannelIds.has(embedded.id)) {
-                        const resolved = await importChannelXml(embedded.xml, knownChannels, { checkVersion: false });
-                        if (resolved === false) return;
+                        let resolved: any;
+                        try {
+                            resolved = await importChannelXml(embedded.xml, knownChannels, { checkVersion: false });
+                        } catch (e: any) {
+                            toast(`Error importing channel: ${e.message || e}`, 'error');
+                            continue;
+                        }
+                        // Swing treats a cancelled/invalid channel as an
+                        // unsuccessful member and continues with the group.
+                        if (resolved === false) continue;
                         finalId = resolved.id;
                         resolvedChannelIds.set(embedded.id, finalId);
 
@@ -1152,6 +1335,10 @@ export function ChannelsView() {
                     refs.push({ id: finalId });
                 }
                 group.channels = refs.length ? { channel: refs } : null;
+                // Swing's synthetic Default Group is a transport container for
+                // ungrouped channels, not a persisted group. Import its channels
+                // but never send the reserved id/name to _bulkUpdate.
+                if (group.id === ENGINE_DEFAULT_GROUP_ID || group.name === ENGINE_DEFAULT_GROUP_NAME) continue;
                 imported.push(group);
             }
             const importedIds = new Set(imported.map(g => g.id));
@@ -1165,8 +1352,8 @@ export function ChannelsView() {
                     .filter(ref => ref && ref.id && !importedChannelIds.has(ref.id));
                 group.channels = members.length ? { channel: members } : null;
             }
-            await api.channelGroups.bulkUpdate(updated.concat(imported), []);
-            toast(`Imported ${imported.length} group(s) from ${file.name}`);
+            if (imported.length) await api.channelGroups.bulkUpdate(updated.concat(imported), []);
+            toast(`Imported ${processedGroups} group(s) from ${file.name}`);
             refresh();
         } catch (e: any) {
             toast(e.message, 'error');
@@ -1177,7 +1364,7 @@ export function ChannelsView() {
        ChannelGroup contains complete Channel objects. Hydrate those references
        from GET /channels before serializing so this file can recreate both the
        group and its channels when imported on another server. */
-    async function channelGroupExportXml(groupId?: any) {
+    async function channelGroupExportXml(groupId?: any, includeCodeTemplateLibraries = false) {
         const groupsXml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
         const groupsDoc = new DOMParser().parseFromString(groupsXml, 'text/xml');
         if (groupsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
@@ -1186,19 +1373,31 @@ export function ChannelsView() {
         const allGroups = groupsRoot.tagName === 'channelGroup'
             ? [groupsRoot]
             : [...groupsRoot.querySelectorAll(':scope > channelGroup')];
+        const wantsDefault = groupId == null || groupId === DEFAULT_GROUP_ID;
         const exportGroups = groupId == null
             ? allGroups
-            : allGroups.filter(groupEl =>
-                [...groupEl.children].find(c => c.tagName === 'id')?.textContent === groupId);
-        if (groupId != null && !exportGroups.length) throw new Error('Channel group not found in the engine XML');
+            : groupId === DEFAULT_GROUP_ID
+                ? []
+                : allGroups.filter(groupEl =>
+                    [...groupEl.children].find(c => c.tagName === 'id')?.textContent === groupId);
+        if (groupId != null && groupId !== DEFAULT_GROUP_ID && !exportGroups.length) {
+            throw new Error('Channel group not found in the engine XML');
+        }
 
         const refsByGroup = new Map<any, { container: any; refs: string[] }>();
         const channelIds = new Set<string>();
+        const assignedIds = new Set<string>();
+        for (const groupEl of allGroups) {
+            const container = [...groupEl.children].find(c => c.tagName === 'channels');
+            for (const ref of container ? channelXmlElements(container) : []) {
+                const id = [...ref.children].find(x => x.tagName === 'id')?.textContent;
+                if (id) assignedIds.add(id);
+            }
+        }
         for (const groupEl of exportGroups) {
             const container = [...groupEl.children].find(c => c.tagName === 'channels');
             const refs = container
-                ? [...container.children]
-                    .filter(c => c.tagName === 'channel')
+                ? channelXmlElements(container)
                     .map(c => [...c.children].find(x => x.tagName === 'id')?.textContent || '')
                     .filter(Boolean)
                 : [];
@@ -1207,17 +1406,25 @@ export function ChannelsView() {
         }
 
         const channelById = new Map<string, Element>();
-        if (channelIds.size) {
-            const channelsXml = await api.getXml('/channels', { channelId: [...channelIds] }, { timeoutMs: null });
+        if (channelIds.size || wantsDefault) {
+            const channelParams = wantsDefault
+                ? (includeCodeTemplateLibraries ? { includeCodeTemplateLibraries: true } : undefined)
+                : {
+                    channelId: [...channelIds],
+                    ...(includeCodeTemplateLibraries ? { includeCodeTemplateLibraries: true } : {})
+                };
+            const channelsXml = await api.getXml('/channels', channelParams, { timeoutMs: null });
             const channelsDoc = new DOMParser().parseFromString(channelsXml, 'text/xml');
             if (channelsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel XML');
             const channelsRoot = channelsDoc.documentElement;
-            const fullChannels = channelsRoot.tagName === 'channel'
-                ? [channelsRoot]
-                : [...channelsRoot.querySelectorAll(':scope > channel')];
+            const fullChannels = channelXmlElements(channelsRoot);
             for (const channelEl of fullChannels) {
                 const id = [...channelEl.children].find(c => c.tagName === 'id')?.textContent;
                 if (id) channelById.set(id, channelEl);
+            }
+            if (wantsDefault) {
+                const missing = channels.filter(channel => !channelById.has(String(channel.id)));
+                if (missing.length) throw new Error(`The engine omitted ${missing.length} channel${missing.length === 1 ? '' : 's'} from the group export`);
             }
         }
 
@@ -1231,18 +1438,47 @@ export function ChannelsView() {
             container.replaceChildren();
             for (const id of entry.refs) {
                 const channelEl = channelById.get(id);
-                if (channelEl) container.appendChild(groupsDoc.importNode(channelEl, true));
+                if (!channelEl) throw new Error(`Channel ${id} was not returned while exporting its group`);
+                container.appendChild(groupsDoc.importNode(channelEl, true));
             }
         }
 
-        return new XMLSerializer().serializeToString(groupId == null ? groupsDoc : exportGroups[0]);
+        let defaultGroup: Element | null = null;
+        if (wantsDefault) {
+            defaultGroup = groupsDoc.createElement('channelGroup');
+            defaultGroup.setAttribute('version', store.getState('serverVersion') || '4.5.2');
+            const add = (tag: string, value: string) => {
+                const child = groupsDoc.createElement(tag);
+                child.textContent = value;
+                defaultGroup!.appendChild(child);
+            };
+            add('id', ENGINE_DEFAULT_GROUP_ID);
+            add('name', ENGINE_DEFAULT_GROUP_NAME);
+            add('description', 'Channels not part of a group will appear here.');
+            const container = groupsDoc.createElement('channels');
+            for (const [id, channelEl] of channelById) {
+                if (!assignedIds.has(id)) container.appendChild(groupsDoc.importNode(channelEl, true));
+            }
+            defaultGroup.appendChild(container);
+        }
+
+        if (groupId === DEFAULT_GROUP_ID) return new XMLSerializer().serializeToString(defaultGroup!);
+        if (groupId != null) return new XMLSerializer().serializeToString(exportGroups[0]);
+        const output = document.implementation.createDocument(null, 'list');
+        for (const groupEl of exportGroups) output.documentElement.appendChild(output.importNode(groupEl, true));
+        if (defaultGroup) output.documentElement.appendChild(output.importNode(defaultGroup, true));
+        return new XMLSerializer().serializeToString(output);
     }
 
     async function exportGroupTask(g: any) {
-        const group = requireGroup(g);
+        if (!g) { toast('Select a group row first', 'warn'); return; }
+        const group = g.id === DEFAULT_GROUP_ID ? g : requireGroup(g);
         if (!group) return;
         try {
-            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id));
+            const ids = api.asList(group.channels, 'channel').map((channel: any) => channel && channel.id).filter(Boolean);
+            const includeLibs = await chooseExportLibraries(ids);
+            if (includeLibs == null) return;
+            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id, includeLibs));
         } catch (e: any) {
             toast(e.message, 'error');
         }
@@ -1250,7 +1486,22 @@ export function ChannelsView() {
 
     async function exportGroupsTask() {
         try {
-            await saveFile('channel-groups.xml', 'application/xml', () => channelGroupExportXml());
+            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id));
+            if (includeLibs == null) return;
+            await saveFile('channel-groups.zip', 'application/zip', async () => {
+                const xml = await channelGroupExportXml(undefined, includeLibs);
+                const doc = new DOMParser().parseFromString(xml, 'text/xml');
+                if (doc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
+                const root = doc.documentElement;
+                const elements = root.tagName === 'channelGroup' ? [root] : [...root.querySelectorAll(':scope > channelGroup')];
+                const zip = createZip();
+                const used = new Set<string>();
+                for (const element of elements) {
+                    const direct = (tag: string) => [...element.children].find(c => c.tagName === tag)?.textContent;
+                    zip.add(exportFileName(direct('name'), direct('id') || 'channel-group', used), new XMLSerializer().serializeToString(element));
+                }
+                return zip.blob();
+            });
         } catch (e: any) {
             toast(e.message, 'error');
         }
@@ -1278,8 +1529,7 @@ export function ChannelsView() {
     }, []);
 
     /* ---- task panes (Swing parity, selection-gated) ----
-       Channel Tasks: deployable = a channel selected OR a group row selected;
-       Group Tasks: realGroup = a real (non-default) group row selected. */
+       Channel Tasks: deployable = a channel selected OR a group row selected. */
     const eff = effectiveChannels();
     const channelSel = selected.size > 0;
     const singleChannel = selected.size === 1;
@@ -1293,11 +1543,12 @@ export function ChannelsView() {
     const showDisable = deployable && eff.some((c: any) => isEnabled(c));
     const showMessages = singleChannel;
 
-    const realGroup = !!lastGroupId && lastGroupId !== DEFAULT_GROUP_ID && groups.some(g => g.id === lastGroupId);
-    const currentGroup = realGroup ? groups.find(g => g.id === lastGroupId) : null;
+    const selectedGroup = lastGroupId ? groupedChannels().find(group => group.id === lastGroupId) : null;
+    const realGroup = !!selectedGroup && selectedGroup.id !== DEFAULT_GROUP_ID;
+    const currentGroup = selectedGroup ? (selectedGroup.group || selectedGroup) : null;
     const showAssign = channelSel;
     const showGroupEdit = realGroup;
-    const showGroupExport = realGroup;
+    const showGroupExport = !!selectedGroup;
     const showGroupDelete = realGroup;
 
     /* ---- tree data + filter + counts for the <TreeTable> ---- */
@@ -1374,6 +1625,9 @@ export function ChannelsView() {
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col overflow-hidden">
+                {loadError && <div className="mx-[13px] mt-3 panel border-danger text-danger" role="alert">
+                    Failed to load channels: {loadError}
+                </div>}
                 {/* Grid so the TreeTable's own .dt-wrap stretches to fill the
                     region (a flex child wouldn't grow on the main axis); this
                     leaves clickable empty space below a short tree for
