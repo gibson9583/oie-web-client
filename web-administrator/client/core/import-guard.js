@@ -18,7 +18,9 @@
  *
  * Swing guards channels, channel groups, and server configuration with this — NOT
  * alerts or code templates (their import paths rely on the serializer's forward
- * migration). Match that coverage at the call sites.
+ * migration). This client additionally gates ALERT imports (issue #40): the
+ * protection against a newer-than-server file failing engine-side with a raw
+ * error is worth the one deliberate departure from Swing's coverage.
  */
 import * as store from './store.js';
 const PRODUCT = 'Open Integration Engine';
@@ -83,4 +85,34 @@ export function checkImportVersion(exportVersion, objectName = 'file') {
 export function checkImportVersionFromDoc(doc, objectName) {
     const version = doc?.documentElement?.getAttribute('version');
     return checkImportVersion(version, objectName);
+}
+/**
+ * Verdict for a `<list>`-shaped export, where the versions to judge are the
+ * CHILDREN's.
+ *
+ * XStream stamps the version attribute on each object it serializes, and the
+ * `<list>` the engine wraps them in carries none of its own — verified against a
+ * 4.6.0 engine for /channels, /channelgroups, /alerts and /codeTemplateLibraries
+ * alike, every one of them `<list>` with `<child version="4.6.0">` inside.
+ * Reading the root therefore always saw "unknown", so a same-version export
+ * prompted "from an older or unknown version" on every single list import.
+ *
+ * A file may in principle mix versions (hand-merged from two servers), so this
+ * judges the set: a newer child blocks — that is the verdict that must win —
+ * otherwise one older/unknown child confirms once for the whole file, which is
+ * the single prompt Swing gives per document.
+ */
+export function checkImportVersionForElements(elements, objectName) {
+    return checkImportVersionForValues(Array.from(elements || []).map((el) => el.getAttribute('version')), objectName);
+}
+/**
+ * Same set-judgement for version stamps already in hand — the JSON imports,
+ * where XStream-JSON carries the attribute as an '@version' key. A .json file
+ * must pass the same gate as its .xml twin, or the extension is a bypass.
+ */
+export function checkImportVersionForValues(versions, objectName) {
+    const verdicts = versions.map((v) => checkImportVersion(v, objectName));
+    return verdicts.find(v => v.action === 'block')
+        ?? verdicts.find(v => v.action === 'confirm')
+        ?? { action: 'ok' };
 }

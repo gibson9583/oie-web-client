@@ -90,19 +90,24 @@ export interface ChannelsApi {
 }
 export interface ChannelGroupsApi {
     list(): Promise<ChannelGroup[]>;
-    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[]): Promise<Json>;
+    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[], override?: boolean): Promise<Json>;
 }
 export interface StatusApi {
     list(channelIds?: string | string[], filter?: any, includeUndeployed?: boolean): Promise<DashboardStatus[]>;
     initial(fetchSize?: number, filter?: any): Promise<OieObject>;
     one(channelId: string): Promise<DashboardStatus>;
-    start(channelId: string): Promise<Json>;
-    stop(channelId: string): Promise<Json>;
-    halt(channelId: string): Promise<Json>;
-    pause(channelId: string): Promise<Json>;
-    resume(channelId: string): Promise<Json>;
+    start(channelId: string, returnErrors?: boolean): Promise<Json>;
+    stop(channelId: string, returnErrors?: boolean): Promise<Json>;
+    halt(channelId: string, returnErrors?: boolean): Promise<Json>;
+    pause(channelId: string, returnErrors?: boolean): Promise<Json>;
+    resume(channelId: string, returnErrors?: boolean): Promise<Json>;
     startConnector(channelId: string, metaDataId: number): Promise<Json>;
     stopConnector(channelId: string, metaDataId: number): Promise<Json>;
+    startMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    stopMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    haltMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    pauseMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    resumeMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
 }
 export interface StatisticsApi {
     list(channelIds?: string | string[], includeUndeployed?: boolean): Promise<ChannelStatistics[]>;
@@ -131,6 +136,14 @@ export interface MessagesApi {
     reprocess(channelId: string, messageId: string | number, replace?: boolean, filterDestinations?: boolean, metaDataIds?: number[]): Promise<Json>;
     remove(channelId: string, messageId: string | number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;
+    /** Audit that the user viewed a message on a PHI-bearing channel. */
+    auditAccessedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit that the user searched a PHI-bearing channel's message browser. */
+    auditQueriedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit the start of a message export. Callers must await this and abort on failure. */
+    auditExport(attributes: Record<string, string>): Promise<Json>;
+    /** Audit a message export that completed. */
+    auditExportSuccess(attributes: Record<string, string>): Promise<Json>;
 }
 export interface EventsApi {
     search(params?: QueryParams): Promise<ServerEvent[]>;
@@ -202,6 +215,13 @@ export interface CodeTemplatesApi {
     update(id: string, codeTemplate: CodeTemplate | OieObject, override?: boolean): Promise<Json>;
     remove(id: string): Promise<Json>;
     updateLibraries(libraries: CodeTemplateLibrary[] | OieObject[], override?: boolean): Promise<Json>;
+    /**
+     * Update libraries, templates and removals in ONE engine transaction
+     * (updateLibrariesAndTemplates). The alternative — a per-template PUT
+     * sequence followed by a library PUT — leaves libraries and templates
+     * inconsistent if it fails partway.
+     */
+    bulkUpdate(libraries: CodeTemplateLibrary[] | OieObject[], updatedCodeTemplates?: CodeTemplate[] | OieObject[], removedLibraryIds?: string[], removedCodeTemplateIds?: string[], override?: boolean): Promise<Json>;
 }
 export interface ExtensionsApi {
     connectors(): Promise<OieObject>;

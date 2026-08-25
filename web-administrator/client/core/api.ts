@@ -249,6 +249,11 @@ async function handle(response: Response, { raw = false, noAuthHandler = false }
         const parsed = parseBody(text);
         if (parsed && typeof parsed === 'object') {
             message = parsed.message || parsed.detailedError || parsed.error || message;
+        } else if (typeof parsed === 'string' && parsed.trim()) {
+            // A one-property JSON error such as {"message":"..."} is
+            // intentionally unwrapped by parseBody. Preserve the useful value
+            // instead of exposing the raw JSON document to the user.
+            message = parsed;
         }
         throw new ApiError(response.status, message, text);
     }
@@ -425,20 +430,34 @@ export interface ChannelsApi {
 
 export interface ChannelGroupsApi {
     list(): Promise<ChannelGroup[]>;
-    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[]): Promise<Json>;
+    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[], override?: boolean): Promise<Json>;
 }
 
 export interface StatusApi {
     list(channelIds?: string | string[], filter?: any, includeUndeployed?: boolean): Promise<DashboardStatus[]>;
     initial(fetchSize?: number, filter?: any): Promise<OieObject>;
     one(channelId: string): Promise<DashboardStatus>;
-    start(channelId: string): Promise<Json>;
-    stop(channelId: string): Promise<Json>;
-    halt(channelId: string): Promise<Json>;
-    pause(channelId: string): Promise<Json>;
-    resume(channelId: string): Promise<Json>;
+    /* Single-channel lifecycle. `returnErrors` is the engine's opt-in for
+       reporting a failure at all: without it the servlet swallows the task
+       error and answers 204, so a start that never started looks like success.
+       It is omitted from the query entirely unless asked for, so a caller that
+       does not opt in sends the same request it always did. */
+    start(channelId: string, returnErrors?: boolean): Promise<Json>;
+    stop(channelId: string, returnErrors?: boolean): Promise<Json>;
+    halt(channelId: string, returnErrors?: boolean): Promise<Json>;
+    pause(channelId: string, returnErrors?: boolean): Promise<Json>;
+    resume(channelId: string, returnErrors?: boolean): Promise<Json>;
     startConnector(channelId: string, metaDataId: number): Promise<Json>;
     stopConnector(channelId: string, metaDataId: number): Promise<Json>;
+    /* Bulk lifecycle. The engine dependency-orders the whole set server-side
+       (DonkeyEngineController orders tiers, reversed for start/resume), which it
+       can only do when it receives the set — a loop of single-channel calls runs
+       in whatever order the caller happened to iterate. */
+    startMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    stopMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    haltMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    pauseMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
+    resumeMany(channelIds: string[], returnErrors?: boolean): Promise<Json>;
 }
 
 export interface StatisticsApi {
@@ -487,6 +506,14 @@ export interface MessagesApi {
     ): Promise<Json>;
     remove(channelId: string, messageId: string | number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;
+    /** Audit that the user viewed a message on a PHI-bearing channel. */
+    auditAccessedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit that the user searched a PHI-bearing channel's message browser. */
+    auditQueriedPHI(attributes: Record<string, string>): Promise<Json>;
+    /** Audit the start of a message export. Callers must await this and abort on failure. */
+    auditExport(attributes: Record<string, string>): Promise<Json>;
+    /** Audit a message export that completed. */
+    auditExportSuccess(attributes: Record<string, string>): Promise<Json>;
 }
 
 export interface EventsApi {
@@ -563,6 +590,19 @@ export interface CodeTemplatesApi {
     update(id: string, codeTemplate: CodeTemplate | OieObject, override?: boolean): Promise<Json>;
     remove(id: string): Promise<Json>;
     updateLibraries(libraries: CodeTemplateLibrary[] | OieObject[], override?: boolean): Promise<Json>;
+    /**
+     * Update libraries, templates and removals in ONE engine transaction
+     * (updateLibrariesAndTemplates). The alternative — a per-template PUT
+     * sequence followed by a library PUT — leaves libraries and templates
+     * inconsistent if it fails partway.
+     */
+    bulkUpdate(
+        libraries: CodeTemplateLibrary[] | OieObject[],
+        updatedCodeTemplates?: CodeTemplate[] | OieObject[],
+        removedLibraryIds?: string[],
+        removedCodeTemplateIds?: string[],
+        override?: boolean
+    ): Promise<Json>;
 }
 
 export interface ExtensionsApi {
@@ -673,11 +713,15 @@ export const channels: ChannelsApi = {
 
 export const channelGroups: ChannelGroupsApi = {
     list: () => get('/channelgroups').then(v => asList<ChannelGroup>(v, 'channelGroup')),
-    bulkUpdate: (groups, removedIds = []) => {
+    /* Replaces the COMPLETE group set. override=false (the default a caller
+       should reach for) makes the engine reject a stale set with boolean
+       false instead of silently reverting someone else's concurrent edit —
+       callers confirm before retrying with true. Answers the engine's boolean. */
+    bulkUpdate: (groups, removedIds = [], override = true) => {
         const form = new FormData();
         form.append('channelGroups', new Blob([JSON.stringify({ set: { channelGroup: groups } })], { type: 'application/json' }));
         form.append('removedChannelGroupIds', new Blob([JSON.stringify({ set: { string: removedIds } })], { type: 'application/json' }));
-        return post('/channelgroups/_bulkUpdate', form, { params: { override: true } });
+        return post('/channelgroups/_bulkUpdate', form, { params: { override } });
     }
 };
 
@@ -689,14 +733,35 @@ export const status: StatusApi = {
             .then(v => asList<DashboardStatus>(v, 'dashboardStatus')),
     initial: (fetchSize = 100, filter) => get('/channels/statuses/initial', { fetchSize, filter }),
     one: (channelId) => get(`/channels/${enc(channelId)}/status`),
-    start: (channelId) => post(`/channels/${enc(channelId)}/_start`),
-    stop: (channelId) => post(`/channels/${enc(channelId)}/_stop`),
-    halt: (channelId) => post(`/channels/${enc(channelId)}/_halt`),
-    pause: (channelId) => post(`/channels/${enc(channelId)}/_pause`),
-    resume: (channelId) => post(`/channels/${enc(channelId)}/_resume`),
+    start: (channelId, returnErrors = false) => post(`/channels/${enc(channelId)}/_start`, undefined, { params: returnErrors ? { returnErrors } : undefined }),
+    stop: (channelId, returnErrors = false) => post(`/channels/${enc(channelId)}/_stop`, undefined, { params: returnErrors ? { returnErrors } : undefined }),
+    halt: (channelId, returnErrors = false) => post(`/channels/${enc(channelId)}/_halt`, undefined, { params: returnErrors ? { returnErrors } : undefined }),
+    pause: (channelId, returnErrors = false) => post(`/channels/${enc(channelId)}/_pause`, undefined, { params: returnErrors ? { returnErrors } : undefined }),
+    resume: (channelId, returnErrors = false) => post(`/channels/${enc(channelId)}/_resume`, undefined, { params: returnErrors ? { returnErrors } : undefined }),
     startConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_start`),
-    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`)
+    stopConnector: (channelId, metaDataId) => post(`/channels/${enc(channelId)}/connector/${metaDataId}/_stop`),
+
+    /* The bulk lifecycle endpoints take form-urlencoded `channelId` repeated —
+       NOT the JSON set that _deploy/_undeploy take (startChannels et al are
+       declared application/x-www-form-urlencoded in the engine's API). */
+    startMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_start', channelIds, returnErrors),
+    stopMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_stop', channelIds, returnErrors),
+    haltMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_halt', channelIds, returnErrors),
+    pauseMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_pause', channelIds, returnErrors),
+    resumeMany: (channelIds, returnErrors = true) => postChannelIdForm('/channels/_resume', channelIds, returnErrors)
 };
+
+function postChannelIdForm(path: string, channelIds: string[], returnErrors: boolean): Promise<Json> {
+    const form = new URLSearchParams();
+    for (const id of channelIds) form.append('channelId', id);
+    // A bulk stop/start waits for every channel in the set to settle, so it can
+    // legitimately outlast the normal request ceiling.
+    return post(path, form.toString(), {
+        contentType: 'application/x-www-form-urlencoded',
+        params: { returnErrors },
+        timeoutMs: null
+    });
+}
 
 export const statistics: StatisticsApi = {
     list: (channelIds, includeUndeployed) =>
@@ -774,8 +839,35 @@ export const messages: MessagesApi = {
     // large message table can legitimately outlast the normal request ceiling.
     removeAll: (channelId, restartRunningChannels = false, clearStatistics = true) =>
         del(`/channels/${enc(channelId)}/messages/_removeAll`,
-            { restartRunningChannels, clearStatistics }, { timeoutMs: null })
+            { restartRunningChannels, clearStatistics }, { timeoutMs: null }),
+
+    /* ---- Cures Act functional audit operations -----------------------------
+       Each takes a Map<String,String> of attributes and writes a ServerEvent
+       ("Accessed PHI" / "Queried PHI" / "Export all messages" / "Successfully
+       exported messages") to the event log. Serialized as XStream XML: a JSON
+       object body deserializes to a bare LinkedHashMap the engine's map
+       converter rejects, and the Swing client sends the same XML. */
+    auditAccessedPHI: (attributes) => postXml('/channels/_auditAccessedPHIMessage', attributeMapXml(attributes)),
+    auditQueriedPHI: (attributes) => postXml('/channels/_auditQueriedPHIMessage', attributeMapXml(attributes)),
+    auditExport: (attributes) => postXml('/channels/_auditExportMessages', attributeMapXml(attributes)),
+    auditExportSuccess: (attributes) => postXml('/channels/_auditExportMessagesSuccess', attributeMapXml(attributes))
 };
+
+/* XStream's native Map<String,String> form. Entries with a null/undefined value
+   are dropped rather than serialized as the string "undefined".
+   Attribute values are user-controlled (a patient id, a search term, an export
+   file pattern), and the characters XML 1.0 forbids outright would make the
+   engine reject the whole document — which on the pre-export audit means a
+   blocked export. Drop them rather than let one stray byte veto the operation. */
+function attributeMapXml(attributes: Record<string, unknown>): string {
+    const esc = (s: unknown) => String(s)
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+        .replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string));
+    const entries = Object.entries(attributes || {})
+        .filter(([, v]) => v !== undefined && v !== null)
+        .map(([k, v]) => `<entry><string>${esc(k)}</string><string>${esc(v)}</string></entry>`);
+    return `<map>${entries.join('')}</map>`;
+}
 
 /* ===========================================================================
    Events                                                          /events
@@ -879,7 +971,24 @@ export const codeTemplates: CodeTemplatesApi = {
     update: (id, codeTemplate, override = true) => put(`/codeTemplates/${enc(id)}`, codeTemplate, { wrapKey: 'codeTemplate', params: { override } }),
     remove: (id) => del(`/codeTemplates/${enc(id)}`),
     updateLibraries: (libraries, override = true) =>
-        put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } })
+        put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } }),
+
+    /* One transaction for the whole save. Same multipart shape as
+       channelGroups.bulkUpdate: each part is a JSON Blob, because a bare string
+       part arrives without a content type and the engine's provider refuses it. */
+    bulkUpdate: (libraries, updatedCodeTemplates = [], removedLibraryIds = [], removedCodeTemplateIds = [], override = true) => {
+        const form = new FormData();
+        const part = (name: string, value: any) =>
+            form.append(name, new Blob([JSON.stringify(value)], { type: 'application/json' }));
+        // The servlet declares these two parameters as java.util.List. Its JSON
+        // provider therefore looks for the XStream <list> envelope; a <set>
+        // envelope is treated as one malformed list item by deserializeList().
+        part('libraries', { list: { codeTemplateLibrary: libraries } });
+        part('updatedCodeTemplates', { list: { codeTemplate: updatedCodeTemplates } });
+        part('removedLibraryIds', { set: { string: removedLibraryIds } });
+        part('removedCodeTemplateIds', { set: { string: removedCodeTemplateIds } });
+        return post('/codeTemplateLibraries/_bulkUpdate', form, { params: { override } });
+    }
 };
 
 /* ===========================================================================

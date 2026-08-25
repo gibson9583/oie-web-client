@@ -15,9 +15,11 @@ export const SAMPLE_STATUSES = [
     { channelId: 'c-stopped', name: 'Demo Stopped', state: 'STOPPED', statistics: {} },
 ];
 
+// Like the real engine, every channel record carries exportData.metadata — the
+// deploy walker refuses records with no readable enabled flag (fail closed).
 export const SAMPLE_CHANNELS = [
-    { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1 },
-    { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1 },
+    { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1, exportData: { metadata: { enabled: true } } },
+    { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1, exportData: { metadata: { enabled: true } } },
 ];
 
 export const SAMPLE_USERS = [
@@ -52,15 +54,52 @@ export const DEFAULT_FIXTURES = {
     'GET /server/settings': { serverSettings: { serverName: 'E2E Engine', environmentName: 'test' } },
     'GET /server/about': '',
     'GET /server/channelTags': '',
-    'GET /server/channelDependencies': '',
+    'GET /server/channelDependencies': { set: '' },
+    // A real empty XStream <list/> parses to ''. Keeping this explicit means
+    // message views can distinguish it from an unmocked/empty HTTP response.
+    'GET /channels/*/metaDataColumns': { list: '' },
     'GET /server/channelMetadata': {},
 
     // Dashboard + channels.
     'GET /channels/statuses': { list: { dashboardStatus: SAMPLE_STATUSES } },
     'GET /channels/statistics': { list: { channelStatistics: [] } },
     'GET /channels': { list: { channel: SAMPLE_CHANNELS } },
-    'GET /channels/idsAndNames': {},
-    'GET /channelgroups': '',
+    // Bulk deploy/undeploy preflights each id through the addressable channel
+    // endpoint. This mirrors an authorized engine response; tests for deletion
+    // or revocation override the exact path with an empty/forbidden answer.
+    'GET /channels/*': (request: any) => {
+        const id = decodeURIComponent(new URL(request.url()).pathname.split('/').pop() || '');
+        if (id === 'no-such-channel') return '';
+        const known = SAMPLE_CHANNELS.find(channel => channel.id === id);
+        return { channel: known || {
+            '@version': '4.5.0', id, name: id, revision: 1,
+            exportData: { metadata: { enabled: true } }
+        } };
+    },
+    // The addressable status servlet authorizes the id before returning state,
+    // unlike the filtered collection endpoint. Bulk-deployment result checks
+    // deliberately use this route.
+    'GET /channels/*/status': (request: any) => {
+        const parts = new URL(request.url()).pathname.split('/');
+        const id = decodeURIComponent(parts[parts.length - 2] || '');
+        const known = SAMPLE_STATUSES.find(status => status.channelId === id);
+        return { dashboardStatus: known || {
+            channelId: id, name: id, state: 'STARTED', statistics: {}
+        } };
+    },
+    // The real engine answers these writes with an explicit boolean; the client
+    // treats anything else as an unknown outcome, so the defaults must say true.
+    'POST /channelgroups/_bulkUpdate': { boolean: true },
+    'POST /channels': { boolean: true },
+    'PUT /channels/*': { boolean: true },
+
+    'GET /channels/idsAndNames': { map: { entry: [
+        { string: ['c-started', 'Demo Started'] },
+        { string: ['c-stopped', 'Demo Stopped'] },
+    ] } },
+    // A genuine empty XStream <list/> parses as ''. An HTTP response with no
+    // body parses as null and is an unusable whole-set baseline, not "no groups".
+    'GET /channelgroups': { list: '' },
 
     // Users view.
     'GET /users': { list: { user: SAMPLE_USERS } },
