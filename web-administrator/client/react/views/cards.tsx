@@ -19,6 +19,7 @@ import { RailPane, TaskButton } from '../ui.jsx';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { statsOf } from './dashboard.jsx';
+import { runLifecycle } from './channel-lifecycle.js';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const EMPTY_LIST: any[] = [];  // stable fallback while queries load (memo-dep friendly)
@@ -215,16 +216,10 @@ function CardsView({ onToggleView }: any) {
     async function bulkControl(kind: any, targets: any) {
         const ids = targets.map((s: any) => s.channelId);
         if (!ids.length) return;
-        if (kind === 'undeploy' && !await confirmDialog('Undeploy', `Undeploy ${ids.length} channel${ids.length > 1 ? 's' : ''}?`, { okLabel: 'Undeploy' })) return;
         if (kind === 'halt' && !await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) return;
         try {
-            if (kind === 'undeploy') await api.engine.undeployMany(ids);
-            // "Start" on a PAUSED channel resumes it (restarts the stopped source):
-            // the engine's _start (Channel.start) only acts on a STOPPED/DEPLOYING
-            // channel and is a no-op when PAUSED. Matches Swing's Frame.doStart.
-            else for (const s of targets) await (api.status as any)[(kind === 'start' && s.state === 'PAUSED') ? 'resume' : kind](s.channelId);
-            refresh();
-        } catch (e: any) { toast(e && e.message ? e.message : 'Action failed', 'error'); }
+            if (await runLifecycle(kind, ids)) refresh();
+        } catch (e: any) { toast(e && e.message ? e.message : 'Action failed', 'error'); refresh(); }
     }
     async function clearStats(targets: any) {
         if (!targets.length) return;

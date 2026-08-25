@@ -124,14 +124,14 @@ test.describe('card view', () => {
 
         let startCalled = false;
         page.on('request', (r) => {
-            if (/\/api\/channels\/c-paused\/_start$/.test(r.url()) && r.method() === 'POST') startCalled = true;
+            if (new URL(r.url()).pathname === '/api/channels/_start' && r.method() === 'POST') startCalled = true;
         });
         const resumed = page.waitForRequest(
-            (r) => /\/api\/channels\/c-paused\/_resume$/.test(r.url()) && r.method() === 'POST'
+            (r) => new URL(r.url()).pathname === '/api/channels/_resume' && r.method() === 'POST'
         );
         await page.getByText('Demo Paused').click();
         await page.locator('.taskbar').getByText('Start', { exact: true }).click();
-        await resumed;
+        expect((await resumed).postData()).toBe('channelId=c-paused');
         expect(startCalled).toBe(false);
     });
 });
