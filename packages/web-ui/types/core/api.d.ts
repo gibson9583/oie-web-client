@@ -101,6 +101,11 @@ export interface StatusApi {
     halt(channelId: string): Promise<Json>;
     pause(channelId: string): Promise<Json>;
     resume(channelId: string): Promise<Json>;
+    startMany(channelIds: string[]): Promise<Json>;
+    stopMany(channelIds: string[]): Promise<Json>;
+    haltMany(channelIds: string[]): Promise<Json>;
+    pauseMany(channelIds: string[]): Promise<Json>;
+    resumeMany(channelIds: string[]): Promise<Json>;
     startConnector(channelId: string, metaDataId: number): Promise<Json>;
     stopConnector(channelId: string, metaDataId: number): Promise<Json>;
 }
@@ -123,7 +128,7 @@ export interface MessagesApi {
     count(channelId: string, params?: QueryParams): Promise<Json>;
     get(channelId: string, messageId: string | number): Promise<Message>;
     maxMessageId(channelId: string): Promise<Json>;
-    attachments(channelId: string, messageId: string | number): Promise<Attachment[]>;
+    attachments(channelId: string, messageId: string | number, includeContent?: boolean): Promise<Attachment[]>;
     attachment(channelId: string, messageId: string | number, attachmentId: string): Promise<Attachment>;
     /** Reattach a DICOM message's pixel data and return the full raw Base64 DICOM (Swing getDICOMMessage). */
     getDicom(channelId: string, messageId: string | number, connectorMessage: OieObject): Promise<string>;
@@ -131,6 +136,10 @@ export interface MessagesApi {
     reprocess(channelId: string, messageId: string | number, replace?: boolean, filterDestinations?: boolean, metaDataIds?: number[]): Promise<Json>;
     remove(channelId: string, messageId: string | number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;
+    auditAccessedPHI(attributes: Record<string, string>): Promise<Json>;
+    auditQueriedPHI(attributes: Record<string, string>): Promise<Json>;
+    auditExport(attributes: Record<string, string>): Promise<Json>;
+    auditExportSuccess(attributes: Record<string, string>): Promise<Json>;
 }
 export interface EventsApi {
     search(params?: QueryParams): Promise<ServerEvent[]>;
@@ -202,6 +211,7 @@ export interface CodeTemplatesApi {
     update(id: string, codeTemplate: CodeTemplate | OieObject, override?: boolean): Promise<Json>;
     remove(id: string): Promise<Json>;
     updateLibraries(libraries: CodeTemplateLibrary[] | OieObject[], override?: boolean): Promise<Json>;
+    bulkUpdate(libraries: CodeTemplateLibrary[] | OieObject[], updatedCodeTemplates?: CodeTemplate[] | OieObject[], removedLibraryIds?: string[], removedCodeTemplateIds?: string[], override?: boolean): Promise<Json>;
 }
 export interface ExtensionsApi {
     connectors(): Promise<OieObject>;

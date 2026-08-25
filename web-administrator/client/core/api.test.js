@@ -95,5 +95,40 @@ for (const [label, call] of [
     ok(lastInit && !lastInit.signal, `${label} runs without the client ceiling`);
 }
 
+/* ---- Swing-parity bulk, audit, attachment, and code-template wires ---- */
+
+let lastUrl = '';
+globalThis.fetch = async (url, init) => {
+    lastUrl = String(url);
+    lastInit = init;
+    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
+
+await api.status.startMany(['one', 'two']);
+ok(lastUrl.endsWith('/channels/_start?returnErrors=true'), 'bulk status uses the engine collection endpoint');
+ok(lastInit.body === 'channelId=one&channelId=two', 'bulk status repeats channelId form fields in order');
+ok(lastInit.headers['Content-Type'] === 'application/x-www-form-urlencoded', 'bulk status uses form encoding');
+ok(!lastInit.signal, 'bulk status actions have no client timeout');
+
+await api.messages.attachments('chan', 7);
+ok(lastUrl.endsWith('/channels/chan/messages/7/attachments?includeContent=false'), 'attachment lists explicitly omit content by default');
+await api.messages.attachments('chan', 7, true);
+ok(lastUrl.endsWith('/channels/chan/messages/7/attachments?includeContent=true'), 'attachment export explicitly requests content');
+
+await api.messages.auditAccessedPHI({ patientId: 'A&B<1>', note: 'bad\u0001value' });
+ok(lastUrl.endsWith('/channels/_auditAccessedPHIMessage'), 'PHI access uses the Swing audit endpoint');
+ok(lastInit.headers['Content-Type'] === 'application/xml', 'PHI audit maps are XML');
+ok(lastInit.body.includes('<string>A&amp;B&lt;1&gt;</string>'), 'PHI audit values are XML escaped');
+ok(!lastInit.body.includes('\u0001'), 'PHI audit values strip XML-illegal controls');
+
+await api.codeTemplates.bulkUpdate([{ id: 'lib' }], [{ id: 'tpl' }], ['old-lib'], ['old-tpl'], false);
+ok(lastUrl.endsWith('/codeTemplateLibraries/_bulkUpdate?override=false'), 'code templates use one bulk update request');
+ok(lastInit.body instanceof FormData, 'code template bulk update is multipart');
+const partJson = async (name) => JSON.parse(await lastInit.body.get(name).text());
+ok((await partJson('libraries')).list.codeTemplateLibrary[0].id === 'lib', 'bulk libraries use the engine list envelope');
+ok((await partJson('updatedCodeTemplates')).list.codeTemplate[0].id === 'tpl', 'bulk templates use the engine list envelope');
+ok((await partJson('removedLibraryIds')).set.string[0] === 'old-lib', 'bulk removed libraries use the engine set envelope');
+ok((await partJson('removedCodeTemplateIds')).set.string[0] === 'old-tpl', 'bulk removed templates use the engine set envelope');
+
 console.log(`api.test: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
