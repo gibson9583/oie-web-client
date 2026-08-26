@@ -23,7 +23,7 @@ import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
 import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
-import { getPref, setPrefs, resetPrefs, DASHBOARD_REFRESH_SECONDS } from '../../core/prefs.js';
+import { getPref, setPrefs, resetPrefs, PREF_DEFAULTS, DASHBOARD_REFRESH_SECONDS } from '../../core/prefs.js';
 import { checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { setTheme, setTableDensity, setFontUi, setFontMono, FONT_UI_OPTIONS, FONT_MONO_OPTIONS, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
@@ -713,6 +713,19 @@ function AdministratorTab({ ctx }: any) {
         return true;
     }
 
+    function restoreDefaults() {
+        // resetPrefs persists immediately, so keep the live document in the same
+        // committed state. Programmatic form changes do not fire the tab host's
+        // dirty listeners; this action is complete, not a pending edit.
+        resetPrefs();
+        setTableDensity(PREF_DEFAULTS.tableDensity);
+        setFontUi(PREF_DEFAULTS.fontUi);
+        setFontMono(PREF_DEFAULTS.fontMono);
+        loadRef.current();
+        ctx.markClean();
+        toast('Preferences reset to defaults');
+    }
+
     const formRef = useRef<any>(null);
     formRef.current = form;
     const loadRef = useRef(load);
@@ -725,7 +738,7 @@ function AdministratorTab({ ctx }: any) {
         ctx.setTasks('Administrator Tasks', [
             taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Administrator' }),
             taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Administrator' }),
-            taskButton('Restore Defaults', 'refresh', () => { resetPrefs(); loadRef.current(); toast('Preferences reset to defaults'); }, { task: 'doSetAdminDefaults', group: 'settings_Administrator' })
+            taskButton('Restore Defaults', 'refresh', restoreDefaults, { task: 'doSetAdminDefaults', group: 'settings_Administrator' })
         ]);
         loadRef.current();
         // eslint-disable-next-line react-hooks/exhaustive-deps

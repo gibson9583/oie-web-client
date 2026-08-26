@@ -194,11 +194,12 @@ try {
     mkdirSync(path.join(stage, 'WEB-INF'), { recursive: true });
     mkdirSync(path.join(stage, 'META-INF'), { recursive: true });
     writeFileSync(path.join(stage, 'WEB-INF', 'web.xml'), webXml);
-    writeFileSync(path.join(stage, 'META-INF', 'MANIFEST.MF'), manifest);
     cpSync(path.join(repoRoot, 'LICENSE'), path.join(stage, 'META-INF', 'LICENSE'));
 
     mkdirSync(outputDir, { recursive: true });
-    execFileSync('jar', ['--create', '--file', artifact, '-C', stage, '.'], { stdio: 'inherit' });
+    const manifestPath = path.join(temporaryRoot, 'MANIFEST.MF');
+    writeFileSync(manifestPath, manifest);
+    execFileSync('jar', ['--create', '--file', artifact, '--manifest', manifestPath, '-C', stage, '.'], { stdio: 'inherit' });
 
     const entries = execFileSync('jar', ['--list', '--file', artifact], { encoding: 'utf8' });
     const requiredEntries = [
@@ -216,6 +217,13 @@ try {
     ];
     for (const required of requiredEntries) {
         if (!entries.split(/\r?\n/).includes(required)) throw new Error(`WAR validation failed: missing ${required}`);
+    }
+    const manifestCheckDir = path.join(temporaryRoot, 'manifest-check');
+    mkdirSync(manifestCheckDir);
+    execFileSync('jar', ['--extract', '--file', artifact, 'META-INF/MANIFEST.MF'], { cwd: manifestCheckDir });
+    const packagedManifest = readFileSync(path.join(manifestCheckDir, 'META-INF', 'MANIFEST.MF'), 'utf8');
+    if (!packagedManifest.includes(`Implementation-Version: ${packageInfo.version}`)) {
+        throw new Error(`WAR validation failed: manifest does not report ${packageInfo.version}`);
     }
     const sizeMiB = (statSync(artifact).size / 1024 / 1024).toFixed(1);
     console.log(`\nWAR: ${artifact} (${sizeMiB} MiB)`);

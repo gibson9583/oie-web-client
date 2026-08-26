@@ -104,3 +104,30 @@ test('the preferences preview shows the pending faces without applying them', as
     // Still pending: the app keeps the saved faces until the next Save.
     expect(await page.evaluate(() => document.documentElement.dataset.fontUi)).toBe('b612');
 });
+
+test('Restore Defaults immediately reconciles saved fonts and stays clean', async ({ page }) => {
+    await page.goto('/settings?tab=administrator');
+    const prefs = page.locator('.panel', { hasText: 'User Preferences' });
+    const uiSelect = prefs.locator('select').filter({ has: page.locator('option[value="b612"]') });
+    const monoSelect = prefs.locator('select').filter({ has: page.locator('option[value="b612mono"]') });
+
+    await uiSelect.selectOption('b612');
+    await monoSelect.selectOption('b612mono');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.fontUi)).toBe('b612');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.fontMono)).toBe('b612mono');
+
+    await page.getByRole('button', { name: 'Restore Defaults', exact: true }).click();
+    await expect(uiSelect).toHaveValue('inter');
+    await expect(monoSelect).toHaveValue('jetbrains');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.fontUi)).toBe('inter');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.fontMono)).toBe('jetbrains');
+
+    // The reset was already persisted and applied; leaving must not offer to
+    // save a phantom pending edit, and a reload must keep the same defaults.
+    await page.getByRole('button', { name: 'Dashboard' }).click();
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.fontUi)).toBe('inter');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.fontMono)).toBe('jetbrains');
+});
