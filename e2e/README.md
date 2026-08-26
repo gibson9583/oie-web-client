@@ -22,27 +22,36 @@ First time only: `npx playwright install chromium`.
 
 ### Live mode
 
-Start `/oie` and the web admin yourself, then:
+Start OIE and the deployment under test, then:
 
 ```bash
 # web admin already running on :3030, proxying to your engine
 E2E_USER=admin E2E_PASS=admin npm run e2e:live
+
+# Docker/Node on another local port
+E2E_BASE_URL=http://localhost:3031 E2E_USER=admin E2E_PASS=admin npm run e2e:live
+
+# WAR mounted in the local OIE servlet container (self-signed TLS is accepted)
+E2E_BASE_URL=https://localhost:8443/oie-webadmin E2E_EXPECT_DEPLOYMENT=war \
+  E2E_USER=admin E2E_PASS=admin npm run e2e:live
 ```
 
-`reuseExistingServer` makes the `live` project use your already-running dev
-server (and thus your real engine). `live.spec.js` is intentionally a minimal
-login smoke — extend it with real CRUD/deploy flows when you want higher
-fidelity.
+`reuseExistingServer` makes the `live` project use the already-running target
+and its real engine. The live test logs in, creates an undeployed disposable
+channel, reads it from the channel list, and deletes it again. It requires engine
+4.6.0 and client 0.8.0 by default; override `E2E_EXPECT_ENGINE_VERSION` or
+`E2E_EXPECT_CLIENT_VERSION` only when deliberately validating another release.
+Set `E2E_EXPECT_DEPLOYMENT=war` to require the WAR deployment marker.
 
 ## Layout
 
 | File | Purpose |
 |---|---|
-| `playwright.config.js` (repo root) | `ui` + `live` projects; boots `npm start -w web-administrator` |
+| `playwright.config.ts` (repo root) | `ui` + `live` projects; boots `npm start -w web-administrator` |
 | `fixtures.js` | canned engine responses in the XStream wire shapes the client expects |
 | `mock.js` | `mockEngine(page, overrides)` route interceptor + `login()` helper |
 | `*.spec.js` | mocked workflow tests (login, dashboard + `cards` card view, channels, `channel-wizard`/`alert-wizard` guided builders, …) |
-| `live.spec.js` | opt-in real-engine smoke |
+| `live.spec.ts` | opt-in real-engine login + channel CRUD smoke |
 
 ## Adding tests / fixtures
 

@@ -27,12 +27,17 @@ const outputDir = path.resolve(root, process.env.OIE_WAR_OUTPUT_DIR || 'dist');
 const artifact = path.join(outputDir, artifactName);
 const temporaryRoot = mkdtempSync(path.join(os.tmpdir(), 'oie-web-client-war-'));
 const stage = path.join(temporaryRoot, 'stage');
+const builtClientDir = path.join(temporaryRoot, 'client-dist');
 
 function runBuild() {
     const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
     const result = spawnSync(npm, ['run', 'build'], {
         cwd: root,
-        env: { ...process.env, OIE_WEBADMIN_BUILD_BASE: './' },
+        env: {
+            ...process.env,
+            OIE_WEBADMIN_BUILD_BASE: './',
+            OIE_WEBADMIN_BUILD_OUT_DIR: builtClientDir
+        },
         stdio: 'inherit'
     });
     if (result.status !== 0) throw new Error(`Web client build failed (${result.status ?? 'no exit status'})`);
@@ -110,7 +115,7 @@ function rewriteImportMap(html) {
 }
 
 function indexJsp() {
-    const builtIndex = path.join(clientDir, 'dist', 'index.html');
+    const builtIndex = path.join(builtClientDir, 'index.html');
     let html = readFileSync(builtIndex, 'utf8');
 
     // Make the import map's root-absolute targets context-relative for the WAR.
@@ -167,7 +172,7 @@ try {
     mkdirSync(stage, { recursive: true });
 
     // Hashed Vite shell/chunks first; index.html becomes the context-aware JSP.
-    cpSync(path.join(clientDir, 'dist'), stage, {
+    cpSync(builtClientDir, stage, {
         recursive: true,
         filter: (source) => path.basename(source) !== 'index.html'
     });

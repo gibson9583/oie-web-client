@@ -24,6 +24,9 @@ export default defineConfig({
     reporter: process.env.CI ? 'github' : 'list',
     use: {
         baseURL: BASE_URL,
+        // Live WAR deployments commonly use the engine's local/self-signed TLS
+        // certificate. Mocked HTTP runs are unaffected.
+        ignoreHTTPSErrors: BASE_URL.startsWith('https://'),
         // retain-on-failure (not on-first-retry) so the rare boot-timing flake
         // leaves the FAILING attempt's trace behind — on-first-retry only traces
         // the retry, which passes, so the flake was never diagnosable after the
@@ -37,6 +40,7 @@ export default defineConfig({
     webServer: {
         command: 'npm start -w web-administrator',
         url: BASE_URL,
+        ignoreHTTPSErrors: BASE_URL.startsWith('https://'),
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,
     },
