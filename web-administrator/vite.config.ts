@@ -62,7 +62,10 @@ export default defineConfig({
     },
     server: { hmr: true },
     build: {
-        outDir: 'dist',
+        // WAR packaging builds into a disposable directory so producing a WAR
+        // cannot replace the standalone Node/Docker shell with context-relative
+        // asset URLs. Normal builds continue to use client/dist.
+        outDir: process.env.OIE_WEBADMIN_BUILD_OUT_DIR || 'dist',
         emptyOutDir: true,
         target: 'es2022',
         // Keep the framework's `/core/*.js` external imports as absolute URLs
