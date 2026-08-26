@@ -57,6 +57,10 @@ export interface PrefValues {
     cardsLifetime: boolean;
     /** row height in the data grids only — forms and editors keep the baseline */
     tableDensity: 'compact' | 'normal' | 'wide';
+    /** typeface for chrome — labels, navigation, forms */
+    fontUi: 'inter' | 'plex' | 'b612' | 'martian' | 'system';
+    /** typeface for data — grids, logs, payloads, and the code editor */
+    fontMono: 'jetbrains' | 'plexmono' | 'b612mono' | 'martian' | 'system';
     /** command palette: ids of the last few entries run, most recent first */
     paletteRecent: string[];
     /** per-user navigation layout: a SPARSE overlay on platform.navItems() —
@@ -79,6 +83,8 @@ export const PREF_DEFAULTS: PrefValues = {
     cardsGroupBy: 'none',
     cardsLifetime: false,
     tableDensity: 'normal',
+    fontUi: 'inter',
+    fontMono: 'jetbrains',
     paletteRecent: [],
     navLayout: null
 };

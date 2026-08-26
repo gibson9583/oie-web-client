@@ -86,6 +86,24 @@ export function setTableDensity(density) {
     document.documentElement.dataset.tableDensity = value;
     setState('tableDensity', value);
 }
+/* ---- typeface ---- */
+export const FONT_UI_OPTIONS = ['inter', 'plex', 'b612', 'martian', 'system'];
+export const FONT_MONO_OPTIONS = ['jetbrains', 'plexmono', 'b612mono', 'martian', 'system'];
+/* Same placement rationale as density above. Each value — the defaults
+   included — maps to one --font-ui / --font-mono override in app.css, and the
+   attribute is always written, so the DOM states the active choice and a
+   nested carrier (the Settings preferences preview) can express "back to the
+   default" over a non-default choice saved here on <html>. */
+export function setFontUi(font) {
+    const value = FONT_UI_OPTIONS.includes(font) ? font : 'inter';
+    document.documentElement.dataset.fontUi = value;
+    setState('fontUi', value);
+}
+export function setFontMono(font) {
+    const value = FONT_MONO_OPTIONS.includes(font) ? font : 'jetbrains';
+    document.documentElement.dataset.fontMono = value;
+    setState('fontMono', value);
+}
 /* ---- left nav (rail) collapse ---- */
 // Phone/tablet: the rail is an off-canvas drawer that starts closed (content
 // full-width), independent of the saved desktop open/closed preference.

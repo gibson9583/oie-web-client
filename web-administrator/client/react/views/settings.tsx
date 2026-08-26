@@ -25,7 +25,7 @@ import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs, DASHBOARD_REFRESH_SECONDS } from '../../core/prefs.js';
 import { checkImportVersionFromDoc } from '../../core/import-guard.js';
-import { setTheme, setTableDensity, getState, setState } from '../../core/store.js';
+import { setTheme, setTableDensity, setFontUi, setFontMono, FONT_UI_OPTIONS, FONT_MONO_OPTIONS, getState, setState } from '../../core/store.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
@@ -617,6 +617,8 @@ function AdministratorTab({ ctx }: any) {
 
     const yesNoAskValue = (val: any) => (['yes', 'no', 'ask'].includes(val) ? val : 'ask');
     const builderValue = (val: any) => (['ask', 'classic', 'guided'].includes(val) ? val : 'ask');
+    const fontUiValue = (val: any) => (FONT_UI_OPTIONS.includes(val) ? val : 'inter');
+    const fontMonoValue = (val: any) => (FONT_MONO_OPTIONS.includes(val) ? val : 'jetbrains');
 
     function load() {
         setForm({
@@ -632,6 +634,8 @@ function AdministratorTab({ ctx }: any) {
             showViewSwitch: getPref('showViewSwitch') !== false,
             theme: document.documentElement.dataset.theme || 'light',
             tableDensity: getPref('tableDensity') || 'normal',
+            fontUi: fontUiValue(getPref('fontUi')),
+            fontMono: fontMonoValue(getPref('fontMono')),
             bgMode: 'default',
             bgColor: '#2a75b2'
         });
@@ -667,10 +671,14 @@ function AdministratorTab({ ctx }: any) {
             newChannelDefault: f.newChannelDefault,
             newAlertDefault: f.newAlertDefault,
             showViewSwitch: f.showViewSwitch,
-            tableDensity: f.tableDensity
+            tableDensity: f.tableDensity,
+            fontUi: f.fontUi,
+            fontMono: f.fontMono
         });
         setTheme(f.theme);
         setTableDensity(f.tableDensity);   // takes effect now, like the theme
+        setFontUi(f.fontUi);
+        setFontMono(f.fontMono);
         // Persist the per-user color override (or clear it) and re-tint live.
         // Swing (SettingsPanelAdministrator.doSave) writes this as a single
         // preference: setUserPreference(id, "backgroundColor", <awt-color xml>).
@@ -777,14 +785,17 @@ function AdministratorTab({ ctx }: any) {
                 <div className="panel-header">User Preferences</div>
                 <div className="panel-body">
                     {/* The pending choices, before Save applies them to the app.
-                        Theme and density are plain data attributes, and the app's own
-                        rules key off them without needing :root — so the very CSS that
-                        dresses the app dresses this sample, with no second set of
-                        styles to drift. It sits ABOVE the controls because this panel
-                        is the last on a long tab: below them it fell off the fold, and
-                        a preview you have to scroll to is one nobody sees change. */}
+                        Theme, density and the typeface pair are plain data attributes,
+                        and the app's own rules key off them without needing :root — so
+                        the very CSS that dresses the app dresses this sample, with no
+                        second set of styles to drift. It sits ABOVE the controls
+                        because this panel is the last on a long tab: below them it
+                        fell off the fold, and a preview you have to scroll to is one
+                        nobody sees change. The counts column is .num so the Data font
+                        choice is visible here too. */}
                     <div className="pref-preview" data-theme={form.theme}
                         data-table-density={form.tableDensity}
+                        data-font-ui={form.fontUi} data-font-mono={form.fontMono}
                         style={form.bgMode === 'custom' ? { '--rail-bg': form.bgColor } as any : undefined}>
                         <div className="pref-preview-label">Preview</div>
                         <div className="pref-preview-frame">
@@ -793,7 +804,7 @@ function AdministratorTab({ ctx }: any) {
                             </div>
                             <table className="dt">
                                 <thead>
-                                    <tr><th>Status</th><th>Name</th><th>Received</th></tr>
+                                    <tr><th>Status</th><th>Name</th><th className="num">Received</th></tr>
                                 </thead>
                                 <tbody>
                                     {[
@@ -807,7 +818,7 @@ function AdministratorTab({ ctx }: any) {
                                     ].map(([pip, state, name, count]) => (
                                         <tr key={name}>
                                             <td><span className={'pip ' + pip} /> {state}</td>
-                                            <td>{name}</td><td>{count}</td>
+                                            <td>{name}</td><td className="num">{count}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -825,6 +836,24 @@ function AdministratorTab({ ctx }: any) {
                         <select value={form.theme} onChange={(e: any) => patch({ theme: e.target.value })}>
                             <option value="light">Light</option>
                             <option value="dark">Dark</option>
+                        </select>
+                    </PrefRow>
+                    <PrefRow label="UI font">
+                        <select value={form.fontUi} onChange={(e: any) => patch({ fontUi: e.target.value })}>
+                            <option value="inter">Inter (default)</option>
+                            <option value="plex">IBM Plex Sans</option>
+                            <option value="b612">B612 — avionics</option>
+                            <option value="martian">Martian Mono — terminal</option>
+                            <option value="system">System</option>
+                        </select>
+                    </PrefRow>
+                    <PrefRow label="Data font">
+                        <select value={form.fontMono} onChange={(e: any) => patch({ fontMono: e.target.value })}>
+                            <option value="jetbrains">JetBrains Mono (default)</option>
+                            <option value="plexmono">IBM Plex Mono</option>
+                            <option value="b612mono">B612 Mono — avionics</option>
+                            <option value="martian">Martian Mono — terminal</option>
+                            <option value="system">System</option>
                         </select>
                     </PrefRow>
                     <PrefRow label="Background color">

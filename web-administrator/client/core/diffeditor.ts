@@ -19,7 +19,7 @@
  */
 
 import type * as MonacoNs from 'monaco-editor';
-import { ensureMonaco } from './monaco.js';
+import { ensureMonaco, monacoFontFamily } from './monaco.js';
 
 export interface DiffEditorOptions {
     original?: string;
@@ -122,6 +122,8 @@ export function createDiffEditor(opts: DiffEditorOptions = {}): DiffEditorHandle
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
             fontSize: 12,
+            fontFamily: monacoFontFamily(),
+            fontLigatures: false,   // literal ->, != in payload diffs, as everywhere
             lineNumbers: 'on'
         });
         applyMonaco();
