@@ -61,8 +61,12 @@
        white calendar over the dark app, since it has no way to read our tokens. */
     color-scheme: dark;
 
-    --font-ui: 'Inter', system-ui, 'Segoe UI', sans-serif;
-    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+    /* Named default stacks, so the preference rules further down can express
+       "back to the default" without repeating the lists. */
+    --font-ui-default: 'Inter', system-ui, 'Segoe UI', sans-serif;
+    --font-mono-default: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+    --font-ui: var(--font-ui-default);
+    --font-mono: var(--font-mono-default);
 
     /* Dark theme: steel-blue control room (classic Administrator layout). */
     --bg0: #0c1116;
@@ -130,6 +134,30 @@
    difference — real, but not enough to feel like a choice. */
 [data-table-density="compact"] { --row-pad-y: 1px; --head-pad-y: 4px; }
 [data-table-density="wide"]    { --row-pad-y: 11px; --head-pad-y: 12px; }
+
+/* Typeface preference (Settings → Administrator), one attribute per token: each
+   value overrides exactly one of the two font variables, so the UI and data
+   faces compose freely and plugins follow for free (they resolve the same
+   vars). The DEFAULT values get rules too — <html> would work without them,
+   but the Settings preview is a nested carrier and must be able to say "back
+   to the default" while a non-default choice is saved on <html> above it.
+   B612 ships 400/700 only, so the in-between weights render a step bolder
+   under it: part of its instrument character, not a bug. */
+[data-font-ui="inter"]   { --font-ui: var(--font-ui-default); }
+[data-font-ui="plex"]    { --font-ui: 'IBM Plex Sans', 'Segoe UI', sans-serif; }
+[data-font-ui="b612"]    { --font-ui: 'B612', 'Segoe UI', sans-serif; }
+[data-font-ui="martian"] { --font-ui: 'Martian Mono', monospace; }
+[data-font-ui="system"]  { --font-ui: system-ui, 'Segoe UI', sans-serif; }
+[data-font-mono="jetbrains"] { --font-mono: var(--font-mono-default); }
+[data-font-mono="plexmono"] { --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace; }
+[data-font-mono="b612mono"] { --font-mono: 'B612 Mono', Consolas, monospace; }
+[data-font-mono="martian"]  { --font-mono: 'Martian Mono', monospace; }
+[data-font-mono="system"]   { --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+/* font-family inherits as a RESOLVED value, so a subtree carrying the attribute
+   (the Settings preview) must re-anchor the var itself — without this, its
+   descendants keep the font body computed from :root. Mono surfaces re-consume
+   var(--font-mono) rule-by-rule, so they need no equivalent. */
+[data-font-ui] { font-family: var(--font-ui); }
 
 /* Light theme: faithful to the classic Swing Administrator — blue sidebar and
    title strip, white panes, light gray data surfaces. */

@@ -40,6 +40,8 @@ export const PREF_DEFAULTS = {
     cardsGroupBy: 'none',
     cardsLifetime: false,
     tableDensity: 'normal',
+    fontUi: 'inter',
+    fontMono: 'jetbrains',
     paletteRecent: [],
     navLayout: null
 };

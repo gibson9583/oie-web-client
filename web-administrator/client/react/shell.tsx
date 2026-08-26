@@ -694,9 +694,12 @@ async function establishPrefScope(user: any) {
     try { id = await api.server.id(); } catch { /* fall back to the un-scoped key */ }
     store.setPrefScope(id, user && user.id);
     store.reapplyScopedSettings();
-    // Density lives in the prefs store, so it can only be applied once the scope is
-    // known — unlike the theme, which is mirrored to localStorage for boot.
+    // Density and the typeface pair live in the prefs store, so they can only be
+    // applied once the scope is known — unlike the theme, which is mirrored to
+    // localStorage for boot.
     store.setTableDensity(getPref('tableDensity'));
+    store.setFontUi(getPref('fontUi'));
+    store.setFontMono(getPref('fontMono'));
 }
 
 export function App() {

@@ -25,19 +25,38 @@ const clientDir = resolve(here, '..', 'client');
 // loads leak no IPs to a third party (the CSP stays fully same-origin — see
 // server/index.ts). The Fontsource packages ship the same per-script subsets +
 // unicode-range rules Google serves; concatenate their CSS, rename the variable
-// families to the 'Inter' / 'JetBrains Mono' names app.css uses, drop the
-// legacy woff duplicates (woff2 is universal in supported browsers), and copy
-// only the referenced files. This runs BEFORE the esbuild guard below: the
-// packages are regular dependencies (like monaco-editor), so fonts vendor even
-// on a production install where esbuild is absent.
+// families to the plain names app.css uses, drop the legacy woff duplicates
+// (woff2 is universal in supported browsers), and copy only the referenced
+// files. This runs BEFORE the esbuild guard below: the packages are regular
+// dependencies (like monaco-editor), so fonts vendor even on a production
+// install where esbuild is absent.
 const FONT_CSS = [
+    // Defaults.
     '@fontsource-variable/inter/opsz.css',                 // variable: wght 100-900, opsz 14-32
     '@fontsource-variable/jetbrains-mono/wght.css',        // variable: wght 100-800
-    '@fontsource-variable/jetbrains-mono/wght-italic.css'
+    '@fontsource-variable/jetbrains-mono/wght-italic.css',
+    // Typeface-preference options (Settings → Administrator). @font-face fetches
+    // lazily, so vendoring every option costs a user only the faces they select.
+    '@fontsource-variable/ibm-plex-sans/wght.css',         // variable: wght 100-700
+    '@fontsource/ibm-plex-mono/400.css',
+    '@fontsource/ibm-plex-mono/400-italic.css',
+    '@fontsource/ibm-plex-mono/500.css',
+    '@fontsource/ibm-plex-mono/600.css',
+    '@fontsource/b612/400.css',                            // B612 ships 400/700 only
+    '@fontsource/b612/700.css',
+    '@fontsource/b612-mono/400.css',
+    '@fontsource/b612-mono/400-italic.css',
+    '@fontsource/b612-mono/700.css',
+    '@fontsource-variable/martian-mono/wght.css'           // variable: wght 100-800; no italic exists
 ];
 const FONT_LICENSES = {
     '@fontsource-variable/inter/LICENSE': 'LICENSE-Inter.txt',
-    '@fontsource-variable/jetbrains-mono/LICENSE': 'LICENSE-JetBrains-Mono.txt'
+    '@fontsource-variable/jetbrains-mono/LICENSE': 'LICENSE-JetBrains-Mono.txt',
+    '@fontsource-variable/ibm-plex-sans/LICENSE': 'LICENSE-IBM-Plex-Sans.txt',
+    '@fontsource/ibm-plex-mono/LICENSE': 'LICENSE-IBM-Plex-Mono.txt',
+    '@fontsource/b612/LICENSE': 'LICENSE-B612.txt',
+    '@fontsource/b612-mono/LICENSE': 'LICENSE-B612-Mono.txt',
+    '@fontsource-variable/martian-mono/LICENSE': 'LICENSE-Martian-Mono.txt'
 };
 const fontsOut = resolve(clientDir, 'vendor', 'fonts');
 mkdirSync(resolve(fontsOut, 'files'), { recursive: true });
@@ -49,6 +68,8 @@ for (const spec of FONT_CSS) {
     const text = readFileSync(cssPath, 'utf8')
         .replaceAll("'Inter Variable'", "'Inter'")
         .replaceAll("'JetBrains Mono Variable'", "'JetBrains Mono'")
+        .replaceAll("'IBM Plex Sans Variable'", "'IBM Plex Sans'")
+        .replaceAll("'Martian Mono Variable'", "'Martian Mono'")
         .replace(/,\s*url\(\.\/files\/[^)]+\.woff\) format\('woff'\)/g, '');
     for (const [, name] of text.matchAll(/url\(\.\/files\/([^)]+\.woff2)\)/g)) {
         copyFileSync(resolve(dirname(cssPath), 'files', name), resolve(fontsOut, 'files', name));

@@ -26,6 +26,14 @@ import { appUrl } from './deployment.js';
 const MONACO_VENDOR = appUrl('/vendor/monaco');
 const LOAD_TIMEOUT_MS = 10000;
 let loadPromise = null;
+/* The data-font preference rides --font-mono (core/store.ts setFontMono).
+   Monaco measures glyphs from a concrete family list and cannot consume the
+   CSS variable itself, so every Monaco factory (the code editor here, the diff
+   viewer in diffeditor.ts) resolves it through this at creation time. */
+export function monacoFontFamily() {
+    return getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()
+        || "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace";
+}
 export function ensureMonaco() {
     if (loadPromise)
         return loadPromise;
@@ -452,7 +460,7 @@ export function mountMonaco(monaco, editor, opts = {}) {
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         fontSize: 12,
-        fontFamily: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
+        fontFamily: monacoFontFamily(),
         // JetBrains Mono has coding ligatures; keep them off so scripts show the
         // literal ->, !=, === (matches app.css's font-variant-ligatures: none).
         fontLigatures: false,

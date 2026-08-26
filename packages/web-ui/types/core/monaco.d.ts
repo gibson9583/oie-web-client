@@ -15,6 +15,7 @@ export interface MonacoMountOptions {
     onChange?: (value: string) => void;
     [extra: string]: any;
 }
+export declare function monacoFontFamily(): string;
 export declare function ensureMonaco(): Promise<Monaco | null>;
 /** Dispose every Monaco editor whose host element has left the document.
     Runs on route changes automatically; the shell also calls it on sign-out,
