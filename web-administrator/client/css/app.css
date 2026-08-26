@@ -2,7 +2,7 @@
    OIE Web Administrator — design system
    Aesthetic: clinical control room. Dark graphite instrument panel, viridian
    phosphor accent, glowing status pips, dense engineered data surfaces.
-   Typography: Archivo (UI) + IBM Plex Mono (data/code).
+   Typography: Inter (UI) + JetBrains Mono (data/code).
    ========================================================================== */
 
 /* ── Tailwind CSS v4 ─────────────────────────────────────────────────────────
@@ -61,8 +61,8 @@
        white calendar over the dark app, since it has no way to read our tokens. */
     color-scheme: dark;
 
-    --font-ui: 'Archivo', 'Avenir Next', 'Segoe UI', sans-serif;
-    --font-mono: 'IBM Plex Mono', 'SF Mono', 'Consolas', monospace;
+    --font-ui: 'Inter', system-ui, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
 
     /* Dark theme: steel-blue control room (classic Administrator layout). */
     --bg0: #0c1116;
@@ -190,6 +190,11 @@ body {
     background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
     background-size: 22px 22px;
     -webkit-font-smoothing: antialiased;
+    /* JetBrains Mono ships coding ligatures (->, !=, =>). Logs and raw message
+       payloads must show the literal characters — a merged glyph misrepresents
+       the bytes — so ligatures are off app-wide. (Monaco keeps its own off by
+       default; Inter only loses fi/fl, invisible at these sizes.) */
+    font-variant-ligatures: none;
 }
 
 ::selection { background: var(--accent-glow); color: var(--text); }
@@ -612,7 +617,7 @@ code, pre, .mono { font-family: var(--font-mono); }
     gap: 4px;
     /* line-height 1 sizes the line box to the text (the inherited ~1.5 line box
        carries descender space this all-caps text never uses, leaving the glyphs
-       optically high); the asymmetric padding offsets Archivo's residual descent,
+       optically high); the asymmetric padding offsets the UI face's residual descent,
        and the resulting 17px pill height lets the cap ink land pixel-symmetric
        (measured 5px/5px gaps at 1x and 2x — an 17.5/18px pill can only snap to
        a 1px bias one way or the other). */

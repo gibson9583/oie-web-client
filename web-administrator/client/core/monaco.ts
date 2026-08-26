@@ -479,7 +479,10 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         fontSize: 12,
-        fontFamily: "'IBM Plex Mono', 'SF Mono', 'Consolas', monospace",
+        fontFamily: "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace",
+        // JetBrains Mono has coding ligatures; keep them off so scripts show the
+        // literal ->, !=, === (matches app.css's font-variant-ligatures: none).
+        fontLigatures: false,
         tabSize: 4,
         insertSpaces: false,
         folding: true,

@@ -206,8 +206,13 @@ try {
         'WEB-INF/web.xml',
         'webadmin/config.json',
         'webadmin/plugins.json',
-        'vendor/fonts/LICENSE-Archivo.txt',
-        'vendor/fonts/LICENSE-IBM-Plex-Mono.txt'
+        'vendor/fonts/LICENSE-Inter.txt',
+        'vendor/fonts/LICENSE-JetBrains-Mono.txt',
+        'vendor/fonts/LICENSE-IBM-Plex-Sans.txt',
+        'vendor/fonts/LICENSE-IBM-Plex-Mono.txt',
+        'vendor/fonts/LICENSE-B612.txt',
+        'vendor/fonts/LICENSE-B612-Mono.txt',
+        'vendor/fonts/LICENSE-Martian-Mono.txt'
     ];
     for (const required of requiredEntries) {
         if (!entries.split(/\r?\n/).includes(required)) throw new Error(`WAR validation failed: missing ${required}`);
