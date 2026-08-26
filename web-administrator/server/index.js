@@ -168,7 +168,7 @@ app.get('/webadmin/config.json', (req, res) => {
 // fall back to the plain textarea. Files are (re)built per install, so revalidate
 // rather than cache immutably.
 app.use('/vendor/monaco', express_1.default.static(path.join(clientDir, 'vendor', 'monaco'), { maxAge: '1d', dotfiles: 'deny' }));
-// Webfonts (Archivo + IBM Plex Mono), vendored from the Fontsource packages by
+// Webfonts (Inter + JetBrains Mono), vendored from the Fontsource packages by
 // the same script — index.html links /vendor/fonts/fonts.css in place of the
 // Google Fonts CDN. Same serving rationale as Monaco above.
 app.use('/vendor/fonts', express_1.default.static(path.join(clientDir, 'vendor', 'fonts'), { maxAge: '1d', dotfiles: 'deny' }));
