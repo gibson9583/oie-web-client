@@ -8,6 +8,10 @@ With **no RBAC plugin installed the UI is unchanged** (everything is permitted).
 plugin opts in by registering a controller; the controller is asked, per item,
 whether the user may see it.
 
+This hook controls discoverability in the browser; it is **not a security
+boundary**. Engine or plugin endpoints must independently authorize every
+request. Never rely on a hidden task to protect an operation.
+
 This mirrors Swing exactly: the identifiers below are the same `(taskGroup, taskName)`
 pairs Swing's `Frame.setVisibleTasks` checks (see
 `com.mirth.connect.client.ui.AuthorizationController` /
@@ -26,7 +30,7 @@ platform.setAuthorizationController({
 });
 ```
 
-Semantics (`client/core/authorization.js`):
+Semantics (`client/core/authorization.ts`):
 
 - **`checkTask(group, task)` returning `false` hides** the matching nav item, task
   button, and its right-click twin. Any other return value shows it.
@@ -37,8 +41,9 @@ Semantics (`client/core/authorization.js`):
   `''`): tagging a task signals gating intent, and RBAC controllers resolve bare
   Swing task names without the group — a missing group tag must not silently fail
   open.
-- The controller is a **singleton**, set once. Register it in your plugin's
-  `register(platform)` (which runs during plugin load, before views mount).
+- There is one current controller; a later registration replaces it. Register
+  yours in `register(platform)` (which runs during plugin load, before views
+  mount).
 
 ### Implementing an RBAC plugin
 
@@ -46,22 +51,41 @@ A web plugin is a module exporting `register(platform)` (see `PLUGINS.md`). Driv
 `checkTask` from whatever your server tells you about the user's roles:
 
 ```js
-// plugins/rbac/web/plugin.js
+// plugins/rbac/web/plugin.ts
 export async function register(platform) {
-    // Fetch the user's allowed tasks however your backend exposes them.
-    const allowed = await platform.api.get('/extensions/rbac/permissions'); // your endpoint
-    const permitted = new Set(allowed.map((p) => `${p.group}:${p.task}`));
+    // Plugin registration is page-scoped, while users can sign out and sign in
+    // again without reloading the page. Default-deny while each user's
+    // permissions are loading and reject stale responses from an older user.
+    let generation = 0;
+    let permitted = new Set();
+    async function loadFor(user) {
+        const mine = ++generation;
+        permitted = new Set();
+        if (!user) return;
+        try {
+            const allowed = await platform.api.get('/extensions/rbac/permissions');
+            if (mine === generation && platform.store.getState('user') === user) {
+                permitted = new Set(allowed.map((p) => `${p.group}:${p.task}`));
+            }
+        } catch {
+            // Remain deny-all. Endpoint authorization remains authoritative.
+        }
+    }
 
     platform.setAuthorizationController({
         checkTask(group, task) {
             return permitted.has(`${group}:${task}`);
         },
     });
+    platform.store.subscribe('user', (user) => { void loadFor(user); });
+    await loadFor(platform.store.getState('user'));
 }
 ```
 
 The host calls `checkTask` synchronously while rendering, so resolve your permission
-data **inside `register` (before returning)** or default-deny only once it's loaded.
+data **inside `register` (before returning)**. Because plugin registration is
+page-scoped, also clear and reload permission state whenever `store.user` changes;
+never carry one user's cached permissions into a later soft login.
 
 ---
 
@@ -69,10 +93,10 @@ data **inside `register` (before returning)** or default-deny only once it's loa
 
 | Surface | How an item is tagged | File |
 | --- | --- | --- |
-| **Left nav** (Dashboard, Channels, …) | `registerNavItem({ …, task })` — group is always `view` | `client/react/shell.jsx` (`Nav`) |
-| **Task-pane buttons** (React) | `<TaskButton task="…" />`; the pane's `<RailPane group="…">` supplies the group via context | `client/react/ui.jsx` |
-| **Task-pane buttons** (imperative, used by Settings) | `taskButton(label, icon, onClick, { task, group })` | `client/core/ui.js` |
-| **Right-click context menus** | each item `{ label, task, group, … }`; `contextMenu(x, y, items, group)` can supply a default group for all items | `client/core/ui.js` (`contextMenu`) |
+| **Left nav** (Dashboard, Channels, …) | `registerNavItem({ …, task })` — group is always `view` | `client/react/shell.tsx` (`Nav`) |
+| **Task-pane buttons** (React) | `<TaskButton task="…" />`; the pane's `<RailPane group="…">` supplies the group via context | `client/react/ui.tsx` |
+| **Task-pane buttons** (imperative, used by Settings) | `taskButton(label, icon, onClick, { task, group })` | `client/core/ui.ts` |
+| **Right-click context menus** | each item `{ label, task, group, … }`; `contextMenu(x, y, items, group)` can supply a default group for all items | `client/core/ui.ts` (`contextMenu`) |
 
 A task button and the context-menu item that performs the same action carry the **same
 `(group, task)`**, so denying it hides both — exactly Swing's paired
@@ -87,6 +111,7 @@ task/`JPopupMenu` behavior.
 ### `view` — top-level navigation
 - `doShowDashboard` — Dashboard
 - `doShowChannel` — Channels
+- `doShowMessages` — Messages
 - `doShowUsers` — Users
 - `doShowSettings` — Settings
 - `doShowAlerts` — Alerts
@@ -268,5 +293,5 @@ fixed: `view` and `dashboard` respectively). `type-tests/` guards the surface.
    4th arg of `contextMenu(x, y, items, group)`. Tag it with the **same** `(group, task)`
    as its task-button twin so both hide together.
 
-Tests: `client/core/authorization.test.js` (the hook) and `e2e/rbac.spec.js` (a plugin
+Tests: `client/core/authorization.test.js` (the hook) and `e2e/rbac.spec.ts` (a plugin
 denying a nav item + a task; the no-controller case stays visible).
