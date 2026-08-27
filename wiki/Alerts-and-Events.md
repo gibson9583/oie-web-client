@@ -4,7 +4,7 @@
 
 Alerts watch engine or channel conditions and run configured actions.
 
-![Alerts inventory](images/alerts.png)
+![Alerts inventory](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/alerts.png)
 
 The list shows enabled and disabled alerts. Select a row to Edit, Enable,
 Disable, Export, or Delete it. Import resolves identity/name collisions before
@@ -12,7 +12,7 @@ dispatching writes.
 
 ### Guided alert wizard
 
-![Guided alert wizard](images/alert-wizard.png)
+![Guided alert wizard](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/alert-wizard.png)
 
 The wizard walks through:
 
@@ -33,7 +33,7 @@ overwrite.
 
 Events are the engine audit and operational history.
 
-![Events browser](images/events.png)
+![Events browser](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/events.png)
 
 - Filter by date, level, outcome, name/type, user, server, and text.
 - Select an event to open its complete attributes and identifiers.

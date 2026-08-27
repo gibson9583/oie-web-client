@@ -361,9 +361,10 @@ branch tip.
 
 ## Documentation
 
-- [`wiki/Home.md`](wiki/Home.md) — complete user and operator Wiki with
-  first-party screen walkthroughs, workflows, screenshots, deployment, and
-  troubleshooting.
+- [User and operator Wiki](https://github.com/gibson9583/oie-web-client/wiki) —
+  complete first-party screen walkthroughs, workflows, screenshots, deployment,
+  and troubleshooting. The version-controlled
+  [Wiki source](wiki/Home.md) is kept in this repository.
 - [`web-administrator/README.md`](web-administrator/README.md) — full feature
   overview, look & feel, and engine-API notes.
 - [`web-administrator/PLUGINS.md`](web-administrator/PLUGINS.md) —

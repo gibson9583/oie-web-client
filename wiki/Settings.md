@@ -5,7 +5,7 @@ lock so one save or destructive operation can reconcile before another begins.
 
 ## Server
 
-![Server settings](images/settings-server.png)
+![Server settings](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/settings-server.png)
 
 Server settings include environment identity, SMTP, session/logout behavior,
 default metadata, and related engine configuration. The task pane also provides:
@@ -21,7 +21,7 @@ resolve/reconcile it before any later write.
 
 ## Administrator
 
-![Administrator preferences and live preview](images/settings-administrator.png)
+![Administrator preferences and live preview](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/settings-administrator.png)
 
 Administrator preferences include:
 

@@ -5,7 +5,7 @@ engine channel models and preserve unknown extension fields.
 
 ## Guided channel wizard
 
-![Guided channel wizard](images/channel-wizard.png)
+![Guided channel wizard](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/channel-wizard.png)
 
 The wizard steps are:
 
@@ -23,7 +23,7 @@ channel.
 
 ## Classic channel editor
 
-![Classic channel editor](images/channel-editor.png)
+![Classic channel editor](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/channel-editor.png)
 
 The classic editor exposes four tabs:
 
@@ -39,7 +39,7 @@ Use **Set Data Types** and **Set Dependencies** to update their shared models.
 
 ## Filters and transformers
 
-![Transformer editor](images/transformer.png)
+![Transformer editor](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/transformer.png)
 
 Filters decide whether a message proceeds. Transformers apply ordered steps such
 as JavaScript, Mapper, Message Builder, XSLT, Rule Builder, Iterator, or

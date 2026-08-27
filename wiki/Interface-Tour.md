@@ -22,7 +22,7 @@ reporting a problem.
 
 Press **Ctrl+K** or **⌘K** to search registered views, channels, and commands.
 
-![Command palette](images/command-palette.png)
+![Command palette](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/command-palette.png)
 
 Useful search prefixes:
 

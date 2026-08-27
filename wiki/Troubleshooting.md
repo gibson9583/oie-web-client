@@ -39,7 +39,7 @@ metadata, or template libraries instead of pretending the set is empty.
 
 Do not immediately repeat it. Refresh from an independent view and inspect
 Events/current server state. Follow the UI’s reconciliation or verified-outcome
-prompt. See [Operations and Safety](Operations-and-Safety.md).
+prompt. See [Operations and Safety](https://github.com/gibson9583/oie-web-client/wiki/Operations-and-Safety).
 
 ## WAR returns 404
 

@@ -5,7 +5,7 @@
 Code-template libraries organize reusable JavaScript functions and control which
 channels receive them.
 
-![Code Templates editor](images/code-templates.png)
+![Code Templates editor](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/code-templates.png)
 
 1. Select a library to edit its name, description, and channel association.
 2. Select a template to edit code, context set, and template metadata.
@@ -23,7 +23,7 @@ state.
 
 ## Global Scripts
 
-![Global Scripts editor](images/global-scripts.png)
+![Global Scripts editor](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/global-scripts.png)
 
 Global Scripts contains the server-wide Deploy, Undeploy, Preprocessor, and
 Postprocessor scripts. These affect all channels and should be changed under a

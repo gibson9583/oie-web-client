@@ -2,7 +2,7 @@
 
 ## Users
 
-![Users screen](images/users.png)
+![Users screen](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/users.png)
 
 The Users screen lists engine user accounts and exposes New User, Edit User,
 Change Password, and Delete User according to engine permissions.
@@ -26,7 +26,7 @@ make recovery difficult and may be restricted by the engine.
 
 ## Extensions
 
-![First-party extension inventory](images/extensions.png)
+![First-party extension inventory](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/extensions.png)
 
 The screen has three inventories:
 

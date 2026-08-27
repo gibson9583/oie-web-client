@@ -5,38 +5,27 @@ OIE Web Client is a browser-based administrator for Open Integration Engine
 alerting, audit-event review, server configuration, and extension management
 without requiring the Swing Administrator.
 
-![Dashboard overview](images/dashboard-table.png)
+![Dashboard overview](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/dashboard-table.png)
 
 ## Start here
 
-- [Getting Started](Getting-Started.md) — install, connect, sign in, and learn
+- [Getting Started](https://github.com/gibson9583/oie-web-client/wiki/Getting-Started) — install, connect, sign in, and learn
   the shell.
-- [Dashboard](Dashboard.md) — monitor channel state and control deployments.
-- [Channels](Channels.md) — organize, import, export, deploy, and edit channels.
-- [Channel Editors](Channel-Editors.md) — classic editor, guided wizard, filters,
+- [Dashboard](https://github.com/gibson9583/oie-web-client/wiki/Dashboard) — monitor channel state and control deployments.
+- [Channels](https://github.com/gibson9583/oie-web-client/wiki/Channels) — organize, import, export, deploy, and edit channels.
+- [Channel Editors](https://github.com/gibson9583/oie-web-client/wiki/Channel-Editors) — classic editor, guided wizard, filters,
   transformers, scripts, and data types.
-- [Messages](Messages.md) — search, inspect, export, reprocess, and remove data.
-- [Alerts and Events](Alerts-and-Events.md) — alert definitions and audit history.
-- [Code Templates and Global Scripts](Code-Templates-and-Global-Scripts.md) —
+- [Messages](https://github.com/gibson9583/oie-web-client/wiki/Messages) — search, inspect, export, reprocess, and remove data.
+- [Alerts and Events](https://github.com/gibson9583/oie-web-client/wiki/Alerts-and-Events) — alert definitions and audit history.
+- [Code Templates and Global Scripts](https://github.com/gibson9583/oie-web-client/wiki/Code-Templates-and-Global-Scripts) —
   reusable JavaScript and lifecycle hooks.
-- [Users and Extensions](Users-and-Extensions.md) — user administration and
+- [Users and Extensions](https://github.com/gibson9583/oie-web-client/wiki/Users-and-Extensions) — user administration and
   first-party extension inventory.
-- [Settings](Settings.md) — server, administrator, tags, configuration map,
+- [Settings](https://github.com/gibson9583/oie-web-client/wiki/Settings) — server, administrator, tags, configuration map,
   database tasks, resources, and Data Pruner settings.
-- [Operations and Safety](Operations-and-Safety.md) — safe production workflows,
+- [Operations and Safety](https://github.com/gibson9583/oie-web-client/wiki/Operations-and-Safety) — safe production workflows,
   partial failures, confirmation prompts, and auditing.
-- [Deployment and Configuration](Deployment-and-Configuration.md) — Node,
+- [Deployment and Configuration](https://github.com/gibson9583/oie-web-client/wiki/Deployment-and-Configuration) — Node,
   Docker, WAR, TLS, and configuration precedence.
-- [Troubleshooting](Troubleshooting.md) — common startup, connectivity, browser,
+- [Troubleshooting](https://github.com/gibson9583/oie-web-client/wiki/Troubleshooting) — common startup, connectivity, browser,
   and feature-availability problems.
-
-## Documentation scope
-
-This Wiki covers the web administrator and first-party OIE functionality. It
-does not include third-party plugin screens such as Sentinel, TLS Manager,
-Thread Viewer, RBAC, or Source Code Search. Installed extensions can add tabs,
-tasks, columns, editors, or routes that are not shown here.
-
-All screenshots are generated against mocked sample data. Names, counts, server
-versions, and timestamps are illustrative; no production data or PHI is used.
-

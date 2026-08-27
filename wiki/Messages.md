@@ -4,7 +4,7 @@ The Messages screen searches channel message history and opens connector-level
 content. Message bodies can contain PHI, credentials, or other sensitive data;
 use the minimum access required by your role.
 
-![Message search and detail](images/messages.png)
+![Message search and detail](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/messages.png)
 
 ## Search
 

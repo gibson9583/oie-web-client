@@ -4,7 +4,7 @@ The Dashboard is the operational starting point. It combines current channel
 state, message statistics, connector state, tags, and first-party monitoring
 tabs.
 
-![Dashboard table view](images/dashboard-table.png)
+![Dashboard table view](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/dashboard-table.png)
 
 ## Table view
 
@@ -22,7 +22,7 @@ emergency action and is intentionally more restrictive than Stop.
 
 Choose **Card view** in the Dashboard task pane for a denser at-a-glance layout.
 
-![Dashboard card view](images/dashboard-cards.png)
+![Dashboard card view](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/dashboard-cards.png)
 
 Cards preserve group/tag organization, status, message counters, selection, and
 the same lifecycle actions as the table. The preference is saved in the browser.
@@ -64,4 +64,4 @@ Double-click a channel, use its context menu, or select it and choose the task:
 These actions create a time boundary. New messages or counters can arrive while
 you are deciding what to do, so read the confirmation carefully and do not
 blindly repeat an action after a timeout. See
-[Operations and Safety](Operations-and-Safety.md).
+[Operations and Safety](https://github.com/gibson9583/oie-web-client/wiki/Operations-and-Safety).

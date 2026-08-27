@@ -2,7 +2,7 @@
 
 The Channels screen is the design inventory for channels and channel groups.
 
-![Channels inventory](images/channels.png)
+![Channels inventory](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/channels.png)
 
 ## What the list shows
 
@@ -54,5 +54,5 @@ dependencies, so inspect the target list and resulting status. A timeout does
 not prove that the engine rejected the operation; refresh and verify state
 before retrying.
 
-See [Channel Editors](Channel-Editors.md) for design details.
+See [Channel Editors](https://github.com/gibson9583/oie-web-client/wiki/Channel-Editors) for design details.
 

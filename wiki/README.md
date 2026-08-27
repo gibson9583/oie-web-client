@@ -1,6 +1,6 @@
 # OIE Web Client Wiki
 
-Start with [Home](Home.md). The pages in this directory are written in a
+Start with [Home](https://github.com/gibson9583/oie-web-client/wiki/Home). The pages in this directory are written in a
 GitHub-Wiki-compatible format and are also readable directly in the repository.
 
 The Wiki documents the OIE Web Client and the first-party functionality shipped

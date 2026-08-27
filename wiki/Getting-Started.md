@@ -6,7 +6,7 @@
 - A current browser.
 - Engine credentials with the permissions needed for your work.
 - Node.js 22 LTS for a source deployment, or Docker/JDK as described in
-  [Deployment and Configuration](Deployment-and-Configuration.md).
+  [Deployment and Configuration](https://github.com/gibson9583/oie-web-client/wiki/Deployment-and-Configuration).
 
 The base administrator works through the engine REST API. The optional
 [OIE Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin)
@@ -29,7 +29,7 @@ production-style run, build first with `npm run build` and then use `npm start`.
 
 ## Sign in
 
-![Sign-in screen](images/login.png)
+![Sign-in screen](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/login.png)
 
 1. Select an engine when the administrator is configured for multiple engines.
 2. Enter your normal OIE username and password.
@@ -49,5 +49,5 @@ shared workstation; closing a tab is not a substitute for signing out.
 5. Visit **Settings → Administrator** to choose refresh intervals, table
    density, theme, UI font, and data font.
 
-Continue with the [Interface Tour](Interface-Tour.md).
+Continue with the [Interface Tour](https://github.com/gibson9583/oie-web-client/wiki/Interface-Tour).
 
