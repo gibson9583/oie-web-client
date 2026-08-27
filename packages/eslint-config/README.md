@@ -37,8 +37,8 @@ export default [
   `@oie/*` packages. Use the
   public entry: `@oie/web-api`, `@oie/web-ui`, `@oie/web-shell`.
 - **`warn`** — undefined references (`no-undef`) and unused code
-  (`no-unused-vars`). Catches the kind of mistake `node --check` misses in ES
-  modules (e.g. an unbalanced paren).
+  (`no-unused-vars`). Catches semantic mistakes that a syntax-only
+  `node --check` cannot detect.
 
 ## License
 

@@ -8,9 +8,10 @@ developers add features by dropping a folder into `plugins/` (the web equivalent
 of the engine's `plugin.xml` extension model).
 
 Both administrators can be used side by side against the same engine — this app
-is read/write through the same `/api` surface the Swing client uses. The one
-engine-side addition is a drop-in **[web support plugin](#requirements)** (it adds
-a few REST endpoints the client needs; it doesn't modify the engine).
+is read/write through the same `/api` surface the Swing client uses. An optional
+**[Web Support plugin](#requirements)** adds message-tree serialization,
+engine-side JavaScript validation, engine-served plugin UIs, and an embedded WAR;
+the rest of the administrator continues to work without it.
 
 ```
 ┌─────────────┐   http :3030    ┌──────────────────┐   https :8443/api   ┌────────────┐
@@ -53,10 +54,10 @@ oie-web-client/
 | Tool | Version | Notes |
 |---|---|---|
 | **Node.js** | **22 LTS recommended** (20.19+ minimum) | Runs the server, the Vite build, and the tests; bundles a compatible npm. Check with `node -v`. Vite 8 requires 20.19+, and the lint toolchain (Babel 8) wants 22.18+; the built server alone still runs on 18+. |
-| **npm** | **9+** (ships with Node 18+) | This is an npm-**workspaces** monorepo (npm 7+ required). Yarn/pnpm are not used. |
+| **npm** | **9+** | Bundled with the supported Node 20/22 toolchain. This is an npm-**workspaces** monorepo (npm 7+ required); Yarn/pnpm are not used. |
 | **JDK** | **17+** (WAR builds only) | Supplies the standard `jar` tool used by `npm run build:war`; it is not needed to run the Node/Docker deployment. |
-| **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://localhost:8443`. This release line targets OIE 4.6.0. |
-| **OIE Web Support plugin** | latest | **Required.** Installs the engine REST endpoints the web client uses for byte-exact message-tree serialization and JavaScript validation/formatting, together with an embedded copy of this web administrator. → **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)** |
+| **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://127.0.0.1:8443`. This release line targets OIE 4.6.0. |
+| **OIE Web Support plugin** | available separately | **Optional for the base administrator; required only for** byte-exact message-tree serialization, engine-side JavaScript validation, engine-served plugin UIs, and the plugin-managed embedded WAR. Download it and read its installation notes at **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)**. |
 | **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
 
 Contributors running the end-to-end tests also install Playwright's browser once:
@@ -64,11 +65,11 @@ Contributors running the end-to-end tests also install Playwright's browser once
 
 ## Quick start from source
 
-> **Prerequisite — install the web support plugin first.** Your engine needs the
-> **[OIE Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin)**
-> installed, which adds REST endpoints the web client relies on that aren't in the
-> core 4.6.0 engine. Grab its latest release, extract it into the engine's
-> `extensions/` (or install via the Swing Administrator), and restart the engine.
+> **Optional Web Support plugin.** The base administrator can be started without
+> Web Support. Install the plugin from
+> **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)**
+> when you need message trees, engine-side Validate Script, engine-served plugin
+> UIs, or plugin-managed WAR installation.
 
 > ⚠️ Run `npm install` **at the repository root**. This is an npm-workspaces
 > monorepo — installing inside `web-administrator/` will not link the `@oie/*`
@@ -85,9 +86,9 @@ cp config.example.json config.json        # then edit "engine.url" to your OIE/M
 # 3) Run it:
 npm run dev                               # dev: file-watch + Vite, no build step (recommended while developing)
 #   — or —
-npm start                                 # serves client/dist if built, otherwise the source directly
+npm run build && npm start                # optimized production build + server
 
-# Open http://localhost:3030 and sign in with your engine credentials (e.g. admin / admin).
+# Open http://localhost:3030 and sign in with your engine credentials.
 ```
 
 The engine must be **running and reachable** at `engine.url` before you sign in.
@@ -95,10 +96,10 @@ OIE/Mirth ships a **self-signed TLS cert**, so `engine.verifyTls` defaults to
 `false`; set it `true` only when the engine presents a trusted certificate.
 
 `npm run dev` serves and transforms `client/` source on the fly — no manual build
-while developing. `npm run build` emits an optimized `client/dist` that `npm
-start` serves when present (otherwise it serves the source directly). Either path
-keeps the framework a single shared instance, so runtime-loaded plugins resolve
-against the same copy.
+while developing. `npm run build` emits the optimized `client/dist` required by
+`npm start`; the unbuilt TypeScript/Tailwind source cannot boot in a browser
+without Vite. Either supported path keeps the framework a single shared instance,
+so runtime-loaded plugins resolve against the same copy.
 
 ## Deploy into an existing OIE server (WAR)
 
@@ -106,11 +107,10 @@ The WAR is the smallest production deployment: OIE's embedded Jetty already
 loads every `*.war` in its `webapps/` directory, so no Node process, reverse
 proxy, or extra port is required.
 
-For the easiest installation, download `websupport-<version>.zip` from the
-[Web Support release](https://github.com/gibson9583/oie-web-support-plugin/releases),
-install it through the Swing Administrator, and restart OIE. That single plugin
-installs the APIs and extracts `oie-webadmin.war` into `<OIE_HOME>/webapps/`
-before Jetty discovers web applications.
+Download `websupport-<version>.zip` from the
+[Web Support releases](https://github.com/gibson9583/oie-web-support-plugin/releases),
+install it through the Swing Administrator, and restart OIE. The plugin installs
+both the additional APIs and its embedded `oie-webadmin.war`.
 
 To build and copy the WAR yourself instead:
 
@@ -130,16 +130,17 @@ HTTPS listener—the engine API is HTTPS-only unless `server.api.allowhttp` is
 explicitly enabled.
 
 WAR mode is intentionally tied to the OIE server hosting it. Local login/MFA,
-engine extension install/uninstall, bundled plugins, and engine-served plugin UIs
-work directly against that server. Features that need the Node server—multiple
-engine targets, a user-entered engine URL, `pluginDirs`, Node-managed TLS, and
-confidential-client OIDC—remain available through the source or Docker modes.
+engine extension install/uninstall, and bundled plugins work directly against
+that server; engine-served plugin UIs additionally require native web-support
+endpoints or the Web Support extension. Features that need the Node server—multiple
+engine targets, a user-entered engine URL, `pluginDirs`, and Node-managed TLS—
+remain available through the source or Docker modes.
 This separation keeps client secrets out of a static WAR and leaves the existing
 deployment paths unchanged.
 
-Web Support always installs the embedded WAR. You can still run the Node.js or
-Docker deployment instead; the embedded copy simply remains available at
-`/oie-webadmin/`.
+The Web Support package installs its embedded WAR. You can still run
+the Node.js or Docker deployment instead; the embedded copy simply remains
+available at `/oie-webadmin/`.
 
 ## Run with Docker
 
@@ -150,7 +151,7 @@ is a rolling build of the `main` branch tip, and `pr-N` previews open pull
 requests (removed when the PR closes).
 
 ```bash
-docker run --rm -p 3030:3030 \
+docker run --rm -p 127.0.0.1:3030:3030 \
   -e OIE_URL=https://host.docker.internal:8443 \
   gibson9583/oie-web-client:latest
 ```
@@ -166,20 +167,23 @@ plugin settings — mount a file or pass the JSON inline:
 
 ```bash
 # Mount a config document (reference any PEMs by absolute path):
-docker run --rm -p 3030:3030 \
+docker run --rm -p 127.0.0.1:3030:3030 \
   -v ./my-config:/config:ro -e WEBADMIN_CONFIG=/config/config.json \
   gibson9583/oie-web-client:latest
 
 # …or inject the document itself (e.g. from an orchestrator secret):
-docker run --rm -p 3030:3030 \
+docker run --rm -p 127.0.0.1:3030:3030 \
   -e WEBADMIN_CONFIG_JSON='{"allowedUrls":[{"name":"Prod","url":"https://oie-prod:8443"}]}' \
   gibson9583/oie-web-client:latest
 ```
 
-The container runs as the non-root `node` user and serves plain HTTP on `3030` —
-terminate TLS in front, or configure [built-in TLS](#serving-over-https) with
-mounted PEMs. Build the image yourself with `docker build -t oie-web-client .`
-from the repo root.
+The examples publish plain HTTP on host loopback only. The container runs as the
+non-root `node` user and listens on `3030`; for routable access, terminate TLS in
+front or configure [built-in TLS](#serving-over-https) with mounted PEMs before
+publishing a non-loopback host address. When enabling built-in TLS in Docker,
+replace the image's default plain-HTTP healthcheck with an HTTPS-aware probe.
+Build the image yourself with `docker build -t oie-web-client .` from the repo
+root.
 
 ## Node/Docker configuration
 
@@ -196,11 +200,11 @@ than silently booting on defaults. Start from
 |---|---|---|---|
 | `port` | `WEBADMIN_PORT` | `3030` | Port the web UI listens on |
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
-| `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
+| `engine.url` | `OIE_URL` | `https://127.0.0.1:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
 | `allowedUrls` | — | `[]` | Multi-engine mode: `[{ "name", "url", "verifyTls"? }, …]` becomes an engine picker on the login screen. Empty → single-engine mode (just `engine.url`, no picker) |
 | `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login. The proxy forwards to whatever is typed, so trusted/dev deployments only. (Distinct from `npm run dev`, which is the Vite dev server) |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine, not stored here. `:`-separated in the env var |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine, not stored here. The env var uses the platform path-list delimiter (`:` on Unix, `;` on Windows) |
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy). Loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` (HTTP) | Serve the UI over **HTTPS** directly — set `{ "key", "cert", "passphrase"? }` to PEM file paths (both key and cert required). Off by default; see [Serving over HTTPS](#serving-over-https) |
@@ -279,7 +283,7 @@ plugin UIs are disabled with a notice. Format Document runs entirely client-side
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
 | Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22 LTS (`node -v`); Node < 20.19 can't run Vite 8 and the test tooling. |
 | WAR URL returns 404 after copying | OIE discovers WARs only at startup. Put the file directly in `<OIE_HOME>/webapps/`, restart OIE, and use the context matching the WAR filename. |
-| Message trees, Validate Script, or plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install `websupport-<version>.zip` from the Extensions page and restart the engine. |
+| Message trees, Validate Script, or engine-served plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install the plugin and restart the engine. Format Document remains available because it is client-side. |
 
 ## Plugins & the Community Store
 
@@ -327,16 +331,17 @@ Run from the repo root:
 | `npm run build:war` | Build the optimized client and package `web-administrator/dist/oie-webadmin.war` for OIE's `webapps/` directory |
 | `npm run e2e` | Playwright suite; `/api/*` is mocked in-browser, so it runs with no engine |
 | `npm run e2e:live` | The same specs against a real engine (opt-in via `E2E_LIVE=1`) |
-| `npm run gen:userapi` | Regenerate `client/core/userapi.generated.js` from the engine's REST surface |
+| `npm run wiki:screenshots` | Regenerate the Wiki's first-party UI screenshots from deterministic mocked engine data |
+| `npm run gen:userapi` | Regenerate `web-administrator/client/core/userapi.generated.js` from the engine `userutil` Java sources/Javadocs (`../oie` by default or `OIE_SRC`) |
 | `npm run vendor:zip` | Rebuild the vendored `client/vendor/zipjs.min.js` bundle from `@zip.js/zip.js` |
 
 ### Releasing
 
-**Bump `web-administrator/package.json`'s `version` in the same commit you tag.**
-That field is what the app reports as its version — in the About dialog, in the
-startup banner, and in `/webadmin/config.json` — and nothing derives it from the
-tag. Ship a `v0.6.0` tag without bumping it and every build of that release
-identifies as the previous version.
+**Bump the root and `web-administrator/package.json` versions (and the lockfile)
+in the same commit you tag.** The web-administrator field is what the app reports
+in the About dialog, startup banner, and `/webadmin/config.json`; nothing derives
+it from the tag. Keep the monorepo release version synchronized so tooling and
+the application identify the same release.
 
 Pushing a `v*` tag also publishes `oie-webadmin.war` as a GitHub Release asset.
 The Web Support release pipeline consumes the version declared by its
@@ -349,11 +354,16 @@ Git supplies only the build *metadata* beside it (commit, build date, and a
 build pass the commit in as a build arg, since `.git` is never in the image
 context.
 
-So a release is: bump the version, commit, tag `vX.Y.Z`, push the tag. The Docker
-workflow cuts `X.Y.Z` / `X.Y` image tags from it; `latest` keeps tracking `main`.
+So a release is: bump the versions, commit, tag `vX.Y.Z`, and push the tag. The
+Docker workflow cuts `X.Y.Z` / `X.Y` image tags from it and moves `latest` only
+for a non-prerelease semantic-version tag; the separate `main` tag tracks the
+branch tip.
 
 ## Documentation
 
+- [`wiki/Home.md`](wiki/Home.md) — complete user and operator Wiki with
+  first-party screen walkthroughs, workflows, screenshots, deployment, and
+  troubleshooting.
 - [`web-administrator/README.md`](web-administrator/README.md) — full feature
   overview, look & feel, and engine-API notes.
 - [`web-administrator/PLUGINS.md`](web-administrator/PLUGINS.md) —

@@ -17,6 +17,7 @@
     "e2e:live": "E2E_LIVE=1 playwright test --project=live",
     "test": "npm test -w web-administrator",
     "build:war": "npm run build:war -w web-administrator",
+    "wiki:screenshots": "playwright test --config tools/wiki-playwright.config.ts",
     "vendor:zip": "esbuild node_modules/@zip.js/zip.js/lib/zip-core.js --bundle --format=esm --minify --legal-comments=none --outfile=web-administrator/client/vendor/zipjs.min.js",
     "gen:userapi": "node web-administrator/tools/gen-userapi.mjs"
   },

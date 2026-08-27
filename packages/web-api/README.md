@@ -32,10 +32,11 @@ The package ships TypeScript declarations **generated from the client's
 TypeScript sources** (`index.d.ts` re-exports `types/`, emitted by
 `npm run gen:types -w oie-web-administrator`), so the published types are the
 same ones the implementation compiles against. Engine model objects come from
-the engine's OpenAPI spec (`types/oie-schema.d.ts`, regenerated with
-`gen:schema`); the wire shapes (`WireChannel`, `XStreamList`,
-`XStreamElements`, ...) are declared in `core/wire-types.ts` and re-exported
-here.
+the engine's OpenAPI spec: `npm run gen:schema -w @oie/web-api` regenerates the
+canonical `web-administrator/client/core/oie-schema.d.ts` and the package-root
+copy, and the next `gen:types` copies it into `types/oie-schema.d.ts`. The wire
+shapes (`WireChannel`, `XStreamList`, `XStreamElements`, ...) are declared in
+`web-administrator/client/core/wire-types.ts` and re-exported here.
 
 ## License
 

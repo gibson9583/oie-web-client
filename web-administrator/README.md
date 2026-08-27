@@ -8,8 +8,10 @@ developers extend it by dropping a folder into `plugins/` (the web equivalent of
 the engine's `plugin.xml` extension model).
 
 Both administrators can be used side by side against the same engine — this app
-is read/write through the same `/api` surface the Swing client uses, so nothing
-about the engine install changes.
+is read/write through the same `/api` surface the Swing client uses. The
+Web Support extension is optional for the base administrator and adds message
+trees, engine-side script validation, engine-served plugin UIs, and an embedded
+WAR.
 
 ```
 ┌─────────────┐   http :3030    ┌──────────────────┐   https :8443/api   ┌────────────┐
@@ -24,36 +26,45 @@ about the engine install changes.
 ```bash
 npm install                              # run once at the repo root — installs all workspaces
 cd web-administrator
-OIE_URL=https://localhost:8443 npm start
-# open http://localhost:3030 and sign in with your engine credentials (admin/admin by default)
+OIE_URL=https://localhost:8443 npm run dev
+# open http://localhost:3030 and sign in with your engine credentials
 ```
+
+For a production-style local run, use `npm run build` and then `npm start` from
+this directory. `npm start` requires the generated `client/dist`; raw `.tsx` and
+Tailwind source cannot be served directly without Vite.
 
 ## OIE-hosted WAR
 
-The simplest option is the Web Support plugin's `websupport-<version>.zip`:
-install it through the Swing Administrator and restart OIE to install both the
-required APIs and the embedded WAR.
+Download `websupport-<version>.zip` from the
+[Web Support releases](https://github.com/gibson9583/oie-web-support-plugin/releases),
+install it through the Swing Administrator, and restart OIE. It installs both the
+additional APIs and its embedded WAR.
 
 For a separate WAR, run `npm run build:war` from the repository root. Copy the resulting
-`dist/oie-webadmin.war` to `<OIE_HOME>/webapps/`, restart OIE, and open
+`web-administrator/dist/oie-webadmin.war` to `<OIE_HOME>/webapps/`, restart OIE, and open
 `https://<host>:8443/oie-webadmin/`. The WAR filename controls the URL context
 and may be changed. WAR mode always uses its hosting OIE engine; use the Node or
 Docker deployment for multi-engine routing, local plugin directories,
-confidential-client OIDC, or independent TLS/listener configuration.
+or independent TLS/listener configuration.
 
 ## Configuration
 
-`config.json` in this directory (optional), overridden by environment variables:
+Configuration comes from one JSON document, then per-setting environment
+variables override it. The document source, in precedence order, is
+`WEBADMIN_CONFIG_JSON` (inline JSON), the file named by `WEBADMIN_CONFIG`, or the
+optional `config.json` in this directory. An explicitly selected document that
+is missing or invalid stops startup instead of silently using defaults.
 
 | Setting | Env var | Default | Description |
 |---|---|---|---|
 | `port` | `WEBADMIN_PORT` | `3030` | Port the web UI listens on |
 | `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
-| `engine.url` | `OIE_URL` | `https://localhost:8443` | Engine base URL |
+| `engine.url` | `OIE_URL` | `https://127.0.0.1:8443` | Engine base URL |
 | `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
 | `allowedUrls` | — | `[]` | Multi-engine mode: `[{ "name", "url", "verifyTls"? }, …]` becomes an engine picker on the login screen. Empty → single-engine mode |
 | `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login (the proxy forwards to whatever is typed — trusted/dev deployments only) |
-| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). `:`-separated in the env var. Extensions installed on the engine are served by the engine, not stored here. |
+| `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). The env var uses the platform path-list delimiter (`:` on Unix, `;` on Windows). Extensions installed on the engine are served by the engine, not stored here. |
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy); loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` | Serve the web UI itself over HTTPS: `{ "key", "cert", "passphrase"? }` (PEM paths). Leave `null` to serve HTTP and terminate TLS in front |
@@ -81,6 +92,9 @@ tables with a bottom filter bar, dashboard tabs (Server Log, Connection Log,
 Global Maps), and a connection status bar along the bottom. **Light mode**
 (default) matches the classic blue-and-white Administrator; **dark mode** is a
 steel-blue equivalent — toggle via the sun/moon button in the title bar.
+Settings → Administrator also stores per-user table density, UI font, and data
+font preferences. The preview shows pending theme, density, typeface, and
+environment-color changes before Save.
 
 ## What's implemented 
 
@@ -112,8 +126,8 @@ steel-blue equivalent — toggle via the sun/moon button in the title bar.
   inbound/outbound data types and templates.
 - **Script editors** — Monaco-based JavaScript tuned for Rhino: User API
   (`userutil`) IntelliSense, in-scope code-template function completions,
-  reserved-variable highlighting, and engine-backed validation + Format Document
-  (via the engine's REST API — see below). Monaco is bundled and served locally, so
+  reserved-variable highlighting, engine-backed validation, and a client-side
+  Format Document command (see below). Monaco is bundled and served locally, so
   it works fully air-gapped (no CDN); it falls back to a plain editor only if it
   ever fails to load.
 - **Message browser** — search (date, status, text, connector), pagination,
@@ -196,8 +210,8 @@ hook) — see [RBAC.md](RBAC.md), which lists every permission identifier.
 The frontend is ES modules under `client/`. In development, `npm run dev` (from
 this directory) runs the Node server with file-watch plus Vite's dev middleware,
 serving and transforming source on the fly — no manual build while developing.
-For production, `npm run build` emits an optimized `client/dist` that `npm
-start` serves when present (otherwise it serves the source directly).
+For production, `npm run build` emits the optimized `client/dist` required by
+`npm start`.
 
 Plugins build against the `@oie/*` packages; `npm run lint` at the repo root
 enforces that they use only the public API (and flags unused code). The visual
@@ -210,10 +224,10 @@ Third-party libraries are loaded one of three ways. Big client libs that plugins
 also need are **vendored** to `client/vendor/*` and exposed through the page
 import map (`monaco-editor` for the code editor, `js-beautify` for Format
 Document, `qrcode-generator`, `@zip.js/zip.js`). App-bundle React deps are
-bundled by Vite: `react`, `react-router-dom`, the `@radix-ui/*` primitives the
+bundled by Vite: `react`, `react-dom`, the `@radix-ui/*` primitives the
 shell and views are built on (tabs, dialog, dropdown-menu, popover, collapsible,
 radio-group, toast), and `react-day-picker` behind the date/time field
-(`client/react/date-time-field.jsx`, which compiles into its own lazy chunk). A plugin's
+(`client/react/date-time-field.tsx`, which compiles into its own lazy chunk). A plugin's
 own npm dependencies are bundled into its `web/plugin.js` by esbuild — e.g. the
 DICOM attachment viewer bundles [`dicom-parser`](https://github.com/cornerstonejs/dicomParser)
 (MIT) for parsing; pixel data is decoded with the browser's native codecs and

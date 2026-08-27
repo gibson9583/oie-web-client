@@ -3,7 +3,7 @@
 Playwright tests for the web admin's core workflows. Two modes:
 
 - **`ui` (default, mocked)** — `/api/*` is intercepted in the browser
-  (`mock.js` + `fixtures.js`), so the suite runs deterministically with **no
+  (`mock.ts` + `fixtures.ts`), so the suite runs deterministically with **no
   engine**, no credentials, and no cleanup. It exercises everything we own
   end-to-end (real browser + real SPA + real Node server); only the external
   engine is faked. This is the regression guard.
@@ -15,7 +15,7 @@ Playwright tests for the web admin's core workflows. Two modes:
 ```bash
 npm run e2e                 # mocked suite (boots the Node server automatically)
 npm run e2e -- --headed     # watch it in a browser
-npm run e2e -- login.spec.js
+npm run e2e -- e2e/login.spec.ts
 ```
 
 First time only: `npx playwright install chromium`.
@@ -48,9 +48,9 @@ Set `E2E_EXPECT_DEPLOYMENT=war` to require the WAR deployment marker.
 | File | Purpose |
 |---|---|
 | `playwright.config.ts` (repo root) | `ui` + `live` projects; boots `npm start -w web-administrator` |
-| `fixtures.js` | canned engine responses in the XStream wire shapes the client expects |
-| `mock.js` | `mockEngine(page, overrides)` route interceptor + `login()` helper |
-| `*.spec.js` | mocked workflow tests (login, dashboard + `cards` card view, channels, `channel-wizard`/`alert-wizard` guided builders, …) |
+| `fixtures.ts` | canned engine responses in the XStream wire shapes the client expects |
+| `mock.ts` | `mockEngine(page, overrides)` route interceptor + `login()` helper |
+| `*.spec.ts` | mocked workflow tests (login, dashboard + `cards` card view, channels, `channel-wizard`/`alert-wizard` guided builders, …) |
 | `live.spec.ts` | opt-in real-engine login + channel CRUD smoke |
 
 ## Adding tests / fixtures

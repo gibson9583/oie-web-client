@@ -3,12 +3,14 @@
 The web administrator mirrors the engine's extension philosophy: the Swing
 client loads `ClientPlugin` classes declared in `plugin.xml`; the web
 administrator loads JavaScript modules declared in `plugin.json`. Built-in
-views register through the **same registries** plugins use, so a plugin can do
-anything a core view can.
+views register through the **same public registries** plugins use, so first- and
+third-party extensions use the same supported contracts.
 
-> **Plugins are React.** Every plugin's UI is authored in React against the
-> host's own React instance (`platform.React`), and registries hold a
-> **`component`** (a React component). See
+> **Component-based plugin UI is React.** Those extension points are authored
+> against the host's own React instance (`platform.React`) and register a
+> **`component`**. Full routed views may also use the lower-level imperative view
+> handler, and some descriptors are intentionally data-only or callback-only
+> (for example data types, transmission modes, and dashboard columns). See
 > [Writing plugins in React](#writing-plugins-in-react) for the contract.
 
 ## Adding a web UI: three starting points
@@ -60,13 +62,14 @@ plugins/
     ├── plugin.json          # manifest (required)
     ├── server.js            # optional Node/Express extension
     └── web/
-        ├── plugin.jsx       # browser entry — React SOURCE you author
+        ├── plugin.tsx       # browser entry — React/TypeScript SOURCE you author
         ├── plugin.js        # COMPILED output (the served entry; what plugin.json points to)
         └── ...              # any other assets, served at /plugins/my-plugin/...
 ```
 
-You author **`plugin.jsx`**; a build step compiles it to **`plugin.js`** (the
-served entry). The browser can't run JSX — it loads the compiled `.js`, which is
+You author **`plugin.tsx`** (or `.ts` for a data-only entry); a build step bundles
+it to **`plugin.js`** (the served entry). The browser can't run TypeScript or JSX
+directly — it loads the compiled `.js`, which is
 served raw and dynamically `import()`-ed at runtime (so it shares the one running
 framework instance instead of bundling its own). See
 [Building the browser entry](#building-the-browser-entry).
@@ -140,7 +143,7 @@ ones are built.
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
 | `ConnectorPropertiesPlugin` | `httpauth` (HTTP Authentication), SSL managers | `httpauth` ships as a web plugin (`plugins/httpauth`) calling `registerConnectorPropertiesPanel`; renders as the "Authentication" panel on HTTP Listener sources |
-| `DataTypeClientPlugin` | `datatypes/*` (HL7 v2, XML, …) | each ships as a web plugin (`plugins/datatype-*`) calling `registerDataType`; `client/datatypes/index.js` is just the registry read-side (`dataTypeDef` / `dataTypeList`), and `props-editor.jsx` renders any registered type |
+| `DataTypeClientPlugin` | `datatypes/*` (HL7 v2, XML, …) | each ships as a web plugin (`plugins/datatype-*`) calling `registerDataType`; `client/datatypes/index.ts` is the app's registry read-side (`dataTypeDef` / `dataTypeList`), and `props-editor.tsx` renders any registered type |
 | `TransmissionModePlugin` | `mllpmode` (MLLP framing) | `registerTransmissionMode` — Basic is built in; `mllpmode` ships as a plugin. TCP's Transmission Mode dropdown + ⚙ settings dialog + Sample Frame are driven by the registry |
 | `ResourceClientPlugin` | `directoryresource` (Directory resource type) | `registerResourceType` — the Settings → Resources panel is generic; `directoryresource` ships as a plugin providing the Directory type editor |
 | `AuthorizationController` (RBAC menu-hiding) | commercial "Role-Based Access Control" plugin | `setAuthorizationController({ checkTask(taskGroup, taskName) })` — hides nav items, task buttons, and right-click items the user isn't authorized for. Identifiers mirror Swing's `TaskConstants`. **See [`RBAC.md`](RBAC.md)** for the hook, a worked example, and the full permission catalog |
@@ -151,7 +154,7 @@ Like the Swing client, the web administrator does **not** privilege its built-in
 features — they ship as plugins under `plugins/`, loaded through the same
 mechanism a third-party plugin uses. The core client is a thin shell plus the
 shared frameworks they build on (the connector toolkit `client/connectors/forms.js`,
-the data-type properties renderer `client/datatypes/props-editor.jsx`, the form
+the data-type properties renderer `client/datatypes/props-editor.tsx`, the form
 builder, etc.). Current set:
 
 - **Connectors** (`connector-*`): vm, tcp, http, file, database, javascript, smtp, ws, dicom, jms, document
@@ -180,9 +183,9 @@ A plugin reaches the web-admin framework through three published packages:
 
 | Package | What it is | Swing analogue |
 |---|---|---|
-| [`@oie/web-api`](../../packages/web-api) | Engine REST client + model helpers (`api`, `asList`, `uuid`) | `mirth-client-core` server API |
-| [`@oie/web-ui`](../../packages/web-ui) | DOM toolkit, `DataTable`, dialogs, forms, code editor, columns | the Swing widget toolkit |
-| [`@oie/web-shell`](../../packages/web-shell) | The `platform` extension points you register through | `ClientPlugin` SPI |
+| [`@oie/web-api`](../packages/web-api) | Engine REST client + model helpers (`api`, `asList`, `uuid`) | `mirth-client-core` server API |
+| [`@oie/web-ui`](../packages/web-ui) | DOM toolkit, `DataTable`, dialogs, forms, code editor, columns | the Swing widget toolkit |
+| [`@oie/web-shell`](../packages/web-shell) | The `platform` extension points you register through | `ClientPlugin` SPI |
 
 ```jsx
 import { platform } from '@oie/web-shell';
@@ -263,7 +266,7 @@ imports that would do this.
 
 ### Lint config
 
-Add [`@oie/eslint-config`](../../packages/eslint-config) so the build fails when a
+Add [`@oie/eslint-config`](../packages/eslint-config) so the build fails when a
 plugin's **static imports** reach past the public API into shell internals
 (`client/core`, `client/connectors`, `client/views`, the `/core/*` absolute-URL
 form) or a package's deep paths. It's a lint-time guard over `import` statements —
@@ -276,8 +279,8 @@ import oie from '@oie/eslint-config';
 export default oie;
 ```
 
-It also enables `no-undef` / `no-unused-vars` — the class of mistake `node --check`
-misses in ES modules (e.g. an unbalanced paren).
+It also enables `no-undef` / `no-unused-vars` — semantic mistakes a syntax-only
+`node --check` does not detect.
 
 ## Browser side
 
@@ -316,7 +319,8 @@ export function register(platform) { ... }
 
 ### Writing plugins in React
 
-Plugin UI is **React**, sharing the host app's single React instance. The rule:
+Component-based plugin UI uses **React**, sharing the host app's single React
+instance. The rule:
 
 ```jsx
 import { platform } from '@oie/web-shell';
@@ -328,19 +332,21 @@ const React = platform.React;          // the host's React — NOT an `import 'r
   breaks hooks/context and registers into a dead tree. (`platform.React` is set by
   the shell at boot, before any plugin loads.) Once `React` is in scope you write
   ordinary JSX and use `React.useState`/`useEffect`/`useRef`/etc.
-- **Registries hold a `component`.** Each extension point below takes a React
-  component (or, for per-row dashboard columns, `cell` functions that *return*
-  JSX). The host renders it in-tree — you never touch a DOM node or `appendChild`.
+- **Component registries hold a `component`.** The host renders it in-tree — you
+  never touch a DOM node or `appendChild`. The exceptions are called out below:
+  routed views can use an imperative handler, channel tabs retain a legacy
+  `render(host, ctx)` form, and dashboard columns use per-cell callbacks that
+  return JSX.
 - **The descriptor is mostly plain data.** `component(ctx)` is a React function
   component that receives `ctx` as **props** and **returns JSX**; everything else
   on the descriptor (`defaults`, `create`, `canHandle`, `isSupported`,
   `propertiesClass`, transmission `apply`/`sampleFrame`) is plain data/logic.
   Imperative helpers are fine to *call* from handlers —
   `platform.ui.modal/confirmDialog/toast`, `platform.api.*`.
-  > `modal()`, `toast()` and `contextMenu()` each return a handle: `close()`
-  > dismisses it, and `el` is the rendered element, available as soon as the
-  > call returns — so you can measure or restyle it straight away. The host
-  > supplies the focus trapping, dismissal and placement.
+  > `modal()` and `toast()` return `{ close(), el }` handles. `contextMenu()`
+  > returns the menu element (or `null` when every item is hidden); it dismisses
+  > itself through the host's menu lifecycle. These values are available as soon
+  > as the call returns, so you can measure or restyle the rendered element.
 - **Styling.** Use **Tailwind v4 utilities** (`bg-bg2`, `text-text-dim`,
   `text-accent`, `border-line`, `flex`, `gap-2`, `mt-[14px]`, …) — generated from
   the design-token CSS variables, so light/dark theming is automatic, no `dark:`
@@ -359,19 +365,20 @@ const React = platform.React;          // the host's React — NOT an `import 'r
   > build, so any utility works.
 
 The bundled plugins are the reference implementations — read
-`plugins/connection-status/web/plugin.jsx` (a dashboard tab component + column
-`cell`/`connectorCell`) and `plugins/global-maps/web/plugin.jsx` (a polled tab
+`plugins/connection-status/web/plugin.tsx` (a dashboard tab component + column
+`cell`/`connectorCell`) and `plugins/global-maps/web/plugin.tsx` (a polled tab
 with a JSX table + modal).
 
 ### Building the browser entry
 
-The browser loads `web/plugin.js`; you author `web/plugin.jsx`. Compile JSX to
+The browser loads `web/plugin.js`; you author `web/plugin.tsx` (or `.ts` when no
+JSX is needed). Compile JSX to
 `React.createElement` with React taken from `platform.React` (so it stays out of
 your bundle), keeping `@oie/*` external:
 
 - **First-party** plugins (in this repo's `plugins/`) are built automatically by
   `npm run build` (which runs `tools/build-plugins.mjs`, esbuild). Just write the
-  `.jsx`; the `.js` is generated. A plugin's own npm dependencies are **bundled
+  `.ts`/`.tsx`; the `.js` is generated. A plugin's own npm dependencies are **bundled
   into its `web/plugin.js`** (only `@oie/*` stays external) — e.g. the DICOM
   attachment viewer imports `dicom-parser` and ships it inside its bundle; add
   the dep to the repo's `web-administrator/package.json` so the build resolves it.
@@ -383,7 +390,7 @@ your bundle), keeping `@oie/*` external:
   // build.mjs
   import { build } from 'esbuild';
   await build({
-      entryPoints: ['web/plugin.jsx'],
+      entryPoints: ['web/plugin.tsx'],
       outfile: 'web/plugin.js',
       bundle: true, format: 'esm', target: 'es2022',
       jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment',
@@ -391,12 +398,11 @@ your bundle), keeping `@oie/*` external:
   });
   ```
 
-> **Connector panels are a separate build.** The shared connector library under
-> `client/connectors/*.jsx` is not a plugin — it is compiled by its own tool,
-> `tools/build-connectors.mjs` (classic JSX runtime, transpile-only, imports kept
-> as-is), into the sibling `*.js` that the `connector-*` plugins load by URL.
-> `npm run build` runs it after `build-plugins.mjs`. Both `.jsx` and `.js` are
-> checked in: edit the `.jsx`, then regenerate the `.js`.
+> **Connector panels are shared framework code, not plugins.** Their
+> `client/connectors/*.{ts,tsx}` sources are compiled with the core framework by
+> `tools/build-core.mjs` into checked-in sibling `.js` files, which the
+> `connector-*` plugins load by URL. Edit the TypeScript source and run
+> `npm run build -w oie-web-administrator`; never edit generated `.js` directly.
 
 ### Extension points (Swing equivalents in parentheses)
 
@@ -417,6 +423,13 @@ platform.registerNavItem({ id, label, icon, path, section, order });
 platform.registerView('/my-path/:param?',
     platform.reactView(({ params, query }) => <div className="view">…</div>),
     { title: 'My View' });
+
+// Command-palette entry. Supply either `path` or `run`; task/rbac use the same
+// RBAC pair as nav and menu items. Returns an unregister function.
+const unregisterCommand = platform.registerCommand({
+    id: 'my-plugin:open', label: 'Open My Plugin', icon: 'plug',
+    section: 'Plugins', path: '/my-path', task: 'doShowMyPlugin', rbac: 'view'
+});
 
 // Dashboard tab below the status table (DashboardTabPlugin)
 platform.registerDashboardTab({ id, label, order,
@@ -480,7 +493,7 @@ platform.registerConnectorPanel('My Listener', 'SOURCE', {
 
 // Custom data type registration. Data types are DATA-ONLY: a schema of groups +
 // fields + defaults(version). The shared central editor (client/datatypes/
-// props-editor.jsx) renders any registered type from this data — a data type does
+// props-editor.tsx) renders any registered type from this data — a data type does
 // NOT supply its own component.
 platform.registerDataType('MYTYPE', { name: 'MYTYPE', label: 'My Type', order: 99,
     propertiesClass: 'com.example.MyDataTypeProperties',
@@ -554,13 +567,14 @@ platform.setAuthorizationController({
 | `platform.ui` | DOM toolkit: `h()`, `DataTable`, `tabs()`, `modal()`, `confirmDialog`, `promptDialog`, `toast`, `contextMenu`, form helpers, `downloadFile`, `pickFile`, `fmtDate`, `icon(name)`. `fmtDate` renders every timestamp in the user's chosen time zone (the topbar Server/Local/UTC toggle, `core/timezone.js`) — use it for all displayed dates. |
 | `platform.setAuthorizationController(ctrl)` / `platform.checkTask(group, task)` | RBAC menu-hiding (Swing `AuthorizationController`). A plugin registers `{ checkTask(taskGroup, taskName) }` to hide nav/task/right-click items; `checkTask` is what the menu builders consult. Default allows all. **See [`RBAC.md`](RBAC.md).** |
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
-| `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. (Data types are no longer here — they come from the registry via `dataTypeDef`/`dataTypeList` in `/datatypes/index.js`.) |
+| `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. Data types are exposed separately through `platform.dataTypes()`. |
 | `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` / `platform.attachmentViewers()` | Read the registered data types / transmission modes / resource types / attachment viewers (each populated by a plugin). |
-| `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned: User API IntelliSense, in-scope code-template completions, engine-backed validation + Format Document), else a plain textarea. `platform.setCodeEditorFactory` swaps the implementation app-wide. |
+| `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned User API IntelliSense, in-scope code-template completions, engine-backed validation, and client-side Format Document), else a plain textarea. `platform.setCodeEditorFactory` swaps the implementation app-wide. |
 | `platform.createDiffEditor({ original, modified, language, renderSideBySide })` | Read-only side-by-side diff viewer backed by the host's single Monaco instance (side-by-side + inline word-level highlighting + syntax colors). Returns `{ el, setModels({ original, modified, language }), layout(), dispose() }`; mount `el`, call `setModels` to swap content, `dispose()` when done. Degrades to a plain two-pane text view if Monaco is unavailable, so you never branch on its presence. Used by `simple-channel-history` for its revision diff. |
 | `platform.router` | `navigate(path)`, `currentPath()` |
 | `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`, `'webadminConfig'`) and pub/sub bus |
 | `platform.registerLoginAuthenticator(clientPluginClass, authenticate)` | Register a multi-factor / extended-login handler (Swing `MultiFactorAuthenticationClientPlugin`). See [MFA / extended login](#mfa--extended-login) — MUST be registered pre-login, so it only works from a **bundled** plugin. |
+| Registry lookups (`navItems()`, `dashboardTabs()`, `channelTabs()`, `stepType()` / `stepTypes()`, `connectorPanel()` / `connectorPanels()`, and their peers) | Read the current public registries. Prefer the singular lookup when you know an id/type; collection accessors return the currently registered values for plugin-to-plugin integration. |
 
 ### MFA / extended login
 
@@ -585,7 +599,7 @@ Its `ExtendedLoginStatus` `message` is a JSON string in the generic OTP protocol
 The client returns the code on the second leg as the login-data header
 `base64({ "challenge": "<opaque>", "code": "<digits>" })`; the server signs and
 verifies `challenge` (it is opaque to the client). See
-[`oie-totp-mfa`](https://github.com/gibson9583/oie-totp-mfa) for a complete
+[`oie-totp-plugin`](https://github.com/gibson9583/oie-totp-plugin) for a complete
 server-only reference.
 
 A method that can't use the generic OTP UI (WebAuthn, push) bundles its OWN
@@ -616,7 +630,7 @@ The flow mirrors Swing exactly: primary login → `ExtendedLoginStatus(clientPlu
 **A custom authenticator must be bundled.** MFA runs before a session exists, but
 engine-served plugins load *after* login (fetched with the session). So a custom
 (non-`builtin:otp`) authenticator has to be **bundled** and registered at app boot —
-add it to `client/react/login-authenticators.js`, the single pre-login registration
+add it to `client/react/login-authenticators.ts`, the single pre-login registration
 point. (Server-only OTP plugins avoid this entirely via `builtin:otp` above.)
 This matches Swing, whose MFA plugin ships in the client, not the server; an
 engine-*installed* plugin cannot provide MFA (it can't be fetched without the auth
@@ -728,8 +742,10 @@ module.exports = function register(router, { config, manifest, log }) {
 The router mounts at `/plugin-api/<id>/`. Use it for things the browser can't
 do directly (filesystem, other backends, secrets). Requests to `/api/...` are
 proxied to the engine and carry the browser's engine session; `/plugin-api`
-endpoints are **not** authenticated by the engine — add your own checks if you
-expose anything sensitive.
+endpoints are **not** authenticated by the engine and are reachable before
+login. The engine session cookie is scoped to `/api`, so it is not an automatic
+credential for these routes. Design and enforce your own authentication and
+authorization before exposing anything sensitive.
 
 > **`server.js` runs arbitrary Node in the web admin process** (it can read this
 > host's filesystem and config). Only install plugins from trusted sources — see
@@ -762,7 +778,7 @@ framework stay out of the plugin's bundle** — only the panel's own JSX is comp
 to `web/plugin.js`, which ships inside the engine extension zip:
 
 ```jsx
-// sqs-source-connector .../webadmin/web/plugin.jsx (abridged) — compiled to plugin.js
+// sqs-source-connector .../webadmin/web/plugin.tsx (abridged) — compiled to plugin.js
 import { platform } from '@oie/web-shell';
 import { ConnectorForm, PollSection, defaultPollProperties, defaultSourceProperties } from '@oie/web-ui';
 const React = platform.React;
@@ -810,10 +826,13 @@ the extension zip (`<extension>/webadmin/plugin.json` + compiled assets).
 **Install through the UI** (one action): **Extensions → Install Extension**
 uploads the zip to the *web administrator*, which forwards it to the engine's
 installer (the engine enforces `EXTENSIONS_MANAGE`). The **engine** installs the
-extension *and* serves its `webadmin/` half over REST at
-`/api/webplugins/<extensionPath>/…`. **Restart the engine**; on the next browser
-load the web admin discovers the plugin from the connected engine
-(`GET /api/webplugins`) and loads it. The web admin keeps **no local copy** — a
+extension. An engine with native web-support endpoints serves its `webadmin/`
+half at `/api/webplugins/<extensionPath>/…`; otherwise the Web Support
+extension serves it at
+`/api/extensions/websupport/webplugins/<extensionPath>/…`. **Restart the
+engine**; on the next browser load the web administrator probes the native path
+first, then the Web Support fallback, and loads the plugin. The web admin keeps
+**no local copy** — a
 plugin's UI follows the engine it's installed on (so it appears only where its
 extension is installed, and stays version-matched to that engine).
 
@@ -825,7 +844,7 @@ engine-served. Declare the API version your plugin needs with `oie.apiMin` (see
 administrator skips it cleanly instead of crashing.
 
 **Building the webadmin half in Maven.** Since `web/plugin.js` is now a compiled
-artifact (from `web/plugin.jsx`), build it before packaging. Either commit the
+artifact (from `web/plugin.tsx`), build it before packaging. Either commit the
 built `web/plugin.js` (your `maven-resources` copy picks it up), or wire
 `frontend-maven-plugin` to build it during `mvn package` (runs in
 `generate-resources`, before the `webadmin/` copy) — and exclude the build
@@ -841,7 +860,7 @@ tooling from the copied resources:
   <executions>
     <execution><id>install-node-and-npm</id><phase>generate-resources</phase>
       <goals><goal>install-node-and-npm</goal></goals>
-      <configuration><nodeVersion>v20.18.0</nodeVersion></configuration></execution>
+      <configuration><nodeVersion>v22.18.0</nodeVersion></configuration></execution>
     <execution><id>npm-install</id><phase>generate-resources</phase>
       <goals><goal>npm</goal></goals><configuration><arguments>install</arguments></configuration></execution>
     <execution><id>npm-build-webadmin</id><phase>generate-resources</phase>
@@ -849,7 +868,7 @@ tooling from the copied resources:
   </executions>
 </plugin>
 <!-- on the webadmin copy-resources <resource>, exclude: node_modules/**,
-     package.json, package-lock.json, web/build.mjs, web/plugin.jsx -->
+     package.json, package-lock.json, web/build.mjs, web/plugin.tsx -->
 ```
 
 Three things must line up with the engine plugin:
