@@ -10,9 +10,9 @@
 - [Alerts and Events](https://github.com/gibson9583/oie-web-client/wiki/Alerts-and-Events)
 - [Code Templates and Global Scripts](https://github.com/gibson9583/oie-web-client/wiki/Code-Templates-and-Global-Scripts)
 - [Users and Extensions](https://github.com/gibson9583/oie-web-client/wiki/Users-and-Extensions)
+- [Plugin Development](https://github.com/gibson9583/oie-web-client/wiki/Plugin-Development)
 - [Settings](https://github.com/gibson9583/oie-web-client/wiki/Settings)
 - [Operations and Safety](https://github.com/gibson9583/oie-web-client/wiki/Operations-and-Safety)
 - [Deployment and Configuration](https://github.com/gibson9583/oie-web-client/wiki/Deployment-and-Configuration)
 - [Troubleshooting](https://github.com/gibson9583/oie-web-client/wiki/Troubleshooting)
 - [Screenshot Guide](https://github.com/gibson9583/oie-web-client/wiki/Screenshot-Guide)
-

@@ -47,3 +47,10 @@ not a security boundary.
 This Wiki shows only first-party OIE entries. Third-party extension screens are
 outside its scope.
 
+## Developing plugins
+
+Developers can extend the web administrator without modifying its core source.
+See [Plugin Development](https://github.com/gibson9583/oie-web-client/wiki/Plugin-Development)
+for an overview of plugin architectures, public packages, extension points,
+packaging, and security. The canonical API and build reference is
+[`web-administrator/PLUGINS.md`](https://github.com/gibson9583/oie-web-client/blob/main/web-administrator/PLUGINS.md).
