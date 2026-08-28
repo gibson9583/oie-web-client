@@ -123,6 +123,19 @@ test('WAR mode: the status bar shows the engine identity, not the placeholder', 
     await expect(page.locator('.statusbar')).not.toContainText('This OIE server');
 });
 
+test('standalone: the engine identity is appended after the configured name', async ({ page }) => {
+    // Pin the config name (the real one comes from the install's config.json,
+    // which CI does not have) so the "name | identity" join is deterministic.
+    await page.route('**/webadmin/config.json', (route: any) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ engines: [{ name: 'TEST' }] })
+    }));
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    await expect(page.locator('.statusbar')).toContainText('Connected to: TEST | test - E2E Engine as admin');
+});
+
 test('WAR mode: the serving host stands in when the engine has no names', async ({ page }) => {
     await warConfig(page);
     await mockEngine(page, {
