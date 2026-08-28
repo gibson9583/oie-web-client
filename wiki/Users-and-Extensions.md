@@ -50,7 +50,6 @@ outside its scope.
 ## Developing plugins
 
 Developers can extend the web administrator without modifying its core source.
-See the versioned
-[`web-administrator/PLUGINS.md`](https://github.com/gibson9583/oie-web-client/blob/main/web-administrator/PLUGINS.md)
-guide for plugin architectures, public packages, extension points, packaging,
+See [Plugin Development](https://github.com/gibson9583/oie-web-client/wiki/Plugin-Development)
+for plugin architectures, public packages, extension points, packaging,
 security, API contracts, and build examples.
