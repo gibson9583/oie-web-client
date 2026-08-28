@@ -21,8 +21,8 @@ without requiring the Swing Administrator.
   reusable JavaScript and lifecycle hooks.
 - [Users and Extensions](https://github.com/gibson9583/oie-web-client/wiki/Users-and-Extensions) — user administration and
   first-party extension inventory.
-- [Plugin Development](https://github.com/gibson9583/oie-web-client/wiki/Plugin-Development) — plugin architecture, public APIs,
-  extension points, packaging, security, and the canonical developer reference.
+- [Plugin Development](https://github.com/gibson9583/oie-web-client/blob/main/web-administrator/PLUGINS.md) — the versioned
+  plugin architecture, public API, extension-point, packaging, and security guide.
 - [Settings](https://github.com/gibson9583/oie-web-client/wiki/Settings) — server, administrator, tags, configuration map,
   database tasks, resources, and Data Pruner settings.
 - [Operations and Safety](https://github.com/gibson9583/oie-web-client/wiki/Operations-and-Safety) — safe production workflows,

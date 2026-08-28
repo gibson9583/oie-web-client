@@ -8,9 +8,7 @@ with Open Integration Engine. It intentionally does not document third-party
 plugin screens. Screenshots use deterministic mocked engine data and contain no
 production data or protected health information.
 
-The Wiki also includes a first-party
-[Plugin Development](https://github.com/gibson9583/oie-web-client/wiki/Plugin-Development)
-overview. The canonical, versioned developer reference remains
+Plugin-development documentation is maintained in the versioned
 [`web-administrator/PLUGINS.md`](https://github.com/gibson9583/oie-web-client/blob/main/web-administrator/PLUGINS.md).
 
 ## Regenerating screenshots
