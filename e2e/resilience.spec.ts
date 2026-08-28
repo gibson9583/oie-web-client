@@ -135,7 +135,9 @@ test.describe('connection status in the status bar', () => {
         await expect(page.locator('.server-chip')).toContainText('E2E Engine');
         await expect(page.locator('.server-chip .pip')).toHaveCount(0);   // no status dot up top
         await expect(barPip(page)).toHaveClass(/\bok\b/);
-        await expect(page.locator('.statusbar')).toContainText('Connected to:');
+        // Config name plus the engine's own Environment - Server Name (Swing
+        // status bar join) — the engine self-identifies beside the picker name.
+        await expect(page.locator('.statusbar')).toContainText('Connected to: TEST | test - E2E Engine as admin');
     });
 
     test('the chip keeps showing which engine even while that engine is down', async ({ page, context }) => {

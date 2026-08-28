@@ -105,6 +105,36 @@ test('WAR mode authenticates engine plugin assets before importing them', async 
     await expect(page.getByRole('button', { name: 'WAR Plugin' })).toBeVisible();
 });
 
+// The WAR bakes a placeholder engine name into its static config (it cannot
+// know its host at build time) — the status bar must replace it, never show it.
+const warConfig = (page: any) => page.route('**/webadmin/config.json', (route: any) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ engines: [{ name: 'This OIE server' }], deployment: 'war' })
+}));
+
+test('WAR mode: the status bar shows the engine identity, not the placeholder', async ({ page }) => {
+    await warConfig(page);
+    await mockEngine(page);
+    await page.goto('/dashboard');
+    // The engine's own Environment - Server Name (public settings, as in the
+    // Swing status bar) labels the connection.
+    await expect(page.locator('.statusbar')).toContainText('Connected to: test - E2E Engine as admin');
+    await expect(page.locator('.statusbar')).not.toContainText('This OIE server');
+});
+
+test('WAR mode: the serving host stands in when the engine has no names', async ({ page }) => {
+    await warConfig(page);
+    await mockEngine(page, {
+        'GET /server/publicSettings': { __status: 404 },
+        'GET /server/settings': { __status: 403 }
+    });
+    await page.goto('/dashboard');
+    // The page is served by the engine in WAR mode, so its host IS the engine.
+    await expect(page.locator('.statusbar')).toContainText(/Connected to: (localhost|127\.0\.0\.1):\d+ as admin/);
+    await expect(page.locator('.statusbar')).not.toContainText('This OIE server');
+});
+
 test('skips (before import) an engine plugin that needs a newer @oie apiMin', async ({ page }) => {
     await mockEngine(page, {
         'GET /webplugins': ['newplug'],
