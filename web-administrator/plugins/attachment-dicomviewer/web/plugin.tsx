@@ -137,6 +137,69 @@ async function drawJpegFrame(canvas: any, ds: any, bytes: any, info: any, frame:
     bitmap.close && bitmap.close();
 }
 
+/* Thumbnail strip for multi-frame objects — scanning slices by eye instead of
+   stepping a counter. Thumbnails are drawn once per (frame, window) through the
+   SAME render path as the main canvas, then scaled down; JPEG frames decode
+   asynchronously, so those tiles stay numbered rather than blocking the strip.
+   Capped because the cost is linear in frames and a large series would stall
+   the pane for a picture the user may not need. */
+const THUMB_LIMIT = 64;
+const THUMB_PX = 44;
+
+function Filmstrip({ state, frame, win, onPick, expanded }: any) {
+    const { ds, bytes, info, kind } = state;
+    const stripRef = React.useRef(null as any);
+    const drawable = kind === 'raw' && info.numFrames <= THUMB_LIMIT;
+
+    React.useEffect(() => {
+        if (!drawable || !stripRef.current) return;
+        // One offscreen canvas rendered at full size per frame, then scaled into
+        // each tile — reuses renderGray/renderRGB rather than a second decoder.
+        const off = document.createElement('canvas');
+        const tiles = stripRef.current.querySelectorAll('canvas[data-frame]');
+        for (const tile of tiles) {
+            const f = Number(tile.getAttribute('data-frame'));
+            try {
+                const raw = readFrame(ds, bytes, info, f);
+                if (!raw) continue;
+                if (info.spp >= 3) renderRGB(off, raw, info);
+                else if (win) renderGray(off, raw, info, win.c, win.w);
+                else continue;
+                tile.width = THUMB_PX; tile.height = THUMB_PX;
+                const ctx = tile.getContext('2d');
+                ctx.clearRect(0, 0, THUMB_PX, THUMB_PX);
+                // Letterbox rather than stretch, so slice geometry reads true.
+                const scale = Math.min(THUMB_PX / info.cols, THUMB_PX / info.rows);
+                const w = info.cols * scale, h = info.rows * scale;
+                ctx.drawImage(off, (THUMB_PX - w) / 2, (THUMB_PX - h) / 2, w, h);
+            } catch { /* a bad frame just leaves its tile blank */ }
+        }
+    }, [ds, bytes, info, win, drawable]);
+
+    const frames = [];
+    for (let f = 0; f < info.numFrames; f++) frames.push(f);
+
+    return (
+        <div ref={stripRef}
+            className={expanded
+                ? 'flex gap-1.5 overflow-x-auto py-1.5 px-3.5 border-t border-line bg-bg1 flex-none'
+                : 'flex gap-1.5 overflow-x-auto py-1.5 px-1 border border-line rounded-[5px] bg-bg1'}>
+            {frames.map((f: any) => (
+                <button key={f} type="button" title={`Frame ${f + 1}`} aria-label={`Frame ${f + 1}`}
+                    aria-pressed={f === frame}
+                    onClick={() => onPick(f)}
+                    className={f === frame
+                        ? 'flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-accent bg-black overflow-hidden p-0 grid place-items-center'
+                        : 'flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-transparent bg-black overflow-hidden p-0 grid place-items-center'}>
+                    {drawable
+                        ? <canvas data-frame={f} width={THUMB_PX} height={THUMB_PX} style={{ display: 'block' }} />
+                        : <span className="mono text-[10px] text-text-dim">{f + 1}</span>}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export function register(platform: Platform) {
 
     function DicomViewer({ attachment, channelId, messageId, platform }: any) {
@@ -144,14 +207,45 @@ export function register(platform: Platform) {
         const [frame, setFrame] = React.useState(0);
         const [win, setWin] = React.useState(null as any);   // { c, w } window center/width
         const [zoom, setZoom] = React.useState(1);
-        const [popUrl, setPopUrl] = React.useState(null as any);   // fullscreen pop-out image
+        /* Pan is an offset from the stage centre, in stage pixels, so it stays
+           meaningful across zoom changes and stage resizes. */
+        const [pan, setPan] = React.useState({ x: 0, y: 0 });
+        /* Fit mode re-derives the zoom whenever the stage resizes (splitter drag,
+           entering full screen). Any manual zoom/pan drops out of it. */
+        /* Fit is OFF inline by default: the viewer used to show the image at
+           actual size and let the tab scroll, which reads far better in a short
+           detail pane than shrinking a 256px image to 49%. The dialog opens
+           fitted, where fitting means filling the screen. */
+        const [fitMode, setFitMode] = React.useState(false);
+        // Full screen is this SAME component re-classed, not a second viewer: the
+        // canvas node and every bit of state above stay mounted, so the frame,
+        // zoom and window/level carry across in both directions.
+        const [expanded, setExpanded] = React.useState(false);
+        const [stageSize, setStageSize] = React.useState({ w: 0, h: 0 });
+        /* Whether the metadata column fits BESIDE the image. A viewport
+           breakpoint is the wrong signal — the viewer sits in a detail pane
+           inset by the nav rail and task pane, so a wide window can still leave
+           a narrow pane. Measure the container itself. */
+        const [rootWidth, setRootWidth] = React.useState(0);
         const [decodeError, setDecodeError] = React.useState(null as any);   // per-frame JPEG decode failure
         const canvasRef = React.useRef(null as any);
+        const stageRef = React.useRef(null as any);
+        const rootRef = React.useRef(null as any);
+
+        // The parsed image attributes, read once here so every effect below can
+        // depend on them by name rather than reaching back into `state`.
+        const info: any = (state as any).info;
+
+        // Re-centre without minting a new object when it is already centred —
+        // pan feeds effect dependencies, so a fresh {0,0} per render would loop.
+        const resetPan = React.useCallback(
+            () => setPan((p: any) => (p.x === 0 && p.y === 0 ? p : { x: 0, y: 0 })), []);
 
         // Load + parse the object once.
         React.useEffect(() => {
             let cancelled = false;
-            setState({ status: 'loading' }); setFrame(0); setWin(null); setZoom(1); setDecodeError(null);
+            setState({ status: 'loading' }); setFrame(0); setWin(null); setZoom(1);
+            resetPan(); setFitMode(false); setDecodeError(null);
             (async () => {
                 try {
                     // A DICOM attachment holds only the pixel data, so it has no
@@ -233,6 +327,201 @@ export function register(platform: Platform) {
             } catch { /* render failure → the metadata + Save remain usable */ }
         }, [state.status, frame, win, state.kind]);
 
+        /* ---- stage sizing: Fit needs to know how much room the image has, and
+           that changes when the user drags the detail-pane splitter or enters
+           full screen. One observer keeps the measurement live. */
+        React.useEffect(() => {
+            const el = stageRef.current;
+            if (!el || typeof ResizeObserver === 'undefined') return undefined;
+            const ro = new ResizeObserver((entries: any) => {
+                const r = entries[0].contentRect;
+                const w = Math.round(r.width), h = Math.round(r.height);
+                // Keep the identity when the numbers have not moved: this object
+                // feeds the Fit effect's dependencies, and a fresh one per
+                // observation would re-run it on every render.
+                setStageSize((s: any) => (s.w === w && s.h === h ? s : { w, h }));
+            });
+            ro.observe(el);
+            return () => ro.disconnect();
+        }, [state.status]);
+
+        React.useEffect(() => {
+            const el = rootRef.current;
+            if (!el || typeof ResizeObserver === 'undefined') return undefined;
+            const ro = new ResizeObserver((entries: any) => {
+                const w = Math.round(entries[0].contentRect.width);
+                setRootWidth((prev: any) => (prev === w ? prev : w));
+            });
+            ro.observe(el);
+            return () => ro.disconnect();
+        }, [state.status]);
+
+        React.useEffect(() => {
+            const el = rowRef.current;
+            if (!el || typeof ResizeObserver === 'undefined') return undefined;
+            const ro = new ResizeObserver((entries: any) => {
+                const w = Math.round(entries[0].contentRect.width);
+                setRowWidth((prev: any) => (prev === w ? prev : w));
+            });
+            ro.observe(el);
+            return () => ro.disconnect();
+        }, [state.status, expanded]);
+
+        /* Inline height: the viewer has to fit the DETAIL PANE, which is sized by
+           the user's splitter and has nothing to do with the viewport (a `vh`
+           height looks right on a short window and pushes the image out of sight
+           on a tall one). Bound the WHOLE viewer, not just the image: then the
+           toolbar takes what it needs, the image row takes the rest as flex-1,
+           and the pane never scrolls — scrolling a viewer whose controls are
+           pinned above the image just hides the image. */
+        const [availH, setAvailH] = React.useState(0);
+        const [rowWidth, setRowWidth] = React.useState(0);
+        const rowRef = React.useRef(null as any);
+        React.useEffect(() => {
+            if (expanded || state.status !== 'ready') return undefined;
+            const el = rootRef.current;
+            if (!el || typeof ResizeObserver === 'undefined') return undefined;
+            // Radix gives the tab body role="tabpanel"; that is the element with
+            // the real height. Fall back to the nearest scroller elsewhere (the
+            // View Attachment modal mounts this same component).
+            const host = el.closest('[role="tabpanel"]') || el.closest('.overflow-auto');
+            if (!host) return undefined;
+            const measure = () => {
+                const avail = host.clientHeight;
+                if (!avail) return;
+                const top = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
+                /* Whatever sits BELOW us still costs height — the attachments
+                   tab pads its wrapper, and the host would scroll by exactly
+                   that much. Sum the ancestors' bottom padding/margin up to the
+                   host rather than guessing a constant. */
+                let inset = 0;
+                for (let n: any = el; n && n.parentElement && n !== host; n = n.parentElement) {
+                    inset += parseFloat(getComputedStyle(n).marginBottom) || 0;
+                    inset += parseFloat(getComputedStyle(n.parentElement).paddingBottom) || 0;
+                }
+                const h = Math.max(120, Math.floor(avail - top - inset - 1));
+                setAvailH((prev: any) => (prev === h ? prev : h));
+            };
+            measure();
+            // Observe the HOST, not the viewer: observing itself would react to
+            // the height this effect just set and oscillate.
+            const ro = new ResizeObserver(measure);
+            ro.observe(host);
+            return () => ro.disconnect();
+        }, [expanded, state.status, rootWidth, info]);
+
+        /* Inline the stage is sized to the IMAGE, so it cannot also be the
+           measure of the room available — Fit reads the pane instead (the row's
+           width, the space the tab has left). Expanded the stage IS the room. */
+        const fitZoom = React.useCallback(() => {
+            if (!info || !info.cols || !info.rows) return 1;
+            const w = expanded ? stageSize.w : rowWidth;
+            const h = expanded ? stageSize.h : availH;
+            if (!w || !h) return 1;
+            return Math.min(w / info.cols, h / info.rows);
+        }, [info, expanded, stageSize.w, stageSize.h, rowWidth, availH]);
+
+        // While in fit mode the zoom tracks the stage; a manual zoom/pan leaves it.
+        React.useEffect(() => {
+            if (!fitMode || state.status !== 'ready') return;
+            setZoom(fitZoom());
+            resetPan();
+        }, [fitMode, fitZoom, state.status, resetPan]);
+
+        const fit = () => { setFitMode(true); };
+        const actual = () => { setFitMode(false); setZoom(1); resetPan(); };
+        const clampZoom = (z: any) => Math.max(0.05, Math.min(40, z));
+
+        /* Zoom about a point (cursor or stage centre): the image coordinate under
+           that point must not move, which fixes the new pan. */
+        const zoomAt = (nextZoom: any, sx: any, sy: any) => {
+            const z = clampZoom(nextZoom);
+            setPan((p: any) => ({
+                x: sx - ((sx - p.x) / zoom) * z,
+                y: sy - ((sy - p.y) / zoom) * z
+            }));
+            setFitMode(false);
+            setZoom(z);
+        };
+        const zoomStep = (factor: any) => zoomAt(zoom * factor, 0, 0);
+
+        const onWheel = (e: any) => {
+            if (state.status !== 'ready') return;
+            e.preventDefault();
+            const box = stageRef.current.getBoundingClientRect();
+            // Cursor position relative to the stage CENTRE (pan's frame of reference).
+            const sx = e.clientX - box.left - box.width / 2;
+            const sy = e.clientY - box.top - box.height / 2;
+            zoomAt(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), sx, sy);
+        };
+
+        /* Drag: window/level on a grayscale image (the clinical default), pan with
+           Shift held — and pan unconditionally when there is no window to adjust
+           (RGB, or a JPEG frame the browser decoded for us). */
+        const grayscaleDrag = state.status === 'ready' && state.kind === 'raw' && info && info.spp < 3 && !!win;
+        const onPointerDown = (e: any) => {
+            if (state.status !== 'ready' || e.button !== 0) return;
+            const panning = e.shiftKey || !grayscaleDrag;
+            const startX = e.clientX, startY = e.clientY;
+            const start = panning ? { ...pan } : { ...win };
+            // Sensitivity scales with the current window, so a narrow window stays
+            // controllable and a wide one does not take a hundred drags to cross.
+            const sens = Math.max(1, (win ? win.w : 256)) / 256;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const move = (ev: any) => {
+                const dx = ev.clientX - startX, dy = ev.clientY - startY;
+                if (panning) {
+                    setPan({ x: (start as any).x + dx, y: (start as any).y + dy });
+                    setFitMode(false);
+                } else {
+                    setWin({
+                        w: Math.max(1, (start as any).w + dx * sens * 2),
+                        c: (start as any).c + dy * sens * 2
+                    });
+                }
+            };
+            const up = () => {
+                window.removeEventListener('pointermove', move);
+                window.removeEventListener('pointerup', up);
+            };
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', up);
+        };
+
+        // Auto window/level from the frame's own min/max (the load-time default).
+        const autoWindow = () => {
+            if (!info || state.kind !== 'raw') return;
+            const raw = readFrame((state as any).ds, (state as any).bytes, info, frame);
+            if (!raw) return;
+            let min = Infinity, max = -Infinity;
+            for (let i = 0; i < raw.length; i++) { const v = raw[i]; if (v < min) min = v; if (v > max) max = v; }
+            min = min * info.slope + info.intercept; max = max * info.slope + info.intercept;
+            setWin({ c: (min + max) / 2, w: Math.max(1, max - min) });
+        };
+
+        const frameCount = info ? info.numFrames : 1;
+        const stepFrame = (d: any) => setFrame((f: any) => Math.max(0, Math.min(frameCount - 1, f + d)));
+
+        /* Keys: arrows walk frames, Esc leaves full screen. Bound on the document
+           while expanded (the overlay owns the screen, so focus may be anywhere)
+           and on the container otherwise. Typing in a slider is left alone. */
+        const onKeyDown = (e: any) => {
+            const tag = e.target && e.target.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); stepFrame(-1); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); stepFrame(1); }
+            else if (e.key === 'Escape' && expanded) { e.preventDefault(); setExpanded(false); }
+        };
+        React.useEffect(() => {
+            if (!expanded) return undefined;
+            const onDocKey = (e: any) => {
+                if (e.key === 'Escape') { setExpanded(false); return; }
+                onKeyDown(e);
+            };
+            document.addEventListener('keydown', onDocKey);
+            return () => document.removeEventListener('keydown', onDocKey);
+        });
+
         if (state.status === 'loading') {
             return <div className="mt-[13px]"><div className="text-text-faint text-[10px]">Loading DICOM…</div></div>;
         }
@@ -240,7 +529,9 @@ export function register(platform: Platform) {
             return <div className="mt-[13px]"><div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div></div>;
         }
 
-        const { bytes, info, meta, kind, tsName } = state;
+        // `info` is already in scope (the gesture handlers above need it before
+        // this point), so it is deliberately not re-destructured here.
+        const { bytes, meta, kind, tsName } = state as any;
         const renders = kind === 'raw' || kind === 'jpeg';
         const grayscale = kind === 'raw' && info.spp < 3;
 
@@ -252,75 +543,223 @@ export function register(platform: Platform) {
             <tr key={tag}><td className="font-semibold pr-4">{label}</td><td className="mono">{meta[tag]}</td></tr>
         ));
 
-        return (
-            <div className="mt-[13px] flex flex-col gap-3">
-                <div className="font-semibold">
-                    {`DICOM object — ${info.cols}×${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ''} — ${bytes.length.toLocaleString()} bytes`}
+        const title = `DICOM object — ${info.cols}×${info.rows}`
+            + `${info.numFrames > 1 ? `, ${info.numFrames} frames` : ''} — ${bytes.length.toLocaleString()} bytes`;
+
+        /* Full screen re-classes THIS container — the stage, canvas and controls
+           below are the same nodes either way, which is what lets the view carry
+           its zoom/window/frame across the transition. Expanded it wears the
+           app's own dialog chrome (.modal-overlay / .modal / .modal-header /
+           .modal-foot), so it reads and behaves like every other modal here
+           rather than as a bespoke overlay. */
+        // No top margin inline: the host already pads the attachments tab, and
+        // in a squeezed pane every pixel above the image costs image.
+        const rootCls = expanded
+            ? 'modal flex flex-col'
+            : 'flex flex-col gap-1.5';
+
+        const toolbar = (
+            /* NEVER wraps: a second toolbar row steals ~35px from the image in a
+               pane that has little to spare, and it made the height below the
+               toolbar unpredictable. Too narrow to fit, the toolbar scrolls
+               sideways instead. */
+            <div className="flex items-center gap-3 flex-nowrap overflow-x-auto text-[11px] py-1.5 px-2 bg-bg1 border border-line rounded-[5px]">
+                {/* Inline, the object's size rides in the toolbar rather than on
+                    a caption line of its own — that row is worth more as image
+                    in a short pane. Expanded, the dialog title carries it. */}
+                {!expanded && (
+                    <span className="mono text-text-faint whitespace-nowrap">
+                        {`${info.cols}×${info.rows}`}
+                    </span>
+                )}
+                {info.numFrames > 1 && (
+                    <span className="inline-flex items-center gap-1.5">
+                        <button className="btn btn-sm" title="Previous frame (←)"
+                            disabled={frame <= 0} onClick={() => stepFrame(-1)}>‹</button>
+                        <span className="mono">{`Frame ${frame + 1} / ${info.numFrames}`}</span>
+                        <button className="btn btn-sm" title="Next frame (→)"
+                            disabled={frame >= info.numFrames - 1} onClick={() => stepFrame(1)}>›</button>
+                    </span>
+                )}
+                <span className="inline-flex items-center gap-1.5">
+                    <span className="text-text-faint">Zoom</span>
+                    <button className="btn btn-sm" title="Zoom out" onClick={() => zoomStep(1 / 1.25)}>−</button>
+                    <span className="mono w-[42px] text-center">{`${Math.round(zoom * 100)}%`}</span>
+                    <button className="btn btn-sm" title="Zoom in" onClick={() => zoomStep(1.25)}>+</button>
+                    <button className={fitMode ? 'btn btn-sm btn-primary' : 'btn btn-sm'}
+                        title="Fit the image to the pane" onClick={fit}>Fit</button>
+                    <button className="btn btn-sm" title="Show at actual size" onClick={actual}>1:1</button>
+                </span>
+                {grayscale && win && (
+                    <span className="inline-flex items-center gap-1.5">
+                        <span className="text-text-faint">Level</span>
+                        <input type="range" aria-label="Level"
+                            min={info.intercept} max={info.intercept + 4096 * info.slope} step="1"
+                            value={win.c} onChange={(e: any) => setWin((w: any) => ({ ...w, c: parseFloat(e.target.value) }))} />
+                        <span className="text-text-faint">Window</span>
+                        <input type="range" aria-label="Window"
+                            min="1" max={Math.max(2, 4096 * info.slope)} step="1"
+                            value={win.w} onChange={(e: any) => setWin((w: any) => ({ ...w, w: parseFloat(e.target.value) }))} />
+                        <button className="btn btn-sm" title="Window/level from this frame's own range"
+                            onClick={autoWindow}>Auto</button>
+                    </span>
+                )}
+                <span className="flex-1" />
+                {/* The hint is the first thing to go: it is the only optional
+                    item here, and letting it wrap the toolbar onto a second row
+                    costs the image ~30px of height in an already short pane. */}
+                {(expanded || rootWidth >= 1400) && (
+                    <span className="text-text-faint whitespace-nowrap">
+                        {grayscaleDrag ? 'drag = level/window · shift-drag = pan · wheel = zoom' : 'drag = pan · wheel = zoom'}
+                    </span>
+                )}
+                {/* Expanded, the dialog's own header ✕ and footer Close own
+                    dismissal — a third exit in the toolbar just competes. */}
+                {!expanded && (
+                    <>
+                        <button className="btn btn-sm" title="Open full screen"
+                            onClick={() => setExpanded(true)}>⤢ Full Screen</button>
+                        <button className="btn btn-sm" onClick={saveDicom}>Save DICOM</button>
+                    </>
+                )}
+            </div>
+        );
+
+        /* The image surface. Panning/zooming happens on the wrapper (overflow
+           hidden) rather than a scroll box, so a drag can mean window/level
+           without the browser scrolling underneath it. */
+        /* Inline, the stage takes the IMAGE's own aspect rather than the pane's.
+           Spanning the full width put a square image in a 6:1 black letterbox
+           with vast empty margins — the dialog looks right precisely because its
+           stage is close to the image's shape. Height is definite (the row), so
+           aspect-ratio resolves the width; max-w-full keeps a very wide object
+           from overflowing, in which case it letterboxes vertically instead.
+           Expanded, the stage keeps taking all the room the dialog has.
+           flex-1/min-w-0 is load-bearing where used: the canvas is absolutely
+           positioned, so it lends the stage no intrinsic width. */
+        const stage = (
+            <div ref={stageRef}
+                className={expanded
+                    ? 'relative flex-1 min-w-0 min-h-0 overflow-hidden bg-black touch-none'
+                    : 'relative flex-none overflow-hidden bg-black border border-line rounded-[5px] touch-none'}
+                style={{
+                    cursor: grayscaleDrag ? 'crosshair' : 'grab',
+                    /* Inline the box is the IMAGE at the current zoom — the
+                       pre-branch behaviour, which showed a 256px object at 256px
+                       and let the tab scroll, rather than shrinking it to fit a
+                       short pane. Capped so a large series cannot run away with
+                       the page; past the cap, drag pans. */
+                    ...(expanded ? null : {
+                        width: `${Math.round(info.cols * zoom)}px`,
+                        height: `${Math.round(info.rows * zoom)}px`,
+                        maxWidth: '100%',
+                        maxHeight: '60vh'
+                    })
+                }}
+                onWheel={onWheel} onPointerDown={onPointerDown}
+                onDoubleClick={() => (fitMode ? actual() : fit())}>
+                <canvas ref={canvasRef}
+                    style={{
+                        position: 'absolute', left: '50%', top: '50%',
+                        transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                        imageRendering: 'pixelated', display: 'block'
+                    }} />
+            </div>
+        );
+
+        // 620px is the point below which a 210px column would squeeze the image
+        // more than the header is worth; below it the table follows the image.
+        const metaBeside = metaRows.length > 0 && (expanded || rootWidth >= 620);
+        // h-full + overflow-auto: the header table must scroll inside the row
+        // rather than stretch it, which would push the image out of the pane.
+        const metaPanel = metaBeside ? (
+            /* Inline it takes the width the image no longer claims (capped, so
+               the rows do not stretch into a sparse band on a wide pane). */
+            <div className={expanded
+                ? 'w-[250px] flex-none overflow-auto border-l border-line bg-pane-bg'
+                : 'flex-1 min-w-0 max-w-[420px] h-full overflow-auto'}>
+                <table className="dt w-full"><tbody>{metaRows}</tbody></table>
+            </div>
+        ) : null;
+
+        const viewer = (
+            <div ref={rootRef} className={rootCls} tabIndex={0} onKeyDown={onKeyDown}
+                /* .modal is 560px wide by default — right for a form, far too
+                   small for an image, so this one takes the viewport. */
+                style={expanded
+                    ? { width: 'calc(100vw - 40px)', height: 'calc(100vh - 40px)', maxHeight: 'none' }
+                    : undefined}
+                {...(expanded ? { role: 'dialog', 'aria-modal': true, 'aria-label': title } : null)}>
+                {/* Only the dialog gets a heading; inline, the toolbar carries
+                    the dimensions and every spare pixel goes to the image. */}
+                <div className={expanded ? 'modal-header' : 'hidden'}>
+                    <span>{title}</span>
+                    {expanded && (
+                        <button className="icon-btn" title="Close (Esc)" aria-label="Close"
+                            onClick={() => setExpanded(false)}>✕</button>
+                    )}
                 </div>
+
+                <div className={expanded ? 'px-3.5 pt-2.5 flex-none' : 'flex-none'}>{toolbar}</div>
 
                 {renders ? (
-                    <div className="flex flex-col gap-2">
-                        <div className="border border-line rounded-[5px] bg-black inline-block overflow-auto max-h-[60vh] max-w-full self-start">
-                            <canvas ref={canvasRef}
-                                style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', imageRendering: 'pixelated', display: 'block' }} />
-                        </div>
-                        {decodeError && (
-                            <div className="text-text-faint text-[11px]">{`Could not decode this JPEG frame: ${decodeError}`}</div>
-                        )}
-                        <div className="flex items-center gap-4 flex-wrap text-[11px]">
-                            {info.numFrames > 1 && (
-                                <span className="inline-flex items-center gap-1.5">
-                                    <button className="btn btn-sm" disabled={frame <= 0} onClick={() => setFrame((f: any) => Math.max(0, f - 1))}>‹</button>
-                                    <span className="mono">{`Frame ${frame + 1} / ${info.numFrames}`}</span>
-                                    <button className="btn btn-sm" disabled={frame >= info.numFrames - 1} onClick={() => setFrame((f: any) => Math.min(info.numFrames - 1, f + 1))}>›</button>
-                                </span>
-                            )}
-                            <span className="inline-flex items-center gap-1.5">
-                                <span className="text-text-faint">Zoom</span>
-                                <input type="range" min="0.25" max="8" step="0.25" value={zoom} onChange={(e: any) => setZoom(parseFloat(e.target.value))} />
-                                <span className="mono w-[38px]">{`${Math.round(zoom * 100)}%`}</span>
-                            </span>
-                            {grayscale && win && (
-                                <>
-                                    <span className="inline-flex items-center gap-1.5">
-                                        <span className="text-text-faint">Level</span>
-                                        <input type="range" min={info.intercept} max={info.intercept + 4096 * info.slope} step="1"
-                                            value={win.c} onChange={(e: any) => setWin((w: any) => ({ ...w, c: parseFloat(e.target.value) }))} />
-                                    </span>
-                                    <span className="inline-flex items-center gap-1.5">
-                                        <span className="text-text-faint">Window</span>
-                                        <input type="range" min="1" max={Math.max(2, 4096 * info.slope)} step="1"
-                                            value={win.w} onChange={(e: any) => setWin((w: any) => ({ ...w, w: parseFloat(e.target.value) }))} />
-                                    </span>
-                                </>
-                            )}
-                        </div>
+                    /* The image row takes whatever the toolbar left over, in
+                       both modes — nothing here is a fixed height. */
+                    <div ref={rowRef}
+                        className={expanded ? 'flex flex-1 min-h-0' : 'flex gap-2 items-start'}>
+                        {stage}
+                        {metaPanel}
                     </div>
                 ) : (
-                    <div className="text-text-faint text-[11px]">
-                        {`This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM — click Save DICOM to open it in a full viewer.`}
+                    <div className={expanded ? 'p-3.5 flex-1 overflow-auto' : ''}>
+                        <div className="text-text-faint text-[11px]">
+                            {`This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM — click Save DICOM to open it in a full viewer.`}
+                        </div>
+                        {metaRows.length > 0 && <table className="dt mt-[13px]"><tbody>{metaRows}</tbody></table>}
                     </div>
                 )}
 
-                {metaRows.length > 0 && <table className="dt self-start"><tbody>{metaRows}</tbody></table>}
-
-                <div className="flex gap-2">
-                    {renders && (
-                        <button className="btn" onClick={() => { try { setPopUrl(canvasRef.current && canvasRef.current.toDataURL()); } catch { /* nothing to pop */ } }}>
-                            ⤢ Pop Out
-                        </button>
-                    )}
-                    <button className="btn" onClick={saveDicom}>Save DICOM</button>
-                </div>
-
-                {popUrl && (
-                    <div className="fixed inset-0 z-[2000] bg-black/90 flex flex-col items-center justify-center p-4 cursor-zoom-out"
-                        onClick={() => setPopUrl(null)}>
-                        <img src={popUrl} alt="DICOM" className="max-w-[95vw] max-h-[88vh] object-contain"
-                            style={{ imageRendering: 'pixelated' }} onClick={(e: any) => e.stopPropagation()} />
-                        <button className="btn mt-3" onClick={() => setPopUrl(null)}>Close</button>
+                {decodeError && (
+                    <div className={expanded ? 'text-text-faint text-[11px] px-3.5 py-1.5 flex-none' : 'text-text-faint text-[11px]'}>
+                        {`Could not decode this JPEG frame: ${decodeError}`}
                     </div>
                 )}
+
+                {/* Multi-frame only: picking a slice by eye beats stepping a counter. */}
+                {renders && info.numFrames > 1 && (
+                    <Filmstrip state={state} frame={frame} win={win} onPick={setFrame} expanded={expanded} />
+                )}
+
+                {/* Too narrow for a column beside the image: the table follows it. */}
+                {renders && metaRows.length > 0 && !metaBeside && (
+                    <table className="dt self-start"><tbody>{metaRows}</tbody></table>
+                )}
+
+                {expanded && (
+                    <div className="modal-foot">
+                        <button className="btn" onClick={saveDicom}>Save DICOM</button>
+                        <button className="btn btn-primary" onClick={() => setExpanded(false)}>Close</button>
+                    </div>
+                )}
+            </div>
+        );
+
+        /* Expanded, the viewer sits on the app's dialog scrim; clicking the
+           scrim closes it, as it does for every other modal here.
+
+           The wrapper is ALWAYS rendered and only changes class — `contents`
+           makes it invisible to layout inline. Returning two different tree
+           shapes would make React rebuild the subtree on every toggle, which
+           throws away the canvas (with the pixels already drawn on it) and
+           leaves the ResizeObserver watching a detached node — the viewer came
+           up blank at 100%. One stable tree is what lets the image, zoom and
+           window/level survive the transition. */
+        return (
+            <div className={expanded ? 'modal-overlay' : 'contents'}
+                onMouseDown={expanded
+                    ? (e: any) => { if (e.target === e.currentTarget) setExpanded(false); }
+                    : undefined}>
+                {viewer}
             </div>
         );
     }

@@ -810,21 +810,86 @@ async function drawJpegFrame(canvas, ds, bytes, info, frame) {
   canvas.getContext("2d").drawImage(bitmap, 0, 0);
   bitmap.close && bitmap.close();
 }
+var THUMB_LIMIT = 64;
+var THUMB_PX = 44;
+function Filmstrip({ state, frame, win, onPick, expanded }) {
+  const { ds, bytes, info, kind } = state;
+  const stripRef = React.useRef(null);
+  const drawable = kind === "raw" && info.numFrames <= THUMB_LIMIT;
+  React.useEffect(() => {
+    if (!drawable || !stripRef.current) return;
+    const off = document.createElement("canvas");
+    const tiles = stripRef.current.querySelectorAll("canvas[data-frame]");
+    for (const tile of tiles) {
+      const f = Number(tile.getAttribute("data-frame"));
+      try {
+        const raw = readFrame(ds, bytes, info, f);
+        if (!raw) continue;
+        if (info.spp >= 3) renderRGB(off, raw, info);
+        else if (win) renderGray(off, raw, info, win.c, win.w);
+        else continue;
+        tile.width = THUMB_PX;
+        tile.height = THUMB_PX;
+        const ctx = tile.getContext("2d");
+        ctx.clearRect(0, 0, THUMB_PX, THUMB_PX);
+        const scale = Math.min(THUMB_PX / info.cols, THUMB_PX / info.rows);
+        const w = info.cols * scale, h = info.rows * scale;
+        ctx.drawImage(off, (THUMB_PX - w) / 2, (THUMB_PX - h) / 2, w, h);
+      } catch {
+      }
+    }
+  }, [ds, bytes, info, win, drawable]);
+  const frames = [];
+  for (let f = 0; f < info.numFrames; f++) frames.push(f);
+  return /* @__PURE__ */ React.createElement(
+    "div",
+    {
+      ref: stripRef,
+      className: expanded ? "flex gap-1.5 overflow-x-auto py-1.5 px-3.5 border-t border-line bg-bg1 flex-none" : "flex gap-1.5 overflow-x-auto py-1.5 px-1 border border-line rounded-[5px] bg-bg1"
+    },
+    frames.map((f) => /* @__PURE__ */ React.createElement(
+      "button",
+      {
+        key: f,
+        type: "button",
+        title: `Frame ${f + 1}`,
+        "aria-label": `Frame ${f + 1}`,
+        "aria-pressed": f === frame,
+        onClick: () => onPick(f),
+        className: f === frame ? "flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-accent bg-black overflow-hidden p-0 grid place-items-center" : "flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-transparent bg-black overflow-hidden p-0 grid place-items-center"
+      },
+      drawable ? /* @__PURE__ */ React.createElement("canvas", { "data-frame": f, width: THUMB_PX, height: THUMB_PX, style: { display: "block" } }) : /* @__PURE__ */ React.createElement("span", { className: "mono text-[10px] text-text-dim" }, f + 1)
+    ))
+  );
+}
 function register(platform2) {
   function DicomViewer({ attachment, channelId, messageId, platform: platform3 }) {
     const [state, setState] = React.useState({ status: "loading" });
     const [frame, setFrame] = React.useState(0);
     const [win, setWin] = React.useState(null);
     const [zoom, setZoom] = React.useState(1);
-    const [popUrl, setPopUrl] = React.useState(null);
+    const [pan, setPan] = React.useState({ x: 0, y: 0 });
+    const [fitMode, setFitMode] = React.useState(false);
+    const [expanded, setExpanded] = React.useState(false);
+    const [stageSize, setStageSize] = React.useState({ w: 0, h: 0 });
+    const [rootWidth, setRootWidth] = React.useState(0);
     const [decodeError, setDecodeError] = React.useState(null);
     const canvasRef = React.useRef(null);
+    const stageRef = React.useRef(null);
+    const rootRef = React.useRef(null);
+    const info = state.info;
+    const resetPan = React.useCallback(
+      () => setPan((p) => p.x === 0 && p.y === 0 ? p : { x: 0, y: 0 }),
+      []
+    );
     React.useEffect(() => {
       let cancelled = false;
       setState({ status: "loading" });
       setFrame(0);
       setWin(null);
       setZoom(1);
+      resetPan();
+      setFitMode(false);
       setDecodeError(null);
       (async () => {
         try {
@@ -903,13 +968,178 @@ function register(platform2) {
       } catch {
       }
     }, [state.status, frame, win, state.kind]);
+    React.useEffect(() => {
+      const el = stageRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return void 0;
+      const ro = new ResizeObserver((entries) => {
+        const r = entries[0].contentRect;
+        const w = Math.round(r.width), h = Math.round(r.height);
+        setStageSize((s) => s.w === w && s.h === h ? s : { w, h });
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [state.status]);
+    React.useEffect(() => {
+      const el = rootRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return void 0;
+      const ro = new ResizeObserver((entries) => {
+        const w = Math.round(entries[0].contentRect.width);
+        setRootWidth((prev) => prev === w ? prev : w);
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [state.status]);
+    React.useEffect(() => {
+      const el = rowRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return void 0;
+      const ro = new ResizeObserver((entries) => {
+        const w = Math.round(entries[0].contentRect.width);
+        setRowWidth((prev) => prev === w ? prev : w);
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [state.status, expanded]);
+    const [availH, setAvailH] = React.useState(0);
+    const [rowWidth, setRowWidth] = React.useState(0);
+    const rowRef = React.useRef(null);
+    React.useEffect(() => {
+      if (expanded || state.status !== "ready") return void 0;
+      const el = rootRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return void 0;
+      const host = el.closest('[role="tabpanel"]') || el.closest(".overflow-auto");
+      if (!host) return void 0;
+      const measure = () => {
+        const avail = host.clientHeight;
+        if (!avail) return;
+        const top = el.getBoundingClientRect().top - host.getBoundingClientRect().top;
+        let inset = 0;
+        for (let n = el; n && n.parentElement && n !== host; n = n.parentElement) {
+          inset += parseFloat(getComputedStyle(n).marginBottom) || 0;
+          inset += parseFloat(getComputedStyle(n.parentElement).paddingBottom) || 0;
+        }
+        const h = Math.max(120, Math.floor(avail - top - inset - 1));
+        setAvailH((prev) => prev === h ? prev : h);
+      };
+      measure();
+      const ro = new ResizeObserver(measure);
+      ro.observe(host);
+      return () => ro.disconnect();
+    }, [expanded, state.status, rootWidth, info]);
+    const fitZoom = React.useCallback(() => {
+      if (!info || !info.cols || !info.rows) return 1;
+      const w = expanded ? stageSize.w : rowWidth;
+      const h = expanded ? stageSize.h : availH;
+      if (!w || !h) return 1;
+      return Math.min(w / info.cols, h / info.rows);
+    }, [info, expanded, stageSize.w, stageSize.h, rowWidth, availH]);
+    React.useEffect(() => {
+      if (!fitMode || state.status !== "ready") return;
+      setZoom(fitZoom());
+      resetPan();
+    }, [fitMode, fitZoom, state.status, resetPan]);
+    const fit = () => {
+      setFitMode(true);
+    };
+    const actual = () => {
+      setFitMode(false);
+      setZoom(1);
+      resetPan();
+    };
+    const clampZoom = (z) => Math.max(0.05, Math.min(40, z));
+    const zoomAt = (nextZoom, sx, sy) => {
+      const z = clampZoom(nextZoom);
+      setPan((p) => ({
+        x: sx - (sx - p.x) / zoom * z,
+        y: sy - (sy - p.y) / zoom * z
+      }));
+      setFitMode(false);
+      setZoom(z);
+    };
+    const zoomStep = (factor) => zoomAt(zoom * factor, 0, 0);
+    const onWheel = (e) => {
+      if (state.status !== "ready") return;
+      e.preventDefault();
+      const box = stageRef.current.getBoundingClientRect();
+      const sx = e.clientX - box.left - box.width / 2;
+      const sy = e.clientY - box.top - box.height / 2;
+      zoomAt(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15), sx, sy);
+    };
+    const grayscaleDrag = state.status === "ready" && state.kind === "raw" && info && info.spp < 3 && !!win;
+    const onPointerDown = (e) => {
+      if (state.status !== "ready" || e.button !== 0) return;
+      const panning = e.shiftKey || !grayscaleDrag;
+      const startX = e.clientX, startY = e.clientY;
+      const start = panning ? { ...pan } : { ...win };
+      const sens = Math.max(1, win ? win.w : 256) / 256;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      const move = (ev) => {
+        const dx = ev.clientX - startX, dy = ev.clientY - startY;
+        if (panning) {
+          setPan({ x: start.x + dx, y: start.y + dy });
+          setFitMode(false);
+        } else {
+          setWin({
+            w: Math.max(1, start.w + dx * sens * 2),
+            c: start.c + dy * sens * 2
+          });
+        }
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    };
+    const autoWindow = () => {
+      if (!info || state.kind !== "raw") return;
+      const raw = readFrame(state.ds, state.bytes, info, frame);
+      if (!raw) return;
+      let min = Infinity, max = -Infinity;
+      for (let i = 0; i < raw.length; i++) {
+        const v = raw[i];
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      min = min * info.slope + info.intercept;
+      max = max * info.slope + info.intercept;
+      setWin({ c: (min + max) / 2, w: Math.max(1, max - min) });
+    };
+    const frameCount = info ? info.numFrames : 1;
+    const stepFrame = (d) => setFrame((f) => Math.max(0, Math.min(frameCount - 1, f + d)));
+    const onKeyDown = (e) => {
+      const tag = e.target && e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        stepFrame(-1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        stepFrame(1);
+      } else if (e.key === "Escape" && expanded) {
+        e.preventDefault();
+        setExpanded(false);
+      }
+    };
+    React.useEffect(() => {
+      if (!expanded) return void 0;
+      const onDocKey = (e) => {
+        if (e.key === "Escape") {
+          setExpanded(false);
+          return;
+        }
+        onKeyDown(e);
+      };
+      document.addEventListener("keydown", onDocKey);
+      return () => document.removeEventListener("keydown", onDocKey);
+    });
     if (state.status === "loading") {
       return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px]" }, "Loading DICOM\u2026"));
     }
     if (state.status === "error") {
       return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load DICOM: ${state.message}`));
     }
-    const { bytes, info, meta, kind, tsName } = state;
+    const { bytes, meta, kind, tsName } = state;
     const renders = kind === "raw" || kind === "jpeg";
     const grayscale = kind === "raw" && info.spp < 3;
     const saveDicom = () => platform3.ui.saveFile(
@@ -918,55 +1148,172 @@ function register(platform2) {
       () => new Blob([bytes], { type: "application/dicom" })
     );
     const metaRows = META.filter(([tag]) => meta[tag]).map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { className: "font-semibold pr-4" }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, meta[tag])));
-    return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px] flex flex-col gap-3" }, /* @__PURE__ */ React.createElement("div", { className: "font-semibold" }, `DICOM object \u2014 ${info.cols}\xD7${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ""} \u2014 ${bytes.length.toLocaleString()} bytes`), renders ? /* @__PURE__ */ React.createElement("div", { className: "flex flex-col gap-2" }, /* @__PURE__ */ React.createElement("div", { className: "border border-line rounded-[5px] bg-black inline-block overflow-auto max-h-[60vh] max-w-full self-start" }, /* @__PURE__ */ React.createElement(
-      "canvas",
-      {
-        ref: canvasRef,
-        style: { transform: `scale(${zoom})`, transformOrigin: "top left", imageRendering: "pixelated", display: "block" }
-      }
-    )), decodeError && /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, `Could not decode this JPEG frame: ${decodeError}`), /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-4 flex-wrap text-[11px]" }, info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame <= 0, onClick: () => setFrame((f) => Math.max(0, f - 1)) }, "\u2039"), /* @__PURE__ */ React.createElement("span", { className: "mono" }, `Frame ${frame + 1} / ${info.numFrames}`), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", disabled: frame >= info.numFrames - 1, onClick: () => setFrame((f) => Math.min(info.numFrames - 1, f + 1)) }, "\u203A")), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Zoom"), /* @__PURE__ */ React.createElement("input", { type: "range", min: "0.25", max: "8", step: "0.25", value: zoom, onChange: (e) => setZoom(parseFloat(e.target.value)) }), /* @__PURE__ */ React.createElement("span", { className: "mono w-[38px]" }, `${Math.round(zoom * 100)}%`)), grayscale && win && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Level"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        type: "range",
-        min: info.intercept,
-        max: info.intercept + 4096 * info.slope,
-        step: "1",
-        value: win.c,
-        onChange: (e) => setWin((w) => ({ ...w, c: parseFloat(e.target.value) }))
-      }
-    )), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Window"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        type: "range",
-        min: "1",
-        max: Math.max(2, 4096 * info.slope),
-        step: "1",
-        value: win.w,
-        onChange: (e) => setWin((w) => ({ ...w, w: parseFloat(e.target.value) }))
-      }
-    ))))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, `This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.`), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)), /* @__PURE__ */ React.createElement("div", { className: "flex gap-2" }, renders && /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => {
-      try {
-        setPopUrl(canvasRef.current && canvasRef.current.toDataURL());
-      } catch {
-      }
-    } }, "\u2922 Pop Out"), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, "Save DICOM")), popUrl && /* @__PURE__ */ React.createElement(
+    const title = `DICOM object \u2014 ${info.cols}\xD7${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ""} \u2014 ${bytes.length.toLocaleString()} bytes`;
+    const rootCls = expanded ? "modal flex flex-col" : "flex flex-col gap-1.5";
+    const toolbar = (
+      /* NEVER wraps: a second toolbar row steals ~35px from the image in a
+         pane that has little to spare, and it made the height below the
+         toolbar unpredictable. Too narrow to fit, the toolbar scrolls
+         sideways instead. */
+      /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3 flex-nowrap overflow-x-auto text-[11px] py-1.5 px-2 bg-bg1 border border-line rounded-[5px]" }, !expanded && /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint whitespace-nowrap" }, `${info.cols}\xD7${info.rows}`), info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn btn-sm",
+          title: "Previous frame (\u2190)",
+          disabled: frame <= 0,
+          onClick: () => stepFrame(-1)
+        },
+        "\u2039"
+      ), /* @__PURE__ */ React.createElement("span", { className: "mono" }, `Frame ${frame + 1} / ${info.numFrames}`), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn btn-sm",
+          title: "Next frame (\u2192)",
+          disabled: frame >= info.numFrames - 1,
+          onClick: () => stepFrame(1)
+        },
+        "\u203A"
+      )), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Zoom"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: "Zoom out", onClick: () => zoomStep(1 / 1.25) }, "\u2212"), /* @__PURE__ */ React.createElement("span", { className: "mono w-[42px] text-center" }, `${Math.round(zoom * 100)}%`), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: "Zoom in", onClick: () => zoomStep(1.25) }, "+"), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: fitMode ? "btn btn-sm btn-primary" : "btn btn-sm",
+          title: "Fit the image to the pane",
+          onClick: fit
+        },
+        "Fit"
+      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: "Show at actual size", onClick: actual }, "1:1")), grayscale && win && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Level"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "range",
+          "aria-label": "Level",
+          min: info.intercept,
+          max: info.intercept + 4096 * info.slope,
+          step: "1",
+          value: win.c,
+          onChange: (e) => setWin((w) => ({ ...w, c: parseFloat(e.target.value) }))
+        }
+      ), /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Window"), /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          type: "range",
+          "aria-label": "Window",
+          min: "1",
+          max: Math.max(2, 4096 * info.slope),
+          step: "1",
+          value: win.w,
+          onChange: (e) => setWin((w) => ({ ...w, w: parseFloat(e.target.value) }))
+        }
+      ), /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn btn-sm",
+          title: "Window/level from this frame's own range",
+          onClick: autoWindow
+        },
+        "Auto"
+      )), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), (expanded || rootWidth >= 1400) && /* @__PURE__ */ React.createElement("span", { className: "text-text-faint whitespace-nowrap" }, grayscaleDrag ? "drag = level/window \xB7 shift-drag = pan \xB7 wheel = zoom" : "drag = pan \xB7 wheel = zoom"), !expanded && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "btn btn-sm",
+          title: "Open full screen",
+          onClick: () => setExpanded(true)
+        },
+        "\u2922 Full Screen"
+      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", onClick: saveDicom }, "Save DICOM")))
+    );
+    const stage = /* @__PURE__ */ React.createElement(
       "div",
       {
-        className: "fixed inset-0 z-[2000] bg-black/90 flex flex-col items-center justify-center p-4 cursor-zoom-out",
-        onClick: () => setPopUrl(null)
+        ref: stageRef,
+        className: expanded ? "relative flex-1 min-w-0 min-h-0 overflow-hidden bg-black touch-none" : "relative flex-none overflow-hidden bg-black border border-line rounded-[5px] touch-none",
+        style: {
+          cursor: grayscaleDrag ? "crosshair" : "grab",
+          /* Inline the box is the IMAGE at the current zoom — the
+             pre-branch behaviour, which showed a 256px object at 256px
+             and let the tab scroll, rather than shrinking it to fit a
+             short pane. Capped so a large series cannot run away with
+             the page; past the cap, drag pans. */
+          ...expanded ? null : {
+            width: `${Math.round(info.cols * zoom)}px`,
+            height: `${Math.round(info.rows * zoom)}px`,
+            maxWidth: "100%",
+            maxHeight: "60vh"
+          }
+        },
+        onWheel,
+        onPointerDown,
+        onDoubleClick: () => fitMode ? actual() : fit()
       },
       /* @__PURE__ */ React.createElement(
-        "img",
+        "canvas",
         {
-          src: popUrl,
-          alt: "DICOM",
-          className: "max-w-[95vw] max-h-[88vh] object-contain",
-          style: { imageRendering: "pixelated" },
-          onClick: (e) => e.stopPropagation()
+          ref: canvasRef,
+          style: {
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            imageRendering: "pixelated",
+            display: "block"
+          }
         }
-      ),
-      /* @__PURE__ */ React.createElement("button", { className: "btn mt-3", onClick: () => setPopUrl(null) }, "Close")
-    ));
+      )
+    );
+    const metaBeside = metaRows.length > 0 && (expanded || rootWidth >= 620);
+    const metaPanel = metaBeside ? (
+      /* Inline it takes the width the image no longer claims (capped, so
+         the rows do not stretch into a sparse band on a wide pane). */
+      /* @__PURE__ */ React.createElement("div", { className: expanded ? "w-[250px] flex-none overflow-auto border-l border-line bg-pane-bg" : "flex-1 min-w-0 max-w-[420px] h-full overflow-auto" }, /* @__PURE__ */ React.createElement("table", { className: "dt w-full" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)))
+    ) : null;
+    const viewer = /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        ref: rootRef,
+        className: rootCls,
+        tabIndex: 0,
+        onKeyDown,
+        style: expanded ? { width: "calc(100vw - 40px)", height: "calc(100vh - 40px)", maxHeight: "none" } : void 0,
+        ...expanded ? { role: "dialog", "aria-modal": true, "aria-label": title } : null
+      },
+      /* @__PURE__ */ React.createElement("div", { className: expanded ? "modal-header" : "hidden" }, /* @__PURE__ */ React.createElement("span", null, title), expanded && /* @__PURE__ */ React.createElement(
+        "button",
+        {
+          className: "icon-btn",
+          title: "Close (Esc)",
+          "aria-label": "Close",
+          onClick: () => setExpanded(false)
+        },
+        "\u2715"
+      )),
+      /* @__PURE__ */ React.createElement("div", { className: expanded ? "px-3.5 pt-2.5 flex-none" : "flex-none" }, toolbar),
+      renders ? (
+        /* The image row takes whatever the toolbar left over, in
+           both modes — nothing here is a fixed height. */
+        /* @__PURE__ */ React.createElement(
+          "div",
+          {
+            ref: rowRef,
+            className: expanded ? "flex flex-1 min-h-0" : "flex gap-2 items-start"
+          },
+          stage,
+          metaPanel
+        )
+      ) : /* @__PURE__ */ React.createElement("div", { className: expanded ? "p-3.5 flex-1 overflow-auto" : "" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, `This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.`), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt mt-[13px]" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows))),
+      decodeError && /* @__PURE__ */ React.createElement("div", { className: expanded ? "text-text-faint text-[11px] px-3.5 py-1.5 flex-none" : "text-text-faint text-[11px]" }, `Could not decode this JPEG frame: ${decodeError}`),
+      renders && info.numFrames > 1 && /* @__PURE__ */ React.createElement(Filmstrip, { state, frame, win, onPick: setFrame, expanded }),
+      renders && metaRows.length > 0 && !metaBeside && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)),
+      expanded && /* @__PURE__ */ React.createElement("div", { className: "modal-foot" }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, "Save DICOM"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setExpanded(false) }, "Close"))
+    );
+    return /* @__PURE__ */ React.createElement(
+      "div",
+      {
+        className: expanded ? "modal-overlay" : "contents",
+        onMouseDown: expanded ? (e) => {
+          if (e.target === e.currentTarget) setExpanded(false);
+        } : void 0
+      },
+      viewer
+    );
   }
   platform2.registerAttachmentViewer({
     id: "dicomviewer",
