@@ -1085,6 +1085,25 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .modal.modal-deps { width: min(620px, calc(100vw - 40px)); }
 .modal.modal-deps .modal-body { overflow: hidden; }
 .modal.xwide { width: min(1200px, calc(100vw - 40px)); }
+/* Content viewers (message stage popout, Mapping Value): sized by their
+   content between a floor and the viewport — the dashboard log-entry idiom.
+   Width follows the longest line (fit-content), height follows the text;
+   at the caps the content pre becomes the ONE scroll container, so the
+   modal body must not pad or scroll on its own. */
+.modal.fit {
+    width: fit-content;
+    min-width: min(560px, calc(100vw - 40px));
+    max-width: calc(100vw - 40px);
+    max-height: calc(100vh - 40px);
+}
+.modal.fit .modal-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+}
 
 @keyframes modal-in { from { opacity: 0; transform: translateY(10px) scale(0.99); } }
 

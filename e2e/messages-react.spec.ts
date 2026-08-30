@@ -32,6 +32,8 @@ const MESSAGE = {
                     status: 'RECEIVED',
                     receivedDate: { time: 1700000000000 },
                     raw: { content: 'MSH|^~\\&|SENDER|FAC|RECV|FAC|20231101||ADT^A01|MSG00001|P|2.3' },
+                    // An error block, so the Errors tab (and its popout) renders.
+                    processingErrorContent: { content: 'DataTypeException: Invalid HL7 message\n\tat com.mirth.connect.plugins.datatypes.hl7v2.HL7v2Serializer' },
                     // Source map (intentionally unsorted) to exercise the Mappings tab's sort.
                     sourceMapContent: { content: { map: { entry: [
                         { string: ['zebra', 'val-z'] },
@@ -305,6 +307,45 @@ test('Mappings tab is a sortable table with a sticky header banner', async ({ pa
     await variableHeader.click();
     await expect(variables).toHaveText(['zebra', 'mango', 'alpha']);
     await expect(variableHeader.locator('.sort-arrow')).toHaveText('▼');
+});
+
+test('a content stage pops out full screen; a mapping opens on double-click', async ({ page }) => {
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+    await page.getByText('12345', { exact: true }).click();
+
+    // The active content tab's toolbar offers Full Screen — a content-sized
+    // modal with JUST that stage (title names message, connector, stage).
+    await page.getByRole('button', { name: 'Full Screen' }).click();
+    const stageDialog = page.getByRole('dialog', { name: 'Message 12345 — Source — Raw' });
+    await expect(stageDialog).toBeVisible();
+    await expect(stageDialog).toHaveClass(/fit/);
+    await expect(stageDialog).toContainText('MSG00001');
+    await stageDialog.getByRole('button', { name: 'Close' }).last().click();
+    await expect(stageDialog).toBeHidden();
+
+    // Each error block pops out on its own, same modal, title names the kind.
+    await page.getByRole('tab', { name: 'Errors', exact: true }).click();
+    await page.getByRole('button', { name: 'Full Screen' }).click();
+    const errorDialog = page.getByRole('dialog', { name: 'Message 12345 — Source — Processing Error' });
+    await expect(errorDialog).toBeVisible();
+    await expect(errorDialog).toContainText('DataTypeException');
+    await expect(errorDialog.getByRole('button', { name: 'Copy' })).toBeVisible();
+    await errorDialog.getByRole('button', { name: 'Close' }).last().click();
+    await expect(errorDialog).toBeHidden();
+
+    // Mappings has no popout button; double-clicking a row opens that value —
+    // the Swing ViewContentDialog ("Mapping Value").
+    await page.getByRole('tab', { name: 'Mappings', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Full Screen' })).toBeHidden();
+    await page.getByRole('cell', { name: 'zebra', exact: true }).dblclick();
+    const mappingDialog = page.getByRole('dialog', { name: 'Mapping Value' });
+    await expect(mappingDialog).toBeVisible();
+    await expect(mappingDialog).toHaveClass(/fit/);
+    await expect(mappingDialog).toContainText('val-z');
+    await expect(mappingDialog.getByRole('button', { name: 'Copy' })).toBeVisible();
+    await mappingDialog.getByRole('button', { name: 'Close' }).last().click();
+    await expect(mappingDialog).toBeHidden();
 });
 
 test('status filter dropdown opens with the Swing statuses', async ({ page }) => {

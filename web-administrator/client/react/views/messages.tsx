@@ -695,7 +695,7 @@ function Loading({ text = 'Loading…' }: any) {
    and (for HL7) field-name tooltips enriched from the serializer sidecar.
    renderHighlighted paints imperatively into the <pre> behind a ref — the
    same escape hatch as Monaco hosts; everything around it is state. */
-function ContentView({ content, dataType, responseEnvelope }: any) {
+function ContentView({ content, dataType, responseEnvelope, popoutTitle }: any) {
     // Response stages: unwrap the Response envelope — banner shows the status,
     // body shows only the inner message payload (often empty).
     const env = useMemo(() => responseEnvelope ? parseResponse(content) : null, [content, responseEnvelope]);
@@ -735,6 +735,12 @@ function ContentView({ content, dataType, responseEnvelope }: any) {
                     </label>
                 )}
                 <span className="flex-1" />
+                {popoutTitle && (
+                    <button className="btn btn-sm" title="Open full screen"
+                        onClick={() => openContentPopout(popoutTitle, { content, dataType, responseEnvelope })}>
+                        <Icon name="popout" />Full Screen
+                    </button>
+                )}
                 <button className="btn btn-sm" onClick={() => copyText(body)}><Icon name="copy" />Copy</button>
             </div>
             {env && (
@@ -748,6 +754,22 @@ function ContentView({ content, dataType, responseEnvelope }: any) {
             <pre className="content-pre flex-1 min-h-[108px] max-h-none m-2.5" ref={preRef} />
         </div>
     );
+}
+
+/* Full Screen: ONE content stage in a content-sized modal (grows to the
+   viewport caps, like the dashboard's log-entry dialog) — the same
+   highlighted viewer with its Format toggle and Copy, nothing else. No
+   popoutTitle inside, so the modal's own toolbar offers no second popout.
+   The modal owns the React root and tears it down on close (the View
+   Attachment idiom). */
+function openContentPopout(title: any, props: any) {
+    const host = h('div', { class: 'flex-1 min-h-0 flex flex-col' });
+    const teardown = mountReact(host, <ContentView {...props} />);
+    modal({
+        title, size: 'fit', body: host,
+        buttons: [{ label: 'Close', primary: true }],
+        onClose: () => { try { teardown(); } catch { /* ignore */ } }
+    });
 }
 
 /* Classic mappings table: Scope | Variable | Value rows aggregated across the
@@ -806,7 +828,8 @@ function MappingsTable({ cm }: any) {
             </thead>
             <tbody>
                 {view.map((r: any, i: any) => (
-                    <tr key={i}>
+                    <tr key={i} className="cursor-pointer" title="Double-click for the full value"
+                        onDoubleClick={() => openMappingValue(r.value)}>
                         <td className="w-[108px]">{r.scope}</td>
                         <td className="mono w-[30%]">{r.variable}</td>
                         <td className="mono whitespace-pre-wrap break-all">{r.value}</td>
@@ -815,6 +838,29 @@ function MappingsTable({ cm }: any) {
             </tbody>
         </table>
     );
+}
+
+/* Plain-text popout (mapping values, error blocks): the same content-sized
+   modal as the stage popout, with Copy — for text that needs no highlighting
+   or Format toggle. */
+function openTextPopout(title: any, text: any, display = text) {
+    modal({
+        title,
+        size: 'fit',
+        body: h('pre', { class: 'content-pre flex-1 min-h-[108px] max-h-none m-2.5' }, display),
+        buttons: [
+            { label: 'Copy', onClick: () => { copyText(text); return false; } },
+            { label: 'Close', primary: true }
+        ]
+    });
+}
+
+/* Double-clicking a mappings row opens just that value, read-only — the Swing
+   ViewContentDialog ("Mapping Value"), which also renders tabs as newlines.
+   Copy takes the value itself — the tab→newline swap is display-only. */
+function openMappingValue(value: any) {
+    const text = String(value ?? '');
+    openTextPopout('Mapping Value', text, text.replace(/\t/g, '\n'));
 }
 
 /* ---- attachments ------------------------------------------------------------------ */
@@ -1036,6 +1082,10 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
         ? anchor.contentType : null;
 
     const defs: any[] = [];
+    // Full-screen titles carry the connector: the results tree, which normally
+    // says whose content this is, sits behind the modal overlay.
+    const connectorLabel = cm.connectorName
+        || (Number(cm.metaDataId) === 0 ? 'Source' : `Destination ${cm.metaDataId}`);
     for (const [label, key] of contentDefs) {
         let content = contentOf(cm[key]);
         if (content === null) continue;
@@ -1051,7 +1101,8 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
         }
         defs.push({
             label, contentType: comparable.get(key) ?? null,
-            node: <ContentView content={content} dataType={dataType} responseEnvelope={responseEnvelope} />
+            node: <ContentView content={content} dataType={dataType} responseEnvelope={responseEnvelope}
+                popoutTitle={`Message ${message.messageId} — ${connectorLabel} — ${label}`} />
         });
     }
 
@@ -1067,7 +1118,15 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
                 <div className="p-2.5 overflow-auto">
                     {errorDefs.map(([label, content]) => (
                         <div key={label}>
-                            <div className="text-text-faint mt-[13px]">{label}</div>
+                            {/* Per-block button: an error pops out alone, like a
+                                stage — never the whole tab. */}
+                            <div className="mt-[13px] flex items-center">
+                                <span className="text-text-faint">{label}</span>
+                                <button className="btn btn-sm ml-auto" title="Open full screen"
+                                    onClick={() => openTextPopout(`Message ${message.messageId} — ${connectorLabel} — ${label}`, content)}>
+                                    <Icon name="popout" />Full Screen
+                                </button>
+                            </div>
                             <pre className="content-pre">{content}</pre>
                         </div>
                     ))}
