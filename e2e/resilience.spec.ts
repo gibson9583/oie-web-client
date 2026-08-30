@@ -135,7 +135,12 @@ test.describe('connection status in the status bar', () => {
         await expect(page.locator('.server-chip')).toContainText('E2E Engine');
         await expect(page.locator('.server-chip .pip')).toHaveCount(0);   // no status dot up top
         await expect(barPip(page)).toHaveClass(/\bok\b/);
-        await expect(page.locator('.statusbar')).toContainText('Connected to:');
+        // The engine's own Environment - Server Name reaches the bar. Only the
+        // identity is asserted: the configured engine name beside it comes from
+        // the server's config.json, which differs per install (none in CI). The
+        // full "name | identity" join is pinned in engine-plugins.spec.ts with
+        // a routed config.
+        await expect(page.locator('.statusbar')).toContainText('test - E2E Engine as admin');
     });
 
     test('the chip keeps showing which engine even while that engine is down', async ({ page, context }) => {

@@ -228,7 +228,12 @@ export function useServerIdentity() {
         const userId = store.getState('user')?.id;
         Promise.all([
             api.server.version(),
-            api.server.settings().catch(() => null),
+            // Swing reads the identity fields (environment/server name) and the
+            // default background color from the PUBLIC settings, which every
+            // user may fetch — full /server/settings needs a permission and is
+            // kept only as the fallback for engines that predate
+            // /server/publicSettings.
+            api.server.publicSettings().catch(() => api.server.settings()).catch(() => null),
             // Single-key RAW read, mirroring Swing's getUserPreference(id,
             // "backgroundColor"). The bulk getPreferences runs through api.js
             // unwrap() (collapses a one-entry Properties map to a scalar) and

@@ -485,7 +485,19 @@ function StatusBar({ user, serverInfo, conn }: any) {
         const t = setInterval(tick, 30000);
         return () => clearInterval(t);
     }, []);
-    const engine = currentEngineLabel(config) || apiUrl();
+    const configName = currentEngineLabel(config);
+    // The engine's own identity (Settings → Server), joined the way the Swing
+    // status bar does. The WAR ships a placeholder engine name — it cannot know
+    // its host at build time — so there the engine names itself, with the
+    // serving host (which in WAR mode IS the engine) standing in when the
+    // Environment/Server Name fields are blank.
+    const identity = [serverInfo?.settings?.environmentName, serverInfo?.settings?.serverName]
+        .map((s: any) => (s == null ? '' : String(s).trim())).filter(Boolean).join(' - ');
+    const engine = config.deployment === 'war'
+        ? (identity || location.host)
+        : (configName && identity && identity !== configName
+            ? `${configName} | ${identity}`
+            : configName || identity || apiUrl());
     let left = 'Connecting…';
     // Live connection state outranks the one-shot identity fetch: the identity is
     // from load time, whereas this is how the last request actually went.
