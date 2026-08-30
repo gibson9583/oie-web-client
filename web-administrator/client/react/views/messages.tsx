@@ -685,6 +685,19 @@ function Loading({ text = 'Loading…' }: any) {
     return <div className="loading-block"><div className="spinner" />{text}</div>;
 }
 
+/* Do two compare references point at the same stage? The four fields below are
+   what identifies one (the rest — names, data types — are decoration derived
+   from them). Used to keep the active-stage state stable across the freshly
+   built refs the detail tabs hand up on every render. */
+function sameStageRef(a: any, b: any) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return String(a.channelId) === String(b.channelId)
+        && String(a.messageId) === String(b.messageId)
+        && Number(a.metaDataId ?? 0) === Number(b.metaDataId ?? 0)
+        && a.contentType === b.contentType;
+}
+
 /* The Response (and destination Processed Response) stage stores a serialized
    Response object, not raw content. Like the Swing browser, we surface the
    status + statusMessage in a banner and show the inner <message> payload as
@@ -1900,9 +1913,16 @@ export function MessagesView({ params, query }: any) {
     // render that created them.
     const activeStageRef = useRef<any>(null);
     const [activeStage, setActiveStage] = useState<any>(null);
+    /* Compare BY VALUE, not identity. refFromConnectorMessage mints a fresh
+       object on every call and <DetailTabs>'s effect calls it on every render
+       (its `current` def is rebuilt each time), so storing the new object would
+       re-render, which re-runs that effect, which stores another new object —
+       React caps the runaway at 50 nested updates and logs "Maximum update
+       depth exceeded" on every message selection. Bailing out when the
+       reference means the same stage stops the cycle at the source. */
     const onActiveStage = useCallback((ref: any) => {
         activeStageRef.current = ref;
-        setActiveStage(ref);
+        setActiveStage((prev: any) => (sameStageRef(prev, ref) ? prev : ref));
     }, []);
 
     /* Column visibility (persisted separately from the manager, matching the
