@@ -5,8 +5,9 @@
  *
  * Multi-engine: if the server advertises more than one engine (config.engines),
  * a dropdown lets the user pick one; in devMode a "Custom URL…" option reveals a
- * URL field. The choice is written to the `oie-engine` cookie BEFORE the login
- * POST so it (and every later /api call) routes to that engine (server/proxy.js).
+ * URL field. The choice — the engine's stable key, never its list position — is
+ * written to the `oie-engine` cookie BEFORE the login POST so it (and every
+ * later /api call) routes to that engine (server/proxy.js).
  */
 import { getLoginAuthenticator } from '../../core/login-auth.js';
 import { appUrl } from '../../core/deployment.js';
@@ -37,11 +38,17 @@ function getCookie(name: any) {
 
 // Preselect the engine last used (persisted in the oie-engine cookie) so the
 // picker remembers your choice instead of always snapping back to the first.
+// The cookie holds the engine's stable key (server config.ts engineKey), so an
+// edited engine list can't silently change what the remembered choice means
+// (issue #53). A remembered choice that no longer resolves — the engine was
+// removed or renamed, or the cookie is a pre-key numeric index — returns '':
+// the picker then demands an explicit choice rather than guessing an engine.
 function initialSelection(engines: any, devMode: any) {
     const c = getCookie('oie-engine');
     if (c === 'custom' && devMode) return 'custom';
-    if (/^\d+$/.test(c) && Number(c) < engines.length) return c;
-    return '0';
+    if (c && engines.some((e: any) => e.key === c)) return c;
+    if (c) return '';
+    return engines.length ? String(engines[0].key ?? '') : '';
 }
 
 export function LoginForm({ onSuccess }: any) {
@@ -54,7 +61,8 @@ export function LoginForm({ onSuccess }: any) {
     const [submitting, setSubmitting] = useState(false);
 
     // Engine selection. `engines` from /webadmin/config.json; `sel` is the chosen
-    // index (as a string) or 'custom'; `customUrl` is the devMode manual URL.
+    // engine's key, 'custom', or '' (a stale remembered choice — must re-pick);
+    // `customUrl` is the devMode manual URL.
     const cfg = store.getState('webadminConfig') || {};
     const engines = Array.isArray(cfg.engines) ? cfg.engines : [];
     const devMode = !!cfg.devMode;
@@ -87,15 +95,38 @@ export function LoginForm({ onSuccess }: any) {
 
         // Point this session at the chosen engine before authenticating.
         if (showPicker) {
+            if (sel === '') {
+                // A stale remembered engine (see initialSelection) — don't guess.
+                setError('Choose an engine.');
+                busyRef.current = false;
+                return;
+            }
             if (sel === 'custom') {
                 const url = customUrl.trim();
-                if (!url) { setError('Enter an engine URL.'); busyRef.current = false; return; }
+                // Validate HERE, where the message can say what is wrong: an
+                // unroutable custom URL that reaches the proxy earns only the
+                // generic ENGINE_UNKNOWN refusal, which misreads a typo as a
+                // stale engine selection.
+                let parsed: URL | null = null;
+                try { parsed = new URL(url); } catch { /* handled below */ }
+                if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
+                    setError(url ? 'Enter a full engine URL, e.g. https://host:8443.' : 'Enter an engine URL.');
+                    busyRef.current = false;
+                    return;
+                }
                 setCookie('oie-engine', 'custom');
                 setCookie('oie-engine-url', url);
             } else {
                 clearCookie('oie-engine-url');
                 setCookie('oie-engine', sel);
             }
+        } else {
+            // Single-engine mode: this sign-in targets the only engine, so drop
+            // any stale routing cookies (a remembered engine from a shrunk list,
+            // a devMode custom pair) — left in place they would keep mislabeling
+            // the session and forcing a hard reload on every sign-in.
+            clearCookie('oie-engine');
+            clearCookie('oie-engine-url');
         }
 
         setSubmitting(true);
@@ -109,7 +140,7 @@ export function LoginForm({ onSuccess }: any) {
             // doesn't clear. If this sign-in targets a DIFFERENT engine than the one
             // plugins were loaded against, hard-reload so discovery re-runs against
             // the new engine. First sign-in of a page session takes the soft path.
-            const newKey = showPicker ? (sel === 'custom' ? `custom:${customUrl.trim()}` : sel) : '0';
+            const newKey = showPicker ? (sel === 'custom' ? `custom:${customUrl.trim()}` : sel) : '';
             let loaded: any = null;
             try { loaded = sessionStorage.getItem('oie-loaded-engine'); } catch { /* private mode */ }
             if (loaded != null && loaded !== newKey) { location.reload(); return; }
@@ -189,8 +220,11 @@ export function LoginForm({ onSuccess }: any) {
                     <div className="field">
                         <label>Engine</label>
                         <select value={sel} onChange={(e: any) => setSel(e.target.value)}>
-                            {engines.map((eng: any, i: any) => (
-                                <option key={i} value={String(i)}>{eng.name}</option>
+                            {/* Only when the remembered engine is gone: a real pick
+                                replaces it, and it can't be re-selected. */}
+                            {sel === '' ? <option value="" disabled>Select an engine…</option> : null}
+                            {engines.map((eng: any) => (
+                                <option key={eng.key} value={eng.key}>{eng.name}</option>
                             ))}
                             {devMode ? <option value="custom">Custom URL…</option> : null}
                         </select>

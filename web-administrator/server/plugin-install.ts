@@ -14,7 +14,7 @@
  */
 import express from 'express';
 import type { Request, Response, NextFunction, Express } from 'express';
-import { engineRequest, resolveEngine } from './proxy';
+import { engineRequest, forwardCookie, resolveEngine, respondEngineUnknown } from './proxy';
 import type { WebAdminConfig } from './config';
 
 const MAX_UPLOAD = '16mb';   // express.raw cap (engine zips are a few MB)
@@ -50,15 +50,17 @@ async function handleInstall(req: Request, res: Response, config: WebAdminConfig
 
     // Forward the upload to the engine — it enforces EXTENSIONS_MANAGE, installs the
     // extension (Java + its webadmin/ half), and serves the web half via /api/webplugins.
+    const engine = resolveEngine(config, req);
+    if (!engine) return respondEngineUnknown(req, res);
     let engineRes;
     try {
-        engineRes = await engineRequest(resolveEngine(config, req), {
+        engineRes = await engineRequest(engine, {
             method: 'POST',
             path: '/api/extensions/_install',
             headers: {
                 'content-type': req.headers['content-type'],
                 'content-length': String(body.length),
-                cookie: req.headers['cookie'] || '',
+                cookie: forwardCookie(req.headers['cookie']),
                 'x-requested-with': req.headers['x-requested-with']
             },
             body
@@ -78,16 +80,18 @@ async function handleUninstall(req: Request, res: Response, config: WebAdminConf
     if (!enginePath) return res.status(400).json({ error: 'NO_PATH', message: 'Extension path is required' });
 
     // Engine enforces EXTENSIONS_MANAGE on uninstall too, and owns the web half.
+    const engine = resolveEngine(config, req);
+    if (!engine) return respondEngineUnknown(req, res);
     let engineRes;
     try {
         const fwd = Buffer.from(enginePath, 'utf8');
-        engineRes = await engineRequest(resolveEngine(config, req), {
+        engineRes = await engineRequest(engine, {
             method: 'POST',
             path: '/api/extensions/_uninstall',
             headers: {
                 'content-type': req.headers['content-type'] || 'application/json',
                 'content-length': String(fwd.length),
-                cookie: req.headers['cookie'] || '',
+                cookie: forwardCookie(req.headers['cookie']),
                 'x-requested-with': req.headers['x-requested-with']
             },
             body: fwd
@@ -100,13 +104,26 @@ async function handleUninstall(req: Request, res: Response, config: WebAdminConf
     res.json({ engineUninstalled: true, restartEngine: true });
 }
 
+// Refuse an unresolvable engine selection BEFORE the body parsers buffer the
+// request (same rationale as preUploadGate): resolveEngine reads only headers,
+// so there is no reason to read up to MAX_UPLOAD for a request that can only
+// ever be answered 421. The handlers re-resolve for the actual forward.
+function engineGate(config: WebAdminConfig) {
+    return (req: Request, res: Response, next: NextFunction): any => {
+        if (!resolveEngine(config, req)) return respondEngineUnknown(req, res);
+        next();
+    };
+}
+
 // Mount BEFORE the /api proxy in server/index.js.
 export function installPluginRoutes(app: Express, config: WebAdminConfig): void {
     app.post('/api/_webadmin/plugins/_install',
         preUploadGate,
+        engineGate(config),
         express.raw({ type: () => true, limit: MAX_UPLOAD }),
         (req, res) => handleInstall(req, res, config));
     app.post('/api/_webadmin/plugins/_uninstall',
+        engineGate(config),
         express.json({ limit: '64kb' }),
         (req, res) => handleUninstall(req, res, config));
 }

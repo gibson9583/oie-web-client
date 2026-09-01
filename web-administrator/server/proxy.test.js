@@ -16,8 +16,8 @@ function test(name, fn) {
 console.log('proxy.test.js');
 
 const ENGINES = [
-    { name: 'prod', url: 'https://prod:8443', verifyTls: true },
-    { name: 'stage', url: 'https://stage:8443', verifyTls: false }
+    { name: 'prod', key: 'k:prod', url: 'https://prod:8443', verifyTls: true },
+    { name: 'stage', key: 'k:stage', url: 'https://stage:8443', verifyTls: false }
 ];
 function req(cookie) { return { headers: cookie ? { cookie } : {} }; }
 function cfg(extra) { return Object.assign({ engines: ENGINES, engine: { url: 'https://fallback:8443' } }, extra); }
@@ -26,21 +26,44 @@ test('no cookie -> first engine (default)', () => {
     assert.strictEqual(resolveEngine(cfg(), req()).name, 'prod');
 });
 
-test('index cookie -> that engine', () => {
-    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=1')).name, 'stage');
+test('key cookie -> that engine', () => {
+    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=k:stage')).name, 'stage');
 });
 
-test('out-of-range index -> first engine', () => {
-    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=9')).name, 'prod');
+test('key cookie url-encoded by the browser -> that engine', () => {
+    // The client writes the cookie with encodeURIComponent ("k:stage" -> "k%3Astage").
+    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=k%3Astage')).name, 'stage');
 });
 
-test('non-numeric index -> first engine', () => {
-    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=abc')).name, 'prod');
+test('selection survives the engine list being reordered or extended (issue #53)', () => {
+    // The positional cookie meant an inserted/reordered entry silently repointed
+    // an existing choice; a key names the engine itself, wherever it sits.
+    const edited = [
+        { name: 'new', key: 'k:new', url: 'https://new:8443', verifyTls: false },
+        ENGINES[1], ENGINES[0]
+    ];
+    assert.strictEqual(resolveEngine(cfg({ engines: edited }), req('oie-engine=k:stage')).name, 'stage');
 });
 
-test('custom URL ignored when devMode off (SSRF guard)', () => {
+test('unknown key (engine removed/renamed) -> null, NOT the first engine (issue #53)', () => {
+    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=k:gone')), null);
+});
+
+test('pre-key numeric index cookie -> null (stale after upgrade; user re-picks)', () => {
+    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=1')), null);
+    assert.strictEqual(resolveEngine(cfg(), req('oie-engine=9')), null);
+});
+
+test('single-engine mode: any stale selection still resolves to the only engine', () => {
+    const one = cfg({ engines: [ENGINES[0]] });
+    assert.strictEqual(resolveEngine(one, req('oie-engine=k:gone')).name, 'prod');
+    assert.strictEqual(resolveEngine(one, req('oie-engine=1')).name, 'prod');
+    assert.strictEqual(resolveEngine(one, req()).name, 'prod');
+});
+
+test('custom URL ignored when devMode off (SSRF guard) -> unresolvable, not first engine', () => {
     const e = resolveEngine(cfg({ devMode: false }), req('oie-engine=custom; oie-engine-url=https://evil:9000'));
-    assert.strictEqual(e.name, 'prod');
+    assert.strictEqual(e, null);
 });
 
 test('custom URL honored when devMode on', () => {
@@ -49,9 +72,9 @@ test('custom URL honored when devMode on', () => {
     assert.strictEqual(e.verifyTls, false);
 });
 
-test('custom with non-http(s) scheme -> first engine', () => {
+test('custom with non-http(s) scheme -> not honored, unresolvable', () => {
     const e = resolveEngine(cfg({ devMode: true }), req('oie-engine=custom; oie-engine-url=file:///etc/passwd'));
-    assert.strictEqual(e.name, 'prod');
+    assert.strictEqual(e, null);
 });
 
 test('falls back to engine.url when engines list empty', () => {
@@ -62,7 +85,7 @@ test('falls back to engine.url when engines list empty', () => {
 test('a malformed cookie value does not break routing (no decodeURIComponent throw)', () => {
     // A bare `%`/`%ZZ` in any cookie would throw in parseCookies and 500 the proxy;
     // routing must still resolve the engine from the valid oie-engine cookie.
-    const e = resolveEngine(cfg(), req('junk=%ZZ; oie-engine=1; bad=100%'));
+    const e = resolveEngine(cfg(), req('junk=%ZZ; oie-engine=k:stage; bad=100%'));
     assert.strictEqual(e.name, 'stage');
 });
 
@@ -134,11 +157,14 @@ async function testAsync(name, fn) {
 }
 
 (async () => {
-    await testAsync('proxy round trip: a message-content response is marked no-store', async () => {
-        const http = require('http');
-        const { createApiProxy } = require('./proxy.js');
-        const listen = (server) => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+    const http = require('http');
+    const { createApiProxy } = require('./proxy.js');
+    const listen = (server) => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
+    // The proxy takes plain node request/response objects; express only adds
+    // originalUrl, which the mount would have set.
+    const frontFor = (proxy) => http.createServer((req, res) => { req.originalUrl = req.url; proxy(req, res); });
 
+    await testAsync('proxy round trip: a message-content response is marked no-store', async () => {
         // The "engine": answers with the cache headers a stock Jetty would.
         const engine = http.createServer((req, res) => {
             res.writeHead(200, {
@@ -150,12 +176,9 @@ async function testAsync(name, fn) {
         });
         const enginePort = await listen(engine);
 
-        const proxy = createApiProxy(cfg({
-            engines: [{ name: 'stub', url: `http://127.0.0.1:${enginePort}`, verifyTls: false }]
-        }));
-        // The proxy takes plain node request/response objects; express only adds
-        // originalUrl, which the mount would have set.
-        const front = http.createServer((req, res) => { req.originalUrl = req.url; proxy(req, res); });
+        const front = frontFor(createApiProxy(cfg({
+            engines: [{ name: 'stub', key: 'k:stub', url: `http://127.0.0.1:${enginePort}`, verifyTls: false }]
+        })));
         const frontPort = await listen(front);
 
         try {
@@ -166,6 +189,41 @@ async function testAsync(name, fn) {
         } finally {
             front.close();
             engine.close();
+        }
+    });
+
+    await testAsync('proxy answers 421 ENGINE_UNKNOWN for a stale selection instead of forwarding to the first engine', async () => {
+        const front = frontFor(createApiProxy(cfg()));   // two engines; nothing listens — a forward would fail differently
+        const frontPort = await listen(front);
+        try {
+            const response = await fetch(`http://127.0.0.1:${frontPort}/api/users/current`, {
+                headers: { cookie: 'oie-engine=k:gone' }
+            });
+            assert.strictEqual(response.status, 421);
+            const body = await response.json();
+            assert.strictEqual(body.error, 'ENGINE_UNKNOWN');
+        } finally {
+            front.close();
+        }
+    });
+
+    await testAsync('the 421 refusal still delivers its JSON when the request body is mid-upload', async () => {
+        // Answering before the body is read used to tear the socket down and the
+        // client saw a reset instead of the ENGINE_UNKNOWN body — the refusal
+        // must drain the request (respondEngineUnknown req.resume()).
+        const front = frontFor(createApiProxy(cfg()));
+        const frontPort = await listen(front);
+        try {
+            const response = await fetch(`http://127.0.0.1:${frontPort}/api/channels/c1`, {
+                method: 'PUT',
+                headers: { cookie: 'oie-engine=k:gone', 'content-type': 'application/json' },
+                body: JSON.stringify({ channel: { description: 'x'.repeat(512 * 1024) } })
+            });
+            assert.strictEqual(response.status, 421);
+            const body = await response.json();
+            assert.strictEqual(body.error, 'ENGINE_UNKNOWN');
+        } finally {
+            front.close();
         }
     });
 

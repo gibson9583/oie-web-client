@@ -16,8 +16,8 @@ function routeConfig(page: any, config: any) {
 
 const TWO_ENGINES = {
     engines: [
-        { name: 'Production', url: 'https://prod:8443' },
-        { name: 'Staging', url: 'https://stage:8443' },
+        { key: 'k:production', name: 'Production' },
+        { key: 'k:staging', name: 'Staging' },
     ],
     devMode: false,
     version: '0.1.0',
@@ -39,19 +39,48 @@ test.describe('engine picker', () => {
     });
 
     test('picker remembers the last selected engine', async ({ page, baseURL }) => {
-        // The prior choice persists in the oie-engine cookie; the picker preselects it
-        // instead of snapping back to the first engine.
-        await page.context().addCookies([{ name: 'oie-engine', value: '1', url: baseURL }]);
+        // The prior choice persists in the oie-engine cookie (the engine's stable
+        // key, not its list position); the picker preselects it instead of
+        // snapping back to the first engine.
+        await page.context().addCookies([{ name: 'oie-engine', value: 'k%3Astaging', url: baseURL }]);
         await routeConfig(page, TWO_ENGINES);
         await mockEngine(page, { 'GET /users/current': { __status: 401 } });
 
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-        await expect(page.locator('.login-card select')).toHaveValue('1');
+        await expect(page.locator('.login-card select')).toHaveValue('k:staging');
+    });
+
+    test('a remembered engine that was removed forces an explicit choice (issue #53)', async ({ page, baseURL }) => {
+        // The saved key no longer matches any engine — the picker must NOT guess
+        // (the old positional cookie silently landed on the first entry). It shows
+        // a placeholder and refuses to sign in until an engine is chosen.
+        await page.context().addCookies([{ name: 'oie-engine', value: 'k%3Aremoved', url: baseURL }]);
+        await routeConfig(page, TWO_ENGINES);
+        let authed = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 }),
+            'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+        });
+
+        await page.goto('/');
+        await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+        const select = page.locator('.login-card select');
+        await expect(select).toHaveValue('');
+        await expect(select.locator('option').first()).toHaveText('Select an engine…');
+
+        await login(page, 'admin', 'admin');
+        await expect(page.locator('.login-error')).toHaveText('Choose an engine.');
+
+        // Picking a real engine replaces the placeholder and unblocks sign-in.
+        await select.selectOption('k:production');
+        await expect(select.locator('option')).toHaveText(['Production', 'Staging']);
+        await page.getByRole('button', { name: 'Sign in' }).click();
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
     });
 
     test('single engine hides the picker (just user/password)', async ({ page }) => {
-        await routeConfig(page, { engines: [{ name: 'Only', url: 'https://only:8443' }], devMode: false });
+        await routeConfig(page, { engines: [{ key: 'k:only', name: 'Only' }], devMode: false });
         await mockEngine(page, { 'GET /users/current': { __status: 401 } });
 
         await page.goto('/');
@@ -60,7 +89,7 @@ test.describe('engine picker', () => {
     });
 
     test('devMode offers a Custom URL option that reveals a URL field', async ({ page }) => {
-        await routeConfig(page, { engines: [{ name: 'Prod', url: 'https://prod:8443' }], devMode: true });
+        await routeConfig(page, { engines: [{ key: 'k:prod', name: 'Prod' }], devMode: true });
         await mockEngine(page, { 'GET /users/current': { __status: 401 } });
 
         await page.goto('/');
@@ -71,6 +100,35 @@ test.describe('engine picker', () => {
         await expect(page.getByPlaceholder('https://host:8443')).toHaveCount(0);
         await select.selectOption('custom');
         await expect(page.getByPlaceholder('https://host:8443')).toBeVisible();
+
+        // A scheme-less URL is refused here with a usable message — the proxy
+        // could only answer it with a generic ENGINE_UNKNOWN refusal.
+        await page.getByPlaceholder('https://host:8443').fill('localhost:8443');
+        await login(page, 'admin', 'admin');
+        await expect(page.locator('.login-error')).toHaveText('Enter a full engine URL, e.g. https://host:8443.');
+    });
+
+    test('a mid-session ENGINE_UNKNOWN refusal drops the tab to the login screen', async ({ page }) => {
+        // The engine this session rode was removed from allowedUrls (server now
+        // answers 421) — the tab must land back on the login screen with a
+        // reason, not error-storm in place (issue #53).
+        await routeConfig(page, TWO_ENGINES);
+        await mockEngine(page);   // signed in, boots into the shell
+
+        await page.goto('/');
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+
+        // From now on the server refuses to route ANY /api call for this tab
+        // (registered after mockEngine, so it takes precedence). The shell's
+        // background polling hits it on its own — no user action required.
+        await page.route('**/api/**', (route) => route.fulfill({
+            status: 421,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'ENGINE_UNKNOWN', message: 'The selected engine is no longer available on this server. Choose an engine and sign in again.' }),
+        }));
+
+        await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('.login-notice')).toHaveText('The engine you were signed in to is no longer available — choose an engine and sign in again.');
     });
 
     test('account menu offers Switch Engine when more than one engine', async ({ page }) => {
@@ -83,7 +141,7 @@ test.describe('engine picker', () => {
     });
 
     test('account menu hides Switch Engine with a single engine', async ({ page }) => {
-        await routeConfig(page, { engines: [{ name: 'Only', url: 'https://only:8443' }], devMode: false });
+        await routeConfig(page, { engines: [{ key: 'k:only', name: 'Only' }], devMode: false });
         await mockEngine(page);
 
         await page.goto('/');
@@ -103,8 +161,10 @@ test.describe('engine picker', () => {
 
         await page.goto('/');
         await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
-        // Plugins were discovered against engine 0.
-        await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-engine'))).toBe('0');
+        // No cookie yet, so plugins were discovered against the server default —
+        // the first engine, recorded under its key so a later sign-in that keeps
+        // the preselected first engine reads as "same engine" (soft path).
+        await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-engine'))).toBe('k:production');
 
         // A sentinel that a full page reload wipes but a soft (in-page) transition keeps.
         await page.evaluate(() => { (window as any).__survivedReload = true; });
@@ -116,12 +176,12 @@ test.describe('engine picker', () => {
         expect(await page.evaluate(() => (window as any).__survivedReload)).toBe(true);
 
         // Pick the OTHER engine and sign in → the engine changed, so a hard reload runs.
-        await page.locator('.login-card select').selectOption('1');
+        await page.locator('.login-card select').selectOption('k:staging');
         await login(page, 'admin', 'admin');
 
         await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
         expect(await page.evaluate(() => (window as any).__survivedReload)).toBeUndefined();   // reload cleared it
-        await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-engine'))).toBe('1');
+        await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-engine'))).toBe('k:staging');
     });
 
     test('selecting an engine writes the oie-engine cookie on login', async ({ page }) => {
@@ -134,12 +194,12 @@ test.describe('engine picker', () => {
 
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-        await page.locator('.login-card select').selectOption('1');   // Staging (index 1)
+        await page.locator('.login-card select').selectOption('k:staging');
         await login(page, 'admin', 'admin');
 
         await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
         const cookies = await page.context().cookies();
         const sel = cookies.find((c) => c.name === 'oie-engine');
-        expect(sel?.value).toBe('1');
+        expect(decodeURIComponent(sel?.value ?? '')).toBe('k:staging');   // the engine's key, not its position
     });
 });

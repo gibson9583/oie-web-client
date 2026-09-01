@@ -10,10 +10,11 @@
  * unchanged because the path is preserved.
  *
  * Multi-engine: the browser picks an engine at login and sets an `oie-engine`
- * cookie — the chosen engine's index into config.engines, or `custom` (with an
- * `oie-engine-url` cookie) when devMode allows a typed URL. resolveEngine() maps
- * that to a target per request; the client's base path stays /api. Those routing
- * cookies are stripped before the request is forwarded upstream.
+ * cookie — the chosen engine's stable key (config.ts engineKey), or `custom`
+ * (with an `oie-engine-url` cookie) when devMode allows a typed URL.
+ * resolveEngine() maps that to a target per request; the client's base path
+ * stays /api. Those routing cookies are stripped before the request is
+ * forwarded upstream.
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -49,7 +50,9 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.forwardCookie = forwardCookie;
 exports.resolveEngine = resolveEngine;
+exports.respondEngineUnknown = respondEngineUnknown;
 exports.isTrustedPeer = isTrustedPeer;
 exports.resolveForwardedFor = resolveForwardedFor;
 exports.forceNoStore = forceNoStore;
@@ -86,6 +89,8 @@ function parseCookies(cookieHeader) {
 }
 // Cookie header to forward upstream, minus the web-admin routing cookies (the
 // engine has no use for them, and a typed custom URL shouldn't leak to it).
+// Exported for the plugin-install forwards, which carry the session cookie to
+// the engine and owe it the same scrubbing.
 function forwardCookie(cookieHeader) {
     return String(cookieHeader || '').split(';')
         .map((s) => s.trim())
@@ -94,15 +99,21 @@ function forwardCookie(cookieHeader) {
 }
 /*
  * Resolve which engine a request targets, from the `oie-engine` cookie:
- *   "<index>"  → config.engines[index]
+ *   "k:<slug>" → the config.engines entry with that key (config.ts engineKey)
  *   "custom"   → the `oie-engine-url` cookie, ONLY when config.devMode is on
- *   (absent/invalid) → the first configured engine (the default)
- * Returns { url, verifyTls }. Exported + pure for reuse (plugin-install) and tests.
+ *   (absent)   → the first configured engine (the default)
+ * A selection that no longer resolves — the engine was removed or renamed, or
+ * the cookie holds a pre-key numeric index — returns null in multi-engine mode
+ * rather than guessing: the old fall-through to engines[0] silently repointed a
+ * remembered choice at whatever engine happened to be first (issue #53). With a
+ * single engine every selection — including a leftover custom — resolves to the
+ * only engine: the login screen shows no picker there (and clears stale routing
+ * cookies on sign-in), so signing in is consent to that engine.
+ * Returns { url, verifyTls }, or null for an unresolvable selection.
+ * Exported + pure for reuse (plugin-install) and tests.
  */
 function resolveEngine(config, req) {
-    const engines = Array.isArray(config.engines) && config.engines.length
-        ? config.engines
-        : [{ url: config.engine.url, verifyTls: !!config.engine.verifyTls }];
+    const engines = Array.isArray(config.engines) && config.engines.length ? config.engines : null;
     const cookies = parseCookies(req && req.headers && req.headers['cookie']);
     const sel = cookies['oie-engine'];
     if (sel === 'custom' && config.devMode) {
@@ -112,14 +123,31 @@ function resolveEngine(config, req) {
                 return { url: u.origin + u.pathname.replace(/\/$/, ''), verifyTls: false };
             }
         }
-        catch { /* fall through to default */ }
+        catch { /* fall through */ }
     }
-    if (sel != null && /^\d+$/.test(sel)) {
-        const idx = parseInt(sel, 10);
-        if (idx >= 0 && idx < engines.length)
-            return engines[idx];
+    if (!engines)
+        return { url: config.engine.url, verifyTls: !!config.engine.verifyTls };
+    if (sel && engines.length > 1) {
+        return engines.find((e) => e.key === sel) || null;
     }
     return engines[0];
+}
+/*
+ * The one canonical refusal for an unresolvable engine selection (resolveEngine
+ * → null), shared by the proxy and the plugin-install routes so every path
+ * gives the same instruction. 421 Misdirected Request: this server won't
+ * produce a response for the requested target. Drains the request first —
+ * answering while the body is still streaming tears the socket down mid-upload
+ * and the browser reports a network error instead of this JSON. (Under /api the
+ * no-store middleware still applies: writeHead only overrides headers it names.)
+ */
+function respondEngineUnknown(req, res) {
+    req.resume();
+    res.writeHead(421, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+        error: 'ENGINE_UNKNOWN',
+        message: 'The selected engine is no longer available on this server. Choose an engine and sign in again.'
+    }));
 }
 // Is the immediate peer a trusted fronting proxy (loopback by default, plus any
 // configured trustedProxies)? Only then do we believe the forwarding headers it
@@ -208,6 +236,15 @@ function createApiProxy(config) {
     }
     return function apiProxy(req, res) {
         const engine = resolveEngine(config, req);
+        if (!engine) {
+            // The remembered selection no longer names a configured engine.
+            // Refuse rather than guess — the silent engines[0] fallback is how a
+            // stale choice landed a user on the wrong engine (issue #53). The
+            // client maps this to its session-over flow, and the login screen
+            // then demands an explicit re-pick.
+            respondEngineUnknown(req, res);
+            return;
+        }
         const { target, isHttps, transport, agent } = agentFor(engine);
         const headers = {};
         for (const [name, value] of Object.entries(req.headers)) {

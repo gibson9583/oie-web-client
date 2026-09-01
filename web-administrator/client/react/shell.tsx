@@ -22,7 +22,7 @@ import { initSplitters } from '../core/resize.js';
 import { h, icon, modal, toast, confirmDialog, initTruncationTitles } from '@oie/web-ui';
 import { CommandPalette } from './command-palette.jsx';
 import { getPref } from '../core/prefs.js';
-import api, { onSessionExpired, resetSessionExpired } from '@oie/web-api';
+import api, { onEngineUnknown, onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
 import { getAnchor, describeRef } from '../core/compare.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
@@ -382,17 +382,21 @@ function getCookie(name: any) {
 
 // The engine this session is pointed at (from the oie-engine cookie + config),
 // mirroring server/proxy.js resolveEngine — so the status bar / menu are accurate
-// after a reload (the cookie persists), not just right after login. Returns a
-// "name (url)" label so users can confirm their pick (or just the url if the name
-// is the url, e.g. a devMode custom URL).
+// after a reload (the cookie persists), not just right after login. The cookie
+// holds the engine's stable key, not a list index (issue #53); a selection that
+// no longer resolves gets no label, matching the proxy's refusal to guess.
 function currentEngineLabel(config: any) {
     const sel = getCookie('oie-engine');
-    if (sel === 'custom') return getCookie('oie-engine-url') || 'custom engine';
+    // A custom selection is only routable in devMode; without it the proxy
+    // ignores the cookie, so don't claim the typed URL as this session's engine
+    // — fall through to what the proxy actually resolves.
+    if (sel === 'custom' && config.devMode) return getCookie('oie-engine-url') || 'custom engine';
     const engines = Array.isArray(config.engines) ? config.engines : [];
-    const idx = /^\d+$/.test(sel) ? Number(sel) : 0;
-    const eng = engines[idx] || engines[0];
-    // The server sends name-only now (host-derived when unset), so the label is
-    // just the name — no engine URL is exposed to the browser.
+    // The server sends key+name only (name host-derived when unset), so the label
+    // is just the name — no engine URL is exposed to the browser. Mirror
+    // resolveEngine: absent cookie or single engine → the first entry; an
+    // unresolvable selection in multi-engine mode gets no label.
+    const eng = (sel && engines.length > 1) ? engines.find((e: any) => e.key === sel) : engines[0];
     return (eng && eng.name) || '';
 }
 
@@ -401,13 +405,22 @@ function engineChoiceAvailable(config: any) {
     return (Array.isArray(config.engines) && config.engines.length > 1) || !!config.devMode;
 }
 
-// A stable key identifying the selected engine (index, or custom:<url>), derived
-// from the routing cookies. Stored in sessionStorage when plugins load so a later
-// sign-in to a different engine can detect the change and force a reload. login.jsx
-// computes the same key from its picker state — keep the two formats in sync.
+// A stable identity for the selected engine (its key, '' in single-engine mode,
+// or custom:<url>), derived from the routing cookies. Stored in sessionStorage
+// when plugins load so a later sign-in to a different engine can detect the
+// change and force a reload. login.tsx computes the same value from its picker
+// state — keep the two formats in sync.
 function loadedEngineKey() {
-    const sel = getCookie('oie-engine') || '0';
-    return sel === 'custom' ? `custom:${getCookie('oie-engine-url')}` : sel;
+    const sel = getCookie('oie-engine');
+    if (sel === 'custom') return `custom:${getCookie('oie-engine-url')}`;
+    if (sel) return sel;
+    // No cookie: the proxy routes to the first engine, so that is the identity
+    // plugins were discovered against. Name it by key so a later sign-in that
+    // accepts the picker's first-engine preselection compares equal and takes
+    // the soft path instead of a needless hard reload. Single-engine mode has
+    // no picker (login computes ''), so stay '' there.
+    const engines = (store.getState('webadminConfig') || {}).engines;
+    return (Array.isArray(engines) && engines.length > 1 && engines[0].key) || '';
 }
 
 // Switch engine: drop the routing cookies and return to a fresh login (a full
@@ -744,7 +757,9 @@ export function App() {
             } catch { /* not signed in */ }
             finally { if (alive) setAuthChecked(true); }
         })();
-        const off = onSessionExpired(() => {
+        // One exit path for every "this session is over" signal; only the
+        // inline reason shown on the login screen differs.
+        const dropToLogin = (notice: string) => {
             // Ignore while already on the login screen (the boot auth-check 401),
             // matching the vanilla shell's loginShowing guard — otherwise a
             // spurious setState re-render can disrupt the login form.
@@ -755,14 +770,20 @@ export function App() {
             // NOT a toast: toast(msg,'warn') routes through detailModal, which put a
             // blocking dialog over the login form. The login screen shows its own
             // reason inline instead — nothing to dismiss before signing back in.
-            store.setState('loginNotice', 'Your session expired — please sign in again.');
+            store.setState('loginNotice', notice);
             store.setState('user', null);
             scrubSessionState();
             // The deep link (which channel was open) must not sit in the address
             // bar over the login card for the next person to read (#24).
             history.replaceState(null, '', routeUrl('/'));
-        });
-        return () => { alive = false; off(); };
+        };
+        const off = onSessionExpired(() => dropToLogin('Your session expired — please sign in again.'));
+        // The server refuses to route for this tab's remembered engine (421
+        // ENGINE_UNKNOWN: the engine was removed or renamed — issue #53). Same
+        // exit as expiry; the login screen's picker then demands an explicit
+        // re-pick instead of guessing an engine.
+        const offEngine = onEngineUnknown(() => dropToLogin('The engine you were signed in to is no longer available — choose an engine and sign in again.'));
+        return () => { alive = false; off(); offEngine(); };
     }, []);
 
     // A login in ANOTHER TAB of this browser replaces the engine session cookie
@@ -815,6 +836,11 @@ export function App() {
         store.setState('editingChannel', null);
         store.setState('editingChannelNew', false);
         store.setState('editingChannelDirty', false);
+        // Drop the devMode routing pair TOGETHER: an oie-engine=custom left
+        // behind without its URL is an unresolvable selection every other tab
+        // then 421s on. A named-engine choice (k:…) stays — that's the picker's
+        // memory for the next sign-in.
+        if (getCookie('oie-engine') === 'custom') document.cookie = 'oie-engine=; Max-Age=0; path=/';
         document.cookie = 'oie-engine-url=; Max-Age=0; path=/';
     };
 

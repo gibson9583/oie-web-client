@@ -119,12 +119,12 @@ app.use('/api', createApiProxy(config));
 app.get('/webadmin/config.json', (req: Request, res: Response) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
     // not disclose internal engine URLs. The client selects an engine by its
-    // index (the oie-engine cookie) and the proxy resolves the real URL server
-    // side (see server/proxy.js); the browser never needs the URL. Names are
-    // already host-derived when unset (buildEngines → engineLabel), so the login
-    // dropdown and the connected-engine label read fine from `name` alone.
+    // stable key (the oie-engine cookie) and the proxy resolves the real URL
+    // server side (see server/proxy.js); the browser never needs the URL. The
+    // key adds no disclosure: it is derived from `name`, which is already sent
+    // (host-derived when unset — buildEngines → engineLabel).
     res.json({
-        engines: config.engines.map((e) => ({ name: e.name })),
+        engines: config.engines.map((e) => ({ key: e.key, name: e.name })),
         devMode: !!config.devMode,
         version: buildInfo.version,
         build: { commit: buildInfo.commit || null, dirty: !!buildInfo.dirty, date: buildInfo.date || null },

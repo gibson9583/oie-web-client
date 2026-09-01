@@ -17,7 +17,7 @@
 import * as oie from './oie.js';
 import { API_BASE } from './deployment.js';
 const BASE = API_BASE;
-const listeners = { sessionExpired: [] };
+const listeners = { sessionExpired: [], engineUnknown: [] };
 let sessionExpiredFired = false;
 // Deep clone JSON-serializable data (channels are plain engine JSON), so write
 // transforms don't mutate the object the editor still holds.
@@ -35,7 +35,19 @@ export function onSessionExpired(fn) {
             listeners.sessionExpired.splice(i, 1);
     };
 }
-/* Call after a successful re-login so the next 401 fires again. */
+// The server refused to route for this tab's engine selection (421
+// ENGINE_UNKNOWN — the engine was removed or renamed, see server/proxy.js).
+// Fires once, sharing the 401 latch: both mean "this session is over, head to
+// the login screen". Same unsubscribe contract as onSessionExpired above.
+export function onEngineUnknown(fn) {
+    listeners.engineUnknown.push(fn);
+    return () => {
+        const i = listeners.engineUnknown.indexOf(fn);
+        if (i >= 0)
+            listeners.engineUnknown.splice(i, 1);
+    };
+}
+/* Call after a successful re-login so the next 401 (or 421) fires again. */
 export function resetSessionExpired() { sessionExpiredFired = false; }
 /* ---- engine reachability ----------------------------------------------------
  * Observed from the traffic the app already makes — deliberately NOT a heartbeat.
@@ -212,6 +224,17 @@ async function handle(response, { raw = false, noAuthHandler = false } = {}) {
         const parsed = parseBody(text);
         if (parsed && typeof parsed === 'object') {
             message = parsed.message || parsed.detailedError || parsed.error || message;
+        }
+        // 421: the web admin server refuses to route for this tab's remembered
+        // engine selection (removed/renamed — server/proxy.js ENGINE_UNKNOWN).
+        // The session cannot continue on any engine, so treat it like expiry —
+        // fire once (same burst problem as 401 polls) and let the shell drop to
+        // the login screen, where the picker demands an explicit re-pick
+        // (issue #53). Same latch as 401: once we're headed to login, neither
+        // handler needs to fire again.
+        if (response.status === 421 && !noAuthHandler && !sessionExpiredFired) {
+            sessionExpiredFired = true;
+            listeners.engineUnknown.forEach(fn => fn());
         }
         throw new ApiError(response.status, message, text);
     }
@@ -646,7 +669,7 @@ export const databaseTasks = {
     cancel: (taskId) => post(`/databaseTasks/${encodeURIComponent(taskId)}/_cancel`)
 };
 const api = {
-    get, post, put, del, getXml, postXml, putXml, asList, parseBody, onSessionExpired,
+    get, post, put, del, getXml, postXml, putXml, asList, parseBody, onSessionExpired, onEngineUnknown,
     auth, users, channels, channelGroups, status, statistics, engine,
     messages, events, alerts, server, system, codeTemplates, extensions, databaseTasks
 };

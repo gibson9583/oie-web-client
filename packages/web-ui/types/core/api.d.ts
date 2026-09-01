@@ -22,6 +22,7 @@ export interface WriteOptions extends RequestOptions {
     wrapKey?: string;
 }
 export declare function onSessionExpired(fn: () => void): () => void;
+export declare function onEngineUnknown(fn: () => void): () => void;
 export declare function resetSessionExpired(): void;
 /** Subscribe to reachability changes. Returns an unsubscribe (see onSessionExpired). */
 export declare function onConnectionChange(fn: (reachable: boolean) => void): () => void;
@@ -255,6 +256,7 @@ export interface Api {
     asList: typeof asList;
     parseBody: typeof parseBody;
     onSessionExpired: typeof onSessionExpired;
+    onEngineUnknown: typeof onEngineUnknown;
     auth: AuthApi;
     users: UsersApi;
     channels: ChannelsApi;

@@ -234,6 +234,15 @@ include it as an entry if it should be selectable. `engine.verifyTls` remains
 the fallback for any entry that omits its own `verifyTls`. The `OIE_URL` /
 `OIE_VERIFY_TLS` env vars override only `engine`, never `allowedUrls`.
 
+An engine's **name is its identity**: a user's remembered login choice is keyed
+to the name, not the entry's position, so entries can be added, removed, or
+reordered freely without repointing anyone's saved selection. Names must
+therefore be distinct (startup fails on a collision), and renaming or removing
+an engine invalidates saved selections for it — those users are asked to choose
+an engine at their next sign-in rather than being routed to a fallback.
+Upgrading from a version that remembered the choice by list position invalidates
+remembered selections once: each user re-picks their engine at the next sign-in.
+
 > **Authentication** is the engine's own: the login form posts to
 > `/api/users/_login` and the engine's `JSESSIONID` cookie carries the session.
 > The Node server stores no credentials; it is a streaming reverse proxy.
