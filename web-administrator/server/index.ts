@@ -17,6 +17,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { load } from './config';
 import type { TlsConfig } from './config';
 import { createApiProxy } from './proxy';
+import { createOidcRouter, engineOidcConfiguration } from './oidc';
 import { installPluginRoutes } from './plugin-install';
 import * as plugins from './plugins';
 
@@ -115,8 +116,11 @@ installPluginRoutes(app, config);
 // --- Engine REST API proxy ---------------------------------------------------
 app.use('/api', createApiProxy(config));
 
+// OIDC browser redirects must be mounted before static files / SPA fallback.
+app.use('/oidc', createOidcRouter(config));
+
 // --- Web admin metadata ------------------------------------------------------
-app.get('/webadmin/config.json', (req: Request, res: Response) => {
+app.get('/webadmin/config.json', async (req: Request, res: Response) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
     // not disclose internal engine URLs. The client selects an engine by its
     // stable key (the oie-engine cookie) and the proxy resolves the real URL
@@ -124,7 +128,15 @@ app.get('/webadmin/config.json', (req: Request, res: Response) => {
     // key adds no disclosure: it is derived from `name`, which is already sent
     // (host-derived when unset — buildEngines → engineLabel).
     res.json({
-        engines: config.engines.map((e) => ({ key: e.key, name: e.name })),
+        engines: await Promise.all(config.engines.map(async (e, index) => {
+            const oidc = config.oidc[e.name];
+            const engineOidc = oidc ? await engineOidcConfiguration(config, index) : null;
+            return {
+                key: e.key,
+                name: e.name,
+                ...(oidc && engineOidc?.configured ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {})
+            };
+        })),
         devMode: !!config.devMode,
         version: buildInfo.version,
         build: { commit: buildInfo.commit || null, dirty: !!buildInfo.dirty, date: buildInfo.date || null },

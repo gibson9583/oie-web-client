@@ -1743,6 +1743,15 @@ const BUILTIN_TABS = [
 function buildTabDefs(plat: any) {
     const defs = BUILTIN_TABS.slice();
     for (const panel of plat.settingsPanels()) {
+        // A plugin can publish group-prefixed doRefresh/doSave tasks through an
+        // ExtensionPermission. Hide the panel only when RBAC denies BOTH —
+        // a view-only holder (e.g. View Roles without Manage Roles) keeps the
+        // panel read-only, exactly like Swing. Gating on doSave alone hid the
+        // RBAC tab from everyone but Manage Roles holders, which locked
+        // viewers out entirely (and made a missing is_admin assignment look
+        // like a permissions chicken-and-egg).
+        const taskGroup = `settings_${panel.label}`;
+        if (!plat.checkTask(taskGroup, 'doRefresh') && !plat.checkTask(taskGroup, 'doSave')) continue;
         defs.push({
             label: panel.label,
             render: (ctx: any) => {

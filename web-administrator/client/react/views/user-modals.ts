@@ -8,7 +8,9 @@
 import { h, toast, modal, field, textInput, select } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { passwordRequirementHints } from '../../core/passwords.js';
+import * as store from '../../core/store.js';
 import { COUNTRIES, US_STATES, ROLES, INDUSTRIES, placeholderOpts } from '../welcome.js';
+import { isSsoSelf, SSO_MANAGED_NOTE } from '../sso-session.js';
 
 /* Fields editable in the web UI; everything else on the User object is
    preserved on round-trip. Extended profile fields (country, state/territory,
@@ -74,22 +76,32 @@ export function userForm(user: any = {}) {
 /* Password + Confirm inputs with up-front policy hints. `optional: true` (Edit
    User) lets a blank pair leave the password unchanged; the default (New User /
    Change Password) requires both. `label` renames the field ("New Password"). */
-export function passwordFields({ optional = false, label = 'Password' }: any = {}) {
+export function passwordFields({ optional = false, label = 'Password', managedNote = '' }: any = {}) {
     // autocomplete=new-password: this pair SETS a password (create user / reset)
     // — the hint stops the browser autofilling the admin's saved login into it
     // and prompts its generator/update flow instead (#24).
     const password = h('input', { type: 'password', autocomplete: 'new-password' });
     const confirm = h('input', { type: 'password', autocomplete: 'new-password' });
-    // Show the configured policy up front (the engine still enforces on submit).
-    const hint = h('div.hint', { class: 'mt-1.5' });
-    api.server.passwordRequirements()
-        .then((reqs: any) => { const hs = passwordRequirementHints(reqs); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
-        .catch(() => { /* requirements unavailable */ });
+    // managedNote: the credential lives elsewhere (SSO), so the pair is greyed
+    // and the reason stands in for the policy hint — hiding the fields outright
+    // would read as a missing feature.
+    const hint = h('div.hint', { class: 'mt-1.5' }, managedNote || null);
+    if (managedNote) {
+        (password as any).disabled = true;
+        (confirm as any).disabled = true;
+    } else {
+        // Show the configured policy up front (the engine still enforces on
+        // submit). Skipped when managed — the late resolve would otherwise
+        // overwrite the note with a policy nobody here can act on.
+        api.server.passwordRequirements()
+            .then((reqs: any) => { const hs = passwordRequirementHints(reqs); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
+            .catch(() => { /* requirements unavailable */ });
+    }
     // Required (asterisk) when setting a password; plain when it's optional.
     const passLabel = optional ? label : req(label);
     const confLabel = optional ? `Confirm ${label}` : req(`Confirm ${label}`);
     const children = [h('div.form-grid', field(passLabel, password), field(confLabel, confirm)), hint];
-    if (optional) children.push(h('div.hint', { class: 'mt-1.5' }, 'Leave blank to keep the current password.'));
+    if (optional && !managedNote) children.push(h('div.hint', { class: 'mt-1.5' }, 'Leave blank to keep the current password.'));
     // True once either field has input — the caller only pushes a password change then.
     const hasValue = () => Boolean((password as any).value || (confirm as any).value);
     return {
@@ -112,7 +124,12 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
     // Mirror the New User form — profile fields + password — but the password is
     // optional here (blank leaves it unchanged), so an admin can reset a forgotten
     // password from the same place they edit the profile.
-    const pw = passwordFields({ optional: true, label: 'New Password' });
+    // Computed here, not passed in, so every caller (account menu and the Users
+    // grid both open this) gets it without having to remember.
+    const pw = passwordFields({
+        optional: true, label: 'New Password',
+        managedNote: isSsoSelf(user, store.getState('user')) ? SSO_MANAGED_NOTE : ''
+    });
     modal({
         title: `Edit User — ${user.username}`,
         size: 'wide',

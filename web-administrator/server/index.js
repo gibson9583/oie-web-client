@@ -52,6 +52,7 @@ const crypto = __importStar(require("crypto"));
 const express_1 = __importDefault(require("express"));
 const config_1 = require("./config");
 const proxy_1 = require("./proxy");
+const oidc_1 = require("./oidc");
 const plugin_install_1 = require("./plugin-install");
 const plugins = __importStar(require("./plugins"));
 const config = (0, config_1.load)();
@@ -143,8 +144,10 @@ app.use('/api', (req, res, next) => { res.setHeader('Cache-Control', 'no-store')
 (0, plugin_install_1.installPluginRoutes)(app, config);
 // --- Engine REST API proxy ---------------------------------------------------
 app.use('/api', (0, proxy_1.createApiProxy)(config));
+// OIDC browser redirects must be mounted before static files / SPA fallback.
+app.use('/oidc', (0, oidc_1.createOidcRouter)(config));
 // --- Web admin metadata ------------------------------------------------------
-app.get('/webadmin/config.json', (req, res) => {
+app.get('/webadmin/config.json', async (req, res) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
     // not disclose internal engine URLs. The client selects an engine by its
     // stable key (the oie-engine cookie) and the proxy resolves the real URL
@@ -152,7 +155,15 @@ app.get('/webadmin/config.json', (req, res) => {
     // key adds no disclosure: it is derived from `name`, which is already sent
     // (host-derived when unset — buildEngines → engineLabel).
     res.json({
-        engines: config.engines.map((e) => ({ key: e.key, name: e.name })),
+        engines: await Promise.all(config.engines.map(async (e, index) => {
+            const oidc = config.oidc[e.name];
+            const engineOidc = oidc ? await (0, oidc_1.engineOidcConfiguration)(config, index) : null;
+            return {
+                key: e.key,
+                name: e.name,
+                ...(oidc && engineOidc?.configured ? { sso: { providerLabel: oidc.providerLabel, autoRedirect: oidc.autoRedirect } } : {})
+            };
+        })),
         devMode: !!config.devMode,
         version: buildInfo.version,
         build: { commit: buildInfo.commit || null, dirty: !!buildInfo.dirty, date: buildInfo.date || null },

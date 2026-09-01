@@ -10,5 +10,6 @@
     "pluginDirs": [],
     "trustedProxies": [],
     "codeTemplateCompletions": true,
-    "tls": null
+    "tls": null,
+    "oidc": {}
 }

@@ -56,6 +56,7 @@ exports.respondEngineUnknown = respondEngineUnknown;
 exports.isTrustedPeer = isTrustedPeer;
 exports.resolveForwardedFor = resolveForwardedFor;
 exports.forceNoStore = forceNoStore;
+exports.rewriteSetCookies = rewriteSetCookies;
 exports.sanitizeForwardHeaders = sanitizeForwardHeaders;
 exports.createApiProxy = createApiProxy;
 exports.engineRequest = engineRequest;
@@ -195,6 +196,22 @@ function forceNoStore(headers) {
     delete headers['pragma'];
     return headers;
 }
+/** Apply the browser-facing session-cookie policy shared by the streaming proxy
+ * and server-side OIDC callback login. */
+function rewriteSetCookies(cookies, secure) {
+    return (cookies || []).map((original) => {
+        let cookie = original;
+        if (!/;\s*samesite=/i.test(cookie))
+            cookie += '; SameSite=Lax';
+        if (secure) {
+            if (!/;\s*secure\b/i.test(cookie))
+                cookie += '; Secure';
+        }
+        else
+            cookie = cookie.replace(/;\s*secure\b/ig, '');
+        return cookie;
+    });
+}
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
 // Forwarded / X-Real-IP headers unless the immediate peer is trusted. Pure +
@@ -309,17 +326,7 @@ function createApiProxy(config) {
                 // proxy; otherwise derive the scheme from the actual connection.
                 const proto = isTrustedPeer(req.socket.remoteAddress, trustedProxies) ? req.headers['x-forwarded-proto'] : undefined;
                 const secure = proto === 'https' || !!req.socket.encrypted;
-                resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c) => {
-                    if (!/;\s*samesite=/i.test(c))
-                        c += '; SameSite=Lax';
-                    if (secure) {
-                        if (!/;\s*secure/i.test(c))
-                            c += '; Secure';
-                    }
-                    else
-                        c = c.replace(/;\s*secure\b/ig, '');
-                    return c;
-                });
+                resHeaders['set-cookie'] = rewriteSetCookies(resHeaders['set-cookie'], secure);
             }
             res.writeHead(upstreamRes.statusCode, resHeaders);
             upstreamRes.pipe(res);
@@ -359,7 +366,7 @@ function createApiProxy(config) {
 // ENGINE makes the EXTENSIONS_MANAGE authorization decision). `engine` is a
 // resolved { url, verifyTls } (see resolveEngine) — same TLS posture as the proxy.
 // Buffers the response.
-function engineRequest(engine, { method, path: reqPath, headers, body }) {
+function engineRequest(engine, { method, path: reqPath, headers, body, timeoutMs = 120000 }) {
     return new Promise((resolve, reject) => {
         const target = new URL(engine.url);
         const isHttps = target.protocol === 'https:';
@@ -396,7 +403,7 @@ function engineRequest(engine, { method, path: reqPath, headers, body }) {
             });
             res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
         });
-        upstream.setTimeout(120000, () => upstream.destroy(new Error('engine request timed out')));
+        upstream.setTimeout(timeoutMs, () => upstream.destroy(new Error('engine request timed out')));
         upstream.on('error', reject);
         if (body && body.length)
             upstream.write(body);

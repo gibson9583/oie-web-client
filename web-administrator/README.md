@@ -68,6 +68,17 @@ is missing or invalid stops startup instead of silently using defaults.
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy); loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` | Serve the web UI itself over HTTPS: `{ "key", "cert", "passphrase"? }` (PEM paths). Leave `null` to serve HTTP and terminate TLS in front |
+| `oidc` | `WEBADMIN_OIDC_*` | `{}` | Confidential-client OIDC providers keyed by the matching engine name. See below. |
+
+### OpenID Connect sign-in
+
+OIDC is advertised on the login screen only when both halves are ready: the matching engine reports an enabled `oie-oidc-auth` policy and the web tier has an enabled confidential-client entry with a client secret. Register exactly one redirect URI at the provider: `https://<web-admin-origin>/oidc/callback`. The web tier uses Authorization Code flow with PKCE and keeps tokens and the client secret out of the browser.
+
+Configure discovery, client ID, token policy, JIT provisioning, account bindings, and RBAC mapping after login under **Settings → OIDC Authentication** (fields unlock once **Enable OIDC login** is ticked; Save/Refresh/Test connection live in the tab's task pane). The tab and its API are protected by the extension permission `manageOIDC` — holders of the RBAC admin role carry it implicitly, so grant it explicitly only to non-admin roles. Saving persists the policy to the engine database (the engine's native plugin-properties store) and applies it to the live authorization plugin in the same step; **Test connection** verifies discovery before rollout.
+
+The web tier retains only deployment-private client material and presentation. Each `oidc` entry must be keyed by the exact, unique `name` of its corresponding `allowedUrls` engine; numeric indexes are rejected. Entries require `enabled` and `clientSecret`, with optional `scopes`, `providerLabel`, and `autoRedirect`. `discoveryUrl` and `clientId` remain accepted as a migration fallback, but engine-reported values take precedence. The `WEBADMIN_OIDC_*` variables override the default engine. Keep the client secret in a mounted secret or environment variable rather than source control.
+
+Local sign-in remains available from the login card as a break-glass path. OIDC does not currently end the provider session on logout. Align the engine's `server.api.sessionmaxinactiveinterval` with the provider session policy so an engine session does not substantially outlive the SSO session.
 
 Example `config.json`:
 
