@@ -15,7 +15,7 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const { load } = require('./config');
+const { load, buildEngines } = require('./config');
 
 const CONFIG_ENV = [
     'WEBADMIN_CONFIG', 'WEBADMIN_CONFIG_JSON', 'WEBADMIN_PORT', 'WEBADMIN_HOST',
@@ -86,7 +86,17 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'webadmin-config-'));
 {
     for (const env of [
         { WEBADMIN_CONFIG: path.join(tmp, 'does-not-exist.json') },
-        { WEBADMIN_CONFIG_JSON: '{not json' }
+        { WEBADMIN_CONFIG_JSON: '{not json' },
+        // Colliding engine keys are a broken document too: a collision would
+        // silently merge two engines under one remembered choice (issue #53).
+        {
+            WEBADMIN_CONFIG_JSON: JSON.stringify({
+                allowedUrls: [
+                    { name: 'Prod', url: 'https://a:8443' },
+                    { name: 'prod!', url: 'https://b:8443' }   // same slug as "Prod"
+                ]
+            })
+        }
     ]) {
         let code = 0;
         try {
@@ -96,7 +106,51 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'webadmin-config-'));
         } catch (e) { code = e.status; }
         assert.strictEqual(code, 1, `expected exit 1 for ${JSON.stringify(env)}`);
     }
-    console.log('ok: missing WEBADMIN_CONFIG file / bad WEBADMIN_CONFIG_JSON fail startup');
+    console.log('ok: missing config file, bad JSON, and duplicate engine keys fail startup');
+}
+
+// --- Engine keys: stable name-derived identity, never a list position ---------
+{
+    const engines = buildEngines({
+        engine: { url: 'https://default:8443', verifyTls: false },
+        allowedUrls: [
+            { name: 'Prod (US)', url: 'https://prod:8443' },
+            { name: 'stage', url: 'https://stage:8443' },
+            { url: 'https://oie-test:8443' }   // no name → host-derived
+        ]
+    });
+    assert.deepStrictEqual(engines.map((e) => e.key), ['k:prod-us', 'k:stage', 'k:oie-test-8443']);
+    // Reordering the same entries yields the same keys — the identity is the
+    // name, not the position (issue #53).
+    const reordered = buildEngines({
+        engine: { url: 'https://default:8443', verifyTls: false },
+        allowedUrls: [
+            { name: 'stage', url: 'https://stage:8443' },
+            { name: 'Prod (US)', url: 'https://prod:8443' }
+        ]
+    });
+    assert.deepStrictEqual(reordered.map((e) => e.key).sort(), ['k:prod-us', 'k:stage'].sort());
+    console.log('ok: engine keys are stable, name-derived, order-independent');
+}
+
+// --- Engine keys: colliding names are rejected, not silently merged -----------
+{
+    assert.throws(() => buildEngines({
+        engine: { url: 'https://default:8443', verifyTls: false },
+        allowedUrls: [
+            { name: 'Prod', url: 'https://a:8443' },
+            { name: 'prod!', url: 'https://b:8443' }   // same slug as "Prod"
+        ]
+    }), /letters and digits/);
+    // The same visible name yields the same key whatever Unicode normalization
+    // the config document was saved with (é composed vs e + combining accent) —
+    // a byte-level re-save must not invalidate remembered selections.
+    const nameKey = (name) => buildEngines({
+        engine: { url: 'https://default:8443', verifyTls: false },
+        allowedUrls: [{ name, url: 'https://a:8443' }]
+    })[0].key;
+    assert.strictEqual(nameKey('Café'), nameKey('Café'));
+    console.log('ok: duplicate engine keys are rejected; keys are normalization-stable');
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });

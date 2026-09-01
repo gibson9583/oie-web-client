@@ -43,7 +43,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface EngineEntry { name?: string | null; url: string; verifyTls?: boolean; }
-export interface ResolvedEngine { name: string; url: string; verifyTls: boolean; }
+export interface ResolvedEngine { name: string; key: string; url: string; verifyTls: boolean; }
 export interface TlsConfig { key: string; cert: string; passphrase?: string; }
 
 /** The resolved runtime configuration (defaults + config.json + env). */
@@ -170,9 +170,17 @@ export function load(): WebAdminConfig {
 
     // Normalize the selectable engine list. `allowedUrls` (when set) is the picker;
     // otherwise the single default engine. Each entry gets a display name (falling
-    // back to the URL host) and a verifyTls (falling back to the default engine's).
-    // Invalid URLs are dropped with a warning. The proxy routes by index into this.
-    config.engines = buildEngines(config);
+    // back to the URL host), a stable key derived from that name (what the client
+    // remembers and the proxy routes by — NOT the entry's position, so editing the
+    // list can't silently repoint an existing selection), and a verifyTls (falling
+    // back to the default engine's). Invalid URLs are dropped with a warning;
+    // colliding keys fail startup (same posture as a broken config document).
+    try {
+        config.engines = buildEngines(config);
+    } catch (e) {
+        console.error(`[config] ${(e as Error).message}`);
+        process.exit(1);
+    }
 
     config.root = ROOT;
     return config;
@@ -181,6 +189,21 @@ export function load(): WebAdminConfig {
 // Derive a readable label from a URL, e.g. "https://oie-prod:8443/" -> "oie-prod:8443".
 function engineLabel(url: string): string {
     try { return new URL(url).host; } catch { return String(url); }
+}
+
+// Stable identity for an engine, slugified from its display name — "Prod (US)" →
+// "k:prod-us". The remembered login choice and the proxy's routing use this key
+// rather than the entry's index into allowedUrls, so reordering or inserting
+// entries cannot silently change what a saved choice means; renaming an engine
+// changes its key, which correctly reads as "that entry is gone" (issue #53).
+// The "k:" prefix keeps a key unambiguous from a pre-key cookie, which held a
+// bare index — even for an engine literally named "2024".
+function engineKey(name: string): string {
+    // NFKC first: the same visible name must yield the same key whether the
+    // config document stores it composed or decomposed (é as one codepoint or
+    // two) — otherwise a byte-level re-save of an unchanged name would silently
+    // invalidate every remembered selection for it.
+    return 'k:' + name.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
 }
 
 // Takes only the slice it reads: it runs inside load() BEFORE the full
@@ -202,15 +225,29 @@ export function buildEngines(config: Pick<WebAdminConfig, 'engine' | 'allowedUrl
             console.error(`[config] ignoring engine with invalid url: ${e && e.url}`);
             continue;
         }
+        const name = (e.name && String(e.name).trim()) || engineLabel(e.url);
         engines.push({
-            name: (e.name && String(e.name).trim()) || engineLabel(e.url),
+            name,
+            key: engineKey(name),
             url: url.origin + url.pathname.replace(/\/$/, ''),
             verifyTls: e.verifyTls != null ? !!e.verifyTls : !!config.engine.verifyTls
         });
     }
     // Always have at least the default engine so the proxy can route.
     if (!engines.length) {
-        engines.push({ name: engineLabel(config.engine.url), url: config.engine.url, verifyTls: !!config.engine.verifyTls });
+        const name = engineLabel(config.engine.url);
+        engines.push({ name, key: engineKey(name), url: config.engine.url, verifyTls: !!config.engine.verifyTls });
+    }
+    // Keys must be unique — a collision would silently merge two engines under one
+    // remembered choice. Deterministic disambiguation (e.g. a -2 suffix) would be
+    // order-dependent, which is the positional bug all over again, so fail loudly.
+    const byKey = new Map<string, string>();
+    for (const eng of engines) {
+        const prior = byKey.get(eng.key);
+        if (prior != null) {
+            throw new Error(`allowedUrls entries "${prior}" and "${eng.name}" both resolve to the key "${eng.key}" — only letters and digits count toward the key, so give each engine a name that differs in those`);
+        }
+        byKey.set(eng.key, eng.name);
     }
     return engines;
 }

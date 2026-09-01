@@ -189,7 +189,7 @@ try {
     mkdirSync(path.join(stage, 'webadmin'), { recursive: true });
     writeFileSync(path.join(stage, 'webadmin', 'plugins.json'), JSON.stringify(bundledPluginManifests(), null, 2) + '\n');
     writeFileSync(path.join(stage, 'webadmin', 'config.json'), JSON.stringify({
-        engines: [{ name: 'This OIE server' }],
+        engines: [{ key: 'k:this-oie-server', name: 'This OIE server' }],
         devMode: false,
         version: packageInfo.version,
         codeTemplateCompletions: true,
