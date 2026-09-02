@@ -88,7 +88,16 @@ Configure discovery, client ID, token policy, JIT provisioning, account bindings
 
 The web tier retains only deployment-private client material and presentation. Each `oidc` entry must be keyed by the exact, unique `name` of its corresponding `allowedUrls` engine; numeric indexes are rejected. Entries require `enabled` and `clientSecret`, with optional `scopes`, `providerLabel`, and `autoRedirect`. `discoveryUrl` and `clientId` remain accepted as a migration fallback, but engine-reported values take precedence. The `WEBADMIN_OIDC_*` variables override the default engine. Keep the client secret in a mounted secret or environment variable rather than source control.
 
-Local sign-in remains available from the login card as a break-glass path. OIDC does not currently end the provider session on logout. Align the engine's `server.api.sessionmaxinactiveinterval` with the provider session policy so an engine session does not substantially outlive the SSO session.
+Local sign-in remains available from the login card as a break-glass path.
+
+**Known limitations (1.0).** Deliberate, and listed so they are not discovered during an incident:
+
+- **Logout does not end the provider session.** RP-initiated and front-channel logout are not implemented, so signing out here leaves the IdP session live and a subsequent sign-in can complete without re-authenticating. Align the engine's `server.api.sessionmaxinactiveinterval` with the provider's session policy.
+- **Confidential client only.** The client secret and code exchange live in this Node server; PKCE public-client mode is not offered. This is also why SSO requires the Node deployment rather than the WAR.
+- **One identity provider per engine.** The engine loads exactly one authorization plugin, so a second provider cannot be added alongside. Different engines in `allowedUrls` may each have their own.
+- **One role per user**, resolved first-match-wins from the IdP claim — a user in several mapped groups gets the first match, not a union.
+- **Replay protection on the engine side is per-process**, so a captured ID token has a replay window bounded by the engine's `max-token-age-seconds` (300s by default) across a restart or a second node. The `nonce` this tier checks is what prevents replay in the ordinary browser flow.
+- **Deprovisioning takes effect at next sign-in.** Removing a user at the IdP blocks their next login but does not disable the engine account; nothing sweeps for accounts whose IdP identity has gone.
 
 Example `config.json`:
 
