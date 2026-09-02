@@ -107,11 +107,9 @@ The WAR is the smallest production deployment: OIE's embedded Jetty already
 loads every `*.war` in its `webapps/` directory, so no Node process, reverse
 proxy, or extra port is required.
 
-**OIDC single sign-on is not available in the WAR deployment.** The SSO flow
-and the client secret live in the Node server, which the WAR does not include, so
-the login card never offers SSO there even when the engine's `oie-oidc-auth`
-extension is installed and enabled. Use the Node or Docker deployment for SSO.
-Local password sign-in works in every deployment.
+**Single sign-on works in the WAR too.** The OIDC flow runs in the engine's
+`oie-oidc-auth` extension, so the WAR needs nothing beyond being reachable at
+the web administrator URL configured there.
 
 Download `websupport-<version>.zip` from the
 [Web Support releases](https://github.com/gibson9583/oie-web-support-plugin/releases),
@@ -212,21 +210,17 @@ than silently booting on defaults. Start from
 | `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login. The proxy forwards to whatever is typed, so trusted/dev deployments only. (Distinct from `npm run dev`, which is the Vite dev server) |
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine, not stored here. The env var uses the platform path-list delimiter (`:` on Unix, `;` on Windows) |
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy). Loopback is always trusted. Comma-separated in the env var |
-| `publicOrigin` | `WEBADMIN_PUBLIC_ORIGIN` | `null` | The origin browsers reach this server on, e.g. `https://oie-admin.example`. Used by OIDC to build the redirect URI; set it whenever a proxy rewrites `Host` |
-| `oidc` | `WEBADMIN_OIDC_*` | `{}` | OpenID Connect providers keyed by engine name: `{ "<engine name>": { "enabled", "clientSecret", "providerLabel"?, "autoRedirect"?, "scopes"? } }`. Node/Docker only — see below |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` (HTTP) | Serve the UI over **HTTPS** directly — set `{ "key", "cert", "passphrase"? }` to PEM file paths (both key and cert required). Off by default; see [Serving over HTTPS](#serving-over-https) |
 
-### OpenID Connect sign-in (Node/Docker only)
+### OpenID Connect sign-in
 
-SSO needs two halves: the `oie-oidc-auth` extension on the engine, which owns
-identity policy (discovery URL, client ID, provisioning, role mapping — all
-edited under **Settings → OIDC Authentication** once signed in), and an `oidc`
-entry here holding the client secret for the matching engine. The browser flow
-runs in this Node server, so **the WAR deployment cannot offer SSO**. Full
-details, the environment-variable form, and the provider recipes are in
-[web-administrator/README.md](web-administrator/README.md#openid-connect-sign-in)
-and the extension's own README.
+SSO is configured entirely on the engine, under **Settings → OIDC
+Authentication** (the `oie-oidc-auth` extension): discovery URL, client ID and
+secret, the web administrator's own URL, provisioning, and role mapping. This
+server keeps nothing — no provider entry, no secret — and the login card asks the
+engine whether it offers SSO. The flow is the same in every deployment, WAR
+included. The extension's README carries the provider recipes.
 
 ### Engine routing modes
 

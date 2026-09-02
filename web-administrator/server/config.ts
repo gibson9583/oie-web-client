@@ -45,15 +45,6 @@ import * as path from 'path';
 export interface EngineEntry { name?: string | null; url: string; verifyTls?: boolean; }
 export interface ResolvedEngine { name: string; key: string; url: string; verifyTls: boolean; }
 export interface TlsConfig { key: string; cert: string; passphrase?: string; }
-export interface OidcProviderConfig {
-    enabled: boolean;
-    discoveryUrl?: string;
-    clientId?: string;
-    clientSecret: string;
-    scopes: string[];
-    providerLabel: string;
-    autoRedirect: boolean;
-}
 
 /** The resolved runtime configuration (defaults + config.json + env). */
 export interface WebAdminConfig {
@@ -64,11 +55,9 @@ export interface WebAdminConfig {
     devMode: boolean;
     codeTemplateCompletions: boolean;
     trustedProxies: string[];
-    publicOrigin: string | null;
     tls: TlsConfig | null;
     pluginDirs: string[];
     engines: ResolvedEngine[];
-    oidc: Record<string, OidcProviderConfig>;
     root: string;
     /** config.json is user-authored and may carry extra keys (e.g. plugin-specific
         settings); `unknown` keeps that openness while forcing readers to narrow. */
@@ -104,15 +93,6 @@ const defaults = {
     // proxy). Loopback is always trusted; list a non-loopback front proxy here.
     // Requests from untrusted peers can't spoof the engine's audit-log client IP.
     trustedProxies: [],
-    // The origin browsers actually reach this server on, e.g.
-    // "https://oie-admin.example". Only OIDC uses it, and only to build the
-    // redirect_uri it hands the IdP. Left null that URI is derived from the
-    // request's Host header, which no front proxy is obliged to sanitize — so a
-    // deployment that registers a wildcard or lax redirect URI at the provider
-    // can have the callback pointed elsewhere. Set it whenever the origin is
-    // known and stable; it is also the only way to be right when the proxy
-    // rewrites Host.
-    publicOrigin: null,
     // Optional built-in TLS for the browser <-> web admin hop. Off by default
     // (plain HTTP) — most deployments terminate TLS at a reverse proxy. Set
     // { key, cert, passphrase? } (PEM file paths, relative to the app root or
@@ -164,21 +144,6 @@ export function load(): WebAdminConfig {
     if (process.env.WEBADMIN_DEV_MODE) config.devMode = process.env.WEBADMIN_DEV_MODE === 'true';
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS) config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES) config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
-    if (process.env.WEBADMIN_PUBLIC_ORIGIN) config.publicOrigin = process.env.WEBADMIN_PUBLIC_ORIGIN;
-    // Validate here rather than at first use: a typo should stop startup, not
-    // surface later as an OIDC redirect_uri the provider rejects.
-    if (config.publicOrigin != null) {
-        let parsed: URL | null = null;
-        try { parsed = new URL(String(config.publicOrigin)); } catch { /* reported below */ }
-        // Same shape as every other fail-hard in load(): a readable [config] line
-        // and exit, not a stack trace.
-        const reject = (why: string) => { console.error(`[config] publicOrigin ${why}`); process.exit(1); };
-        if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:'))
-            reject('must be an absolute http(s) URL, e.g. https://oie-admin.example');
-        else if (parsed.pathname !== '/' || parsed.search || parsed.hash)
-            reject('must be an origin only — no path, query, or fragment');
-        else config.publicOrigin = parsed.origin;
-    }
 
     // Optional built-in TLS (config.json "tls" or the env vars below). Enabled only
     // when BOTH key and cert are given; paths resolve against the app root. Off →
@@ -217,104 +182,17 @@ export function load(): WebAdminConfig {
         process.exit(1);
     }
 
-    // Operators key OIDC providers by the engine's explicit name; normalizeOidc
-    // re-keys them to the engine's stable key, which is what routing carries, so
-    // identity policy cannot move when allowedUrls is reordered. A single set of
-    // env overrides configures the default engine.
-    config.oidc = normalizeOidc(config.oidc, config.engines);
+    // OIDC moved into the engine: the oie-oidc-auth extension holds the whole
+    // policy, client secret included, and the login card asks it directly. The
+    // old web-tier keys are refused rather than ignored, so an upgraded
+    // deployment learns where the secret went instead of silently losing SSO.
+    if ((config as any).oidc !== undefined || Object.keys(process.env).some((name) => name.startsWith('WEBADMIN_OIDC_'))) {
+        throw new Error('[config] "oidc" and WEBADMIN_OIDC_* are no longer read here: configure the provider — client '
+            + 'secret included — under Settings → OIDC Authentication on the engine, and remove them from this config.');
+    }
 
     config.root = ROOT;
     return config;
-}
-
-function envBoolean(name: string, fallback: boolean): boolean {
-    const value = process.env[name];
-    if (value == null) return fallback;
-    if (value !== 'true' && value !== 'false') throw new Error(`[config] ${name} must be "true" or "false"`);
-    return value === 'true';
-}
-
-/**
- * A boolean out of the config FILE, strictly.
- *
- * `enabled: "false"` is the shape that matters. JSON has real booleans, but a
- * quoted one arrives whenever the file is templated, interpolated from an
- * environment variable, or hand-edited — and under `value.enabled !== false`
- * the STRING "false" is not the boolean false, so it read as true and switched
- * SSO on. The same misreading made `autoRedirect: "false"` send every visitor
- * straight to the IdP with no way back to the password form.
- *
- * So the quoted spellings are honoured — they are what a templated config
- * produces — and anything else is refused at startup, naming the path. Env vars
- * were already strict about precisely this (see envBoolean); the file was not.
- */
-function configBoolean(value: unknown, path: string, fallback: boolean): boolean {
-    if (value == null) return fallback;
-    if (typeof value === 'boolean') return value;
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    throw new Error(`[config] ${path} must be true or false, but was ${JSON.stringify(value)}`);
-}
-
-export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<string, OidcProviderConfig> {
-    if (raw != null && (typeof raw !== 'object' || Array.isArray(raw))) throw new Error('[config] oidc must be an object keyed by engine name');
-    const source: Record<string, any> = { ...((raw || {}) as object) };
-    const envPresent = ['WEBADMIN_OIDC_DISCOVERY_URL', 'WEBADMIN_OIDC_CLIENT_ID', 'WEBADMIN_OIDC_CLIENT_SECRET',
-        'WEBADMIN_OIDC_ENABLED', 'WEBADMIN_OIDC_SCOPES', 'WEBADMIN_OIDC_PROVIDER_LABEL', 'WEBADMIN_OIDC_AUTO_REDIRECT']
-        .some((name) => process.env[name] != null);
-    if (envPresent) {
-        const first = engines[0]?.name || '0';
-        const previous = source[first] || {};
-        source[first] = {
-            ...previous,
-            enabled: envBoolean('WEBADMIN_OIDC_ENABLED', configBoolean(previous.enabled, `oidc.${first}.enabled`, true)),
-            discoveryUrl: process.env.WEBADMIN_OIDC_DISCOVERY_URL ?? previous.discoveryUrl,
-            clientId: process.env.WEBADMIN_OIDC_CLIENT_ID ?? previous.clientId,
-            clientSecret: process.env.WEBADMIN_OIDC_CLIENT_SECRET ?? previous.clientSecret,
-            scopes: process.env.WEBADMIN_OIDC_SCOPES ? process.env.WEBADMIN_OIDC_SCOPES.split(/[ ,]+/).filter(Boolean) : previous.scopes,
-            providerLabel: process.env.WEBADMIN_OIDC_PROVIDER_LABEL ?? previous.providerLabel,
-            autoRedirect: envBoolean('WEBADMIN_OIDC_AUTO_REDIRECT',
-                configBoolean(previous.autoRedirect, `oidc.${first}.autoRedirect`, false))
-        };
-    }
-    // The config DOCUMENT is keyed by human engine name — that is what an operator
-    // writes and what the errors below name. The map returned here is keyed by the
-    // engine's stable key instead, because every runtime lookup arrives holding a
-    // key (the oie-engine cookie, /oidc/start?engine=, the sealed transaction) and
-    // resolving name→key once here keeps that translation out of the request path.
-    const out: Record<string, OidcProviderConfig> = {};
-    // No name-uniqueness check here: buildEngines already refuses colliding KEYS
-    // unconditionally, and the key is a pure function of the name, so duplicate
-    // names cannot survive startup with or without OIDC. That guard is strictly
-    // stronger than a name check gated on OIDC being configured — it also catches
-    // distinct names that slugify together ("Prod A" and "Prod-A").
-    const keyByName = new Map(engines.map((engine) => [engine.name, engine.key]));
-    for (const [key, value] of Object.entries(source)) {
-        if (!keyByName.has(key)) throw new Error(`[config] oidc.${key} does not match a configured engine name`);
-        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`[config] oidc.${key} must be an object`);
-        const enabled = configBoolean(value.enabled, `oidc.${key}.enabled`, true);
-        if (!enabled) continue;
-        for (const field of ['clientSecret']) {
-            if (typeof value[field] !== 'string' || !value[field].trim()) throw new Error(`[config] oidc.${key}.${field} is required when enabled`);
-        }
-        let discovery: URL | undefined;
-        if (value.discoveryUrl) {
-            try { discovery = new URL(value.discoveryUrl); } catch { throw new Error(`[config] oidc.${key}.discoveryUrl must be an absolute URL`); }
-            if (discovery.protocol !== 'https:' && discovery.hostname !== 'localhost' && discovery.hostname !== '127.0.0.1')
-                throw new Error(`[config] oidc.${key}.discoveryUrl must use HTTPS (HTTP is allowed only for localhost)`);
-        }
-        const scopes = value.scopes == null ? ['openid', 'profile', 'email']
-            : (Array.isArray(value.scopes) ? value.scopes.map(String) : String(value.scopes).split(/[ ,]+/)).filter(Boolean);
-        if (!scopes.includes('openid')) scopes.unshift('openid');
-        out[keyByName.get(key)!] = { enabled, discoveryUrl: discovery?.toString(), clientId: value.clientId ? String(value.clientId) : undefined,
-            clientSecret: value.clientSecret, scopes, providerLabel: String(value.providerLabel || 'SSO'),
-            autoRedirect: configBoolean(value.autoRedirect, `oidc.${key}.autoRedirect`, false) };
-    }
-    return out;
-}
-
-export function oidcForEngine(config: WebAdminConfig, engineKey: string): OidcProviderConfig | null {
-    return config.oidc[engineKey] || null;
 }
 
 // Derive a readable label from a URL, e.g. "https://oie-prod:8443/" -> "oie-prod:8443".

@@ -19,7 +19,7 @@
  */
 
 import { test as base, expect } from '@playwright/test';
-import { startWebAdmin } from './oidc-harness.js';
+import { startWebAdmin } from './server-harness.js';
 
 /** Mirrors CI (no config.json): one engine, no picker, no OIDC provider. */
 export const E2E_CONFIG = { engine: { url: 'https://127.0.0.1:1', verifyTls: false } };

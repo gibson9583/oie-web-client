@@ -34,10 +34,10 @@ import { disposeDetachedMonaco } from '../core/monaco.js';
 import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
 import { apiUrl, appUrl, routeUrl } from '../core/deployment.js';
 import { platform, loadPlugins } from '@oie/web-shell';
-import { LoginForm, takeOidcResult, restoreOidcResult } from './views/login.jsx';
+import { LoginForm, isOidcCallback } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
-import { markSsoSession, clearSsoSession, isSsoSession } from './sso-session.js';
+import { clearSsoSession, isSsoSession } from './sso-session.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -763,37 +763,19 @@ export function App() {
             try {
                 const u = await api.auth.current();
                 if (u && u.username && alive) {
-                    const oidc = takeOidcResult();
-                    // An SSO round trip that did NOT succeed must not be swallowed
-                    // here just because this tab already holds a session.
-                    // takeOidcResult() consumes the cookie, so falling through
-                    // would discard the outcome for good and render the shell as if
-                    // the attempt had simply succeeded — the user stays on the old
-                    // session and is never told what happened. That is worst for a
-                    // REFUSAL: someone whose access was revoked at the IdP signs in,
-                    // is turned away by the engine, and lands in a working admin UI
-                    // on their previous session with no message at all. It was
-                    // originally guarded for the second-factor case only, which is
-                    // the same swallow with a narrower door. LoginForm is the only
-                    // component that drives either hand-off, so put the result back
-                    // and let the card handle it.
-                    if (oidc && oidc.status !== 'SUCCESS' && oidc.status !== 'SUCCESS_GRACE_PERIOD') {
-                        restoreOidcResult(oidc);
+                    // A page that loads on the provider's callback route must reach
+                    // the login card even though this tab still holds a session: the
+                    // card is the only thing that completes a sign-in, and the
+                    // attempt may be someone else's. Rendering the shell here would
+                    // swallow the outcome for good — worst for a refusal, where a
+                    // user revoked at the IdP would land in a working admin UI on
+                    // their previous session with no message at all.
+                    if (isOidcCallback()) {
                         store.setState('user', null);
                         return;   // the finally below still sets authChecked
                     }
-                    if (oidc && (oidc.status === 'SUCCESS' || oidc.status === 'SUCCESS_GRACE_PERIOD')) {
-                        // Remember HOW this session began before the result cookie is
-                        // gone: takeOidcResult consumed it, so a later refresh has no
-                        // other way to know these credentials live at the IdP.
-                        markSsoSession();
-                        // A callback-created session is already live before the SPA
-                        // boots; run the same consent/welcome/draft path as form login.
-                        await onLoginSuccess(u, { graceMessage: oidc.message || null });
-                    } else {
-                        await establishPrefScope(u);   // scope prefs/theme to server+user before views render
-                        if (alive) store.setState('user', u);
-                    }
+                    await establishPrefScope(u);   // scope prefs/theme to server+user before views render
+                    if (alive) store.setState('user', u);
                 }
             } catch { /* not signed in */ }
             finally { if (alive) setAuthChecked(true); }

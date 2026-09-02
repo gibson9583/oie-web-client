@@ -33,8 +33,8 @@ from the provider's claims at every sign-in, so change access at the provider,
 not here. Existing local accounts are never taken over by a provider identity of
 the same name unless an administrator links them under **Settings → OIDC
 Authentication**. SSO accounts have no engine password, so **Change Password** is
-not offered to them. SSO requires the Node/Docker deployment; it is not
-available in the WAR.
+not offered to them. SSO is configured entirely on the engine and works in every
+deployment of the web administrator, WAR included.
 
 ## Extensions
 

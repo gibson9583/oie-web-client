@@ -12,6 +12,7 @@
 import { getLoginAuthenticator } from '../../core/login-auth.js';
 import { appUrl } from '../../core/deployment.js';
 import { markSsoSession } from '../sso-session.js';
+import { currentRoutePath, routeUrl } from '../../core/deployment.js';
 
 import { useState, useRef, useEffect } from 'react';
 import { useStoreKey } from '../bridges.jsx';
@@ -88,31 +89,33 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
     return null;
 }
 
-// Puts a consumed result back for LoginForm to pick up. takeOidcResult() clears
-// the cookie on read, so a caller that decides the result is not theirs to handle
-// (see shell.tsx's boot effect and an MFA challenge) would otherwise destroy it.
-// Same short lifetime as the server's — this is a hand-off within one page load,
-// not a durable store.
-export function restoreOidcResult(result: any): void {
-    try {
-        const json = JSON.stringify(result);
-        const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)))
-            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        // Match the server's attributes, Secure included: the exposure window is
-        // one React commit (LoginForm consumes it on the next render), but that
-        // safety comes from render ordering rather than anything asserted here.
-        document.cookie = `oie-oidc-result=${base64}; path=/; max-age=120; samesite=lax${location.protocol === 'https:' ? '; secure' : ''}`;
-    } catch { /* the card will show the generic failure, which is the status quo */ }
+// The whole sign-in flow now runs in the ENGINE (the oie-oidc-auth extension):
+// this card asks it to start, sends the browser to the provider, and hands the
+// provider's answer back. The engine requires X-Requested-With on every API
+// request, so the provider cannot redirect to it directly; it redirects to
+// <web-administrator-url>/oidc/callback — a route of this app — and the card
+// relays `code` and `state` by XHR. That is also what makes the flow identical
+// for the Node deployment and the WAR: nothing here needs a server of its own.
+export function isOidcCallback(): boolean {
+    return currentRoutePath().split('?')[0] === '/oidc/callback';
 }
 
-export function takeOidcResult(): any {
-    const raw = getCookie('oie-oidc-result');
-    if (!raw) return null;
-    clearCookie('oie-oidc-result');
-    try {
-        const padded = raw.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - raw.length % 4) % 4);
-        return JSON.parse(decodeURIComponent(Array.from(atob(padded), c => '%' + c.charCodeAt(0).toString(16).padStart(2, '0')).join('')));
-    } catch { return { status: 'FAIL', message: 'SSO sign-in could not be completed.' }; }
+// Consumes the callback exactly once and scrubs the address bar: a code is
+// single-use, and nothing about it belongs in history or a bookmark.
+export function takeOidcCallback(): { code?: string; state?: string; error?: string } | null {
+    if (!isOidcCallback()) return null;
+    const q = new URLSearchParams(location.search);
+    const result = { code: q.get('code') || undefined, state: q.get('state') || undefined, error: q.get('error') || undefined };
+    try { history.replaceState(null, '', routeUrl('/')); } catch { /* ignore */ }
+    return result;
+}
+
+// The extension's flow endpoints take and return JSON text. On the wire the
+// engine carries a String as {"string": "..."} in both directions, and
+// api.post unwraps the envelope to the inner text.
+async function flowCall(path: string, payload: any): Promise<any> {
+    const raw = await api.post(path, { string: JSON.stringify(payload) }, { noAuthHandler: true } as any);
+    return typeof raw === 'string' ? JSON.parse(raw) : raw;
 }
 
 // Whether the login card offers an engine choice at all. initialSelection's
@@ -166,13 +169,30 @@ export function LoginForm({ onSuccess }: any) {
     // By stable key, never list position (#54): `sel` holds the key, so an
     // index lookup here silently yields undefined and the SSO affordance
     // disappears from a correctly-configured engine.
-    const selectedEngine = sel === 'custom' || sel === '' ? null : engines.find((e: any) => e.key === sel);
-    const sso = selectedEngine?.sso;
+    // Whether the selected engine offers SSO comes from the engine itself — the
+    // extension's pre-auth /public endpoint, asked over the same /api path every
+    // other call takes, so it answers identically through the Node proxy and
+    // beside the WAR. The picker's current choice is written to the routing
+    // cookie first so the proxy asks the engine being looked at.
+    const [sso, setSso] = useState<any>(null);
+    useEffect(() => {
+        let alive = true;
+        if (sel === 'custom' || (showPicker && sel === '')) { setSso(null); return; }
+        if (showPicker) setCookie('oie-engine', sel);
+        api.get('/extensions/oidcauth/public', { noAuthHandler: true } as any)
+            .then((raw: any) => {
+                const pub = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                if (alive) setSso(pub && pub.configured ? { providerLabel: pub.providerLabel || 'SSO', autoRedirect: !!pub.autoRedirect } : null);
+            })
+            .catch(() => { if (alive) setSso(null); });   // no extension, or no engine: local sign-in only
+        return () => { alive = false; };
+    }, [sel, showPicker]);
     const preferenceKey = `oie-login-mode:${sel}`;
     const [localMode, setLocalMode] = useState(() => {
         try { return localStorage.getItem(`oie-login-mode:${initialSelection(engines, devMode)}`) === 'local'; } catch { return false; }
     });
-    const oidcResultRef = useRef<any>(takeOidcResult());
+    const oidcCallbackRef = useRef<any>(takeOidcCallback());
+    const callbackInFlight = useRef(!!oidcCallbackRef.current);
 
     useEffect(() => {
         try { setLocalMode(localStorage.getItem(preferenceKey) === 'local'); } catch { setLocalMode(false); }
@@ -187,16 +207,24 @@ export function LoginForm({ onSuccess }: any) {
     // instead of silently replaying its session for the same rejected account.
     const [ssoReauth, setSsoReauth] = useState(false);
 
-    function startSso() {
+    async function startSso() {
         const selectionError = commitEngineSelection(showPicker, sel, customUrl);
         if (selectionError) { setError(selectionError); return; }
-        // appUrl for consistency with every other server endpoint this client
-        // addresses; it resolves to the same "/oidc/start" in the only shape that
-        // serves the BFF (the Node deployment — the WAR has no Express side, so
-        // SSO is not offered there at all). The return path stays a full location
-        // path: the server hands it straight back as a redirect target.
-        const returnPath = location.pathname === '/' ? '/' : location.pathname + location.search + location.hash;
-        location.assign(`${appUrl('/oidc/start')}?engine=${encodeURIComponent(sel)}&return=${encodeURIComponent(returnPath)}${ssoReauth ? '&prompt=login' : ''}`);
+        // Where to come back to, as an internal route: the engine validates it as
+        // a path on the web administrator and hands it back after sign-in.
+        const returnPath = currentRoutePath() + location.hash;
+        try {
+            const started = await flowCall('/extensions/oidcauth/start', { return: returnPath, prompt: ssoReauth ? 'login' : '' });
+            if (!started.ok || !started.authorizeUrl) {
+                setError(started.message || 'SSO is unavailable. Use local sign-in.');
+                chooseLocal(true);
+                return;
+            }
+            location.assign(started.authorizeUrl);
+        } catch (err: any) {
+            setError(err.message || 'Could not reach the engine.');
+            chooseLocal(true);
+        }
     }
 
     const userRef = useRef<any>(null);
@@ -215,81 +243,57 @@ export function LoginForm({ onSuccess }: any) {
         return () => clearTimeout(t);
     }, []);
 
+    // The provider sent the browser back here. Relay its answer to the engine,
+    // which finishes the exchange and hands back a one-time ticket; redeem the
+    // ticket through the engine's ordinary login so the session, the audit
+    // event, and any second factor are exactly what a password sign-in gets.
     useEffect(() => {
-        const result = oidcResultRef.current;
-        oidcResultRef.current = null;
-        if (!result) {
-            if (sso?.autoRedirect && !localMode) {
-                const guard = `oie-oidc-redirect:${sel}`;
-                try {
-                    if (!sessionStorage.getItem(guard)) { sessionStorage.setItem(guard, '1'); startSso(); }
-                } catch { /* storage unavailable: leave the button reachable */ }
-            }
-            return;
-        }
+        const callback = oidcCallbackRef.current;
+        oidcCallbackRef.current = null;
+        if (!callback) return;
         try { sessionStorage.removeItem(`oie-oidc-redirect:${sel}`); } catch { /* ignore */ }
-        const status = result.status || result;
-        if (status === 'SUCCESS' || status === 'SUCCESS_GRACE_PERIOD') {
-            // Same record the shell's boot path keeps: a session established HERE
-            // is just as much an SSO session, and without the mark the account
-            // menu offers it a Change Password that SSO never consults. This path
-            // runs whenever the login card wins the race for the result cookie —
-            // e.g. a second tab dropped by a 401 while this one completed SSO.
-            // Marked only once the session is PROVEN, like shell.tsx's boot path:
-            // both .catch arms below are reachable (a 403 roleless account is the
-            // common one), nothing clears the mark when no session was created,
-            // and a stale mark would strip Change Password from the break-glass
-            // local sign-in that this very error message sends the user to.
-            // Mark BEFORE a possible reload: the mark lives in sessionStorage and
-            // survives it, while the result cookie that would re-derive it here
-            // has already been consumed.
-            api.auth.current().then((user: any) => { markSsoSession(); if (reloadForFreshPermissions()) return; return onSuccess(user, { graceMessage: result.message || null }); })
-                // 403 = the session is real but the account holds no permissions
-                // (an RBAC install with no role assigned — e.g. a JIT user and no
-                // default role). Say so; the generic line sends people debugging
-                // cookies when the fix is a role assignment.
-                .catch((err: any) => setError(err && err.status === 403
-                    ? 'Signed in via SSO, but this account has no permissions on this engine. Assign it an RBAC role (or set a default role in the OIDC policy) and sign in again.'
-                    : 'SSO completed, but the engine session could not be loaded.'));
-            return;
-        }
-        if (result.clientPluginClass) {
-            const authenticate = getLoginAuthenticator(result.clientPluginClass);
-            // Same remediation the password path gives (below). It matters more
-            // here, not less: an SSO account has no local password to fall back
-            // on, so "not available" without a next step is a dead end.
-            if (!authenticate) {
-                setError('This engine requires a multi-factor login method that is not available in the web administrator. '
-                    + 'Use the desktop Administrator, or install the matching web login plugin.');
-                return;
+        (async () => {
+            try {
+                if (callback.error) {
+                    setError('The identity provider declined sign-in.');
+                    chooseLocal(true);
+                    setSsoReauth(true);
+                    return;
+                }
+                let done: any;
+                try {
+                    done = await flowCall('/extensions/oidcauth/callback', { code: callback.code, state: callback.state });
+                } catch (err: any) {
+                    setError(err.message || 'Could not reach the engine.');
+                    chooseLocal(true);
+                    return;
+                }
+                if (!done.ok || !done.ticket) {
+                    setError(done.message || 'SSO sign-in failed.');
+                    chooseLocal(true);
+                    setSsoReauth(true);
+                    return;
+                }
+                setSubmitting(true);
+                await runLogin('oidc', `oidc:ticket:${done.ticket}`, { sso: true, returnPath: done.returnPath || '/' });
+            } finally {
+                callbackInFlight.current = false;
+                setSubmitting(false);
             }
-            authenticate({ clientPluginClass: result.clientPluginClass, username: result.updatedUsername || '', primaryStatus: result,
-                api, submit: (loginData: any) => api.auth.login(result.updatedUsername || '', '', loginData) } as any)
-                .then(async (second: any) => {
-                    const secondStatus = second?.status || second;
-                    if (secondStatus !== 'SUCCESS' && secondStatus !== 'SUCCESS_GRACE_PERIOD') throw new Error(second?.message || 'Multi-factor sign-in failed.');
-                    // The second factor rides on the SSO primary — still SSO. Same
-                    // ordering rule as above: prove the session, then mark it.
-                    const user = await api.auth.current();
-                    markSsoSession();
-                    if (reloadForFreshPermissions()) return;
-                    await onSuccess(user, { graceMessage: second?.message || null });
-                }).catch((err: any) => setError(err.message || 'Multi-factor sign-in failed.'));
-            return;
-        }
-        // Same three-step fallback the password path uses (below): the engine's own
-        // message, then the status the engine named, then the generic line. Reading
-        // only `message` meant a status carrying none — FAIL_LOCKED_OUT,
-        // FAIL_EXPIRED, FAIL_VERSION_MISMATCH — told an SSO user "SSO sign-in
-        // failed" and sent them back to the IdP, which will keep succeeding: the
-        // rejection is the ENGINE's, and the reason it gave was dropped here.
-        setError(result.message || (STATUS_MESSAGES as any)[status] || 'SSO sign-in failed.');
-        chooseLocal(true);
-        setSsoReauth(true);
-        // Mount-only by design: the SSO result cookie and autoRedirect decision
-        // are consumed exactly once, for the engine selected at page load.
+        })();
+        // Mount-only by design: the callback is consumed exactly once.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Auto-redirect: once the engine says it offers SSO, and nothing is pending.
+    useEffect(() => {
+        if (!sso?.autoRedirect || localMode || callbackInFlight.current) return;
+        const guard = `oie-oidc-redirect:${sel}`;
+        try {
+            if (!sessionStorage.getItem(guard)) { sessionStorage.setItem(guard, '1'); startSso(); }
+        } catch { /* storage unavailable: leave the button reachable */ }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sso]);
 
     async function submit(e: any) {
         if (e && e.preventDefault) e.preventDefault();
@@ -303,6 +307,18 @@ export function LoginForm({ onSuccess }: any) {
         if (selectionError) { setError(selectionError); busyRef.current = false; return; }
 
         setSubmitting(true);
+        try {
+            await runLogin(username.trim(), password, { sso: false, returnPath: null });
+        } finally {
+            setSubmitting(false);
+            busyRef.current = false;
+        }
+    }
+
+    // One login pipeline for both credentials: a password, or the ticket the
+    // engine's SSO callback issued. The engine treats them identically from here
+    // on — primary authentication, then any second factor — so the card does too.
+    async function runLogin(user: string, credential: string, opts: { sso: boolean; returnPath: string | null }) {
         // Completes a successful (primary or post-MFA) login: reload on an engine
         // switch, else fetch the user and hand off to the shell.
         const finishLogin = async (result: any) => {
@@ -316,13 +332,23 @@ export function LoginForm({ onSuccess }: any) {
             const newKey = showPicker ? (sel === 'custom' ? `custom:${customUrl.trim()}` : sel) : '';
             let loaded: any = null;
             try { loaded = sessionStorage.getItem('oie-loaded-engine'); } catch { /* private mode */ }
-            if (loaded != null && loaded !== newKey) { location.reload(); return; }
+            // An SSO sign-in comes back to the route it left from; put that in the
+            // address bar BEFORE the shell boots into it (or the page reloads).
+            if (opts.returnPath && opts.returnPath !== '/') {
+                try { history.replaceState(null, '', routeUrl(opts.returnPath)); } catch { /* ignore */ }
+            }
+            // Remember HOW this session began: without the mark the account menu
+            // offers an SSO user a Change Password that SSO never consults. Marked
+            // only once the session is proven, and before any reload — the mark
+            // lives in sessionStorage and survives one.
+            if (loaded != null && loaded !== newKey) { if (opts.sso) markSsoSession(); location.reload(); return; }
             const user = await api.auth.current();
+            if (opts.sso) markSsoSession();
             if (reloadForFreshPermissions()) return;
             await onSuccess(user, { graceMessage });
         };
         try {
-            let result = await api.auth.login(username.trim(), password);
+            let result = await api.auth.login(user, credential);
             let status = result?.status || result;
 
             // Extended/MFA login (Swing ExtendedLoginStatus): a non-success status
@@ -332,22 +358,25 @@ export function LoginForm({ onSuccess }: any) {
             if (status !== 'SUCCESS' && status !== 'SUCCESS_GRACE_PERIOD' && result && result.clientPluginClass) {
                 const authenticate = getLoginAuthenticator(result.clientPluginClass);
                 if (!authenticate) {
+                    // It matters more for SSO, not less: an SSO account has no local
+                    // password to fall back on, so "not available" without a next
+                    // step is a dead end.
                     setError('This engine requires a multi-factor login method that is not available in the web administrator. '
                         + 'Use the desktop Administrator, or install the matching web login plugin.');
                     return;
                 }
-                const enteredUser = username.trim();
                 const ctx = {
                     clientPluginClass: result.clientPluginClass,
-                    username: result.updatedUsername || enteredUser,
+                    username: result.updatedUsername || user,
                     primaryStatus: result,
                     // Full engine client, mirroring the `client` Swing hands the
                     // MFA plugin's authenticate() — for any pre-completion calls.
                     api,
                     // Convenience for the common case: the second-leg login with the
                     // factor in the X-Mirth-Login-Data header (Swing's getServlet
-                    // custom-header login).
-                    submit: (loginData: any) => api.auth.login(result.updatedUsername || enteredUser, password, loginData)
+                    // custom-header login). The engine's second leg never re-checks
+                    // the credential, so re-sending a spent ticket is harmless.
+                    submit: (loginData: any) => api.auth.login(result.updatedUsername || user, credential, loginData)
                 };
                 result = await authenticate(ctx);
                 status = result?.status || result;
@@ -357,14 +386,24 @@ export function LoginForm({ onSuccess }: any) {
                 await finishLogin(result);
                 return;
             }
-            setError(result?.message || (STATUS_MESSAGES as any)[status] || 'Login failed.');
+            // The engine's own message, then the status it named, then the generic
+            // line. A status carrying no message — FAIL_LOCKED_OUT, FAIL_EXPIRED —
+            // must still be explained, whichever credential was used.
+            setError(result?.message || (STATUS_MESSAGES as any)[status] || (opts.sso ? 'SSO sign-in failed.' : 'Login failed.'));
+            if (opts.sso) { chooseLocal(true); setSsoReauth(true); }
         } catch (err: any) {
+            if (opts.sso && err && err.status === 403) {
+                // The session is real but the account holds no permissions (an
+                // RBAC install with no role assigned — e.g. a JIT user and no
+                // default role). Say so; the generic line sends people debugging
+                // cookies when the fix is a role assignment.
+                setError('Signed in via SSO, but this account has no permissions on this engine. Assign it an RBAC role (or set a default role in the OIDC policy) and sign in again.');
+                return;
+            }
             // A 401 from the login endpoint means bad credentials, not an expired
             // session (which the global handler would otherwise claim).
-            setError(err.status === 401 ? 'Invalid username or password.' : (err.message || 'Could not reach the engine.'));
-        } finally {
-            setSubmitting(false);
-            busyRef.current = false;
+            setError(err.status === 401 ? (opts.sso ? 'SSO sign-in was rejected.' : 'Invalid username or password.') : (err.message || 'Could not reach the engine.'));
+            if (opts.sso) { chooseLocal(true); setSsoReauth(true); }
         }
     }
 

@@ -66,37 +66,45 @@ is missing or invalid stops startup instead of silently using defaults.
 | `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login (the proxy forwards to whatever is typed — trusted/dev deployments only) |
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). The env var uses the platform path-list delimiter (`:` on Unix, `;` on Windows). Extensions installed on the engine are served by the engine, not stored here. |
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy); loopback is always trusted. Comma-separated in the env var |
-| `publicOrigin` | `WEBADMIN_PUBLIC_ORIGIN` | `null` | The origin browsers reach this server on, e.g. `https://oie-admin.example`. Used only by OIDC, to build the `redirect_uri` given to the provider. Left unset it is derived from the request's `Host` header — set it whenever the origin is known, and always when a proxy rewrites `Host` |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` | Serve the web UI itself over HTTPS: `{ "key", "cert", "passphrase"? }` (PEM paths). Leave `null` to serve HTTP and terminate TLS in front |
-| `oidc` | `WEBADMIN_OIDC_*` | `{}` | Confidential-client OIDC providers keyed by the matching engine name. See below. |
 
 ### OpenID Connect sign-in
 
-**SSO requires the Node deployment.** The confidential-client flow runs in this
-server — `/oidc/start` and `/oidc/callback` hold the client secret, perform
-discovery, and exchange the authorization code, none of which can happen in the
-browser. The WAR packages the client assets only (no `server/`), so those
-endpoints do not exist there and the login card never offers SSO, even against an
-engine whose `oie-oidc-auth` extension is installed and enabled. That combination
-is the one worth stating plainly, because it is exactly where an admin expects
-the engine's own extension to be sufficient. Run the Node server if you want SSO.
+**Everything is configured on the engine**, in the `oie-oidc-auth` extension's
+tab under **Settings → OIDC Authentication**: discovery URL, client ID and
+secret, the web administrator's own URL, token policy, JIT provisioning, account
+bindings, and RBAC mapping. This server keeps nothing — no provider entry, no
+secret, no OIDC endpoints — and the old `oidc` / `WEBADMIN_OIDC_*` settings are
+refused at startup so an upgraded deployment learns where they went.
 
-OIDC is advertised on the login screen only when both halves are ready: the matching engine reports an enabled `oie-oidc-auth` policy and the web tier has an enabled confidential-client entry with a client secret. Register exactly one redirect URI at the provider: `https://<web-admin-origin>/oidc/callback` — where `<web-admin-origin>` is the origin browsers reach this server on, which is what [`publicOrigin`](#configuration) pins when a proxy rewrites `Host`. The web tier uses Authorization Code flow with PKCE and keeps tokens and the client secret out of the browser.
+The login card asks the extension's pre-auth `/api/extensions/oidcauth/public`
+endpoint whether the selected engine offers SSO and draws the button from its
+answer. Signing in posts `/start` (the engine returns the provider URL and seals
+the attempt in a cookie), the provider sends the browser to `/oidc/callback` — a
+route of this app — and the card posts the returned `code` and `state` to
+`/callback` for a one-time ticket, which it redeems through the ordinary
+`/users/_login`. The session, the audit event, and any second factor are exactly
+what a password sign-in gets, and the flow is the same through this server's
+proxy and beside the WAR. Register one redirect URI at the provider,
+`<web-administrator-url>/oidc/callback`; the engine's tab shows the exact value.
 
-Configure discovery, client ID, token policy, JIT provisioning, account bindings, and RBAC mapping after login under **Settings → OIDC Authentication** (fields unlock once **Enable OIDC login** is ticked; Save/Refresh/Test connection live in the tab's task pane). The tab and its API are protected by the extension permission `manageOIDC` — holders of the RBAC admin role carry it implicitly, so grant it explicitly only to non-admin roles. Saving persists the policy to the engine database (the engine's native plugin-properties store) and applies it to the live authorization plugin in the same step; **Test connection** verifies discovery and the signing keys before rollout, and changes nothing. The default role and mapping targets are picked from the engine's RBAC roles, linked accounts pick the engine user, and the claim fields suggest the usual names as you type while staying free text. Keep in mind that the roles claim must be present in the **ID token**; most providers put roles only in the access token unless told otherwise (the extension's README has the per-provider recipe).
-
-The web tier retains only deployment-private client material and presentation. Each `oidc` entry must be keyed by the exact, unique `name` of its corresponding `allowedUrls` engine; numeric indexes are rejected. Entries require `enabled` and `clientSecret`, with optional `scopes`, `providerLabel`, and `autoRedirect`. `discoveryUrl` and `clientId` remain accepted as a migration fallback, but engine-reported values take precedence. The `WEBADMIN_OIDC_*` variables override the default engine. Keep the client secret in a mounted secret or environment variable rather than source control.
+The tab and its API are protected by the extension permission `manageOIDC` —
+holders of the RBAC admin role carry it implicitly, so grant it explicitly only
+to non-admin roles. **Test connection** verifies discovery and the signing keys
+and changes nothing. The roles claim must be present in the **ID token**; most
+providers put roles only in the access token unless told otherwise (the
+extension's README has the per-provider recipe).
 
 Local sign-in remains available from the login card as a break-glass path.
 
 **Known limitations (1.0).** Deliberate, and listed so they are not discovered during an incident:
 
 - **Logout does not end the provider session.** RP-initiated and front-channel logout are not implemented, so signing out here leaves the IdP session live and a subsequent sign-in can complete without re-authenticating. Align the engine's `server.api.sessionmaxinactiveinterval` with the provider's session policy.
-- **Confidential client only.** The client secret and code exchange live in this Node server; PKCE public-client mode is not offered. This is also why SSO requires the Node deployment rather than the WAR.
+- **Confidential client only.** The client secret and code exchange live in the engine; PKCE public-client mode is not offered.
 - **One identity provider per engine.** The engine loads exactly one authorization plugin, so a second provider cannot be added alongside. Different engines in `allowedUrls` may each have their own.
 - **One role per user**, resolved first-match-wins from the IdP claim — a user in several mapped groups gets the first match, not a union.
-- **Replay protection on the engine side is per-process**, so a captured ID token has a replay window bounded by the engine's `max-token-age-seconds` (300s by default) across a restart or a second node. The `nonce` this tier checks is what prevents replay in the ordinary browser flow.
+- **Replay protection on the engine side is per-process**, so a captured ID token has a replay window bounded by the engine's `max-token-age-seconds` (300s by default) across a restart or a second node. The `nonce` the engine checks at the callback is what prevents replay in the ordinary browser flow.
 - **Deprovisioning takes effect at next sign-in.** Removing a user at the IdP blocks their next login but does not disable the engine account; nothing sweeps for accounts whose IdP identity has gone.
 
 Example `config.json`:

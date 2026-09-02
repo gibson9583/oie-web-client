@@ -57,7 +57,8 @@ Set `E2E_EXPECT_DEPLOYMENT=war` to require the WAR deployment marker.
 |---|---|
 | `playwright.config.ts` (repo root) | `ui` + `live` projects; parallel workers |
 | `base.ts` | the `test` specs import: one server per worker, fixed config, per-worker `baseURL` |
-| `oidc-harness.ts` | shared mock IdP + `startWebAdmin()` for specs that need the real server-side flow |
+| `server-harness.ts` | `startWebAdmin()` — boots a real web-administrator server on a free port |
+| `sso.spec.ts` | the engine-hosted OIDC flow, mocked in the browser: provider, engine endpoints, and the ticket login |
 | `fixtures.ts` | canned engine responses in the XStream wire shapes the client expects |
 | `mock.ts` | `mockEngine(page, overrides)` route interceptor + `login()` helper |
 | `*.spec.ts` | mocked workflow tests (login, dashboard + `cards` card view, channels, `channel-wizard`/`alert-wizard` guided builders, …) |
