@@ -217,7 +217,14 @@ export function LoginForm({ onSuccess }: any) {
         }
         if (result.clientPluginClass) {
             const authenticate = getLoginAuthenticator(result.clientPluginClass);
-            if (!authenticate) { setError('This engine requires a multi-factor login method that is not available in the web administrator.'); return; }
+            // Same remediation the password path gives (below). It matters more
+            // here, not less: an SSO account has no local password to fall back
+            // on, so "not available" without a next step is a dead end.
+            if (!authenticate) {
+                setError('This engine requires a multi-factor login method that is not available in the web administrator. '
+                    + 'Use the desktop Administrator, or install the matching web login plugin.');
+                return;
+            }
             authenticate({ clientPluginClass: result.clientPluginClass, username: result.updatedUsername || '', primaryStatus: result,
                 api, submit: (loginData: any) => api.auth.login(result.updatedUsername || '', '', loginData) } as any)
                 .then(async (second: any) => {

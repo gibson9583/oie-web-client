@@ -165,10 +165,35 @@ function publicOrigin(req, trusted) {
 // Bound the human-readable part and never cut the encoding itself: a cookie
 // truncated mid-base64 decodes as garbage and the login card would show the
 // generic failure instead of the engine's actual message.
+//
+// When clientPluginClass is set the message is NOT prose — it is the MFA
+// plugin's opaque challenge, which the authenticator JSON.parses. A TOTP
+// enrolment challenge (mode, challenge, secret, otpauth URI) runs past 600
+// characters on nothing exotic: a long issuer plus the email-shaped username an
+// IdP hands out. Clipping it yields "Unexpected authentication challenge." with
+// no way forward, and an SSO account has no local password to fall back on.
+//
+// A challenge is therefore never truncated — half a challenge is worth exactly
+// as much as none. It is sent whole or not at all, and the only bound is what
+// the cookie can carry. No fixed challenge cap: any constant large enough to be
+// useful is also large enough to overflow the ceiling once updatedUsername is
+// long, which drops the challenge anyway — the failure it was meant to prevent.
+const PROSE_MAX = 600;
+const COOKIE_MAX = 3500;
 function encodeResult(payload) {
-    const bounded = { ...payload, message: String(payload.message ?? '').slice(0, 600) };
+    const message = String(payload.message ?? '');
+    const challenge = !!payload.clientPluginClass;
+    const bounded = { ...payload, message: challenge ? message : message.slice(0, PROSE_MAX) };
     const value = b64(JSON.stringify(bounded));
-    return value.length <= 3500 ? value : b64(JSON.stringify({ ...bounded, message: '' }));
+    if (value.length <= COOKIE_MAX)
+        return value;
+    // Over the ceiling. For prose, dropping the detail still leaves a usable
+    // status. For a challenge there is nothing to salvage, so say so plainly
+    // rather than handing the card a plugin class it cannot act on — that would
+    // surface as the authenticator's confusing "unexpected challenge" instead.
+    return challenge
+        ? b64(JSON.stringify({ ...bounded, clientPluginClass: '', message: 'This engine requires a second authentication factor, but its challenge is too large to complete in the browser. Use the desktop Administrator.' }))
+        : b64(JSON.stringify({ ...bounded, message: '' }));
 }
 function setResult(res, payload, secure) {
     res.append('Set-Cookie', `${RESULT_COOKIE}=${encodeResult(payload)}; Path=/; Max-Age=120; SameSite=Lax${secure ? '; Secure' : ''}`);

@@ -329,6 +329,135 @@ test.describe('OIDC login', () => {
         await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Change Password' })).toBeVisible();
     });
 
+    test('an SSO primary hands off to the engine MFA plugin and completes', async ({ page }) => {
+        // Swing's ExtendedLoginStatus composition, over SSO: the engine accepts the
+        // ID token as the FIRST factor and answers a non-success status naming a
+        // client MFA plugin. The BFF relays clientPluginClass + the opaque
+        // challenge through the result cookie, and the login card hands off to the
+        // registered authenticator exactly as it would after a password primary.
+        // Only the first leg is server-side; the second runs from the browser.
+        // Sized and shaped like the reference plugin's real enrolment challenge —
+        // mode + a signed challenge token + secret + otpauth URI — because this is
+        // the only path where the challenge rides a COOKIE, and the message cap
+        // there is the thing most likely to break it. A long issuer plus the
+        // email-shaped username an IdP hands out clears 600 characters on nothing
+        // exotic; an undersized fixture would never notice.
+        const challenge = `${'c'.repeat(250)}.${Date.now()}.${'s'.repeat(43)}`;
+        const secret = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+        const account = 'jane.doe.with.a.long.name@enterprise.example.test';
+        // enrol, not verify: secret + otpauthUri only ever appear in the enrolment
+        // message, so labelling this 'verify' would be a shape the plugin cannot
+        // produce. It is also the realistic case — a JIT-provisioned SSO user is
+        // enrolling on first login — and it is the large payload, which is what
+        // makes the cookie's message cap matter here at all.
+        const message = JSON.stringify({
+            mode: 'enroll',
+            challenge,
+            secret,
+            otpauthUri: `otpauth://totp/${encodeURIComponent('Open Integration Engine Production Cluster')}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent('Open Integration Engine Production Cluster')}`
+        });
+        expect(message.length).toBeGreaterThan(600);   // the fixture must actually exercise the cap
+        // 401, as the engine really answers: UserServlet throws UNAUTHORIZED for
+        // any non-SUCCESS LoginStatus, ExtendedLoginStatus included. The BFF must
+        // read the BODY rather than trusting the status.
+        loginStatus = { status: 401, body: { 'com.mirth.connect.model.ExtendedLoginStatus': {
+            status: 'FAIL',
+            clientPluginClass: 'builtin:otp',
+            updatedUsername: 'jdoe',
+            message
+        } } };
+
+        let secondLeg: { data: string | null; body: string } | null = null;
+        let authed = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (authed ? { user: { id: 1, username: 'jdoe' } } : { __status: 401 }),
+            'POST /users/_login': (req: any) => {
+                secondLeg = { data: req.headers()['x-mirth-login-data'] ?? null, body: req.postData() || '' };
+                authed = true;
+                return { 'com.mirth.connect.model.LoginStatus': { status: 'SUCCESS', message: '' } };
+            }
+        });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+
+        // The second factor is demanded, not skipped, and the enrolment material
+        // arrived whole — the grouped secret is rendered from the same challenge
+        // JSON that would be unparseable if the cookie had clipped it.
+        await expect(page.getByText('Set up two-factor authentication')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(secret.replace(/(.{4})/g, '$1 ').trim())).toBeVisible();
+        await page.locator('input[inputmode="numeric"]').fill('123456');
+        await page.getByRole('button', { name: 'Activate' }).click();
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+
+        // The first leg really was the SSO hand-off, so this is a composition and
+        // not two unrelated logins that happen to succeed.
+        expect(String(received.login!.get('password'))).toMatch(/^oidc:/);
+        // The second leg carried the factor in the header the engine reads, with
+        // the challenge echoed back INTACT — the cookie cap must not have clipped
+        // it — and no password.
+        expect(secondLeg).not.toBeNull();
+        const relayed = JSON.parse(Buffer.from(secondLeg!.data!, 'base64').toString('utf8'));
+        expect(relayed).toEqual({ challenge, code: '123456' });
+        // …and it signed in as the username the PRIMARY status returned, which is
+        // the engine's say on identity, not anything the browser chose.
+        expect(new URLSearchParams(secondLeg!.body).get('username')).toBe('jdoe');
+
+        // A second factor does not make the session any less an SSO session: it
+        // must still be marked, or the account menu offers an SSO user a Change
+        // Password that writes a credential SSO never consults.
+        expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).not.toBeNull();
+        await page.locator('button.user-chip').click();
+        await expect(page.getByRole('menu')).toBeVisible();
+        await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Change Password' })).toHaveCount(0);
+    });
+
+    test('cancelling the second factor leaves local sign-in reachable', async ({ page }) => {
+        // A dismissed MFA prompt must not strand the user on a blank card: the
+        // authenticator resolves a FAIL, which the card reports inline.
+        loginStatus = { status: 401, body: { 'com.mirth.connect.model.ExtendedLoginStatus': {
+            status: 'FAIL',
+            clientPluginClass: 'builtin:otp',
+            updatedUsername: 'jdoe',
+            message: JSON.stringify({ mode: 'verify', challenge: 'c' })
+        } } };
+        await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+
+        await expect(page.getByText('Two-factor authentication')).toBeVisible({ timeout: 15_000 });
+        await page.getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.getByText('Cancelled.')).toBeVisible({ timeout: 15_000 });
+        // Deliberately still in SSO mode, unlike an IdP rejection (which calls
+        // chooseLocal(true)): abandoning the second factor is not a reason to give
+        // up on SSO, so the provider button stays primary and the retry is one
+        // click. The break-glass path stays reachable behind the toggle.
+        await expect(page.getByRole('button', { name: 'Sign in with Acme SSO' })).toBeVisible();
+        await expect(page.locator('input[type=password]')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Use local sign-in' })).toBeVisible();
+    });
+
+    test('an SSO primary naming an MFA method this client lacks says so', async ({ page }) => {
+        // Registration is bundled and pre-login (an engine-served plugin cannot
+        // provide MFA — it needs the session it is meant to grant), so an engine
+        // configured with a method the web client does not ship must fail with an
+        // explanation rather than a generic rejection.
+        loginStatus = { status: 401, body: { 'com.mirth.connect.model.ExtendedLoginStatus': {
+            status: 'FAIL',
+            clientPluginClass: 'com.example.WebAuthnClientPlugin',
+            updatedUsername: 'jdoe',
+            message: '{}'
+        } } };
+        await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+
+        // The whole message, including the remediation — asserting only the shared
+        // prefix would pass while the SSO branch silently dropped the advice, and
+        // this is the path where the user has no local password to fall back on.
+        await expect(page.getByText('This engine requires a multi-factor login method that is not available in the web administrator. '
+            + 'Use the desktop Administrator, or install the matching web login plugin.')).toBeVisible({ timeout: 15_000 });
+    });
+
     test('a retry after a rejected attempt forces IdP re-authentication', async ({ page }) => {
         // The IdP's own SSO session silently replays the same account; after a
         // rejection the retry must carry prompt=login so the user can switch.

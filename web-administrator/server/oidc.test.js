@@ -121,6 +121,23 @@ assert.strictEqual((0, oidc_1.unwrapEngineJson)('SUCCESS'), 'SUCCESS');
 const decodeResult = (value) => JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
 assert.strictEqual(decodeResult((0, oidc_1.encodeResult)({ status: 'FAIL', message: 'x'.repeat(5000) })).message.length, 600);
 assert.strictEqual(decodeResult((0, oidc_1.encodeResult)({ status: 'SUCCESS' })).status, 'SUCCESS');
+// An MFA challenge is opaque, not prose: the authenticator JSON.parses it, so
+// the 600-character prose cap would leave it unparseable ("Unexpected
+// authentication challenge.") with no local password to fall back on. A real
+// TOTP enrolment challenge clears 600 on a long issuer plus an email-shaped
+// username, so it must survive WHOLE.
+const enrolMessage = JSON.stringify({ mode: 'enroll', challenge: 'c'.repeat(380), secret: 'S'.repeat(32), otpauthUri: `otpauth://totp/${'I'.repeat(60)}:${'u'.repeat(40)}?secret=${'S'.repeat(32)}` });
+assert.ok(enrolMessage.length > 600, 'the enrolment fixture must exceed the prose cap');
+const challengeResult = decodeResult((0, oidc_1.encodeResult)({ status: 'FAIL', clientPluginClass: 'builtin:otp', updatedUsername: 'jane@example.test', message: enrolMessage }));
+assert.strictEqual(challengeResult.message, enrolMessage);
+assert.strictEqual(challengeResult.clientPluginClass, 'builtin:otp');
+// Half a challenge is worth as much as none, so one that cannot fit the cookie
+// is refused with something actionable rather than clipped into nonsense — and
+// clientPluginClass is dropped so the card reports it instead of handing the
+// authenticator a challenge it cannot parse.
+const huge = decodeResult((0, oidc_1.encodeResult)({ status: 'FAIL', clientPluginClass: 'builtin:otp', updatedUsername: 'u'.repeat(255), message: 'z'.repeat(4000) }));
+assert.strictEqual(huge.clientPluginClass, '');
+assert.match(huge.message, /too large to complete in the browser/);
 const trusted = new Set(['10.0.0.1']);
 assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');
 assert.strictEqual((0, oidc_1.throttleKey)('192.0.2.9', '203.0.113.5', trusted), '192.0.2.9');
