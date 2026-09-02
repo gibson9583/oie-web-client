@@ -39,16 +39,18 @@ function getCookie(name: any) {
 
 // Plugins — and the RBAC controller's permission set with them — are loaded once
 // per page load, for whoever was signed in at that moment. A soft sign-out
-// followed by a sign-in as SOMEONE ELSE in this tab would run the new session
-// under the previous user's permissions: an administrator signing in after a
-// viewer got a view-only Settings page. Same rule as a different engine (see
-// finishLogin): a different identity gets a fresh page. shell.tsx records the
-// marker once the plugins have loaded; the first sign-in of a page session has
-// no marker and takes the soft path.
-function reloadIfDifferentUser(user: any): boolean {
+// followed by a sign-in in the same tab ran the new session under that stale
+// set: an administrator signing in after a viewer got a view-only Settings
+// page, and — since the OIDC extension re-synchronises a user's role at EVERY
+// sign-in — the same user signing back in kept yesterday's menus while the
+// engine refused the requests behind them. Same rule as a different engine
+// (see finishLogin): once plugins have loaded in this page, any new session
+// gets a fresh page. The first sign-in of a page session has no marker and
+// takes the soft path; shell.tsx records the marker once the plugins load.
+function reloadForFreshPermissions(): boolean {
     let loaded: string | null = null;
     try { loaded = sessionStorage.getItem('oie-loaded-user'); } catch { /* private mode */ }
-    if (loaded == null || loaded === String(user?.username ?? '')) return false;
+    if (loaded == null) return false;
     location.reload();
     return true;
 }
@@ -241,7 +243,7 @@ export function LoginForm({ onSuccess }: any) {
             // Mark BEFORE a possible reload: the mark lives in sessionStorage and
             // survives it, while the result cookie that would re-derive it here
             // has already been consumed.
-            api.auth.current().then((user: any) => { markSsoSession(); if (reloadIfDifferentUser(user)) return; return onSuccess(user, { graceMessage: result.message || null }); })
+            api.auth.current().then((user: any) => { markSsoSession(); if (reloadForFreshPermissions()) return; return onSuccess(user, { graceMessage: result.message || null }); })
                 // 403 = the session is real but the account holds no permissions
                 // (an RBAC install with no role assigned — e.g. a JIT user and no
                 // default role). Say so; the generic line sends people debugging
@@ -270,7 +272,7 @@ export function LoginForm({ onSuccess }: any) {
                     // ordering rule as above: prove the session, then mark it.
                     const user = await api.auth.current();
                     markSsoSession();
-                    if (reloadIfDifferentUser(user)) return;
+                    if (reloadForFreshPermissions()) return;
                     await onSuccess(user, { graceMessage: second?.message || null });
                 }).catch((err: any) => setError(err.message || 'Multi-factor sign-in failed.'));
             return;
@@ -316,7 +318,7 @@ export function LoginForm({ onSuccess }: any) {
             try { loaded = sessionStorage.getItem('oie-loaded-engine'); } catch { /* private mode */ }
             if (loaded != null && loaded !== newKey) { location.reload(); return; }
             const user = await api.auth.current();
-            if (reloadIfDifferentUser(user)) return;
+            if (reloadForFreshPermissions()) return;
             await onSuccess(user, { graceMessage });
         };
         try {

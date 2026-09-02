@@ -83,13 +83,14 @@ test('settings tabs the role cannot view are not offered', async ({ page }) => {
     await expect(page.getByRole('tab', { name: 'Tags' })).toBeVisible();
 });
 
-test('signing in as a different user in the same tab gets a fresh page', async ({ page }) => {
+test('signing in again in the same tab gets a fresh page', async ({ page }) => {
     // Plugins — and the RBAC controller's permission set with them — load once
-    // per page. A soft sign-out followed by a sign-in as SOMEONE ELSE used to run
-    // the new session under the previous user's permissions: an administrator
-    // signing in after a viewer got a view-only Settings page. Now a different
-    // identity reloads, exactly as a different engine does; the same identity
-    // keeps the soft path.
+    // per page. A soft sign-out followed by a sign-in used to run the new
+    // session under the stale set: an administrator signing in after a viewer
+    // got a view-only Settings page, and a role re-synced at sign-in (which the
+    // OIDC extension does every time) went unseen until a manual reload. Any
+    // sign-in after plugins have loaded now reloads, exactly as a different
+    // engine does; only the first sign-in of a page session takes the soft path.
     let who: string | null = null;
     await mockEngine(page, {
         'GET /users/current': () => (who ? { user: { id: who === 'admin' ? 1 : 2, username: who } } : { __status: 401 }),
@@ -111,13 +112,14 @@ test('signing in as a different user in the same tab gets a fresh page', async (
     expect(await page.evaluate(() => (window as any).__softPath), 'a different user must get a fresh page').toBeUndefined();
     await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-user'))).toBe('viewer');
 
-    // The SAME user signing back in keeps the soft path — no reload.
+    // The SAME user signing back in reloads too: the engine may have re-synced
+    // their role at that sign-in, and the page's permission set would not know.
     await page.evaluate(() => { (window as any).__softPath = true; });
     await page.getByRole('button', { name: 'Logout', exact: true }).click();
     await expect(page.locator('input[type=password]')).toBeVisible();
     await login(page, 'viewer', 'x');
     await expect(page.locator('.statusbar')).toContainText('as viewer');
-    expect(await page.evaluate(() => (window as any).__softPath), 'the same user must not be reloaded').toBe(true);
+    expect(await page.evaluate(() => (window as any).__softPath), 'a re-sign-in by the same user must also get a fresh page').toBeUndefined();
 });
 
 test('with no RBAC controller, the Dashboard nav and Refresh task are visible', async ({ page }) => {

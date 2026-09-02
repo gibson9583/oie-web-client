@@ -247,10 +247,11 @@ function startEngine() {
         try { sessionStorage.setItem('oie-loaded-engine', loadedEngineKey()); } catch { /* private mode */ }
         // And which USER. The RBAC plugin loads the signed-in user's permission
         // set once, here, and never again in this page session — so a soft
-        // sign-out followed by a sign-in as someone else would run the new
-        // session under the old user's permissions (an administrator signing
-        // in after a viewer got a view-only Settings page). login.tsx compares
-        // against this and forces a reload when the identity changes.
+        // sign-out followed by a sign-in in the same tab would run the new
+        // session under the old permission set (an administrator signing in
+        // after a viewer got a view-only Settings page; a role re-synced at
+        // sign-in was not seen until a reload). login.tsx treats this marker as
+        // "plugins already loaded here" and forces a reload on any later sign-in.
         try { sessionStorage.setItem('oie-loaded-user', String(store.getState('user')?.username ?? '')); } catch { /* private mode */ }
     })();
     return engineStarted;
