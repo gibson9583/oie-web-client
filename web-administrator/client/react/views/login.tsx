@@ -94,8 +94,7 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
 // provider's answer back. The engine requires X-Requested-With on every API
 // request, so the provider cannot redirect to it directly; it redirects to
 // <web-administrator-url>/oidc/callback — a route of this app — and the card
-// relays `code` and `state` by XHR. That is also what makes the flow identical
-// for the Node deployment and the WAR: nothing here needs a server of its own.
+// relays `code` and `state` by XHR. Nothing here needs a server of its own.
 export function isOidcCallback(): boolean {
     return currentRoutePath().split('?')[0] === '/oidc/callback';
 }
@@ -171,8 +170,7 @@ export function LoginForm({ onSuccess }: any) {
     // disappears from a correctly-configured engine.
     // Whether the selected engine offers SSO comes from the engine itself — the
     // extension's pre-auth /public endpoint, asked over the same /api path every
-    // other call takes, so it answers identically through the Node proxy and
-    // beside the WAR. The picker's current choice is written to the routing
+    // other call takes. The picker's current choice is written to the routing
     // cookie first so the proxy asks the engine being looked at.
     const [sso, setSso] = useState<any>(null);
     useEffect(() => {

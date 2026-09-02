@@ -82,8 +82,8 @@ test.describe('SSO through the engine', () => {
         expect(received.logins).toHaveLength(1);
         expect(received.logins[0].password).toBe('oidc:ticket:ticket-1');   // the ticket IS the credential
         // The provider's code is gone from the address bar, and the session is marked as SSO.
+        await expect(page).toHaveURL(/\/dashboard$/);
         expect(new URL(page.url()).search).toBe('');
-        expect(new URL(page.url()).pathname).toMatch(/\/dashboard$/);
         expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBe('1');
         await expect(page.locator('.statusbar')).toContainText('as jdoe');
     });
@@ -94,7 +94,7 @@ test.describe('SSO through the engine', () => {
         await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
         await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
         expect(received.start.return).toBe('/channels');
-        expect(new URL(page.url()).pathname).toMatch(/\/channels$/);
+        await expect(page).toHaveURL(/\/channels$/);
     });
 
     test('an SSO session is not offered a password to change', async ({ page, baseURL }) => {

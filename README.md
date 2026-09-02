@@ -107,10 +107,6 @@ The WAR is the smallest production deployment: OIE's embedded Jetty already
 loads every `*.war` in its `webapps/` directory, so no Node process, reverse
 proxy, or extra port is required.
 
-**Single sign-on works in the WAR too.** The OIDC flow runs in the engine's
-`oie-oidc-auth` extension, so the WAR needs nothing beyond being reachable at
-the web administrator URL configured there.
-
 Download `websupport-<version>.zip` from the
 [Web Support releases](https://github.com/gibson9583/oie-web-support-plugin/releases),
 install it through the Swing Administrator, and restart OIE. The plugin installs
@@ -139,8 +135,6 @@ that server; engine-served plugin UIs additionally require native web-support
 endpoints or the Web Support extension. Features that need the Node server—multiple
 engine targets, a user-entered engine URL, `pluginDirs`, and Node-managed TLS—
 remain available through the source or Docker modes.
-This separation keeps client secrets out of a static WAR and leaves the existing
-deployment paths unchanged.
 
 The Web Support package installs its embedded WAR. You can still run
 the Node.js or Docker deployment instead; the embedded copy simply remains
@@ -219,8 +213,8 @@ SSO is configured entirely on the engine, under **Settings → OIDC
 Authentication** (the `oie-oidc-auth` extension): discovery URL, client ID and
 secret, the web administrator's own URL, provisioning, and role mapping. This
 server keeps nothing — no provider entry, no secret — and the login card asks the
-engine whether it offers SSO. The flow is the same in every deployment, WAR
-included. The extension's README carries the provider recipes.
+engine whether it offers SSO. The extension's README carries the provider
+recipes.
 
 ### Engine routing modes
 

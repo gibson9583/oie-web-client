@@ -119,9 +119,8 @@ app.get('/webadmin/config.json', (_req: Request, res: Response) => {
     // Served pre-auth (the login screen fetches it), so it must not disclose
     // internal engine URLs: the client selects an engine by its stable key (the
     // oie-engine cookie) and the proxy resolves the real URL server side. Whether
-    // an engine offers SSO is not decided here any more — the login card asks the
-    // engine's OIDC extension directly, which is what makes the WAR and this
-    // server behave the same.
+    // an engine offers SSO is not decided here — the login card asks the engine's
+    // OIDC extension directly.
     res.json({
         engines: config.engines.map((e) => ({ key: e.key, name: e.name })),
         devMode: !!config.devMode,

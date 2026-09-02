@@ -182,15 +182,6 @@ export function load(): WebAdminConfig {
         process.exit(1);
     }
 
-    // OIDC moved into the engine: the oie-oidc-auth extension holds the whole
-    // policy, client secret included, and the login card asks it directly. The
-    // old web-tier keys are refused rather than ignored, so an upgraded
-    // deployment learns where the secret went instead of silently losing SSO.
-    if ((config as any).oidc !== undefined || Object.keys(process.env).some((name) => name.startsWith('WEBADMIN_OIDC_'))) {
-        throw new Error('[config] "oidc" and WEBADMIN_OIDC_* are no longer read here: configure the provider — client '
-            + 'secret included — under Settings → OIDC Authentication on the engine, and remove them from this config.');
-    }
-
     config.root = ROOT;
     return config;
 }

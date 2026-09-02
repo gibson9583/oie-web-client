@@ -75,8 +75,7 @@ is missing or invalid stops startup instead of silently using defaults.
 tab under **Settings → OIDC Authentication**: discovery URL, client ID and
 secret, the web administrator's own URL, token policy, JIT provisioning, account
 bindings, and RBAC mapping. This server keeps nothing — no provider entry, no
-secret, no OIDC endpoints — and the old `oidc` / `WEBADMIN_OIDC_*` settings are
-refused at startup so an upgraded deployment learns where they went.
+secret, no OIDC endpoints.
 
 The login card asks the extension's pre-auth `/api/extensions/oidcauth/public`
 endpoint whether the selected engine offers SSO and draws the button from its
@@ -85,8 +84,7 @@ the attempt in a cookie), the provider sends the browser to `/oidc/callback` —
 route of this app — and the card posts the returned `code` and `state` to
 `/callback` for a one-time ticket, which it redeems through the ordinary
 `/users/_login`. The session, the audit event, and any second factor are exactly
-what a password sign-in gets, and the flow is the same through this server's
-proxy and beside the WAR. Register one redirect URI at the provider,
+what a password sign-in gets. Register one redirect URI at the provider,
 `<web-administrator-url>/oidc/callback`; the engine's tab shows the exact value.
 
 The tab and its API are protected by the extension permission `manageOIDC` —

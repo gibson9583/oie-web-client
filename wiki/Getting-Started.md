@@ -40,7 +40,7 @@ If your administrator has enabled single sign-on, the card instead leads with a
 **Sign in with <provider>** button that takes you to your identity provider and
 back; **Use local sign-in** is always available underneath it for a local
 account. SSO is offered whenever the engine's OIDC extension is installed and
-enabled, in every deployment of the web administrator, WAR included.
+enabled.
 
 The browser receives the engine session cookie through the same-origin proxy.
 The Node server does not store your password. Use **Logout** when leaving a
