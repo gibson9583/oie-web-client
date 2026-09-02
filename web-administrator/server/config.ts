@@ -234,6 +234,28 @@ function envBoolean(name: string, fallback: boolean): boolean {
     return value === 'true';
 }
 
+/**
+ * A boolean out of the config FILE, strictly.
+ *
+ * `enabled: "false"` is the shape that matters. JSON has real booleans, but a
+ * quoted one arrives whenever the file is templated, interpolated from an
+ * environment variable, or hand-edited — and under `value.enabled !== false`
+ * the STRING "false" is not the boolean false, so it read as true and switched
+ * SSO on. The same misreading made `autoRedirect: "false"` send every visitor
+ * straight to the IdP with no way back to the password form.
+ *
+ * So the quoted spellings are honoured — they are what a templated config
+ * produces — and anything else is refused at startup, naming the path. Env vars
+ * were already strict about precisely this (see envBoolean); the file was not.
+ */
+function configBoolean(value: unknown, path: string, fallback: boolean): boolean {
+    if (value == null) return fallback;
+    if (typeof value === 'boolean') return value;
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    throw new Error(`[config] ${path} must be true or false, but was ${JSON.stringify(value)}`);
+}
+
 export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<string, OidcProviderConfig> {
     if (raw != null && (typeof raw !== 'object' || Array.isArray(raw))) throw new Error('[config] oidc must be an object keyed by engine name');
     const source: Record<string, any> = { ...((raw || {}) as object) };
@@ -245,13 +267,14 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
         const previous = source[first] || {};
         source[first] = {
             ...previous,
-            enabled: envBoolean('WEBADMIN_OIDC_ENABLED', previous.enabled !== false),
+            enabled: envBoolean('WEBADMIN_OIDC_ENABLED', configBoolean(previous.enabled, `oidc.${first}.enabled`, true)),
             discoveryUrl: process.env.WEBADMIN_OIDC_DISCOVERY_URL ?? previous.discoveryUrl,
             clientId: process.env.WEBADMIN_OIDC_CLIENT_ID ?? previous.clientId,
             clientSecret: process.env.WEBADMIN_OIDC_CLIENT_SECRET ?? previous.clientSecret,
             scopes: process.env.WEBADMIN_OIDC_SCOPES ? process.env.WEBADMIN_OIDC_SCOPES.split(/[ ,]+/).filter(Boolean) : previous.scopes,
             providerLabel: process.env.WEBADMIN_OIDC_PROVIDER_LABEL ?? previous.providerLabel,
-            autoRedirect: envBoolean('WEBADMIN_OIDC_AUTO_REDIRECT', !!previous.autoRedirect)
+            autoRedirect: envBoolean('WEBADMIN_OIDC_AUTO_REDIRECT',
+                configBoolean(previous.autoRedirect, `oidc.${first}.autoRedirect`, false))
         };
     }
     // The config DOCUMENT is keyed by human engine name — that is what an operator
@@ -269,7 +292,7 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
     for (const [key, value] of Object.entries(source)) {
         if (!keyByName.has(key)) throw new Error(`[config] oidc.${key} does not match a configured engine name`);
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`[config] oidc.${key} must be an object`);
-        const enabled = value.enabled !== false;
+        const enabled = configBoolean(value.enabled, `oidc.${key}.enabled`, true);
         if (!enabled) continue;
         for (const field of ['clientSecret']) {
             if (typeof value[field] !== 'string' || !value[field].trim()) throw new Error(`[config] oidc.${key}.${field} is required when enabled`);
@@ -285,7 +308,7 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
         if (!scopes.includes('openid')) scopes.unshift('openid');
         out[keyByName.get(key)!] = { enabled, discoveryUrl: discovery?.toString(), clientId: value.clientId ? String(value.clientId) : undefined,
             clientSecret: value.clientSecret, scopes, providerLabel: String(value.providerLabel || 'SSO'),
-            autoRedirect: !!value.autoRedirect };
+            autoRedirect: configBoolean(value.autoRedirect, `oidc.${key}.autoRedirect`, false) };
     }
     return out;
 }

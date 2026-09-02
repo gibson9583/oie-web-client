@@ -240,4 +240,22 @@ assert.strictEqual(engineManaged.clientId, undefined);
 assert.throws(() => (0, config_1.normalizeOidc)({ '0': providerConfig }, engines), /does not match a configured engine name/);
 // An empty document is valid (the shipped example) and yields no providers.
 assert.deepStrictEqual((0, config_1.normalizeOidc)({}, engines), {});
+// A QUOTED boolean means what it says. Under the previous `value.enabled !==
+// false` the STRING "false" was not the boolean false, so it read as truthy and
+// a provider the operator had switched off stayed ON — and `autoRedirect:
+// "false"` sent every visitor to the IdP with no way back to the password form.
+// Quoted booleans arrive whenever the config is templated or interpolated from
+// an environment variable, so they are honoured rather than rejected.
+assert.deepStrictEqual((0, config_1.normalizeOidc)({ Production: { ...providerConfig, enabled: 'false' } }, engines), {}, 'the string "false" must disable the provider, not enable it');
+assert.strictEqual((0, config_1.normalizeOidc)({ Production: { ...providerConfig, autoRedirect: 'false' } }, engines)['k:production'].autoRedirect, false, 'the string "false" must not force an auto-redirect');
+// Anything that is not a boolean either way is refused at startup, naming the
+// path — the alternative is a config that says one thing and a server that does
+// the other, discovered at the login screen.
+assert.throws(() => (0, config_1.normalizeOidc)({ Production: { ...providerConfig, enabled: 1 } }, engines), /oidc\.Production\.enabled must be true or false, but was 1/);
+assert.throws(() => (0, config_1.normalizeOidc)({ Production: { ...providerConfig, enabled: 'no' } }, engines), /must be true or false/);
+assert.throws(() => (0, config_1.normalizeOidc)({ Production: { ...providerConfig, autoRedirect: 'yes' } }, engines), /oidc\.Production\.autoRedirect must be true or false/);
+// And the real booleans keep working, both directions, with the right defaults.
+assert.deepStrictEqual((0, config_1.normalizeOidc)({ Production: { ...providerConfig, enabled: false } }, engines), {});
+assert.strictEqual((0, config_1.normalizeOidc)({ Production: { ...providerConfig, autoRedirect: true } }, engines)['k:production'].autoRedirect, true);
+assert.strictEqual((0, config_1.normalizeOidc)({ Production: providerConfig }, engines)['k:production'].autoRedirect, false);
 budgetTests().then(() => console.log('oidc tests passed'), (error) => { console.error(error); process.exit(1); });

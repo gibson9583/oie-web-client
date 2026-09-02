@@ -97,13 +97,6 @@ export function takeOidcResult(): any {
     } catch { return { status: 'FAIL', message: 'SSO sign-in could not be completed.' }; }
 }
 
-// Preselect the engine last used (persisted in the oie-engine cookie) so the
-// picker remembers your choice instead of always snapping back to the first.
-// The cookie holds the engine's stable key (server config.ts engineKey), so an
-// edited engine list can't silently change what the remembered choice means
-// (issue #53). A remembered choice that no longer resolves — the engine was
-// removed or renamed, or the cookie is a pre-key numeric index — returns '':
-// the picker then demands an explicit choice rather than guessing an engine.
 // Whether the login card offers an engine choice at all. initialSelection's
 // stale-cookie behavior hinges on this exactly as the rendered picker does, so
 // the two read it from here rather than each spelling out the predicate.
@@ -111,6 +104,13 @@ function hasPicker(engines: any, devMode: any): boolean {
     return engines.length > 1 || !!devMode;
 }
 
+// Preselect the engine last used (persisted in the oie-engine cookie) so the
+// picker remembers your choice instead of always snapping back to the first.
+// The cookie holds the engine's stable key (server config.ts engineKey), so an
+// edited engine list can't silently change what the remembered choice means
+// (issue #53). A remembered choice that no longer resolves — the engine was
+// removed or renamed, or the cookie is a pre-key numeric index — returns '':
+// the picker then demands an explicit choice rather than guessing an engine.
 function initialSelection(engines: any, devMode: any) {
     const c = getCookie('oie-engine');
     if (c === 'custom' && devMode) return 'custom';
@@ -255,7 +255,13 @@ export function LoginForm({ onSuccess }: any) {
                 }).catch((err: any) => setError(err.message || 'Multi-factor sign-in failed.'));
             return;
         }
-        setError(result.message || 'SSO sign-in failed.');
+        // Same three-step fallback the password path uses (below): the engine's own
+        // message, then the status the engine named, then the generic line. Reading
+        // only `message` meant a status carrying none — FAIL_LOCKED_OUT,
+        // FAIL_EXPIRED, FAIL_VERSION_MISMATCH — told an SSO user "SSO sign-in
+        // failed" and sent them back to the IdP, which will keep succeeding: the
+        // rejection is the ENGINE's, and the reason it gave was dropped here.
+        setError(result.message || (STATUS_MESSAGES as any)[status] || 'SSO sign-in failed.');
         chooseLocal(true);
         setSsoReauth(true);
         // Mount-only by design: the SSO result cookie and autoRedirect decision

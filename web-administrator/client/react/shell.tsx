@@ -756,15 +756,20 @@ export function App() {
                 const u = await api.auth.current();
                 if (u && u.username && alive) {
                     const oidc = takeOidcResult();
-                    // An SSO round trip that came back needing a SECOND FACTOR must
-                    // not be swallowed here just because this tab already holds a
-                    // session. takeOidcResult() consumes the cookie, so falling
-                    // through would discard the challenge for good and render the
-                    // shell as if the attempt had simply succeeded — the user is
-                    // signed in on the old session and never told the factor was
-                    // asked for. LoginForm is the only component that drives the
-                    // hand-off, so put it back and let the card handle it.
-                    if (oidc && oidc.clientPluginClass && oidc.status !== 'SUCCESS' && oidc.status !== 'SUCCESS_GRACE_PERIOD') {
+                    // An SSO round trip that did NOT succeed must not be swallowed
+                    // here just because this tab already holds a session.
+                    // takeOidcResult() consumes the cookie, so falling through
+                    // would discard the outcome for good and render the shell as if
+                    // the attempt had simply succeeded — the user stays on the old
+                    // session and is never told what happened. That is worst for a
+                    // REFUSAL: someone whose access was revoked at the IdP signs in,
+                    // is turned away by the engine, and lands in a working admin UI
+                    // on their previous session with no message at all. It was
+                    // originally guarded for the second-factor case only, which is
+                    // the same swallow with a narrower door. LoginForm is the only
+                    // component that drives either hand-off, so put the result back
+                    // and let the card handle it.
+                    if (oidc && oidc.status !== 'SUCCESS' && oidc.status !== 'SUCCESS_GRACE_PERIOD') {
                         restoreOidcResult(oidc);
                         store.setState('user', null);
                         return;   // the finally below still sets authChecked

@@ -445,6 +445,47 @@ test.describe('OIDC login', () => {
         await expect(page.getByText('Two-factor authentication')).toBeVisible({ timeout: 15_000 });
     });
 
+    test('an engine REFUSAL is not swallowed when the tab already holds a session', async ({ page }) => {
+        // The same swallow as the test above, through the door that was left open:
+        // the shell's guard checked for clientPluginClass, so it caught a second
+        // factor and let a plain refusal through. That is the worse case of the
+        // two. Someone whose access was revoked at the IdP signs in, the ENGINE
+        // turns them away, and because this tab still holds yesterday's session
+        // they land in a working admin UI with no message — the revocation
+        // silently undone by a stale cookie.
+        loginStatus = { status: 401, body: { 'com.mirth.connect.model.LoginStatus': {
+            status: 'FAIL',
+            message: 'SSO sign-in was rejected.'
+        } } };
+        let sessionExists = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (sessionExists ? { user: { id: 1, username: 'jdoe' } } : { __status: 401 })
+        });
+        await page.goto(appUrl + '/');
+        onEngineLogin = () => { sessionExists = true; };
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+
+        // The refusal is reported, and the shell is NOT rendered on the old session.
+        await expect(page.getByText('SSO sign-in was rejected.')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('.shell')).toHaveCount(0);
+        // Break-glass stays reachable, as on every other failure path.
+        await expect(page.locator('input[type=password]')).toBeVisible();
+    });
+
+    test('a refusal that names only a status still explains itself', async ({ page }) => {
+        // The SSO path read result.message and nothing else, so a status carrying
+        // no message — a locked-out account, an expired password, a version
+        // mismatch — reported "SSO sign-in failed" and sent the user back to the
+        // IdP, which will keep on succeeding: the rejection is the engine's. The
+        // password path has always named these; both now use the same table.
+        loginStatus = { status: 401, body: { 'com.mirth.connect.model.LoginStatus': { status: 'FAIL_LOCKED_OUT' } } };
+        await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+
+        await expect(page.getByText('Account locked out. Try again later.')).toBeVisible({ timeout: 15_000 });
+    });
+
     test('cancelling the second factor leaves local sign-in reachable', async ({ page }) => {
         // A dismissed MFA prompt must not strand the user on a blank card: the
         // authenticator resolves a FAIL, which the card reports inline.
