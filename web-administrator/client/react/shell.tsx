@@ -245,6 +245,13 @@ function startEngine() {
         // wrong engine's panels. login.jsx compares against this and forces a reload
         // when the target engine changes (see loadedEngineKey / engineSelectionKey).
         try { sessionStorage.setItem('oie-loaded-engine', loadedEngineKey()); } catch { /* private mode */ }
+        // And which USER. The RBAC plugin loads the signed-in user's permission
+        // set once, here, and never again in this page session — so a soft
+        // sign-out followed by a sign-in as someone else would run the new
+        // session under the old user's permissions (an administrator signing
+        // in after a viewer got a view-only Settings page). login.tsx compares
+        // against this and forces a reload when the identity changes.
+        try { sessionStorage.setItem('oie-loaded-user', String(store.getState('user')?.username ?? '')); } catch { /* private mode */ }
     })();
     return engineStarted;
 }

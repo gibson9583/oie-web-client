@@ -1741,17 +1741,28 @@ const BUILTIN_TABS = [
 // (Data Pruner). A plugin panel renders into the tab host via panel.render(host,
 // ctx); if it returns a detached Node, append it (matching the vanilla shell).
 function buildTabDefs(plat: any) {
-    const defs = BUILTIN_TABS.slice();
+    // Hide a tab only when RBAC denies BOTH its doRefresh and its doSave — a
+    // view-only holder (e.g. View Roles without Manage Roles) keeps the tab
+    // read-only, exactly like Swing. Gating on doSave alone hid the RBAC tab
+    // from everyone but Manage Roles holders, which locked viewers out entirely
+    // (and made a missing is_admin assignment look like a permissions
+    // chicken-and-egg).
+    const visible = (label: string) => {
+        const taskGroup = `settings_${label}`;
+        return plat.checkTask(taskGroup, 'doRefresh') || plat.checkTask(taskGroup, 'doSave');
+    };
+    // The SAME gate for the built-in tabs. They were appended unconditionally,
+    // so a role without viewServerSettings still got a Server tab whose first
+    // request answered "Missing permission: viewServerSettings" in an error
+    // dialog. The engine gates per tab, and the RBAC plugin already maps every
+    // built-in tab's tasks (settings_Server/doRefresh → viewServerSettings,
+    // settings_Tags/doRefresh → viewTags, …); only Administrator is deliberately
+    // unmapped, because it reads and writes the current user's own preferences.
+    const defs = BUILTIN_TABS.filter((tab) => visible(tab.label));
     for (const panel of plat.settingsPanels()) {
         // A plugin can publish group-prefixed doRefresh/doSave tasks through an
-        // ExtensionPermission. Hide the panel only when RBAC denies BOTH —
-        // a view-only holder (e.g. View Roles without Manage Roles) keeps the
-        // panel read-only, exactly like Swing. Gating on doSave alone hid the
-        // RBAC tab from everyone but Manage Roles holders, which locked
-        // viewers out entirely (and made a missing is_admin assignment look
-        // like a permissions chicken-and-egg).
-        const taskGroup = `settings_${panel.label}`;
-        if (!plat.checkTask(taskGroup, 'doRefresh') && !plat.checkTask(taskGroup, 'doSave')) continue;
+        // ExtensionPermission.
+        if (!visible(panel.label)) continue;
         defs.push({
             label: panel.label,
             render: (ctx: any) => {
@@ -1858,7 +1869,8 @@ export function SettingsView({ query }: any) {
     const [defs] = useState(() => buildTabDefs(platform));
 
     // Deep-link: /settings?tab=<label> opens that tab (e.g. the account menu's
-    // "Settings" → Administrator preferences). Unknown/absent → Server (0).
+    // "Settings" → Administrator preferences). Unknown/absent → the first tab
+    // this role can see (Server for an administrator).
     const [active, setActive] = useState(() => {
         const want = String(query?.tab || '').trim().toLowerCase();
         const i = want ? defs.findIndex((d: any) => d.label.toLowerCase() === want) : -1;
