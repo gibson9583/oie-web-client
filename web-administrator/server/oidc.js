@@ -46,6 +46,7 @@ exports.encodeResult = encodeResult;
 exports.unwrapEngineJson = unwrapEngineJson;
 exports.validateIdTokenClaims = validateIdTokenClaims;
 exports.engineOidcConfiguration = engineOidcConfiguration;
+exports.withBudget = withBudget;
 exports.throttleKey = throttleKey;
 exports.createOidcRouter = createOidcRouter;
 const crypto = __importStar(require("crypto"));
@@ -243,7 +244,13 @@ function engineOidcConfiguration(config, engineKey) {
     const probe = (async () => {
         let value = null;
         try {
-            const response = await (0, proxy_1.engineRequest)(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' }, timeoutMs: 5000 });
+            // deadlineMs as well as timeoutMs: timeoutMs is an INACTIVITY timer, so
+            // an engine that dribbles a byte every few seconds resets it forever.
+            // This probe's whole contract is that it settles — the negative cache
+            // and the in-flight entry above are only written when it does — so a
+            // never-settling probe would pin every later request to the caller's
+            // full budget permanently, with no new probe ever started.
+            const response = await (0, proxy_1.engineRequest)(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' }, timeoutMs: 5000, deadlineMs: 6000 });
             if (response.status === 200) {
                 let parsed = JSON.parse(response.body.toString('utf8'));
                 // Extension servlets that return String are serialized by the engine
@@ -259,6 +266,21 @@ function engineOidcConfiguration(config, engineKey) {
     })().finally(() => engineConfigInFlight.delete(engine.url));
     engineConfigInFlight.set(engine.url, probe);
     return probe;
+}
+// Resolves to `work`'s value, or null once `ms` lapses — whichever lands first.
+// The work is NOT cancelled: engineOidcConfiguration's probe keeps running behind
+// its shared in-flight entry and still populates the cache, so giving up here
+// costs the current response its answer, not the answer itself. That guarantee
+// depends on the probe actually settling — see its deadlineMs.
+function withBudget(work, ms) {
+    let timer;
+    const lapsed = new Promise((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+        // Never hold the process open for a deadline nobody is waiting on.
+        if (typeof timer.unref === 'function')
+            timer.unref();
+    });
+    return Promise.race([work, lapsed]).finally(() => clearTimeout(timer));
 }
 // Resolves an engine by its stable key (issue #53). A pre-key numeric index is
 // not accepted and not translated: it would be a guess at which entry the caller

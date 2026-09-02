@@ -105,6 +105,28 @@ const trusted = new Set(['10.0.0.1']);
 assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');
 assert.strictEqual((0, oidc_1.throttleKey)('192.0.2.9', '203.0.113.5', trusted), '192.0.2.9');
 assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', undefined, trusted), '10.0.0.1');
+// The pre-auth config document races every OIDC probe against one shared budget.
+// Async, so it runs last (this file compiles to CommonJS — no top-level await).
+async function budgetTests() {
+    const settled = (value, ms) => new Promise((r) => setTimeout(() => r(value), ms));
+    // Work that beats the budget wins, and its value is passed through intact.
+    assert.strictEqual(await (0, oidc_1.withBudget)(settled('fast', 1), 200), 'fast');
+    // Work that overruns yields null rather than holding the response.
+    assert.strictEqual(await (0, oidc_1.withBudget)(settled('slow', 200), 20), null);
+    // ONE budget shared across N probes bounds the whole fan-out, not each leg:
+    // three 200ms probes against a single 60ms budget must finish in about 60ms,
+    // never 3×. This is what keeps N engines from stacking N timeouts.
+    const budget = (0, oidc_1.withBudget)(new Promise(() => { }), 60);
+    const started = process.hrtime.bigint();
+    const all = await Promise.all([1, 2, 3].map(() => Promise.race([settled('probe', 200), budget])));
+    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
+    assert.deepStrictEqual(all, [null, null, null]);
+    assert.ok(elapsedMs < 150, `one shared budget must bound the whole fan-out, but it took ${elapsedMs.toFixed(0)}ms — long enough that each probe is being given its own budget`);
+    // Giving up does not cancel the work — the probe still lands and still caches.
+    const work = settled('late', 40);
+    assert.strictEqual(await (0, oidc_1.withBudget)(work, 5), null);
+    assert.strictEqual(await work, 'late');
+}
 const metadata = { issuer: 'https://issuer.test', authorization_endpoint: 'https://issuer.test/auth', token_endpoint: 'https://issuer.test/token' };
 const provider = { clientId: 'client' };
 const claims = { iss: metadata.issuer, aud: 'client', nonce: 'n', exp: Math.floor(now / 1000) + 60 };
@@ -124,4 +146,4 @@ assert.strictEqual(engineManaged.clientId, undefined);
 assert.throws(() => (0, config_1.normalizeOidc)({ '0': providerConfig }, engines), /does not match a configured engine name/);
 // An empty document is valid (the shipped example) and yields no providers.
 assert.deepStrictEqual((0, config_1.normalizeOidc)({}, engines), {});
-console.log('oidc tests passed');
+budgetTests().then(() => console.log('oidc tests passed'), (error) => { console.error(error); process.exit(1); });

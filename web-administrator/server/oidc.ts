@@ -196,7 +196,13 @@ export function engineOidcConfiguration(config: WebAdminConfig, engineKey: strin
     const probe = (async () => {
         let value: EngineOidc | null = null;
         try {
-            const response = await engineRequest(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' }, timeoutMs: 5000 });
+            // deadlineMs as well as timeoutMs: timeoutMs is an INACTIVITY timer, so
+            // an engine that dribbles a byte every few seconds resets it forever.
+            // This probe's whole contract is that it settles — the negative cache
+            // and the in-flight entry above are only written when it does — so a
+            // never-settling probe would pin every later request to the caller's
+            // full budget permanently, with no new probe ever started.
+            const response = await engineRequest(engine, { method: 'GET', path: '/api/extensions/oidcauth/public', headers: { accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine' }, timeoutMs: 5000, deadlineMs: 6000 });
             if (response.status === 200) {
                 let parsed = JSON.parse(response.body.toString('utf8'));
                 // Extension servlets that return String are serialized by the engine
@@ -210,6 +216,21 @@ export function engineOidcConfiguration(config: WebAdminConfig, engineKey: strin
     })().finally(() => engineConfigInFlight.delete(engine.url));
     engineConfigInFlight.set(engine.url, probe);
     return probe;
+}
+
+// Resolves to `work`'s value, or null once `ms` lapses — whichever lands first.
+// The work is NOT cancelled: engineOidcConfiguration's probe keeps running behind
+// its shared in-flight entry and still populates the cache, so giving up here
+// costs the current response its answer, not the answer itself. That guarantee
+// depends on the probe actually settling — see its deadlineMs.
+export function withBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
+    let timer: ReturnType<typeof setTimeout>;
+    const lapsed = new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+        // Never hold the process open for a deadline nobody is waiting on.
+        if (typeof timer.unref === 'function') timer.unref();
+    });
+    return Promise.race([work, lapsed]).finally(() => clearTimeout(timer));
 }
 
 // Resolves an engine by its stable key (issue #53). A pre-key numeric index is

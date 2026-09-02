@@ -147,6 +147,19 @@ app.use('/api', (0, proxy_1.createApiProxy)(config));
 // OIDC browser redirects must be mounted before static files / SPA fallback.
 app.use('/oidc', (0, oidc_1.createOidcRouter)(config));
 // --- Web admin metadata ------------------------------------------------------
+// Sized from the probe's measured cost, not from its timeout. The engine's
+// /public handler does no I/O — no DB, no lock, no IdP fetch, and it is pre-auth
+// so it skips session lookup — so the wire dominates: measured p50 4.8ms / p99
+// 23ms on loopback, ~62ms on a cold JVM, and roughly 3 RTT elsewhere (~470ms
+// intercontinental). 1000ms is about 2x the worst realistic case, with the
+// margin kept mainly for a stop-the-world GC pause on a large engine heap, which
+// is the one term the code path does not bound. Anything slower is an engine
+// that cannot usefully serve an SSO sign-in; local sign-in stays on the card.
+const SSO_PROBE_BUDGET_MS = 1000;
+// Config is immutable after load(), so whether ANY engine can be probed is fixed
+// at startup. Deployments without OIDC then allocate no budget timer per request
+// on this unthrottled pre-auth endpoint.
+const anyEngineProbesOidc = config.engines.some((e) => config.oidc[e.key]);
 app.get('/webadmin/config.json', async (req, res) => {
     // This endpoint is served pre-auth (the login screen fetches it), so it must
     // not disclose internal engine URLs. The client selects an engine by its
@@ -154,10 +167,21 @@ app.get('/webadmin/config.json', async (req, res) => {
     // server side (see server/proxy.js); the browser never needs the URL. The
     // key adds no disclosure: it is derived from `name`, which is already sent
     // (host-derived when unset — buildEngines → engineLabel).
+    // Bound what an ANONYMOUS request can cost. Two things keep the OIDC probes
+    // from dominating this response: they run concurrently (Promise.all below, so
+    // N engines cost one timeout rather than N × 5s), and they share the single
+    // budget started here. An engine that has not answered when the budget lapses
+    // is emitted without its `sso` block instead of holding the whole document —
+    // the shell awaits this fetch BEFORE its auth check, so a stalled probe would
+    // otherwise sit on the boot splash of every tab, signed-in ones included.
+    // Giving up costs only this response: the probe continues behind its shared
+    // in-flight entry and fills the cache, so the next load resolves instantly.
+    // Engines with no web-side oidc entry are never probed at all.
+    const ssoBudget = anyEngineProbesOidc ? (0, oidc_1.withBudget)(new Promise(() => { }), SSO_PROBE_BUDGET_MS) : null;
     res.json({
         engines: await Promise.all(config.engines.map(async (e) => {
             const oidc = config.oidc[e.key];
-            const engineOidc = oidc ? await (0, oidc_1.engineOidcConfiguration)(config, e.key) : null;
+            const engineOidc = oidc && ssoBudget ? await Promise.race([(0, oidc_1.engineOidcConfiguration)(config, e.key), ssoBudget]) : null;
             return {
                 key: e.key,
                 name: e.name,
