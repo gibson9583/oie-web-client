@@ -69,6 +69,42 @@ is missing or invalid stops startup instead of silently using defaults.
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` | Serve the web UI itself over HTTPS: `{ "key", "cert", "passphrase"? }` (PEM paths). Leave `null` to serve HTTP and terminate TLS in front |
 
+### OpenID Connect sign-in
+
+**Everything is configured on the engine**, in the `oie-oidc-auth` extension's
+tab under **Settings → OIDC Authentication**: discovery URL, client ID and
+secret, the web administrator's own URL, token policy, JIT provisioning, account
+bindings, and RBAC mapping. This server keeps nothing — no provider entry, no
+secret, no OIDC endpoints.
+
+The login card asks the extension's pre-auth `/api/extensions/oidcauth/public`
+endpoint whether the selected engine offers SSO and draws the button from its
+answer. Signing in posts `/start` (the engine returns the provider URL and seals
+the attempt in a cookie), the provider sends the browser to `/oidc/callback` — a
+route of this app — and the card posts the returned `code` and `state` to
+`/callback` for a one-time ticket, which it redeems through the ordinary
+`/users/_login`. The session, the audit event, and any second factor are exactly
+what a password sign-in gets. Register one redirect URI at the provider,
+`<web-administrator-url>/oidc/callback`; the engine's tab shows the exact value.
+
+The tab and its API are protected by the extension permission `manageOIDC` —
+holders of the RBAC admin role carry it implicitly, so grant it explicitly only
+to non-admin roles. **Test connection** verifies discovery and the signing keys
+and changes nothing. The roles claim must be present in the **ID token**; most
+providers put roles only in the access token unless told otherwise (the
+extension's README has the per-provider recipe).
+
+Local sign-in remains available from the login card as a break-glass path.
+
+**Known limitations (1.0).** Deliberate, and listed so they are not discovered during an incident:
+
+- **Logout does not end the provider session.** RP-initiated and front-channel logout are not implemented, so signing out here leaves the IdP session live and a subsequent sign-in can complete without re-authenticating. Align the engine's `server.api.sessionmaxinactiveinterval` with the provider's session policy.
+- **Confidential client only.** The client secret and code exchange live in the engine; PKCE public-client mode is not offered.
+- **One identity provider per engine.** The engine loads exactly one authorization plugin, so a second provider cannot be added alongside. Different engines in `allowedUrls` may each have their own.
+- **One role per user**, resolved first-match-wins from the IdP claim — a user in several mapped groups gets the first match, not a union.
+- **Replay protection on the engine side is per-process**, so a captured ID token has a replay window bounded by the engine's `max-token-age-seconds` (300s by default) across a restart or a second node. The `nonce` the engine checks at the callback is what prevents replay in the ordinary browser flow.
+- **Deprovisioning takes effect at next sign-in.** Removing a user at the IdP blocks their next login but does not disable the engine account; nothing sweeps for accounts whose IdP identity has gone.
+
 Example `config.json`:
 
 ```json

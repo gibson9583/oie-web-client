@@ -13,12 +13,20 @@ Playwright tests for the web admin's core workflows. Two modes:
 ## Run
 
 ```bash
-npm run e2e                 # mocked suite (boots the Node server automatically)
+npm run e2e                 # mocked suite (each worker boots its own Node server)
 npm run e2e -- --headed     # watch it in a browser
 npm run e2e -- e2e/login.spec.ts
+E2E_WORKERS=1 npm run e2e   # serial, e.g. to bisect a flake
 ```
 
 First time only: `npx playwright install chromium`.
+
+The mocked suite runs in parallel: every worker starts its own web-administrator
+on a free port with a **fixed config** (`e2e/base.ts`), so a run is hermetic —
+it neither reads your `config.json` nor probes whatever engine you have running,
+and it never collides with a dev server on `:3030`. Specs import `test` from
+`./base.js`, not from `@playwright/test`; that is what routes `page.goto('/…')`
+to the worker's server.
 
 ### Live mode
 
@@ -47,7 +55,10 @@ Set `E2E_EXPECT_DEPLOYMENT=war` to require the WAR deployment marker.
 
 | File | Purpose |
 |---|---|
-| `playwright.config.ts` (repo root) | `ui` + `live` projects; boots `npm start -w web-administrator` |
+| `playwright.config.ts` (repo root) | `ui` + `live` projects; parallel workers |
+| `base.ts` | the `test` specs import: one server per worker, fixed config, per-worker `baseURL` |
+| `server-harness.ts` | `startWebAdmin()` — boots a real web-administrator server on a free port |
+| `sso.spec.ts` | the engine-hosted OIDC flow, mocked in the browser: provider, engine endpoints, and the ticket login |
 | `fixtures.ts` | canned engine responses in the XStream wire shapes the client expects |
 | `mock.ts` | `mockEngine(page, overrides)` route interceptor + `login()` helper |
 | `*.spec.ts` | mocked workflow tests (login, dashboard + `cards` card view, channels, `channel-wizard`/`alert-wizard` guided builders, …) |

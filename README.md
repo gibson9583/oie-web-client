@@ -135,8 +135,6 @@ that server; engine-served plugin UIs additionally require native web-support
 endpoints or the Web Support extension. Features that need the Node server—multiple
 engine targets, a user-entered engine URL, `pluginDirs`, and Node-managed TLS—
 remain available through the source or Docker modes.
-This separation keeps client secrets out of a static WAR and leaves the existing
-deployment paths unchanged.
 
 The Web Support package installs its embedded WAR. You can still run
 the Node.js or Docker deployment instead; the embedded copy simply remains
@@ -208,6 +206,15 @@ than silently booting on defaults. Start from
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy). Loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor autocompletions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` (HTTP) | Serve the UI over **HTTPS** directly — set `{ "key", "cert", "passphrase"? }` to PEM file paths (both key and cert required). Off by default; see [Serving over HTTPS](#serving-over-https) |
+
+### OpenID Connect sign-in
+
+SSO is configured entirely on the engine, under **Settings → OIDC
+Authentication** (the `oie-oidc-auth` extension): discovery URL, client ID and
+secret, the web administrator's own URL, provisioning, and role mapping. This
+server keeps nothing — no provider entry, no secret — and the login card asks the
+engine whether it offers SSO. The extension's README carries the provider
+recipes.
 
 ### Engine routing modes
 

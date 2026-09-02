@@ -251,4 +251,3 @@ export function buildEngines(config: Pick<WebAdminConfig, 'engine' | 'allowedUrl
     }
     return engines;
 }
-

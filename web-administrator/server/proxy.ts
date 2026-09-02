@@ -160,6 +160,18 @@ export function forceNoStore(headers: http.OutgoingHttpHeaders): http.OutgoingHt
     return headers;
 }
 
+/** Apply the browser-facing session-cookie policy shared by the streaming proxy
+ * and server-side OIDC callback login. */
+export function rewriteSetCookies(cookies: string[] | undefined, secure: boolean): string[] {
+    return (cookies || []).map((original) => {
+        let cookie = original;
+        if (!/;\s*samesite=/i.test(cookie)) cookie += '; SameSite=Lax';
+        if (secure) { if (!/;\s*secure\b/i.test(cookie)) cookie += '; Secure'; }
+        else cookie = cookie.replace(/;\s*secure\b/ig, '');
+        return cookie;
+    });
+}
+
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
 // Forwarded / X-Real-IP headers unless the immediate peer is trusted. Pure +
@@ -269,12 +281,7 @@ export function createApiProxy(config: WebAdminConfig) {
                 // proxy; otherwise derive the scheme from the actual connection.
                 const proto = isTrustedPeer(req.socket.remoteAddress, trustedProxies) ? req.headers['x-forwarded-proto'] : undefined;
                 const secure = proto === 'https' || !!(req.socket as import('tls').TLSSocket).encrypted;
-                resHeaders['set-cookie'] = resHeaders['set-cookie'].map((c: string) => {
-                    if (!/;\s*samesite=/i.test(c)) c += '; SameSite=Lax';
-                    if (secure) { if (!/;\s*secure/i.test(c)) c += '; Secure'; }
-                    else c = c.replace(/;\s*secure\b/ig, '');
-                    return c;
-                });
+                resHeaders['set-cookie'] = rewriteSetCookies(resHeaders['set-cookie'], secure);
             }
             res.writeHead(upstreamRes.statusCode!, resHeaders);
             upstreamRes.pipe(res);
@@ -317,7 +324,14 @@ export function createApiProxy(config: WebAdminConfig) {
 // ENGINE makes the EXTENSIONS_MANAGE authorization decision). `engine` is a
 // resolved { url, verifyTls } (see resolveEngine) — same TLS posture as the proxy.
 // Buffers the response.
-export function engineRequest(engine: EngineTarget, { method, path: reqPath, headers, body }: { method: string; path: string; headers?: http.OutgoingHttpHeaders; body?: Buffer | null }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+// timeoutMs is an INACTIVITY timeout — any traffic resets it, so a peer that
+// dribbles one byte every few seconds holds the request open forever. deadlineMs
+// adds an absolute cap for callers that must settle in bounded time however the
+// peer paces itself (see engineOidcConfiguration, whose in-flight entry and cache
+// are only written when its probe settles). Truncation — headers then an early
+// close — is handled separately by the 'close' backstop below, since by then the
+// request is already destroyed and no timer can fire.
+export function engineRequest(engine: EngineTarget, { method, path: reqPath, headers, body, timeoutMs = 120000, deadlineMs = 0 }: { method: string; path: string; headers?: http.OutgoingHttpHeaders; body?: Buffer | null; timeoutMs?: number; deadlineMs?: number }): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
     return new Promise((resolve, reject) => {
         const target = new URL(engine.url);
         const isHttps = target.protocol === 'https:';
@@ -331,6 +345,27 @@ export function engineRequest(engine: EngineTarget, { method, path: reqPath, hea
         }
         h.host = target.host;
         const MAX_RESPONSE = 16 * 1024 * 1024;   // bound the buffered engine response
+        // Assigned below once `upstream` exists; cleared on every settle path so a
+        // pending deadline never outlives the request that already answered.
+        let deadline: ReturnType<typeof setTimeout> | null = null;
+        const clearDeadline = () => { if (deadline) { clearTimeout(deadline); deadline = null; } };
+        // Every exit runs through this. The 'close' handler below is the backstop
+        // for a peer that sends headers and then closes early (truncated body,
+        // engine restart mid-response, an LB dropping the connection): Node has
+        // already destroyed the request by then, so neither the inactivity timer
+        // nor a later destroy() can emit anything, and without this the promise
+        // would simply never settle. Callers treat "never settles" as fatal —
+        // engineOidcConfiguration only writes its cache and releases its in-flight
+        // entry when the probe resolves.
+        let settled = false;
+        const finish = <T>(fn: (value: T) => void) => (value: T) => {
+            if (settled) return;
+            settled = true;
+            clearDeadline();
+            fn(value);
+        };
+        const done = finish(resolve);
+        const fail = finish(reject);
         const upstream = transport.request({
             agent,
             protocol: target.protocol,
@@ -344,15 +379,17 @@ export function engineRequest(engine: EngineTarget, { method, path: reqPath, hea
             let size = 0;
             res.on('data', (c: Buffer) => {
                 size += c.length;
-                if (size > MAX_RESPONSE) { res.destroy(); reject(new Error('engine response too large')); return; }
+                if (size > MAX_RESPONSE) { res.destroy(); fail(new Error('engine response too large')); return; }
                 chunks.push(c);
             });
-            res.on('end', () => resolve({ status: res.statusCode!, headers: res.headers, body: Buffer.concat(chunks) }));
+            res.on('end', () => done({ status: res.statusCode!, headers: res.headers, body: Buffer.concat(chunks) }));
         });
-        upstream.setTimeout(120000, () => upstream.destroy(new Error('engine request timed out')));
-        upstream.on('error', reject);
+        upstream.setTimeout(timeoutMs, () => upstream.destroy(new Error('engine request timed out')));
+        if (deadlineMs > 0) deadline = setTimeout(() => upstream.destroy(new Error('engine request exceeded its deadline')), deadlineMs);
+        upstream.on('error', fail);
+        // Fires on EVERY request, so it is a no-op once anything above settled.
+        upstream.on('close', () => fail(new Error('engine closed the connection before the response completed')));
         if (body && body.length) upstream.write(body);
         upstream.end();
     });
 }
-

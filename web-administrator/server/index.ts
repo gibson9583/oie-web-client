@@ -115,14 +115,12 @@ installPluginRoutes(app, config);
 // --- Engine REST API proxy ---------------------------------------------------
 app.use('/api', createApiProxy(config));
 
-// --- Web admin metadata ------------------------------------------------------
-app.get('/webadmin/config.json', (req: Request, res: Response) => {
-    // This endpoint is served pre-auth (the login screen fetches it), so it must
-    // not disclose internal engine URLs. The client selects an engine by its
-    // stable key (the oie-engine cookie) and the proxy resolves the real URL
-    // server side (see server/proxy.js); the browser never needs the URL. The
-    // key adds no disclosure: it is derived from `name`, which is already sent
-    // (host-derived when unset — buildEngines → engineLabel).
+app.get('/webadmin/config.json', (_req: Request, res: Response) => {
+    // Served pre-auth (the login screen fetches it), so it must not disclose
+    // internal engine URLs: the client selects an engine by its stable key (the
+    // oie-engine cookie) and the proxy resolves the real URL server side. Whether
+    // an engine offers SSO is not decided here — the login card asks the engine's
+    // OIDC extension directly.
     res.json({
         engines: config.engines.map((e) => ({ key: e.key, name: e.name })),
         devMode: !!config.devMode,

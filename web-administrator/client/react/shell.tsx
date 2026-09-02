@@ -34,9 +34,10 @@ import { disposeDetachedMonaco } from '../core/monaco.js';
 import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
 import { apiUrl, appUrl, routeUrl } from '../core/deployment.js';
 import { platform, loadPlugins } from '@oie/web-shell';
-import { LoginForm } from './views/login.jsx';
+import { LoginForm, isOidcCallback, isExpectedOidcCallback, takeOidcCallback } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
+import { clearSsoSession, holdAutoRedirect, isSsoSession } from './sso-session.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -244,6 +245,14 @@ function startEngine() {
         // wrong engine's panels. login.jsx compares against this and forces a reload
         // when the target engine changes (see loadedEngineKey / engineSelectionKey).
         try { sessionStorage.setItem('oie-loaded-engine', loadedEngineKey()); } catch { /* private mode */ }
+        // And which USER. The RBAC plugin loads the signed-in user's permission
+        // set once, here, and never again in this page session — so a soft
+        // sign-out followed by a sign-in in the same tab would run the new
+        // session under the old permission set (an administrator signing in
+        // after a viewer got a view-only Settings page; a role re-synced at
+        // sign-in was not seen until a reload). login.tsx treats this marker as
+        // "plugins already loaded here" and forces a reload on any later sign-in.
+        try { sessionStorage.setItem('oie-loaded-user', String(store.getState('user')?.username ?? '')); } catch { /* private mode */ }
     })();
     return engineStarted;
 }
@@ -470,7 +479,10 @@ function UserMenu({ user, onLogout }: any) {
                     </DropdownMenu.Label>
                     <DropdownMenu.Separator className="ctx-sep" />
                     {item('Edit Account', 'edit', () => openEditUserModal(store.getState('user') || me, { onSaved: refreshMe }))}
-                    {item('Change Password', 'key', () => openChangePasswordModal(store.getState('user') || me))}
+                    {/* An SSO session has no engine password to change — offering it
+                        would set a local credential that SSO never consults. Omitted
+                        rather than greyed: a disabled row in a short menu is noise. */}
+                    {!isSsoSession() && item('Change Password', 'key', () => openChangePasswordModal(store.getState('user') || me))}
                     {can('view', 'doShowSettings') && item('Settings', 'settings', () => router.navigate('/settings?tab=administrator'))}
                     <DropdownMenu.Separator className="ctx-sep" />
                     {engineChoiceAvailable(config) && item('Switch Engine', 'link', () => switchEngine(onLogout))}
@@ -751,6 +763,21 @@ export function App() {
             try {
                 const u = await api.auth.current();
                 if (u && u.username && alive) {
+                    // A page that loads on the provider's callback route must reach
+                    // the login card even though this tab still holds a session: the
+                    // card is the only thing that completes a sign-in, and the
+                    // attempt may be someone else's. Rendering the shell here would
+                    // swallow the outcome for good — worst for a refusal, where a
+                    // user revoked at the IdP would land in a working admin UI on
+                    // their previous session with no message at all.
+                    if (isExpectedOidcCallback()) {
+                        store.setState('user', null);
+                        return;   // the finally below still sets authChecked
+                    }
+                    // A callback this tab never asked for — a link carrying
+                    // ?error= — must not evict a working session: scrub it and
+                    // carry on. Anyone can craft such a link.
+                    if (isOidcCallback()) takeOidcCallback();
                     await establishPrefScope(u);   // scope prefs/theme to server+user before views render
                     if (alive) store.setState('user', u);
                 }
@@ -841,11 +868,18 @@ export function App() {
         // then 421s on. A named-engine choice (k:…) stays — that's the picker's
         // memory for the next sign-in.
         if (getCookie('oie-engine') === 'custom') document.cookie = 'oie-engine=; Max-Age=0; path=/';
+        // The next sign-in in this tab may be local (break-glass) — it must get
+        // its password controls back.
+        clearSsoSession();
         document.cookie = 'oie-engine-url=; Max-Age=0; path=/';
     };
 
     const onLogout = async () => {
         try { await api.auth.logout(); } catch { /* session may already be gone */ }
+        // Sign out means "show me the card". With auto-redirect on, the card
+        // would otherwise bounce straight back to the provider — whose own
+        // session is still alive — and sign the user in again within a second.
+        holdAutoRedirect();
         // Explicit sign-out abandons any stash (an expiry stash is a safety net;
         // a deliberate logout on a shared workstation must not leave one behind).
         clearChannelDraft();
@@ -881,13 +915,20 @@ export function App() {
                 if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
             }
         } catch { /* public settings unavailable — don't block login */ }
-        resetSessionExpired();
         store.setState('navGuard', null);
         // First-login wizard (Swing FirstLoginDialog): prompt for a password +
         // profile when the engine's "firstlogin" user preference is set. Fails
         // open internally, but guard here too so it can never block sign-in.
         try { await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
         await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
+        // AFTER the awaits above, not before: they make engine calls, and a 401
+        // among them fires the expiry listeners while `user` is still null — so
+        // dropToLogin early-returns and nothing clears the latch it just set.
+        // Resetting first would leave that latch armed forever, and it is shared
+        // with ENGINE_UNKNOWN, so every later expiry AND every later 421 would be
+        // silently discarded: a fully rendered shell whose every request fails and
+        // which never returns the user to the login screen.
+        resetSessionExpired();
         store.setState('user', u);
         // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
         // accepted but the password is expiring — the engine's message says when.

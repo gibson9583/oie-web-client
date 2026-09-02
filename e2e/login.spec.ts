@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 import { mockEngine, login } from './mock.js';
 
 test.describe('login', () => {

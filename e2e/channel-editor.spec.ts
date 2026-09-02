@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { CASES as CONNECTOR_CASES, makeChannel } from './connector-fixtures.js';
 
@@ -285,7 +285,11 @@ test.describe('Channel editor', () => {
         // Clicking runs the same structural check save() uses; the demo channel is
         // well-formed, so it reports success.
         await validate.click();
-        await expect(page.getByText('Connector configuration is valid')).toBeVisible();
+        // The toast element, not getByText: Radix announces every toast through a
+        // short-lived live region reading "Notification <message>", which a text
+        // match also hits — a strict-mode violation that fails without retrying
+        // whenever the poll lands inside that window (see a11y-semantics.spec.ts).
+        await expect(page.locator('.toast-msg', { hasText: 'Connector configuration is valid' })).toBeVisible();
     });
 
     test('saving a channel with a duplicate name is blocked with a warning', async ({ page }) => {

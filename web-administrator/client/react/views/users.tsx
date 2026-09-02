@@ -16,6 +16,7 @@ import {
     USER_FIELDS, userForm, passwordFields, passwordViolations,
     openEditUserModal, openChangePasswordModal
 } from './user-modals.js';
+import { isSsoSelf } from '../sso-session.js';
 
 
 const COLUMNS = [
@@ -130,12 +131,21 @@ export function UsersView() {
 
     const openMenu = (u: any, e: any) => {
         setSel(tableRef.current ? tableRef.current.selectedRows() : [u]);
+        // Only YOUR OWN row is suppressed, and only in an SSO session: another
+        // user's password stays an admin's to manage, including the break-glass
+        // credential on an OIDC-linked local account. The reason rides in the
+        // label — ctx items carry no tooltip, and a bare greyed row invites a
+        // bug report.
+        const ssoSelf = isSsoSelf(u, store.getState('user'));
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshUser', group: 'user', onClick: () => refresh() },
             { label: 'New User', icon: 'plus', task: 'doNewUser', group: 'user', onClick: () => newTask() },
             '-',
             { label: 'Edit User', icon: 'edit', task: 'doEditUser', group: 'user', onClick: () => editTask(u) },
-            { label: 'Change Password', icon: 'key', onClick: () => passwordTask(u) },
+            {
+                label: ssoSelf ? 'Change Password — managed by SSO' : 'Change Password',
+                icon: 'key', disabled: ssoSelf, onClick: () => passwordTask(u)
+            },
             '-',
             { label: 'Delete User', icon: 'trash', danger: true, task: 'doDeleteUser', group: 'user', onClick: () => deleteTask(u) }
         ]);

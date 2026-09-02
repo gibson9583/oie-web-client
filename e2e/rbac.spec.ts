@@ -1,5 +1,5 @@
-import { test, expect } from '@playwright/test';
-import { mockEngine } from './mock.js';
+import { test, expect } from './base.js';
+import { mockEngine, login } from './mock.js';
 
 /*
  * RBAC menu-hiding (Swing AuthorizationController port). A plugin registers an
@@ -58,6 +58,68 @@ test('a denied channel task is not offered through the command palette either', 
     // channel tasks gets no channel entries offered.
     await expect(page.locator('.cmdk-scope')).toHaveText('Channels');
     await expect(page.locator('.cmdk-opt')).toHaveCount(0);
+});
+
+test('settings tabs the role cannot view are not offered', async ({ page }) => {
+    // A Viewer-style role: every built-in settings tab denied except
+    // Administrator, which is the user's own preferences and is never gated.
+    // Built-in tabs used to be appended unconditionally, so the Server tab
+    // rendered for everyone and its first request came back as an error dialog
+    // reading "Missing permission: viewServerSettings" — the engine gates each
+    // tab, and the RBAC plugin maps every built-in tab's tasks.
+    await installRbacPlugin(page,
+        "g.startsWith('settings_') && g!=='settings_Administrator' && !(g==='settings_Tags'&&t==='doRefresh')");
+    await mockEngine(page);
+    await page.goto('/settings');
+
+    // Administrator opens first, and nothing errored.
+    await expect(page.getByRole('tab', { name: 'Administrator' })).toBeVisible();
+    await expect(page.getByText('Dashboard refresh interval')).toBeVisible();
+    await expect(page.getByText(/Missing permission/)).toHaveCount(0);
+    for (const hidden of ['Server', 'Configuration Map', 'Database Tasks', 'Resources']) {
+        await expect(page.getByRole('tab', { name: hidden })).toHaveCount(0);
+    }
+    // View-only (doRefresh allowed, doSave denied) keeps the tab, read-only, like Swing.
+    await expect(page.getByRole('tab', { name: 'Tags' })).toBeVisible();
+});
+
+test('signing in again in the same tab gets a fresh page', async ({ page }) => {
+    // Plugins — and the RBAC controller's permission set with them — load once
+    // per page. A soft sign-out followed by a sign-in used to run the new
+    // session under the stale set: an administrator signing in after a viewer
+    // got a view-only Settings page, and a role re-synced at sign-in (which the
+    // OIDC extension does every time) went unseen until a manual reload. Any
+    // sign-in after plugins have loaded now reloads, exactly as a different
+    // engine does; only the first sign-in of a page session takes the soft path.
+    let who: string | null = null;
+    await mockEngine(page, {
+        'GET /users/current': () => (who ? { user: { id: who === 'admin' ? 1 : 2, username: who } } : { __status: 401 }),
+        'POST /users/_login': (req: any) => { who = new URLSearchParams(req.postData() || '').get('username'); return { status: 'SUCCESS' }; },
+        'POST /users/_logout': () => { who = null; return ''; },
+    });
+    await page.goto('/');
+    await login(page, 'admin', 'admin');
+    await expect(page.locator('.statusbar')).toContainText('as admin');
+    // The marker lands once the plugins have loaded, a beat after the shell shows.
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-user'))).toBe('admin');
+
+    // A marker that only survives if the page is NOT reloaded.
+    await page.evaluate(() => { (window as any).__softPath = true; });
+    await page.getByRole('button', { name: 'Logout', exact: true }).click();
+    await expect(page.locator('input[type=password]')).toBeVisible();
+    await login(page, 'viewer', 'x');
+    await expect(page.locator('.statusbar')).toContainText('as viewer');
+    expect(await page.evaluate(() => (window as any).__softPath), 'a different user must get a fresh page').toBeUndefined();
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-user'))).toBe('viewer');
+
+    // The SAME user signing back in reloads too: the engine may have re-synced
+    // their role at that sign-in, and the page's permission set would not know.
+    await page.evaluate(() => { (window as any).__softPath = true; });
+    await page.getByRole('button', { name: 'Logout', exact: true }).click();
+    await expect(page.locator('input[type=password]')).toBeVisible();
+    await login(page, 'viewer', 'x');
+    await expect(page.locator('.statusbar')).toContainText('as viewer');
+    expect(await page.evaluate(() => (window as any).__softPath), 'a re-sign-in by the same user must also get a fresh page').toBeUndefined();
 });
 
 test('with no RBAC controller, the Dashboard nav and Refresh task are visible', async ({ page }) => {
