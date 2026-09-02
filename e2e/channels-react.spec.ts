@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 import { readFile } from 'node:fs/promises';
 import { mockEngine } from './mock.js';
 import * as zipjs from '../web-administrator/client/vendor/zipjs.min.js';

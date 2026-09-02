@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { CASES, channelWithSourceElement } from './step-rule-fixtures.js';
 

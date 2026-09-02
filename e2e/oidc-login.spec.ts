@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 import * as http from 'http';
 import { type ChildProcess } from 'child_process';
 import { mockEngine } from './mock.js';

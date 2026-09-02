@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 import { login } from './mock.js';
 
 const configuredBase = new URL(process.env.E2E_BASE_URL || 'http://localhost:3030');

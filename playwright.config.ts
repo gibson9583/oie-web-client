@@ -12,15 +12,15 @@ export default defineConfig({
     testDir: './e2e',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
-    // One retry: serial (workers:1) so a retry adds no contention; recovers the
-    // rare login→shell boot-timing flake that surfaces over a long suite run
-    // (passes in isolation). A real regression still fails every attempt.
+    // One retry: recovers the rare login→shell boot-timing flake that surfaces
+    // over a long run (passes in isolation). A real regression still fails
+    // every attempt.
     retries: 1,
-    // The whole suite shares ONE dev server. Parallel workers all hammering it at
-    // once starve the login spec (the app bundle + plugin loads race its boot),
-    // so run serially: the suite is small and each test is ~1s. Revisit with a
-    // per-worker server or a lighter bundle if runtime becomes a problem.
-    workers: 1,
+    // Parallel by default (Playwright's default is half the cores). Each worker
+    // boots its OWN web-administrator server — see e2e/base.ts — so workers
+    // never contend for one Node process, which is what used to force
+    // workers: 1. E2E_WORKERS overrides, e.g. E2E_WORKERS=1 to bisect a flake.
+    workers: process.env.E2E_WORKERS ? Number(process.env.E2E_WORKERS) : undefined,
     reporter: process.env.CI ? 'github' : 'list',
     use: {
         baseURL: BASE_URL,
@@ -34,16 +34,10 @@ export default defineConfig({
         // recording overhead only.
         trace: 'retain-on-failure',
     },
-    // Boot the web admin (Node server). With mocked /api it needs no engine.
-    // reuseExistingServer lets you point at an already-running dev server (and is
-    // how the live project reaches your real engine through the proxy).
-    webServer: {
-        command: 'npm start -w web-administrator',
-        url: BASE_URL,
-        ignoreHTTPSErrors: BASE_URL.startsWith('https://'),
-        reuseExistingServer: !process.env.CI,
-        timeout: 60_000,
-    },
+    // No webServer block: the mocked `ui` project boots one server per worker
+    // from e2e/base.ts, on a free port with a fixed config, so a run never
+    // depends on — or collides with — a dev server on :3030. The `live` project
+    // uses BASE_URL as-is and expects you to have started that deployment.
     projects: [
         {
             name: 'ui',

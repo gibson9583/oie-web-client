@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 
 /*
  * The Node server sets security headers on every response (server/index.js):

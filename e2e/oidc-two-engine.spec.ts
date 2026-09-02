@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './base.js';
 import * as http from 'http';
 import { type ChildProcess } from 'child_process';
 import { CLIENT_SECRET, handleIdp, json, listen, publicProbeBody, readBody, startWebAdmin } from './oidc-harness.js';
