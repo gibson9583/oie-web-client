@@ -73,7 +73,16 @@ is missing or invalid stops startup instead of silently using defaults.
 
 ### OpenID Connect sign-in
 
-OIDC is advertised on the login screen only when both halves are ready: the matching engine reports an enabled `oie-oidc-auth` policy and the web tier has an enabled confidential-client entry with a client secret. Register exactly one redirect URI at the provider: `https://<web-admin-origin>/oidc/callback`. The web tier uses Authorization Code flow with PKCE and keeps tokens and the client secret out of the browser.
+**SSO requires the Node deployment.** The confidential-client flow runs in this
+server — `/oidc/start` and `/oidc/callback` hold the client secret, perform
+discovery, and exchange the authorization code, none of which can happen in the
+browser. The WAR packages the client assets only (no `server/`), so those
+endpoints do not exist there and the login card never offers SSO, even against an
+engine whose `oie-oidc-auth` extension is installed and enabled. That combination
+is the one worth stating plainly, because it is exactly where an admin expects
+the engine's own extension to be sufficient. Run the Node server if you want SSO.
+
+OIDC is advertised on the login screen only when both halves are ready: the matching engine reports an enabled `oie-oidc-auth` policy and the web tier has an enabled confidential-client entry with a client secret. Register exactly one redirect URI at the provider: `https://<web-admin-origin>/oidc/callback` — where `<web-admin-origin>` is the origin browsers reach this server on, which is what [`publicOrigin`](#configuration) pins when a proxy rewrites `Host`. The web tier uses Authorization Code flow with PKCE and keeps tokens and the client secret out of the browser.
 
 Configure discovery, client ID, token policy, JIT provisioning, account bindings, and RBAC mapping after login under **Settings → OIDC Authentication** (fields unlock once **Enable OIDC login** is ticked; Save/Refresh/Test connection live in the tab's task pane). The tab and its API are protected by the extension permission `manageOIDC` — holders of the RBAC admin role carry it implicitly, so grant it explicitly only to non-admin roles. Saving persists the policy to the engine database (the engine's native plugin-properties store) and applies it to the live authorization plugin in the same step; **Test connection** verifies discovery before rollout.
 
