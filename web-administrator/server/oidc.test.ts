@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { encodeResult, openBoundTransaction, openTransaction, routingCookies, sealTransaction, splitTxnCookie, throttleKey, txnCookieValue, unwrapEngineJson, validReturnPath, validateIdTokenClaims, withBudget } from './oidc';
+import { encodeResult, openBoundTransaction, warnIfSecureCookiesUnreachable, openTransaction, routingCookies, sealTransaction, splitTxnCookie, throttleKey, txnCookieValue, unwrapEngineJson, validReturnPath, validateIdTokenClaims, withBudget } from './oidc';
 import { normalizeOidc } from './config';
 
 const secret = 'a sufficiently long test client secret';
@@ -104,6 +104,34 @@ assert.strictEqual(challengeResult.clientPluginClass, 'builtin:otp');
 const huge = decodeResult(encodeResult({ status: 'FAIL', clientPluginClass: 'builtin:otp', updatedUsername: 'u'.repeat(255), message: 'z'.repeat(4000) }));
 assert.strictEqual(huge.clientPluginClass, '');
 assert.match(huge.message, /too large to complete in the browser/);
+// The other engine-controlled fields are bounded too. Uncapped, a broken engine
+// pushes the cookie past what a browser stores (~4096 bytes) and it is dropped
+// SILENTLY — the generic-failure symptom the bounding exists to avoid.
+const wide = decodeResult(encodeResult({ status: 'FAIL', clientPluginClass: 'C'.repeat(9000), updatedUsername: 'u'.repeat(9000), message: 'hi' }));
+assert.strictEqual(wide.clientPluginClass.length, 256);
+assert.strictEqual(wide.updatedUsername.length, 256);
+// status is engine-controlled too, and on its own could push the cookie past
+// what a browser stores — a dropped cookie shows the user NOTHING, which is
+// worse than the generic failure. Every relayed field, at once, must still fit.
+assert.strictEqual(decodeResult(encodeResult({ status: 'F'.repeat(9000), message: 'hi' })).status.length, 64);
+const everything = encodeResult({ status: 'F'.repeat(9000), clientPluginClass: 'C'.repeat(9000), updatedUsername: 'u'.repeat(9000), message: 'z'.repeat(9000) });
+assert.ok(everything.length <= 3500, `no combination of engine-controlled fields may exceed the cookie ceiling (got ${everything.length})`);
+// The payload is an allowlist, so a field nobody bounded cannot ride along.
+assert.strictEqual(decodeResult(encodeResult({ status: 'FAIL', message: 'hi', sneaky: 'x'.repeat(9000) } as any)).sneaky, undefined);
+
+// A TLS-terminating front proxy that was never declared mints OIDC cookies
+// without Secure while the browser is on https — silently, and only on this hop.
+const withOidc = { 'k:e': {} as any };
+assert.strictEqual(warnIfSecureCookiesUnreachable({ tls: null, trustedProxies: [], publicOrigin: 'https://admin.test', oidc: withOidc }) === null, false);
+// …but not when the deployment has said how TLS reaches it, or when there is no
+// https to downgrade from.
+assert.strictEqual(warnIfSecureCookiesUnreachable({ tls: { key: 'k', cert: 'c' }, trustedProxies: [], publicOrigin: 'https://admin.test', oidc: withOidc }), null);
+assert.strictEqual(warnIfSecureCookiesUnreachable({ tls: null, trustedProxies: ['10.0.0.1'], publicOrigin: 'https://admin.test', oidc: withOidc }), null);
+assert.strictEqual(warnIfSecureCookiesUnreachable({ tls: null, trustedProxies: [], publicOrigin: 'http://admin.test', oidc: withOidc }), null);
+assert.strictEqual(warnIfSecureCookiesUnreachable({ tls: null, trustedProxies: [], publicOrigin: null, oidc: withOidc }), null);
+// The router mounts unconditionally, so a deployment with no OIDC at all must
+// not get an [oidc] warning purely for its TLS topology.
+assert.strictEqual(warnIfSecureCookiesUnreachable({ tls: null, trustedProxies: [], publicOrigin: 'https://admin.test', oidc: {} }), null);
 
 const trusted = new Set(['10.0.0.1']);
 assert.strictEqual(throttleKey('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');

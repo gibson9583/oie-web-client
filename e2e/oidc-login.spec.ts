@@ -31,6 +31,9 @@ let idpUrl: string;
 // Per-test knobs, reset in beforeEach.
 let authorizeMode: 'ok' | 'denied' = 'ok';
 let loginStatus: { status: number; body: unknown } | null = null;
+// Fires when the BFF performs its server-side engine login (the first leg), so a
+// test can change engine state mid-flight.
+let onEngineLogin: (() => void) | null = null;
 const received: { authorize?: URLSearchParams; token?: URLSearchParams; login?: URLSearchParams } = {};
 const pending = new Map<string, { nonce: string; challenge: string }>();
 
@@ -114,6 +117,7 @@ function stubHandler(req: http.IncomingMessage, res: http.ServerResponse): void 
     if (url.pathname === '/api/users/_login') {
         void readBody(req).then((body) => {
             received.login = new URLSearchParams(body);
+            onEngineLogin?.();
             if (loginStatus) return json(loginStatus.status, loginStatus.body);
             return json(200,
                 { 'com.mirth.connect.model.LoginStatus': { status: 'SUCCESS', message: '', updatedUsername: 'jdoe' } },
@@ -172,6 +176,7 @@ test.beforeEach(() => {
     authorizeMode = 'ok';
     loginStatus = null;
     delete received.authorize; delete received.token; delete received.login;
+    onEngineLogin = null;
 });
 
 test.describe('OIDC login', () => {
@@ -409,6 +414,35 @@ test.describe('OIDC login', () => {
         await page.locator('button.user-chip').click();
         await expect(page.getByRole('menu')).toBeVisible();
         await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Change Password' })).toHaveCount(0);
+    });
+
+    test('an MFA challenge is not swallowed when the tab already holds a session', async ({ page }) => {
+        // The shell's boot effect consumes the result cookie before LoginForm
+        // mounts, and it only acts on SUCCESS. A live session at that moment used
+        // to mean the challenge was read, discarded, and the shell rendered as if
+        // the attempt had simply worked — the second factor silently never asked
+        // for. Here `current` succeeds throughout, which is exactly that race.
+        loginStatus = { status: 401, body: { 'com.mirth.connect.model.ExtendedLoginStatus': {
+            status: 'FAIL',
+            clientPluginClass: 'builtin:otp',
+            updatedUsername: 'jdoe',
+            message: JSON.stringify({ mode: 'verify', challenge: 'c' })
+        } } };
+        // A session that appears DURING the round trip — another tab signing in,
+        // say. Not signed in when the card renders, signed in by the time the
+        // callback lands, which is the window the shell's boot effect sees.
+        let sessionExists = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (sessionExists ? { user: { id: 1, username: 'jdoe' } } : { __status: 401 })
+        });
+        await page.goto(appUrl + '/');
+        // The stub's _login is the callback's server-side first leg, so this fires
+        // mid-flight, exactly between the card rendering and the redirect back.
+        onEngineLogin = () => { sessionExists = true; };
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+
+        // The factor is demanded rather than skipped past into the shell.
+        await expect(page.getByText('Two-factor authentication')).toBeVisible({ timeout: 15_000 });
     });
 
     test('cancelling the second factor leaves local sign-in reachable', async ({ page }) => {

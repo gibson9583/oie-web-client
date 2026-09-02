@@ -108,6 +108,15 @@ const defaults = {
     // proxy). Loopback is always trusted; list a non-loopback front proxy here.
     // Requests from untrusted peers can't spoof the engine's audit-log client IP.
     trustedProxies: [],
+    // The origin browsers actually reach this server on, e.g.
+    // "https://oie-admin.example". Only OIDC uses it, and only to build the
+    // redirect_uri it hands the IdP. Left null that URI is derived from the
+    // request's Host header, which no front proxy is obliged to sanitize — so a
+    // deployment that registers a wildcard or lax redirect URI at the provider
+    // can have the callback pointed elsewhere. Set it whenever the origin is
+    // known and stable; it is also the only way to be right when the proxy
+    // rewrites Host.
+    publicOrigin: null,
     // Optional built-in TLS for the browser <-> web admin hop. Off by default
     // (plain HTTP) — most deployments terminate TLS at a reverse proxy. Set
     // { key, cert, passphrase? } (PEM file paths, relative to the app root or
@@ -166,6 +175,26 @@ function load() {
         config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES)
         config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
+    if (process.env.WEBADMIN_PUBLIC_ORIGIN)
+        config.publicOrigin = process.env.WEBADMIN_PUBLIC_ORIGIN;
+    // Validate here rather than at first use: a typo should stop startup, not
+    // surface later as an OIDC redirect_uri the provider rejects.
+    if (config.publicOrigin != null) {
+        let parsed = null;
+        try {
+            parsed = new URL(String(config.publicOrigin));
+        }
+        catch { /* reported below */ }
+        // Same shape as every other fail-hard in load(): a readable [config] line
+        // and exit, not a stack trace.
+        const reject = (why) => { console.error(`[config] publicOrigin ${why}`); process.exit(1); };
+        if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:'))
+            reject('must be an absolute http(s) URL, e.g. https://oie-admin.example');
+        else if (parsed.pathname !== '/' || parsed.search || parsed.hash)
+            reject('must be an origin only — no path, query, or fragment');
+        else
+            config.publicOrigin = parsed.origin;
+    }
     // Optional built-in TLS (config.json "tls" or the env vars below). Enabled only
     // when BOTH key and cert are given; paths resolve against the app root. Off →
     // plain HTTP. The server reads the PEM files at startup (index.js).

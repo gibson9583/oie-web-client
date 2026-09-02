@@ -50,6 +50,7 @@ exports.withBudget = withBudget;
 exports.openBoundTransaction = openBoundTransaction;
 exports.routingCookies = routingCookies;
 exports.throttleKey = throttleKey;
+exports.warnIfSecureCookiesUnreachable = warnIfSecureCookiesUnreachable;
 exports.createOidcRouter = createOidcRouter;
 const crypto = __importStar(require("crypto"));
 const express_1 = __importDefault(require("express"));
@@ -152,11 +153,40 @@ function cookies(req) {
     }
     return result;
 }
+// Warned once per process, not per request: this is an operator misconfiguration,
+// and repeating it per sign-in would bury the log without telling them more.
+let warnedUndeclaredTerminator = false;
 function secureRequest(req, trusted) {
-    return !!req.socket.encrypted
-        || ((0, proxy_1.isTrustedPeer)(req.socket.remoteAddress, trusted) && req.headers['x-forwarded-proto'] === 'https');
+    const encrypted = !!req.socket.encrypted;
+    const peerTrusted = (0, proxy_1.isTrustedPeer)(req.socket.remoteAddress, trusted);
+    if (encrypted)
+        return true;
+    if (peerTrusted && req.headers['x-forwarded-proto'] === 'https')
+        return true;
+    // Plain socket, untrusted peer — yet the request says a proxy terminated TLS
+    // upstream. Those headers only exist when something really is in front, so
+    // this is a positive signal rather than an inference: a TLS terminator this
+    // deployment has not declared. Every OIDC cookie is therefore about to be
+    // minted WITHOUT Secure while the browser is on https, silently, and only on
+    // this hop. Requires no configuration to detect, which is what makes it
+    // catch the likeliest case — an operator who never set publicOrigin either.
+    if (!warnedUndeclaredTerminator && !peerTrusted
+        && (req.headers['x-forwarded-proto'] === 'https' || req.headers['x-forwarded-ssl'] === 'on'
+            || /\bproto=https\b/.test(String(req.headers.forwarded || '')))) {
+        warnedUndeclaredTerminator = true;
+        console.warn(`[oidc] a request from ${req.socket.remoteAddress} reports TLS terminated upstream, but that peer is not in trustedProxies — `
+            + 'OIDC cookies are being set without Secure. Add the terminator to trustedProxies (WEBADMIN_TRUSTED_PROXIES).');
+    }
+    return false;
 }
-function publicOrigin(req, trusted) {
+// The origin the IdP is told to redirect back to. Configured wins: the Host
+// header is whatever the client sent, and nothing upstream is obliged to
+// sanitize it, so deriving redirect_uri from it means a deployment with a lax or
+// wildcard registered URI can have its callback aimed elsewhere. The charset
+// check below stops header injection but says nothing about WHOSE host it is.
+function publicOrigin(config, req, trusted) {
+    if (config.publicOrigin)
+        return config.publicOrigin;
     const host = String(req.headers.host || '');
     if (!/^[A-Za-z0-9._:[\]-]+(?::\d+)?$/.test(host))
         throw new Error('invalid host header');
@@ -180,10 +210,30 @@ function publicOrigin(req, trusted) {
 // long, which drops the challenge anyway — the failure it was meant to prevent.
 const PROSE_MAX = 600;
 const COOKIE_MAX = 3500;
+// The other relayed fields are engine-controlled too, and neither has any
+// business being long: clientPluginClass is a class name the client looks up in
+// a registry, updatedUsername a login name. Uncapped, a broken or hostile engine
+// pushes the cookie past what a browser will store (~4096 bytes) and it is
+// dropped SILENTLY — which reads to the user as the generic sign-in failure the
+// bounding below exists to avoid. Truncating either only breaks that one lookup.
+const CLASS_MAX = 256;
+const USERNAME_MAX = 256;
+const STATUS_MAX = 64; // a LoginStatus enum name; 64 is already generous
 function encodeResult(payload) {
     const message = String(payload.message ?? '');
     const challenge = !!payload.clientPluginClass;
-    const bounded = { ...payload, message: challenge ? message : message.slice(0, PROSE_MAX) };
+    // Built from an ALLOWLIST, not a spread of the payload. Every value here
+    // originates in the engine's LoginStatus, so a spread means the next field
+    // added to setResult silently arrives unbounded — which is how `status`
+    // slipped through: it alone could carry the cookie past what a browser
+    // stores, and a dropped cookie shows the user nothing at all, which is worse
+    // than the generic failure this bounding exists to prevent.
+    const bounded = {
+        status: String(payload.status ?? '').slice(0, STATUS_MAX),
+        message: challenge ? message : message.slice(0, PROSE_MAX),
+        clientPluginClass: String(payload.clientPluginClass ?? '').slice(0, CLASS_MAX),
+        updatedUsername: String(payload.updatedUsername ?? '').slice(0, USERNAME_MAX)
+    };
     const value = b64(JSON.stringify(bounded));
     if (value.length <= COOKIE_MAX)
         return value;
@@ -390,7 +440,30 @@ function limiter(trusted) {
             }
         const recent = (hits.get(key) || []).filter((time) => now - time < 60000);
         if (recent.length >= 30) {
-            res.status(429).send('Too many OIDC requests. Try again shortly.');
+            // Say WHEN, not just no. The throttle keys on client IP, so the two
+            // populations that hit it are an attacker and a shared egress —
+            // an office NAT, or a CI run driving many sign-ins — and for the
+            // latter a bare 429 reads as a functional failure. Retry-After lets a
+            // caller distinguish "throttled" from "broken" without guessing.
+            const oldest = recent[0] || now;
+            res.set('Retry-After', String(Math.max(1, Math.ceil((60000 - (now - oldest)) / 1000))));
+            const text = 'Too many OIDC requests. Try again shortly.';
+            // Content-negotiated rather than always JSON. Both routes here are
+            // reached ONLY by top-level browser navigation — location.assign to
+            // /oidc/start, and the IdP's 302 to /oidc/callback — so an
+            // unconditional JSON body would put a raw object in the user's
+            // window. JSON is right for the app's fetch endpoints; these two are
+            // not that, so answer whatever the caller actually asked for.
+            // text/plain is listed FIRST and explicitly. Offering only `json` plus
+            // a default does not work: a browser's Accept ends with `*/*;q=0.8`,
+            // which matches application/json, so res.format picks JSON and the
+            // user reads a raw object. Naming both lets the browser's q=1
+            // text/html preference beat the wildcard while an XHR still gets JSON.
+            res.status(429).format({
+                'text/plain': () => { res.type('text/plain').send(text); },
+                'application/json': () => { res.json({ error: 'TOO_MANY_REQUESTS', message: text }); },
+                default: () => { res.type('text/plain').send(text); }
+            });
             return;
         }
         recent.push(now);
@@ -398,9 +471,36 @@ function limiter(trusted) {
         next();
     };
 }
+// Every cookie this router sets — the sealed transaction, the result — takes its
+// Secure flag from how the request arrived. That is correct, but it means a
+// deployment that terminates TLS in front and forgets to declare the terminator
+// mints them WITHOUT Secure while the browser is on https: silently, and only
+// for the OIDC hop, so nothing else in the app looks wrong. Say it once at
+// startup, where an operator can act on it, rather than per request.
+function warnIfSecureCookiesUnreachable(config) {
+    // The router mounts unconditionally, so without this a deployment using no
+    // OIDC at all gets an [oidc] warning purely for its TLS topology.
+    if (!Object.keys(config.oidc || {}).length)
+        return null;
+    if (config.tls)
+        return null; // TLS terminated here — sockets are encrypted
+    if ((config.trustedProxies || []).length)
+        return null; // a declared terminator can assert x-forwarded-proto
+    // Loopback is always trusted, so a same-host proxy still works. The gap is a
+    // terminator on another host, which this deployment has not named.
+    const https = String(config.publicOrigin || '').startsWith('https://');
+    if (!https)
+        return null; // plain http end to end — nothing to downgrade
+    return '[oidc] publicOrigin is https but this server terminates no TLS and trusts no proxy, '
+        + 'so OIDC cookies will be set without Secure unless the terminator is on this host. '
+        + 'Add the terminator to trustedProxies (WEBADMIN_TRUSTED_PROXIES).';
+}
 function createOidcRouter(config) {
     const router = express_1.default.Router();
     const trusted = new Set(config.trustedProxies || []);
+    const warning = warnIfSecureCookiesUnreachable(config);
+    if (warning)
+        console.warn(warning);
     router.use(limiter(trusted));
     router.get('/start', async (req, res) => {
         const found = await providerFor(config, req.query.engine);
@@ -410,7 +510,7 @@ function createOidcRouter(config) {
         }
         try {
             const metadata = await discovery(found.provider);
-            const origin = publicOrigin(req, trusted);
+            const origin = publicOrigin(config, req, trusted);
             const verifier = random(48);
             const txn = { v: 3, state: random(), nonce: random(), verifier, engineKey: found.engine.key,
                 returnPath: validReturnPath(req.query.return), created: Date.now() };
@@ -461,7 +561,7 @@ function createOidcRouter(config) {
                 throw new Error('The identity provider returned no authorization code.');
             const metadata = await discovery(found.provider);
             const form = new URLSearchParams({ grant_type: 'authorization_code', code: req.query.code,
-                redirect_uri: `${publicOrigin(req, trusted)}/oidc/callback`, client_id: found.provider.clientId,
+                redirect_uri: `${publicOrigin(config, req, trusted)}/oidc/callback`, client_id: found.provider.clientId,
                 client_secret: found.provider.clientSecret, code_verifier: txn.verifier });
             const tokenResponse = await fetch(metadata.token_endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: form, signal: AbortSignal.timeout(15000) });
             const tokens = await tokenResponse.json();

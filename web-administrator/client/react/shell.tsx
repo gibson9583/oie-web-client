@@ -34,7 +34,7 @@ import { disposeDetachedMonaco } from '../core/monaco.js';
 import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
 import { apiUrl, appUrl, routeUrl } from '../core/deployment.js';
 import { platform, loadPlugins } from '@oie/web-shell';
-import { LoginForm, takeOidcResult } from './views/login.jsx';
+import { LoginForm, takeOidcResult, restoreOidcResult } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
 import { markSsoSession, clearSsoSession, isSsoSession } from './sso-session.js';
@@ -756,6 +756,19 @@ export function App() {
                 const u = await api.auth.current();
                 if (u && u.username && alive) {
                     const oidc = takeOidcResult();
+                    // An SSO round trip that came back needing a SECOND FACTOR must
+                    // not be swallowed here just because this tab already holds a
+                    // session. takeOidcResult() consumes the cookie, so falling
+                    // through would discard the challenge for good and render the
+                    // shell as if the attempt had simply succeeded — the user is
+                    // signed in on the old session and never told the factor was
+                    // asked for. LoginForm is the only component that drives the
+                    // hand-off, so put it back and let the card handle it.
+                    if (oidc && oidc.clientPluginClass && oidc.status !== 'SUCCESS' && oidc.status !== 'SUCCESS_GRACE_PERIOD') {
+                        restoreOidcResult(oidc);
+                        store.setState('user', null);
+                        return;   // the finally below still sets authChecked
+                    }
                     if (oidc && (oidc.status === 'SUCCESS' || oidc.status === 'SUCCESS_GRACE_PERIOD')) {
                         // Remember HOW this session began before the result cookie is
                         // gone: takeOidcResult consumed it, so a later refresh has no

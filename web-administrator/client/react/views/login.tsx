@@ -70,6 +70,23 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
     return null;
 }
 
+// Puts a consumed result back for LoginForm to pick up. takeOidcResult() clears
+// the cookie on read, so a caller that decides the result is not theirs to handle
+// (see shell.tsx's boot effect and an MFA challenge) would otherwise destroy it.
+// Same short lifetime as the server's — this is a hand-off within one page load,
+// not a durable store.
+export function restoreOidcResult(result: any): void {
+    try {
+        const json = JSON.stringify(result);
+        const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        // Match the server's attributes, Secure included: the exposure window is
+        // one React commit (LoginForm consumes it on the next render), but that
+        // safety comes from render ordering rather than anything asserted here.
+        document.cookie = `oie-oidc-result=${base64}; path=/; max-age=120; samesite=lax${location.protocol === 'https:' ? '; secure' : ''}`;
+    } catch { /* the card will show the generic failure, which is the status quo */ }
+}
+
 export function takeOidcResult(): any {
     const raw = getCookie('oie-oidc-result');
     if (!raw) return null;
