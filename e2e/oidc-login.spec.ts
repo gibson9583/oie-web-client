@@ -327,4 +327,20 @@ test.describe('OIDC login', () => {
         await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
         await expect(page.getByText(/OIDC Authentication extension is installed/)).toBeVisible({ timeout: 15_000 });
     });
+
+    // Single-engine mode has no picker, so an unresolvable remembered choice must
+    // not blank the selection the way it does behind a picker: with sel:'' the
+    // engine never resolves and the SSO affordance vanishes entirely. `0` is
+    // exactly what the pre-key build's callback wrote, and an SSO-only account
+    // has no local sign-in to clear it with — the login card would be a dead end.
+    for (const stale of ['0', 'k%3Aremoved']) {
+        test(`a stale oie-engine cookie (${stale}) does not strand single-engine SSO`, async ({ page }) => {
+            await page.context().addCookies([{ name: 'oie-engine', value: stale, url: appUrl }]);
+            await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+            await page.goto(appUrl + '/');
+
+            await expect(page.getByRole('button', { name: 'Sign in with Acme SSO' })).toBeVisible();
+            await expect(page.locator('input[type=password]')).toHaveCount(0);
+        });
+    }
 });

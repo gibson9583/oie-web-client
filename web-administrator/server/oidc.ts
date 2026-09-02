@@ -81,7 +81,20 @@ export function validReturnPath(value: unknown): string {
     if (!path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\') || /[\r\n]/.test(path)) return '/';
     try {
         const parsed = new URL(path, 'https://local.invalid');
-        return parsed.origin === 'https://local.invalid' ? parsed.pathname + parsed.search + parsed.hash : '/';
+        // Re-check the NORMALIZED result, not just the input: a dot-segment
+        // collapses on parse, so "/..//evil.test" arrives past the leading-"//"
+        // guard and comes back out as "//evil.test" — still same-origin by the
+        // check below, but a protocol-relative URL that res.redirect emits
+        // verbatim and the browser resolves to https://evil.test. This value is
+        // attacker-supplied via /oidc/start?return=, so an open redirect here
+        // turns a genuine SSO sign-in into a phishing pivot off a trusted origin.
+        // Stated as a whitelist: the two escape shapes are "//host" and "/\host",
+        // and rejecting anything that is not "/" followed by a non-separator
+        // covers both outright, rather than resting on the URL parser folding
+        // backslashes for special schemes — true today, but nothing here asserts it.
+        const out = parsed.pathname + parsed.search + parsed.hash;
+        const sameOrigin = parsed.origin === 'https://local.invalid';
+        return sameOrigin && (out === '/' || /^\/[^/\\]/.test(out)) ? out : '/';
     } catch { return '/'; }
 }
 

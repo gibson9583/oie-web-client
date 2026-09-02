@@ -86,12 +86,27 @@ export function takeOidcResult(): any {
 // (issue #53). A remembered choice that no longer resolves — the engine was
 // removed or renamed, or the cookie is a pre-key numeric index — returns '':
 // the picker then demands an explicit choice rather than guessing an engine.
+// Whether the login card offers an engine choice at all. initialSelection's
+// stale-cookie behavior hinges on this exactly as the rendered picker does, so
+// the two read it from here rather than each spelling out the predicate.
+function hasPicker(engines: any, devMode: any): boolean {
+    return engines.length > 1 || !!devMode;
+}
+
 function initialSelection(engines: any, devMode: any) {
     const c = getCookie('oie-engine');
     if (c === 'custom' && devMode) return 'custom';
     if (c && engines.some((e: any) => e.key === c)) return c;
-    if (c) return '';
-    return engines.length ? String(engines[0].key ?? '') : '';
+    const only = engines.length ? String(engines[0].key ?? '') : '';
+    // Demand a re-pick only where a picker exists to re-pick with. Single-engine
+    // mode has none, so returning '' there would strand the user: nothing
+    // resolves, the SSO affordance disappears, and the cookie that caused it is
+    // unreachable from the UI (recovery would need a local sign-in, which an
+    // SSO-only account cannot do). A pre-key cookie from an older build — or an
+    // allowedUrls list shrunk to one — is exactly this case. This also matches
+    // the proxy, which already ignores the cookie outright in single-engine mode.
+    if (c) return hasPicker(engines, devMode) ? '' : only;
+    return only;
 }
 
 export function LoginForm({ onSuccess }: any) {
@@ -109,7 +124,7 @@ export function LoginForm({ onSuccess }: any) {
     const cfg = store.getState('webadminConfig') || {};
     const engines = Array.isArray(cfg.engines) ? cfg.engines : [];
     const devMode = !!cfg.devMode;
-    const showPicker = engines.length > 1 || devMode;
+    const showPicker = hasPicker(engines, devMode);
     const [sel, setSel] = useState(() => initialSelection(engines, devMode));
     const [customUrl, setCustomUrl] = useState(() => getCookie('oie-engine-url'));
     // By stable key, never list position (#54): `sel` holds the key, so an
@@ -139,8 +154,13 @@ export function LoginForm({ onSuccess }: any) {
     function startSso() {
         const selectionError = commitEngineSelection(showPicker, sel, customUrl);
         if (selectionError) { setError(selectionError); return; }
+        // appUrl for consistency with every other server endpoint this client
+        // addresses; it resolves to the same "/oidc/start" in the only shape that
+        // serves the BFF (the Node deployment — the WAR has no Express side, so
+        // SSO is not offered there at all). The return path stays a full location
+        // path: the server hands it straight back as a redirect target.
         const returnPath = location.pathname === '/' ? '/' : location.pathname + location.search + location.hash;
-        location.assign(`/oidc/start?engine=${encodeURIComponent(sel)}&return=${encodeURIComponent(returnPath)}${ssoReauth ? '&prompt=login' : ''}`);
+        location.assign(`${appUrl('/oidc/start')}?engine=${encodeURIComponent(sel)}&return=${encodeURIComponent(returnPath)}${ssoReauth ? '&prompt=login' : ''}`);
     }
 
     const userRef = useRef<any>(null);

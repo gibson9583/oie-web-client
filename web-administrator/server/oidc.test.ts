@@ -50,6 +50,13 @@ assert.strictEqual(splitTxnCookie(''), null);
 assert.strictEqual(splitTxnCookie('no-separator'), null);
 assert.strictEqual(validReturnPath('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)']) assert.strictEqual(validReturnPath(bad), '/');
+// Dot segments collapse on parse, so these clear the leading-"//" guard on the
+// way IN and would come back out protocol-relative — res.redirect emits that
+// verbatim and the browser resolves it to another origin.
+for (const bad of ['/..//evil.test', '/.//evil.test', '/foo/../..//evil.test', '/..//evil.test?x=1',
+    '/a/../../..//evil.test', '/..\\/evil.test', '/../\\evil.test', '/..//']) assert.strictEqual(validReturnPath(bad), '/');
+// Dot segments that normalize to a genuine same-origin path still work.
+assert.strictEqual(validReturnPath('/foo/../channels'), '/channels');
 
 // The engine wraps every JSON payload under a single XStream root key.
 const wrapped = { 'com.mirth.connect.model.LoginStatus': { status: 'SUCCESS', message: '', updatedUsername: 'jdoe' } };
