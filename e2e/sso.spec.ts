@@ -29,15 +29,20 @@ type Knobs = {
     login?: unknown;
     currentAfterLogin?: unknown;
     provider?: 'ok' | 'denied';
+    /** The engine's policy sends visitors straight to the provider. */
+    autoRedirect?: boolean;
+    /** The tab already holds an engine session when the page loads. */
+    signedIn?: boolean;
 };
 
 async function mockSso(page: any, baseURL: string, knobs: Knobs = {}) {
     const received: any = { start: null, callback: null, logins: [] as any[] };
-    let authed = false;
+    let authed = !!knobs.signedIn;
     await mockEngine(page, {
         'GET /extensions/oidcauth/public': knobs.configured === false
             ? { __status: 404 }
-            : envelope({ configured: true, discoveryUrl: `${IDP}/.well-known/openid-configuration`, clientId: 'web-admin', providerLabel: 'Acme SSO', autoRedirect: false }),
+            : envelope({ configured: true, providerLabel: 'Acme SSO', autoRedirect: !!knobs.autoRedirect }),
+        'POST /users/_logout': () => { authed = false; return ''; },
         'POST /extensions/oidcauth/start': (req: any) => {
             received.start = JSON.parse(JSON.parse(req.postData() || '{}').string);
             return envelope(knobs.start || { ok: true, authorizeUrl: `${IDP}/authorize?client_id=web-admin&state=state-1&nonce=n` });
@@ -185,5 +190,51 @@ test.describe('SSO through the engine', () => {
         // The routing cookie carried the picker's choice, so the proxy asked Staging.
         expect(cookiesSeen[0]).toContain('oie-engine=k%3Astaging');
         expect(received.logins[0].password).toBe('oidc:ticket:ticket-1');
+    });
+
+    test('signing out with auto-redirect on shows the card instead of bouncing back to the provider', async ({ page, baseURL }) => {
+        const received = await mockSso(page, baseURL!, { autoRedirect: true });
+        await page.goto('/');
+        // No click: the card sends the browser to the provider by itself.
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        expect(received.logins).toHaveLength(1);
+
+        await page.locator('button.user-chip').click();
+        await page.getByRole('menu').getByRole('menuitem', { name: 'Sign out' }).click();
+        await expect(page.getByRole('button', { name: 'Sign in with Acme SSO' })).toBeVisible();
+        // The provider's own session is still alive, so a redirect here would have
+        // signed the user straight back in. The card stays, and nothing was redeemed.
+        await page.waitForTimeout(750);
+        await expect(page.getByRole('button', { name: 'Sign in with Acme SSO' })).toBeVisible();
+        expect(received.logins).toHaveLength(1);
+    });
+
+    test('a stray error callback does not evict a signed-in user', async ({ page, baseURL }) => {
+        await mockSso(page, baseURL!, { signedIn: true });
+        // A link anyone can craft, opened in a tab that never started a sign-in.
+        await page.goto('/oidc/callback?error=access_denied');
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('.statusbar')).toContainText('as jdoe');
+        await expect(page).not.toHaveURL(/oidc\/callback/);
+        await expect(page.getByText('The identity provider declined sign-in.')).toHaveCount(0);
+    });
+
+    test('a declined attempt this tab started is reported even over a live session', async ({ page, baseURL }) => {
+        await mockSso(page, baseURL!, { signedIn: true });
+        await page.goto('/');
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        // What /start leaves behind before sending the browser away.
+        await page.evaluate(() => sessionStorage.setItem('oie-oidc-pending', '1'));
+        await page.goto('/oidc/callback?error=access_denied');
+        await expect(page.getByText('The identity provider declined sign-in.')).toBeVisible({ timeout: 15_000 });
+    });
+
+    test('a genuine answer reaches the login card over a live session even without the marker', async ({ page, baseURL }) => {
+        const received = await mockSso(page, baseURL!, { signedIn: true });
+        await page.goto('/oidc/callback?code=code-1&state=state-1');
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        // The code was relayed and redeemed: the answer was not thrown away.
+        expect(received.callback).toEqual({ code: 'code-1', state: 'state-1' });
+        expect(received.logins).toHaveLength(1);
     });
 });

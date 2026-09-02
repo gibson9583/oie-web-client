@@ -11,7 +11,7 @@
  */
 import { getLoginAuthenticator } from '../../core/login-auth.js';
 import { appUrl } from '../../core/deployment.js';
-import { markSsoSession } from '../sso-session.js';
+import { markSsoSession, markSsoPending, hasSsoPending, takeSsoPending, takeAutoRedirectHold } from '../sso-session.js';
 import { currentRoutePath, routeUrl } from '../../core/deployment.js';
 
 import { useState, useRef, useEffect } from 'react';
@@ -97,6 +97,15 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
 // relays `code` and `state` by XHR. Nothing here needs a server of its own.
 export function isOidcCallback(): boolean {
     return currentRoutePath().split('?')[0] === '/oidc/callback';
+}
+
+// Whether a page that loaded on the callback route is answering a sign-in this
+// tab started, or carries a code — which only a real provider answer does. A
+// bare ?error= arriving from a link is neither: anyone can craft one, and it
+// must not evict whoever is signed in.
+export function isExpectedOidcCallback(): boolean {
+    if (!isOidcCallback()) return false;
+    return !!new URLSearchParams(location.search).get('code') || hasSsoPending();
 }
 
 // Consumes the callback exactly once and scrubs the address bar: a code is
@@ -218,6 +227,7 @@ export function LoginForm({ onSuccess }: any) {
                 chooseLocal(true);
                 return;
             }
+            markSsoPending();
             location.assign(started.authorizeUrl);
         } catch (err: any) {
             setError(err.message || 'Could not reach the engine.');
@@ -249,6 +259,7 @@ export function LoginForm({ onSuccess }: any) {
         const callback = oidcCallbackRef.current;
         oidcCallbackRef.current = null;
         if (!callback) return;
+        takeSsoPending();
         try { sessionStorage.removeItem(`oie-oidc-redirect:${sel}`); } catch { /* ignore */ }
         (async () => {
             try {
@@ -286,6 +297,9 @@ export function LoginForm({ onSuccess }: any) {
     // Auto-redirect: once the engine says it offers SSO, and nothing is pending.
     useEffect(() => {
         if (!sso?.autoRedirect || localMode || callbackInFlight.current) return;
+        // Sign out set a hold: the provider's own session is still alive, so a
+        // redirect now would sign the user straight back in. Show the button once.
+        if (takeAutoRedirectHold()) return;
         const guard = `oie-oidc-redirect:${sel}`;
         try {
             if (!sessionStorage.getItem(guard)) { sessionStorage.setItem(guard, '1'); startSso(); }

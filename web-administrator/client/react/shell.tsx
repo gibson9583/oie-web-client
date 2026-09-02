@@ -34,10 +34,10 @@ import { disposeDetachedMonaco } from '../core/monaco.js';
 import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
 import { apiUrl, appUrl, routeUrl } from '../core/deployment.js';
 import { platform, loadPlugins } from '@oie/web-shell';
-import { LoginForm, isOidcCallback } from './views/login.jsx';
+import { LoginForm, isOidcCallback, isExpectedOidcCallback, takeOidcCallback } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
-import { clearSsoSession, isSsoSession } from './sso-session.js';
+import { clearSsoSession, holdAutoRedirect, isSsoSession } from './sso-session.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -770,10 +770,14 @@ export function App() {
                     // swallow the outcome for good — worst for a refusal, where a
                     // user revoked at the IdP would land in a working admin UI on
                     // their previous session with no message at all.
-                    if (isOidcCallback()) {
+                    if (isExpectedOidcCallback()) {
                         store.setState('user', null);
                         return;   // the finally below still sets authChecked
                     }
+                    // A callback this tab never asked for — a link carrying
+                    // ?error= — must not evict a working session: scrub it and
+                    // carry on. Anyone can craft such a link.
+                    if (isOidcCallback()) takeOidcCallback();
                     await establishPrefScope(u);   // scope prefs/theme to server+user before views render
                     if (alive) store.setState('user', u);
                 }
@@ -872,6 +876,10 @@ export function App() {
 
     const onLogout = async () => {
         try { await api.auth.logout(); } catch { /* session may already be gone */ }
+        // Sign out means "show me the card". With auto-redirect on, the card
+        // would otherwise bounce straight back to the provider — whose own
+        // session is still alive — and sign the user in again within a second.
+        holdAutoRedirect();
         // Explicit sign-out abandons any stash (an expiry stash is a safety net;
         // a deliberate logout on a shared workstation must not leave one behind).
         clearChannelDraft();
