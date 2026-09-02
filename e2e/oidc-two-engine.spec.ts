@@ -1,9 +1,7 @@
 import { test, expect } from '@playwright/test';
 import * as http from 'http';
-import * as net from 'net';
-import * as crypto from 'crypto';
-import { spawn, type ChildProcess } from 'child_process';
-import * as path from 'path';
+import { type ChildProcess } from 'child_process';
+import { CLIENT_SECRET, handleIdp, json, listen, publicProbeBody, readBody, startWebAdmin } from './oidc-harness.js';
 
 /*
  * SSO against a MULTI-ENGINE deployment.
@@ -22,9 +20,6 @@ import * as path from 'path';
  * picked engine rather than falling back to the first entry.
  */
 
-const CLIENT_ID = 'web-admin';
-const CLIENT_SECRET = 'e2e-test-client-secret';
-
 let idp: http.Server;
 let alpha: http.Server;          // engine one
 let bravo: http.Server;          // engine two
@@ -34,77 +29,14 @@ let idpUrl: string;
 let alphaUrl: string;
 let bravoUrl: string;
 
-const pending = new Map<string, { nonce: string; challenge: string }>();
 // Which engine each stub saw a login for, so a mis-routed callback is visible.
 const logins: { alpha: number; bravo: number } = { alpha: 0, bravo: 0 };
 
-function b64url(value: Buffer | string): string { return Buffer.from(value).toString('base64url'); }
-
-function idToken(nonce: string): string {
-    const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-    const now = Math.floor(Date.now() / 1000);
-    const payload = b64url(JSON.stringify({
-        iss: idpUrl, aud: CLIENT_ID, nonce, iat: now, exp: now + 300,
-        sub: 'subject-1', preferred_username: 'jdoe', email: 'jdoe@example.test'
-    }));
-    return `${header}.${payload}.${b64url('sig')}`;
-}
-
-function freePort(): Promise<number> {
-    return new Promise((resolve, reject) => {
-        const probe = net.createServer();
-        probe.on('error', reject);
-        probe.listen(0, '127.0.0.1', () => {
-            const port = (probe.address() as net.AddressInfo).port;
-            probe.close(() => resolve(port));
-        });
-    });
-}
-
-function readBody(req: http.IncomingMessage): Promise<string> {
-    return new Promise((resolve) => {
-        const chunks: Buffer[] = [];
-        req.on('data', (c) => chunks.push(c));
-        req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    });
-}
-
-const json = (res: http.ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
-    res.writeHead(status, { 'content-type': 'application/json', ...headers });
-    res.end(JSON.stringify(body));
-};
-
-// The IdP only. Both engines point at this one issuer, which is the realistic
-// shape: one app registration fronting several engines.
+// The IdP on its own port. Both engines point at this one issuer, which is the
+// realistic shape: one app registration fronting several engines.
 function idpHandler(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const url = new URL(String(req.url), idpUrl);
-    if (url.pathname === '/.well-known/openid-configuration') {
-        return json(res, 200, { issuer: idpUrl, authorization_endpoint: `${idpUrl}/authorize`, token_endpoint: `${idpUrl}/token` });
-    }
-    if (url.pathname === '/authorize') {
-        const back = new URL(String(url.searchParams.get('redirect_uri')));
-        back.searchParams.set('state', String(url.searchParams.get('state')));
-        const code = crypto.randomBytes(8).toString('hex');
-        pending.set(code, { nonce: String(url.searchParams.get('nonce')), challenge: String(url.searchParams.get('code_challenge')) });
-        back.searchParams.set('code', code);
-        res.writeHead(302, { location: back.toString() });
-        res.end();
-        return;
-    }
-    if (url.pathname === '/token') {
-        void readBody(req).then((body) => {
-            const form = new URLSearchParams(body);
-            const grant = pending.get(String(form.get('code')));
-            const hashed = crypto.createHash('sha256').update(String(form.get('code_verifier'))).digest('base64url');
-            if (!grant || form.get('client_secret') !== CLIENT_SECRET || hashed !== grant.challenge) {
-                return json(res, 400, { error: 'invalid_grant' });
-            }
-            pending.delete(String(form.get('code')));
-            return json(res, 200, { access_token: 'at', token_type: 'Bearer', id_token: idToken(grant.nonce) });
-        });
-        return;
-    }
-    json(res, 404, { error: 'unexpected idp path ' + url.pathname });
+    if (handleIdp(req, res, { issuer: () => idpUrl })) return;
+    json(res, 404, { error: 'unexpected idp path ' + String(req.url) });
 }
 
 // An engine. `which` tags the session cookie and the counter so the test can
@@ -113,7 +45,7 @@ function engineHandler(which: 'alpha' | 'bravo') {
     return (req: http.IncomingMessage, res: http.ServerResponse): void => {
         const url = new URL(String(req.url), 'http://engine.invalid');
         if (url.pathname === '/api/extensions/oidcauth/public') {
-            return json(res, 200, { string: JSON.stringify({ configured: true, discoveryUrl: `${idpUrl}/.well-known/openid-configuration`, clientId: CLIENT_ID }) });
+            return json(res, 200, publicProbeBody(idpUrl));
         }
         if (url.pathname === '/api/users/_login') {
             void readBody(req).then(() => {
@@ -159,13 +91,6 @@ function engineHandler(which: 'alpha' | 'bravo') {
     };
 }
 
-async function listen(handler: http.RequestListener): Promise<{ server: http.Server; url: string }> {
-    const port = await freePort();
-    const server = http.createServer(handler);
-    await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
-    return { server, url: `http://127.0.0.1:${port}` };
-}
-
 test.beforeAll(async () => {
     const idpStub = await listen(idpHandler);
     idp = idpStub.server; idpUrl = idpStub.url;
@@ -174,45 +99,21 @@ test.beforeAll(async () => {
     const bravoStub = await listen(engineHandler('bravo'));
     bravo = bravoStub.server; bravoUrl = bravoStub.url;
 
-    const appPort = await freePort();
-    appUrl = `http://localhost:${appPort}`;
-    const serverDir = path.resolve(process.cwd(), 'web-administrator');
-    const stderr: string[] = [];
-    app = spawn('node', ['server/index.js'], {
-        cwd: serverDir,
-        env: {
-            ...process.env,
-            WEBADMIN_PORT: String(appPort),
-            WEBADMIN_CONFIG_JSON: JSON.stringify({
-                allowedUrls: [{ name: 'Alpha', url: alphaUrl }, { name: 'Bravo', url: bravoUrl }],
-                // One IdP registration, so BOTH engines share a client secret —
-                // the case where the sealing key alone cannot say which engine a
-                // transaction belongs to.
-                // Distinct labels: with one shared label the SSO button cannot
-                // distinguish "resolved Bravo" from "resolved Alpha while Bravo
-                // was selected". providerLabel is per-engine web-tier display
-                // config, independent of clientSecret, so this keeps the shared
-                // -secret shape intact.
-                oidc: {
-                    Alpha: { enabled: true, clientSecret: CLIENT_SECRET, providerLabel: 'Alpha SSO' },
-                    Bravo: { enabled: true, clientSecret: CLIENT_SECRET, providerLabel: 'Bravo SSO' }
-                }
-            })
-        },
-        stdio: ['ignore', 'ignore', 'pipe']
+    const started = await startWebAdmin({
+        allowedUrls: [{ name: 'Alpha', url: alphaUrl }, { name: 'Bravo', url: bravoUrl }],
+        // One IdP registration, so BOTH engines share a client secret — the case
+        // where the sealing key alone cannot say which engine a transaction
+        // belongs to.
+        // Distinct labels: with one shared label the SSO button cannot
+        // distinguish "resolved Bravo" from "resolved Alpha while Bravo was
+        // selected". providerLabel is per-engine web-tier display config,
+        // independent of clientSecret, so this keeps the shared-secret shape.
+        oidc: {
+            Alpha: { enabled: true, clientSecret: CLIENT_SECRET, providerLabel: 'Alpha SSO' },
+            Bravo: { enabled: true, clientSecret: CLIENT_SECRET, providerLabel: 'Bravo SSO' }
+        }
     });
-    app.stderr!.on('data', (chunk) => stderr.push(String(chunk)));
-
-    const deadline = Date.now() + 20_000;
-    for (;;) {
-        try {
-            const res = await fetch(`${appUrl}/webadmin/config.json`);
-            if (res.ok) break;
-        } catch { /* not up yet */ }
-        if (app.exitCode != null) throw new Error(`web admin exited early:\n${stderr.join('')}`);
-        if (Date.now() > deadline) throw new Error(`web admin never became ready:\n${stderr.join('')}`);
-        await new Promise((r) => setTimeout(r, 200));
-    }
+    app = started.process; appUrl = started.url;
 });
 
 test.afterAll(async () => {
