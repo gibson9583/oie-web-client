@@ -300,6 +300,35 @@ test.describe('OIDC login', () => {
         await expect(page.getByText(/no permissions on this engine/)).toBeVisible({ timeout: 15_000 });
     });
 
+    test('a failed SSO attempt leaves no SSO mark on the local sign-in that follows', async ({ page }) => {
+        // The 403 above tells the user to sign in another way, and the obvious
+        // move is break-glass local sign-in IN THIS TAB. If the failed attempt
+        // recorded an SSO session anyway, that local session — which really does
+        // have a password — would be denied its Change Password control. Nothing
+        // clears such a mark either: clearSsoSession only runs on a logout or
+        // expiry drop, and neither happens when no session was ever created.
+        let authed = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (authed ? { user: { id: 1, username: 'admin' } } : { __status: 403 }),
+            'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+        });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await expect(page.getByText(/no permissions on this engine/)).toBeVisible({ timeout: 15_000 });
+        expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBeNull();
+
+        // Same tab, no reload: sign in locally and keep the password affordance.
+        // (The 403 branch reports the error but leaves the card in SSO mode, so
+        // the break-glass switch is an explicit click — as in the test above.)
+        await page.getByRole('button', { name: 'Use local sign-in' }).click();
+        await page.getByPlaceholder('admin').fill('admin');
+        await page.locator('input[type=password]').fill('admin');
+        await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        await page.locator('button.user-chip').click();
+        await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Change Password' })).toBeVisible();
+    });
+
     test('a retry after a rejected attempt forces IdP re-authentication', async ({ page }) => {
         // The IdP's own SSO session silently replays the same account; after a
         // rejection the retry must carry prompt=login so the user can switch.
@@ -326,6 +355,31 @@ test.describe('OIDC login', () => {
 
         await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
         await expect(page.getByText(/OIDC Authentication extension is installed/)).toBeVisible({ timeout: 15_000 });
+    });
+
+    test('an SSO session arms no spurious reload for the next sign-in', async ({ page }) => {
+        // Plugins are discovered once per page load and recorded against the
+        // engine they came from; login.tsx hard-reloads when the next sign-in
+        // targets a different one. The SSO callback decides the routing cookie
+        // server-side, so what the shell records here has to equal what the login
+        // card will later compute — otherwise EVERY SSO sign-in is followed by a
+        // needless full reload. Single-engine: both must be ''. This guards the
+        // callback's `routable` predicate; the client clears the cookie before
+        // /oidc/start, so it does not also cover the server's own clear.
+        await mockEngine(page, {
+            'GET /users/current': (req: any) => (String(req.headers()['cookie'] || '').includes('JSESSIONID=e2e-engine-session')
+                ? { user: { id: 1, username: 'jdoe' } } : { __status: 401 }),
+        });
+        await page.goto(appUrl + '/');
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+
+        // Polled: startEngine() writes this at the END of its effect, after
+        // loadPlugins() resolves — a visible .shell does not imply the write.
+        await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-engine'))).toBe('');
+        // …and the callback left no routing cookie behind to contradict it.
+        const routing = (await page.context().cookies()).find((c) => c.name === 'oie-engine');
+        expect(routing?.value ?? '').toBe('');
     });
 
     // Single-engine mode has no picker, so an unresolvable remembered choice must

@@ -11,6 +11,7 @@
  */
 import { getLoginAuthenticator } from '../../core/login-auth.js';
 import { appUrl } from '../../core/deployment.js';
+import { markSsoSession } from '../sso-session.js';
 
 import { useState, useRef, useEffect } from 'react';
 import { useStoreKey } from '../bridges.jsx';
@@ -194,7 +195,17 @@ export function LoginForm({ onSuccess }: any) {
         try { sessionStorage.removeItem(`oie-oidc-redirect:${sel}`); } catch { /* ignore */ }
         const status = result.status || result;
         if (status === 'SUCCESS' || status === 'SUCCESS_GRACE_PERIOD') {
-            api.auth.current().then((user: any) => onSuccess(user, { graceMessage: result.message || null }))
+            // Same record the shell's boot path keeps: a session established HERE
+            // is just as much an SSO session, and without the mark the account
+            // menu offers it a Change Password that SSO never consults. This path
+            // runs whenever the login card wins the race for the result cookie —
+            // e.g. a second tab dropped by a 401 while this one completed SSO.
+            // Marked only once the session is PROVEN, like shell.tsx's boot path:
+            // both .catch arms below are reachable (a 403 roleless account is the
+            // common one), nothing clears the mark when no session was created,
+            // and a stale mark would strip Change Password from the break-glass
+            // local sign-in that this very error message sends the user to.
+            api.auth.current().then((user: any) => { markSsoSession(); return onSuccess(user, { graceMessage: result.message || null }); })
                 // 403 = the session is real but the account holds no permissions
                 // (an RBAC install with no role assigned — e.g. a JIT user and no
                 // default role). Say so; the generic line sends people debugging
@@ -212,7 +223,11 @@ export function LoginForm({ onSuccess }: any) {
                 .then(async (second: any) => {
                     const secondStatus = second?.status || second;
                     if (secondStatus !== 'SUCCESS' && secondStatus !== 'SUCCESS_GRACE_PERIOD') throw new Error(second?.message || 'Multi-factor sign-in failed.');
-                    await onSuccess(await api.auth.current(), { graceMessage: second?.message || null });
+                    // The second factor rides on the SSO primary — still SSO. Same
+                    // ordering rule as above: prove the session, then mark it.
+                    const user = await api.auth.current();
+                    markSsoSession();
+                    await onSuccess(user, { graceMessage: second?.message || null });
                 }).catch((err: any) => setError(err.message || 'Multi-factor sign-in failed.'));
             return;
         }

@@ -899,13 +899,20 @@ export function App() {
                 if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
             }
         } catch { /* public settings unavailable — don't block login */ }
-        resetSessionExpired();
         store.setState('navGuard', null);
         // First-login wizard (Swing FirstLoginDialog): prompt for a password +
         // profile when the engine's "firstlogin" user preference is set. Fails
         // open internally, but guard here too so it can never block sign-in.
         try { await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
         await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
+        // AFTER the awaits above, not before: they make engine calls, and a 401
+        // among them fires the expiry listeners while `user` is still null — so
+        // dropToLogin early-returns and nothing clears the latch it just set.
+        // Resetting first would leave that latch armed forever, and it is shared
+        // with ENGINE_UNKNOWN, so every later expiry AND every later 421 would be
+        // silently discarded: a fully rendered shell whose every request fails and
+        // which never returns the user to the login screen.
+        resetSessionExpired();
         store.setState('user', u);
         // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
         // accepted but the password is expiring — the engine's message says when.
