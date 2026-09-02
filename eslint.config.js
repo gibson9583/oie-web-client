@@ -166,4 +166,26 @@ export default [
             'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true }],
         },
     },
+
+    /* The server's TypeScript SOURCES. Linting only the generated .js twins
+       above is not equivalent: tsc preserves unused *locals* into the emit, so
+       those surface either way, but it ELIDES unused imports entirely — an
+       import left behind by a refactor is invisible to both that lint and to
+       tsc (tsconfig.server.json does not set noUnusedLocals).
+
+       varsIgnorePattern is what makes the rule usable here. The Babel parser
+       strips type annotations before the rule runs, so every `import type
+       { Request, Response }` would otherwise report as unused — 20 such false
+       positives across the server sources. Ignoring capitalized names clears
+       all 20 while still catching lowercase value imports; the residue is an
+       unused PascalCase value import, which the .js lint misses today anyway,
+       so this is strictly more coverage than before rather than a trade. */
+    {
+        files: ['web-administrator/server/**/*.ts'],
+        ignores: ['**/*.d.ts'],
+        languageOptions: { ...tsLanguageOptions, globals: { ...globals.node } },
+        rules: {
+            'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true, varsIgnorePattern: '^[A-Z]' }],
+        },
+    },
 ];

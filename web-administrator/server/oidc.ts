@@ -233,6 +233,47 @@ export function withBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
     return Promise.race([work, lapsed]).finally(() => clearTimeout(timer));
 }
 
+// Opens a sealed transaction and confirms it belongs to the engine the cookie's
+// cleartext prefix selected, and to this callback.
+//
+// The engineKey re-check is NOT redundant with the GCM tag. keyFor() derives the
+// sealing key from the client secret alone, so two engines configured against one
+// IdP app registration — a single Entra/Keycloak client fronting Production and
+// Staging — share a secret and therefore a sealing key. A transaction started
+// against staging then opens cleanly under a `k:production` prefix, and without
+// this comparison the staging-issued code would be exchanged against production
+// and mint a production session. Only the sealed key says which engine the user
+// actually chose.
+export function openBoundTransaction(sealed: string, engine: ResolvedEngine, secret: string, state: unknown, now?: number): Transaction {
+    const txn = openTransaction(sealed, secret, now);
+    if (txn.engineKey !== engine.key || state !== txn.state) throw new Error('invalid or expired sign-in transaction');
+    return txn;
+}
+
+// The routing cookies a completed SSO sign-in must leave behind, matching what
+// login.tsx's commitEngineSelection writes for a password sign-in — the two have
+// to agree or shell.tsx's loadedEngineKey() disagrees with what the login card
+// computes and every sign-in is followed by a spurious hard reload.
+//
+// The key is percent-encoded because engineKey() preserves \p{L}: a raw non-ASCII
+// key is read back latin1-mangled (and 421s), or is rejected outright as an
+// invalid header character. Both readers — cookies() here and parseCookies in
+// proxy.ts — decode. oie-engine-url is cleared in BOTH branches, as the picker
+// does: a stale typed URL beside a named-engine choice re-seeds the login card's
+// custom field on the next visit.
+export function routingCookies(config: Pick<WebAdminConfig, 'engines' | 'devMode'>, engine: ResolvedEngine, secure: boolean): string[] {
+    const attributes = `Path=/; SameSite=Lax${secure ? '; Secure' : ''}`;
+    const cleared = (name: string) => `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`;
+    // No picker means no remembered choice to record — the proxy already ignores
+    // the cookie outright in single-engine mode, so writing one only desynchronizes
+    // this tab from what the login card computes ('').
+    const routable = config.engines.length > 1 || !!config.devMode;
+    return [
+        cleared('oie-engine-url'),
+        routable ? `oie-engine=${encodeURIComponent(engine.key)}; ${attributes}` : cleared('oie-engine')
+    ];
+}
+
 // Resolves an engine by its stable key (issue #53). A pre-key numeric index is
 // not accepted and not translated: it would be a guess at which entry the caller
 // meant, which is exactly what the key migration removed.
@@ -317,8 +358,7 @@ export function createOidcRouter(config: WebAdminConfig) {
             const parts = splitTxnCookie(cookies(req)[TXN_COOKIE]);
             const found = parts && await providerFor(config, parts.engineKey);
             if (!found || !parts) throw new Error('invalid or expired sign-in transaction');
-            const txn = openTransaction(parts.sealed, found.provider.clientSecret);
-            if (txn.engineKey !== found.engine.key || req.query.state !== txn.state) throw new Error('invalid or expired sign-in transaction');
+            const txn = openBoundTransaction(parts.sealed, found.engine, found.provider.clientSecret, req.query.state);
             returnPath = txn.returnPath;
             if (typeof req.query.error === 'string') throw new Error('The identity provider declined sign-in.');
             if (typeof req.query.code !== 'string' || !req.query.code) throw new Error('The identity provider returned no authorization code.');
@@ -346,18 +386,7 @@ export function createOidcRouter(config: WebAdminConfig) {
             // would desynchronize shell.tsx's loadedEngineKey() from what the
             // login card computes ('') and force a spurious hard reload on the
             // next sign-in in this tab.
-            // Percent-encoded to match login.tsx's setCookie and the proxy's
-            // decoding reader — see txnCookieValue on why a raw non-ASCII key
-            // comes back mojibake and 421s. Single-engine mode clears BOTH
-            // routing cookies, exactly as commitEngineSelection does.
-            const routable = config.engines.length > 1 || !!config.devMode;
-            const clear = (name: string) => res.append('Set-Cookie', `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`);
-            // oie-engine-url goes in both branches, as it does in the picker: a
-            // stale typed URL left beside a named-engine choice re-seeds the
-            // login card's custom field on the next visit.
-            clear('oie-engine-url');
-            if (routable) res.append('Set-Cookie', `oie-engine=${encodeURIComponent(found.engine.key)}; Path=/; SameSite=Lax${secure ? '; Secure' : ''}`);
-            else clear('oie-engine');
+            for (const cookie of routingCookies(config, found.engine, secure)) res.append('Set-Cookie', cookie);
             // Local auth answers "Incorrect username or password." — an oidc:-prefixed
             // password can only reach local auth when no OIDC plugin intercepted it.
             const pluginMissing = status === 'FAIL' && /incorrect username or password|invalid (username|user name).*password/i.test(String(result.message || ''));

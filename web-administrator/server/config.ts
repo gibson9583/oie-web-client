@@ -53,7 +53,6 @@ export interface OidcProviderConfig {
     scopes: string[];
     providerLabel: string;
     autoRedirect: boolean;
-    endSession?: boolean;
 }
 
 /** The resolved runtime configuration (defaults + config.json + env). */
@@ -236,9 +235,12 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
     // key (the oie-engine cookie, /oidc/start?engine=, the sealed transaction) and
     // resolving name→key once here keeps that translation out of the request path.
     const out: Record<string, OidcProviderConfig> = {};
+    // No name-uniqueness check here: buildEngines already refuses colliding KEYS
+    // unconditionally, and the key is a pure function of the name, so duplicate
+    // names cannot survive startup with or without OIDC. That guard is strictly
+    // stronger than a name check gated on OIDC being configured — it also catches
+    // distinct names that slugify together ("Prod A" and "Prod-A").
     const keyByName = new Map(engines.map((engine) => [engine.name, engine.key]));
-    if (Object.keys(source).length && keyByName.size !== engines.length)
-        throw new Error('[config] configured engine names must be unique when OIDC is enabled');
     for (const [key, value] of Object.entries(source)) {
         if (!keyByName.has(key)) throw new Error(`[config] oidc.${key} does not match a configured engine name`);
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`[config] oidc.${key} must be an object`);
@@ -258,7 +260,7 @@ export function normalizeOidc(raw: unknown, engines: ResolvedEngine[]): Record<s
         if (!scopes.includes('openid')) scopes.unshift('openid');
         out[keyByName.get(key)!] = { enabled, discoveryUrl: discovery?.toString(), clientId: value.clientId ? String(value.clientId) : undefined,
             clientSecret: value.clientSecret, scopes, providerLabel: String(value.providerLabel || 'SSO'),
-            autoRedirect: !!value.autoRedirect, endSession: !!value.endSession };
+            autoRedirect: !!value.autoRedirect };
     }
     return out;
 }

@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { encodeResult, openTransaction, sealTransaction, splitTxnCookie, throttleKey, txnCookieValue, unwrapEngineJson, validReturnPath, validateIdTokenClaims, withBudget } from './oidc';
+import { encodeResult, openBoundTransaction, openTransaction, routingCookies, sealTransaction, splitTxnCookie, throttleKey, txnCookieValue, unwrapEngineJson, validReturnPath, validateIdTokenClaims, withBudget } from './oidc';
 import { normalizeOidc } from './config';
 
 const secret = 'a sufficiently long test client secret';
@@ -33,7 +33,27 @@ assert.throws(() => openTransaction(split.sealed, 'a different engine client sec
 const swapped = roundTrip(txnCookieValue('k:staging', sealTransaction(txn, secret)));
 assert.strictEqual(swapped.engineKey, 'k:staging');
 assert.strictEqual(openTransaction(swapped.sealed, secret, now).engineKey, 'k:production');
-assert.notStrictEqual(openTransaction(swapped.sealed, secret, now).engineKey, swapped.engineKey);
+// So the seal alone cannot be trusted to say which engine was chosen — only the
+// binding check can. Deleting it must break this, or a staging-issued code could
+// be exchanged against production whenever the two share an IdP registration.
+const stagingEngine = { name: 'Staging', key: 'k:staging', url: 'https://staging.test', verifyTls: true };
+const prodEngine = { name: 'Production', key: 'k:production', url: 'https://engine.test', verifyTls: true };
+assert.throws(() => openBoundTransaction(swapped.sealed, stagingEngine, secret, 'state', now), /invalid or expired/);
+// The same transaction under its OWN engine is accepted.
+assert.deepStrictEqual(openBoundTransaction(split.sealed, prodEngine, secret, 'state', now), txn);
+// …and the state must still match, so a stolen cookie replayed with a different
+// state parameter is refused even on the right engine.
+assert.throws(() => openBoundTransaction(split.sealed, prodEngine, secret, 'not-the-state', now), /invalid or expired/);
+assert.throws(() => openBoundTransaction(split.sealed, prodEngine, secret, undefined, now), /invalid or expired/);
+// The router omits `now` entirely, so it reaches openTransaction as undefined and
+// leans on the `now = Date.now()` default. That is the one call shape the
+// assertions above do not exercise, and it is load-bearing: were the default not
+// to fire, every comparison in the expiry arithmetic would be against NaN and
+// therefore false, so EVERY expired transaction would be accepted.
+const staleSeal = roundTrip(txnCookieValue('k:production', sealTransaction({ ...txn, created: Date.now() - 700000 }, secret))).sealed;
+assert.throws(() => openBoundTransaction(staleSeal, prodEngine, secret, 'state'), /expired/);
+const freshSeal = roundTrip(txnCookieValue('k:production', sealTransaction({ ...txn, created: Date.now() }, secret))).sealed;
+assert.strictEqual(openBoundTransaction(freshSeal, prodEngine, secret, 'state').engineKey, 'k:production');
 // engineKey() preserves \p{L}, so an accented or CJK engine name yields a
 // non-ASCII key. Written raw it would be latin1-mangled back into no engine at
 // all (or rejected outright as an invalid header char), so the value is
@@ -96,6 +116,36 @@ async function budgetTests() {
     assert.strictEqual(await work, 'late');
 }
 
+// What a completed SSO sign-in leaves behind for routing. This has to agree with
+// login.tsx's commitEngineSelection, or shell.tsx's loadedEngineKey() disagrees
+// with what the login card computes and every sign-in is followed by a reload.
+const engineOf = (name: string, key: string) => ({ name, key, url: 'https://engine.test', verifyTls: true });
+const prod = engineOf('Production', 'k:production');
+const cookieNamed = (cookies: string[], name: string) => cookies.find((c) => c.startsWith(`${name}=`))!;
+// A picker exists (multi-engine): record the choice, by key.
+const multi = routingCookies({ engines: [prod, engineOf('Staging', 'k:staging')], devMode: false }, prod, false);
+assert.match(cookieNamed(multi, 'oie-engine'), /^oie-engine=k%3Aproduction; Path=\/; SameSite=Lax$/);
+// devMode shows a picker even with one engine, so it records too.
+assert.match(cookieNamed(routingCookies({ engines: [prod], devMode: true }, prod, false), 'oie-engine'), /^oie-engine=k%3Aproduction;/);
+// No picker: record nothing. A cookie here desynchronizes this tab from the
+// login card's '' and forces a spurious hard reload on the next sign-in.
+const single = routingCookies({ engines: [prod], devMode: false }, prod, false);
+assert.match(cookieNamed(single, 'oie-engine'), /^oie-engine=; Path=\/; Max-Age=0;/);
+// oie-engine-url is cleared either way — a stale typed URL would re-seed the
+// login card's custom field on the next visit.
+for (const cookies of [multi, single]) assert.match(cookieNamed(cookies, 'oie-engine-url'), /^oie-engine-url=; Path=\/; Max-Age=0;/);
+// Secure rides on the request, not the config.
+assert.ok(routingCookies({ engines: [prod], devMode: true }, prod, true).every((c) => c.endsWith('; Secure')));
+assert.ok(routingCookies({ engines: [prod], devMode: true }, prod, false).every((c) => !c.includes('Secure')));
+// engineKey() preserves \p{L}, so the key can be non-ASCII: written raw it comes
+// back latin1-mangled (421 ENGINE_UNKNOWN) or is refused as an invalid header
+// character. Every emitted cookie must be ASCII-safe.
+for (const key of ['k:producción', 'k:北京-engine']) {
+    const cookies = routingCookies({ engines: [prod, engineOf('Other', key)], devMode: false }, engineOf('Other', key), false);
+    assert.ok(cookies.every((c) => /^[\x20-\x7e]+$/.test(c)), `routing cookies for ${key} must be ASCII-safe`);
+    assert.strictEqual(decodeURIComponent(cookieNamed(cookies, 'oie-engine').split(';')[0].slice('oie-engine='.length)), key);
+}
+
 const metadata = { issuer: 'https://issuer.test', authorization_endpoint: 'https://issuer.test/auth', token_endpoint: 'https://issuer.test/token' };
 const provider: any = { clientId: 'client' };
 const claims = { iss: metadata.issuer, aud: 'client', nonce: 'n', exp: Math.floor(now / 1000) + 60 };
@@ -104,7 +154,7 @@ assert.deepStrictEqual(validateIdTokenClaims(token, metadata, provider, 'n', now
 assert.throws(() => validateIdTokenClaims(token, metadata, provider, 'wrong', now), /validation/);
 // The config DOCUMENT stays keyed by the human engine name; the runtime map is
 // keyed by the engine's stable key, which is what every lookup arrives holding.
-const engines = [{ name: 'Production', key: 'k:production', url: 'https://engine.test', verifyTls: true }];
+const engines = [prod];
 const providerConfig = { enabled: true, discoveryUrl: 'https://issuer.test/.well-known/openid-configuration', clientId: 'client', clientSecret: secret };
 const normalized = normalizeOidc({ Production: providerConfig }, engines);
 assert.ok(normalized['k:production']);
