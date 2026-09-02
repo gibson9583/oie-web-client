@@ -280,9 +280,25 @@ test.describe('OIDC login', () => {
         await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
         expect(received.login).toBeUndefined();   // nothing reached the server-side login path
 
-        // The preference is remembered per engine, so a reload stays on local.
+        // The preference is remembered per engine, so the NEXT visit to the login
+        // card opens on local rather than SSO. Reloading while still signed in
+        // only re-renders the shell, which says nothing either way — drop the
+        // session first, so what comes back is the card.
+        authed = false;
         await page.reload();
-        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        await expect(page.locator('input[type=password]')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('button', { name: 'Sign in with SSO' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Sign in with Acme SSO' })).toHaveCount(0);
+        // Stored against THIS engine's stable key, not globally — a global flag
+        // would opt every engine out of SSO because one of them once needed
+        // break-glass. ("Primary" in the config below; k:primary at runtime.)
+        expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('oie-login-mode:'))))
+            .toEqual(['oie-login-mode:k:primary']);
+        expect(await page.evaluate(() => localStorage.getItem('oie-login-mode:k:primary'))).toBe('local');
+
+        // Choosing SSO again clears it rather than leaving a sticky override.
+        await page.getByRole('button', { name: 'Sign in with SSO' }).click();
+        expect(await page.evaluate(() => localStorage.getItem('oie-login-mode:k:primary'))).toBeNull();
     });
 
     test('an IdP decline is surfaced inline with local sign-in reachable', async ({ page }) => {

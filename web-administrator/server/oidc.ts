@@ -1,103 +1,16 @@
-import * as crypto from 'crypto';
 import express from 'express';
 import type { Request, Response } from 'express';
 import type { OidcProviderConfig, ResolvedEngine, WebAdminConfig } from './config';
 import { oidcForEngine } from './config';
 import { engineRequest, isTrustedPeer, rewriteSetCookies, sanitizeForwardHeaders } from './proxy';
+import type { Transaction } from './oidc-transaction';
+import { TXN_COOKIE, b64url, codeChallenge, newTransaction, openBoundTransaction, sealTransaction, splitTxnCookie, txnCookieValue, validReturnPath } from './oidc-transaction';
+import { oidcThrottle } from './oidc-throttle';
 
-const TXN_COOKIE = 'oie-oidc-txn';
 const RESULT_COOKIE = 'oie-oidc-result';
-const TXN_TTL_MS = 10 * 60 * 1000;
 const metadataCache = new Map<string, { expires: number; value: Metadata }>();
 type Metadata = { issuer: string; authorization_endpoint: string; token_endpoint: string };
 type ActiveProvider = OidcProviderConfig & { discoveryUrl: string; clientId: string };
-// v3 seals the engine's stable KEY (issue #53's `k:<slug>`): the identity binding
-// must not move when allowedUrls is reordered mid-flow (a restart inside the
-// 10-minute transaction window), and the key is what every other routing surface
-// now carries. The version bump is deliberate — a v2 cookie sealed the engine
-// NAME, so an in-flight sign-in across the upgrade fails closed and re-starts
-// rather than resolving against a field this code no longer reads.
-type Transaction = { v: 3; state: string; nonce: string; verifier: string; engineKey: string; returnPath: string; created: number };
-
-function b64(value: Buffer | string): string { return Buffer.from(value).toString('base64url'); }
-function random(size = 32): string { return crypto.randomBytes(size).toString('base64url'); }
-function keyFor(secret: string): Buffer {
-    return Buffer.from(crypto.hkdfSync('sha256', Buffer.from(secret), Buffer.from('oie-webadmin-oidc'), Buffer.from('transaction-cookie-v1'), 32));
-}
-
-export function sealTransaction(txn: Transaction, secret: string): string {
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', keyFor(secret), iv);
-    const encrypted = Buffer.concat([cipher.update(JSON.stringify(txn)), cipher.final()]);
-    return [b64(iv), b64(encrypted), b64(cipher.getAuthTag())].join('.');
-}
-
-export function openTransaction(value: string, secret: string, now = Date.now()): Transaction {
-    const parts = String(value || '').split('.');
-    if (parts.length !== 3) throw new Error('invalid transaction');
-    try {
-        const decipher = crypto.createDecipheriv('aes-256-gcm', keyFor(secret), Buffer.from(parts[0], 'base64url'));
-        decipher.setAuthTag(Buffer.from(parts[2], 'base64url'));
-        const txn = JSON.parse(Buffer.concat([decipher.update(Buffer.from(parts[1], 'base64url')), decipher.final()]).toString('utf8'));
-        if (txn.v !== 3 || typeof txn.created !== 'number' || txn.created > now + 30000 || now - txn.created > TXN_TTL_MS)
-            throw new Error('expired transaction');
-        return txn;
-    } catch (error) {
-        if ((error as Error).message === 'expired transaction') throw error;
-        throw new Error('invalid transaction');
-    }
-}
-
-// The transaction cookie carries its engine key in front of the sealed blob:
-// `k:<slug>.<iv>.<ct>.<tag>`. The seal is authenticated with that engine's client
-// secret, so the callback cannot decrypt without first knowing WHICH engine — the
-// prefix answers that in one lookup instead of trying every configured secret in
-// turn. The prefix is only a hint and is never trusted: it selects a candidate
-// secret, and the sealed engineKey is re-checked against it after decryption, so
-// editing the prefix yields a decryption failure or a mismatch, never a swap.
-// engineKey() slugifies every non-alphanumeric to '-', so a key holds no '.'.
-// The key is percent-encoded because engineKey() preserves \p{L}: an accented or
-// CJK engine name yields a non-ASCII key, which a raw Set-Cookie either mangles
-// (headers decode as latin1, so "k:producción" returns as "k:producciÃ³n" and
-// resolves to no engine) or refuses outright (ERR_INVALID_CHAR above U+00FF).
-// Both readers — cookies() here and parseCookies in proxy.ts — decodeURIComponent.
-export function txnCookieValue(engineKey: string, sealed: string): string {
-    return `${encodeURIComponent(engineKey)}.${sealed}`;
-}
-
-// Takes the ALREADY percent-decoded cookie value (cookies() here and parseCookies
-// in proxy.ts decode every cookie), so this is deliberately NOT the inverse of
-// txnCookieValue — pairing the two directly yields a still-encoded "k%3A…" that
-// matches no engine. Decoding here instead would be worse: cookies() has already
-// decoded once, so a second pass would resolve a doubly-encoded key.
-export function splitTxnCookie(value: unknown): { engineKey: string; sealed: string } | null {
-    const at = String(value ?? '').indexOf('.');
-    if (at <= 0) return null;
-    return { engineKey: String(value).slice(0, at), sealed: String(value).slice(at + 1) };
-}
-
-export function validReturnPath(value: unknown): string {
-    const path = typeof value === 'string' ? value : '/';
-    if (!path.startsWith('/') || path.startsWith('//') || path.startsWith('/\\') || /[\r\n]/.test(path)) return '/';
-    try {
-        const parsed = new URL(path, 'https://local.invalid');
-        // Re-check the NORMALIZED result, not just the input: a dot-segment
-        // collapses on parse, so "/..//evil.test" arrives past the leading-"//"
-        // guard and comes back out as "//evil.test" — still same-origin by the
-        // check below, but a protocol-relative URL that res.redirect emits
-        // verbatim and the browser resolves to https://evil.test. This value is
-        // attacker-supplied via /oidc/start?return=, so an open redirect here
-        // turns a genuine SSO sign-in into a phishing pivot off a trusted origin.
-        // Stated as a whitelist: the two escape shapes are "//host" and "/\host",
-        // and rejecting anything that is not "/" followed by a non-separator
-        // covers both outright, rather than resting on the URL parser folding
-        // backslashes for special schemes — true today, but nothing here asserts it.
-        const out = parsed.pathname + parsed.search + parsed.hash;
-        const sameOrigin = parsed.origin === 'https://local.invalid';
-        return sameOrigin && (out === '/' || /^\/[^/\\]/.test(out)) ? out : '/';
-    } catch { return '/'; }
-}
-
 function cookies(req: Request): Record<string, string> {
     const result: Record<string, string> = {};
     for (const item of String(req.headers.cookie || '').split(';')) {
@@ -187,34 +100,70 @@ export function encodeResult(payload: { message?: unknown; [key: string]: unknow
         clientPluginClass: String(payload.clientPluginClass ?? '').slice(0, CLASS_MAX),
         updatedUsername: String(payload.updatedUsername ?? '').slice(0, USERNAME_MAX)
     };
-    const value = b64(JSON.stringify(bounded));
+    const value = b64url(JSON.stringify(bounded));
     if (value.length <= COOKIE_MAX) return value;
     // Over the ceiling. For prose, dropping the detail still leaves a usable
     // status. For a challenge there is nothing to salvage, so say so plainly
     // rather than handing the card a plugin class it cannot act on — that would
     // surface as the authenticator's confusing "unexpected challenge" instead.
     return challenge
-        ? b64(JSON.stringify({ ...bounded, clientPluginClass: '', message: 'This engine requires a second authentication factor, but its challenge is too large to complete in the browser. Use the desktop Administrator.' }))
-        : b64(JSON.stringify({ ...bounded, message: '' }));
+        ? b64url(JSON.stringify({ ...bounded, clientPluginClass: '', message: 'This engine requires a second authentication factor, but its challenge is too large to complete in the browser. Use the desktop Administrator.' }))
+        : b64url(JSON.stringify({ ...bounded, message: '' }));
 }
 
 function setResult(res: Response, payload: { message?: unknown; [key: string]: unknown }, secure: boolean): void {
     res.append('Set-Cookie', `${RESULT_COOKIE}=${encodeResult(payload)}; Path=/; Max-Age=120; SameSite=Lax${secure ? '; Secure' : ''}`);
 }
 
-async function discovery(provider: ActiveProvider): Promise<Metadata> {
-    const cached = metadataCache.get(provider.discoveryUrl);
-    if (cached && cached.expires > Date.now()) return cached.value;
-    const response = await fetch(provider.discoveryUrl, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
-    if (!response.ok) throw new Error(`discovery returned ${response.status}`);
-    const value = await response.json() as Metadata;
-    if (!value.issuer || !value.authorization_endpoint || !value.token_endpoint) throw new Error('incomplete discovery document');
-    for (const endpoint of [value.authorization_endpoint, value.token_endpoint]) {
-        const url = new URL(endpoint);
-        if (url.protocol !== 'https:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') throw new Error('OIDC endpoints must use HTTPS');
-    }
-    metadataCache.set(provider.discoveryUrl, { expires: Date.now() + 5 * 60 * 1000, value });
-    return value;
+// Same discipline as the engine probe below, which this predated and did not
+// share: successes cached, failures remembered briefly, and concurrent callers
+// sharing ONE fetch. Without the last two, a down IdP cost every sign-in its own
+// 10s socket — the /oidc/start burst when a shift logs in together turns into N
+// simultaneous connections to a provider already in trouble, and each user waits
+// the full timeout to be told the same thing. The negative TTL is deliberately
+// short: it exists to collapse a burst, not to keep failing after a recovery.
+const DISCOVERY_OK_TTL_MS = 5 * 60 * 1000;
+const DISCOVERY_FAIL_TTL_MS = 10 * 1000;
+const discoveryFailures = new Map<string, { expires: number; error: string }>();
+const discoveryInFlight = new Map<string, Promise<Metadata>>();
+export function discovery(provider: ActiveProvider): Promise<Metadata> {
+    const url = provider.discoveryUrl;
+    const cached = metadataCache.get(url);
+    if (cached && cached.expires > Date.now()) return Promise.resolve(cached.value);
+    const failed = discoveryFailures.get(url);
+    if (failed && failed.expires > Date.now()) return Promise.reject(new Error(failed.error));
+    const sharing = discoveryInFlight.get(url);
+    if (sharing) return sharing;
+    const fetching = (async () => {
+        try {
+            const response = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+            if (!response.ok) throw new Error(`discovery returned ${response.status}`);
+            const value = await response.json() as Metadata;
+            if (!value.issuer || !value.authorization_endpoint || !value.token_endpoint) throw new Error('incomplete discovery document');
+            for (const endpoint of [value.authorization_endpoint, value.token_endpoint]) {
+                const parsed = new URL(endpoint);
+                if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') throw new Error('OIDC endpoints must use HTTPS');
+            }
+            metadataCache.set(url, { expires: Date.now() + DISCOVERY_OK_TTL_MS, value });
+            discoveryFailures.delete(url);
+            return value;
+        } catch (err: any) {
+            // Remember the REASON, not just that it failed: the next caller inside
+            // the window gets the same message it would have got by waiting, so a
+            // fast failure and a slow one are indistinguishable in the log.
+            discoveryFailures.set(url, { expires: Date.now() + DISCOVERY_FAIL_TTL_MS, error: err?.message || String(err) });
+            throw err;
+        }
+    })().finally(() => discoveryInFlight.delete(url));
+    discoveryInFlight.set(url, fetching);
+    return fetching;
+}
+
+/** Test seam: forget every cached discovery outcome, good or bad. */
+export function resetDiscoveryCache(): void {
+    metadataCache.clear();
+    discoveryFailures.clear();
+    discoveryInFlight.clear();
 }
 
 // The engine's ObjectJSONSerializer wraps every JSON payload under a single
@@ -307,20 +256,6 @@ export function withBudget<T>(work: Promise<T>, ms: number): Promise<T | null> {
 // Opens a sealed transaction and confirms it belongs to the engine the cookie's
 // cleartext prefix selected, and to this callback.
 //
-// The engineKey re-check is NOT redundant with the GCM tag. keyFor() derives the
-// sealing key from the client secret alone, so two engines configured against one
-// IdP app registration — a single Entra/Keycloak client fronting Production and
-// Staging — share a secret and therefore a sealing key. A transaction started
-// against staging then opens cleanly under a `k:production` prefix, and without
-// this comparison the staging-issued code would be exchanged against production
-// and mint a production session. Only the sealed key says which engine the user
-// actually chose.
-export function openBoundTransaction(sealed: string, engine: ResolvedEngine, secret: string, state: unknown, now?: number): Transaction {
-    const txn = openTransaction(sealed, secret, now);
-    if (txn.engineKey !== engine.key || state !== txn.state) throw new Error('invalid or expired sign-in transaction');
-    return txn;
-}
-
 // The routing cookies a completed SSO sign-in must leave behind, matching what
 // login.tsx's commitEngineSelection writes for a password sign-in — the two have
 // to agree or shell.tsx's loadedEngineKey() disagrees with what the login card
@@ -357,58 +292,6 @@ async function providerFor(config: WebAdminConfig, raw: unknown): Promise<{ engi
     return discoveryUrl && clientId ? { engine, provider: { ...web, discoveryUrl, clientId } as ActiveProvider } : null;
 }
 
-// The address the throttle should count: behind the deployment's trusted front
-// proxy every browser shares one socket address, so use the client the proxy
-// reports (the RIGHTMOST X-Forwarded-For hop — appended by the trusted proxy,
-// unforgeable by the client, unlike the client-suppliable leftmost entries).
-export function throttleKey(remoteAddress: string | undefined, forwardedFor: unknown, trusted: Set<string>): string {
-    if (isTrustedPeer(remoteAddress, trusted)) {
-        const hops = String(forwardedFor || '').split(',').map((hop) => hop.trim()).filter(Boolean);
-        if (hops.length) return hops[hops.length - 1];
-    }
-    return String(remoteAddress || 'unknown');
-}
-
-function limiter(trusted: Set<string>) {
-    const hits = new Map<string, number[]>();
-    return (req: Request, res: Response, next: () => void) => {
-        const key = throttleKey(req.socket.remoteAddress, req.headers['x-forwarded-for'], trusted);
-        const now = Date.now();
-        // Drop buckets whose window has fully passed so one-off addresses
-        // don't accumulate forever.
-        if (hits.size > 1000) for (const [stale, times] of hits) { if (now - (times[times.length - 1] || 0) >= 60000) hits.delete(stale); }
-        const recent = (hits.get(key) || []).filter((time) => now - time < 60000);
-        if (recent.length >= 30) {
-            // Say WHEN, not just no. The throttle keys on client IP, so the two
-            // populations that hit it are an attacker and a shared egress —
-            // an office NAT, or a CI run driving many sign-ins — and for the
-            // latter a bare 429 reads as a functional failure. Retry-After lets a
-            // caller distinguish "throttled" from "broken" without guessing.
-            const oldest = recent[0] || now;
-            res.set('Retry-After', String(Math.max(1, Math.ceil((60000 - (now - oldest)) / 1000))));
-            const text = 'Too many OIDC requests. Try again shortly.';
-            // Content-negotiated rather than always JSON. Both routes here are
-            // reached ONLY by top-level browser navigation — location.assign to
-            // /oidc/start, and the IdP's 302 to /oidc/callback — so an
-            // unconditional JSON body would put a raw object in the user's
-            // window. JSON is right for the app's fetch endpoints; these two are
-            // not that, so answer whatever the caller actually asked for.
-            // text/plain is listed FIRST and explicitly. Offering only `json` plus
-            // a default does not work: a browser's Accept ends with `*/*;q=0.8`,
-            // which matches application/json, so res.format picks JSON and the
-            // user reads a raw object. Naming both lets the browser's q=1
-            // text/html preference beat the wildcard while an XHR still gets JSON.
-            res.status(429).format({
-                'text/plain': () => { res.type('text/plain').send(text); },
-                'application/json': () => { res.json({ error: 'TOO_MANY_REQUESTS', message: text }); },
-                default: () => { res.type('text/plain').send(text); }
-            });
-            return;
-        }
-        recent.push(now); hits.set(key, recent); next();
-    };
-}
-
 // Every cookie this router sets — the sealed transaction, the result — takes its
 // Secure flag from how the request arrived. That is correct, but it means a
 // deployment that terminates TLS in front and forgets to declare the terminator
@@ -435,16 +318,14 @@ export function createOidcRouter(config: WebAdminConfig) {
     const trusted = new Set(config.trustedProxies || []);
     const warning = warnIfSecureCookiesUnreachable(config);
     if (warning) console.warn(warning);
-    router.use(limiter(trusted));
+    router.use(oidcThrottle(trusted));
     router.get('/start', async (req, res) => {
         const found = await providerFor(config, req.query.engine);
         if (!found) { setResult(res, { status: 'FAIL', message: 'SSO is not configured for this engine.' }, secureRequest(req, trusted)); return res.redirect('/'); }
         try {
             const metadata = await discovery(found.provider);
             const origin = publicOrigin(config, req, trusted);
-            const verifier = random(48);
-            const txn: Transaction = { v: 3, state: random(), nonce: random(), verifier, engineKey: found.engine.key,
-                returnPath: validReturnPath(req.query.return), created: Date.now() };
+            const txn: Transaction = newTransaction(found.engine.key, validReturnPath(req.query.return));
             const secure = secureRequest(req, trusted);
             res.append('Set-Cookie', `${TXN_COOKIE}=${txnCookieValue(found.engine.key, sealTransaction(txn, found.provider.clientSecret))}; Path=/oidc; HttpOnly; Max-Age=600; SameSite=Lax${secure ? '; Secure' : ''}`);
             const target = new URL(metadata.authorization_endpoint);
@@ -453,7 +334,7 @@ export function createOidcRouter(config: WebAdminConfig) {
             target.searchParams.set('response_type', 'code'); target.searchParams.set('response_mode', 'query');
             target.searchParams.set('scope', found.provider.scopes.join(' ')); target.searchParams.set('state', txn.state);
             target.searchParams.set('nonce', txn.nonce); target.searchParams.set('code_challenge_method', 'S256');
-            target.searchParams.set('code_challenge', crypto.createHash('sha256').update(verifier).digest('base64url'));
+            target.searchParams.set('code_challenge', codeChallenge(txn));
             // Allowlisted literal only. The login card sends this on a retry
             // after a rejected attempt: the IdP's own SSO session would
             // otherwise silently re-authenticate the same rejected account,
@@ -493,7 +374,14 @@ export function createOidcRouter(config: WebAdminConfig) {
             const body = Buffer.from(new URLSearchParams({ username: String(claims.preferred_username || claims.email || claims.sub || 'oidc'), password: `oidc:${tokens.id_token}` }).toString());
             const headers: import('http').OutgoingHttpHeaders = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine', 'content-length': body.length };
             sanitizeForwardHeaders(headers, req.socket.remoteAddress, req.headers['x-forwarded-for'], trusted);
-            const login = await engineRequest(found.engine, { method: 'POST', path: '/api/users/_login', headers, body });
+            // Bounded like the token exchange above and the /public probe below,
+            // both of which it sits between. It inherited engineRequest's default
+            // instead: a 120s INACTIVITY timer and no deadline at all, so a slow
+            // engine held the browser on a blank callback page for two minutes,
+            // and one dribbling a byte a minute held it indefinitely — with the
+            // sign-in transaction already spent, so the only way out was to start
+            // over. deadlineMs as well as timeoutMs for exactly that reason.
+            const login = await engineRequest(found.engine, { method: 'POST', path: '/api/users/_login', headers, body, timeoutMs: 15000, deadlineMs: 20000 });
             let result: any;
             try { result = unwrapEngineJson(JSON.parse(login.body.toString('utf8'))); } catch { result = { status: login.status === 200 ? 'SUCCESS' : 'FAIL' }; }
             const status = result?.status || result;

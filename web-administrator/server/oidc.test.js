@@ -33,86 +33,93 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const assert = __importStar(require("assert"));
+const http = __importStar(require("http"));
+const express_1 = __importDefault(require("express"));
 const oidc_1 = require("./oidc");
+const oidc_transaction_1 = require("./oidc-transaction");
+const oidc_throttle_1 = require("./oidc-throttle");
 const config_1 = require("./config");
 const secret = 'a sufficiently long test client secret';
 const now = Date.now();
 const txn = { v: 3, state: 'state', nonce: 'nonce', verifier: 'verifier', engineKey: 'k:production', returnPath: '/dashboard?x=1', created: now };
-assert.deepStrictEqual((0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)(txn, secret), secret, now), txn);
-const sealed = (0, oidc_1.sealTransaction)(txn, secret).split('.');
+assert.deepStrictEqual((0, oidc_transaction_1.openTransaction)((0, oidc_transaction_1.sealTransaction)(txn, secret), secret, now), txn);
+const sealed = (0, oidc_transaction_1.sealTransaction)(txn, secret).split('.');
 sealed[1] = (sealed[1][0] === 'A' ? 'B' : 'A') + sealed[1].slice(1);
-assert.throws(() => (0, oidc_1.openTransaction)(sealed.join('.'), secret, now), /invalid/);
-assert.throws(() => (0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)({ ...txn, created: now - 700000 }, secret), secret, now), /expired/);
+assert.throws(() => (0, oidc_transaction_1.openTransaction)(sealed.join('.'), secret, now), /invalid/);
+assert.throws(() => (0, oidc_transaction_1.openTransaction)((0, oidc_transaction_1.sealTransaction)({ ...txn, created: now - 700000 }, secret), secret, now), /expired/);
 // A v2 seal (engine NAME, no key prefix) must not open under v3 — an in-flight
 // sign-in across the upgrade fails closed rather than resolving a stale field.
 const v2 = { v: 2, state: 'state', nonce: 'nonce', verifier: 'verifier', engineName: 'Production', returnPath: '/', created: now };
-assert.throws(() => (0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)(v2, secret), secret, now), /expired/);
+assert.throws(() => (0, oidc_transaction_1.openTransaction)((0, oidc_transaction_1.sealTransaction)(v2, secret), secret, now), /expired/);
 // The cookie names its engine in the clear so the callback needs one lookup;
 // the prefix is a hint only — the sealed engineKey is what the router re-checks.
 // roundTrip models the read side: cookies() decodeURIComponent's the whole value
 // before splitTxnCookie sees it, so the write must be ASCII-safe (see below).
-const roundTrip = (value) => (0, oidc_1.splitTxnCookie)(decodeURIComponent(value));
-const split = roundTrip((0, oidc_1.txnCookieValue)('k:production', (0, oidc_1.sealTransaction)(txn, secret)));
+const roundTrip = (value) => (0, oidc_transaction_1.splitTxnCookie)(decodeURIComponent(value));
+const split = roundTrip((0, oidc_transaction_1.txnCookieValue)('k:production', (0, oidc_transaction_1.sealTransaction)(txn, secret)));
 assert.strictEqual(split.engineKey, 'k:production');
-assert.deepStrictEqual((0, oidc_1.openTransaction)(split.sealed, secret, now), txn);
+assert.deepStrictEqual((0, oidc_transaction_1.openTransaction)(split.sealed, secret, now), txn);
 // A tampered prefix normally self-defeats: it selects a different engine's
 // secret, so the seal does not open at all.
-assert.throws(() => (0, oidc_1.openTransaction)(split.sealed, 'a different engine client secret', now), /invalid/);
+assert.throws(() => (0, oidc_transaction_1.openTransaction)(split.sealed, 'a different engine client secret', now), /invalid/);
 // But two engines MAY share a client secret, and keyFor() derives from the
 // secret alone — so a k:production seal opens cleanly under a k:staging prefix.
 // Only the router's `txn.engineKey !== found.engine.key` re-check rejects that
 // swap, which is why it is not redundant with the GCM tag.
-const swapped = roundTrip((0, oidc_1.txnCookieValue)('k:staging', (0, oidc_1.sealTransaction)(txn, secret)));
+const swapped = roundTrip((0, oidc_transaction_1.txnCookieValue)('k:staging', (0, oidc_transaction_1.sealTransaction)(txn, secret)));
 assert.strictEqual(swapped.engineKey, 'k:staging');
-assert.strictEqual((0, oidc_1.openTransaction)(swapped.sealed, secret, now).engineKey, 'k:production');
+assert.strictEqual((0, oidc_transaction_1.openTransaction)(swapped.sealed, secret, now).engineKey, 'k:production');
 // So the seal alone cannot be trusted to say which engine was chosen — only the
 // binding check can. Deleting it must break this, or a staging-issued code could
 // be exchanged against production whenever the two share an IdP registration.
 const stagingEngine = { name: 'Staging', key: 'k:staging', url: 'https://staging.test', verifyTls: true };
 const prodEngine = { name: 'Production', key: 'k:production', url: 'https://engine.test', verifyTls: true };
-assert.throws(() => (0, oidc_1.openBoundTransaction)(swapped.sealed, stagingEngine, secret, 'state', now), /invalid or expired/);
+assert.throws(() => (0, oidc_transaction_1.openBoundTransaction)(swapped.sealed, stagingEngine, secret, 'state', now), /invalid or expired/);
 // The same transaction under its OWN engine is accepted.
-assert.deepStrictEqual((0, oidc_1.openBoundTransaction)(split.sealed, prodEngine, secret, 'state', now), txn);
+assert.deepStrictEqual((0, oidc_transaction_1.openBoundTransaction)(split.sealed, prodEngine, secret, 'state', now), txn);
 // …and the state must still match, so a stolen cookie replayed with a different
 // state parameter is refused even on the right engine.
-assert.throws(() => (0, oidc_1.openBoundTransaction)(split.sealed, prodEngine, secret, 'not-the-state', now), /invalid or expired/);
-assert.throws(() => (0, oidc_1.openBoundTransaction)(split.sealed, prodEngine, secret, undefined, now), /invalid or expired/);
+assert.throws(() => (0, oidc_transaction_1.openBoundTransaction)(split.sealed, prodEngine, secret, 'not-the-state', now), /invalid or expired/);
+assert.throws(() => (0, oidc_transaction_1.openBoundTransaction)(split.sealed, prodEngine, secret, undefined, now), /invalid or expired/);
 // The router omits `now` entirely, so it reaches openTransaction as undefined and
 // leans on the `now = Date.now()` default. That is the one call shape the
 // assertions above do not exercise, and it is load-bearing: were the default not
 // to fire, every comparison in the expiry arithmetic would be against NaN and
 // therefore false, so EVERY expired transaction would be accepted.
-const staleSeal = roundTrip((0, oidc_1.txnCookieValue)('k:production', (0, oidc_1.sealTransaction)({ ...txn, created: Date.now() - 700000 }, secret))).sealed;
-assert.throws(() => (0, oidc_1.openBoundTransaction)(staleSeal, prodEngine, secret, 'state'), /expired/);
-const freshSeal = roundTrip((0, oidc_1.txnCookieValue)('k:production', (0, oidc_1.sealTransaction)({ ...txn, created: Date.now() }, secret))).sealed;
-assert.strictEqual((0, oidc_1.openBoundTransaction)(freshSeal, prodEngine, secret, 'state').engineKey, 'k:production');
+const staleSeal = roundTrip((0, oidc_transaction_1.txnCookieValue)('k:production', (0, oidc_transaction_1.sealTransaction)({ ...txn, created: Date.now() - 700000 }, secret))).sealed;
+assert.throws(() => (0, oidc_transaction_1.openBoundTransaction)(staleSeal, prodEngine, secret, 'state'), /expired/);
+const freshSeal = roundTrip((0, oidc_transaction_1.txnCookieValue)('k:production', (0, oidc_transaction_1.sealTransaction)({ ...txn, created: Date.now() }, secret))).sealed;
+assert.strictEqual((0, oidc_transaction_1.openBoundTransaction)(freshSeal, prodEngine, secret, 'state').engineKey, 'k:production');
 // engineKey() preserves \p{L}, so an accented or CJK engine name yields a
 // non-ASCII key. Written raw it would be latin1-mangled back into no engine at
 // all (or rejected outright as an invalid header char), so the value is
 // percent-encoded on write and survives the decoding read.
 for (const key of ['k:producción', 'k:北京-engine']) {
-    const value = (0, oidc_1.txnCookieValue)(key, (0, oidc_1.sealTransaction)(txn, secret));
+    const value = (0, oidc_transaction_1.txnCookieValue)(key, (0, oidc_transaction_1.sealTransaction)(txn, secret));
     assert.ok(/^[\x20-\x7e]+$/.test(value), `the cookie value for ${key} must be ASCII-safe`);
     assert.strictEqual(roundTrip(value).engineKey, key);
 }
 // A pre-upgrade v2 cookie carries no prefix; its first segment is the base64url
 // IV, which matches no engine key, so the callback fails closed.
-assert.strictEqual(roundTrip((0, oidc_1.sealTransaction)(txn, secret)).engineKey.startsWith('k:'), false);
-assert.strictEqual((0, oidc_1.splitTxnCookie)(''), null);
-assert.strictEqual((0, oidc_1.splitTxnCookie)('no-separator'), null);
-assert.strictEqual((0, oidc_1.validReturnPath)('/channels?x=1'), '/channels?x=1');
+assert.strictEqual(roundTrip((0, oidc_transaction_1.sealTransaction)(txn, secret)).engineKey.startsWith('k:'), false);
+assert.strictEqual((0, oidc_transaction_1.splitTxnCookie)(''), null);
+assert.strictEqual((0, oidc_transaction_1.splitTxnCookie)('no-separator'), null);
+assert.strictEqual((0, oidc_transaction_1.validReturnPath)('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)'])
-    assert.strictEqual((0, oidc_1.validReturnPath)(bad), '/');
+    assert.strictEqual((0, oidc_transaction_1.validReturnPath)(bad), '/');
 // Dot segments collapse on parse, so these clear the leading-"//" guard on the
 // way IN and would come back out protocol-relative — res.redirect emits that
 // verbatim and the browser resolves it to another origin.
 for (const bad of ['/..//evil.test', '/.//evil.test', '/foo/../..//evil.test', '/..//evil.test?x=1',
     '/a/../../..//evil.test', '/..\\/evil.test', '/../\\evil.test', '/..//'])
-    assert.strictEqual((0, oidc_1.validReturnPath)(bad), '/');
+    assert.strictEqual((0, oidc_transaction_1.validReturnPath)(bad), '/');
 // Dot segments that normalize to a genuine same-origin path still work.
-assert.strictEqual((0, oidc_1.validReturnPath)('/foo/../channels'), '/channels');
+assert.strictEqual((0, oidc_transaction_1.validReturnPath)('/foo/../channels'), '/channels');
 // The engine wraps every JSON payload under a single XStream root key.
 const wrapped = { 'com.mirth.connect.model.LoginStatus': { status: 'SUCCESS', message: '', updatedUsername: 'jdoe' } };
 assert.strictEqual((0, oidc_1.unwrapEngineJson)(wrapped).status, 'SUCCESS');
@@ -166,9 +173,9 @@ assert.strictEqual((0, oidc_1.warnIfSecureCookiesUnreachable)({ tls: null, trust
 // not get an [oidc] warning purely for its TLS topology.
 assert.strictEqual((0, oidc_1.warnIfSecureCookiesUnreachable)({ tls: null, trustedProxies: [], publicOrigin: 'https://admin.test', oidc: {} }), null);
 const trusted = new Set(['10.0.0.1']);
-assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');
-assert.strictEqual((0, oidc_1.throttleKey)('192.0.2.9', '203.0.113.5', trusted), '192.0.2.9');
-assert.strictEqual((0, oidc_1.throttleKey)('10.0.0.1', undefined, trusted), '10.0.0.1');
+assert.strictEqual((0, oidc_throttle_1.throttleKey)('10.0.0.1', '203.0.113.5, 198.51.100.7', trusted), '198.51.100.7');
+assert.strictEqual((0, oidc_throttle_1.throttleKey)('192.0.2.9', '203.0.113.5', trusted), '192.0.2.9');
+assert.strictEqual((0, oidc_throttle_1.throttleKey)('10.0.0.1', undefined, trusted), '10.0.0.1');
 // The pre-auth config document races every OIDC probe against one shared budget.
 // Async, so it runs last (this file compiles to CommonJS — no top-level await).
 async function budgetTests() {
@@ -190,6 +197,55 @@ async function budgetTests() {
     const work = settled('late', 40);
     assert.strictEqual(await (0, oidc_1.withBudget)(work, 5), null);
     assert.strictEqual(await work, 'late');
+}
+// Discovery caching. A down IdP used to cost every sign-in its own 10s socket:
+// successes were cached, failures were not, and nothing coalesced concurrent
+// callers — so the /oidc/start burst when a shift logs in together became N
+// simultaneous connections to a provider already in trouble.
+async function discoveryTests() {
+    let hits = 0;
+    let mode = 'ok';
+    const server = http.createServer((req, res) => {
+        hits++;
+        if (mode === 'fail') {
+            res.writeHead(503);
+            res.end('down');
+            return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ issuer: 'http://127.0.0.1/', authorization_endpoint: 'http://localhost/authorize', token_endpoint: 'http://localhost/token' }));
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const port = server.address().port;
+    const provider = { discoveryUrl: `http://127.0.0.1:${port}/.well-known/openid-configuration` };
+    try {
+        // Ten concurrent callers, ONE fetch. Without coalescing this is ten.
+        (0, oidc_1.resetDiscoveryCache)();
+        hits = 0;
+        const all = await Promise.all(Array.from({ length: 10 }, () => (0, oidc_1.discovery)(provider)));
+        assert.strictEqual(hits, 1, `ten concurrent callers must share one discovery fetch, but made ${hits}`);
+        assert.strictEqual(all[0].issuer, 'http://127.0.0.1/');
+        // A later caller is served from the cache, still without a fetch.
+        assert.strictEqual((await (0, oidc_1.discovery)(provider)).issuer, 'http://127.0.0.1/');
+        assert.strictEqual(hits, 1);
+        // A FAILURE is remembered too, with its reason, so the next caller inside
+        // the window fails the same way immediately instead of re-paying the wait.
+        (0, oidc_1.resetDiscoveryCache)();
+        mode = 'fail';
+        hits = 0;
+        await assert.rejects(() => (0, oidc_1.discovery)(provider), /discovery returned 503/);
+        assert.strictEqual(hits, 1);
+        await assert.rejects(() => (0, oidc_1.discovery)(provider), /discovery returned 503/, 'the cached failure must carry the same reason, not a generic one');
+        assert.strictEqual(hits, 1, `a failure inside the negative-cache window must not re-fetch, but made ${hits}`);
+        // And it is a short memory, not a latch: once the window lapses, a
+        // recovered provider is picked up rather than stubbornly refused.
+        (0, oidc_1.resetDiscoveryCache)();
+        mode = 'ok';
+        assert.strictEqual((await (0, oidc_1.discovery)(provider)).issuer, 'http://127.0.0.1/');
+    }
+    finally {
+        await new Promise((r) => server.close(() => r()));
+    }
 }
 // What a completed SSO sign-in leaves behind for routing. This has to agree with
 // login.tsx's commitEngineSelection, or shell.tsx's loadedEngineKey() disagrees
@@ -258,4 +314,48 @@ assert.throws(() => (0, config_1.normalizeOidc)({ Production: { ...providerConfi
 assert.deepStrictEqual((0, config_1.normalizeOidc)({ Production: { ...providerConfig, enabled: false } }, engines), {});
 assert.strictEqual((0, config_1.normalizeOidc)({ Production: { ...providerConfig, autoRedirect: true } }, engines)['k:production'].autoRedirect, true);
 assert.strictEqual((0, config_1.normalizeOidc)({ Production: providerConfig }, engines)['k:production'].autoRedirect, false);
-budgetTests().then(() => console.log('oidc tests passed'), (error) => { console.error(error); process.exit(1); });
+// The throttle, through a REAL Express app rather than a stubbed req/res. Its
+// interesting behavior is res.format's, and the bug it once had was a wrong
+// assumption about exactly that: `{json, default}` looks like it prefers JSON
+// for XHRs and falls back to text, but a browser's Accept ends with `*/*;q=0.8`,
+// which MATCHES application/json — so every throttled sign-in put a raw JSON
+// object in the user's window. A stub built to my understanding of res.format
+// would have reproduced the misunderstanding and passed.
+async function throttleTests() {
+    const app = (0, express_1.default)();
+    app.set('trust proxy', false);
+    app.use((0, oidc_throttle_1.oidcThrottle)(new Set()));
+    app.get('/start', (_req, res) => { res.type('text/plain').send('ok'); });
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server.once('listening', () => r()));
+    const port = server.address().port;
+    const get = async (accept) => {
+        const res = await fetch(`http://127.0.0.1:${port}/start`, { headers: { accept } });
+        return { status: res.status, type: res.headers.get('content-type') || '', retryAfter: res.headers.get('retry-after'), body: await res.text() };
+    };
+    // What Chrome actually sends for a top-level navigation, wildcard and all.
+    const BROWSER = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+    try {
+        // The limit is 30/minute; the 31st is refused.
+        for (let i = 0; i < 30; i++)
+            assert.strictEqual((await get(BROWSER)).status, 200, `request ${i + 1} must pass`);
+        const refused = await get(BROWSER);
+        assert.strictEqual(refused.status, 429);
+        // A browser navigation gets PROSE. This is the assertion that fails if
+        // text/plain stops being listed explicitly.
+        assert.ok(refused.type.startsWith('text/plain'), `a browser navigation must be answered as text, not ${refused.type}`);
+        assert.strictEqual(refused.body, 'Too many OIDC requests. Try again shortly.');
+        // Retry-After says when, so a shared egress can tell throttled from broken.
+        const after = Number(refused.retryAfter);
+        assert.ok(after >= 1 && after <= 60, `Retry-After must be a sane number of seconds, got ${refused.retryAfter}`);
+        // An XHR that asks for JSON still gets JSON.
+        const asJson = await get('application/json');
+        assert.strictEqual(asJson.status, 429);
+        assert.ok(asJson.type.startsWith('application/json'), `an explicit JSON request must get JSON, not ${asJson.type}`);
+        assert.strictEqual(JSON.parse(asJson.body).error, 'TOO_MANY_REQUESTS');
+    }
+    finally {
+        await new Promise((r) => server.close(() => r()));
+    }
+}
+budgetTests().then(discoveryTests).then(throttleTests).then(() => console.log('oidc tests passed'), (error) => { console.error(error); process.exit(1); });

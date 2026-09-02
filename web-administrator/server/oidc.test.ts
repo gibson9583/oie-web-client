@@ -1,5 +1,10 @@
 import * as assert from 'assert';
-import { encodeResult, openBoundTransaction, warnIfSecureCookiesUnreachable, openTransaction, routingCookies, sealTransaction, splitTxnCookie, throttleKey, txnCookieValue, unwrapEngineJson, validReturnPath, validateIdTokenClaims, withBudget } from './oidc';
+import * as http from 'http';
+import * as net from 'net';
+import express from 'express';
+import { discovery, resetDiscoveryCache, encodeResult, warnIfSecureCookiesUnreachable, routingCookies, unwrapEngineJson, validateIdTokenClaims, withBudget } from './oidc';
+import { openBoundTransaction, openTransaction, sealTransaction, splitTxnCookie, txnCookieValue, validReturnPath } from './oidc-transaction';
+import { oidcThrottle, throttleKey } from './oidc-throttle';
 import { normalizeOidc } from './config';
 
 const secret = 'a sufficiently long test client secret';
@@ -161,6 +166,54 @@ async function budgetTests() {
     assert.strictEqual(await work, 'late');
 }
 
+// Discovery caching. A down IdP used to cost every sign-in its own 10s socket:
+// successes were cached, failures were not, and nothing coalesced concurrent
+// callers — so the /oidc/start burst when a shift logs in together became N
+// simultaneous connections to a provider already in trouble.
+async function discoveryTests() {
+    let hits = 0;
+    let mode: 'ok' | 'fail' = 'ok';
+    const server = http.createServer((req, res) => {
+        hits++;
+        if (mode === 'fail') { res.writeHead(503); res.end('down'); return; }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ issuer: 'http://127.0.0.1/', authorization_endpoint: 'http://localhost/authorize', token_endpoint: 'http://localhost/token' }));
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as net.AddressInfo).port;
+    const provider = { discoveryUrl: `http://127.0.0.1:${port}/.well-known/openid-configuration` } as any;
+    try {
+        // Ten concurrent callers, ONE fetch. Without coalescing this is ten.
+        resetDiscoveryCache();
+        hits = 0;
+        const all = await Promise.all(Array.from({ length: 10 }, () => discovery(provider)));
+        assert.strictEqual(hits, 1, `ten concurrent callers must share one discovery fetch, but made ${hits}`);
+        assert.strictEqual(all[0].issuer, 'http://127.0.0.1/');
+        // A later caller is served from the cache, still without a fetch.
+        assert.strictEqual((await discovery(provider)).issuer, 'http://127.0.0.1/');
+        assert.strictEqual(hits, 1);
+
+        // A FAILURE is remembered too, with its reason, so the next caller inside
+        // the window fails the same way immediately instead of re-paying the wait.
+        resetDiscoveryCache();
+        mode = 'fail';
+        hits = 0;
+        await assert.rejects(() => discovery(provider), /discovery returned 503/);
+        assert.strictEqual(hits, 1);
+        await assert.rejects(() => discovery(provider), /discovery returned 503/,
+            'the cached failure must carry the same reason, not a generic one');
+        assert.strictEqual(hits, 1, `a failure inside the negative-cache window must not re-fetch, but made ${hits}`);
+
+        // And it is a short memory, not a latch: once the window lapses, a
+        // recovered provider is picked up rather than stubbornly refused.
+        resetDiscoveryCache();
+        mode = 'ok';
+        assert.strictEqual((await discovery(provider)).issuer, 'http://127.0.0.1/');
+    } finally {
+        await new Promise<void>((r) => server.close(() => r()));
+    }
+}
+
 // What a completed SSO sign-in leaves behind for routing. This has to agree with
 // login.tsx's commitEngineSelection, or shell.tsx's loadedEngineKey() disagrees
 // with what the login card computes and every sign-in is followed by a reload.
@@ -233,4 +286,47 @@ assert.throws(() => normalizeOidc({ Production: { ...providerConfig, autoRedirec
 assert.deepStrictEqual(normalizeOidc({ Production: { ...providerConfig, enabled: false } }, engines), {});
 assert.strictEqual(normalizeOidc({ Production: { ...providerConfig, autoRedirect: true } }, engines)['k:production'].autoRedirect, true);
 assert.strictEqual(normalizeOidc({ Production: providerConfig }, engines)['k:production'].autoRedirect, false);
-budgetTests().then(() => console.log('oidc tests passed'), (error) => { console.error(error); process.exit(1); });
+// The throttle, through a REAL Express app rather than a stubbed req/res. Its
+// interesting behavior is res.format's, and the bug it once had was a wrong
+// assumption about exactly that: `{json, default}` looks like it prefers JSON
+// for XHRs and falls back to text, but a browser's Accept ends with `*/*;q=0.8`,
+// which MATCHES application/json — so every throttled sign-in put a raw JSON
+// object in the user's window. A stub built to my understanding of res.format
+// would have reproduced the misunderstanding and passed.
+async function throttleTests() {
+    const app = express();
+    app.set('trust proxy', false);
+    app.use(oidcThrottle(new Set()));
+    app.get('/start', (_req, res) => { res.type('text/plain').send('ok'); });
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise<void>((r) => server.once('listening', () => r()));
+    const port = (server.address() as net.AddressInfo).port;
+    const get = async (accept: string) => {
+        const res = await fetch(`http://127.0.0.1:${port}/start`, { headers: { accept } });
+        return { status: res.status, type: res.headers.get('content-type') || '', retryAfter: res.headers.get('retry-after'), body: await res.text() };
+    };
+    // What Chrome actually sends for a top-level navigation, wildcard and all.
+    const BROWSER = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+    try {
+        // The limit is 30/minute; the 31st is refused.
+        for (let i = 0; i < 30; i++) assert.strictEqual((await get(BROWSER)).status, 200, `request ${i + 1} must pass`);
+        const refused = await get(BROWSER);
+        assert.strictEqual(refused.status, 429);
+        // A browser navigation gets PROSE. This is the assertion that fails if
+        // text/plain stops being listed explicitly.
+        assert.ok(refused.type.startsWith('text/plain'), `a browser navigation must be answered as text, not ${refused.type}`);
+        assert.strictEqual(refused.body, 'Too many OIDC requests. Try again shortly.');
+        // Retry-After says when, so a shared egress can tell throttled from broken.
+        const after = Number(refused.retryAfter);
+        assert.ok(after >= 1 && after <= 60, `Retry-After must be a sane number of seconds, got ${refused.retryAfter}`);
+        // An XHR that asks for JSON still gets JSON.
+        const asJson = await get('application/json');
+        assert.strictEqual(asJson.status, 429);
+        assert.ok(asJson.type.startsWith('application/json'), `an explicit JSON request must get JSON, not ${asJson.type}`);
+        assert.strictEqual(JSON.parse(asJson.body).error, 'TOO_MANY_REQUESTS');
+    } finally {
+        await new Promise<void>((r) => server.close(() => r()));
+    }
+}
+
+budgetTests().then(discoveryTests).then(throttleTests).then(() => console.log('oidc tests passed'), (error) => { console.error(error); process.exit(1); });
