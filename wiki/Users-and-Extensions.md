@@ -24,6 +24,18 @@ Select the exact row before opening an action. Reconcile the user inventory afte
 an ambiguous response. Deleting your own or the last administrative account can
 make recovery difficult and may be restricted by the engine.
 
+### Single sign-on accounts
+
+With the engine's `oie-oidc-auth` extension enabled, users who sign in through
+your identity provider are created on first sign-in (when JIT provisioning is
+on) and are bound permanently to their provider identity; their role is taken
+from the provider's claims at every sign-in, so change access at the provider,
+not here. Existing local accounts are never taken over by a provider identity of
+the same name unless an administrator links them under **Settings → OIDC
+Authentication**. SSO accounts have no engine password, so **Change Password** is
+not offered to them. SSO requires the Node/Docker deployment; it is not
+available in the WAR.
+
 ## Extensions
 
 ![First-party extension inventory](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/extensions.png)
