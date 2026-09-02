@@ -112,7 +112,10 @@ export function LoginForm({ onSuccess }: any) {
     const showPicker = engines.length > 1 || devMode;
     const [sel, setSel] = useState(() => initialSelection(engines, devMode));
     const [customUrl, setCustomUrl] = useState(() => getCookie('oie-engine-url'));
-    const selectedEngine = sel === 'custom' ? null : engines[Number(sel)];
+    // By stable key, never list position (#54): `sel` holds the key, so an
+    // index lookup here silently yields undefined and the SSO affordance
+    // disappears from a correctly-configured engine.
+    const selectedEngine = sel === 'custom' || sel === '' ? null : engines.find((e: any) => e.key === sel);
     const sso = selectedEngine?.sso;
     const preferenceKey = `oie-login-mode:${sel}`;
     const [localMode, setLocalMode] = useState(() => {

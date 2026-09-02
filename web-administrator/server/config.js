@@ -204,9 +204,10 @@ function load() {
         console.error(`[config] ${e.message}`);
         process.exit(1);
     }
-    // OIDC providers are keyed by the engine's stable, explicit name. Routing may
-    // use an index internally, but identity policy must not move when allowedUrls
-    // is reordered. A single set of env overrides configures the default engine.
+    // Operators key OIDC providers by the engine's explicit name; normalizeOidc
+    // re-keys them to the engine's stable key, which is what routing carries, so
+    // identity policy cannot move when allowedUrls is reordered. A single set of
+    // env overrides configures the default engine.
     config.oidc = normalizeOidc(config.oidc, config.engines);
     config.root = ROOT;
     return config;
@@ -240,12 +241,17 @@ function normalizeOidc(raw, engines) {
             autoRedirect: envBoolean('WEBADMIN_OIDC_AUTO_REDIRECT', !!previous.autoRedirect)
         };
     }
+    // The config DOCUMENT is keyed by human engine name — that is what an operator
+    // writes and what the errors below name. The map returned here is keyed by the
+    // engine's stable key instead, because every runtime lookup arrives holding a
+    // key (the oie-engine cookie, /oidc/start?engine=, the sealed transaction) and
+    // resolving name→key once here keeps that translation out of the request path.
     const out = {};
-    const engineNames = new Set(engines.map((engine) => engine.name));
-    if (Object.keys(source).length && engineNames.size !== engines.length)
+    const keyByName = new Map(engines.map((engine) => [engine.name, engine.key]));
+    if (Object.keys(source).length && keyByName.size !== engines.length)
         throw new Error('[config] configured engine names must be unique when OIDC is enabled');
     for (const [key, value] of Object.entries(source)) {
-        if (!engineNames.has(key))
+        if (!keyByName.has(key))
             throw new Error(`[config] oidc.${key} does not match a configured engine name`);
         if (!value || typeof value !== 'object' || Array.isArray(value))
             throw new Error(`[config] oidc.${key} must be an object`);
@@ -271,15 +277,14 @@ function normalizeOidc(raw, engines) {
             : (Array.isArray(value.scopes) ? value.scopes.map(String) : String(value.scopes).split(/[ ,]+/)).filter(Boolean);
         if (!scopes.includes('openid'))
             scopes.unshift('openid');
-        out[key] = { enabled, discoveryUrl: discovery?.toString(), clientId: value.clientId ? String(value.clientId) : undefined,
+        out[keyByName.get(key)] = { enabled, discoveryUrl: discovery?.toString(), clientId: value.clientId ? String(value.clientId) : undefined,
             clientSecret: value.clientSecret, scopes, providerLabel: String(value.providerLabel || 'SSO'),
             autoRedirect: !!value.autoRedirect, endSession: !!value.endSession };
     }
     return out;
 }
-function oidcForEngine(config, index) {
-    const engine = config.engines[index];
-    return (engine && config.oidc[engine.name]) || null;
+function oidcForEngine(config, engineKey) {
+    return config.oidc[engineKey] || null;
 }
 // Derive a readable label from a URL, e.g. "https://oie-prod:8443/" -> "oie-prod:8443".
 function engineLabel(url) {

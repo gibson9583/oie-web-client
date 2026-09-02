@@ -39,12 +39,49 @@ const oidc_1 = require("./oidc");
 const config_1 = require("./config");
 const secret = 'a sufficiently long test client secret';
 const now = Date.now();
-const txn = { v: 2, state: 'state', nonce: 'nonce', verifier: 'verifier', engineName: 'Production', returnPath: '/dashboard?x=1', created: now };
+const txn = { v: 3, state: 'state', nonce: 'nonce', verifier: 'verifier', engineKey: 'k:production', returnPath: '/dashboard?x=1', created: now };
 assert.deepStrictEqual((0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)(txn, secret), secret, now), txn);
 const sealed = (0, oidc_1.sealTransaction)(txn, secret).split('.');
 sealed[1] = (sealed[1][0] === 'A' ? 'B' : 'A') + sealed[1].slice(1);
 assert.throws(() => (0, oidc_1.openTransaction)(sealed.join('.'), secret, now), /invalid/);
 assert.throws(() => (0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)({ ...txn, created: now - 700000 }, secret), secret, now), /expired/);
+// A v2 seal (engine NAME, no key prefix) must not open under v3 — an in-flight
+// sign-in across the upgrade fails closed rather than resolving a stale field.
+const v2 = { v: 2, state: 'state', nonce: 'nonce', verifier: 'verifier', engineName: 'Production', returnPath: '/', created: now };
+assert.throws(() => (0, oidc_1.openTransaction)((0, oidc_1.sealTransaction)(v2, secret), secret, now), /expired/);
+// The cookie names its engine in the clear so the callback needs one lookup;
+// the prefix is a hint only — the sealed engineKey is what the router re-checks.
+// roundTrip models the read side: cookies() decodeURIComponent's the whole value
+// before splitTxnCookie sees it, so the write must be ASCII-safe (see below).
+const roundTrip = (value) => (0, oidc_1.splitTxnCookie)(decodeURIComponent(value));
+const split = roundTrip((0, oidc_1.txnCookieValue)('k:production', (0, oidc_1.sealTransaction)(txn, secret)));
+assert.strictEqual(split.engineKey, 'k:production');
+assert.deepStrictEqual((0, oidc_1.openTransaction)(split.sealed, secret, now), txn);
+// A tampered prefix normally self-defeats: it selects a different engine's
+// secret, so the seal does not open at all.
+assert.throws(() => (0, oidc_1.openTransaction)(split.sealed, 'a different engine client secret', now), /invalid/);
+// But two engines MAY share a client secret, and keyFor() derives from the
+// secret alone — so a k:production seal opens cleanly under a k:staging prefix.
+// Only the router's `txn.engineKey !== found.engine.key` re-check rejects that
+// swap, which is why it is not redundant with the GCM tag.
+const swapped = roundTrip((0, oidc_1.txnCookieValue)('k:staging', (0, oidc_1.sealTransaction)(txn, secret)));
+assert.strictEqual(swapped.engineKey, 'k:staging');
+assert.strictEqual((0, oidc_1.openTransaction)(swapped.sealed, secret, now).engineKey, 'k:production');
+assert.notStrictEqual((0, oidc_1.openTransaction)(swapped.sealed, secret, now).engineKey, swapped.engineKey);
+// engineKey() preserves \p{L}, so an accented or CJK engine name yields a
+// non-ASCII key. Written raw it would be latin1-mangled back into no engine at
+// all (or rejected outright as an invalid header char), so the value is
+// percent-encoded on write and survives the decoding read.
+for (const key of ['k:producción', 'k:北京-engine']) {
+    const value = (0, oidc_1.txnCookieValue)(key, (0, oidc_1.sealTransaction)(txn, secret));
+    assert.ok(/^[\x20-\x7e]+$/.test(value), `the cookie value for ${key} must be ASCII-safe`);
+    assert.strictEqual(roundTrip(value).engineKey, key);
+}
+// A pre-upgrade v2 cookie carries no prefix; its first segment is the base64url
+// IV, which matches no engine key, so the callback fails closed.
+assert.strictEqual(roundTrip((0, oidc_1.sealTransaction)(txn, secret)).engineKey.startsWith('k:'), false);
+assert.strictEqual((0, oidc_1.splitTxnCookie)(''), null);
+assert.strictEqual((0, oidc_1.splitTxnCookie)('no-separator'), null);
 assert.strictEqual((0, oidc_1.validReturnPath)('/channels?x=1'), '/channels?x=1');
 for (const bad of ['https://evil.test', '//evil.test', '/\\evil.test', 'javascript:alert(1)'])
     assert.strictEqual((0, oidc_1.validReturnPath)(bad), '/');
@@ -66,11 +103,17 @@ const claims = { iss: metadata.issuer, aud: 'client', nonce: 'n', exp: Math.floo
 const token = `e30.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.signature`;
 assert.deepStrictEqual((0, oidc_1.validateIdTokenClaims)(token, metadata, provider, 'n', now), claims);
 assert.throws(() => (0, oidc_1.validateIdTokenClaims)(token, metadata, provider, 'wrong', now), /validation/);
+// The config DOCUMENT stays keyed by the human engine name; the runtime map is
+// keyed by the engine's stable key, which is what every lookup arrives holding.
 const engines = [{ name: 'Production', key: 'k:production', url: 'https://engine.test', verifyTls: true }];
 const providerConfig = { enabled: true, discoveryUrl: 'https://issuer.test/.well-known/openid-configuration', clientId: 'client', clientSecret: secret };
-assert.ok((0, config_1.normalizeOidc)({ Production: providerConfig }, engines).Production);
-const engineManaged = (0, config_1.normalizeOidc)({ Production: { enabled: true, clientSecret: secret, providerLabel: 'SSO' } }, engines).Production;
+const normalized = (0, config_1.normalizeOidc)({ Production: providerConfig }, engines);
+assert.ok(normalized['k:production']);
+assert.strictEqual(normalized.Production, undefined);
+const engineManaged = (0, config_1.normalizeOidc)({ Production: { enabled: true, clientSecret: secret, providerLabel: 'SSO' } }, engines)['k:production'];
 assert.strictEqual(engineManaged.discoveryUrl, undefined);
 assert.strictEqual(engineManaged.clientId, undefined);
 assert.throws(() => (0, config_1.normalizeOidc)({ '0': providerConfig }, engines), /does not match a configured engine name/);
+// An empty document is valid (the shipped example) and yields no providers.
+assert.deepStrictEqual((0, config_1.normalizeOidc)({}, engines), {});
 console.log('oidc tests passed');

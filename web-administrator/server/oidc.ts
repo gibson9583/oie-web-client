@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import express from 'express';
 import type { Request, Response } from 'express';
-import type { OidcProviderConfig, WebAdminConfig } from './config';
+import type { OidcProviderConfig, ResolvedEngine, WebAdminConfig } from './config';
 import { oidcForEngine } from './config';
 import { engineRequest, isTrustedPeer, rewriteSetCookies, sanitizeForwardHeaders } from './proxy';
 
@@ -11,10 +11,13 @@ const TXN_TTL_MS = 10 * 60 * 1000;
 const metadataCache = new Map<string, { expires: number; value: Metadata }>();
 type Metadata = { issuer: string; authorization_endpoint: string; token_endpoint: string };
 type ActiveProvider = OidcProviderConfig & { discoveryUrl: string; clientId: string };
-// v2 seals the engine's stable NAME: like the oidc config keys, the identity
-// binding must not move when allowedUrls is reordered mid-flow (a restart
-// inside the 10-minute transaction window).
-type Transaction = { v: 2; state: string; nonce: string; verifier: string; engineName: string; returnPath: string; created: number };
+// v3 seals the engine's stable KEY (issue #53's `k:<slug>`): the identity binding
+// must not move when allowedUrls is reordered mid-flow (a restart inside the
+// 10-minute transaction window), and the key is what every other routing surface
+// now carries. The version bump is deliberate — a v2 cookie sealed the engine
+// NAME, so an in-flight sign-in across the upgrade fails closed and re-starts
+// rather than resolving against a field this code no longer reads.
+type Transaction = { v: 3; state: string; nonce: string; verifier: string; engineKey: string; returnPath: string; created: number };
 
 function b64(value: Buffer | string): string { return Buffer.from(value).toString('base64url'); }
 function random(size = 32): string { return crypto.randomBytes(size).toString('base64url'); }
@@ -36,13 +39,41 @@ export function openTransaction(value: string, secret: string, now = Date.now())
         const decipher = crypto.createDecipheriv('aes-256-gcm', keyFor(secret), Buffer.from(parts[0], 'base64url'));
         decipher.setAuthTag(Buffer.from(parts[2], 'base64url'));
         const txn = JSON.parse(Buffer.concat([decipher.update(Buffer.from(parts[1], 'base64url')), decipher.final()]).toString('utf8'));
-        if (txn.v !== 2 || typeof txn.created !== 'number' || txn.created > now + 30000 || now - txn.created > TXN_TTL_MS)
+        if (txn.v !== 3 || typeof txn.created !== 'number' || txn.created > now + 30000 || now - txn.created > TXN_TTL_MS)
             throw new Error('expired transaction');
         return txn;
     } catch (error) {
         if ((error as Error).message === 'expired transaction') throw error;
         throw new Error('invalid transaction');
     }
+}
+
+// The transaction cookie carries its engine key in front of the sealed blob:
+// `k:<slug>.<iv>.<ct>.<tag>`. The seal is authenticated with that engine's client
+// secret, so the callback cannot decrypt without first knowing WHICH engine — the
+// prefix answers that in one lookup instead of trying every configured secret in
+// turn. The prefix is only a hint and is never trusted: it selects a candidate
+// secret, and the sealed engineKey is re-checked against it after decryption, so
+// editing the prefix yields a decryption failure or a mismatch, never a swap.
+// engineKey() slugifies every non-alphanumeric to '-', so a key holds no '.'.
+// The key is percent-encoded because engineKey() preserves \p{L}: an accented or
+// CJK engine name yields a non-ASCII key, which a raw Set-Cookie either mangles
+// (headers decode as latin1, so "k:producción" returns as "k:producciÃ³n" and
+// resolves to no engine) or refuses outright (ERR_INVALID_CHAR above U+00FF).
+// Both readers — cookies() here and parseCookies in proxy.ts — decodeURIComponent.
+export function txnCookieValue(engineKey: string, sealed: string): string {
+    return `${encodeURIComponent(engineKey)}.${sealed}`;
+}
+
+// Takes the ALREADY percent-decoded cookie value (cookies() here and parseCookies
+// in proxy.ts decode every cookie), so this is deliberately NOT the inverse of
+// txnCookieValue — pairing the two directly yields a still-encoded "k%3A…" that
+// matches no engine. Decoding here instead would be worse: cookies() has already
+// decoded once, so a second pass would resolve a doubly-encoded key.
+export function splitTxnCookie(value: unknown): { engineKey: string; sealed: string } | null {
+    const at = String(value ?? '').indexOf('.');
+    if (at <= 0) return null;
+    return { engineKey: String(value).slice(0, at), sealed: String(value).slice(at + 1) };
 }
 
 export function validReturnPath(value: unknown): string {
@@ -142,8 +173,8 @@ const engineConfigCache = new Map<string, { expires: number; value: EngineOidc |
 // concurrent page loads into N simultaneous 5s connections and stall every tab
 // — signed-in ones included. Callers inside the window share the one probe.
 const engineConfigInFlight = new Map<string, Promise<EngineOidc | null>>();
-export function engineOidcConfiguration(config: WebAdminConfig, index: number): Promise<EngineOidc | null> {
-    const engine = config.engines[index]; if (!engine) return Promise.resolve(null);
+export function engineOidcConfiguration(config: WebAdminConfig, engineKey: string): Promise<EngineOidc | null> {
+    const engine = config.engines.find((candidate) => candidate.key === engineKey); if (!engine) return Promise.resolve(null);
     const cached = engineConfigCache.get(engine.url); if (cached && cached.expires > Date.now()) return Promise.resolve(cached.value);
     const sharing = engineConfigInFlight.get(engine.url); if (sharing) return sharing;
     // This probe sits on the pre-auth login screen's path (/webadmin/config.json),
@@ -168,14 +199,16 @@ export function engineOidcConfiguration(config: WebAdminConfig, index: number): 
     return probe;
 }
 
-async function providerAt(config: WebAdminConfig, raw: unknown): Promise<{ index: number; provider: ActiveProvider } | null> {
-    const index = /^\d+$/.test(String(raw)) ? Number(raw) : -1;
-    if (index < 0 || index >= config.engines.length) return null;
-    const web = oidcForEngine(config, index); if (!web) return null;
-    const engine = await engineOidcConfiguration(config, index);
-    const discoveryUrl = engine?.configured ? engine.discoveryUrl : web.discoveryUrl;
-    const clientId = engine?.configured ? engine.clientId : web.clientId;
-    return discoveryUrl && clientId ? { index, provider: { ...web, discoveryUrl, clientId } as ActiveProvider } : null;
+// Resolves an engine by its stable key (issue #53). A pre-key numeric index is
+// not accepted and not translated: it would be a guess at which entry the caller
+// meant, which is exactly what the key migration removed.
+async function providerFor(config: WebAdminConfig, raw: unknown): Promise<{ engine: ResolvedEngine; provider: ActiveProvider } | null> {
+    const engine = config.engines.find((candidate) => candidate.key === String(raw ?? '')); if (!engine) return null;
+    const web = oidcForEngine(config, engine.key); if (!web) return null;
+    const reported = await engineOidcConfiguration(config, engine.key);
+    const discoveryUrl = reported?.configured ? reported.discoveryUrl : web.discoveryUrl;
+    const clientId = reported?.configured ? reported.clientId : web.clientId;
+    return discoveryUrl && clientId ? { engine, provider: { ...web, discoveryUrl, clientId } as ActiveProvider } : null;
 }
 
 // The address the throttle should count: behind the deployment's trusted front
@@ -209,16 +242,16 @@ export function createOidcRouter(config: WebAdminConfig) {
     const trusted = new Set(config.trustedProxies || []);
     router.use(limiter(trusted));
     router.get('/start', async (req, res) => {
-        const found = await providerAt(config, req.query.engine);
+        const found = await providerFor(config, req.query.engine);
         if (!found) { setResult(res, { status: 'FAIL', message: 'SSO is not configured for this engine.' }, secureRequest(req, trusted)); return res.redirect('/'); }
         try {
             const metadata = await discovery(found.provider);
             const origin = publicOrigin(req, trusted);
             const verifier = random(48);
-            const txn: Transaction = { v: 2, state: random(), nonce: random(), verifier, engineName: config.engines[found.index].name,
+            const txn: Transaction = { v: 3, state: random(), nonce: random(), verifier, engineKey: found.engine.key,
                 returnPath: validReturnPath(req.query.return), created: Date.now() };
             const secure = secureRequest(req, trusted);
-            res.append('Set-Cookie', `${TXN_COOKIE}=${sealTransaction(txn, found.provider.clientSecret)}; Path=/oidc; HttpOnly; Max-Age=600; SameSite=Lax${secure ? '; Secure' : ''}`);
+            res.append('Set-Cookie', `${TXN_COOKIE}=${txnCookieValue(found.engine.key, sealTransaction(txn, found.provider.clientSecret))}; Path=/oidc; HttpOnly; Max-Age=600; SameSite=Lax${secure ? '; Secure' : ''}`);
             const target = new URL(metadata.authorization_endpoint);
             target.searchParams.set('client_id', found.provider.clientId);
             target.searchParams.set('redirect_uri', `${origin}/oidc/callback`);
@@ -243,16 +276,15 @@ export function createOidcRouter(config: WebAdminConfig) {
         res.append('Set-Cookie', `${TXN_COOKIE}=; Path=/oidc; HttpOnly; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`);
         let returnPath = '/';
         try {
-            // Try each configured engine's secret; the sealed engine NAME is
-            // authoritative, so a reordered allowedUrls still resolves to the
-            // same engine (names are unique whenever OIDC is configured).
-            let txn: Transaction | null = null; let found: Awaited<ReturnType<typeof providerAt>> = null;
-            const raw = cookies(req)[TXN_COOKIE];
-            for (let i = 0; i < config.engines.length && !txn; i++) {
-                const candidate = await providerAt(config, i); if (!candidate) continue;
-                try { const opened = openTransaction(raw, candidate.provider.clientSecret); if (opened.engineName === config.engines[i].name) { txn = opened; found = candidate; } } catch { /* next */ }
-            }
-            if (!txn || !found || req.query.state !== txn.state) throw new Error('invalid or expired sign-in transaction');
+            // One lookup: the cookie names its engine key in the clear, and the
+            // seal — which only that engine's client secret opens — carries the
+            // same key for confirmation. A pre-upgrade v2 cookie has no key
+            // prefix, so it lands on an unknown engine here and fails closed.
+            const parts = splitTxnCookie(cookies(req)[TXN_COOKIE]);
+            const found = parts && await providerFor(config, parts.engineKey);
+            if (!found || !parts) throw new Error('invalid or expired sign-in transaction');
+            const txn = openTransaction(parts.sealed, found.provider.clientSecret);
+            if (txn.engineKey !== found.engine.key || req.query.state !== txn.state) throw new Error('invalid or expired sign-in transaction');
             returnPath = txn.returnPath;
             if (typeof req.query.error === 'string') throw new Error('The identity provider declined sign-in.');
             if (typeof req.query.code !== 'string' || !req.query.code) throw new Error('The identity provider returned no authorization code.');
@@ -267,14 +299,31 @@ export function createOidcRouter(config: WebAdminConfig) {
             const body = Buffer.from(new URLSearchParams({ username: String(claims.preferred_username || claims.email || claims.sub || 'oidc'), password: `oidc:${tokens.id_token}` }).toString());
             const headers: import('http').OutgoingHttpHeaders = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', 'x-requested-with': 'OpenIntegrationEngine', 'content-length': body.length };
             sanitizeForwardHeaders(headers, req.socket.remoteAddress, req.headers['x-forwarded-for'], trusted);
-            const login = await engineRequest(config.engines[found.index], { method: 'POST', path: '/api/users/_login', headers, body });
+            const login = await engineRequest(found.engine, { method: 'POST', path: '/api/users/_login', headers, body });
             let result: any;
             try { result = unwrapEngineJson(JSON.parse(login.body.toString('utf8'))); } catch { result = { status: login.status === 200 ? 'SUCCESS' : 'FAIL' }; }
             const status = result?.status || result;
             if (!status) throw new Error('engine rejected SSO');
             const upstreamCookies = Array.isArray(login.headers['set-cookie']) ? login.headers['set-cookie'] : login.headers['set-cookie'] ? [login.headers['set-cookie']] : [];
             for (const cookie of rewriteSetCookies(upstreamCookies, secure)) res.append('Set-Cookie', cookie);
-            res.append('Set-Cookie', `oie-engine=${found.index}; Path=/; SameSite=Lax${secure ? '; Secure' : ''}`);
+            // Route this session the same way a password sign-in would (see
+            // login.tsx commitEngineSelection): the stable key when a picker is in
+            // play, and NO cookie in single-engine mode. Writing a cookie there
+            // would desynchronize shell.tsx's loadedEngineKey() from what the
+            // login card computes ('') and force a spurious hard reload on the
+            // next sign-in in this tab.
+            // Percent-encoded to match login.tsx's setCookie and the proxy's
+            // decoding reader — see txnCookieValue on why a raw non-ASCII key
+            // comes back mojibake and 421s. Single-engine mode clears BOTH
+            // routing cookies, exactly as commitEngineSelection does.
+            const routable = config.engines.length > 1 || !!config.devMode;
+            const clear = (name: string) => res.append('Set-Cookie', `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure ? '; Secure' : ''}`);
+            // oie-engine-url goes in both branches, as it does in the picker: a
+            // stale typed URL left beside a named-engine choice re-seeds the
+            // login card's custom field on the next visit.
+            clear('oie-engine-url');
+            if (routable) res.append('Set-Cookie', `oie-engine=${encodeURIComponent(found.engine.key)}; Path=/; SameSite=Lax${secure ? '; Secure' : ''}`);
+            else clear('oie-engine');
             // Local auth answers "Incorrect username or password." — an oidc:-prefixed
             // password can only reach local auth when no OIDC plugin intercepted it.
             const pluginMissing = status === 'FAIL' && /incorrect username or password|invalid (username|user name).*password/i.test(String(result.message || ''));

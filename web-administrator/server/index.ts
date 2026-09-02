@@ -128,9 +128,9 @@ app.get('/webadmin/config.json', async (req: Request, res: Response) => {
     // key adds no disclosure: it is derived from `name`, which is already sent
     // (host-derived when unset — buildEngines → engineLabel).
     res.json({
-        engines: await Promise.all(config.engines.map(async (e, index) => {
-            const oidc = config.oidc[e.name];
-            const engineOidc = oidc ? await engineOidcConfiguration(config, index) : null;
+        engines: await Promise.all(config.engines.map(async (e) => {
+            const oidc = config.oidc[e.key];
+            const engineOidc = oidc ? await engineOidcConfiguration(config, e.key) : null;
             return {
                 key: e.key,
                 name: e.name,
