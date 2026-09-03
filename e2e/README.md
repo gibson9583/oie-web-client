@@ -47,7 +47,7 @@ E2E_BASE_URL=https://localhost:8443/oie-webadmin E2E_EXPECT_DEPLOYMENT=war \
 `reuseExistingServer` makes the `live` project use the already-running target
 and its real engine. The live test logs in, creates an undeployed disposable
 channel, reads it from the channel list, and deletes it again. It requires engine
-4.6.0 and client 0.8.0 by default; override `E2E_EXPECT_ENGINE_VERSION` or
+4.6.0 and client 0.9.0 by default; override `E2E_EXPECT_ENGINE_VERSION` or
 `E2E_EXPECT_CLIENT_VERSION` only when deliberately validating another release.
 Set `E2E_EXPECT_DEPLOYMENT=war` to require the WAR deployment marker.
 

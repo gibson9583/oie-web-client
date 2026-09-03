@@ -49,7 +49,7 @@ test('logs in and round-trips a disposable channel against a live engine', async
     const user = process.env.E2E_USER || 'admin';
     const pass = process.env.E2E_PASS || 'admin';
     const expectedEngine = process.env.E2E_EXPECT_ENGINE_VERSION || '4.6.0';
-    const expectedClient = process.env.E2E_EXPECT_CLIENT_VERSION || '0.8.0';
+    const expectedClient = process.env.E2E_EXPECT_CLIENT_VERSION || '0.9.0';
     const expectedDeployment = process.env.E2E_EXPECT_DEPLOYMENT;
     // Stable across Playwright retries: a retry first removes any residue from
     // the failed attempt instead of hiding it behind a new timestamped name.
