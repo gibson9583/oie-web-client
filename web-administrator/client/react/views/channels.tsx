@@ -15,6 +15,11 @@
  * rows/groups computed where they are offered, so a context menu can never act
  * on a stale selection. New Channel seeds store.editingChannel and navigates to
  * the channel editor — a React view registered at /channels/:channelId/edit.
+ *
+ * The filter bar carries Swing's two display toggles, shared with the Dashboard
+ * (views/channel-display.jsx): Group view / Channel view (a flat channel list —
+ * no group rows, no Group Tasks pane, no drag-to-regroup) and Tags as
+ * names / icons / off.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -26,12 +31,17 @@ import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { createZip } from '../../core/zip.js';
 import { ViewTasks } from '../mount.jsx';
-import { RailPane, TaskButton } from '../ui.jsx';
+import { RailPane, TaskButton, SegPill } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 import { bulkUpdateWithConflict, xstreamObject } from './code-template-bulk.js';
 import { runLifecycle } from './channel-lifecycle.js';
+import {
+    loadViewMode, saveViewMode, loadTagMode, saveTagMode,
+    VIEW_MODE_OPTIONS, TAG_MODE_OPTIONS, tagRgb, tagIcon
+} from './channel-display.jsx';
+import type { ViewMode, TagMode } from './channel-display.jsx';
 
 
 // Canonical data columns (the Name column carries the tree twisty/indent), with
@@ -486,14 +496,6 @@ function channelXmlElements(root: Element) {
     });
 }
 
-function tagColor(tag: any) {
-    const c = tag?.backgroundColor;
-    if (c && typeof c === 'object' && c.red !== undefined && c.green !== undefined && c.blue !== undefined) {
-        return `rgba(${c.red}, ${c.green}, ${c.blue}, 0.26)`;
-    }
-    return null;
-}
-
 function firstLine(text: any) {
     return String(text || '').split('\n')[0].trim();
 }
@@ -516,6 +518,23 @@ export function ChannelsView() {
     const [lastGroupId, setLastGroupId] = useState<any>(null);    // last-clicked group row (for Delete Group)
     const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());   // group ids (default expanded)
     const [filterText, setFilterText] = useState('');
+    // Groups/Channels arrangement + tag display: Swing's filter-bar toggles,
+    // one preference shared with the Dashboard.
+    const [viewMode, setViewModeState] = useState<ViewMode>(loadViewMode);
+    const [tagMode, setTagModeState] = useState<TagMode>(loadTagMode);
+    const groupView = viewMode === 'group';
+
+    function setViewMode(mode: ViewMode) {
+        setViewModeState(mode);
+        saveViewMode(mode);
+        // Channel view has no group rows, so a group selection cannot survive it.
+        if (mode === 'channel') setLastGroupId(null);
+    }
+
+    function setTagMode(mode: TagMode) {
+        setTagModeState(mode);
+        saveTagMode(mode);
+    }
 
     /* ---- grouping --------------------------------------------------------- */
 
@@ -572,10 +591,11 @@ export function ChannelsView() {
             : <span className="status-cell"><span className="pip" /><span className="text-text-dim">Disabled</span></span>;
     }
 
-    // Channel name + tag chips. The depth indent + twisty are supplied by the
-    // TreeTable tree column, so (unlike the legacy) no manual paddingLeft here.
+    // Channel name + tag chips (names, icons, or none per the Tags toggle). The
+    // depth indent + twisty are supplied by the TreeTable tree column, so (unlike
+    // the legacy) no manual paddingLeft here.
     function nameCell(channel: any) {
-        const chips = channelTags(channel);
+        const chips = tagMode === 'off' ? [] : channelTags(channel);
         // Single line, never wrapping: the name always shows in full; extra tags
         // run out to the edge of the (fixed-layout) Name column and clip there via
         // the cell's own overflow:hidden — no premature inner width cap.
@@ -585,7 +605,8 @@ export function ChannelsView() {
                 {chips.length
                     ? <span className="inline-flex gap-1.5 flex-nowrap">
                         {chips.map((tag: any) => {
-                            const color = tagColor(tag);
+                            if (tagMode === 'icons') return tagIcon(tag, tag.name);
+                            const color = tagRgb(tag, 0.26);
                             return <span key={tag.name} className="tag shrink-0" style={color ? { background: color } : {}}>{tag.name}</span>;
                         })}
                     </span>
@@ -740,16 +761,20 @@ export function ChannelsView() {
             lastClickedRef.current = null;
             setLastGroupId(null);
         }
+        // Group tasks exist only in Group view (Swing drops the Group Tasks pane
+        // in channel mode).
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
             '-',
             { label: 'New Channel', icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
             { label: 'Import Channel', icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
             { label: 'Export All Channels', icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
-            '-',
-            { label: 'New Group', icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
-            { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
-            { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() }
+            ...(groupView ? [
+                '-' as const,
+                { label: 'New Group', icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
+                { label: 'Import Group', icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
+                { label: 'Export All Groups', icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() }
+            ] : [])
         ]);
     }
 
@@ -797,7 +822,13 @@ export function ChannelsView() {
                 label: a.label, icon: a.icon, task: a.task, group: a.group || 'channel',
                 onClick: () => a.onInvoke(channel, actionCtx)
             }));
-        // Full Swing channelPopupMenu (ChannelPanel) — the whole Channel Tasks list.
+        // Full Swing channelPopupMenu (ChannelPanel) — the whole Channel Tasks
+        // list, with Swing's visibility rules: Deploy needs at least one enabled
+        // channel in the selection (disabled channels are never deployed), Enable
+        // needs a disabled one, Disable an enabled one, and Move to Group exists
+        // only in Group view.
+        const anyEnabled = rows.some(isEnabled);
+        const anyDisabled = rows.some((c: any) => !isEnabled(c));
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
             { label: 'Redeploy All', icon: 'deploy', task: 'doRedeployAll', group: 'channel', onClick: () => redeployAllTask() },
@@ -809,13 +840,13 @@ export function ChannelsView() {
             { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${channel.id}/edit`) },
             { label: 'View Messages', icon: 'messages', task: 'doViewMessages', group: 'channel', onClick: () => messagesTask(rows) },
             '-',
-            { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployChannel', group: 'channel', onClick: () => deployTask(rows) },
-            { label: 'Enable Channel', icon: 'check', task: 'doEnableChannel', group: 'channel', onClick: () => setEnabledTask(true, rows) },
-            { label: 'Disable Channel', icon: 'x', task: 'doDisableChannel', group: 'channel', onClick: () => setEnabledTask(false, rows) },
+            { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployChannel', group: 'channel', hidden: !anyEnabled, onClick: () => deployTask(rows) },
+            { label: 'Enable Channel', icon: 'check', task: 'doEnableChannel', group: 'channel', hidden: !anyDisabled, onClick: () => setEnabledTask(true, rows) },
+            { label: 'Disable Channel', icon: 'x', task: 'doDisableChannel', group: 'channel', hidden: !anyEnabled, onClick: () => setEnabledTask(false, rows) },
             '-',
             { label: 'Clone Channel', icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask(rows) },
             { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask(rows) },
-            { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', onClick: () => moveToGroupTask(rows) },
+            { label: 'Move to Group…', icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', hidden: !groupView, onClick: () => moveToGroupTask(rows) },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
             { label: 'Delete Channel', icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask(rows) }
@@ -838,13 +869,13 @@ export function ChannelsView() {
         }
     }
 
+    const byName = (a: any, b: any) => String(a.name || '').localeCompare(String(b.name || ''));
+
     function visibleChannelIds() {
+        if (!groupView) return [...channels].filter(matchesFilter).sort(byName).map(c => c.id);
         return groupedChannels()
             .filter(g => !collapsedGroups.has(g.id))
-            .flatMap(g => [...g.channels]
-                .filter(matchesFilter)
-                .sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || '')))
-                .map(c => c.id));
+            .flatMap(g => [...g.channels].filter(matchesFilter).sort(byName).map(c => c.id));
     }
 
     /* ---- data --------------------------------------------------------------- */
@@ -1569,12 +1600,14 @@ export function ChannelsView() {
     }, []);
 
     /* ---- task panes (Swing parity, selection-gated) ----
-       Channel Tasks: deployable = a channel selected OR a group row selected. */
+       Channel Tasks: deployable = a channel selected OR a group row selected, and
+       Deploy shows only when that selection holds an enabled channel — disabled
+       channels are never deployed, so Swing hides the task when all of them are. */
     const eff = effectiveChannels();
     const channelSel = selected.size > 0;
     const singleChannel = selected.size === 1;
     const deployable = channelSel || !!lastGroupId;
-    const showDeploy = deployable;
+    const showDeploy = deployable && eff.some(isEnabled);
     const showExport = channelSel;
     const showDelete = channelSel;
     const showClone = singleChannel;
@@ -1593,19 +1626,17 @@ export function ChannelsView() {
 
     /* ---- tree data + filter + counts for the <TreeTable> ---- */
     const hasFilter = !!filterText.trim();
-    // Group nodes with their (name-sorted) channel children. When there are no
-    // channels at all we pass [] so TreeTable shows its empty state (Swing parity:
-    // the synthetic Default Group row is not drawn over an empty engine).
-    const treeData = channels.length
-        ? groupedChannels().map((g: any) => ({
-            kind: 'group', id: g.id, group: g,
-            // Children are wrapped channel nodes (sorted by name) so getChildren()
-            // hands TreeTable the same node shape rowKey/columns/onSelect expect.
-            children: [...g.channels]
-                .sort((a: any, b: any) => String(a.name || '').localeCompare(String(b.name || '')))
-                .map((channel: any) => ({ kind: 'channel', channel }))
-        }))
-        : [];
+    // Children are wrapped channel nodes (sorted by name) so getChildren() hands
+    // TreeTable the same node shape rowKey/columns/onSelect expect.
+    const channelNodes = (list: any[]) => [...list].sort(byName).map((channel: any) => ({ kind: 'channel', channel }));
+    // Group view: group nodes with their channel children. Channel view: the flat
+    // channel list (Swing's channel table mode). When there are no channels at
+    // all we pass [] so TreeTable shows its empty state (Swing parity: the
+    // synthetic Default Group row is not drawn over an empty engine).
+    const grouped = channels.length ? groupedChannels() : [];
+    const treeData = groupView
+        ? grouped.map((g: any) => ({ kind: 'group', id: g.id, group: g, children: channelNodes(g.channels) }))
+        : channelNodes(channels);
     // Filter: groups don't self-match (legacy filters channels); a group is kept
     // by TreeTable when a descendant channel matches.
     const treeMatches = hasFilter
@@ -1614,14 +1645,15 @@ export function ChannelsView() {
     // Collapsed groups, keyed by the channel-tree rowKey ('grp:<id>').
     const collapsedKeys = new Set([...collapsedGroups].map((id: any) => 'grp:' + id));
 
-    // Counts bar: groups shown / channels shown / enabled (after the filter, and
-    // dropping empty groups only while filtering — matching the legacy).
-    const shownGroups = treeData
-        .map((g: any) => ({ group: g.group, channels: g.group.channels.filter((c: any) => !hasFilter || matchesFilter(c)) }))
+    // Counts bar: groups shown (Group view only, as in Swing) / channels shown /
+    // enabled — after the filter, and dropping empty groups only while
+    // filtering, matching the legacy.
+    const shownGroups = grouped
+        .map((g: any) => ({ group: g, channels: g.channels.filter((c: any) => !hasFilter || matchesFilter(c)) }))
         .filter((g: any) => g.channels.length > 0 || !hasFilter);
-    const shownChannels = shownGroups.flatMap((g: any) => g.channels);
+    const shownChannels = channels.filter((c: any) => !hasFilter || matchesFilter(c));
     const enabledCount = shownChannels.filter(isEnabled).length;
-    const countsText = `${shownGroups.length} Group${shownGroups.length === 1 ? '' : 's'}, `
+    const countsText = (groupView ? `${shownGroups.length} Group${shownGroups.length === 1 ? '' : 's'}, ` : '')
         + `${shownChannels.length} Channel${shownChannels.length === 1 ? '' : 's'}, `
         + `${enabledCount} Enabled`;
 
@@ -1652,7 +1684,8 @@ export function ChannelsView() {
                         })()}
                     </div>
                 </RailPane>
-                <RailPane title="Group Tasks" paneKey="tasks:Group Tasks" group="channelGroup">
+                {/* Swing shows the Group Tasks pane only in Group view. */}
+                {groupView && <RailPane title="Group Tasks" paneKey="tasks:Group Tasks" group="channelGroup">
                     <div className="taskbar" data-pane-title="Group Tasks">
                         {showAssign && <TaskButton label="Assign To Group" icon="folder" task="doAssignChannelToGroup" onClick={() => moveToGroupTask(selectedChannels())} />}
                         <TaskButton label="New Group" icon="plus" task="doNewGroup" onClick={newGroupTask} />
@@ -1662,7 +1695,7 @@ export function ChannelsView() {
                         {showGroupExport && <TaskButton label="Export Group" icon="export" task="doExportGroup" onClick={() => exportGroupTask(currentGroup)} />}
                         {showGroupDelete && <TaskButton label="Delete Group" icon="trash" danger task="doDeleteGroup" onClick={() => deleteGroupTask(currentGroup)} />}
                     </div>
-                </RailPane>
+                </RailPane>}
             </ViewTasks>
             <div className="view-body flush flex flex-col overflow-hidden">
                 {loadError && <div className="mx-[13px] mt-3 panel border-danger text-danger" role="alert">
@@ -1689,7 +1722,7 @@ export function ChannelsView() {
                         matches={treeMatches}
                         collapsedKeys={collapsedKeys}
                         onToggleCollapse={(key: any) => toggleGroupCollapse(key.replace(/^grp:/, ''))}
-                        rowDraggable={(n: any) => n.kind === 'channel'}
+                        rowDraggable={(n: any) => groupView && n.kind === 'channel'}
                         onRowDrop={onRowDrop}
                         columnsKey="channels"
                         columnWidths={CHANNEL_COL_WIDTHS}
@@ -1707,6 +1740,14 @@ export function ChannelsView() {
                     <input type="text" placeholder="Enter channel tag or name" value={filterText}
                         onChange={(e: any) => setFilterText(e.target.value)} />
                     <span className="counts">{countsText}</span>
+                    {/* The same View / Tags toggles as the Dashboard filter bar. */}
+                    <div className="flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto">
+                        <SegPill value={viewMode} onChange={setViewMode} label="Row grouping" options={VIEW_MODE_OPTIONS} />
+                        <span className="inline-flex items-center gap-[4px]">
+                            <span className="text-text-faint text-[10px]">Tags:</span>
+                            <SegPill value={tagMode} onChange={setTagMode} label="Tag display" options={TAG_MODE_OPTIONS} />
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>

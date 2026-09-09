@@ -24,14 +24,16 @@ import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { ViewTasks } from '../mount.jsx';
 import { useDashboardStatuses, useChannelGroups, useChannelTags, useConnectorTypes, useSourcePorts } from '../queries.js';
-import { RailPane, TaskButton } from '../ui.jsx';
+import { RailPane, TaskButton, SegPill } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
-import { iconPath } from '../../core/icons.js';
 import * as Tabs from '@radix-ui/react-tabs';   // shadcn/Radix dock tabs
-import * as RadioGroup from '@radix-ui/react-radio-group';
 import * as Popover from '@radix-ui/react-popover';
+import {
+    lsGet, lsSet, loadViewMode, saveViewMode, loadTagMode, saveTagMode,
+    VIEW_MODE_OPTIONS, TAG_MODE_OPTIONS, tagRgb, tagPillStyle, tagIcon
+} from './channel-display.jsx';
 import { CardsView } from './cards.jsx';
 import { runLifecycle } from './channel-lifecycle.js';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
@@ -114,14 +116,6 @@ function childrenOf(status: any) {
     return Array.isArray(kids) ? kids : [kids];
 }
 
-function lsGet(key: any, fallback: any) {
-    try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
-}
-
-function lsSet(key: any, value: any) {
-    try { localStorage.setItem(key, value); } catch { /* private mode */ }
-}
-
 /* "Just deployed" highlight: a one-time, session-scoped cue. A deploy is
    highlighted only until you leave the dashboard — navigating away marks it
    seen so returning won't re-show it (matches the old Swing client). Keyed by
@@ -134,58 +128,11 @@ function isJustDeployed(st: any) {
     return !!ms && (Date.now() - ms) >= 0 && (Date.now() - ms) < JUST_DEPLOYED_MS && !seenDeploys.has(deployKey(st));
 }
 
-/* ChannelTag backgroundColor arrives as {red, green, blue, alpha}. */
-function tagRgb(tag: any, alpha?: any) {
-    const c = tag?.backgroundColor;
-    if (c && typeof c === 'object' && c.red !== undefined && c.green !== undefined && c.blue !== undefined) {
-        return alpha !== undefined ? `rgba(${c.red}, ${c.green}, ${c.blue}, ${alpha})` : `rgb(${c.red}, ${c.green}, ${c.blue})`;
-    }
-    return null;
-}
-
-/* Per-tag color applied like the .tag.<color> variants (tint fill, colored
-   border), with text mixed toward the theme foreground so arbitrary/pale tag
-   colors stay readable in both themes. */
-function tagPillStyle(tag: any) {
-    const c = tagRgb(tag);
-    if (!c) return undefined;
-    return {
-        background: `color-mix(in srgb, ${c} 26%, transparent)`,
-        borderColor: `color-mix(in srgb, ${c} 40%, transparent)`,
-        color: `color-mix(in srgb, ${c} 72%, var(--text))`
-    };
-}
-
 // Type + Port are web-only columns Swing's dashboard doesn't have, so they
 // start hidden (reachable via the <TreeTable> column menu) — matching Swing's
 // default set. <TreeTable> owns the column manager (widths/order/hidden via
 // the 'dashboard' storageKey) so the show/hide menu + persistence are reused.
 const DASH_DEFAULT_HIDDEN = ['type', 'port'];
-
-/* Segmented toggle — the single app-wide toggle style (.segpill: shadcn pill,
-   same language as the tabs). Used for Tags / Stats / View / Current-Lifetime. */
-/* Single-choice display toggles (View / Tags / Stats / Range) — Radix RadioGroup.
-   RadioGroup rather than ToggleGroup deliberately: these are a mutually exclusive
-   choice, one always selected, and the ARIA radiogroup pattern says an arrow key
-   moves the selection. ToggleGroup only moves FOCUS on arrow and waits for Space,
-   which would have quietly changed how these toggles behave. */
-function SegPill({ options, value, onChange, label }: any) {
-    return (
-        <RadioGroup.Root value={value} aria-label={label} orientation="horizontal"
-            onValueChange={(v: any) => { if (v) onChange(v); }}
-            className="segpill flex-none">
-            {options.map((opt: any) => (
-                <RadioGroup.Item key={opt.value} value={opt.value}
-                    title={opt.title || opt.label || ''}
-                    aria-label={opt.label ? undefined : (opt.title || undefined)}
-                    className={opt.value === value ? 'on' : ''}>
-                    {opt.icon ? <Icon name={opt.icon} size={13} /> : null}
-                    {opt.label || null}
-                </RadioGroup.Item>
-            ))}
-        </RadioGroup.Root>
-    );
-}
 
 /* The dashboard filter bar: chips + typeahead filter input + counts label, the
    "View" collapse button (container query on .filterbar hides the inline
@@ -313,17 +260,10 @@ function DashFilterBar({
        and the inline bar are two homes for the same controls, not two copies. */
     const controls = (
         <>
-            <SegPill value={viewMode} onChange={onViewMode} label="Row grouping" options={[
-                { value: 'group', icon: 'folder', title: 'Group view' },
-                { value: 'channel', icon: 'channels', title: 'Channel view' }
-            ]} />
+            <SegPill value={viewMode} onChange={onViewMode} label="Row grouping" options={VIEW_MODE_OPTIONS} />
             <span className="inline-flex items-center gap-[4px]">
                 <span className="text-text-faint text-[10px]">Tags:</span>
-                <SegPill value={tagMode} onChange={onTagMode} label="Tag display" options={[
-                    { value: 'names', label: 'Names', title: 'Show tags as names' },
-                    { value: 'icons', label: 'Icons', title: 'Show tags as icons' },
-                    { value: 'off', label: 'Off', title: 'Hide tags' }
-                ]} />
+                <SegPill value={tagMode} onChange={onTagMode} label="Tag display" options={TAG_MODE_OPTIONS} />
             </span>
             <span className="inline-flex items-center gap-[4px]">
                 <span className="text-text-faint text-[10px]">Stats:</span>
@@ -452,16 +392,14 @@ function DashboardView({ onToggleView }: any) {
     const [chips, setChips] = useState([] as any[]);           // explicit picks: [{ value, kind: 'tag' | 'channel' }]
     const [lifetime, setLifetime] = useState(false);
     const [sort, setSort] = useState<any>({ key: 'name', dir: 1 });          // dir: 1 = asc, -1 = desc
-    const [viewMode, setViewModeState] = useState(() => (lsGet('oie-dash-view', 'group') === 'channel' ? 'channel' : 'group'));
-    const [tagMode, setTagModeState] = useState(() => {
-        const saved = lsGet('oie-dash-tagmode', 'names');
-        return ['names', 'icons', 'off'].includes(saved) ? saved : 'names';
-    });
+    // View + Tags are shared with the Channels board (one preference, as in Swing).
+    const [viewMode, setViewModeState] = useState(loadViewMode);
+    const [tagMode, setTagModeState] = useState(loadTagMode);
     const [showStats, setShowStatsState] = useState(() => lsGet('oie-dash-stats', 'on') !== 'off');   // KPI stat cards
     const [activeTabId, setActiveTabId] = useState<any>(null);               // plugin dock tab (id || label)
 
-    const setViewMode = (v: any) => { setViewModeState(v); lsSet('oie-dash-view', v); };
-    const setTagMode = (v: any) => { setTagModeState(v); lsSet('oie-dash-tagmode', v); };
+    const setViewMode = (v: any) => { setViewModeState(v); saveViewMode(v); };
+    const setTagMode = (v: any) => { setTagModeState(v); saveTagMode(v); };
     const setShowStats = (v: any) => { setShowStatsState(v); lsSet('oie-dash-stats', v ? 'on' : 'off'); };
 
     /* When a poll drops channels the selection referenced, prune silently — no
@@ -1007,25 +945,10 @@ function DashboardView({ onToggleView }: any) {
         return tags.filter(tag => api.asList(tag.channelIds, 'string').includes(channelId));
     }
 
-    /* Icons mode: the actual tag glyph filled with the tag's color, stroked a
-       slightly darker shade so the shape still reads against any row. */
-    function tagIconJsx(tag: any, key: any) {
-        const color = tagRgb(tag) || 'var(--text-dim)';
-        return (
-            <span key={key} title={tag.name} className="inline-flex flex-none">
-                <svg viewBox="0 0 24 24" width={12} height={12} fill={color}
-                    stroke={`color-mix(in srgb, ${color} 75%, black)`}
-                    strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                    <path d={iconPath('tag')} />
-                </svg>
-            </span>
-        );
-    }
-
     function tagChipsJsx(channelId: any) {
         if (tagMode === 'off') return null;
         return tagsFor(channelId).map((tag: any, i: any) => tagMode === 'icons'
-            ? tagIconJsx(tag, i)
+            ? tagIcon(tag, i)
             : <span key={i} className="tag" style={tagPillStyle(tag)}>{tag.name}</span>);
     }
 

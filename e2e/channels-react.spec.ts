@@ -36,6 +36,14 @@ const GROUPS_FIXTURE = {
     'POST /channelgroups/_bulkUpdate': ''
 };
 
+// The stock channels with Demo Stopped disabled (Demo Started stays enabled).
+const STOPPED_DISABLED_CHANNELS = { list: { channel: [
+    { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1,
+        exportData: { metadata: { enabled: true } } },
+    { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1,
+        exportData: { metadata: { enabled: false } } }
+] } };
+
 async function gotoChannels(page: any) {
     await page.goto('/');
     await page.getByRole('button', { name: 'Channels', exact: true }).click();
@@ -592,28 +600,114 @@ test.describe('Channels React view', () => {
         await expect(page).toHaveURL(/\/dashboard/);
     });
 
-    test('Deploy Channel warns and skips a disabled selection like Swing', async ({ page }) => {
-        await mockEngine(page, {
-            ...GROUPS_FIXTURE,
-            'GET /channels': { list: { channel: [
-                { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1,
-                    exportData: { metadata: { enabled: true } } },
-                { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1,
-                    exportData: { metadata: { enabled: false } } }
-            ] } },
-            'POST /channels/_deploy': ''
-        });
-        let deployed = false;
-        page.on('request', request => {
-            if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_deploy') deployed = true;
-        });
+    test('Deploy Channel warns and skips the disabled part of a mixed selection like Swing', async ({ page }) => {
+        await mockEngine(page, { ...GROUPS_FIXTURE, 'GET /channels': STOPPED_DISABLED_CHANNELS, 'POST /channels/_deploy': '' });
         await gotoChannels(page);
-        await page.getByText('Demo Stopped', { exact: true }).click();
+        await page.getByText('Demo Started', { exact: true }).click();
+        await page.getByText('Demo Stopped', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
+        const deployRequest = page.waitForRequest(request =>
+            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels/_deploy');
         await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
 
         await expect(page.getByText('Disabled channels will not be deployed.', { exact: true })).toBeVisible();
-        await expect(page).toHaveURL(/\/channels/);
-        expect(deployed).toBe(false);
+        const ids = (await deployRequest).postDataJSON()?.set?.string;
+        expect(Array.isArray(ids) ? ids : [ids]).toEqual(['c-started']);
+    });
+
+    test('hides Deploy Channel when every selected channel is disabled, like Swing', async ({ page }) => {
+        await mockEngine(page, { ...GROUPS_FIXTURE, 'GET /channels': STOPPED_DISABLED_CHANNELS });
+        await gotoChannels(page);
+
+        // Task pane: a disabled channel offers Enable, but neither Deploy nor Disable.
+        await page.getByText('Demo Stopped', { exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Enable Channel', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Disable Channel', exact: true })).toHaveCount(0);
+
+        // The row's context menu follows the same rule.
+        await page.getByText('Demo Stopped', { exact: true }).click({ button: 'right' });
+        const menu = page.getByRole('menu');
+        await expect(menu.getByRole('menuitem', { name: 'Enable Channel', exact: true })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Deploy Channel', exact: true })).toHaveCount(0);
+        await expect(menu.getByRole('menuitem', { name: 'Disable Channel', exact: true })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(menu).toHaveCount(0);
+
+        // A group whose only channel is disabled cannot deploy; one holding an
+        // enabled channel can.
+        await page.getByRole('gridcell', { name: '[Default Group]', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Enable Channel', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toHaveCount(0);
+        await page.getByRole('gridcell', { name: '[Demo Group]', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Deploy Channel', exact: true })).toBeVisible();
+
+        // An enabled channel keeps Deploy (and Disable, not Enable) in its menu.
+        await page.getByText('Demo Started', { exact: true }).click({ button: 'right' });
+        await expect(menu.getByRole('menuitem', { name: 'Deploy Channel', exact: true })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Disable Channel', exact: true })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Enable Channel', exact: true })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+    });
+
+    test('Channel view flattens the tree and drops Group Tasks; the Tags toggle hides or iconizes chips', async ({ page }) => {
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'GET /server/channelTags': { set: { channelTag: [
+                { id: 'tag-1', name: 'Inbound', channelIds: { string: ['c-started'] }, backgroundColor: { red: 200, green: 150, blue: 120, alpha: 255 } }
+            ] } }
+        });
+        await gotoChannels(page);
+        const startedRow = page.getByRole('row', { name: /Demo Started/ });
+        const grouping = page.getByRole('radiogroup', { name: 'Row grouping' });
+        const tagDisplay = page.getByRole('radiogroup', { name: 'Tag display' });
+
+        // Group view by default: group rows, the Group Tasks pane, the tag as a named chip.
+        await expect(page.getByRole('gridcell', { name: '[Demo Group]', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'New Group', exact: true })).toBeVisible();
+        await expect(startedRow.locator('.tag', { hasText: 'Inbound' })).toBeVisible();
+        await expect(page.locator('.filterbar .counts')).toHaveText('2 Groups, 2 Channels, 2 Enabled');
+
+        // Channel view: a flat channel list — no group rows, no Group Tasks pane, no group count.
+        await grouping.getByRole('radio', { name: 'Channel view' }).click();
+        await expect(page.getByRole('gridcell', { name: '[Demo Group]', exact: true })).toHaveCount(0);
+        await expect(page.getByRole('gridcell', { name: '[Default Group]', exact: true })).toHaveCount(0);
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+        await expect(page.getByText('Demo Stopped', { exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'New Group', exact: true })).toHaveCount(0);
+        await expect(page.locator('.filterbar .counts')).toHaveText('2 Channels, 2 Enabled');
+
+        // A selected channel keeps its channel tasks but has no group to be assigned to.
+        await page.getByText('Demo Stopped', { exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Edit Channel', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Assign To Group', exact: true })).toHaveCount(0);
+        await page.getByText('Demo Stopped', { exact: true }).click({ button: 'right' });
+        const menu = page.getByRole('menu');
+        await expect(menu.getByRole('menuitem', { name: 'Deploy Channel', exact: true })).toBeVisible();
+        await expect(menu.getByRole('menuitem', { name: 'Move to Group…', exact: true })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+
+        // Tags: icons replace the named chip; Off removes it.
+        await tagDisplay.getByRole('radio', { name: 'Icons' }).click();
+        await expect(startedRow.locator('.tag', { hasText: 'Inbound' })).toHaveCount(0);
+        await expect(startedRow.locator('[title="Inbound"]')).toBeVisible();
+        await tagDisplay.getByRole('radio', { name: 'Off' }).click();
+        await expect(startedRow.locator('[title="Inbound"]')).toHaveCount(0);
+        await expect(startedRow.locator('.tag')).toHaveCount(0);
+
+        // Both choices persist when the view is left and reopened.
+        await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+        await expect(page).toHaveURL(/\/dashboard/);
+        await page.getByRole('button', { name: 'Channels', exact: true }).click();
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+        await expect(page.getByRole('gridcell', { name: '[Demo Group]', exact: true })).toHaveCount(0);
+        await expect(grouping.getByRole('radio', { name: 'Channel view' })).toHaveAttribute('aria-checked', 'true');
+        await expect(tagDisplay.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true');
+        await expect(startedRow.locator('.tag')).toHaveCount(0);
+
+        // Group view restores the tree and its tasks.
+        await grouping.getByRole('radio', { name: 'Group view' }).click();
+        await expect(page.getByRole('gridcell', { name: '[Demo Group]', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'New Group', exact: true })).toBeVisible();
     });
 
     test('Deploy Channel can include an enabled prerequisite through Swing\'s deploy dependency path', async ({ page }) => {

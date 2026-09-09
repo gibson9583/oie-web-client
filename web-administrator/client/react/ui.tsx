@@ -10,6 +10,7 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, createContext, useContext } from 'react';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
+import * as RadioGroup from '@radix-ui/react-radio-group';
 import { Icon } from './bridges.jsx';
 import { DataTable } from '@oie/web-ui';
 import { createCodeEditor } from '../core/codeeditor.js';
@@ -100,6 +101,32 @@ export function TaskButton({ label, icon, onClick, primary, danger, task, group,
         <button className={cls} onClick={onClick} disabled={disabled} title={title}>
             {icon ? <Icon name={icon} /> : null}{label}
         </button>
+    );
+}
+
+/* Segmented toggle — the single app-wide toggle style (.segpill: shadcn pill,
+   same language as the tabs). Used for the Dashboard and Channels display
+   toggles (View / Tags / Stats / Current-Lifetime).
+   Single-choice display toggles are a Radix RadioGroup. RadioGroup rather than
+   ToggleGroup deliberately: these are a mutually exclusive choice, one always
+   selected, and the ARIA radiogroup pattern says an arrow key moves the
+   selection. ToggleGroup only moves FOCUS on arrow and waits for Space, which
+   would have quietly changed how these toggles behave. */
+export function SegPill({ options, value, onChange, label }: any) {
+    return (
+        <RadioGroup.Root value={value} aria-label={label} orientation="horizontal"
+            onValueChange={(v: any) => { if (v) onChange(v); }}
+            className="segpill flex-none">
+            {options.map((opt: any) => (
+                <RadioGroup.Item key={opt.value} value={opt.value}
+                    title={opt.title || opt.label || ''}
+                    aria-label={opt.label ? undefined : (opt.title || undefined)}
+                    className={opt.value === value ? 'on' : ''}>
+                    {opt.icon ? <Icon name={opt.icon} size={13} /> : null}
+                    {opt.label || null}
+                </RadioGroup.Item>
+            ))}
+        </RadioGroup.Root>
     );
 }
 
