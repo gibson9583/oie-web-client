@@ -18,6 +18,8 @@
  * explicitly on logout and on session expiry.
  */
 
+import { engineContext } from '../core/engine-fetch.js';
+
 const KEY = 'oie-sso-session';
 /** This tab sent the browser to the provider and is owed a callback. */
 const PENDING = 'oie-oidc-pending';
@@ -25,7 +27,10 @@ const PENDING = 'oie-oidc-pending';
 const HOLD = 'oie-oidc-hold';
 
 export function markSsoPending(): void {
-    try { sessionStorage.setItem(PENDING, '1'); } catch { /* storage unavailable */ }
+    try {
+        sessionStorage.setItem(PENDING, '1');
+        sessionStorage.setItem('oie-oidc-context', engineContext());
+    } catch { /* storage unavailable */ }
 }
 
 export function hasSsoPending(): boolean {
@@ -34,7 +39,10 @@ export function hasSsoPending(): boolean {
 
 export function takeSsoPending(): boolean {
     const pending = hasSsoPending();
-    try { sessionStorage.removeItem(PENDING); } catch { /* storage unavailable */ }
+    try {
+        sessionStorage.removeItem(PENDING);
+        sessionStorage.removeItem('oie-oidc-context');
+    } catch { /* storage unavailable */ }
     return pending;
 }
 

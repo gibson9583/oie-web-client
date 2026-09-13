@@ -18,6 +18,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useStoreKey } from '../bridges.jsx';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
+import { adoptEngineContext, beginLogin } from '../../core/engine-fetch.js';
 
 const STATUS_MESSAGES = {
     FAIL: 'Invalid username or password.',
@@ -67,6 +68,7 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
         // session and forcing a hard reload on every sign-in.
         clearCookie('oie-engine');
         clearCookie('oie-engine-url');
+        adoptEngineContext();
         return null;
     }
     if (sel === '') return 'Choose an engine.';   // stale remembered engine (see initialSelection) — don't guess
@@ -86,6 +88,7 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
         clearCookie('oie-engine-url');
         setCookie('oie-engine', sel);
     }
+    adoptEngineContext();
     return null;
 }
 
@@ -185,7 +188,11 @@ export function LoginForm({ onSuccess }: any) {
     useEffect(() => {
         let alive = true;
         if (sel === 'custom' || (showPicker && sel === '')) { setSso(null); return; }
-        if (showPicker) setCookie('oie-engine', sel);
+        // A callback belongs to the engine selected before leaving for the IdP.
+        if (!callbackInFlight.current) {
+            if (showPicker) setCookie('oie-engine', sel);
+            adoptEngineContext();
+        }
         api.get('/extensions/oidcauth/public', { noAuthHandler: true } as any)
             .then((raw: any) => {
                 const pub = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -217,6 +224,7 @@ export function LoginForm({ onSuccess }: any) {
     async function startSso() {
         const selectionError = commitEngineSelection(showPicker, sel, customUrl);
         if (selectionError) { setError(selectionError); return; }
+        beginLogin();
         // Where to come back to, as an internal route: the engine validates it as
         // a path on the web administrator and hands it back after sign-in.
         const returnPath = currentRoutePath() + location.hash;
@@ -317,6 +325,7 @@ export function LoginForm({ onSuccess }: any) {
         // Point this session at the chosen engine before authenticating.
         const selectionError = commitEngineSelection(showPicker, sel, customUrl);
         if (selectionError) { setError(selectionError); busyRef.current = false; return; }
+        beginLogin();
 
         setSubmitting(true);
         try {

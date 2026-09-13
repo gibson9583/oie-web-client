@@ -107,7 +107,7 @@ globalThis.fetch = async (url, init) => {
 await api.status.startMany(['one', 'two']);
 ok(lastUrl.endsWith('/channels/_start?returnErrors=true'), 'bulk status uses the engine collection endpoint');
 ok(lastInit.body === 'channelId=one&channelId=two', 'bulk status repeats channelId form fields in order');
-ok(lastInit.headers['Content-Type'] === 'application/x-www-form-urlencoded', 'bulk status uses form encoding');
+ok(new Headers(lastInit.headers).get('Content-Type') === 'application/x-www-form-urlencoded', 'bulk status uses form encoding');
 ok(!lastInit.signal, 'bulk status actions have no client timeout');
 
 await api.messages.attachments('chan', 7);
@@ -117,7 +117,7 @@ ok(lastUrl.endsWith('/channels/chan/messages/7/attachments?includeContent=true')
 
 await api.messages.auditAccessedPHI({ patientId: 'A&B<1>', note: 'bad\u0001value' });
 ok(lastUrl.endsWith('/channels/_auditAccessedPHIMessage'), 'PHI access uses the Swing audit endpoint');
-ok(lastInit.headers['Content-Type'] === 'application/xml', 'PHI audit maps are XML');
+ok(new Headers(lastInit.headers).get('Content-Type') === 'application/xml', 'PHI audit maps are XML');
 ok(lastInit.body.includes('<string>A&amp;B&lt;1&gt;</string>'), 'PHI audit values are XML escaped');
 ok(!lastInit.body.includes('\u0001'), 'PHI audit values strip XML-illegal controls');
 

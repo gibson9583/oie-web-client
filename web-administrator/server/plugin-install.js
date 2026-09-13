@@ -34,11 +34,11 @@ function csrfOk(req) { return typeof req.headers['x-requested-with'] === 'string
 // read up to MAX_UPLOAD from a caller that omits the CSRF header or carries no
 // engine session cookie — it could never be authorized. Blunts unauthenticated
 // memory-pressure/DoS against the web tier.
-function hasSession(req) { return /(?:^|;\s*)JSESSIONID=/.test(req.headers['cookie'] || ''); }
+function hasSession(req, engine) { return /(?:^|;\s*)JSESSIONID=/.test((0, proxy_1.forwardCookie)(req.headers['cookie'], engine)); }
 function preUploadGate(req, res, next) {
     if (!csrfOk(req))
         return res.status(403).json({ error: 'CSRF', message: 'Missing X-Requested-With header' });
-    if (!hasSession(req))
+    if (!hasSession(req, res.locals.engine))
         return res.status(401).json({ error: 'NO_SESSION', message: 'No engine session' });
     next();
 }
@@ -68,7 +68,7 @@ async function handleInstall(req, res, config) {
             headers: {
                 'content-type': req.headers['content-type'],
                 'content-length': String(body.length),
-                cookie: (0, proxy_1.forwardCookie)(req.headers['cookie']),
+                cookie: (0, proxy_1.forwardCookie)(req.headers['cookie'], engine),
                 'x-requested-with': req.headers['x-requested-with']
             },
             body
@@ -102,7 +102,7 @@ async function handleUninstall(req, res, config) {
             headers: {
                 'content-type': req.headers['content-type'] || 'application/json',
                 'content-length': String(fwd.length),
-                cookie: (0, proxy_1.forwardCookie)(req.headers['cookie']),
+                cookie: (0, proxy_1.forwardCookie)(req.headers['cookie'], engine),
                 'x-requested-with': req.headers['x-requested-with']
             },
             body: fwd
@@ -122,13 +122,17 @@ async function handleUninstall(req, res, config) {
 // ever be answered 421. The handlers re-resolve for the actual forward.
 function engineGate(config) {
     return (req, res, next) => {
-        if (!(0, proxy_1.resolveEngine)(config, req))
+        if (!(0, proxy_1.checkRequestContext)(req, res))
+            return;
+        const engine = (0, proxy_1.resolveEngine)(config, req);
+        if (!engine)
             return (0, proxy_1.respondEngineUnknown)(req, res);
+        res.locals.engine = engine;
         next();
     };
 }
 // Mount BEFORE the /api proxy in server/index.js.
 function installPluginRoutes(app, config) {
-    app.post('/api/_webadmin/plugins/_install', preUploadGate, engineGate(config), express_1.default.raw({ type: () => true, limit: MAX_UPLOAD }), (req, res) => handleInstall(req, res, config));
+    app.post('/api/_webadmin/plugins/_install', engineGate(config), preUploadGate, express_1.default.raw({ type: () => true, limit: MAX_UPLOAD }), (req, res) => handleInstall(req, res, config));
     app.post('/api/_webadmin/plugins/_uninstall', engineGate(config), express_1.default.json({ limit: '64kb' }), (req, res) => handleUninstall(req, res, config));
 }

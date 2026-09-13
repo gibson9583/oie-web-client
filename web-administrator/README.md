@@ -120,6 +120,12 @@ Example `config.json`:
 > For production, terminate TLS in front of this app (the session cookie should
 > not cross the network in clear text).
 
+Node/Docker scopes upstream cookies to each engine URL; existing unscoped
+sessions require a fresh sign-in after upgrading. API requests also check the
+tab's engine/login identity, so another tab changing sessions cannot send an
+old editor's data to the new engine. Use `platform.api` / `@oie/web-api` for
+plugin requests; authenticated proxy mutations require its context header.
+
 ## Look & feel
 
 The UI follows the classic Administrator layout: stacked task panes on the

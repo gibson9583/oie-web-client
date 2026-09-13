@@ -16,6 +16,7 @@
 
 import * as oie from './oie.js';
 import { API_BASE } from './deployment.js';
+import { engineFetch, assertEngineResponse } from './engine-fetch.js';
 import type {
     AlertModel, AlertStatus, Attachment, Channel, ChannelDependency, ChannelGroup,
     ChannelStatistics, ChannelTag, CodeTemplate, CodeTemplateLibrary, DashboardStatus,
@@ -141,7 +142,7 @@ function send(url: string, init: RequestInit, opts?: RequestOptions): Promise<Js
     // orphan the work in flight.
     const timeoutMs = opts?.timeoutMs === undefined ? 120_000 : opts.timeoutMs;
     if (!init.signal && timeoutMs !== null) init.signal = AbortSignal.timeout(timeoutMs);
-    return fetch(url, init).then(
+    return engineFetch(url, init).then(
         (response) => {
             setReachable(!GATEWAY_STATUSES.has(response.status));
             return handle(response, opts);
@@ -240,6 +241,7 @@ async function handle(response: Response, { raw = false, noAuthHandler = false }
         // don't fire the global session-expired handler.
         if (noAuthHandler) {
             const text = await response.text().catch(() => '');
+            assertEngineResponse(response);
             // parseBody is total (its parses are internally guarded), so no try/catch.
             let message = 'Unauthorized';
             const parsed = parseBody(text);
@@ -255,6 +257,7 @@ async function handle(response: Response, { raw = false, noAuthHandler = false }
         throw new ApiError(401, 'Session expired');
     }
     const text = await response.text();
+    assertEngineResponse(response);
     if (!response.ok) {
         let message = text || `${response.status} ${response.statusText}`;
         // parseBody is total (its parses are internally guarded), so no try/catch.
@@ -644,11 +647,12 @@ export const auth: AuthApi = {
         const form = new URLSearchParams({ username, password });
         const h = headers('application/x-www-form-urlencoded');
         if (loginData != null) h['X-Mirth-Login-Data'] = String(loginData);
-        const res = await fetch(BASE + '/users/_login', {
+        const res = await engineFetch(BASE + '/users/_login', {
             method: 'POST', headers: h, credentials: 'same-origin', body: form.toString(),
             signal: AbortSignal.timeout(120_000)
         });
         const text = await res.text().catch(() => '');
+        assertEngineResponse(res);
         const parsed = parseBody(text);
         // Return the parsed LoginStatus whatever its shape: unwrap() reduces a
         // minimal {status:'SUCCESS'} to the bare string 'SUCCESS', while a full

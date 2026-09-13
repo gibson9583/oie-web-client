@@ -26,6 +26,7 @@
 import * as router from './router.js';
 import * as store from './store.js';
 import * as apiModule from './api.js';
+import { engineFetch, assertEngineResponse } from './engine-fetch.js';
 import * as ui from './ui.js';
 import * as oie from './oie.js';
 import { webSupportBase } from './websupport.js';
@@ -552,13 +553,14 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
         const base = apiUrl(`${wsBase}/webplugins/${encodeURIComponent(path)}`);
         try {
             // Served raw by the engine (not XStream-wrapped), so read it as plain JSON.
-            const res = await fetch(`${base}/plugin.json`, {
+            const res = await engineFetch(`${base}/plugin.json`, {
                 credentials: 'same-origin',
                 headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                 signal: AbortSignal.timeout(120_000)
             });
             if (!res.ok) return null;
             const m = await res.json();
+            assertEngineResponse(res);
             if (!m || !m.id) return null;
             const entry = m.client && m.client.entry ? `${base}/${m.client.entry}` : null;
             return {
@@ -639,13 +641,14 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
         // imports, including support for plugins that split relative modules.
         try {
             if (manifest.source === 'engine' && store.getState('webadminConfig')?.deployment === 'war') {
-                const res = await fetch(manifest.entry, {
+                const res = await engineFetch(manifest.entry, {
                     credentials: 'same-origin',
                     headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                     signal: AbortSignal.timeout(120_000)
                 });
                 if (!res.ok) throw new Error(`plugin module request failed (${res.status})`);
                 const source = await res.text();
+                assertEngineResponse(res);
                 const objectUrl = URL.createObjectURL(new Blob([
                     source,
                     `\n//# sourceURL=${manifest.entry}\n`

@@ -254,6 +254,13 @@ remembered selections once: each user re-picks their engine at the next sign-in.
 > `/api/users/_login` and the engine's `JSESSIONID` cookie carries the session.
 > The Node server stores no credentials; it is a streaming reverse proxy.
 
+Node/Docker scopes upstream cookie names to each engine URL. Upgrading from
+unscoped cookies requires signing in again. API calls carry the tab's selected
+engine and login generation; a change in another tab reloads stale views before
+they can submit old data. Plugin code should use `platform.api` / `@oie/web-api`
+so it participates in this check. Authenticated proxy mutations without the
+context header are refused. WAR cookies remain owned by the hosting engine.
+
 ### Serving over HTTPS
 
 By default the app serves plain **HTTP** on `port` (the browser ↔ web-admin hop);

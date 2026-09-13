@@ -37,7 +37,7 @@ import { platform, loadPlugins } from '@oie/web-shell';
 import { LoginForm, isOidcCallback, isExpectedOidcCallback, takeOidcCallback } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
-import { clearSsoSession, holdAutoRedirect, isSsoSession } from './sso-session.js';
+import { clearSsoSession, holdAutoRedirect, isSsoSession, takeSsoPending } from './sso-session.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -755,6 +755,17 @@ export function App() {
         initSplitters();
         initTruncationTitles();
         let alive = true;
+        // Another tab changed engine or signed in. Drop this document's work
+        // without changing shared cookies or attempting logout as the new user.
+        const sessionChanged = () => {
+            store.setState('user', null);
+            store.setState('navGuard', null);
+            queryClient.clear();
+            takeSsoPending();
+            if (isOidcCallback()) takeOidcCallback();
+            location.reload();
+        };
+        window.addEventListener('oie-session-changed', sessionChanged);
         (async () => {
             // Fetch the web-admin config (engine list, devMode) BEFORE the auth check
             // so the login screen can render the engine picker if there's a choice.
@@ -812,7 +823,10 @@ export function App() {
         // exit as expiry; the login screen's picker then demands an explicit
         // re-pick instead of guessing an engine.
         const offEngine = onEngineUnknown(() => dropToLogin('The engine you were signed in to is no longer available — choose an engine and sign in again.'));
-        return () => { alive = false; off(); offEngine(); };
+        return () => {
+            alive = false; off(); offEngine();
+            window.removeEventListener('oie-session-changed', sessionChanged);
+        };
     }, []);
 
     // A login in ANOTHER TAB of this browser replaces the engine session cookie

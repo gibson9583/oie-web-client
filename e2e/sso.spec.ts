@@ -102,6 +102,23 @@ test.describe('SSO through the engine', () => {
         await expect(page).toHaveURL(/\/channels$/);
     });
 
+    test('a callback cannot cross a login change made while the tab was at the provider', async ({ page, baseURL }) => {
+        const received = await mockSso(page, baseURL!);
+        await page.route(`${IDP}/**`, async route => {
+            await page.context().addCookies([{ name: 'oie-login', value: 'another-tab-login', url: baseURL! }]);
+            await route.fulfill({ status: 302, headers: { location: `${baseURL}/oidc/callback?code=old-code&state=old-state` } });
+        });
+        await page.goto('/');
+        const callbackPage = page.waitForURL(/\/oidc\/callback/, { waitUntil: 'commit' });
+        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await callbackPage;
+        await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-oidc-context')).catch(() => 'navigating')).toBeNull();
+        await expect(page.getByRole('button', { name: 'Sign in with Acme SSO' })).toBeVisible();
+        expect(received.start).not.toBeNull();
+        expect(received.callback).toBeNull();
+        expect(received.logins).toEqual([]);
+    });
+
     test('an SSO session is not offered a password to change', async ({ page, baseURL }) => {
         await mockSso(page, baseURL!);
         await page.goto('/');

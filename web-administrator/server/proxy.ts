@@ -4,8 +4,8 @@
  * The browser talks to /api/... on this server; we stream the request through to
  * the selected engine (.../api/...) and stream the response back. This keeps the
  * web administrator a standalone install: no CORS, no browser warnings about the
- * engine's self-signed cert, and the JSESSIONID cookie (Path=/api) round-trips
- * unchanged because the path is preserved.
+ * engine's certificate, and engine cookies retain their paths. Their browser
+ * names are scoped to the upstream URL so sessions cannot cross engines.
  *
  * Multi-engine: the browser picks an engine at login and sets an `oie-engine`
  * cookie — the chosen engine's stable key (config.ts engineKey), or `custom`
@@ -17,6 +17,7 @@
 
 import * as http from 'http';
 import * as https from 'https';
+import { createHash } from 'crypto';
 import type { Request, Response } from 'express';
 import type { ResolvedEngine, WebAdminConfig } from './config';
 
@@ -48,15 +49,41 @@ function parseCookies(cookieHeader: unknown): Record<string, string> {
     return out;
 }
 
-// Cookie header to forward upstream, minus the web-admin routing cookies (the
-// engine has no use for them, and a typed custom URL shouldn't leak to it).
-// Exported for the plugin-install forwards, which carry the session cookie to
-// the engine and owe it the same scrubbing.
-export function forwardCookie(cookieHeader: unknown): string {
+// Shared by streaming API requests and plugin-install forwards.
+export function engineCookiePrefix(engine: EngineTarget): string {
+    return `oie-${createHash('sha256').update(engine.url).digest('hex').slice(0, 32)}-`;
+}
+
+// Only cookies issued by THIS engine cross its boundary. Legacy unscoped
+// cookies are deliberately ignored: upgrading requires a fresh sign-in.
+export function forwardCookie(cookieHeader: unknown, engine: EngineTarget): string {
+    const prefix = engineCookiePrefix(engine);
     return String(cookieHeader || '').split(';')
         .map((s) => s.trim())
-        .filter((s) => s && !/^oie-engine(-url)?=/i.test(s))
+        .filter((s) => s.startsWith(prefix))
+        .map((s) => s.slice(prefix.length))
         .join('; ');
+}
+
+// Match client/core/engine-fetch.ts. The generation changes on each login
+// attempt; engine selection and generation are checked atomically with the
+// cookies on this request, not with a previous focus-time check.
+export function requestContext(cookieHeader: unknown): string {
+    const cookies = parseCookies(cookieHeader);
+    return encodeURIComponent(JSON.stringify(['oie-engine', 'oie-engine-url', 'oie-login'].map(k => cookies[k] || '')));
+}
+
+export function checkRequestContext(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    const expected = req.headers['x-oie-context'];
+    const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method || 'GET');
+    const hasEngineSession = /(?:^|;\s*)oie-[a-f0-9]{32}-JSESSIONID=/.test(req.headers.cookie || '');
+    if ((expected != null && expected !== requestContext(req.headers.cookie)) || (mutation && hasEngineSession && !expected)) {
+        req.resume();
+        res.writeHead(409, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: 'SESSION_CHANGED', message: 'The browser session changed. Reload to continue.' }));
+        return false;
+    }
+    return true;
 }
 
 /*
@@ -162,9 +189,11 @@ export function forceNoStore(headers: http.OutgoingHttpHeaders): http.OutgoingHt
 
 /** Apply the browser-facing session-cookie policy shared by the streaming proxy
  * and server-side OIDC callback login. */
-export function rewriteSetCookies(cookies: string[] | undefined, secure: boolean): string[] {
+export function rewriteSetCookies(cookies: string[] | undefined, secure: boolean, engine: EngineTarget): string[] {
     return (cookies || []).map((original) => {
-        let cookie = original;
+        let cookie = engineCookiePrefix(engine) + original;
+        // Cookies now belong to the web administrator's host, not the upstream.
+        cookie = cookie.replace(/;\s*domain=[^;]*/ig, '');
         if (!/;\s*samesite=/i.test(cookie)) cookie += '; SameSite=Lax';
         if (secure) { if (!/;\s*secure\b/i.test(cookie)) cookie += '; Secure'; }
         else cookie = cookie.replace(/;\s*secure\b/ig, '');
@@ -210,6 +239,7 @@ export function createApiProxy(config: WebAdminConfig) {
     }
 
     return function apiProxy(req: Request, res: Response): void {
+        if (!checkRequestContext(req, res)) return;
         const engine = resolveEngine(config, req);
         if (!engine) {
             // The remembered selection no longer names a configured engine.
@@ -228,9 +258,10 @@ export function createApiProxy(config: WebAdminConfig) {
         }
         headers['host'] = target.host;
         if (req.headers['cookie'] != null) {
-            const fwd = forwardCookie(req.headers['cookie']);
+            const fwd = forwardCookie(req.headers['cookie'], engine);
             if (fwd) headers['cookie'] = fwd; else delete headers['cookie'];
         }
+        delete headers['x-oie-context'];
         // Do NOT synthesize the engine's anti-CSRF header (X-Requested-With):
         // that guard works precisely because a cross-site request can't set a
         // custom header without a preflight the engine rejects. The SPA sets it
@@ -269,6 +300,11 @@ export function createApiProxy(config: WebAdminConfig) {
                 if (!HOP_BY_HOP.has(name.toLowerCase())) resHeaders[name] = value;
             }
             forceNoStore(resHeaders);
+            const proto = isTrustedPeer(req.socket.remoteAddress, trustedProxies) ? req.headers['x-forwarded-proto'] : undefined;
+            const secure = proto === 'https' || !!(req.socket as import('tls').TLSSocket).encrypted;
+            const generation = parseCookies(req.headers.cookie)['oie-login'];
+            const changesSession = req.originalUrl.split('?')[0] === '/api/users/_login'
+                || (upstreamRes.headers['set-cookie'] || []).some(c => c.startsWith('JSESSIONID='));
             // Reconcile the engine's session cookie with THIS connection's scheme as
             // it crosses our origin. Add SameSite=Lax (CSRF defense-in-depth). When
             // the front is HTTPS, add Secure. When the front is plain HTTP, STRIP any
@@ -279,9 +315,14 @@ export function createApiProxy(config: WebAdminConfig) {
             if (Array.isArray(resHeaders['set-cookie'])) {
                 // Trust the client's X-Forwarded-Proto only from a trusted fronting
                 // proxy; otherwise derive the scheme from the actual connection.
-                const proto = isTrustedPeer(req.socket.remoteAddress, trustedProxies) ? req.headers['x-forwarded-proto'] : undefined;
-                const secure = proto === 'https' || !!(req.socket as import('tls').TLSSocket).encrypted;
-                resHeaders['set-cookie'] = rewriteSetCookies(resHeaders['set-cookie'], secure);
+                resHeaders['set-cookie'] = rewriteSetCookies(resHeaders['set-cookie'], secure, engine);
+            }
+            // A late login response can replace the session cookie after a newer
+            // login finished. Keep its generation with it, so the other tab is
+            // fenced even when responses arrive out of order.
+            if (changesSession && generation) {
+                resHeaders['set-cookie'] = [...(resHeaders['set-cookie'] || []) as string[],
+                    `oie-login=${encodeURIComponent(generation)}; Path=/; SameSite=Lax${secure ? '; Secure' : ''}`];
             }
             res.writeHead(upstreamRes.statusCode!, resHeaders);
             upstreamRes.pipe(res);

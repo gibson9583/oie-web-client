@@ -14,7 +14,8 @@
  */
 import express from 'express';
 import type { Request, Response, NextFunction, Express } from 'express';
-import { engineRequest, forwardCookie, resolveEngine, respondEngineUnknown } from './proxy';
+import { engineRequest, forwardCookie, resolveEngine, respondEngineUnknown, checkRequestContext } from './proxy';
+import type { EngineTarget } from './proxy';
 import type { WebAdminConfig } from './config';
 
 const MAX_UPLOAD = '16mb';   // express.raw cap (engine zips are a few MB)
@@ -29,10 +30,10 @@ export function csrfOk(req: { headers: Record<string, any> }): boolean { return 
 // read up to MAX_UPLOAD from a caller that omits the CSRF header or carries no
 // engine session cookie — it could never be authorized. Blunts unauthenticated
 // memory-pressure/DoS against the web tier.
-export function hasSession(req: { headers: Record<string, any> }): boolean { return /(?:^|;\s*)JSESSIONID=/.test(req.headers['cookie'] || ''); }
+export function hasSession(req: { headers: Record<string, any> }, engine: EngineTarget): boolean { return /(?:^|;\s*)JSESSIONID=/.test(forwardCookie(req.headers['cookie'], engine)); }
 export function preUploadGate(req: Request, res: Response, next: NextFunction): any {
     if (!csrfOk(req)) return res.status(403).json({ error: 'CSRF', message: 'Missing X-Requested-With header' });
-    if (!hasSession(req)) return res.status(401).json({ error: 'NO_SESSION', message: 'No engine session' });
+    if (!hasSession(req, res.locals.engine)) return res.status(401).json({ error: 'NO_SESSION', message: 'No engine session' });
     next();
 }
 
@@ -60,7 +61,7 @@ async function handleInstall(req: Request, res: Response, config: WebAdminConfig
             headers: {
                 'content-type': req.headers['content-type'],
                 'content-length': String(body.length),
-                cookie: forwardCookie(req.headers['cookie']),
+                cookie: forwardCookie(req.headers['cookie'], engine),
                 'x-requested-with': req.headers['x-requested-with']
             },
             body
@@ -91,7 +92,7 @@ async function handleUninstall(req: Request, res: Response, config: WebAdminConf
             headers: {
                 'content-type': req.headers['content-type'] || 'application/json',
                 'content-length': String(fwd.length),
-                cookie: forwardCookie(req.headers['cookie']),
+                cookie: forwardCookie(req.headers['cookie'], engine),
                 'x-requested-with': req.headers['x-requested-with']
             },
             body: fwd
@@ -110,7 +111,10 @@ async function handleUninstall(req: Request, res: Response, config: WebAdminConf
 // ever be answered 421. The handlers re-resolve for the actual forward.
 function engineGate(config: WebAdminConfig) {
     return (req: Request, res: Response, next: NextFunction): any => {
-        if (!resolveEngine(config, req)) return respondEngineUnknown(req, res);
+        if (!checkRequestContext(req, res)) return;
+        const engine = resolveEngine(config, req);
+        if (!engine) return respondEngineUnknown(req, res);
+        res.locals.engine = engine;
         next();
     };
 }
@@ -118,8 +122,8 @@ function engineGate(config: WebAdminConfig) {
 // Mount BEFORE the /api proxy in server/index.js.
 export function installPluginRoutes(app: Express, config: WebAdminConfig): void {
     app.post('/api/_webadmin/plugins/_install',
-        preUploadGate,
         engineGate(config),
+        preUploadGate,
         express.raw({ type: () => true, limit: MAX_UPLOAD }),
         (req, res) => handleInstall(req, res, config));
     app.post('/api/_webadmin/plugins/_uninstall',
@@ -127,4 +131,3 @@ export function installPluginRoutes(app: Express, config: WebAdminConfig): void 
         express.json({ limit: '64kb' }),
         (req, res) => handleUninstall(req, res, config));
 }
-

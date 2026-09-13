@@ -6,10 +6,14 @@
  */
 const assert = require('assert');
 const { csrfOk, hasSession, preUploadGate } = require('./plugin-install.js');
+const { engineCookiePrefix } = require('./proxy.js');
+const engine = { url: 'https://test:8443', verifyTls: true };
+const prefix = engineCookiePrefix(engine);
+const scopedRequest = (headers) => ({ headers: { ...headers, cookie: headers.cookie?.replace(/\bJSESSIONID=/g, `${prefix}JSESSIONID=`) } });
 
 // Minimal res double: records the status and whether a body was sent.
 function resDouble() {
-    const r = { statusCode: null, body: null };
+    const r = { statusCode: null, body: null, locals: { engine } };
     r.status = (c) => { r.statusCode = c; return r; };
     r.json = (b) => { r.body = b; return r; };
     return r;
@@ -29,10 +33,12 @@ test('csrfOk requires X-Requested-With', () => {
 });
 
 test('hasSession detects the JSESSIONID cookie only', () => {
-    assert.strictEqual(hasSession({ headers: { cookie: 'a=1; JSESSIONID=abc; b=2' } }), true);
-    assert.strictEqual(hasSession({ headers: { cookie: 'JSESSIONID=abc' } }), true);
-    assert.strictEqual(hasSession({ headers: { cookie: 'NOTJSESSIONID=abc' } }), false);
-    assert.strictEqual(hasSession({ headers: {} }), false);
+    assert.strictEqual(hasSession(scopedRequest({ cookie: 'a=1; JSESSIONID=abc; b=2' }), engine), true);
+    assert.strictEqual(hasSession(scopedRequest({ cookie: 'JSESSIONID=abc' }), engine), true);
+    assert.strictEqual(hasSession(scopedRequest({ cookie: 'NOTJSESSIONID=abc' }), engine), false);
+    assert.strictEqual(hasSession({ headers: {} }, engine), false);
+    assert.strictEqual(hasSession({ headers: { cookie: 'JSESSIONID=legacy' } }, engine), false);
+    assert.strictEqual(hasSession(scopedRequest({ cookie: 'JSESSIONID=abc' }), { ...engine, url: 'https://other:8443' }), false);
 });
 
 // The gate must reject BEFORE express.raw buffers the body: next() is only
@@ -52,7 +58,7 @@ test('preUploadGate blocks a request with no session cookie (401), no next', () 
 });
 test('preUploadGate passes an authenticated, CSRF-headed request', () => {
     const res = resDouble(); let nexted = false;
-    preUploadGate({ headers: { 'x-requested-with': XRW, cookie: 'JSESSIONID=abc' } }, res, () => { nexted = true; });
+    preUploadGate(scopedRequest({ 'x-requested-with': XRW, cookie: 'JSESSIONID=abc' }), res, () => { nexted = true; });
     assert.strictEqual(res.statusCode, null);
     assert.strictEqual(nexted, true);
 });

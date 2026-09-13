@@ -9,6 +9,11 @@ for (const selection of ['first', 'second', 'custom']) {
         let active = true;
         const received: Array<{ engine: string; cookie: string }> = [];
         const handler = (engine: string) => (req: any, res: any) => {
+            if (req.url === '/api/users/_login') {
+                res.setHeader('Set-Cookie', 'JSESSIONID=synthetic-session; Path=/api; HttpOnly');
+                res.end('');
+                return;
+            }
             received.push({ engine, cookie: req.headers.cookie || '' });
             active = false;
             res.end('');
@@ -22,9 +27,9 @@ for (const selection of ['first', 'second', 'custom']) {
         try {
             await page.context().addCookies([
                 { name: 'oie-engine', value: selection === 'custom' ? 'custom' : `k%3A${selection}`, url: app.url },
-                { name: 'oie-engine-url', value: encodeURIComponent(second.url), url: app.url },
-                { name: 'JSESSIONID', value: 'synthetic-session', domain: 'localhost', path: '/api', httpOnly: true }
+                { name: 'oie-engine-url', value: encodeURIComponent(second.url), url: app.url }
             ]);
+            await page.request.post(app.url + '/api/users/_login');
             await mockEngine(page, {
                 'GET /users/current': () => active ? { user: { id: 1, username: 'admin' } } : { __status: 401 }
             });
@@ -76,3 +81,40 @@ test('failed logout keeps the current session and routing available for retry', 
     expect(cookies).toHaveLength(2);
     expect(cookies.every(c => c.includes('oie-engine=k%3Asecond'))).toBe(true);
 });
+
+for (const newEngine of ['first', 'second']) {
+    test(`a stale settings save is blocked after a new login on ${newEngine}`, async ({ page }) => {
+        const writes: string[] = [];
+        const engine = await listen((req, res) => { writes.push(req.url || ''); res.end(''); });
+        const app = await startWebAdmin({ allowedUrls: [
+            { name: 'First', url: engine.url }, { name: 'Second', url: engine.url + '/second' }
+        ] });
+        try {
+            await page.context().addCookies([
+                { name: 'oie-engine', value: 'k%3Afirst', url: app.url },
+                { name: 'oie-login', value: 'old-login', url: app.url }
+            ]);
+            await mockEngine(page, {
+                'GET /server/settings': (req: any) => ({ serverSettings: {
+                    serverName: (req.headers().cookie || '').includes('k%3Asecond') ? 'second' : 'first'
+                } })
+            });
+            await page.route('**/api/server/settings', route => route.request().method() === 'PUT' ? route.continue() : route.fallback());
+            await page.goto(app.url + '/settings');
+            const name = page.locator('.field', { has: page.getByText('Server name', { exact: true }) }).locator('input');
+            await expect(name).toHaveValue('first');
+            await name.fill('old-engine-secrets');
+            const reload = page.waitForEvent('domcontentloaded');
+            // Simulate another tab's cookie changes and click the old Save in
+            // one task: no focus event or polling interval can rescue the test.
+            await page.evaluate(next => {
+                document.cookie = `oie-engine=k%3A${next}; path=/`;
+                document.cookie = 'oie-login=new-login; path=/';
+                [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Save')!.click();
+            }, newEngine);
+            await reload;
+            await expect(name).toHaveValue(newEngine);
+            expect(writes).toEqual([]);
+        } finally { app.stop(); engine.server.closeAllConnections(); engine.server.close(); }
+    });
+}
