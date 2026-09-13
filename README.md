@@ -270,6 +270,13 @@ logout, and sign-out discard unsaved channel edits; there is no automatic draft
 recovery after signing back in. Startup removes drafts saved by older versions
 from browser storage for every engine/account, because they may contain credentials.
 
+Engine requests use `cache: 'no-store'` in both Node and WAR deployments.
+Full-page loads also send [`Clear-Site-Data: "cache"`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data)
+to evict HTTP responses retained by older clients. This also clears cached static
+assets for the origin; it preserves cookies and preferences. For an upgrade on a
+browser without support for this header, clear that site's cached files manually.
+The header requires a secure context, so remote deployments must use HTTPS.
+
 ### Serving over HTTPS
 
 By default the source app serves HTTP on **loopback only** (`127.0.0.1:3030`).

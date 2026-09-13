@@ -7,10 +7,11 @@ let calls = 0, changes = 0;
 window.addEventListener('oie-session-changed', () => changes++);
 globalThis.fetch = async (_url, init) => {
     calls++;
+    assert.equal(init.cache, 'no-store');
     assert.equal(init.headers.get('X-OIE-Context'), encodeURIComponent(JSON.stringify(['k:first', '', 'one'])));
     return new Response('ok');
 };
-assert.equal(await (await engineFetch('/api/test')).text(), 'ok');
+assert.equal(await (await engineFetch('/api/test', { cache: 'force-cache' })).text(), 'ok');
 document.cookie = 'oie-engine=k%3Asecond; oie-login=two';
 await assert.rejects(engineFetch('/api/test', { method: 'PUT', body: 'secret' }), /session changed/);
 assert.equal(calls, 1, 'stale mutation must not reach fetch');

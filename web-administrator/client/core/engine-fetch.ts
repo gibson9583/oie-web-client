@@ -48,7 +48,9 @@ export async function engineFetch(url: string, init: RequestInit = {}): Promise<
     if (sentContext !== context()) return changed();
     const headers = new Headers(init.headers);
     headers.set('X-OIE-Context', sentContext);
-    const response = await fetch(url, { ...init, headers });
+    // WAR requests bypass the Node proxy's response headers. Never read or
+    // write the HTTP cache, even if the engine omits Cache-Control.
+    const response = await fetch(url, { ...init, headers, cache: 'no-store' });
     responseContexts.set(response, sentContext);
     assertEngineResponse(response);
     if (response.status === 409 && (await response.clone().json().catch(() => null))?.error === 'SESSION_CHANGED') return changed();

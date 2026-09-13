@@ -22,6 +22,8 @@ test.describe('security headers', () => {
     test('script-src is nonce-based — no unsafe-inline or unsafe-eval', async ({ page }) => {
         for (const path of ['/', '/index.html', '/dashboard']) {
             const resp = await page.request.get(path);
+            expect(resp.headers()['cache-control']).toBe('no-store');
+            expect(resp.headers()['clear-site-data']).toBe('"cache"');
             const csp = resp.headers()['content-security-policy'];
             const scriptSrc = csp.split(';').map((s) => s.trim()).find((s) => s.startsWith('script-src'));
             expect(scriptSrc, `${path} script-src`).toMatch(/'nonce-[A-Za-z0-9+/=]+'/);

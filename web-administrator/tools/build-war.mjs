@@ -131,7 +131,8 @@ function indexJsp() {
 
     return `<%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>\n<%\n` +
         `response.setStatus(200);\n` +
-        `response.setHeader("Cache-Control", "no-cache");\n` +
+        `response.setHeader("Cache-Control", "no-store");\n` +
+        `response.setHeader("Clear-Site-Data", "\\\"cache\\\"");\n` +
         `response.setHeader("X-Content-Type-Options", "nosniff");\n` +
         `response.setHeader("Referrer-Policy", "same-origin");\n` +
         `String appContext = request.getContextPath();\n` +

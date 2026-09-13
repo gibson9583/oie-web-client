@@ -216,6 +216,10 @@ async function start() {
             const preloads = plugins.preloadLinks(config).join('\n  ');
             if (preloads)
                 html = html.replace('</head>', `  ${preloads}\n</head>`);
+            res.setHeader('Cache-Control', 'no-store');
+            // Also evict API responses retained by older clients. Only HTTP
+            // cache: preferences and authentication cookies stay intact.
+            res.setHeader('Clear-Site-Data', '"cache"');
             res.type('html').send(html);
         };
         // The raw file must never bypass the nonce injection: register the shell
