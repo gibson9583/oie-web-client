@@ -92,8 +92,12 @@ npm run build && npm start                # optimized production build + server
 ```
 
 The engine must be **running and reachable** at `engine.url` before you sign in.
-OIE/Mirth ships a **self-signed TLS cert**, so `engine.verifyTls` defaults to
-`false`; set it `true` only when the engine presents a trusted certificate.
+Engine certificate verification is enabled by default. For a private CA or
+self-signed engine, trust its PEM certificate with
+[`NODE_EXTRA_CA_CERTS=/path/to/engine-ca.pem`](https://nodejs.org/api/cli.html#node_extra_ca_certsfile)
+when starting Node, and use an engine URL matching the certificate's hostname.
+Mount the PEM and set the same variable in Docker. `OIE_VERIFY_TLS=false` is an
+explicit opt-out for isolated local development only.
 
 `npm run dev` serves and transforms `client/` source on the fly — no manual build
 while developing. `npm run build` emits the optimized `client/dist` required by
@@ -197,9 +201,9 @@ than silently booting on defaults. Start from
 | Setting | Env var | Default | Description |
 |---|---|---|---|
 | `port` | `WEBADMIN_PORT` | `3030` | Port the web UI listens on |
-| `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
+| `host` | `WEBADMIN_HOST` | `127.0.0.1` | Bind address (Docker explicitly binds all container interfaces) |
 | `engine.url` | `OIE_URL` | `https://127.0.0.1:8443` | Engine base URL |
-| `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
+| `engine.verifyTls` | `OIE_VERIFY_TLS` | `true` | Verify the engine's TLS certificate |
 | `allowedUrls` | — | `[]` | Multi-engine mode: `[{ "name", "url", "verifyTls"? }, …]` becomes an engine picker on the login screen. Empty → single-engine mode (just `engine.url`, no picker) |
 | `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login. The proxy forwards to whatever is typed, so trusted/dev deployments only. (Distinct from `npm run dev`, which is the Vite dev server) |
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin dirs scanned alongside the bundled `./plugins` (e.g. for local development). Extensions installed on the engine are served by the engine, not stored here. The env var uses the platform path-list delimiter (`:` on Unix, `;` on Windows) |
@@ -263,8 +267,10 @@ context header are refused. WAR cookies remain owned by the hosting engine.
 
 ### Serving over HTTPS
 
-By default the app serves plain **HTTP** on `port` (the browser ↔ web-admin hop);
-the web-admin ↔ engine hop is already HTTPS. Two ways to encrypt the last hop:
+By default the source app serves HTTP on **loopback only** (`127.0.0.1:3030`).
+Keep Docker's published port on host loopback as shown above. For remote access,
+configure HTTPS before binding to a network interface (`WEBADMIN_HOST`). Two
+ways to encrypt the browser connection:
 
 - **Reverse proxy (recommended for production).** Terminate TLS at nginx, Caddy,
   Traefik, or a load balancer in front of the app — you get automatic certificate
@@ -283,7 +289,7 @@ the web-admin ↔ engine hop is already HTTPS. Two ways to encrypt the last hop:
 
   or via env: `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` (+ `WEBADMIN_TLS_PASSPHRASE`
   if the key is encrypted). Paths are relative to `web-administrator/` or absolute;
-  **both key and cert are required** to enable it. Startup logs `https://…  (TLS)`.
+  **both key and cert are required**; incomplete TLS configuration stops startup. Startup logs `https://…  (TLS)`.
   A self-signed cert works for testing (browsers will warn); use a CA-issued cert
   in production.
 
@@ -302,7 +308,7 @@ plugin UIs are disabled with a notice. Format Document runs entirely client-side
 |---|---|
 | `Cannot find package '@oie/web-api'`, a blank page, or bare-import errors | You installed inside a subfolder. Remove `node_modules` and run `npm install` from the **repo root** — workspaces hoist there. |
 | Login fails, "engine unreachable", or a `502` | The engine isn't running or `engine.url` is wrong. Confirm `<engine.url>/api/server/version` responds. |
-| TLS / certificate errors reaching the engine | Keep `engine.verifyTls` = `false` for a self-signed engine (the default). |
+| TLS / certificate errors reaching the engine | Trust the engine CA with `NODE_EXTRA_CA_CERTS` at startup and check the URL matches its certificate hostname. |
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
 | Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22 LTS (`node -v`); Node < 20.19 can't run Vite 8 and the test tooling. |
 | WAR URL returns 404 after copying | OIE discovers WARs only at startup. Put the file directly in `<OIE_HOME>/webapps/`, restart OIE, and use the context matching the WAR filename. |

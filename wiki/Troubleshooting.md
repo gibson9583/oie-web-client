@@ -5,8 +5,9 @@
 - Confirm the green/red status indicator and configured engine URL.
 - Test network/DNS reachability from the Node container or host, not only from
   your workstation browser.
-- OIE commonly uses a self-signed certificate. Keep verification disabled only
-  for that controlled case; use a trusted certificate in production.
+- Certificate verification is enabled by default. Trust a private/self-signed
+  engine certificate with `NODE_EXTRA_CA_CERTS` at Node startup and use an engine
+  URL matching its certificate hostname.
 - In Docker on macOS/Windows, the host engine is commonly reached through
   `host.docker.internal`, not container loopback.
 

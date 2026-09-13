@@ -19,7 +19,7 @@ const { load, buildEngines } = require('./config');
 
 const CONFIG_ENV = [
     'WEBADMIN_CONFIG', 'WEBADMIN_CONFIG_JSON', 'WEBADMIN_PORT', 'WEBADMIN_HOST',
-    'OIE_URL', 'OIE_VERIFY_TLS', 'WEBADMIN_TLS_KEY', 'WEBADMIN_TLS_CERT'
+    'OIE_URL', 'OIE_VERIFY_TLS', 'WEBADMIN_TLS_KEY', 'WEBADMIN_TLS_CERT', 'WEBADMIN_TLS_PASSPHRASE'
 ];
 function withEnv(env, fn) {
     const saved = {};
@@ -34,6 +34,38 @@ function withEnv(env, fn) {
 }
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'webadmin-config-'));
+
+// Safe defaults apply to every engine; insecure development is explicit.
+{
+    const config = withEnv({ WEBADMIN_CONFIG_JSON: '{"allowedUrls":[{"url":"https://named:8443"}]}' }, load);
+    assert.strictEqual(config.host, '127.0.0.1');
+    assert.strictEqual(config.tls, null);
+    assert.strictEqual(config.engine.verifyTls, true);
+    assert.strictEqual(config.engines[0].verifyTls, true);
+    assert.strictEqual(withEnv({ WEBADMIN_CONFIG_JSON: '{}', OIE_VERIFY_TLS: 'false' }, load).engine.verifyTls, false);
+    assert.strictEqual(withEnv({ WEBADMIN_CONFIG_JSON: '{}', OIE_VERIFY_TLS: 'typo' }, load).engine.verifyTls, true);
+    assert.strictEqual(withEnv({ WEBADMIN_CONFIG_JSON: '{}', WEBADMIN_HOST: '0.0.0.0' }, load).host, '0.0.0.0');
+    const tls = withEnv({ WEBADMIN_CONFIG_JSON: '{}', WEBADMIN_TLS_KEY: '/key.pem', WEBADMIN_TLS_CERT: '/cert.pem' }, load).tls;
+    assert.deepStrictEqual(tls, { key: '/key.pem', cert: '/cert.pem', passphrase: undefined });
+    console.log('ok: loopback and verified TLS defaults; explicit overrides');
+}
+
+// Partial or empty TLS configuration must not fall back to HTTP.
+withEnv({}, () => {
+    for (const env of [
+        ...[{}, { key: '/key.pem' }, { cert: '/cert.pem' }, { passphrase: 'test' }, { key: ' ', cert: '/cert.pem' }]
+            .map(tls => ({ WEBADMIN_CONFIG_JSON: JSON.stringify({ tls }) })),
+        { WEBADMIN_CONFIG_JSON: '{}', WEBADMIN_TLS_KEY: '/key.pem' },
+        { WEBADMIN_CONFIG_JSON: '{}', WEBADMIN_TLS_CERT: '/cert.pem' },
+        { WEBADMIN_CONFIG_JSON: '{}', WEBADMIN_TLS_PASSPHRASE: 'test' },
+        { WEBADMIN_CONFIG_JSON: '{}', WEBADMIN_TLS_KEY: '' }
+    ]) {
+        assert.throws(() => execFileSync(process.execPath, ['-e', "require('./config').load()"], {
+            cwd: __dirname, env: { ...process.env, ...env }, stdio: 'pipe'
+        }), e => e.status === 1 && e.stderr.toString().includes('TLS requires both'));
+    }
+    console.log('ok: incomplete TLS fails startup');
+});
 
 // --- WEBADMIN_CONFIG_JSON: the whole document inline, unknown keys survive ----
 {

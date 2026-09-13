@@ -57,6 +57,8 @@ RUN npm ci --omit=dev && npm cache clean --force
 # ---------------------------------------------------------------------------
 FROM node:22-alpine
 ENV NODE_ENV=production
+# Bind inside the container; publish the port on host loopback behind TLS.
+ENV WEBADMIN_HOST=0.0.0.0
 WORKDIR /app
 
 COPY --from=proddeps /app /app

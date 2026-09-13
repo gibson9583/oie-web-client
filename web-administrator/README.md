@@ -59,15 +59,23 @@ is missing or invalid stops startup instead of silently using defaults.
 | Setting | Env var | Default | Description |
 |---|---|---|---|
 | `port` | `WEBADMIN_PORT` | `3030` | Port the web UI listens on |
-| `host` | `WEBADMIN_HOST` | `0.0.0.0` | Bind address |
+| `host` | `WEBADMIN_HOST` | `127.0.0.1` | Bind address (Docker explicitly binds all container interfaces) |
 | `engine.url` | `OIE_URL` | `https://127.0.0.1:8443` | Engine base URL |
-| `engine.verifyTls` | `OIE_VERIFY_TLS` | `false` | Verify the engine's TLS cert (engines ship self-signed) |
+| `engine.verifyTls` | `OIE_VERIFY_TLS` | `true` | Verify the engine's TLS certificate |
 | `allowedUrls` | — | `[]` | Multi-engine mode: `[{ "name", "url", "verifyTls"? }, …]` becomes an engine picker on the login screen. Empty → single-engine mode |
 | `devMode` | `WEBADMIN_DEV_MODE` | `false` | Adds a free-form engine URL field at login (the proxy forwards to whatever is typed — trusted/dev deployments only) |
 | `pluginDirs` | `WEBADMIN_PLUGIN_DIRS` | `[]` | Additional **local** plugin directories scanned alongside the bundled `./plugins` (e.g. for local development). The env var uses the platform path-list delimiter (`:` on Unix, `;` on Windows). Extensions installed on the engine are served by the engine, not stored here. |
 | `trustedProxies` | `WEBADMIN_TRUSTED_PROXIES` | `[]` | Peer IPs trusted to set `X-Forwarded-For` (a front TLS terminator / reverse proxy); loopback is always trusted. Comma-separated in the env var |
 | `codeTemplateCompletions` | `WEBADMIN_CODE_TEMPLATE_COMPLETIONS` | `true` | Offer the channel's own code-template functions as script-editor completions; disable to avoid fetching very large catalogs |
 | `tls` | `WEBADMIN_TLS_KEY` / `WEBADMIN_TLS_CERT` / `WEBADMIN_TLS_PASSPHRASE` | `null` | Serve the web UI itself over HTTPS: `{ "key", "cert", "passphrase"? }` (PEM paths). Leave `null` to serve HTTP and terminate TLS in front |
+
+The source listener defaults to loopback. Configure HTTPS before exposing it
+remotely; Docker binds all container interfaces, so publish its port on host
+loopback behind your TLS proxy. An incomplete `tls` configuration stops startup.
+Engine certificate verification defaults to `true`. For private/self-signed
+certificates, set [`NODE_EXTRA_CA_CERTS`](https://nodejs.org/api/cli.html#node_extra_ca_certsfile)
+to a trusted PEM file at startup and use a matching engine hostname.
+`OIE_VERIFY_TLS=false` is an explicit local-development opt-out.
 
 ### OpenID Connect sign-in
 

@@ -20,10 +20,10 @@
  *                        precedence over WEBADMIN_CONFIG. Startup fails on
  *                        invalid JSON.
  *   WEBADMIN_PORT        Port the web administrator listens on (default 3030)
- *   WEBADMIN_HOST        Bind address (default 0.0.0.0)
+ *   WEBADMIN_HOST        Bind address (default 127.0.0.1)
  *   OIE_URL              Base URL of the engine, e.g. https://localhost:8443
- *   OIE_VERIFY_TLS       "true" to verify the engine's TLS certificate (default false,
- *                        engines ship with self-signed certs)
+ *   OIE_VERIFY_TLS       "false" to disable engine certificate verification for
+ *                        local development only (default true)
  *   WEBADMIN_DEV_MODE    "true" to let a user type an arbitrary engine URL at login
  *                        (a manual URL field). Trusted/dev deployments only — the
  *                        proxy will forward to whatever host is entered. Default false.
@@ -81,13 +81,13 @@ const path = __importStar(require("path"));
 const ROOT = path.resolve(__dirname, '..');
 const defaults = {
     port: 3030,
-    host: '0.0.0.0',
+    host: '127.0.0.1',
     engine: {
         // Base URL of the Open Integration Engine REST API host — the CURRENT/default
         // engine (used when the client hasn't selected one).
         url: 'https://127.0.0.1:8443',
-        // Engines ship with self-signed certificates; verification is opt-in.
-        verifyTls: false
+        // Trust private CAs with NODE_EXTRA_CA_CERTS; verification is on by default.
+        verifyTls: true
     },
     // Selectable engines shown as a login dropdown (by `name`). Each entry:
     // { name, url, verifyTls? }. Empty → single-engine mode (just engine.url, no
@@ -157,16 +157,15 @@ function load() {
     if (process.env.OIE_URL)
         config.engine.url = process.env.OIE_URL;
     if (process.env.OIE_VERIFY_TLS)
-        config.engine.verifyTls = process.env.OIE_VERIFY_TLS === 'true';
+        config.engine.verifyTls = process.env.OIE_VERIFY_TLS !== 'false';
     if (process.env.WEBADMIN_DEV_MODE)
         config.devMode = process.env.WEBADMIN_DEV_MODE === 'true';
     if (process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS)
         config.codeTemplateCompletions = process.env.WEBADMIN_CODE_TEMPLATE_COMPLETIONS === 'true';
     if (process.env.WEBADMIN_TRUSTED_PROXIES)
         config.trustedProxies = process.env.WEBADMIN_TRUSTED_PROXIES.split(',').map(s => s.trim()).filter(Boolean);
-    // Optional built-in TLS (config.json "tls" or the env vars below). Enabled only
-    // when BOTH key and cert are given; paths resolve against the app root. Off →
-    // plain HTTP. The server reads the PEM files at startup (index.js).
+    // An attempted TLS configuration must never silently become plain HTTP.
+    // The server reads the PEM files at startup; paths resolve against the app root.
     const tls = Object.assign({}, config.tls);
     if (process.env.WEBADMIN_TLS_KEY)
         tls.key = process.env.WEBADMIN_TLS_KEY;
@@ -174,7 +173,13 @@ function load() {
         tls.cert = process.env.WEBADMIN_TLS_CERT;
     if (process.env.WEBADMIN_TLS_PASSPHRASE)
         tls.passphrase = process.env.WEBADMIN_TLS_PASSPHRASE;
-    config.tls = (tls.key && tls.cert)
+    const tlsConfigured = config.tls != null || ['WEBADMIN_TLS_KEY', 'WEBADMIN_TLS_CERT', 'WEBADMIN_TLS_PASSPHRASE']
+        .some(name => process.env[name] !== undefined);
+    if (tlsConfigured && (typeof tls.key !== 'string' || !tls.key.trim() || typeof tls.cert !== 'string' || !tls.cert.trim())) {
+        console.error('[config] TLS requires both a non-empty key and certificate path');
+        process.exit(1);
+    }
+    config.tls = tlsConfigured
         ? { key: path.resolve(ROOT, tls.key), cert: path.resolve(ROOT, tls.cert), passphrase: tls.passphrase || undefined }
         : null;
     // Plugin SEARCH list: the shipped first-party (bundled framework) plugins in
