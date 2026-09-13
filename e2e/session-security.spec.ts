@@ -118,3 +118,54 @@ for (const newEngine of ['first', 'second']) {
         } finally { app.stop(); engine.server.closeAllConnections(); engine.server.close(); }
     });
 }
+
+for (const exit of ['expiry', 'logout', 'idle']) {
+    test(`channel credentials are discarded without persistence on ${exit}`, async ({ page }) => {
+        let expired = false;
+        if (exit === 'idle') await page.clock.install();
+        await mockEngine(page, {
+            'GET /users/current': () => expired ? { __status: 401 } : { user: { id: 1, username: 'admin' } },
+            'GET /server/publicSettings': { publicSettings: {
+                administratorAutoLogoutIntervalEnabled: exit === 'idle', administratorAutoLogoutIntervalField: '1'
+            } }
+        });
+        await page.goto('/channels');
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+        await page.evaluate(async () => {
+            const store = await import(String('/core/store.js'));
+            store.setState('editingChannel', { id: 'synthetic', sourceConnector: { properties: { password: 'SYNTHETIC-DB-SECRET' } } });
+            store.setState('editingChannelDirty', true);
+        });
+        if (exit === 'expiry') {
+            expired = true;
+            await page.evaluate(async () => {
+                const api = await import(String('/core/api.js'));
+                await api.get('/users/current').catch(() => {});
+            });
+        } else if (exit === 'logout') {
+            await page.locator('button.user-chip').click();
+            await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+        } else {
+            await page.clock.fastForward(90_000);
+        }
+        await expect(page.locator('input[type=password]')).toBeVisible();
+        expect(await page.evaluate(async () => {
+            const store = await import(String('/core/store.js'));
+            return { channel: store.getState('editingChannel'), local: JSON.stringify(localStorage), session: JSON.stringify(sessionStorage) };
+        })).toEqual({ channel: null, local: expect.not.stringContaining('SYNTHETIC-DB-SECRET'), session: expect.not.stringContaining('SYNTHETIC-DB-SECRET') });
+    });
+}
+
+test('startup purges legacy drafts from every account before sign-in', async ({ page }) => {
+    await page.addInitScript(() => {
+        for (const key of ['webadmin.channel-draft', 'webadmin.channel-draft:engine-a:1', 'webadmin.channel-draft:engine-b:2']) {
+            localStorage.setItem(key, 'SYNTHETIC-OLD-SECRET');
+        }
+        localStorage.setItem('oie-theme:engine-b:2', 'dark');
+    });
+    await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+    await page.goto('/');
+    await expect(page.locator('input[type=password]')).toBeVisible();
+    expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('SYNTHETIC-OLD-SECRET');
+    expect(await page.evaluate(() => localStorage.getItem('oie-theme:engine-b:2'))).toBe('dark');
+});

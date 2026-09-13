@@ -265,6 +265,11 @@ they can submit old data. Plugin code should use `platform.api` / `@oie/web-api`
 so it participates in this check. Authenticated proxy mutations without the
 context header are refused. WAR cookies remain owned by the hosting engine.
 
+Channel working copies are kept only in memory. Session expiry, inactivity
+logout, and sign-out discard unsaved channel edits; there is no automatic draft
+recovery after signing back in. Startup removes drafts saved by older versions
+from browser storage for every engine/account, because they may contain credentials.
+
 ### Serving over HTTPS
 
 By default the source app serves HTTP on **loopback only** (`127.0.0.1:3030`).

@@ -27,7 +27,7 @@ import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
 import { getAnchor, describeRef } from '../core/compare.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
 import { hasUnsavedWork } from '../core/unsaved.js';
-import { stashChannelDraft, peekChannelDraft, clearChannelDraft } from '../core/channel-draft.js';
+import { purgeChannelDrafts } from '../core/channel-draft.js';
 import { queryClient } from './queries';
 import { resetPaneCollapsed } from './ui';
 import { disposeDetachedMonaco } from '../core/monaco.js';
@@ -750,6 +750,7 @@ export function App() {
     useEffect(() => { registerLoginAuthenticators(); }, []);
 
     useEffect(() => {
+        purgeChannelDrafts();
         store.initTheme();
         store.initRailCollapsed();
         initSplitters();
@@ -804,9 +805,6 @@ export function App() {
             // matching the vanilla shell's loginShowing guard — otherwise a
             // spurious setState re-render can disrupt the login form.
             if (!store.getState('user')) return;
-            // Swing's exportChannelOnError(): don't lose a dirty channel to a dead
-            // session — stash it; the next login offers to resume.
-            stashChannelDraft();
             // NOT a toast: toast(msg,'warn') routes through detailModal, which put a
             // blocking dialog over the login form. The login screen shows its own
             // reason inline instead — nothing to dismiss before signing back in.
@@ -845,7 +843,6 @@ export function App() {
                 const u = await api.auth.current();
                 if (!alive || !u || !u.username) return;
                 if (String(u.id) !== String(user.id)) {
-                    stashChannelDraft();     // don't lose a dirty channel to the switch
                     toast(`This browser is now signed in as ${u.username} — reloading`, 'warn');
                     setTimeout(() => window.location.reload(), 800);
                 }
@@ -869,6 +866,7 @@ export function App() {
        layout, the working-copy store keys, and — in devMode — the typed engine
        URL cookie, which otherwise prefills for the next person. */
     const scrubSessionState = () => {
+        purgeChannelDrafts();
         queryClient.clear();
         invalidateCompletions();
         clearActiveScope();
@@ -902,9 +900,6 @@ export function App() {
         // would otherwise bounce straight back to the provider — whose own
         // session is still alive — and sign the user in again within a second.
         holdAutoRedirect();
-        // Explicit sign-out abandons any stash (an expiry stash is a safety net;
-        // a deliberate logout on a shared workstation must not leave one behind).
-        clearChannelDraft();
         /* The client-side counterpart to core/api.js's session-expired hook: a
            deliberate sign-out is never a 401, so anything holding session-scoped
            data (core/compare.js's selection, and the compare overlay's in-memory
@@ -961,21 +956,7 @@ export function App() {
                 { okLabel: 'Change Password' });
             if (change) openChangePasswordModal(u);
         }
-        // A channel draft stashed when a previous session died (see channel-draft.js).
-        // Scope is set above, so the key only resolves for the same engine + user.
-        const draft = peekChannelDraft();
-        if (draft && draft.channel && draft.channel.id) {
-            const resume = await confirmDialog('Recovered Unsaved Changes',
-                `Unsaved changes to channel "${draft.channel.name || draft.channel.id}" were recovered from your previous session. Resume editing?`,
-                { okLabel: 'Resume Editing' });
-            clearChannelDraft();
-            if (resume) {
-                store.setState('editingChannel', draft.channel);
-                store.setState('editingChannelNew', !!draft.isNew);
-                store.setState('editingChannelDirty', true);
-                router.navigate(`/channels/${draft.channel.id}/edit`);
-            }
-        }
+
     };
 
     // Tab-close guard (Swing's confirmLeave on window close): the native browser
@@ -999,8 +980,6 @@ export function App() {
     useEffect(() => {
         if (!user) return undefined;
         startIdleLogout(async () => {
-            // Stash first: the draft key derives from the pref scope cleared below.
-            stashChannelDraft();
             // Swing parity: the dedicated inactivity operation, audited distinctly.
             try { await api.auth.inactivityLogout(); } catch { /* session may already be gone */ }
             store.emit('session:logout');
