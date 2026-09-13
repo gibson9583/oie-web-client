@@ -435,9 +435,11 @@ function loadedEngineKey() {
 // Switch engine: drop the routing cookies and return to a fresh login (a full
 // reload re-bootstraps the app against the newly-chosen engine).
 async function switchEngine(onLogout: any) {
+    // Revoke against the current engine before changing its routing cookies.
+    // A failed logout must leave the selection intact so it can be retried.
+    if (!await onLogout()) return;
     document.cookie = 'oie-engine=; path=/; max-age=0';
     document.cookie = 'oie-engine-url=; path=/; max-age=0';
-    try { await onLogout(); } catch { /* ignore */ }
     location.reload();
 }
 
@@ -875,7 +877,13 @@ export function App() {
     };
 
     const onLogout = async () => {
-        try { await api.auth.logout(); } catch { /* session may already be gone */ }
+        try { await api.auth.logout(); }
+        catch (e: any) {
+            if (e.status !== 401) {
+                toast('Sign-out failed. Your session may still be active. Please try again.', 'error');
+                return false;
+            }
+        }
         // Sign out means "show me the card". With auto-redirect on, the card
         // would otherwise bounce straight back to the provider — whose own
         // session is still alive — and sign the user in again within a second.
@@ -895,6 +903,7 @@ export function App() {
         store.setPrefScope(null, null);   // next sign-in re-scopes to that user
         resetSessionExpired();
         history.replaceState(null, '', routeUrl('/'));
+        return true;
     };
 
     const onLoginSuccess = async (u: any, { graceMessage = null } = {}) => {
