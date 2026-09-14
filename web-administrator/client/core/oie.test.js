@@ -7,7 +7,7 @@
  * would otherwise normalize to '\n'.
  */
 
-import { decodeChannelTemplates, encodeChannelTemplates } from './oie.js';
+import { decodeChannelTemplates, encodeChannelTemplates, validateChannel } from './oie.js';
 
 let pass = 0, fail = 0;
 function eq(label, got, want) {
@@ -65,6 +65,16 @@ eq('round-trip is byte-identical (CR intact)', roundTrip.sourceConnector.transfo
 // ---- safety: empty / malformed channels don't throw ----
 eq('null channel ok', JSON.stringify(decodeChannelTemplates(null) ?? null), 'null');
 eq('no transformers ok', JSON.stringify(encodeChannelTemplates({ sourceConnector: {} })), JSON.stringify({ sourceConnector: {} }));
+
+// ---- validateChannel: a channel must keep an enabled destination (issue #57) ----
+const NEEDS_ENABLED = 'At least one destination must be enabled';
+const connector = (enabled) => ({ transportName: 'Channel Writer', enabled, properties: { '@class': 'x' } });
+const withDests = (...dests) => ({ name: 'c', sourceConnector: connector(true), destinationConnectors: { connector: dests } });
+eq('all destinations disabled -> problem', validateChannel(withDests(connector(false), connector(false))).includes(NEEDS_ENABLED), true);
+eq('wire "false" string counts as disabled', validateChannel(withDests(connector('false'))).includes(NEEDS_ENABLED), true);
+eq('one enabled destination -> ok', validateChannel(withDests(connector(false), connector(true))).includes(NEEDS_ENABLED), false);
+eq('absent enabled flag means enabled', validateChannel(withDests(connector(undefined))).includes(NEEDS_ENABLED), false);
+eq('no destinations reports the missing-destination problem instead', validateChannel(withDests()).includes(NEEDS_ENABLED), false);
 
 console.log(`\noie.test: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
