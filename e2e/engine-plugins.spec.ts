@@ -172,6 +172,39 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
     await expect(page.getByRole('button', { name: 'Too New Plugin' })).toHaveCount(0);
 });
 
+test('warns when the engine has neither web-support endpoint (plugin not installed)', async ({ page }) => {
+    // A stock engine without the Web Support extension: both probe forms 404.
+    // The operator must be told, once and visibly, why plugin UIs, message
+    // trees, and script validation are missing — and the app still loads.
+    await mockEngine(page, {
+        'GET /webplugins': { __status: 404 },
+        'GET /extensions/websupport/webplugins': { __status: 404 }
+    });
+    await page.goto('/dashboard');
+    const warning = page.locator('.modal', { hasText: 'The Web Support plugin is not installed on this engine' });
+    await expect(warning).toBeVisible();
+    await expect(warning).toContainText('Install "websupport" from the Extensions page');
+    await warning.locator('.btn-primary', { hasText: 'Close' }).click();
+    await expect(warning).toBeHidden();
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+});
+
+test('a probe refused with 421 ENGINE_UNKNOWN is not reported as a missing plugin', async ({ page }) => {
+    // The server refusing to route says nothing about whether the endpoint
+    // exists (core/websupport.ts treats 421 like 401): no "not installed"
+    // warning, and nothing cached, so the next session probes again. In real
+    // use the shell's own polling hits the same 421 and drops the tab to the
+    // login screen, which carries its reason inline (engine-picker.spec.ts).
+    await mockEngine(page, {
+        'GET /webplugins': { __status: 421, body: { error: 'ENGINE_UNKNOWN' } },
+        'GET /extensions/websupport/webplugins': { __status: 421, body: { error: 'ENGINE_UNKNOWN' } }
+    });
+    await page.goto('/dashboard');
+    // Settle point: the rows render after boot, and boot awaits loadPlugins().
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    await expect(page.locator('.modal', { hasText: 'Web Support plugin' })).toHaveCount(0);
+});
+
 test('degrades cleanly when the engine has no /api/webplugins endpoint', async ({ page }) => {
     // Older engine: the endpoint is absent. mockEngine returns an empty body for
     // unmatched /api calls, so discovery yields nothing and the app loads normally.
