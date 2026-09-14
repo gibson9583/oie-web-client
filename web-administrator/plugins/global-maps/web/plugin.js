@@ -1,5 +1,6 @@
 // plugins/global-maps/web/plugin.tsx
 import { platform } from "@oie/web-shell";
+import { toDisplayString } from "@oie/web-api";
 var React = platform.React;
 var GLOBAL_MAP_LABEL = "<Global Map>";
 function register(platform2) {
@@ -23,11 +24,11 @@ function register(platform2) {
   function displayValue(value) {
     if (value === null || value === void 0) return "";
     const s = String(value);
-    if (s.trim().startsWith("<")) {
+    const root = /^\s*<([^\s/>]+)/.exec(s);
+    if (root) {
       try {
         const parsed = api.parseBody(s);
-        if (parsed === null || parsed === void 0) return s;
-        return typeof parsed === "object" ? JSON.stringify(parsed, null, 1) : String(parsed);
+        if (parsed !== null && parsed !== void 0) return toDisplayString({ [root[1]]: parsed });
       } catch (e) {
       }
     }

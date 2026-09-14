@@ -9,3 +9,7 @@ export type * from './wire-types.js';
 // Engine-backed script validation/formatting — the sanctioned path for plugins
 // that need to check user scripts (the CSP allows no eval/new Function).
 export { validateScript, formatScript } from './serialize.js';
+// XStream-encoded values (typed scalars, collections, maps, custom-serialized
+// objects) rendered the way the Swing client shows them (StringUtil.valueOf):
+// "{k=v, ...}" for any map, "[a, b]" for lists, the payload for a scalar.
+export { toDisplayString, mappingEntries } from './xstream.js';

@@ -26,6 +26,20 @@ eq('Response status only', toDisplayString({ status: 'ERROR' }), 'ERROR');
 /* ---- toDisplayString: nested + custom-serialized maps ---- */
 eq('nested linked-hash-map', toDisplayString({ 'linked-hash-map': { entry: { string: ['k', 'v'] } } }), '{k=v}');
 
+/* ---- toDisplayString: global-map values (root element re-attached by the caller) ---- */
+// A script's Maps.map() stores a com.mirth.connect.userutil.MapBuilder: XStream
+// writes the class as the root and its `delegate` field holds the map. Swing
+// shows MapBuilder.toString() == delegate.toString() == "{k=v, …}".
+eq('MapBuilder wrapper descends to its delegate map',
+    toDisplayString({ 'com.mirth.connect.userutil.MapBuilder': { delegate: { entry: [{ string: ['a', 1] }, { string: ['b', 'two'] }] } } }),
+    '{a=1, b=two}');
+eq('MapBuilder with a nested map value',
+    toDisplayString({ 'com.mirth.connect.userutil.MapBuilder': { delegate: { entry: { string: 'inner', map: { entry: { string: ['k', 'v'] } } } } } }),
+    '{inner={k=v}}');
+eq('plain HashMap root', toDisplayString({ map: { entry: { string: 'x', int: 5 } } }), '{x=5}');
+eq('string root is the payload', toDisplayString({ string: 'THIS' }), 'THIS');
+eq('list root', toDisplayString({ list: { string: ['a', 'b'] } }), '[a, b]');
+
 const headerMap = {
     '@class': 'org.apache.commons.collections4.map.CaseInsensitiveMap',
     '@serialization': 'custom',

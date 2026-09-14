@@ -19,6 +19,9 @@ const ids      = asList(someXStreamMap, 'string');
   `X-Requested-With` CSRF header.
 - Model/serialization helpers — `asList`, `uuid`, and the XStream
   map/list shaping used to talk to the engine.
+- Display helpers — `toDisplayString` and `mappingEntries` render an
+  XStream-encoded value the way the Swing client shows it (`{k=v, …}` for a
+  map, `[a, b]` for a list, the payload for a scalar).
 
 ## Runtime model (important for plugin authors)
 
