@@ -395,6 +395,12 @@ export function validateChannel(channel: OieObject | null | undefined): string[]
     connectorProblems(channel.sourceConnector, 'Source connector', problems);
     const dests = destinationsOf(channel);
     if (!dests.length) problems.push('At least one destination connector is required');
+    // Swing never lets a channel reach this state (its disable/delete actions
+    // refuse to drop the last enabled destination); catch it at save time too
+    // so an imported or previously saved channel can't be persisted this way.
+    else if (!dests.some(d => d && d.enabled !== false && (d.enabled as unknown) !== 'false')) {
+        problems.push('At least one destination must be enabled');
+    }
     dests.forEach((d, i) => connectorProblems(d, d && (d.name || `Destination ${d.metaDataId ?? i + 1}`), problems));
     return problems;
 }

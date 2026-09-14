@@ -347,6 +347,47 @@ test.describe('Channel editor', () => {
         expect(putCalled).toBe(false);
     });
 
+    test('disabling the only enabled destination is refused (issue #57)', async ({ page }) => {
+        // Swing parity (ChannelSetup.disableDestination): the last enabled
+        // destination cannot be disabled, so the channel never reaches a state
+        // with nothing to dispatch to.
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
+        const status = page.locator('.status-cell', { hasText: 'Enabled' });
+        await expect(status).toBeVisible();
+
+        await page.getByRole('cell', { name: 'Channel Writer', exact: true }).click({ button: 'right' });
+        await page.getByRole('menu').getByRole('menuitem', { name: 'Disable Destination' }).click();
+
+        // Warn-level toasts open the detail dialog (core/ui toast()), not a corner toast.
+        const warning = page.locator('.modal', { hasText: 'At least one destination must be enabled' });
+        await expect(warning).toBeVisible();
+        await warning.locator('.btn-primary', { hasText: 'Close' }).click();
+        await expect(warning).toBeHidden();
+        // Still enabled, and the channel was not dirtied.
+        await expect(status).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Save Changes', exact: true })).toHaveCount(0);
+    });
+
+    test('saving is blocked when no destination is enabled (issue #57)', async ({ page }) => {
+        // A channel that already has every destination disabled (imported, or
+        // saved before the guard existed) must not be persisted as-is.
+        const channel = structuredClone(FULL_CHANNEL);
+        channel.destinationConnectors.connector[0].enabled = false;
+        let putCalled = false;
+        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
+        page.on('request', (r) => {
+            if (r.method() === 'PUT' && new URL(r.url()).pathname === `/api/channels/${CHANNEL_ID}`) putCalled = true;
+        });
+
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.locator('.panel input[type=text]').first().fill('Round Trip Channel Edited');
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+
+        await expect(page.getByText('At least one destination must be enabled')).toBeVisible();
+        expect(putCalled).toBe(false);
+    });
+
     test('validation red-highlights the empty field on the current connector screen', async ({ page }) => {
         const channel = structuredClone(FULL_CHANNEL);
         const dest = channel.destinationConnectors.connector[0];

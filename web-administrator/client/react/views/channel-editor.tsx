@@ -2109,10 +2109,17 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         refresh();
     }
 
+    // Swing parity (ChannelSetup.disableDestination / deleteDestination): a
+    // channel must always keep at least one enabled destination other than `dest`.
+    function keepsEnabledDestination(dest: any) {
+        return dests().some(d => d !== dest && d.enabled !== false && (d.enabled as any) !== 'false');
+    }
+
     async function deleteDestination() {
         const dest = needSelection();
         if (!dest) return;
         if (dests().length <= 1) { toast('A channel must have at least one destination', 'warn'); return; }
+        if (!keepsEnabledDestination(dest)) { toast('At least one destination must be enabled', 'warn'); return; }
         if (!await confirmDialog('Delete Destination', `Delete destination "${dest.name}"?`, { danger: true, okLabel: 'Delete' })) return;
         oie.setDestinations(channel, dests().filter(d => d !== dest));
         setSelectedId(null);
@@ -2192,6 +2199,7 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
     function setEnabled(value: any) {
         const dest = needSelection();
         if (!dest) return;
+        if (!value && !keepsEnabledDestination(dest)) { toast('At least one destination must be enabled', 'warn'); return; }
         dest.enabled = value;
         markDirty();
         refresh();
