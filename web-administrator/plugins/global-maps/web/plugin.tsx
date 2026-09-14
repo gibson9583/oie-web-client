@@ -16,6 +16,7 @@
 
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
+import { toDisplayString } from '@oie/web-api';
 const React = platform.React;
 
 const GLOBAL_MAP_LABEL = '<Global Map>';
@@ -44,16 +45,22 @@ export function register(platform: Platform) {
         return out;
     }
 
-    /* Values are serialized with XStream ("<string>THIS</string>") — show the
-       payload, not the wrapper. */
+    /* Each value is the engine's XStream serialization of the stored object
+       ("<string>THIS</string>", "<map><entry>…", or a class-named root such as
+       <com.mirth.connect.userutil.MapBuilder> wrapping its <delegate> map, which
+       is what a script's Maps.map() stores). Swing deserializes it and shows
+       StringUtil.valueOf — "{k=v, …}" for any map, the payload for a scalar —
+       so render the same text: parseBody() strips the root element, so hand its
+       tag back to toDisplayString, which needs the type to tell a <list> from
+       a <string> and descends class-named wrappers to the map inside. */
     function displayValue(value: any) {
         if (value === null || value === undefined) return '';
         const s = String(value);
-        if (s.trim().startsWith('<')) {
+        const root = /^\s*<([^\s/>]+)/.exec(s);
+        if (root) {
             try {
                 const parsed = api.parseBody(s);
-                if (parsed === null || parsed === undefined) return s;
-                return typeof parsed === 'object' ? JSON.stringify(parsed, null, 1) : String(parsed);
+                if (parsed !== null && parsed !== undefined) return toDisplayString({ [root[1]]: parsed });
             } catch (e: any) { /* show raw */ }
         }
         return s;

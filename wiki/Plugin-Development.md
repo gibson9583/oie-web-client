@@ -708,7 +708,12 @@ Notes:
    delete `@class`/`@version` keys or fields you don't understand — they belong
    to the engine model or to server-side plugins.
 2. Engine lists may arrive as a bare object when they have one element — use
-   `platform.api.asList(value, key)`.
+   `platform.api.asList(value, key)`. To *show* an XStream-encoded value (a map or
+   list a script stored in the global map, a `Response`), render it with
+   `toDisplayString` from `@oie/web-api`: it prints what the Swing client prints —
+   `{k=v, …}` for any map, `[a, b]` for a list — instead of the encoding's
+   `entry`/`string` structure, and descends class-named wrappers (a `MapBuilder`
+   from `Maps.map()`) to the map inside.
 3. Style with Tailwind utilities + the app's component classes (see *Writing
    plugins in React* above) so plugins match both themes — noting the
    separately-built-plugin caveat (only host-emitted utilities are available
