@@ -17,19 +17,27 @@ import { get } from './api.js';
 
 let resolved: Promise<string | null> | null = null;
 
+// 401 means "not logged in yet" and 421 "the server no longer routes this tab's
+// engine" (ENGINE_UNKNOWN) — neither says anything about whether the endpoint
+// exists, so neither may be cached as "missing" (which would also raise the
+// "plugin not installed" warning over the login screen the tab is dropping to).
+function refused(e: unknown): boolean {
+    const status = e && (e as { status?: unknown }).status;
+    return status === 401 || status === 421;
+}
+
 async function probe(): Promise<string | null> {
     try {
         await get('/webplugins', undefined, { noAuthHandler: true });
         return '';
     } catch (e) {
-        // 401 means "not logged in yet", not "endpoint missing" — don't cache that.
-        if (e && (e as { status?: unknown }).status === 401) throw e;
+        if (refused(e)) throw e;
     }
     try {
         await get('/extensions/websupport/webplugins', undefined, { noAuthHandler: true });
         return '/extensions/websupport';
     } catch (e) {
-        if (e && (e as { status?: unknown }).status === 401) throw e;
+        if (refused(e)) throw e;
     }
     return null;
 }

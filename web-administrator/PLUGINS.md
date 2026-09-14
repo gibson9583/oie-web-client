@@ -139,6 +139,7 @@ ones are built.
 | `ChannelTabPlugin` | (commercial, e.g. history tabs) | `registerChannelTab` |
 | `ClientPlugin` adding a task to the Channels panel | `simple-channel-history` ("View History") | `registerChannelAction` — adds a right-click item + Channel Tasks button for a single-channel selection |
 | `ClientPlugin` adding a task to the Code Templates panel | `simple-channel-history` ("View History") | `registerCodeTemplateAction` — adds a right-click item for a selected code template |
+| *(none — Swing's `MessageBrowser` takes no plugin tasks)* | | `registerMessageAction` — adds a right-click item on a message row + a Message Tasks button for the selected row, with the row's connector in context. Web-only; API `4.7`+ |
 | `TransformerStepPlugin` / `FilterRulePlugin` | mapper, messagebuilder, javascriptstep, xsltstep, destinationsetfilter, scriptfilestep, iterator; rulebuilder, javascriptrule, scriptfilerule | bundled as the `transformer-steps` web plugin calling `registerStepType` / `registerRuleType` |
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
@@ -235,7 +236,8 @@ Guidance:
 - Omit `oie.apiMin` and your plugin always loads (no gate) — fine for plugins built
   and shipped in lockstep with a known web administrator (e.g. the bundled ones).
 - Set it to the version that introduced the newest capability you use, so an older
-  host degrades gracefully instead of throwing on a missing API.
+  host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
+  for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
@@ -463,6 +465,18 @@ platform.registerChannelAction({ id, label, icon, order, task, /* optional RBAC 
 // defaults to "a template (not a library) is selected".
 platform.registerCodeTemplateAction({ id, label, icon, order, task,
     onInvoke: (template, ctx) => { /* … */ } });
+
+// Per-message action (web-only — Swing's MessageBrowser has no plugin hook; API
+// 4.7+). One registration shows in the message browser's row right-click menu
+// (any row) and in the Message Tasks pane (the selected row). onInvoke gets the
+// engine Message; ctx = { platform, channelId, message, metaDataId,
+// connectorMessage } — metaDataId is the row's connector (0 = source) and
+// connectorMessage its ConnectorMessage (null for a placeholder source row).
+// isEnabled(ctx) defaults to "every row". `task` is gated under the `message`
+// RBAC group like the built-in items.
+platform.registerMessageAction({ id, label, icon, order, task,
+    isEnabled: (ctx) => ctx.metaDataId !== 0,   // e.g. destinations only
+    onInvoke: (message, ctx) => { /* open a dialog, call /extensions/… with message.messageId, … */ } });
 
 // Message attachment renderer (AttachmentViewer)
 platform.registerAttachmentViewer({ id,

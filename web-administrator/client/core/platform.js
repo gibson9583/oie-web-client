@@ -16,6 +16,9 @@
  *   registerChannelTab     — tab in the channel editor   (ChannelTabPlugin)
  *   registerSettingsPanel  — tab in Settings             (SettingsPanelPlugin)
  *   registerAttachmentViewer — message attachment viewer (AttachmentViewer)
+ *   registerChannelAction  — Channels view row action    (ChannelPanelPlugin task)
+ *   registerCodeTemplateAction — Code Templates row action
+ *   registerMessageAction  — message browser row action  (web-only; Swing has no hook)
  *   registerStepType / registerRuleType — transformer/filter editors
  *                                                        (TransformerStepPlugin/FilterRulePlugin)
  *   registerConnectorPanel — connector property editor   (ConnectorSettingsPanel)
@@ -52,7 +55,7 @@ import { apiUrl, appUrl } from './deployment.js';
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.6.0';
+export const OIE_API_VERSION = '4.7.0'; // 4.7: registerMessageAction
 function parseApiVersion(v) {
     const [major, minor] = String(v == null ? '' : v).split('.');
     return { major: parseInt(major, 10) || 0, minor: parseInt(minor, 10) || 0 };
@@ -74,6 +77,7 @@ const registries = {
     channelTabs: [],
     channelActions: [],
     codeTemplateActions: [],
+    messageActions: [],
     settingsPanels: [],
     attachmentViewers: [],
     stepTypes: new Map(),
@@ -148,6 +152,14 @@ export const platform = {
        isEnabled?(ctx) → bool, onInvoke(template, ctx) }.
        ctx = { platform, template, library }. */
     registerCodeTemplateAction(action) { registries.codeTemplateActions.push(action); },
+    /* A per-message action, shown in the message browser's row right-click menu
+       and, for the selected row, in the Message Tasks pane. Web-only: Swing's
+       MessageBrowser has no plugin hook. def = { id, label, icon?, order?,
+       task?  (RBAC task name under the `message` group, gated via checkTask),
+       isEnabled?(ctx) → bool  (default: enabled for every row),
+       onInvoke(message, ctx) }. ctx = { platform, channelId, message,
+       metaDataId, connectorMessage }. */
+    registerMessageAction(action) { registries.messageActions.push(action); },
     registerSettingsPanel(panel) { registries.settingsPanels.push(panel); },
     registerAttachmentViewer(viewer) { registries.attachmentViewers.push(viewer); },
     registerStepType(type, def) { registries.stepTypes.set(type, def); },
@@ -177,6 +189,7 @@ export const platform = {
     channelTabs: () => sorted(registries.channelTabs),
     channelActions: () => sorted(registries.channelActions),
     codeTemplateActions: () => sorted(registries.codeTemplateActions),
+    messageActions: () => sorted(registries.messageActions),
     settingsPanels: () => sorted(registries.settingsPanels),
     attachmentViewers: () => [...registries.attachmentViewers],
     stepType: (type) => registries.stepTypes.get(type),

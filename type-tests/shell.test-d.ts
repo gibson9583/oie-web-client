@@ -26,6 +26,12 @@ export function register(p: Platform) {
         id: 'demo-tab', label: 'Demo Tab',
         component: ({ channel, onChange }) => { void channel; void onChange; return null; },
     });
+    // Per-message action: onInvoke gets the engine Message; ctx names the connector row.
+    p.registerMessageAction({
+        id: 'demo-msg', label: 'Demo Message Action', icon: 'demo-glyph', task: 'doDemoMessageAction',
+        isEnabled: ({ metaDataId }) => metaDataId === 0,
+        onInvoke: (message, { channelId, connectorMessage }) => { void message; void channelId; void connectorMessage; },
+    });
 }
 
 async function libraries() {
