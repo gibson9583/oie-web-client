@@ -230,6 +230,31 @@ export interface CodeTemplateActionContext {
     library: OieObject | null;
     [key: string]: any;
 }
+/** A per-message action in the message browser: an item in a message row's
+    right-click menu and, for the selected row, a Message Tasks button.
+    Web-only — Swing's MessageBrowser takes no plugin tasks. */
+export interface MessageAction extends Pick<TaskRef, 'task'> {
+    id: string;
+    label: string;
+    icon?: string;
+    order?: number;
+    /** Default: enabled for every row. */
+    isEnabled?(ctx: MessageActionContext): boolean;
+    onInvoke(message: OieObject, ctx: MessageActionContext): void;
+    [key: string]: any;
+}
+export interface MessageActionContext {
+    platform: Platform;
+    channelId: string;
+    /** The engine Message the row belongs to (its connectorMessages included). */
+    message: OieObject;
+    /** The connector row in context: 0 is the source, otherwise a destination. */
+    metaDataId: number;
+    /** That connector's ConnectorMessage, or null when the source row is a
+        placeholder (the search returned only destination rows). */
+    connectorMessage: OieObject | null;
+    [key: string]: any;
+}
 /** A loaded plugin's manifest plus its load status. */
 export interface PluginManifest {
     id: string;
@@ -242,7 +267,7 @@ export interface PluginManifest {
     apiMin?: string | null;
     [key: string]: any;
 }
-export declare const OIE_API_VERSION = "4.6.0";
+export declare const OIE_API_VERSION = "4.7.0";
 export declare function apiCompatible(provided: string, requiredMin?: string | null): boolean;
 /** The platform handed to every plugin's `register(platform)`. */
 export interface Platform {
@@ -279,6 +304,7 @@ export interface Platform {
     registerChannelTab(tab: ChannelTab): void;
     registerChannelAction(action: ChannelAction): void;
     registerCodeTemplateAction(action: CodeTemplateAction): void;
+    registerMessageAction(action: MessageAction): void;
     registerSettingsPanel(panel: SettingsPanel): void;
     registerAttachmentViewer(viewer: AttachmentViewer): void;
     registerStepType(type: string, def: StepRuleType): void;
@@ -294,6 +320,7 @@ export interface Platform {
     channelTabs(): ChannelTab[];
     channelActions(): ChannelAction[];
     codeTemplateActions(): CodeTemplateAction[];
+    messageActions(): MessageAction[];
     settingsPanels(): SettingsPanel[];
     attachmentViewers(): AttachmentViewer[];
     stepType(type: string): StepRuleType | undefined;

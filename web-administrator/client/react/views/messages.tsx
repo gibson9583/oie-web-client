@@ -2414,6 +2414,24 @@ export function MessagesView({ params, query }: any) {
         offerCandidate(ref);
     }
 
+    // Plugin-contributed per-message actions (platform.registerMessageAction) —
+    // the message browser's twin of the Channels view's channelActions merge.
+    // One registration feeds both the row menu and the Message Tasks pane; the
+    // row is passed explicitly for the same reason the built-in items take it.
+    function messageActionItems(m: any, metaDataId: any): any[] {
+        const id = Number(metaDataId);
+        const ctx = {
+            platform, channelId, message: m, metaDataId: id,
+            connectorMessage: connectorMessagesOf(m).find((cm: any) => Number(cm.metaDataId) === id) ?? null
+        };
+        return platform.messageActions()
+            .filter((a: any) => (a.isEnabled ? a.isEnabled(ctx) : true))
+            .map((a: any): any => ({
+                id: a.id || a.label, label: a.label, icon: a.icon, task: a.task, group: a.group || 'message',
+                onClick: () => a.onInvoke(m, ctx)
+            }));
+    }
+
     // Right-click parity with the Swing Message Browser (Frame.messagePopupMenu —
     // the full Message Tasks list). Per-message items take this row explicitly —
     // the menu outlives the render that opened it, so it never reads selection
@@ -2421,6 +2439,7 @@ export function MessagesView({ params, query }: any) {
     function messageRowMenu(m: any, metaDataId: any, e: any) {
         e.preventDefault();
         selectMessage(m, metaDataId);
+        const pluginItems = messageActionItems(m, metaDataId);
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshMessages', group: 'message', onClick: () => searchRef.current(true) },
             { label: 'Send Message', icon: 'send', task: 'doSendMessage', group: 'message', onClick: () => sendMessageTask() },
@@ -2442,6 +2461,7 @@ export function MessagesView({ params, query }: any) {
                 label: 'Compare to Selection', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
                 disabled: !getAnchor(), items: compareStageItems(m, metaDataId, 'compare')
             },
+            ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
             { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask(m) },
             { label: 'Remove Results', icon: 'trash', danger: true, task: 'doRemoveFilteredMessages', group: 'message', onClick: () => removeResultsTask() },
@@ -2808,6 +2828,11 @@ export function MessagesView({ params, query }: any) {
                         <TaskButton label="Compare to Selection" icon="compare" task="doCompareWithSelection"
                             disabled={!anchor} onClick={compareWithSelectionTask}
                             title={anchor ? `Compare against ${describeRef(anchor)}` : 'Select content for compare first'} />
+                        {/* Plugin message actions for the selected row — selection-gated
+                            like Remove/Reprocess Message, and the row menu's twins. */}
+                        {hasSel && messageActionItems(selected.m, selected.metaDataId).map((a: any) => (
+                            <TaskButton key={a.id} label={a.label} icon={a.icon} task={a.task} onClick={a.onClick} />
+                        ))}
                     </div>
                 </RailPane>
             </ViewTasks>}

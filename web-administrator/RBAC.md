@@ -172,6 +172,8 @@ task/`JPopupMenu` behavior.
   Selection (task pane + the content-tab and row right-click menus). Neither grants
   any access of its own: comparing content is reading message content, which the
   engine authorizes per fetch. Deny them to remove the compare workflow from the UI.
+- Plugin actions registered through `platform.registerMessageAction` carry their own
+  `task` under this group; the Message Tasks button and the row menu item hide together.
 
 ### `alert` — Alert Tasks
 - `doRefreshAlerts` — Refresh · `doNewAlert` — New Alert

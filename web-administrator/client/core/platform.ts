@@ -15,6 +15,9 @@
  *   registerChannelTab     — tab in the channel editor   (ChannelTabPlugin)
  *   registerSettingsPanel  — tab in Settings             (SettingsPanelPlugin)
  *   registerAttachmentViewer — message attachment viewer (AttachmentViewer)
+ *   registerChannelAction  — Channels view row action    (ChannelPanelPlugin task)
+ *   registerCodeTemplateAction — Code Templates row action
+ *   registerMessageAction  — message browser row action  (web-only; Swing has no hook)
  *   registerStepType / registerRuleType — transformer/filter editors
  *                                                        (TransformerStepPlugin/FilterRulePlugin)
  *   registerConnectorPanel — connector property editor   (ConnectorSettingsPanel)
@@ -271,6 +274,32 @@ export interface CodeTemplateActionContext {
     [key: string]: any;
 }
 
+/** A per-message action in the message browser: an item in a message row's
+    right-click menu and, for the selected row, a Message Tasks button.
+    Web-only — Swing's MessageBrowser takes no plugin tasks. */
+export interface MessageAction extends Pick<TaskRef, 'task'> {
+    id: string;
+    label: string;
+    icon?: string;
+    order?: number;
+    /** Default: enabled for every row. */
+    isEnabled?(ctx: MessageActionContext): boolean;
+    onInvoke(message: OieObject, ctx: MessageActionContext): void;
+    [key: string]: any;
+}
+export interface MessageActionContext {
+    platform: Platform;
+    channelId: string;
+    /** The engine Message the row belongs to (its connectorMessages included). */
+    message: OieObject;
+    /** The connector row in context: 0 is the source, otherwise a destination. */
+    metaDataId: number;
+    /** That connector's ConnectorMessage, or null when the source row is a
+        placeholder (the search returned only destination rows). */
+    connectorMessage: OieObject | null;
+    [key: string]: any;
+}
+
 /** A loaded plugin's manifest plus its load status. */
 export interface PluginManifest {
     id: string;
@@ -298,7 +327,7 @@ export interface PluginManifest {
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.6.0';
+export const OIE_API_VERSION = '4.7.0';   // 4.7: registerMessageAction
 
 function parseApiVersion(v: unknown): { major: number; minor: number } {
     const [major, minor] = String(v == null ? '' : v).split('.');
@@ -322,6 +351,7 @@ const registries = {
     channelTabs: [] as ChannelTab[],
     channelActions: [] as ChannelAction[],
     codeTemplateActions: [] as CodeTemplateAction[],
+    messageActions: [] as MessageAction[],
     settingsPanels: [] as SettingsPanel[],
     attachmentViewers: [] as AttachmentViewer[],
     stepTypes: new Map<string, StepRuleType>(),
@@ -376,6 +406,7 @@ export interface Platform {
     registerChannelTab(tab: ChannelTab): void;
     registerChannelAction(action: ChannelAction): void;
     registerCodeTemplateAction(action: CodeTemplateAction): void;
+    registerMessageAction(action: MessageAction): void;
     registerSettingsPanel(panel: SettingsPanel): void;
     registerAttachmentViewer(viewer: AttachmentViewer): void;
     registerStepType(type: string, def: StepRuleType): void;
@@ -393,6 +424,7 @@ export interface Platform {
     channelTabs(): ChannelTab[];
     channelActions(): ChannelAction[];
     codeTemplateActions(): CodeTemplateAction[];
+    messageActions(): MessageAction[];
     settingsPanels(): SettingsPanel[];
     attachmentViewers(): AttachmentViewer[];
     stepType(type: string): StepRuleType | undefined;
@@ -472,6 +504,14 @@ export const platform: Platform = {
        isEnabled?(ctx) → bool, onInvoke(template, ctx) }.
        ctx = { platform, template, library }. */
     registerCodeTemplateAction(action) { registries.codeTemplateActions.push(action); },
+    /* A per-message action, shown in the message browser's row right-click menu
+       and, for the selected row, in the Message Tasks pane. Web-only: Swing's
+       MessageBrowser has no plugin hook. def = { id, label, icon?, order?,
+       task?  (RBAC task name under the `message` group, gated via checkTask),
+       isEnabled?(ctx) → bool  (default: enabled for every row),
+       onInvoke(message, ctx) }. ctx = { platform, channelId, message,
+       metaDataId, connectorMessage }. */
+    registerMessageAction(action) { registries.messageActions.push(action); },
     registerSettingsPanel(panel) { registries.settingsPanels.push(panel); },
     registerAttachmentViewer(viewer) { registries.attachmentViewers.push(viewer); },
     registerStepType(type, def) { registries.stepTypes.set(type, def); },
@@ -503,6 +543,7 @@ export const platform: Platform = {
     channelTabs: () => sorted(registries.channelTabs),
     channelActions: () => sorted(registries.channelActions),
     codeTemplateActions: () => sorted(registries.codeTemplateActions),
+    messageActions: () => sorted(registries.messageActions),
     settingsPanels: () => sorted(registries.settingsPanels),
     attachmentViewers: () => [...registries.attachmentViewers],
     stepType: (type) => registries.stepTypes.get(type),

@@ -10,5 +10,6 @@ export type {
     DashboardTab, DashboardColumn, ChannelTab, SettingsPanel, AttachmentViewer,
     StepRuleType, ConnectorPanel, ConnectorPropertiesPanel,
     DataTypeDef, TransmissionModeDef, ResourceTypeDef,
-    ChannelAction, ChannelActionContext, CodeTemplateAction, CodeTemplateActionContext
+    ChannelAction, ChannelActionContext, CodeTemplateAction, CodeTemplateActionContext,
+    MessageAction, MessageActionContext
 } from './platform.js';
