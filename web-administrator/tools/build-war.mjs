@@ -12,6 +12,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { rewriteImportMap } from './war-import-map.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = path.resolve(root, '..');
@@ -89,37 +90,28 @@ function replaceExpected(html, from, to) {
     return html.replace(from, to);
 }
 
-// Vite does not process import maps, so their targets stay root-absolute — correct
-// for the Node/Vite server at "/", wrong for a WAR mounted under the engine context.
-// Rewrite the map structurally (every in-app target becomes context-relative) so new
-// or reordered entries are covered automatically instead of by enumerating today's
-// keys; prefix keys stay absolute so legacy plugin imports still resolve.
-function rewriteImportMap(html) {
-    const match = html.match(/<script type="importmap">\s*([\s\S]*?)\s*<\/script>/);
-    if (!match) throw new Error('build-war: the built index is missing its import map');
-    let map;
-    try {
-        map = JSON.parse(match[1]);
-    } catch (e) {
-        throw new Error(`build-war: could not parse the built import map — ${e.message}`);
+function runtimeModules() {
+    const modules = new Map();
+    function visit(directory) {
+        if (!existsSync(directory)) return;
+        for (const entry of readdirSync(directory, { withFileTypes: true })) {
+            const file = path.join(directory, entry.name);
+            if (entry.isDirectory()) visit(file);
+            else if (entry.name.endsWith('.js')) {
+                modules.set(path.relative(stage, file).split(path.sep).join('/'), readFileSync(file));
+            }
+        }
     }
-    const toContextRelative = (url) =>
-        typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? `.${url}` : url;
-    const rewriteTargets = (imports) => {
-        for (const key of Object.keys(imports || {})) imports[key] = toContextRelative(imports[key]);
-    };
-    rewriteTargets(map.imports);
-    for (const scope of Object.values(map.scopes || {})) rewriteTargets(scope);
-    const rendered = `<script type="importmap">\n${JSON.stringify(map, null, 2)}\n    </script>`;
-    return html.slice(0, match.index) + rendered + html.slice(match.index + match[0].length);
+    for (const name of ['core', 'connectors', 'datatypes', 'vendor', 'plugins']) visit(path.join(stage, name));
+    return modules;
 }
 
 function indexJsp() {
     const builtIndex = path.join(builtClientDir, 'index.html');
     let html = readFileSync(builtIndex, 'utf8');
 
-    // Make the import map's root-absolute targets context-relative for the WAR.
-    html = rewriteImportMap(html);
+    // Resolve runtime modules below this WAR and invalidate older cached graphs.
+    html = rewriteImportMap(html, runtimeModules());
 
     // Point the SPA at its deployed servlet context and the sibling engine API.
     html = replaceExpected(html,
@@ -177,7 +169,6 @@ try {
         recursive: true,
         filter: (source) => path.basename(source) !== 'index.html'
     });
-    writeFileSync(path.join(stage, 'index.jsp'), indexJsp());
 
     // Framework modules and plugin assets are intentionally runtime-loaded and
     // therefore live beside (not inside) the Vite shell bundle.
@@ -186,6 +177,7 @@ try {
         recursive: true,
         filter: runtimeFile
     });
+    writeFileSync(path.join(stage, 'index.jsp'), indexJsp());
 
     mkdirSync(path.join(stage, 'webadmin'), { recursive: true });
     writeFileSync(path.join(stage, 'webadmin', 'plugins.json'), JSON.stringify(bundledPluginManifests(), null, 2) + '\n');
