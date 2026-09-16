@@ -23,6 +23,28 @@ let sessionExpiredFired = false;
 // Deep clone JSON-serializable data (channels are plain engine JSON), so write
 // transforms don't mutate the object the editor still holds.
 const cloneJson = (o) => JSON.parse(JSON.stringify(o));
+// Staxon reads @-prefixed keys as XML attributes, which must precede child
+// elements/text. The engine's reorder fallback skips arrays, so normalize at
+// every JSON write boundary (including multipart parts). A replacer visits
+// nested array items too, without changing editor objects or content order.
+function stringifyEngineJson(value) {
+    const ordered = new WeakMap();
+    return JSON.stringify(value, (_key, node) => {
+        if (!node || typeof node !== 'object' || Array.isArray(node))
+            return node;
+        if (ordered.has(node))
+            return ordered.get(node);
+        const entries = Object.entries(node);
+        const attributes = entries.filter(([key]) => key.startsWith('@'));
+        if (!attributes.length)
+            return node;
+        const result = Object.fromEntries([...attributes, ...entries.filter(([key]) => !key.startsWith('@'))]);
+        // Reuse the replacement for shared references, retaining JSON.stringify's
+        // normal circular-reference error rather than endlessly cloning a cycle.
+        ordered.set(node, result);
+        return result;
+    });
+}
 // Returns an unsubscribe. Callers that register from a React effect MUST call it
 // on cleanup: without one, a remount (StrictMode's double-invoke, or any future
 // remount of the registering component) leaves a second handler behind and one
@@ -281,7 +303,7 @@ export function get(path, params, opts) {
 export function post(path, body, { params, contentType = 'application/json', wrapKey, raw, noAuthHandler, timeoutMs } = {}) {
     let payload = body;
     if (body !== undefined && body !== null && typeof body !== 'string' && !(body instanceof FormData)) {
-        payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
+        payload = stringifyEngineJson(wrapKey ? { [wrapKey]: body } : body);
     }
     return send(BASE + path + qs(params), {
         method: 'POST',
@@ -293,7 +315,7 @@ export function post(path, body, { params, contentType = 'application/json', wra
 export function put(path, body, { params, contentType = 'application/json', wrapKey, raw, timeoutMs } = {}) {
     let payload = body;
     if (body !== undefined && body !== null && typeof body !== 'string') {
-        payload = JSON.stringify(wrapKey ? { [wrapKey]: body } : body);
+        payload = stringifyEngineJson(wrapKey ? { [wrapKey]: body } : body);
     }
     return send(BASE + path + qs(params), {
         method: 'PUT', headers: headers(contentType), credentials: 'same-origin', body: payload ?? null
@@ -440,8 +462,8 @@ export const channelGroups = {
     list: () => get('/channelgroups').then(v => asList(v, 'channelGroup')),
     bulkUpdate: (groups, removedIds = []) => {
         const form = new FormData();
-        form.append('channelGroups', new Blob([JSON.stringify({ set: { channelGroup: groups } })], { type: 'application/json' }));
-        form.append('removedChannelGroupIds', new Blob([JSON.stringify({ set: { string: removedIds } })], { type: 'application/json' }));
+        form.append('channelGroups', new Blob([stringifyEngineJson({ set: { channelGroup: groups } })], { type: 'application/json' }));
+        form.append('removedChannelGroupIds', new Blob([stringifyEngineJson({ set: { string: removedIds } })], { type: 'application/json' }));
         return post('/channelgroups/_bulkUpdate', form, { params: { override: true } });
     }
 };
@@ -643,7 +665,7 @@ export const codeTemplates = {
     updateLibraries: (libraries, override = true) => put('/codeTemplateLibraries', { codeTemplateLibrary: libraries }, { wrapKey: 'list', params: { override } }),
     bulkUpdate: (libraries, updatedCodeTemplates = [], removedLibraryIds = [], removedCodeTemplateIds = [], override = true) => {
         const form = new FormData();
-        const part = (name, value) => form.append(name, new Blob([JSON.stringify(value)], { type: 'application/json' }));
+        const part = (name, value) => form.append(name, new Blob([stringifyEngineJson(value)], { type: 'application/json' }));
         part('libraries', { list: { codeTemplateLibrary: libraries } });
         part('updatedCodeTemplates', { list: { codeTemplate: updatedCodeTemplates } });
         part('removedLibraryIds', { set: { string: removedLibraryIds } });

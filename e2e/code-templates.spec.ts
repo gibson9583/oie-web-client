@@ -1,8 +1,35 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 
+function assertAttributesFirst(value: any) {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) return value.forEach(assertAttributesFirst);
+    let hasContent = false;
+    for (const [key, child] of Object.entries(value)) {
+        if (key.startsWith('@')) expect(hasContent, `${key} must precede element content`).toBe(false);
+        else hasContent = true;
+        assertAttributesFirst(child);
+    }
+}
+
+function assertBulkWire(body: string): Record<string, any> {
+    const boundary = body.slice(0, body.indexOf('\r\n'));
+    expect(boundary).toMatch(/^--/);
+    const parts: Record<string, any> = {};
+    for (const part of body.split(boundary).slice(1, -1)) {
+        const name = part.match(/name="([^"]+)"/)?.[1];
+        expect(name).toBeTruthy();
+        const value = JSON.parse(part.slice(part.indexOf('\r\n\r\n') + 4).trim());
+        assertAttributesFirst(value);
+        parts[name!] = value;
+    }
+    expect(Object.keys(parts)).toEqual(['libraries', 'updatedCodeTemplates', 'removedLibraryIds', 'removedCodeTemplateIds']);
+    return parts;
+}
+
 test.beforeEach(async ({ page }) => {
     await mockEngine(page, {
+        'GET /server/version': '4.5.2',
         'POST /codeTemplateLibraries/_bulkUpdate': {
             codeTemplateLibrarySaveResult: { overrideNeeded: false, librariesSuccess: true, codeTemplateResults: {} }
         }
@@ -72,36 +99,48 @@ test('Code Templates lists libraries/templates, gates tasks on selection, and ed
     await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
     const request = await bulkRequest;
     expect(request.postData() || '').toContain('name="updatedCodeTemplates"');
+    const parts = assertBulkWire(request.postData() || '');
+    // The GET fixture omits properties.@version, just like the reported 4.5.2
+    // response. load() appends it; the outgoing wire must move it before code.
+    const properties = parts.updatedCodeTemplates.list.codeTemplate[0].properties;
+    expect(properties['@version']).toBe('4.5.2');
+    expect(properties.code).toContain('return msg.trim();');
     await expect(page.getByText('Code templates saved', { exact: true })).toBeVisible();
     expect(legacyPut).toBe(false);
 });
 
-test('template import preserves primitive-looking names and scripts as strings', async ({ page }) => {
-    await page.goto('/code-templates');
-    await expect(page.getByText('Demo Library', { exact: true })).toBeVisible();
+for (const propertyVersion of [' version="4.5.0"', '']) {
+    test(`template import preserves strings and orders attributes (${propertyVersion ? 'versioned' : 'missing properties version'})`, async ({ page }) => {
+        await page.goto('/code-templates');
+        await expect(page.getByText('Demo Library', { exact: true })).toBeVisible();
 
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByRole('button', { name: 'Import Code Templates', exact: true }).first().click();
-    const bulkRequest = page.waitForRequest(request =>
-        request.method() === 'POST' && new URL(request.url()).pathname === '/api/codeTemplateLibraries/_bulkUpdate');
-    await (await chooser).setFiles({
-        name: 'primitive-looking-template.xml',
-        mimeType: 'application/xml',
-        buffer: Buffer.from('<codeTemplate version="4.5.0"><id>numeric-script</id><name>true</name><revision>0</revision><properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties" version="4.5.0"><type>FUNCTION</type><code>123</code></properties></codeTemplate>')
+        const chooser = page.waitForEvent('filechooser');
+        await page.getByRole('button', { name: 'Import Code Templates', exact: true }).first().click();
+        const bulkRequest = page.waitForRequest(request =>
+            request.method() === 'POST' && new URL(request.url()).pathname === '/api/codeTemplateLibraries/_bulkUpdate');
+        await (await chooser).setFiles({
+            name: 'primitive-looking-template.xml',
+            mimeType: 'application/xml',
+            buffer: Buffer.from(`<codeTemplate version="4.5.0"><id>numeric-script</id><name>true</name><revision>0</revision><properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties"${propertyVersion}><type>FUNCTION</type><code>123</code></properties></codeTemplate>`)
+        });
+
+        const body = (await bulkRequest).postData() || '';
+        expect(body).toContain('"name":"true"');
+        expect(body).toContain('"code":"123"');
+        expect(body).toContain('"revision":0');
+        const parts = assertBulkWire(body);
+        expect(parts.updatedCodeTemplates.list.codeTemplate[0].properties['@version']).toBe(propertyVersion ? '4.5.0' : '4.5.2');
     });
-
-    const body = (await bulkRequest).postData() || '';
-    expect(body).toContain('"name":"true"');
-    expect(body).toContain('"code":"123"');
-    expect(body).toContain('"revision":0');
-});
+}
 
 test('bulk save detects a concurrent revision and retries only after confirmation', async ({ page }) => {
     const overrides: string[] = [];
+    const bodies: string[] = [];
     await mockEngine(page, {
         'POST /codeTemplateLibraries/_bulkUpdate': (request: any) => {
             const override = new URL(request.url()).searchParams.get('override') || '';
             overrides.push(override);
+            bodies.push(request.postData() || '');
             return override === 'false'
                 ? { codeTemplateLibrarySaveResult: { overrideNeeded: true } }
                 : { codeTemplateLibrarySaveResult: { overrideNeeded: false, librariesSuccess: true, codeTemplateResults: {} } };
@@ -118,6 +157,8 @@ test('bulk save detects a concurrent revision and retries only after confirmatio
     await dialog.getByRole('button', { name: 'Overwrite', exact: true }).click();
     await expect(page.getByText('Code templates saved', { exact: true })).toBeVisible();
     expect(overrides).toEqual(['false', 'true']);
+    const [initial, retry] = bodies.map(assertBulkWire);
+    expect(retry).toEqual(initial);
 });
 
 test('partial bulk saves reconcile successful revisions and keep failed edits retryable', async ({ page }) => {
@@ -163,6 +204,7 @@ test('partial bulk saves reconcile successful revisions and keep failed edits re
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toContain('"revision":2');
     expect(bodies[1]).toContain('retry this edit');
+    bodies.forEach(assertBulkWire);
 });
 
 test('library-only edits do not resave unchanged code templates', async ({ page }) => {
