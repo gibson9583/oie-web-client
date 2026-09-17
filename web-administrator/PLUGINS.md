@@ -211,8 +211,9 @@ export function register() {
 ### API version compatibility
 
 The framework surface — the `platform` registries plus the `@oie/web-*` exports —
-is versioned by an **API contract version**, `platform.apiVersion`, which tracks the
-OIE engine release line the web administrator ships with (e.g. `"4.6.0"`). It follows
+is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
+1.0 implements **4.7.0** against OIE **4.6.0**. The API minor can advance independently
+when exports are added; it is not the application or engine version. It follows
 major.minor (the patch is ignored for compatibility): the **minor** bumps when the
 surface *grows* (new registry, new export), the **major** bumps on any *breaking*
 change (a removed/renamed export or a changed signature).
@@ -238,6 +239,9 @@ Guidance:
 - Set it to the version that introduced the newest capability you use, so an older
   host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
   for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
+- Settings panel save declarations accept `Promise<boolean>` as well as `boolean`,
+  matching the host's existing await behavior. This is a type correction; the
+  runtime API remains `4.7`.
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
@@ -574,7 +578,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — tracks the OIE engine release line (e.g. `"4.6.0"`). Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.7.0"` in Web Administrator 1.0, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
