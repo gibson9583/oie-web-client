@@ -13,6 +13,7 @@ import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { validateScript } from '../../core/serialize.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { ViewTasks } from '../mount.jsx';
 import { platform } from '@oie/web-shell';
 import { RailPane, TaskButton, CodeEditor, Tabs } from '../ui.jsx';
@@ -78,6 +79,7 @@ export function GlobalScriptsView() {
     const setDirtyState = (v: any) => { dirtyRef.current = v; setDirty(v); };
 
     const markDirty = () => setDirtyState(true);
+    useEffect(() => registerUnsavedCheck(() => dirtyRef.current), []);
 
     const load = async () => {
         const generation = ++loadGeneration.current;

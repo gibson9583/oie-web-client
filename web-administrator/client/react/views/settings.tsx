@@ -22,6 +22,7 @@
 import { withEditorSave } from '../save-lock.js';
 import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
 import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
@@ -2000,6 +2001,7 @@ export function SettingsView({ query }: any) {
     // The active tab's declared task pane (title + legacy DOM items).
     const tasksRef = useRef({ title: 'Server Tasks', items: [] });
     const dirtyRef = useRef(false);
+    useEffect(() => registerUnsavedCheck(() => dirtyRef.current), []);
     const saveRef = useRef<any>(null);   // the active tab's save(), if it supports saving
     const activeLabelRef = useRef<any>(null);   // active tab label, for its settings_<Tab> RBAC group
 

@@ -81,7 +81,15 @@ for (const surface of cases) {
             }
             await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
             await expect(field).toHaveValue('Submitted edit');
+            expect(await page.evaluate(() => {
+                const event = new Event('beforeunload', { cancelable: true });
+                window.dispatchEvent(event); return event.defaultPrevented;
+            })).toBe(fail);
             await field.fill('Next edit');
+            expect(await page.evaluate(() => {
+                const event = new Event('beforeunload', { cancelable: true });
+                window.dispatchEvent(event); return event.defaultPrevented;
+            })).toBe(true);
         });
     }
 }

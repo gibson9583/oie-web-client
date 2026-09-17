@@ -21,8 +21,228 @@ async function closeError(page: Page) {
         .getByRole('button', { name: 'Close', exact: true }).last().click();
 }
 
+const preventsClose = (page: Page) => page.evaluate(() => {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+});
+
 test.beforeEach(async ({ page }) => {
     await mockEngine(page);
+});
+
+for (const key of SCRIPT_KEYS) {
+    test(`Global Scripts rejects an invalid ${key} body before save and preserves it for correction`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        const validated: string[] = [];
+        let writes = 0;
+        await mockEngine(page, {
+            'POST /javascript/_validate': (request: any) => {
+                const body = request.postData();
+                validated.push(body);
+                return { error: body === 'function {' ? 'Error on line 1: invalid syntax.' : null };
+            },
+            'PUT /server/globalScripts': () => { writes++; return ''; },
+        });
+        await page.goto('/global-scripts');
+        const index = SCRIPT_KEYS.indexOf(key);
+        await page.getByRole('tab', { name: key, exact: true }).click();
+        const editor = page.locator('textarea.ce-area').nth(index);
+        await editor.fill('function {');
+        await page.getByRole('button', { name: 'Save Scripts', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toContainText(key);
+        expect(writes).toBe(0);
+        expect(validated).toHaveLength(4);
+        await closeError(page);
+        await expect(editor).toHaveValue('function {');
+        expect(await preventsClose(page)).toBe(true);
+        await editor.fill('return <message/>;');
+        await page.getByRole('button', { name: 'Save Scripts', exact: true }).click();
+        await expect.poll(() => writes).toBe(1);
+        expect(validated).toHaveLength(8);
+        expect(validated.slice(4)).toContain('return <message/>;');
+        await expect.poll(() => preventsClose(page)).toBe(false);
+    });
+}
+
+for (const action of ['leave', 'export']) {
+    test(`Global Scripts ${action} validates every staged script before saving`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        let writes = 0;
+        let reads = 0;
+        await page.addInitScript(() => {
+            (window as any).scriptExportPickers = 0;
+            (window as any).showSaveFilePicker = async () => {
+                (window as any).scriptExportPickers++;
+                throw new DOMException('Cancelled', 'AbortError');
+            };
+        });
+        await mockEngine(page, {
+            'GET /server/globalScripts': () => { reads++; return DEFAULT_SCRIPTS_XML; },
+            'POST /javascript/_validate': { error: 'Error on line 1: invalid syntax.' },
+            'PUT /server/globalScripts': () => { writes++; return ''; },
+        });
+        await page.goto('/global-scripts');
+        await page.locator('textarea.ce-area').first().fill('function {');
+        if (action === 'leave') {
+            await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+            await page.getByRole('dialog', { name: 'Unsaved Changes', exact: true })
+                .getByRole('button', { name: 'Save Changes', exact: true }).click();
+        } else {
+            await page.getByRole('button', { name: 'Export Scripts', exact: true }).click();
+            await page.getByRole('dialog', { name: 'Export Scripts', exact: true })
+                .getByRole('button', { name: 'Save and Export', exact: true }).click();
+        }
+        const error = page.getByRole('dialog', { name: 'Error', exact: true });
+        for (const key of SCRIPT_KEYS) await expect(error).toContainText(key);
+        await closeError(page);
+        expect(writes).toBe(0);
+        expect(reads).toBe(1);
+        expect(await page.evaluate(() => (window as any).scriptExportPickers)).toBe(0);
+        await expect(page).toHaveURL(/\/global-scripts$/);
+        await expect(page.locator('textarea.ce-area').first()).toHaveValue('function {');
+        expect(await preventsClose(page)).toBe(true);
+    });
+}
+
+for (const endpoint of ['', '/extensions/websupport']) {
+    test(`Global Scripts validates all bodies through ${endpoint || 'native'} Rhino without requiring the manual validation task`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        await page.route('**/webadmin/plugins.json', async route => {
+            const response = await route.fetch();
+            const plugins = await response.json();
+            plugins.push({ id: 'script-rbac', version: '1.0.0', entry: '/plugins/script-rbac/entry.js' });
+            await route.fulfill({ json: plugins });
+        });
+        await page.route('**/plugins/script-rbac/entry.js*', route => route.fulfill({
+            contentType: 'application/javascript',
+            body: "export function register(p){ p.setAuthorizationController({checkTask:(g,t)=>t!=='doValidateCurrentGlobalScript'}); }",
+        }));
+        const bodies = ['return <message/>;', '', '123', 'null'];
+        const validated: string[] = [];
+        let submitted: any;
+        await mockEngine(page, {
+            'GET /webplugins': endpoint ? { __status: 404 } : [],
+            'GET /extensions/websupport/webplugins': [],
+            [`POST ${endpoint}/javascript/_validate`]: (request: any) => {
+                validated.push(request.postData() ?? ''); return { error: null };
+            },
+            'PUT /server/globalScripts': (request: any) => { submitted = request.postDataJSON(); return ''; },
+        });
+        await page.goto('/global-scripts');
+        await expect(page.locator('textarea.ce-area').first()).toHaveValue('return;');
+        await expect(page.getByRole('button', { name: 'Validate Script', exact: true })).toHaveCount(0);
+        await chooseScripts(page, xmlScripts(Object.fromEntries(SCRIPT_KEYS.map((key, index) => [key, bodies[index]]))));
+        await page.getByRole('dialog', { name: 'Import Scripts', exact: true }).getByRole('button', { name: 'Import', exact: true }).click();
+        await page.getByRole('button', { name: 'Save Scripts', exact: true }).click();
+        await expect.poll(() => submitted).toEqual({ map: { entry: SCRIPT_KEYS.map((key, index) => ({ string: [key, bodies[index]] })) } });
+        expect([...validated].sort()).toEqual([...bodies].sort());
+    });
+}
+
+for (const failure of [
+    { name: 'temporary failure', response: { __status: 503, body: 'Validator unavailable' } },
+    { name: 'denied validation', response: { __status: 403, body: 'Validator denied' } },
+    { name: 'missing result', response: {} },
+    { name: 'malformed result', response: { error: false } },
+]) {
+    test(`Global Scripts blocks ${failure.name} and retries validation before saving`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        let fail = true;
+        let validations = 0;
+        let writes = 0;
+        await mockEngine(page, {
+            'POST /javascript/_validate': (request: any) => {
+                validations++;
+                return fail && request.postData().includes('retain this draft') ? failure.response : { error: null };
+            },
+            'PUT /server/globalScripts': () => { writes++; return ''; },
+        });
+        await page.goto('/global-scripts');
+        const editor = page.locator('textarea.ce-area').first();
+        await editor.fill('// retain this draft\nreturn;');
+        await page.getByRole('button', { name: 'Save Scripts', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toContainText('Validation unavailable');
+        expect(validations).toBe(4);
+        expect(writes).toBe(0);
+        await closeError(page);
+        await expect(editor).toHaveValue('// retain this draft\nreturn;');
+        expect(await preventsClose(page)).toBe(true);
+        fail = false;
+        await page.getByRole('button', { name: 'Save Scripts', exact: true }).click();
+        await expect.poll(() => writes).toBe(1);
+        expect(validations).toBe(8);
+        await expect.poll(() => preventsClose(page)).toBe(false);
+    });
+}
+
+test('Global Scripts requires a validator when neither engine endpoint is installed', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    let writes = 0;
+    await mockEngine(page, {
+        'GET /webplugins': { __status: 404 },
+        'GET /extensions/websupport/webplugins': { __status: 404 },
+        'PUT /server/globalScripts': () => { writes++; return ''; },
+    });
+    await page.goto('/global-scripts');
+    const warning = page.getByRole('dialog', { name: 'Warning', exact: true });
+    await expect(warning).toContainText('Web Support plugin is not installed');
+    await warning.getByRole('button', { name: 'Close', exact: true }).last().click();
+    const editor = page.locator('textarea.ce-area').first();
+    await expect(editor).toHaveValue('return;');
+    await editor.fill('return <message/>;');
+    await page.getByRole('button', { name: 'Save Scripts', exact: true }).click();
+    const error = page.getByRole('dialog', { name: 'Error', exact: true });
+    await expect(error).toContainText('Web Support plugin is not installed');
+    for (const key of SCRIPT_KEYS) await expect(error).toContainText(key);
+    await closeError(page);
+    expect(writes).toBe(0);
+    await expect(editor).toHaveValue('return <message/>;');
+    expect(await preventsClose(page)).toBe(true);
+});
+
+test('Global Scripts locks the submitted draft during validation and ignores completion after logout', async ({ page }) => {
+    await page.route('**/vendor/monaco/**', route => route.abort());
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let validations = 0;
+    let writes = 0;
+    let expired = false;
+    await mockEngine(page, {
+        'GET /users/current': () => expired ? { __status: 401 } : { user: { id: 1, username: 'admin' } },
+        'PUT /server/globalScripts': () => { writes++; return ''; },
+    });
+    await page.route('**/api/javascript/_validate', async route => {
+        validations++;
+        await gate;
+        await route.fulfill({ json: { error: null } });
+    });
+    try {
+        await page.goto('/global-scripts');
+        const editor = page.locator('textarea.ce-area').first();
+        await editor.fill('// submitted\nreturn;');
+        await page.getByRole('button', { name: 'Save Scripts', exact: true }).click();
+        await expect.poll(() => validations).toBeGreaterThan(0);
+        await expect(page.locator('.content-row')).toHaveAttribute('inert');
+        await editor.evaluate(input => (input as HTMLElement).focus());
+        await page.keyboard.type('UNSENT');
+        await expect(editor).toHaveValue('// submitted\nreturn;');
+        await page.getByRole('button', { name: 'Save Scripts', exact: true, includeHidden: true })
+            .evaluate(button => (button as HTMLButtonElement).click());
+        expired = true;
+        await page.evaluate(async () => {
+            const api = await import(String('/core/api.js'));
+            await api.get('/users/current').catch(() => {});
+        });
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+        const pending = validations;
+        release();
+        await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 100)));
+        expect(validations).toBe(pending);
+        expect(writes).toBe(0);
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect(page).toHaveURL(/\/$/);
+    } finally { release(); }
 });
 
 test('F04: failed or malformed loads keep editors unavailable until a successful retry', async ({ page }) => {
@@ -147,6 +367,7 @@ test('Global Scripts import stages Swing drafts and preserves later edits until 
     await expect(page.locator('textarea.ce-area').nth(2)).toHaveValue('// keep this unsupplied draft\nreturn message;');
     expect(submitted).toBeUndefined();
     expect(reads).toBe(1);
+    expect(await preventsClose(page)).toBe(true);
     await page.getByRole('tab', { name: 'Deploy', exact: true }).click();
     await deploy.fill('// later edit\nreturn;');
     await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
@@ -161,6 +382,7 @@ test('Global Scripts import stages Swing drafts and preserves later edits until 
         { string: ['Postprocessor', 'return;'] },
     ] } });
     expect(reads).toBe(1);
+    expect(await preventsClose(page)).toBe(false);
 });
 
 test('Global Scripts cancelled and invalid imports retain the current draft', async ({ page }) => {
@@ -182,6 +404,7 @@ test('Global Scripts cancelled and invalid imports retain the current draft', as
         await expect(editor).toHaveValue('// keep draft\nreturn;');
         await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
     }
+    expect(await preventsClose(page)).toBe(true);
 });
 
 test('Global Scripts import locks edits, repeated actions and navigation while the file is read', async ({ page }) => {
@@ -214,6 +437,7 @@ test('Global Scripts import locks edits, repeated actions and navigation while t
     await expect(editor).toHaveValue('123');
     await editor.fill('// later edit\nreturn;');
     await expect(editor).toHaveValue('// later edit\nreturn;');
+    expect(await preventsClose(page)).toBe(true);
 });
 
 for (const event of ['error', 'abort', 'throw']) {
@@ -233,6 +457,7 @@ for (const event of ['error', 'abort', 'throw']) {
         if (event !== 'abort') await closeError(page);
         await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
         await expect(editor).toHaveValue('// preserve draft\nreturn;');
+        expect(await preventsClose(page)).toBe(true);
     });
 }
 
@@ -264,6 +489,7 @@ for (const fail of [false, true]) {
         expect(writes).toBe(0);
         expect(reads).toBe(1);
         expect(downloads).toBe(0);
+        expect(await preventsClose(page)).toBe(true);
         if (fail) {
             await page.getByRole('button', { name: 'Export Scripts', exact: true }).click();
             await page.getByRole('dialog', { name: 'Export Scripts', exact: true }).getByRole('button', { name: 'Save and Export', exact: true }).click();
@@ -272,6 +498,7 @@ for (const fail of [false, true]) {
             expect(writes).toBe(1);
             expect(reads).toBe(1);
             expect(downloads).toBe(0);
+            expect(await preventsClose(page)).toBe(true);
         }
         await page.getByRole('button', { name: 'Export Scripts', exact: true }).click();
         const downloadPromise = page.waitForEvent('download');
@@ -282,6 +509,7 @@ for (const fail of [false, true]) {
         expect(writes).toBe(fail ? 2 : 1);
         expect(reads).toBe(2);
         expect(downloads).toBe(1);
+        expect(await preventsClose(page)).toBe(false);
     });
 }
 
@@ -309,6 +537,7 @@ test('Global Scripts cannot save a staged import through Export when the role ca
     await closeError(page);
     expect(reads).toBe(1);
     await expect(page.locator('textarea.ce-area').first()).toHaveValue('123');
+    expect(await preventsClose(page)).toBe(true);
 });
 
 for (const outcome of ['load', 'error']) {
