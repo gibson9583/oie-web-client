@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 globalThis.document = { cookie: 'oie-engine=k%3Afirst; oie-login=one' };
 globalThis.window = new EventTarget();
-const { engineFetch, adoptEngineContext, assertEngineResponse } = await import('./engine-fetch.js');
+const { engineFetch, adoptEngineContext, assertEngineResponse, discardEngineResponses, captureEngineSession } = await import('./engine-fetch.js');
 let calls = 0, changes = 0;
 window.addEventListener('oie-session-changed', () => changes++);
 globalThis.fetch = async (_url, init) => {
@@ -38,4 +38,32 @@ document.cookie = 'oie-engine=k%3Asecond; oie-login=four';
 adoptEngineContext();
 await response.text();
 assert.throws(() => assertEngineResponse(response), /previous session/);
+// Local idle lock fences headers AND bodies without waiting for remote cookies.
+globalThis.fetch = () => new Promise(resolve => { complete = resolve; });
+const pendingIdle = engineFetch('/api/test');
+discardEngineResponses();
+complete(new Response('late private data'));
+await assert.rejects(pendingIdle, /previous session/);
+globalThis.fetch = async () => new Response('new response');
+const beforeLock = await engineFetch('/api/test');
+discardEngineResponses();
+assert.throws(() => assertEngineResponse(beforeLock), /previous session/);
+assert.equal(await (await engineFetch('/api/test')).text(), 'new response');
+
+// A logical operation cannot start fresh requests after an earlier stage was
+// invalidated, even if that stage's caller deliberately tolerated its failure.
+const interruptedOperation = captureEngineSession();
+interruptedOperation();
+discardEngineResponses();
+assert.throws(interruptedOperation, /previous session/);
+const replacementOperation = captureEngineSession();
+replacementOperation();
+assert.throws(interruptedOperation, /previous session/);
+
+document.cookie = 'oie-engine=k%3Asecond; oie-login=five';
+assert.throws(replacementOperation, /session changed/);
+assert.throws(captureEngineSession, /session changed/);
+adoptEngineContext();
+assert.throws(replacementOperation, /previous session/);
+captureEngineSession()();
 console.log('engine-fetch: session changes block requests and stale responses');

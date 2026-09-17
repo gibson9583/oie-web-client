@@ -39,16 +39,35 @@ function changed() {
         window.dispatchEvent(new Event('oie-session-changed'));
     throw new Error('The browser session changed. Reload to continue.');
 }
+let responseGeneration = 0;
 const responseContexts = new WeakMap();
+/** End local access even when remote revocation has not changed the cookies. */
+export function discardEngineResponses() { responseGeneration++; }
+/** Fence an entire user operation, including new requests after an awaited stage. */
+export function captureEngineSession() {
+    const capturedContext = expected;
+    const capturedGeneration = responseGeneration;
+    const assertCurrent = () => {
+        if (capturedContext !== expected || capturedGeneration !== responseGeneration) {
+            throw new Error('Discarded an operation from the previous session.');
+        }
+        if (capturedContext !== context())
+            changed();
+    };
+    assertCurrent();
+    return assertCurrent;
+}
 // fetch resolves at response headers; callers check again after reading a body.
 export function assertEngineResponse(response) {
-    if (responseContexts.get(response) !== expected)
+    const sent = responseContexts.get(response);
+    if (sent?.context !== expected || sent.generation !== responseGeneration)
         throw new Error('Discarded a response from the previous session.');
     if (expected !== context())
         changed();
 }
 export async function engineFetch(url, init = {}) {
     const sentContext = expected;
+    const sentGeneration = responseGeneration;
     if (sentContext !== context())
         return changed();
     const headers = new Headers(init.headers);
@@ -56,7 +75,7 @@ export async function engineFetch(url, init = {}) {
     // WAR requests bypass the Node proxy's response headers. Never read or
     // write the HTTP cache, even if the engine omits Cache-Control.
     const response = await fetch(url, { ...init, headers, cache: 'no-store' });
-    responseContexts.set(response, sentContext);
+    responseContexts.set(response, { context: sentContext, generation: sentGeneration });
     assertEngineResponse(response);
     if (response.status === 409 && (await response.clone().json().catch(() => null))?.error === 'SESSION_CHANGED')
         return changed();

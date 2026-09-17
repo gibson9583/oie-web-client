@@ -37,7 +37,23 @@ export function register(pattern, handler, meta = {}) {
 // slot), and a view that is built and then discarded takes the winning view's
 // guard down with it when its unmount cleanup runs.
 export function navigationToken() { return generation; }
-export function setOutlet(el) { outlet = el; }
+export function setOutlet(el) {
+    outlet = el;
+    if (el === null) {
+        // Ending the shell also ends pending guards/lazy routes. Their later
+        // completions must not restore the departed user's URL or view.
+        generation++;
+        acceptedPath = null;
+        const teardown = currentTeardown;
+        currentTeardown = null;
+        if (teardown) {
+            try {
+                teardown();
+            }
+            catch { /* view cleanup */ }
+        }
+    }
+}
 export function setNotFound(handler) { notFound = handler; }
 export function setGuard(fn) { beforeEach = fn; }
 export function navigate(path) {
@@ -59,6 +75,8 @@ function parseQuery(qsStr) {
     return query;
 }
 async function handleChange() {
+    if (!outlet)
+        return;
     const gen = ++generation;
     let path = currentPath();
     let query = {};

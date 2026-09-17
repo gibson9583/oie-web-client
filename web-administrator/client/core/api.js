@@ -380,7 +380,7 @@ export function asList(value, key) {
 export const auth = {
     // Idle-timeout logout (Swing parity): a distinct engine operation so the event
     // log records "Logged out due to inactivity" instead of a plain logout.
-    inactivityLogout: () => post('/users/_inactivityLogout', '', { noAuthHandler: true }),
+    inactivityLogout: () => post('/users/_inactivityLogout', '', { noAuthHandler: true, timeoutMs: 5_000 }),
     // `loginData`, when present, is the second leg of an extended/MFA login: the
     // engine reads it from the X-Mirth-Login-Data header (UserServletInterface
     // .LOGIN_DATA_HEADER) and delegates to its MFA plugin instead of re-checking

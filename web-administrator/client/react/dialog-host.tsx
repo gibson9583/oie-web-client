@@ -63,6 +63,11 @@ export function openRadixDialog(opts: any = {}) {
     return { close, get el() { return entry.node; } };
 }
 
+/** Remove session-owned forms and message content when access ends. */
+export function closeSessionDialogs() {
+    for (const entry of [...dialogs].reverse()) entry.close();
+}
+
 /* ---- rendering ---- */
 
 /** Mounts whatever h() produced — a node, a list of them, or plain text. */

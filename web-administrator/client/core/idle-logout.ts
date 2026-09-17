@@ -15,47 +15,76 @@ import { get } from './api.js';
 
 const EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'];
 
-let lastActivity = 0;
 let checkTimer: ReturnType<typeof setInterval> | null = null;
-let listening = false;
-
-const touch = () => { lastActivity = Date.now(); };
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let unlisten: (() => void) | null = null;
+let generation = 0;
 
 /**
  * Reads the policy and, when enabled with a positive interval, starts watching.
  * `onIdle` runs once when the idle window elapses. Safe to call again (re-login);
- * a missing/older engine endpoint just means no policy to enforce.
+ * An explicitly unsupported endpoint means no policy. Transient failures retry
+ * without treating network traffic as user activity or installing stale timers.
  */
 export async function startIdleLogout(onIdle: () => void): Promise<void> {
     stopIdleLogout();
+    const current = generation;
+    let lastActivity = Date.now();
     let minutes = 0;
-    try {
-        const pub = await get('/server/publicSettings');
-        const enabled = pub && (pub.administratorAutoLogoutIntervalEnabled === true
-            || pub.administratorAutoLogoutIntervalEnabled === 'true');
-        minutes = enabled ? (parseInt(pub.administratorAutoLogoutIntervalField, 10) || 0) : 0;
-    } catch {
-        return; // endpoint unavailable — no policy
-    }
-    if (minutes <= 0) return;
-
-    lastActivity = Date.now();
-    if (!listening) {
-        for (const ev of EVENTS) window.addEventListener(ev, touch, { passive: true, capture: true });
-        listening = true;
-    }
-    checkTimer = setInterval(() => {
-        if (Date.now() - lastActivity >= minutes * 60000) {
+    const check = () => {
+        if (current !== generation) return;
+        if (minutes > 0 && Date.now() - lastActivity >= minutes * 60000) {
             stopIdleLogout();
             onIdle();
         }
-    }, 30000);
+    };
+    const touch = () => { check(); lastActivity = Date.now(); };
+    for (const ev of EVENTS) window.addEventListener(ev, touch, { passive: true, capture: true });
+    window.addEventListener('focus', check);
+    unlisten = () => {
+        for (const ev of EVENTS) window.removeEventListener(ev, touch, { capture: true });
+        window.removeEventListener('focus', check);
+    };
+    const load = async () => {
+        try {
+            const pub = await get('/server/publicSettings', {}, { timeoutMs: 10_000 });
+            if (current !== generation) return;
+            const enabled = pub?.administratorAutoLogoutIntervalEnabled;
+            if (enabled === false || enabled === 'false') { stopIdleLogout(); return; }
+            // Older engines may publish other settings without this feature.
+            if (pub && enabled === undefined && pub.administratorAutoLogoutIntervalField === undefined) {
+                stopIdleLogout(); return;
+            }
+            const value = Number(pub?.administratorAutoLogoutIntervalField);
+            if ((enabled !== true && enabled !== 'true') || !Number.isInteger(value) || value < 1 || value > 60) {
+                throw new Error('Invalid administrator idle policy');
+            }
+            minutes = value;
+            check();
+            if (current === generation) checkTimer = setInterval(check, 30_000);
+        } catch (e: any) {
+            if (current !== generation) return;
+            if (e.status === 404 || e.status === 405) { stopIdleLogout(); return; }
+            retryTimer = setTimeout(() => { retryTimer = null; void load(); }, 30_000);
+        }
+    };
+    await load();
 }
 
 export function stopIdleLogout(): void {
+    generation++;
     if (checkTimer) { clearInterval(checkTimer); checkTimer = null; }
-    if (listening) {
-        for (const ev of EVENTS) window.removeEventListener(ev, touch, { capture: true });
-        listening = false;
-    }
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    unlisten?.();
+    unlisten = null;
+}
+
+// Non-sensitive, tab-local marker: reload must not rehydrate an idle session
+// whose remote revocation failed. Only a new successful sign-in clears it.
+const LOCK_KEY = 'oie-idle-locked';
+export function isIdleLocked(): boolean {
+    try { return sessionStorage.getItem(LOCK_KEY) === 'true'; } catch { return false; }
+}
+export function setIdleLocked(locked: boolean): void {
+    try { if (locked) sessionStorage.setItem(LOCK_KEY, 'true'); else sessionStorage.removeItem(LOCK_KEY); } catch { /* storage unavailable */ }
 }
