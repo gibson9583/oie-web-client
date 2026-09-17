@@ -6,7 +6,7 @@
  * The browser talks to /api/... on this server; we stream the request through to
  * the selected engine (.../api/...) and stream the response back. This keeps the
  * web administrator a standalone install: no CORS, no browser warnings about the
- * engine's certificate, and engine cookies retain their paths. Their browser
+ * engine's certificate, and engine cookie paths are mapped to the proxy. Their browser
  * names are scoped to the upstream URL so sessions cannot cross engines.
  *
  * Multi-engine: the browser picks an engine at login and sets an `oie-engine`
@@ -60,6 +60,7 @@ exports.isTrustedPeer = isTrustedPeer;
 exports.resolveForwardedFor = resolveForwardedFor;
 exports.forceNoStore = forceNoStore;
 exports.rewriteSetCookies = rewriteSetCookies;
+exports.engineRequestPath = engineRequestPath;
 exports.sanitizeForwardHeaders = sanitizeForwardHeaders;
 exports.createApiProxy = createApiProxy;
 exports.engineRequest = engineRequest;
@@ -226,10 +227,13 @@ function forceNoStore(headers) {
 /** Apply the browser-facing session-cookie policy shared by the streaming proxy
  * and server-side OIDC callback login. */
 function rewriteSetCookies(cookies, secure, engine) {
+    const base = new URL(engine.url).pathname.replace(/\/+$/, '');
     return (cookies || []).map((original) => {
         let cookie = engineCookiePrefix(engine) + original;
         // Cookies now belong to the web administrator's host, not the upstream.
         cookie = cookie.replace(/;\s*domain=[^;]*/ig, '');
+        if (base)
+            cookie = cookie.replace(/(;\s*path=)([^;]*)/ig, (_match, attribute, path) => attribute + (path === base ? '/' : path.startsWith(base + '/') ? path.slice(base.length) : path));
         if (!/;\s*samesite=/i.test(cookie))
             cookie += '; SameSite=Lax';
         if (secure) {
@@ -240,6 +244,12 @@ function rewriteSetCookies(cookies, secure, engine) {
             cookie = cookie.replace(/;\s*secure\b/ig, '');
         return cookie;
     });
+}
+/** Keep the configured context path for every engine transport, including
+ * buffered plugin/auth calls. Preserve the caller's escaped path and query.
+ */
+function engineRequestPath(target, requestPath) {
+    return target.pathname.replace(/\/+$/, '') + '/' + requestPath.replace(/^\/+/, '');
 }
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
 // set a trust-aware X-Forwarded-For, and strip the spoofable X-Forwarded-* /
@@ -337,7 +347,7 @@ function createApiProxy(config) {
             hostname: target.hostname,
             port: target.port || (isHttps ? 443 : 80),
             method: req.method,
-            path: req.originalUrl,
+            path: engineRequestPath(target, req.originalUrl),
             headers
         }, (upstreamRes) => {
             const resHeaders = {};
@@ -474,7 +484,7 @@ function engineRequest(engine, { method, path: reqPath, headers, body, timeoutMs
             hostname: target.hostname,
             port: target.port || (isHttps ? 443 : 80),
             method,
-            path: reqPath,
+            path: engineRequestPath(target, reqPath),
             headers: h
         }, (res) => {
             res.on('error', fail);
