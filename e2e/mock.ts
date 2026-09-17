@@ -1,5 +1,18 @@
 import { DEFAULT_FIXTURES } from './fixtures.js';
 
+// These engine reads negotiate XML to preserve Java String fields that the
+// engine's JSON bridge treats as primitives. Keep JSON fixtures available for
+// their other consumers; individual wire-contract tests can provide raw XML.
+function fixtureXml(tag: string, value: any): string {
+    if (Array.isArray(value)) return value.map(item => fixtureXml(tag, item)).join('');
+    const escape = (text: any) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (value == null) return `<${tag}/>`;
+    const content = typeof value === 'object'
+        ? Object.entries(value).map(([key, child]) => fixtureXml(key, child)).join('')
+        : escape(value);
+    return `<${tag}>${content}</${tag}>`;
+}
+
 /*
  * Intercept every /api/* request in the browser and fulfill it from fixtures,
  * so the SPA runs end-to-end with no engine. Unmatched calls return an empty
@@ -37,6 +50,11 @@ export async function mockEngine(page: any, overrides = {}) {
         }
         if (fx && fx.__status) {
             return route.fulfill({ status: fx.__status, contentType: 'application/json', body: JSON.stringify(fx.body ?? {}) });
+        }
+        if (req.method() === 'GET' && req.headers().accept?.includes('application/xml')
+            && /^\/channels\/[^/]+\/status$/.test(path)) {
+            return route.fulfill({ status: 200, contentType: 'application/xml',
+                body: Object.entries(fx).map(([tag, value]) => fixtureXml(tag, value)).join('') });
         }
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fx) });
     });

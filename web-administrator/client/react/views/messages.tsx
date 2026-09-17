@@ -54,6 +54,7 @@ import { Icon } from '../bridges.jsx';
 import * as router from '../../core/router.js';
 import { DateTimeField } from '../date-time-field.jsx';
 import { on } from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import {
     COMPARE_STAGES, cancelPending, confirmCompare, describeRef, getAnchor, getPending,
     proposeCompare, refFromConnectorMessage, sameMessage, selectForCompare, stageLabel, storedContentTypes
@@ -263,14 +264,81 @@ function pickBinaryFile() {
     });
 }
 
+function deployedConnectors(xml: string, channelId: string) {
+    const doc = new DOMParser().parseFromString(xml, 'text/xml');
+    const status = doc.documentElement;
+    const hasText = (element: Element) => Array.from(element.childNodes)
+        .some(node => (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) && !!node.textContent?.trim());
+    const field = (parent: Element, name: string) => {
+        const matches = Array.from(parent.children).filter(child => child.tagName === name);
+        if (matches.length !== 1) throw new Error('The engine returned invalid destination information.');
+        return matches[0];
+    };
+    const text = (parent: Element, name: string) => {
+        const element = field(parent, name);
+        if (element.children.length) throw new Error('The engine returned invalid destination information.');
+        return element.textContent ?? '';
+    };
+    if (doc.querySelector('parsererror') || doc.doctype || status.tagName !== 'dashboardStatus' || hasText(status)
+        || text(status, 'channelId') !== channelId || text(status, 'statusType') !== 'CHANNEL') {
+        throw new Error('The engine returned no channel status information.');
+    }
+    const children = field(status, 'childStatuses');
+    if (hasText(children)) throw new Error('The engine returned invalid destination information.');
+    const ids = new Set<number>();
+    return Array.from(children.children).map(child => {
+        if (child.tagName !== 'dashboardStatus' || hasText(child) || text(child, 'channelId') !== channelId) {
+            throw new Error('The engine returned invalid destination information.');
+        }
+        const id = text(child, 'metaDataId');
+        const metaDataId = Number(id);
+        if (!/^\d+$/.test(id) || !Number.isSafeInteger(metaDataId) || ids.has(metaDataId)
+            || text(child, 'statusType') !== (metaDataId === 0 ? 'SOURCE_CONNECTOR' : 'DESTINATION_CONNECTOR')) {
+            throw new Error('The engine returned invalid destination information.');
+        }
+        ids.add(metaDataId);
+        return { metaDataId, name: text(child, 'name') };
+    });
+}
+
 /* Shared Send Message dialog (parity with the Swing EditMessageDialog) — pops
    over whichever view invokes it. onSent() runs after a successful submit
    (e.g. to refresh a results list). */
 export async function openSendMessageDialog(platform: any, channelId: any, onSent: any) {
+    let assertSession: () => void;
+    try { assertSession = captureEngineSession(); }
+    catch { return; }
+    return discoverSendMessage(platform, channelId, onSent, assertSession);
+}
+
+async function discoverSendMessage(platform: any, channelId: any, onSent: any, assertSession: () => void) {
+    let closed = false;
+    const current = () => {
+        if (closed) return false;
+        try { assertSession(); return true; }
+        catch { return false; }
+    };
+    if (!current()) return;
     let connectors: any[] = [];
     try {
-        connectors = connectorEntries(await api.channels.connectorNames(channelId));
-    } catch { /* destinations unknown — dialog still works, sends to all */ }
+        // Swing's DashboardPanel.getDestinationConnectorNames uses deployed
+        // statuses. Saved connector names can differ until the next deployment,
+        // and discovering them also requires the unrelated View Messages task.
+        // XML also preserves names such as "1e3" or "null" that XStream JSON
+        // coerces to primitives. This is the same existing status endpoint.
+        connectors = deployedConnectors(await api.getXml(`/channels/${encodeURIComponent(channelId)}/status`), channelId);
+        if (!current()) return;
+    } catch (e: any) {
+        if (!current()) return;
+        modal({
+            title: 'Unable to Load Destinations',
+            onClose: () => { closed = true; },
+            body: h('div', `No message has been sent. Retry destination discovery before processing. ${e.message || e}`),
+            buttons: [{ label: 'Close' }, { label: 'Retry', primary: true,
+                onClick: () => { if (current()) void discoverSendMessage(platform, channelId, onSent, assertSession); } }]
+        });
+        return;
+    }
 
     const editor = createCodeEditor({ value: '', minHeight: '340px', placeholder: 'Raw message payload…' });
 
@@ -279,14 +347,18 @@ export async function openSendMessageDialog(platform: any, channelId: any, onSen
     const fileButtons = h('div', { class: 'flex gap-2 mt-2' },
         h('button.btn', {
             onClick: async () => {
-                const file = await pickFile();
-                if (file) editor.setValue(file.content);
+                if (!current()) return;
+                try {
+                    const file = await pickFile();
+                    if (file && current()) editor.setValue(file.content);
+                } catch (e: any) { if (current()) toast(`Failed to open file: ${e.message || e}`, 'error'); }
             }
         }, 'Open Text File…'),
         h('button.btn', {
             onClick: async () => {
+                if (!current()) return;
                 const file = await pickBinaryFile();
-                if (file) editor.setValue((file as any).content);
+                if (file && current()) editor.setValue((file as any).content);
             },
             title: 'Open a binary file into the editor above. The file will be encoded and displayed as Base64.'
         }, 'Open Binary File…'),
@@ -359,10 +431,12 @@ export async function openSendMessageDialog(platform: any, channelId: any, onSen
 
     /* ---- dialog -------------------------------------------------------------- */
 
-    modal({
+    let sending = false;
+    let outcomeUnknown = false;
+    const dialog = modal({
         title: 'Message',
         size: 'wide',
-        onClose: () => { editor.dispose && editor.dispose(); },
+        onClose: () => { closed = true; editor.dispose && editor.dispose(); },
         body: h('div',
             editor.el,
             fileButtons,
@@ -376,32 +450,47 @@ export async function openSendMessageDialog(platform: any, channelId: any, onSen
             {
                 label: 'Process Message', primary: true,
                 onClick: async () => {
+                    if (sending || !current()) return false;
                     const rawData = editor.getValue();
                     if (!rawData) { toast('Enter a message payload', 'warn'); return false; }
-                    // This text/plain endpoint receives destinationMetaDataId as a
-                    // JAX-RS Set<Integer>: when the param is omitted the engine sees
-                    // an *empty* set (not null) and dispatches to NO destinations
-                    // (Channel.java filters every destination out of an empty set).
-                    // So always send the explicit list of checked destinations.
-                    const metaDataIds = destRows.filter(d => (d.input as any).checked).map(d => d.metaDataId);
-                    // MessageServletInterface expects sourceMapEntry values as "key=value".
+                    const selected = destRows.filter(d => (d.input as any).checked).map(d => d.metaDataId);
+                    // Match Swing: all selected means all destinations deployed
+                    // when processing starts, including any added while open.
+                    const metaDataIds = selected.length === destRows.length ? null : selected;
                     const sourceMapEntries = mapRows
                         .filter(r => r.key.value.trim() !== '')
                         .map(r => `${r.key.value.trim()}=${r.value.value}`);
+                    sending = true;
+                    const submit = dialog.el.querySelector<HTMLButtonElement>('.modal-foot .btn-primary');
+                    if (submit) { submit.disabled = true; submit.textContent = 'Processing…'; }
+                    let attempted = false;
                     try {
+                        if (outcomeUnknown && !await confirmDialog('Retry Message',
+                            'The previous send could not be confirmed and may already be processing. Verify its outcome in the engine before retrying. Sending again may create a duplicate.',
+                            { danger: true, okLabel: 'Resend Message' })) return false;
+                        if (!current()) return false;
+                        attempted = true;
                         await api.messages.processNew(channelId, rawData, metaDataIds, sourceMapEntries);
+                        if (!current()) return false;
                         toast('Message sent for processing');
                         onSent && onSent();
                     } catch (e: any) {
-                        toast(`Send failed: ${e.message}`, 'error');
+                        if (!current()) return false;
+                        if (attempted) outcomeUnknown = ![400, 401, 403, 404, 405, 415].includes(e.status);
+                        toast(outcomeUnknown
+                            ? `Send could not be confirmed: ${e.message}. Verify the engine result before retrying.`
+                            : `Message was rejected: ${e.message}`, 'error');
                         return false;
+                    } finally {
+                        sending = false;
+                        if (submit) { submit.disabled = false; submit.textContent = 'Process Message'; }
                     }
                 }
             },
             { label: 'Close' }
         ]
     });
-    setTimeout(() => editor.focus(), 30);
+    setTimeout(() => { if (current()) editor.focus(); }, 30);
 }
 
 /* ---- results table (bespoke declarative tree-grid) -------------------------------- */
@@ -2562,7 +2651,18 @@ export function MessagesView({ params, query }: any) {
     }
 
     async function importMessagesTask() {
-        const file = await pickFile('.xml,application/xml,text/xml');
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); }
+        catch { return; }
+        let file;
+        try {
+            file = await pickFile('.xml,application/xml,text/xml');
+            assertSession();
+        } catch (error: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Import failed: ${error.message || error}`, 'error');
+            return;
+        }
         if (!file) return;
         // Engine-exported files hold serialized <message>...</message> blocks
         // (optionally inside <list>), exactly what the Swing MessageImporter
@@ -2579,9 +2679,12 @@ export function MessagesView({ params, query }: any) {
         let lastError: any = null;
         for (const xml of blocks) {
             try {
+                assertSession();
                 await api.post(`/channels/${channelId}/messages/_import`, xml, { contentType: 'application/xml' });
+                assertSession();
                 imported++;
             } catch (e: any) {
+                try { assertSession(); } catch { return; }
                 failed++;
                 lastError = e;
             }

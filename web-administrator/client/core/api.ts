@@ -523,10 +523,11 @@ export interface MessagesApi {
     attachment(channelId: string, messageId: string | number, attachmentId: string): Promise<Attachment>;
     /** Reattach a DICOM message's pixel data and return the full raw Base64 DICOM (Swing getDICOMMessage). */
     getDicom(channelId: string, messageId: string | number, connectorMessage: OieObject): Promise<string>;
+    /** null selects all deployed destinations (Swing); []/omitted selects none. */
     processNew(
         channelId: string,
         rawData: string,
-        destinationMetaDataIds?: number[],
+        destinationMetaDataIds?: number[] | null,
         sourceMapEntries?: string[]
     ): Promise<Json>;
     reprocess(
@@ -839,10 +840,21 @@ export const messages: MessagesApi = {
             raw: true
         }),
     processNew: (channelId, rawData, destinationMetaDataIds, sourceMapEntries) => {
-        const params: QueryParams = {};
-        if (destinationMetaDataIds && destinationMetaDataIds.length) params.destinationMetaDataId = destinationMetaDataIds;
-        if (sourceMapEntries && sourceMapEntries.length) params.sourceMapEntry = sourceMapEntries;
-        return post(`/channels/${enc(channelId)}/messages`, rawData, { contentType: 'text/plain', params });
+        const sourceMap = new Map<string, string>();
+        for (const entry of sourceMapEntries || []) {
+            const separator = entry.indexOf('=');
+            if (separator > 0) sourceMap.set(entry.slice(0, separator).trim(), entry.slice(separator + 1));
+        }
+        // Swing's existing RawMessage endpoint distinguishes null (all deployed
+        // destinations) from an empty collection (source only). Omit the null
+        // field: an empty XML/JSON collection would instead select no destinations.
+        return post(`/channels/${enc(channelId)}/messagesWithObj`, {
+            rawData, binary: false, overwrite: false, imported: false,
+            ...(destinationMetaDataIds === null ? {} : {
+                destinationMetaDataIds: { '@class': 'list', int: destinationMetaDataIds || [] }
+            }),
+            sourceMap: { '@class': 'map', entry: [...sourceMap].map(([key, value]) => ({ string: [key, value] })) }
+        }, { wrapKey: 'com.mirth.connect.donkey.model.message.RawMessage' });
     },
     reprocess: (channelId, messageId, replace = false, filterDestinations = false, metaDataIds = []) =>
         post(`/channels/${enc(channelId)}/messages/${enc(messageId)}/_reprocess`, null, {

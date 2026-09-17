@@ -58,6 +58,16 @@ export const DEFAULT_FIXTURES = {
 
     // Dashboard + channels.
     'GET /channels/statuses': { list: { dashboardStatus: SAMPLE_STATUSES } },
+    'GET /channels/*/status': (req: any) => {
+        const channelId = decodeURIComponent(new URL(req.url()).pathname.split('/').at(-2)!);
+        return { dashboardStatus: {
+            channelId, statusType: 'CHANNEL', name: 'Demo Channel', state: 'STARTED',
+            childStatuses: { dashboardStatus: [
+                { channelId, statusType: 'SOURCE_CONNECTOR', metaDataId: 0, name: 'Source', state: 'STARTED' },
+                { channelId, statusType: 'DESTINATION_CONNECTOR', metaDataId: 1, name: 'Destination 1', state: 'STARTED' },
+            ] },
+        } };
+    },
     'GET /channels/statistics': { list: { channelStatistics: [] } },
     'GET /channels': { list: { channel: SAMPLE_CHANNELS } },
     'GET /channels/idsAndNames': {},
@@ -86,6 +96,11 @@ export const DEFAULT_FIXTURES = {
                 }
             ] }
         }
+    ] } },
+
+    // Connector discovery must succeed before a message can be submitted.
+    'GET /channels/*/connectorNames': { map: { entry: [
+        { int: 0, string: 'Source' }, { int: 1, string: 'Destination 1' }
     ] } },
 
     // Global scripts view (XStream map of script key -> body).

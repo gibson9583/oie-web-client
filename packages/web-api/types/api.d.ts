@@ -133,7 +133,8 @@ export interface MessagesApi {
     attachment(channelId: string, messageId: string | number, attachmentId: string): Promise<Attachment>;
     /** Reattach a DICOM message's pixel data and return the full raw Base64 DICOM (Swing getDICOMMessage). */
     getDicom(channelId: string, messageId: string | number, connectorMessage: OieObject): Promise<string>;
-    processNew(channelId: string, rawData: string, destinationMetaDataIds?: number[], sourceMapEntries?: string[]): Promise<Json>;
+    /** null selects all deployed destinations (Swing); []/omitted selects none. */
+    processNew(channelId: string, rawData: string, destinationMetaDataIds?: number[] | null, sourceMapEntries?: string[]): Promise<Json>;
     reprocess(channelId: string, messageId: string | number, replace?: boolean, filterDestinations?: boolean, metaDataIds?: number[]): Promise<Json>;
     remove(channelId: string, messageId: string | number): Promise<Json>;
     removeAll(channelId: string, restartRunningChannels?: boolean, clearStatistics?: boolean): Promise<Json>;

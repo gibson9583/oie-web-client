@@ -53,3 +53,60 @@ test('starting a PAUSED channel POSTs _resume, not _start (matches Swing doStart
     expect((await resumed).postData()).toBe('channelId=c-paused');
     expect(startCalled).toBe(false);
 });
+
+for (const action of ['sidebar', 'channel context menu', 'group context menu', 'group selection sidebar']) {
+    test(`Send Message rejects multiple channels from the ${action}`, async ({ page }) => {
+        let reads = 0, sends = 0;
+        page.on('request', request => {
+            const path = new URL(request.url()).pathname;
+            if (/\/channels\/[^/]+\/(status|connectorNames)$/.test(path)) reads++;
+            if (request.method() === 'POST' && path.endsWith('/messagesWithObj')) sends++;
+        });
+        await page.goto('/dashboard');
+        if (action.startsWith('group')) {
+            await page.locator('tr', { hasText: '[Default Group]' }).click({ button: 'right' });
+            if (action === 'group selection sidebar') await page.keyboard.press('Escape');
+        } else {
+            await page.getByText('Demo Started', { exact: true }).click();
+            await page.getByText('Demo Stopped', { exact: true }).click({ modifiers: ['ControlOrMeta'] });
+            if (action === 'channel context menu') await page.getByText('Demo Stopped', { exact: true }).click({ button: 'right' });
+        }
+        if (action.endsWith('context menu')) {
+            await page.getByRole('menuitem', { name: 'Send Message', exact: true }).click();
+        } else {
+            await page.getByRole('button', { name: 'Send Message', exact: true }).click();
+        }
+        await expect(page.getByRole('dialog', { name: 'Warning', exact: true }))
+            .toContainText('This operation can only be performed on a single channel.');
+        await expect(page.getByRole('dialog', { name: 'Message', exact: true })).toHaveCount(0);
+        expect(reads).toBe(0);
+        expect(sends).toBe(0);
+    });
+}
+
+for (const action of ['channel context menu', 'single-channel group']) {
+    test(`Send Message uses the explicit channel from a ${action}`, async ({ page }) => {
+        await page.route('**/vendor/monaco/**', route => route.abort());
+        const reads: string[] = [];
+        page.on('request', request => {
+            const path = new URL(request.url()).pathname;
+            if (/\/channels\/[^/]+\/status$/.test(path)) reads.push(path);
+        });
+        if (action === 'single-channel group') {
+            await mockEngine(page, { 'GET /channelgroups': { list: { channelGroup: {
+                id: 'single', name: 'Single channel group', channels: { channel: { id: 'c-stopped' } }
+            } } } });
+        }
+        await page.goto('/dashboard');
+        await page.getByText('Demo Started', { exact: true }).click();
+        if (action === 'single-channel group') {
+            await page.locator('tr', { hasText: '[Single channel group]' }).click({ button: 'right' });
+        } else {
+            // Right-clicking an unselected row replaces the original selection.
+            await page.getByText('Demo Stopped', { exact: true }).click({ button: 'right' });
+        }
+        await page.getByRole('menuitem', { name: 'Send Message', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Message', exact: true })).toBeVisible();
+        expect(reads).toEqual(['/api/channels/c-stopped/status']);
+    });
+}

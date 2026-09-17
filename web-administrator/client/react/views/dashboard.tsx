@@ -22,6 +22,7 @@ import { platform } from '@oie/web-shell';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import { ViewTasks } from '../mount.jsx';
 import { useDashboardStatuses, useChannelGroups, useChannelTags, useConnectorTypes, useSourcePorts } from '../queries.js';
 import { RailPane, TaskButton, SegPill } from '../ui.jsx';
@@ -43,8 +44,17 @@ import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
 // app — into whatever chunk the dashboard lands in. It is already async, so the
 // call sites are unchanged.
 async function openSendMessageDialog(platform: any, channelId: any, onSent: any) {
-    const messages = await import('./messages.jsx');
-    return messages.openSendMessageDialog(platform, channelId, onSent);
+    let assertSession: () => void;
+    try { assertSession = captureEngineSession(); }
+    catch { return; }
+    try {
+        const messages = await import('./messages.jsx');
+        assertSession();
+        return messages.openSendMessageDialog(platform, channelId, onSent);
+    } catch (error) {
+        try { assertSession(); } catch { return; }
+        throw error;
+    }
 }
 
 
@@ -517,7 +527,12 @@ function DashboardView({ onToggleView }: any) {
         catch (e: any) { toast(`Undeploy failed: ${e.message}`, 'error'); refresh(); }
     }
     function sendMessageTask(ids: any) {
-        if (needIds(ids)) openSendMessageDialog(platform, ids[0], () => refresh());
+        if (!needIds(ids)) return;
+        if (ids.length !== 1) {
+            toast('This operation can only be performed on a single channel.', 'warn');
+            return;
+        }
+        openSendMessageDialog(platform, ids[0], () => refresh());
     }
     function viewMessagesTask(ids: any) {
         if (needIds(ids)) router.navigate(`/messages/${ids[0]}`);
@@ -920,7 +935,7 @@ function DashboardView({ onToggleView }: any) {
         e.preventDefault();
         if (!members.length) return;
         // Select the group's visible members, then mirror the channel-row menu
-        // acting on those ids. Send/View target the first member.
+        // acting on those ids. Send requires a single channel, like Swing.
         const ids = members.map((m: any) => m.channelId);
         applySelection(new Set(ids), null);
         const first = members[0];
@@ -928,7 +943,7 @@ function DashboardView({ onToggleView }: any) {
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => openSendMessageDialog(platform, first.channelId, () => refresh()) },
+            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => sendMessageTask(ids) },
             { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${first.channelId}`) },
             { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
             { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
@@ -975,7 +990,7 @@ function DashboardView({ onToggleView }: any) {
         contextMenu(e.clientX, e.clientY, [
             { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => openSendMessageDialog(platform, st.channelId, () => refresh()) },
+            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => sendMessageTask(ids) },
             { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${st.channelId}`) },
             { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
             { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
