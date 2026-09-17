@@ -1,6 +1,31 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 
+for (const extension of [false, true]) {
+    test(`Web Support discovery retries a temporary ${extension ? 'extension' : 'native'} failure`, async ({ page }) => {
+        let unavailable = true;
+        let probes = 0;
+        const endpoint = extension ? '/extensions/websupport' : '';
+        await mockEngine(page, {
+            'GET /webplugins': { __status: 404 },
+            [`GET ${endpoint}/webplugins`]: () => { probes++; return unavailable ? { __status: 503 } : []; },
+            [`POST ${endpoint}/javascript/_validate`]: { error: '' },
+        });
+        await page.goto('/dashboard');
+        await expect(page.locator('.shell')).toBeVisible();
+        await expect.poll(() => probes).toBeGreaterThan(0);
+        const validate = () => page.evaluate(async () => {
+            const name = '@oie/web-api';
+            return (await import(name)).validateScript('return true;');
+        });
+        const failure = await validate();
+        expect(failure.ok).toBeNull();
+        expect(failure.message).not.toContain('not installed');
+        unavailable = false;
+        expect(await validate()).toEqual({ ok: true });
+    });
+}
+
 /*
  * Engine-served web plugins (issue: multi-engine plugin delivery). The connected
  * engine exposes the browser half of its installed extensions under
@@ -40,12 +65,12 @@ test('loads and registers a plugin served by the engine over /api/webplugins', a
     await expect(page.getByRole('button', { name: 'Demo Engine Plugin' })).toBeVisible();
 });
 
-test('loads an engine plugin that declares a compatible @oie apiMin', async ({ page }) => {
+for (const apiMin of ['4.6', '4.7']) test(`loads an engine plugin that declares compatible @oie apiMin ${apiMin}`, async ({ page }) => {
     await mockEngine(page, {
         'GET /webplugins': ['okplug'],
         'GET /webplugins/okplug/plugin.json': {
             id: 'ok-plug', name: 'Compatible Plugin', version: '1.0.0',
-            oie: { apiMin: '4.6' }, client: { entry: 'web/plugin.js' }
+            oie: { apiMin }, client: { entry: 'web/plugin.js' }
         }
     });
     await page.route('**/api/webplugins/okplug/web/plugin.js*', (route) => route.fulfill({
@@ -153,7 +178,7 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
         'GET /webplugins': ['newplug'],
         'GET /webplugins/newplug/plugin.json': {
             id: 'new-plug', name: 'Too New Plugin', version: '1.0.0',
-            oie: { apiMin: '4.9' }, client: { entry: 'web/plugin.js' }
+            oie: { apiMin: '4.8' }, client: { entry: 'web/plugin.js' }
         }
     });
     // If the gate works, this module is never imported (its code never runs).
