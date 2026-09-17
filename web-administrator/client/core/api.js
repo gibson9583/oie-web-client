@@ -637,7 +637,13 @@ export const server = {
     setConfigurationMap: (map) => put('/server/configurationMap', map, { wrapKey: 'map' }),
     channelTags: () => get('/server/channelTags').then(v => asList(v, 'channelTag')),
     setChannelTags: (tags) => put('/server/channelTags', { channelTag: tags }, { wrapKey: 'set' }),
-    channelDependencies: () => get('/server/channelDependencies').then(v => asList(v, 'channelDependency')),
+    channelDependencies: async () => {
+        const dependencies = asList(await get('/server/channelDependencies'), 'channelDependency');
+        if (dependencies.some(d => !d || typeof d.dependentId !== 'string' || !d.dependentId || typeof d.dependencyId !== 'string' || !d.dependencyId)) {
+            throw new Error('The engine returned invalid channel dependencies. Save was stopped.');
+        }
+        return dependencies;
+    },
     setChannelDependencies: (deps) => put('/server/channelDependencies', { channelDependency: deps }, { wrapKey: 'set' }),
     channelMetadata: () => get('/server/channelMetadata'),
     setChannelMetadata: (metadata) => put('/server/channelMetadata', metadata, { wrapKey: 'map' }),
