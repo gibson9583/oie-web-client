@@ -91,7 +91,7 @@ export interface ChannelsApi {
 }
 export interface ChannelGroupsApi {
     list(): Promise<ChannelGroup[]>;
-    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[]): Promise<Json>;
+    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[], override?: boolean): Promise<Json>;
 }
 export interface StatusApi {
     list(channelIds?: string | string[], filter?: any, includeUndeployed?: boolean): Promise<DashboardStatus[]>;

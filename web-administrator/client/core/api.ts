@@ -471,7 +471,7 @@ export interface ChannelsApi {
 
 export interface ChannelGroupsApi {
     list(): Promise<ChannelGroup[]>;
-    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[]): Promise<Json>;
+    bulkUpdate(groups: ChannelGroup[] | OieObject[], removedIds?: string[], override?: boolean): Promise<Json>;
 }
 
 export interface StatusApi {
@@ -736,11 +736,11 @@ export const channels: ChannelsApi = {
 
 export const channelGroups: ChannelGroupsApi = {
     list: () => get('/channelgroups').then(v => asList<ChannelGroup>(v, 'channelGroup')),
-    bulkUpdate: (groups, removedIds = []) => {
+    bulkUpdate: (groups, removedIds = [], override = false) => {
         const form = new FormData();
         form.append('channelGroups', new Blob([stringifyEngineJson({ set: { channelGroup: groups } })], { type: 'application/json' }));
         form.append('removedChannelGroupIds', new Blob([stringifyEngineJson({ set: { string: removedIds } })], { type: 'application/json' }));
-        return post('/channelgroups/_bulkUpdate', form, { params: { override: true } });
+        return post('/channelgroups/_bulkUpdate', form, { params: { override } });
     }
 };
 

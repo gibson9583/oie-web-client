@@ -460,11 +460,11 @@ export const channels = {
 };
 export const channelGroups = {
     list: () => get('/channelgroups').then(v => asList(v, 'channelGroup')),
-    bulkUpdate: (groups, removedIds = []) => {
+    bulkUpdate: (groups, removedIds = [], override = false) => {
         const form = new FormData();
         form.append('channelGroups', new Blob([stringifyEngineJson({ set: { channelGroup: groups } })], { type: 'application/json' }));
         form.append('removedChannelGroupIds', new Blob([stringifyEngineJson({ set: { string: removedIds } })], { type: 'application/json' }));
-        return post('/channelgroups/_bulkUpdate', form, { params: { override: true } });
+        return post('/channelgroups/_bulkUpdate', form, { params: { override } });
     }
 };
 /* ---- Status & statistics --------------------------------------------------- */

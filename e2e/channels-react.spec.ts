@@ -33,7 +33,7 @@ const GROUPS_FIXTURE = {
         }
     },
     // bulkUpdate target (New Group / Assign To Group / Delete Group) — accept + no-op.
-    'POST /channelgroups/_bulkUpdate': ''
+    'POST /channelgroups/_bulkUpdate': true
 };
 
 // The stock channels with Demo Stopped disabled (Demo Started stays enabled).

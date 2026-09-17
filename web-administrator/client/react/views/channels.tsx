@@ -30,6 +30,7 @@ import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { createZip } from '../../core/zip.js';
+import { mutateChannelGroups } from '../../core/channel-groups.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, SegPill } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
@@ -1170,24 +1171,28 @@ export function ChannelsView() {
         router.navigate(`/messages/${channel.id}`);
     }
 
-    /* Group MUTATIONS build on the latest-known group list, not a render-time
-       snapshot: bulkUpdate replaces the whole set, so acting on a stale copy
-       could resurrect a deleted group. The mirror tracks state each render and
-       is read only at mutation time (the legacy ref semantics, scoped down). */
-    const groupsNowRef = useRef(groups);
-    groupsNowRef.current = groups;
+    function saveGroupChanges(change: (groups: any[]) => any[], removedIds: string[] = [], expectedGroup?: any) {
+        return mutateChannelGroups(change, removedIds, { expectedGroup,
+            confirmOverwrite: () => confirmDialog('Channel Groups Modified',
+                'One or more channel groups have been modified since you last refreshed. Do you want to overwrite the changes?',
+                { danger: true, okLabel: 'Overwrite' }) });
+    }
 
     /* Move channels between groups (used by the modal task and drag/drop).
        targetId DEFAULT_GROUP_ID means "remove from all groups". */
     async function moveChannelsToGroup(ids: any, targetId: any) {
-        const updated = structuredClone(groupsNowRef.current);
-        for (const group of updated) {
-            let members = api.asList(group.channels, 'channel').filter(m => m && m.id && !ids.has(m.id));
-            if (group.id === targetId) members = members.concat([...ids].map(id => ({ id })));
-            group.channels = members.length ? { channel: members } : null;
-        }
         try {
-            await api.channelGroups.bulkUpdate(updated, []);
+            if (!await saveGroupChanges((updated: any[]) => {
+                if (targetId !== DEFAULT_GROUP_ID && !updated.some(g => g.id === targetId)) {
+                    throw new Error('The destination group was removed. Refresh and choose another group.');
+                }
+                for (const group of updated) {
+                    let members = api.asList(group.channels, 'channel').filter(m => m && m.id && !ids.has(m.id));
+                    if (group.id === targetId) members = members.concat([...ids].map(id => ({ id })));
+                    group.channels = members.length ? { channel: members } : null;
+                }
+                return updated;
+            })) return false;
             toast('Channels moved');
             refresh();
             return true;
@@ -1224,10 +1229,9 @@ export function ChannelsView() {
     async function newGroupTask() {
         const name = await promptDialog('New Group', 'Group name');
         if (name === null || !name.trim()) return;
-        const updated = structuredClone(groupsNowRef.current);
-        updated.push({ id: uuid(), name: name.trim(), revision: 0, description: '', channels: null });
         try {
-            await api.channelGroups.bulkUpdate(updated, []);
+            const created = { id: uuid(), name: name.trim(), revision: 0, description: '', channels: null };
+            if (!await saveGroupChanges((updated: any[]) => [...updated, created])) return;
             toast(`Created group ${name.trim()}`);
             refresh();
         } catch (e: any) {
@@ -1247,9 +1251,8 @@ export function ChannelsView() {
         const group = requireGroup(g);
         if (!group) return;
         if (!await confirmDialog('Delete Group', `Delete group "${group.name}"? Its channels move to the Default Group.`, { danger: true, okLabel: 'Delete' })) return;
-        const remaining = structuredClone(groupsNowRef.current.filter(x => x.id !== group.id));
         try {
-            await api.channelGroups.bulkUpdate(remaining, [group.id]);
+            if (!await saveGroupChanges((updated: any[]) => updated.filter(x => x.id !== group.id), [group.id], group)) return;
             toast(`Deleted group ${group.name}`);
             setLastGroupId(null);
             refresh();
@@ -1274,12 +1277,13 @@ export function ChannelsView() {
                     onClick: async () => {
                         const name = nameInput.value.trim();
                         if (!name) { toast('Group name is required', 'warn'); return false; }
-                        const updated = structuredClone(groupsNowRef.current);
-                        const target = updated.find(g => g.id === group.id);
-                        target.name = name;
-                        target.description = (descArea as any).value;
                         try {
-                            await api.channelGroups.bulkUpdate(updated, []);
+                            if (!await saveGroupChanges((updated: any[]) => {
+                                const target = updated.find(current => current.id === group.id);
+                                target.name = name;
+                                target.description = (descArea as any).value;
+                                return updated;
+                            }, [], group)) return false;
                             toast(`Group "${name}" updated`);
                             refresh();
                         } catch (e: any) {
@@ -1345,9 +1349,11 @@ export function ChannelsView() {
             if (verdict.action === 'block') { await alertInformation(verdict.message); return; }
             if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return;
             const parsed = parseGroupXml(file.content);
+            // Fail before importing channels if the group collection is unreadable.
+            await api.channelGroups.list();
             const knownChannels = structuredClone(channels);
             const resolvedChannelIds = new Map();
-            const imported = [];
+            const imported: any[] = [];
             let processedGroups = 0;
 
             // Swing consolidates every bundled library across the group, prompts
@@ -1417,13 +1423,16 @@ export function ChannelsView() {
                 api.asList(g.channels, 'channel').map(ref => ref.id)));
             // Replace same-id groups and pull imported channels out of other
             // groups (a channel may only belong to one group).
-            const updated = structuredClone(groupsNowRef.current.filter(g => !importedIds.has(g.id)));
-            for (const group of updated) {
-                const members = api.asList(group.channels, 'channel')
-                    .filter(ref => ref && ref.id && !importedChannelIds.has(ref.id));
-                group.channels = members.length ? { channel: members } : null;
-            }
-            if (imported.length) await api.channelGroups.bulkUpdate(updated.concat(imported), []);
+            if (imported.length && !await saveGroupChanges((current: any[]) => {
+                const updated = current.filter(g => !importedIds.has(g.id));
+                for (const group of updated) {
+                    const members = api.asList(group.channels, 'channel')
+                        .filter(ref => ref && ref.id && !importedChannelIds.has(ref.id));
+                    group.channels = members.length ? { channel: members } : null;
+                }
+                return updated.concat(imported.map(group => ({ ...group,
+                    revision: current.find(g => g.id === group.id)?.revision ?? group.revision })));
+            })) return;
             toast(`Imported ${processedGroups} group(s) from ${file.name}`);
             refresh();
         } catch (e: any) {
