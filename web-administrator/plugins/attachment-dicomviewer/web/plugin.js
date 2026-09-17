@@ -1142,11 +1142,24 @@ function register(platform2) {
     const { bytes, meta, kind, tsName } = state;
     const renders = kind === "raw" || kind === "jpeg";
     const grayscale = kind === "raw" && info.spp < 3;
-    const saveDicom = () => platform3.ui.saveFile(
-      `attachment-${attachment.id}.dcm`,
-      "application/dicom",
-      () => new Blob([bytes], { type: "application/dicom" })
-    );
+    const saveDicom = async () => {
+      const user = platform3.store.getState("user");
+      const host = rootRef.current;
+      const current = () => !!user && platform3.store.getState("user") === user && !!host?.isConnected && rootRef.current === host;
+      if (!current()) return;
+      try {
+        await platform3.ui.saveFile(
+          `attachment-${attachment.id}.dcm`,
+          "application/dicom",
+          () => new Blob([bytes], { type: "application/dicom" }),
+          () => {
+            if (!current()) throw new Error("The DICOM viewer is no longer active.");
+          }
+        );
+      } catch (error) {
+        if (current()) platform3.ui.toast(`Failed to save DICOM: ${error.message || error}`, "error");
+      }
+    };
     const metaRows = META.filter(([tag]) => meta[tag]).map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { className: "font-semibold pr-4" }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, meta[tag])));
     const title = `DICOM object \u2014 ${info.cols}\xD7${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ""} \u2014 ${bytes.length.toLocaleString()} bytes`;
     const rootCls = expanded ? "modal flex flex-col" : "flex flex-col gap-1.5";

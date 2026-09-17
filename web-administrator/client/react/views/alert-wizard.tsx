@@ -16,6 +16,7 @@ import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { useInvalidate } from '../queries.js';
 import { toast, saveFile } from '@oie/web-ui';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { Icon } from '../bridges.jsx';
 import { ViewTasks } from '../mount.jsx';
@@ -216,14 +217,20 @@ function AlertWizardInner({ alert, isNew }: any) {
         router.navigate(`/alerts/${alert.id}/edit${isNew ? '?new=1' : ''}`);
     }
     async function exportAlert() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (isNew) { toast('Save the alert first, then export it', 'warn'); return; }
         try {
             await saveFile(`${alert.name || alert.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/alerts/${alert.id}`);
                 if (!xml || !String(xml).trim()) throw new Error('Alert not found on the server — save it first');
                 return xml;
-            });
-        } catch (e: any) { toast(`Export failed: ${e.message}`, 'error'); }
+            }, assertSession);
+            assertSession();
+        } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Export failed: ${e.message}`, 'error');
+        }
     }
 
     const isLast = step === STEPS.length - 1;

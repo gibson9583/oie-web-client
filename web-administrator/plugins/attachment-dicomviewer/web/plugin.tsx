@@ -535,9 +535,20 @@ export function register(platform: Platform) {
         const renders = kind === 'raw' || kind === 'jpeg';
         const grayscale = kind === 'raw' && info.spp < 3;
 
-        const saveDicom = () => platform.ui.saveFile(
-            `attachment-${attachment.id}.dcm`, 'application/dicom',
-            () => new Blob([bytes], { type: 'application/dicom' }));
+        const saveDicom = async () => {
+            const user = platform.store.getState('user');
+            const host = rootRef.current;
+            const current = () => !!user && platform.store.getState('user') === user
+                && !!host?.isConnected && rootRef.current === host;
+            if (!current()) return;
+            try {
+                await platform.ui.saveFile(`attachment-${attachment.id}.dcm`, 'application/dicom',
+                    () => new Blob([bytes], { type: 'application/dicom' }),
+                    () => { if (!current()) throw new Error('The DICOM viewer is no longer active.'); });
+            } catch (error: any) {
+                if (current()) platform.ui.toast(`Failed to save DICOM: ${error.message || error}`, 'error');
+            }
+        };
 
         const metaRows = META.filter(([tag]) => meta[tag]).map(([tag, label]) => (
             <tr key={tag}><td className="font-semibold pr-4">{label}</td><td className="mono">{meta[tag]}</td></tr>

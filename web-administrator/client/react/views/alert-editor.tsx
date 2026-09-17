@@ -35,6 +35,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast, contextMenu, confirmDialog, saveFile } from '@oie/web-ui';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
@@ -302,6 +303,8 @@ export function AlertEditor({ params, query = {} }: any) {
     /* Exports the saved alert as the engine's own <alertModel> XML (Swing
        format). Unsaved edits are not included — save first. */
     async function exportTask() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         const model = modelRef.current;
         if (!model) return;
         if (isNew) { toast('Save the alert first, then export it', 'warn'); return; }
@@ -310,8 +313,10 @@ export function AlertEditor({ params, query = {} }: any) {
                 const xml = await api.getXml(`/alerts/${model.id}`);
                 if (!xml || !String(xml).trim()) throw new Error('Alert not found on the server — save it first');
                 return xml;
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }

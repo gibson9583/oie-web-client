@@ -75,6 +75,7 @@ export const DEFAULT_FIXTURES = {
 
     // Users view.
     'GET /users': { list: { user: SAMPLE_USERS } },
+    'GET /channels/*/messages/maxMessageId': { long: 123456789 },
 
     // Alerts view.
     'GET /alerts': { list: { alertModel: SAMPLE_ALERTS } },

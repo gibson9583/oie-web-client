@@ -161,3 +161,53 @@ test('1:1 and Fit drive the canvas transform', async ({ page }) => {
     await expect(page.getByText('100%', { exact: true })).toHaveCount(0);
     expect(await canvas.getAttribute('style')).not.toBe(oneToOne);
 });
+
+for (const outcome of ['save', 'expiry', 'unmount', 'write-failure', 'picker-cancel']) {
+    test(`Save DICOM ${outcome} settles without stale dialogs or unhandled rejection`, async ({ page }) => {
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await mockEngine(page, { ...FIXTURES, 'GET /session-expiry-probe': { __status: 401 } });
+        await page.addInitScript(outcome => {
+            (window as any).dicomSave = { writes: 0, closes: 0 };
+            (window as any).showSaveFilePicker = async () => {
+                if (outcome === 'picker-cancel') throw new DOMException('Cancelled', 'AbortError');
+                await new Promise<void>(resolve => { (window as any).dicomSave.release = resolve; });
+                return { createWritable: async () => {
+                    if (outcome === 'write-failure') throw new Error('DICOM file unavailable');
+                    return {
+                        write: async (blob: Blob) => { (window as any).dicomSave.writes++; (window as any).dicomSave.bytes = blob.size; },
+                        close: async () => { (window as any).dicomSave.closes++; },
+                        abort: async () => {},
+                    };
+                } };
+            };
+        }, outcome);
+        await openViewer(page);
+        await page.getByRole('button', { name: 'Save DICOM', exact: true }).click();
+        if (outcome !== 'picker-cancel') {
+            await expect.poll(() => page.evaluate(() => typeof (window as any).dicomSave.release)).toBe('function');
+            if (outcome === 'expiry') {
+                await page.evaluate(async () => {
+                    const api = await import(String('/core/api.js'));
+                    await api.get('/session-expiry-probe').catch(() => {});
+                });
+                await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+            } else if (outcome === 'unmount') {
+                await page.getByRole('tab', { name: 'Raw', exact: true }).click();
+                await expect(page.getByRole('button', { name: 'Save DICOM', exact: true })).toHaveCount(0);
+            }
+            await page.evaluate(() => (window as any).dicomSave.release());
+        }
+        if (outcome === 'write-failure') {
+            await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toContainText('DICOM file unavailable');
+        } else if (outcome === 'save') {
+            await expect.poll(() => page.evaluate(() => (window as any).dicomSave.closes)).toBe(1);
+            expect(await page.evaluate(() => (window as any).dicomSave.bytes)).toBe(Buffer.from(DICOM_B64, 'base64').length);
+        } else {
+            await page.waitForTimeout(200);
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+        }
+        expect(await page.evaluate(() => (window as any).dicomSave.writes)).toBe(outcome === 'save' ? 1 : 0);
+        expect(errors).toEqual([]);
+    });
+}

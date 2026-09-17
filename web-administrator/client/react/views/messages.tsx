@@ -978,14 +978,20 @@ function attachmentExtension(type: any) {
     return cleaned ? `.${cleaned}` : '.bin';
 }
 
-async function exportAttachment(channelId: any, message: any, attachment: any) {
+async function exportAttachment(channelId: any, message: any, attachment: any, session?: () => void) {
+    let assertSession: () => void;
+    try { assertSession = session || captureEngineSession(); assertSession(); }
+    catch { return; }
     const listType = displayValue(attachment.type) || 'application/octet-stream';
+    let contentLoaded = false;
     try {
         await saveFile(`attachment-${displayValue(attachment.id)}${attachmentExtension(listType)}`, listType, async () => {
             const full = await api.messages.attachment(channelId, message.messageId, attachment.id);
+            assertSession();
             const type = displayValue(full?.type ?? attachment.type) || 'application/octet-stream';
             let content: any = full?.content ?? full;
             if (typeof content !== 'string') content = displayValue(content);
+            contentLoaded = true;
             try {
                 // Attachment content arrives Base64-encoded; decode to bytes,
                 // then to text for textual types or a binary blob otherwise.
@@ -994,9 +1000,11 @@ async function exportAttachment(channelId: any, message: any, attachment: any) {
                 for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
                 return isTextualAttachment(type) ? new TextDecoder().decode(bytes) : new Blob([bytes], { type });
             } catch { return content; /* not Base64 — save as-is */ }
-        });
-        toast('Attachment exported');
+        }, assertSession);
+        assertSession();
+        if (contentLoaded) toast('Attachment exported');
     } catch (e: any) {
+        try { assertSession(); } catch { return; }
         toast(`Failed to export attachment: ${e.message}`, 'error');
     }
 }
@@ -1100,13 +1108,18 @@ function viewAttachmentsModal(platform: any, channelId: any, m: any) {
 // Export Attachment (Swing MESSAGE_EXPORT_ATTACHMENT) — export directly when
 // there's exactly one, otherwise open the viewer to pick.
 async function exportAttachmentTask(platform: any, channelId: any, m: any) {
+    let assertSession: () => void;
+    try { assertSession = captureEngineSession(); }
+    catch { return; }
     try {
         const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId);
+        assertSession();
         m.__attachments = attachments;
         if (!attachments.length) { toast('No attachments on this message', 'warn'); return; }
-        if (attachments.length === 1) { await exportAttachment(channelId, m, attachments[0]); return; }
+        if (attachments.length === 1) { await exportAttachment(channelId, m, attachments[0], assertSession); return; }
         viewAttachmentsModal(platform, channelId, m);
     } catch (e: any) {
+        try { assertSession(); } catch { return; }
         toast(`Failed to load attachments: ${e.message || e}`, 'error');
     }
 }
@@ -1478,7 +1491,7 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
    Deselect All. All checked = reprocess through all (filterDestinations off);
    a subset turns on filterDestinations with those metaDataIds. The results
    variant adds the red warning and the REPROCESSALL confirmation. */
-function reprocessDialog({ channelId, connectors, total, lastParams, messageId, isResults, onDone }: any) {
+function reprocessDialog({ channelId, connectors, total, lastParams, messageId, isResults, onDone, assertCurrent = () => {}, assertSession }: any) {
     const destRows = connectors.filter((c: any) => Number(c.metaDataId) > 0).map((c: any) => ({
         metaDataId: c.metaDataId, name: c.name,
         input: h('input', { type: 'checkbox', checked: true })
@@ -1513,6 +1526,7 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
             {
                 label: 'OK', primary: true,
                 onClick: async () => {
+                    try { assertSession(); } catch { return false; }
                     const checked = destRows.filter((r: any) => r.input.checked).map((r: any) => r.metaDataId);
                     // No destinations, or all checked → reprocess through all (no filter).
                     const metaDataIds = (!destRows.length || checked.length === destRows.length) ? null : checked;
@@ -1522,6 +1536,7 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
                     if (isResults && getPref('confirmReprocessRemove') !== false) {
                         const answer = await promptDialog('Reprocess Results',
                             'This will reprocess all messages matching the current search criteria. Type REPROCESSALL to continue.');
+                        try { assertSession(); } catch { return false; }
                         if (answer === null) return false;
                         if (String(answer).trim() !== 'REPROCESSALL') {
                             toast('You must type REPROCESSALL to reprocess results.', 'warn');
@@ -1529,6 +1544,8 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
                         }
                     }
                     try {
+                        assertSession();
+                        assertCurrent();
                         if (isResults) {
                             // Reprocessing a whole result set runs as long as the
                             // engine needs — no client ceiling (timeoutMs: null).
@@ -1536,13 +1553,16 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
                                 params: { ...lastParams, replace: overwrite.input.checked, filterDestinations, metaDataId: metaDataIds || [] },
                                 timeoutMs: null
                             });
+                            assertSession();
                             toast('Reprocess task submitted');
                         } else {
                             await api.messages.reprocess(channelId, messageId, overwrite.input.checked, filterDestinations, metaDataIds || []);
+                            assertSession();
                             toast('Reprocess task sent');
                         }
                         onDone();
                     } catch (e: any) {
+                        try { assertSession(); } catch { return false; }
                         toast(`Reprocess failed: ${e.message}`, 'error');
                         return false;
                     }
@@ -1667,8 +1687,17 @@ function xmlWithAttachments(xml: string, attachments: any[]) {
    dialog, or one file per message into a chosen folder); Server export
    defers the whole job to POST /messages/_export (which holds the
    encryption key, so content Encrypt is fully supported there). */
-function exportResultsDialog({ channelId, total, lastParams }: any) {
+function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () => {}, assertSession }: any) {
     let aborted = false, running = false;
+    const currentSession = () => {
+        try { assertSession(); return true; }
+        catch { return false; }
+    };
+    const assertActive = () => {
+        assertSession();
+        if (aborted) throw new Error('cancelled');
+        assertCurrent();
+    };
 
     const contentSel = select(EXPORT_CONTENT_OPTIONS, 'xml', { onChange: updateEnabled });
     const encryptCheck = checkbox('Encrypt', false);
@@ -1742,6 +1771,7 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
     const dlg = modal({
         title: 'Export Results',
         size: 'wide',
+        onClose: () => { aborted = true; },
         body: h('div', { class: 'flex flex-wrap gap-[16px]' },
             h('div', { class: 'flex-1 min-w-[234px] flex flex-col gap-2' }, grid, status, barWrap),
             h('div', { class: 'w-full sm:w-[180px] min-w-0 flex flex-col' },
@@ -1756,6 +1786,8 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
 
     function setDisabled(v: any) {
         for (const c of [contentSel, encryptCheck.input, attachCheck.input, compressionSel, pwYes, pwNo, algoSel, pwInput, toServer, toComputer, rootInput, patternInput]) (c as any).disabled = v;
+        const submit = dlg.el.querySelector<HTMLButtonElement>('.modal-foot .btn-primary');
+        if (submit) submit.disabled = v;
         if (!v) updateEnabled();
     }
     function progress(done: any) {
@@ -1766,6 +1798,9 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
 
     async function auditExportSuccess(o: any, exportCount: number, rootPath: string) {
         if (exportCount <= 0) return;
+        // Completion is still audited if the dialog closed after the export
+        // was submitted, but never through a replacement browser session.
+        assertSession();
         await api.messages.auditExportSuccess({
             rootPath,
             filePattern: o.pattern,
@@ -1782,29 +1817,35 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
     async function eachFile(sink: any, opt: any, pattern: any, includeAttachments: any) {
         const BATCH = 100;
         let done = 0, files = 0, count = 0;
-        for (let off = 0; off < total && !aborted; off += BATCH) {
+        for (let off = 0; off < total; off += BATCH) {
+            assertActive();
             const rows = await api.messages.search(channelId, { ...lastParams, offset: off, limit: BATCH, includeContent: !opt.xml });
+            assertActive();
             for (const m of rows) {
-                if (aborted) break;
+                assertActive();
                 count++;
                 const base = applyFilePattern(pattern, m, count, channelId);
                 if (opt.xml) {
                     const messageId = String(m.messageId);
                     const xml = await api.getXml(`/channels/${channelId}/messages/${messageId}`);
+                    assertActive();
                     const attachments = includeAttachments
                         ? await api.messages.attachments(channelId, messageId, true)
                         : [];
+                    assertActive();
                     await sink(base, includeAttachments ? xmlWithAttachments(xml, attachments) : xml);
                     files++;
                 } else {
                     const cms = connectorMessagesOf(m).filter(cm => opt.dest ? Number(cm.metaDataId) > 0 : Number(cm.metaDataId) === 0);
                     for (const cm of cms) {
+                        assertActive();
                         const c = contentOf(cm[opt.key]);
                         if (c == null) continue;
                         await sink(cms.length > 1 ? suffixName(base, cm.metaDataId) : base, c);
                         files++;
                     }
                 }
+                assertActive();
                 done++;
                 progress(done);
             }
@@ -1813,7 +1854,6 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
     }
 
     async function runServerExport(o: any) {
-        running = true; setDisabled(true); barWrap.style.display = '';
         status.textContent = 'Submitting server export…';
         try {
             const params = { ...lastParams };
@@ -1831,21 +1871,29 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             // The engine writes every matching message to its filesystem before
             // answering — minutes for a big filter — so no client ceiling.
             const count = toCount(await api.post(`/channels/${channelId}/messages/_export`, null, { params, timeoutMs: null }));
-            dlg.close();
             try {
                 await auditExportSuccess(o, count, o.rootFolder);
             } catch (e: any) {
-                toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                if (!aborted && currentSession()) {
+                    dlg.close();
+                    toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                }
                 return;
             }
+            if (aborted || !currentSession()) return;
+            dlg.close();
             toast(`Server exported ${fmtNumber(count)} message(s) to ${o.rootFolder}`);
         } catch (e: any) {
+            if (aborted || !currentSession()) return;
             toast(`Server export failed: ${e.message}`, 'error');
             running = false; setDisabled(false);
         }
     }
 
     async function runExport() {
+        if (running || aborted || !currentSession()) return;
+        try { assertActive(); }
+        catch (e: any) { if (!aborted && currentSession()) toast(e.message, 'error'); return; }
         const opt = EXPORT_CONTENT_OPTIONS.find(o => o.value === contentSel.value) || EXPORT_CONTENT_OPTIONS[0];
         const compression = compressionSel.value;
         const pattern = (patternInput as any).value.trim() || DEFAULT_FILE_PATTERN;
@@ -1854,35 +1902,41 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
         const pwProtect = (pwYes as any).checked && compression === 'zip';
         const algo = ENCRYPTION_ALGORITHMS.find(a => a.value === algoSel.value) || ENCRYPTION_ALGORITHMS[0];
         const password = (pwInput as any).value;
+        const server = (toServer as any).checked;
+        const rootFolder = (rootInput as any).value.trim();
 
-        if ((toServer as any).checked) {
-            if (!(rootInput as any).value.trim()) { toast('Enter a Root Path for server export', 'warn'); return; }
-            if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
-            try { await api.messages.auditExport({}); }
-            catch (e: any) { toast(`Export audit failed: ${e.message || e}`, 'error'); return; }
-            return runServerExport({ opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder: (rootInput as any).value.trim() });
-        }
+        if (server && !rootFolder) { toast('Enter a Root Path for server export', 'warn'); return; }
 
         // My Computer (browser) export.
-        if (encryptContent) {
+        if (!server && encryptContent) {
             toast('Content encryption requires "Server" export — the encryption key stays on the server. Switch Export To: Server, or uncheck Encrypt.', 'warn');
             return;
         }
         if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
 
-        try { await api.messages.auditExport({}); }
-        catch (e: any) { toast(`Export audit failed: ${e.message || e}`, 'error'); return; }
+        // Claim the operation before auditing. Cancel/close is permanent for
+        // this dialog, including while the audit or native picker is pending.
+        running = true; setDisabled(true); barWrap.style.display = '';
+        try { await api.messages.auditExport({}); assertActive(); }
+        catch (e: any) {
+            if (aborted || !currentSession()) return;
+            toast(`Export audit failed: ${e.message || e}`, 'error');
+            running = false; setDisabled(false); barWrap.style.display = 'none';
+            return;
+        }
+        if (server) return runServerExport({ opt, compression, pattern, encryptContent, includeAttachments, pwProtect, algo, password, rootFolder });
 
-        running = true; aborted = false; setDisabled(true); barWrap.style.display = '';
         const now = new Date();
         const pad = (n: any) => String(n).padStart(2, '0');
         const archiveName = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}.zip`;
         const buildZip = async () => {
+            assertActive();
             const zip = createZip();
             const result = await eachFile((n: any, c: any) => { zip.add(n, c); }, opt, pattern, includeAttachments);
-            if (aborted) throw new Error('cancelled');
+            assertActive();
             if (!result.files) throw new Error('No content of that type found in the results');
             const blob = await zip.generate((pwProtect ? { password, strength: algo.strength } : {}) as any);
+            assertActive();
             (buildZip as any).result = result;
             return blob;
         };
@@ -1891,22 +1945,28 @@ function exportResultsDialog({ channelId, total, lastParams }: any) {
             // My Computer always downloads a single ZIP; the browser's Save
             // dialog (where supported) lets the user choose the location,
             // otherwise it goes to the default download folder.
-            await saveFile(archiveName, 'application/zip', buildZip);
+            await saveFile(archiveName, 'application/zip', buildZip, assertActive);
             // buildZip.result is unset if the user cancelled the Save dialog.
             if ((buildZip as any).result) {
                 const r = (buildZip as any).result;
-                dlg.close();
                 try {
                     await auditExportSuccess({ opt, compression: 'zip', pattern, encryptContent, includeAttachments, pwProtect }, r.done, 'My Computer');
                 } catch (e: any) {
-                    toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                    if (!aborted && currentSession()) {
+                        dlg.close();
+                        toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                    }
                     return;
                 }
+                if (aborted || !currentSession()) return;
+                dlg.close();
                 toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
             } else {
+                if (aborted || !currentSession()) return;
                 running = false; setDisabled(false); barWrap.style.display = 'none';
             }
         } catch (e: any) {
+            if (aborted || !currentSession()) return;
             if (e && e.message === 'cancelled') { toast('Export cancelled', 'warn'); dlg.close(); }
             else { toast(`Export failed: ${e.message}`, 'error'); running = false; setDisabled(false); barWrap.style.display = 'none'; }
         }
@@ -1937,6 +1997,9 @@ export function MessagesView({ params, query }: any) {
     const limitRef = useRef(Number(getPref('messagePageSize')) || 20);
     const totalRef = useRef<any>(null);   // full match count — null until counted (lazy) or auto-resolved on the last page
     const lastParamsRef = useRef<any>({});
+    // The displayed rows and every result operation share one successful search.
+    const resultRef = useRef<any>(null);
+    const searchPendingRef = useRef(false);
     const searchRef = useRef<any>(null);
     // Latest selection mirror: async detail loads guard against a stale row, and
     // task-pane buttons resolve their target at execution time.
@@ -2167,34 +2230,46 @@ export function MessagesView({ params, query }: any) {
     // fast page-2); only the newest issued search may write results.
     const searchGenRef = useRef(0);
 
-    async function runSearch(resetOffset: any, { automatic = false }: any = {}) {
-        if (!metaDataReadyRef.current && !await loadMetaDataColumns()) return;
-        // Swing suppresses only the search it runs automatically while opening the
-        // channel browser. A user-submitted search is audited even when it first has
-        // to recover from a failed metadata-column load.
-        const auditQuery = !!resetOffset && phiEnabledRef.current && !automatic;
+    async function runSearch(resetOffset: any, { automatic = false, offset = offsetRef.current }: any = {}) {
         const gen = ++searchGenRef.current;
-        if (resetOffset) {
-            offsetRef.current = 0;
-            lastParamsRef.current = buildParams();
-            limitRef.current = Number(pageSize) || 20;
-            setSearchSummary(`Current Search: ${describeSearch()}`);
-            totalRef.current = null;   // lazily counted (Count button) or auto-resolved on the last page
-        }
+        searchPendingRef.current = true;
+        const candidate = {
+            params: structuredClone(resetOffset ? buildParams() : lastParamsRef.current),
+            offset: resetOffset ? 0 : offset,
+            limit: resetOffset ? Number(pageSize) || 20 : limitRef.current,
+            summary: resetOffset ? `Current Search: ${describeSearch()}` : resultRef.current?.summary,
+            total: resetOffset ? null : totalRef.current
+        };
         try {
+            if (!metaDataReadyRef.current && !await loadMetaDataColumns()) return;
+            if (gen !== searchGenRef.current) return;
+            // Swing suppresses only the search it runs automatically while opening the
+            // channel browser. A user-submitted search is audited even when it first has
+            // to recover from a failed metadata-column load.
+            const auditQuery = !!resetOffset && phiEnabledRef.current && !automatic;
+            // Swing bounds an unbounded search at the engine's current message ID.
+            // Keep that bound for every result operation, excluding later arrivals.
+            if (candidate.params.maxMessageId == null) {
+                const maximum = await api.messages.maxMessageId(channelId);
+                if (maximum == null || !/^\d+$/.test(String(maximum)) || (typeof maximum === 'number' && !Number.isSafeInteger(maximum))) {
+                    throw new Error('Unable to determine the current message ID boundary');
+                }
+                candidate.params.maxMessageId = String(maximum);
+            }
+            if (gen !== searchGenRef.current) return;
             // Fetch one extra row to learn whether a next page exists, instead of
             // paying for a COUNT on every search (Swing's lazy-count model).
-            const search = api.messages.search(channelId, { ...lastParamsRef.current, offset: offsetRef.current, limit: limitRef.current + 1 });
+            const search = api.messages.search(channelId, { ...candidate.params, offset: candidate.offset, limit: candidate.limit + 1 });
             // Swing starts loading the page and immediately audits the submitted
             // filter. Do not wait for the result: failed and superseded searches
             // are still PHI queries initiated by the user.
             if (auditQuery) {
                 const attributes: Record<string, string> = {
                     channel: `Channel[id=${channelId},name=${channelNameRef.current}]`,
-                    filter: JSON.stringify(lastParamsRef.current)
+                    filter: JSON.stringify(candidate.params)
                 };
                 for (const key of ['metaDataSearch', 'metaDataCaseInsensitiveSearch']) {
-                    for (const criterion of api.asList(lastParamsRef.current[key])) {
+                    for (const criterion of api.asList(candidate.params[key])) {
                         const match = String(criterion).match(/^PATIENT_ID\s*=\s*(.*)$/i);
                         if (match) attributes.patientId = match[1];
                     }
@@ -2205,10 +2280,18 @@ export function MessagesView({ params, query }: any) {
             const rows = await search;
             if (gen !== searchGenRef.current) return;   // superseded by a newer search
             const list = rows.filter(m => m && typeof m === 'object');
-            const hasNext = list.length > limitRef.current;
+            const hasNext = list.length > candidate.limit;
             if (hasNext) list.pop();   // drop the probe row
             // Last (or empty) page → the total is known for free; no COUNT needed.
-            if (!hasNext) totalRef.current = offsetRef.current + list.length;
+            if (!hasNext) candidate.total = candidate.offset + list.length;
+            // Commit only after a successful response; a failed replacement
+            // leaves rows, filter, cursor, summary, and count together.
+            resultRef.current = candidate;
+            offsetRef.current = candidate.offset;
+            limitRef.current = candidate.limit;
+            totalRef.current = candidate.total;
+            lastParamsRef.current = candidate.params;
+            setSearchSummary(candidate.summary);
             selectedRef.current = null;
             setSelected(null);
             setDetail({ status: 'empty' });
@@ -2225,19 +2308,33 @@ export function MessagesView({ params, query }: any) {
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
             toast(`Search failed: ${e.message}`, 'error');
+        } finally {
+            if (gen === searchGenRef.current) searchPendingRef.current = false;
         }
     }
     searchRef.current = runSearch;
 
     /* The total match count is resolved lazily (Swing's Count button): a COUNT is
        expensive on large tables, so we don't run one on every search. */
-    async function ensureTotal() {
-        if (totalRef.current != null) return totalRef.current;
+    function captureResult() {
+        const result = resultRef.current;
         const gen = searchGenRef.current;
-        const n = toCount(await api.messages.count(channelId, lastParamsRef.current));
-        // A count that lands after a newer search must not clobber that search's
-        // total (runSearch's generation rule); it still answers the caller that asked.
-        if (gen === searchGenRef.current) totalRef.current = n;
+        const assertCurrent = () => {
+            if (!result || result !== resultRef.current || gen !== searchGenRef.current || searchPendingRef.current) {
+                throw new Error('Search changed or is still loading. Wait for results and try the action again.');
+            }
+        };
+        assertCurrent();
+        return { result, assertCurrent };
+    }
+
+    async function ensureTotal(snapshot = captureResult()) {
+        const { result, assertCurrent } = snapshot;
+        assertCurrent();
+        if (result.total != null) return result.total;
+        const n = toCount(await api.messages.count(channelId, result.params));
+        assertCurrent();
+        result.total = totalRef.current = n;
         return n;
     }
     async function doCount() {
@@ -2572,9 +2669,12 @@ export function MessagesView({ params, query }: any) {
 
     function reprocessTask(row = requireSelection()) {
         if (!row) return;
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); }
+        catch { return; }
         reprocessDialog({
             channelId, connectors, total: totalRef.current, lastParams: lastParamsRef.current,
-            messageId: row.messageId, isResults: false, onDone: () => searchRef.current(false)
+            messageId: row.messageId, isResults: false, onDone: () => searchRef.current(false), assertSession
         });
     }
 
@@ -2613,14 +2713,20 @@ export function MessagesView({ params, query }: any) {
     /* ---- results operations (operate on the current search filter) ---- */
 
     async function removeResultsTask() {
-        const filter = { ...lastParamsRef.current };
-        let total;
-        try { total = await ensureTotal(); }
-        catch (e: any) { toast(`Count failed: ${e.message}`, 'error'); return; }
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); }
+        catch { return; }
+        let total, snapshot;
+        try { snapshot = captureResult(); total = await ensureTotal(snapshot); assertSession(); }
+        catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Count failed: ${e.message}`, 'error'); return;
+        }
         if (getPref('confirmReprocessRemove') !== false) {
             const text = await promptDialog('Remove Results',
                 `Permanently remove all ${fmtNumber(total)} message(s) matching the current search from ${channelName}? ` +
                 'This cannot be undone. Type REMOVE to confirm.');
+            try { assertSession(); } catch { return; }
             if (text === null) return;
             if (text.trim() !== 'REMOVE') {
                 toast('Confirmation text did not match — nothing was removed', 'warn');
@@ -2628,24 +2734,34 @@ export function MessagesView({ params, query }: any) {
             }
         }
         try {
+            assertSession();
+            snapshot.assertCurrent();
             // DELETE /channels/{id}/messages is the query-param twin of POST
             // _remove (which takes a MessageFilter body); it accepts the exact
             // search params already built for GET /messages. Removing a whole
             // result set can outlast the default ceiling — no client timeout.
-            await api.del(`/channels/${channelId}/messages`, filter, { timeoutMs: null });
+            await api.del(`/channels/${channelId}/messages`, snapshot.result.params, { timeoutMs: null });
+            assertSession();
             toast('Messages removed');
             searchRef.current(true);
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Remove results failed: ${e.message}`, 'error');
         }
     }
 
     async function reprocessResultsTask() {
-        let total;
-        try { total = await ensureTotal(); }
-        catch (e: any) { toast(`Count failed: ${e.message}`, 'error'); return; }
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); }
+        catch { return; }
+        let total, snapshot;
+        try { snapshot = captureResult(); total = await ensureTotal(snapshot); assertSession(); }
+        catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Count failed: ${e.message}`, 'error'); return;
+        }
         reprocessDialog({
-            channelId, connectors, total, lastParams: lastParamsRef.current,
+            channelId, connectors, total, lastParams: snapshot.result.params, assertCurrent: snapshot.assertCurrent, assertSession,
             isResults: true, onDone: () => searchRef.current(false)
         });
     }
@@ -2695,11 +2811,17 @@ export function MessagesView({ params, query }: any) {
     }
 
     async function exportResultsTask() {
-        let total;
-        try { total = await ensureTotal(); }
-        catch (e: any) { toast(`Count failed: ${e.message}`, 'error'); return; }
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); }
+        catch { return; }
+        let total, snapshot;
+        try { snapshot = captureResult(); total = await ensureTotal(snapshot); assertSession(); }
+        catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Count failed: ${e.message}`, 'error'); return;
+        }
         if (!total) { toast('No results to export', 'warn'); return; }
-        exportResultsDialog({ channelId, total, lastParams: lastParamsRef.current });
+        exportResultsDialog({ channelId, total, lastParams: snapshot.result.params, assertCurrent: snapshot.assertCurrent, assertSession });
     }
 
     /* ---- status filter dropdown (imperative checklist over the trigger) ---- */
@@ -2786,7 +2908,9 @@ export function MessagesView({ params, query }: any) {
             if (!cancelled && channelId && metaDataReadyRef.current) searchRef.current(true, { automatic: true });
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
-        return () => { cancelled = true; closeStatusMenu(); };
+        // Invalidate the latest request counter, including searches started since mount.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        return () => { cancelled = true; ++searchGenRef.current; resultRef.current = null; closeStatusMenu(); };
         // Build once; channelId is stable for the view's lifetime (route remount on change).
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -3015,16 +3139,15 @@ export function MessagesView({ params, query }: any) {
 
                 <div className="filterbar flex-none panel overflow-visible mx-[13px]">
                     <button className="btn" disabled={pager.offset <= 0}
-                        onClick={() => { offsetRef.current = 0; runSearch(false); }}>« First</button>
+                        onClick={() => runSearch(false, { offset: 0 })}>« First</button>
                     <button className="btn" disabled={pager.offset <= 0}
-                        onClick={() => { offsetRef.current = Math.max(0, offsetRef.current - limitRef.current); runSearch(false); }}>‹ Prev</button>
+                        onClick={() => runSearch(false, { offset: Math.max(0, offsetRef.current - limitRef.current) })}>‹ Prev</button>
                     <button className="btn" disabled={!pager.hasNext}
-                        onClick={() => { offsetRef.current += limitRef.current; runSearch(false); }}>Next ›</button>
+                        onClick={() => runSearch(false, { offset: offsetRef.current + limitRef.current })}>Next ›</button>
                     {/* Can't jump to the last page without a total. */}
                     <button className="btn" disabled={pager.total == null}
                         onClick={() => {
-                            offsetRef.current = Math.max(0, Math.floor(Math.max(0, totalRef.current - 1) / limitRef.current) * limitRef.current);
-                            runSearch(false);
+                            runSearch(false, { offset: Math.max(0, Math.floor(Math.max(0, totalRef.current - 1) / limitRef.current) * limitRef.current) });
                         }}>Last »</button>
                     <span className="counts">
                         {pager.shown == null ? ''

@@ -9,6 +9,7 @@
 import { icon } from './icons.js';
 import { formatInZone } from './timezone.js';
 import { checkTask } from './authorization.js';
+import { captureEngineSession } from './engine-fetch.js';
 // columns.js imports h/contextMenu from here; the cycle is safe because both
 // sides only use the imported bindings at call time, never at module load.
 import { createColumnManager, decorateColumns, attachColumnMenu } from './columns.js';
@@ -932,11 +933,17 @@ export function downloadFile(filename, content, type = 'application/octet-stream
    browser supports it (File System Access API — Chromium), falling back to a
    normal download elsewhere. The picker MUST open inside the click gesture, so
    `getContent` (which may fetch/await) runs AFTER the picker is chosen. Pass a
-   string/Blob value or a (sync/async) function returning one. */
-export async function saveFile(suggestedName, type, getContent) {
+   string/Blob value or a (sync/async) function returning one. assertCurrent can
+   stop an operation whose dialog or session ended across an awaited stage. */
+export async function saveFile(suggestedName, type, getContent, assertCurrent = () => { }) {
+    const assertSession = captureEngineSession();
+    const assertActive = () => { assertSession(); assertCurrent(); };
+    assertActive();
     const ext = (String(suggestedName).match(/\.[^./\\]+$/) || [''])[0];
     const resolve = async () => {
+        assertActive();
         const v = typeof getContent === 'function' ? await getContent() : getContent;
+        assertActive();
         return v instanceof Blob ? v : new Blob([v == null ? '' : v], { type });
     };
     if (window.showSaveFilePicker) {
@@ -954,14 +961,30 @@ export async function saveFile(suggestedName, type, getContent) {
         }
         if (handle) {
             const blob = await resolve();
+            assertActive();
             const writable = await handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
+            try {
+                assertActive();
+                await writable.write(blob);
+                assertActive();
+                await writable.close();
+            }
+            catch (error) {
+                // File System Access writes commit on close. Discard an owned
+                // temporary stream if cancellation or failure precedes commit.
+                try {
+                    await writable.abort();
+                }
+                catch { /* retain the original failure */ }
+                throw error;
+            }
             return;
         }
     }
     // Fallback: standard download (honors the browser's "ask where to save" setting).
-    downloadFile(suggestedName, await resolve(), type);
+    const blob = await resolve();
+    assertActive();
+    downloadFile(suggestedName, blob, type);
 }
 export function pickFile(accept, { binary = false } = {}) {
     return new Promise(resolve => {

@@ -26,6 +26,7 @@ import { useEffect, useRef, useState } from 'react';
 import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorModal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
@@ -168,13 +169,16 @@ function promptExportLibraries(names: any) {
     });
 }
 
-async function chooseExportLibraries(channelIds: any[]) {
+async function chooseExportLibraries(channelIds: any[], assertSession: () => void) {
+    assertSession();
     const pref = getPref('exportLibrariesWithChannels');
     if (pref === 'yes' || pref === 'no') return pref === 'yes';
     let names: any[];
     try {
         names = [...new Set(await linkedLibraryNames(channelIds))];
+        assertSession();
     } catch (e: any) {
+        assertSession();
         // Code-template viewing is independently authorized. Swing consults its
         // cache and still exports the channel when that data is unavailable; keep
         // the backup usable while making the omitted libraries explicit.
@@ -183,6 +187,7 @@ async function chooseExportLibraries(channelIds: any[]) {
     }
     if (!names.length) return false;
     const choice = await promptExportLibraries(names);
+    assertSession();
     return choice === 'cancel' ? null : choice === 'yes';
 }
 
@@ -1071,6 +1076,8 @@ export function ChannelsView() {
        the channel's code template libraries into exportData when asked
        (includeCodeTemplateLibraries) — same format the Swing client produces. */
     async function exportTask(rows: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         const channel = requireSingle(rows);
         if (!channel) return;
         // Ask up front (before the save dialog) whether to bundle code template
@@ -1078,19 +1085,25 @@ export function ChannelsView() {
         // falls back to a normal download if the native picker can't engage
         // outside the click gesture.
         try {
-            const includeLibs = await chooseExportLibraries([channel.id]);
+            const includeLibs = await chooseExportLibraries([channel.id], assertSession);
+            assertSession();
             if (includeLibs == null) return;
             await saveFile(`${channel.name || channel.id}.xml`, 'application/xml',
-                () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined));
+                () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined), assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }
 
     async function exportAllTask() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!channels.length) { toast('No channels to export', 'warn'); return; }
         try {
-            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id));
+            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id), assertSession);
+            assertSession();
             if (includeLibs == null) return;
             await saveFile('channels.zip', 'application/zip', async () => {
                 const xml = await api.getXml('/channels', includeLibs ? { includeCodeTemplateLibraries: true } : undefined, { timeoutMs: null });
@@ -1109,8 +1122,10 @@ export function ChannelsView() {
                     zip.add(exportFileName(direct('name'), direct('id') || 'channel', used), new XMLSerializer().serializeToString(element));
                 }
                 return zip.blob();
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }
@@ -1444,8 +1459,10 @@ export function ChannelsView() {
        ChannelGroup contains complete Channel objects. Hydrate those references
        from GET /channels before serializing so this file can recreate both the
        group and its channels when imported on another server. */
-    async function channelGroupExportXml(groupId?: any, includeCodeTemplateLibraries = false) {
+    async function channelGroupExportXml(groupId: any, includeCodeTemplateLibraries: boolean, assertSession: () => void) {
+        assertSession();
         const groupsXml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
+        assertSession();
         const groupsDoc = new DOMParser().parseFromString(groupsXml, 'text/xml');
         if (groupsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
 
@@ -1494,6 +1511,7 @@ export function ChannelsView() {
                     ...(includeCodeTemplateLibraries ? { includeCodeTemplateLibraries: true } : {})
                 };
             const channelsXml = await api.getXml('/channels', channelParams, { timeoutMs: null });
+            assertSession();
             const channelsDoc = new DOMParser().parseFromString(channelsXml, 'text/xml');
             if (channelsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel XML');
             const channelsRoot = channelsDoc.documentElement;
@@ -1551,25 +1569,33 @@ export function ChannelsView() {
     }
 
     async function exportGroupTask(g: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!g) { toast('Select a group row first', 'warn'); return; }
         const group = g.id === DEFAULT_GROUP_ID ? g : requireGroup(g);
         if (!group) return;
         try {
             const ids = api.asList(group.channels, 'channel').map((channel: any) => channel && channel.id).filter(Boolean);
-            const includeLibs = await chooseExportLibraries(ids);
+            const includeLibs = await chooseExportLibraries(ids, assertSession);
+            assertSession();
             if (includeLibs == null) return;
-            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id, includeLibs));
+            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id, includeLibs, assertSession), assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }
 
     async function exportGroupsTask() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         try {
-            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id));
+            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id), assertSession);
+            assertSession();
             if (includeLibs == null) return;
             await saveFile('channel-groups.zip', 'application/zip', async () => {
-                const xml = await channelGroupExportXml(undefined, includeLibs);
+                const xml = await channelGroupExportXml(undefined, includeLibs, assertSession);
                 const doc = new DOMParser().parseFromString(xml, 'text/xml');
                 if (doc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
                 const root = doc.documentElement;
@@ -1581,8 +1607,10 @@ export function ChannelsView() {
                     zip.add(exportFileName(direct('name'), direct('id') || 'channel-group', used), new XMLSerializer().serializeToString(element));
                 }
                 return zip.blob();
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }

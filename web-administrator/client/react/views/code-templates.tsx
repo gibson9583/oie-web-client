@@ -23,6 +23,7 @@ import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import { validateScript } from '../../core/serialize.js';
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { ViewTasks } from '../mount.jsx';
@@ -513,15 +514,21 @@ export function CodeTemplatesView() {
     /* ---- import / export (Swing-compatible XStream XML) ----------------------------- */
 
     async function exportLibraries() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         try {
             await saveFile('codeTemplateLibraries.xml', 'application/xml',
-                () => api.getXml('/codeTemplateLibraries', { includeCodeTemplates: true }));
+                () => api.getXml('/codeTemplateLibraries', { includeCodeTemplates: true }), assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }
 
     async function exportLibrary(found: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!found || !found.entry || found.template) {
             toast('Select a library first', 'warn');
             return;
@@ -532,13 +539,17 @@ export function CodeTemplatesView() {
                 const xml = await api.getXml(`/codeTemplateLibraries/${encodeURIComponent(library.id)}`, { includeCodeTemplates: true });
                 if (!xml || !String(xml).trim()) throw new Error('Library not found on the server — save it first');
                 return xml;
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }
 
     async function exportTemplate(found: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!found || !found.template) {
             toast('Select a code template first', 'warn');
             return;
@@ -548,8 +559,10 @@ export function CodeTemplatesView() {
                 const xml = await api.getXml(`/codeTemplates/${found.template.id}`);
                 if (!xml || !String(xml).trim()) throw new Error('Template not found on the server — save it first');
                 return xml;
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }
