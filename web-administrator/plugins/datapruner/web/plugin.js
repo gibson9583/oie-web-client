@@ -161,6 +161,9 @@ function register(platform2) {
     const [phase, setPhase] = React.useState("loading");
     const [errorMessage, setErrorMessage] = React.useState("");
     const [statusState, setStatusState] = React.useState({ phase: "loading", pairs: [], message: "" });
+    const [busy, setBusy] = React.useState(false);
+    const operationRef = React.useRef(false);
+    const mountedRef = React.useRef(true);
     const propListRef = React.useRef([]);
     const scheduleRef = React.useRef(null);
     const archiverRef = React.useRef(null);
@@ -243,6 +246,8 @@ function register(platform2) {
       pollTime,
       cronJobs
     ]);
+    const latestSnapshotRef = React.useRef(snapshot());
+    latestSnapshotRef.current = snapshot();
     const getProp = (name, dflt = "") => {
       const p = propListRef.current.find((x) => x.name === name);
       return p === void 0 ? dflt : String(p.value ?? "");
@@ -345,20 +350,32 @@ function register(platform2) {
       }
     }
     async function load() {
+      if (operationRef.current || !mountedRef.current) return;
+      operationRef.current = true;
+      setBusy(true);
       setPhase("loading");
       try {
-        propListRef.current = propsToList(await api.extensions.properties("Data Pruner"));
+        const properties = await api.extensions.properties("Data Pruner");
+        if (!mountedRef.current) return;
+        propListRef.current = propsToList(properties);
+        applyPropsToForm();
+        setPhase("ready");
+        refreshStatus();
       } catch (e) {
+        if (!mountedRef.current) return;
         toast(`Failed to load Data Pruner properties: ${e.message}`, "error");
         setErrorMessage(String(e.message || e));
         setPhase("error");
-        return;
+      } finally {
+        operationRef.current = false;
+        if (mountedRef.current) setBusy(false);
       }
-      applyPropsToForm();
-      setPhase("ready");
-      refreshStatus();
     }
     async function save() {
+      if (operationRef.current || phase !== "ready" || !mountedRef.current) return false;
+      operationRef.current = true;
+      setBusy(true);
+      const submittedSnapshot = snapshot();
       try {
         setProp("enabled", String(enabled));
         setProp("pruningBlockSize", blockSize);
@@ -424,14 +441,19 @@ function register(platform2) {
           setProp("archiverOptions", new XMLSerializer().serializeToString(doc));
         }
         await api.extensions.setProperties("Data Pruner", listToProps(propListRef.current));
+        if (!mountedRef.current) return false;
         toast("Data Pruner settings saved");
-        cleanRef.current = snapshot();
-        dirtyRef.current = false;
-        markClean();
-        return true;
+        cleanRef.current = submittedSnapshot;
+        dirtyRef.current = latestSnapshotRef.current !== submittedSnapshot;
+        if (dirtyRef.current) markDirty();
+        else markClean();
+        return !dirtyRef.current;
       } catch (e) {
-        toast(`Save failed: ${e.message}`, "error");
+        if (mountedRef.current) toast(`Save failed: ${e.message}`, "error");
         return false;
+      } finally {
+        operationRef.current = false;
+        if (mountedRef.current) setBusy(false);
       }
     }
     async function pruneNow() {
@@ -455,20 +477,26 @@ function register(platform2) {
       refreshStatus();
     }
     React.useEffect(() => {
+      mountedRef.current = true;
       load();
+      return () => {
+        mountedRef.current = false;
+      };
     }, []);
     React.useEffect(() => {
       setSave(save);
       setTasks("Data Pruner Tasks", [
         taskButton("Refresh", "refresh", () => {
           load();
-        }),
-        taskButton("Save", "save", save, { primary: true }),
+        }, { disabled: busy }),
+        taskButton("Save", "save", save, { primary: true, disabled: busy || phase !== "ready" }),
         taskButton("View Events", "events", () => platform3.router.navigate("/events")),
         taskButton("Prune Now", "play", pruneNow),
         taskButton("Stop Pruner", "stop", stopPruner, { danger: true })
       ]);
     }, [
+      busy,
+      phase,
       enabled,
       blockSize,
       pruneEvents,

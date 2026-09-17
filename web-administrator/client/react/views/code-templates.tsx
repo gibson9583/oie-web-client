@@ -18,6 +18,7 @@
  * cache is invalidate()d on every mutation so script editors refetch the new scope.
  */
 
+import { withEditorSave } from '../save-lock.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
@@ -411,7 +412,9 @@ export function CodeTemplatesView() {
         toast('Deleted — use Save All to commit library changes');
     }
 
-    async function saveAll(overrideConflicts = false): Promise<any> {
+    function saveAll() { return withEditorSave(() => saveAllUnlocked()); }
+
+    async function saveAllUnlocked(overrideConflicts = false): Promise<any> {
         // Swing-parity conflict handling: save with override=false and the revisions AS
         // LOADED (the engine bumps them itself; sending a self-bumped revision would read
         // as a conflict on every save). A "false" response means someone else saved since
@@ -420,7 +423,7 @@ export function CodeTemplatesView() {
             const overwrite = await confirmDialog('Code Templates Modified',
                 'One or more code templates or libraries have been modified since you opened them. Are you sure you want to overwrite them with your changes?',
                 { danger: true, okLabel: 'Overwrite' });
-            if (overwrite) return saveAll(true);
+            if (overwrite) return saveAllUnlocked(true);
             toast('Save cancelled — Refresh to load the latest code templates', 'warn');
         };
         try {

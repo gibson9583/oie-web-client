@@ -236,6 +236,7 @@ function startEngine() {
             h('div.dt-empty', h('div.empty-icon', icon('search', 30)), 'View not found'))));
 
         router.setGuard(async (ctx: any) => {
+            if (store.getState('editorSave')) return false;
             const guard = store.getState('navGuard');
             if (typeof guard === 'function') return await guard(ctx);
         });

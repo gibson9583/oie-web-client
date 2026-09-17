@@ -1,3 +1,4 @@
+import { withEditorSave } from '../save-lock.js';
 /*
  * Guided Alert builder — a step-by-step alternative to the classic alert editor,
  * modeled on the channel wizard (chevron stepper, validate-on-advance, prompt on
@@ -178,10 +179,12 @@ function AlertWizardInner({ alert, isNew }: any) {
         goStep(step + 1);
     }
 
-    async function saveAlert(enable: any) {
+    function saveAlert(enable: any) { return withEditorSave(() => saveAlertUnlocked(enable)); }
+
+    async function saveAlertUnlocked(enable: any) {
         const probs = allProblems();
         if (probs.length) { const s = firstProblemStep(); if (s >= 0) setStep(s); toast(probs.join('  ·  '), 'warn'); return false; }
-        if (enable) alert.enabled = true;
+        if (enable && !alert.enabled) { alert.enabled = true; bump(); }
         try {
             if (isNew) {
                 await api.alerts.create(alert);
@@ -201,7 +204,7 @@ function AlertWizardInner({ alert, isNew }: any) {
         }
     }
     async function finish(enable: any) {
-        if (saving) return;
+        if (saving || store.getState('editorSave')) return;
         setSaving(true);
         const ok = await saveAlert(enable);
         if (!ok) { setSaving(false); return; }

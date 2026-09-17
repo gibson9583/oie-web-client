@@ -29,6 +29,7 @@
  * routes (registerFilterTransformer), since they share the in-store editingChannel.
  */
 
+import { withEditorSave } from '../save-lock.js';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
@@ -2632,7 +2633,9 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         }
     }
 
-    async function save() {
+    function save() { return withEditorSave(saveUnlocked); }
+
+    async function saveUnlocked() {
         const problems = [...oie.validateChannel(channel), ...validateConnectors()];
         if (problems.length) {
             highlightInvalidFields();

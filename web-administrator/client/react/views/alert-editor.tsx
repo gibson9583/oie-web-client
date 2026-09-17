@@ -1,3 +1,4 @@
+import { withEditorSave } from '../save-lock.js';
 /*
  * Alert editor — fully declarative React. The form body (name/enabled, the
  * error-type checkboxes, regex, the actions protocol/recipient table with its
@@ -278,6 +279,10 @@ export function AlertEditor({ params, query = {} }: any) {
     }
 
     async function save() {
+        if (await withEditorSave(saveUnlocked)) router.navigate('/alerts');
+    }
+
+    async function saveUnlocked() {
         const model = modelRef.current;
         if (!model) return;
         try {
@@ -294,7 +299,7 @@ export function AlertEditor({ params, query = {} }: any) {
             store.setState('navGuard', null);   // saved — don't prompt on the redirect
             await invalidate('alerts');
             toast(isNew ? `Alert "${model.name}" created` : `Alert "${model.name}" saved`);
-            router.navigate('/alerts');
+            return true;
         } catch (e: any) {
             toast(e.message, 'error');
         }
