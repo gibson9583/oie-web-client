@@ -66,9 +66,9 @@ function AlertWizardInner({ alert, isNew }: any) {
     const focusedRef = useRef('template');   // which text field a clicked variable inserts into
     const grp = alert.actionGroups.alertActionGroup[0];
 
-    const dirtyRef = useRef(false);
+    const dirtyRef = useRef(store.getState('editingAlertDirty') === true);
     const savedRef = useRef(false);
-    const bump = () => { dirtyRef.current = true; forceRender(); };
+    const bump = () => { dirtyRef.current = true; store.setState('editingAlertDirty', true); forceRender(); };
 
     const invalidate = useInvalidate();   // the list's ['alerts'] cache — see saveAlert()
     const { step, setStep, maxStep, goStep } = useWizardSteps(isNew, STEPS.length);
@@ -104,7 +104,7 @@ function AlertWizardInner({ alert, isNew }: any) {
     // Keep the model in the store + prompt-on-leave (shared with the channel wizard).
     useLeaveGuard({
         model: alert, isNew, storeKey: 'editingAlert', storeNewKey: 'editingAlertNew',
-        entityLabel: 'alert', dirtyRef, savedRef, switchingRef, save: () => saveAlert(false),
+        entityLabel: 'alert', dirtyKey: 'editingAlertDirty', dirtyRef, savedRef, switchingRef, save: () => saveAlert(false),
         canSave: () => platform.checkTask('alertEdit', 'doSaveAlerts')
     });
     const canSave = platform.checkTask('alertEdit', 'doSaveAlerts');

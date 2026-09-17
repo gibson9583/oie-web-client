@@ -877,6 +877,9 @@ export function App() {
         store.setState('editingChannel', null);
         store.setState('editingChannelNew', false);
         store.setState('editingChannelDirty', false);
+        store.setState('editingAlert', null);
+        store.setState('editingAlertNew', false);
+        store.setState('editingAlertDirty', false);
         // Drop the devMode routing pair TOGETHER: an oie-engine=custom left
         // behind without its URL is an unresolvable selection every other tab
         // then 421s on. A named-engine choice (k:…) stays — that's the picker's
@@ -961,11 +964,12 @@ export function App() {
 
     // Tab-close guard (Swing's confirmLeave on window close): the native browser
     // prompt when any editor holds unsaved work. Channel editor/wizard share the
-    // 'editingChannelDirty' store flag; other editors register checks (core/unsaved).
+    // Dirty flags span channel/alert editor handoffs; other editors register
+    // checks (core/unsaved).
     useEffect(() => {
         const onBeforeUnload = (e: any) => {
             if (!store.getState('user')) return;
-            if (store.getState('editingChannelDirty') || hasUnsavedWork()) {
+            if (store.getState('editorSave') || store.getState('editingChannelDirty') || store.getState('editingAlertDirty') || hasUnsavedWork()) {
                 e.preventDefault();
                 e.returnValue = '';
             }

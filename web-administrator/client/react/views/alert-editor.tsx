@@ -265,9 +265,15 @@ export function AlertEditor({ params, query = {} }: any) {
     // when it differs — no per-edit markDirty, no false positives from UI-only
     // state (filter/selection live outside the model).
     const cleanSnapshotRef = useRef<any>(null);
+    const switchingRef = useRef(false);
     function syncedModelJson() {
         try { saveModelRef.current(); } catch { return null; }
         return JSON.stringify(modelRef.current);
+    }
+    function isDirty() {
+        if (isNew || store.getState('editingAlertDirty') === true) return true;
+        if (!modelRef.current || cleanSnapshotRef.current === null) return false;
+        return syncedModelJson() !== cleanSnapshotRef.current;
     }
 
     async function save() {
@@ -283,6 +289,7 @@ export function AlertEditor({ params, query = {} }: any) {
                 await api.alerts.update(model.id, model);
             }
             store.setState('editingAlert', null);
+            store.setState('editingAlertDirty', false);
             store.setState('navGuard', null);   // saved — don't prompt on the redirect
             await invalidate('alerts');
             toast(isNew ? `Alert "${model.name}" created` : `Alert "${model.name}" saved`);
@@ -587,9 +594,7 @@ export function AlertEditor({ params, query = {} }: any) {
         load();
         // Prompt before leaving with unsaved alert edits (Swing parity).
         store.setState('navGuard', async () => {
-            if (cleanSnapshotRef.current === null || !modelRef.current) return;
-            const now = syncedModelJson();
-            if (now === null || now === cleanSnapshotRef.current) return;
+            if (!isDirty()) return;
             // No save permission -> say the edits can't be kept (channel editor parity).
             const ok = platform.checkTask('alertEdit', 'doSaveAlerts')
                 ? await confirmDialog('Unsaved Changes',
@@ -601,12 +606,15 @@ export function AlertEditor({ params, query = {} }: any) {
             return ok ? undefined : false;
         });
         // Tab-close guard: same snapshot comparison, synchronous (core/unsaved.js).
-        const unregister = registerUnsavedCheck(() => {
-            if (cleanSnapshotRef.current === null || !modelRef.current) return false;
-            const now = syncedModelJson();
-            return now !== null && now !== cleanSnapshotRef.current;
-        });
-        return () => { store.setState('navGuard', null); unregister(); };
+        const unregister = registerUnsavedCheck(isDirty);
+        return () => {
+            store.setState('navGuard', null); unregister();
+            if (!switchingRef.current) {
+                store.setState('editingAlert', null);
+                store.setState('editingAlertDirty', false);
+                store.setState('editingAlertNew', false);
+            }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -724,6 +732,8 @@ export function AlertEditor({ params, query = {} }: any) {
                             // receives the model object, not this editor's state.
                             saveModelRef.current();
                             const model = modelRef.current;
+                            switchingRef.current = true;
+                            store.setState('editingAlertDirty', isDirty());
                             store.setState('editingAlert', model);
                             store.setState('editingAlertNew', isNew);
                             store.setState('navGuard', null);

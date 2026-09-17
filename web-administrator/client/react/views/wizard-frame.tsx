@@ -38,6 +38,7 @@ export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, nor
             ref.current = norm(stored);
         } else if (isNew) {
             ref.current = norm(makeNew());
+            store.setState(`${storeKey}Dirty`, false);
         }
     }
     const [ready, setReady] = useState(!!ref.current);
@@ -47,6 +48,7 @@ export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, nor
         fetch(routeId).then((loaded: any) => {
             if (!alive) return;
             ref.current = norm(loaded);
+            store.setState(`${storeKey}Dirty`, false);
             store.setState(storeKey, ref.current);
             setReady(true);
         }).catch((e: any) => {
