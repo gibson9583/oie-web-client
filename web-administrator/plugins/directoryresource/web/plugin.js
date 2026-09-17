@@ -23,7 +23,7 @@ function register(platform2) {
       return () => {
         cancelled = true;
       };
-    }, [id]);
+    }, [id, api]);
     if (state.phase === "loading") {
       return /* @__PURE__ */ React.createElement("div", { className: "loading-block" }, /* @__PURE__ */ React.createElement("div", { className: "spinner" }), "Loading libraries\u2026");
     }

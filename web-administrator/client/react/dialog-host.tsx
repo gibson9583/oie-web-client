@@ -75,7 +75,7 @@ function NodeSlot({ content, className, id, inert }: any) {
     const ref = useRef<any>(null);
     useEffect(() => {
         const host = ref.current;
-        if (!host || content === null || content === undefined) return undefined;
+        if (!host || content === null || content === undefined || isValidElement(content)) return undefined;
         for (const part of Array.isArray(content) ? content : [content]) {
             if (part instanceof Node) host.appendChild(part);
             else if (part !== null && part !== undefined) host.append(String(part));

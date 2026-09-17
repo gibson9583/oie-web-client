@@ -50,7 +50,7 @@ export function register(platform: Platform) {
                 }
             })();
             return () => { cancelled = true; };
-        }, [id]);
+        }, [id, api]);
 
         if (state.phase === 'loading') {
             return <div className="loading-block"><div className="spinner" />Loading libraries…</div>;

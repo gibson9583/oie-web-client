@@ -167,10 +167,11 @@ export function register(platform: Platform) {
                 onChange: (v: any) => onChangeRef.current(v)
             });
             editorRef.current = editor;
-            if (hostRef.current) hostRef.current.appendChild(editor.el);
+            const host = hostRef.current;
+            if (host) host.appendChild(editor.el);
             return () => {
                 if ((editor as any).destroy) (editor as any).destroy();
-                if (hostRef.current) hostRef.current.replaceChildren();
+                if (host) host.replaceChildren();
             };
             // Mount once; the editor owns its own value after mount.
             // eslint-disable-next-line react-hooks/exhaustive-deps

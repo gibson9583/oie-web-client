@@ -527,12 +527,13 @@ const SCRIPTS = [
 export function ChannelScripts({ channel, onChange }: any) {
     const [which, setWhich] = useState('deployScript');
     const spec = SCRIPTS.find((s: any) => s.key === which);
+    const context = spec!.context;
     // Scope Monaco's variable/code-template completions to the selected script,
     // the same way the classic Scripts tab does (best-effort on an unsaved channel).
     useEffect(() => {
-        setActiveScope(channel.id, [spec!.context!]);
+        setActiveScope(channel.id, [context]);
         return () => clearActiveScope();
-    }, [channel.id, spec!.context!]);
+    }, [channel.id, context]);
     return (
         <div className="panel !mt-0">
             <div className="panel-header flex items-center gap-3">
