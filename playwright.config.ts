@@ -11,6 +11,10 @@ const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3030';
 // Shared with retry workers, unique across independent invocations. Cleanup
 // must never remove another run's channel just because its worker index matches.
 const RUN_ID = process.env.E2E_RUN_ID ||= randomUUID();
+// Run the failure-sensitive flows in every supported browser engine.
+// The full UI catalog remains in Chromium; these cover saves, dialogs,
+// downloads, Monaco/fallback, authentication and plugin recovery across engines.
+const CRITICAL = /(?:login|sso|dashboard|global-scripts|send-message|message-import|message-result-lifecycle|keyboard|editor-handoff|alert-save-lifecycle|save-lifecycle|datapruner-save|settings-save|wizard-recovery|channel-dependencies|dependency-handoff|dialog-actions|export|monaco-intellisense|sanitizer|resilience|viewer-lifecycle|dicom-viewer|engine-plugins)\.spec\.ts$/;
 
 export default defineConfig({
     metadata: { runId: RUN_ID },
@@ -49,6 +53,8 @@ export default defineConfig({
             testIgnore: /live\.spec\.ts/,
             use: { ...devices['Desktop Chrome'] },
         },
+        { name: 'firefox', testMatch: CRITICAL, use: { ...devices['Desktop Firefox'] } },
+        { name: 'webkit', testMatch: CRITICAL, use: { ...devices['Desktop Safari'] } },
         // Only registered when E2E_LIVE=1, so the default run never needs an engine.
         ...(LIVE ? [{
             name: 'live',
