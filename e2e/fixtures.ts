@@ -69,6 +69,9 @@ export const DEFAULT_FIXTURES = {
         } };
     },
     'GET /channels/statistics': { list: { channelStatistics: [] } },
+    // Channel mutation endpoints return a boolean, not an empty success body.
+    'POST /channels': true,
+    'PUT /channels/*': true,
     'GET /channels': { list: { channel: SAMPLE_CHANNELS } },
     'GET /channels/idsAndNames': {},
     'GET /channelgroups': '',

@@ -1,3 +1,6 @@
+import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
+import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
+import { channelDependencyState, copyLibrarySelection, copyDependencySelection, dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices, hasDependencyChanges, hasLibraryChanges, persistChannelDependencies, persistLibraryAssociations } from '../../core/channel-dependencies.js';
 /*
  * Channel editor — parity with the Swing Administrator's channel setup pane,
  * declarative React. One mutable channel object is shared by every tab; all
@@ -36,6 +39,7 @@ import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { validateScript } from '../../core/serialize.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
@@ -568,7 +572,8 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
  */
 
 async function openDependenciesModal(channel: any, version: any, markDirty: any) {
-    const idSet = (value: any) => api.asList(value, 'string').map(String);
+    const isCurrent = channelSessionActive();
+    if (!isCurrent()) return;
     const props = channel.properties = channel.properties || {};
 
     let idsAndNames: any, deps: any, libraries: any, resourcesRaw: any;
@@ -579,8 +584,9 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
             api.codeTemplates.libraries(true),
             api.server.resources()
         ]);
+        if (!isCurrent()) return;
     } catch (e: any) {
-        toast(`Could not load dependencies: ${e.message}`, 'error');
+        if (isCurrent()) toast(`Could not load dependencies: ${e.message}`, 'error');
         return;
     }
 
@@ -597,10 +603,12 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
 
     /* ===== Tab 1: Code Template Libraries (CodeTemplateLibrariesPanel) ===== */
 
-    const libChecked = new Map(libraries.map((lib: any) => [lib.id,
-        idSet(lib.enabledChannelIds).includes(channel.id) ||
-        (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(channel.id))]));
-    const libInitial = new Map(libChecked);
+    const pending = channelDependencyState(channel);
+    const libState = { current: copyLibrarySelection(pending.libraries.current || librarySelection(libraries, channel.id)) };
+    refreshLibraryChoices(libState.current, libraries, channel.id);
+    // Keep retained selections visible even if a concurrent read omits a library.
+    libraries = libState.current.libraries;
+    const libChecked = libState.current.checked;
     const libExpanded = new Set();
 
     function renderLibrariesTab() {
@@ -739,8 +747,9 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         .map(([id, name]) => ({ id, name })).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     let dependencies = deps.map((d: any) => ({ dependentId: String(d.dependentId), dependencyId: String(d.dependencyId) }));
-    const depKey = (d: any) => `${d.dependentId}|${d.dependencyId}`;
-    const initialDepKeys = new Set(dependencies.map(depKey));
+    const depState = { current: copyDependencySelection(pending.dependencies.current || dependencySelection(dependencies)) };
+    refreshDependencyChoices(depState.current, dependencies);
+    dependencies = depState.current.all;
     const directDeps = (id: any) => dependencies.filter((d: any) => d.dependentId === id).map((d: any) => d.dependencyId);
     const directDependents = (id: any) => dependencies.filter((d: any) => d.dependencyId === id).map((d: any) => d.dependentId);
     function dependsOn(a: any, b: any, seen = new Set()): any {   // does a transitively depend on b?
@@ -872,54 +881,31 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
             {
                 label: 'OK', primary: true,
                 onClick: async () => {
+                    if (!isCurrent()) return false;
                     try {
                         // 1. Deploy/start dependencies — saved to the server
                         //    immediately, with a confirmation (matches Swing).
-                        const curKeys = new Set(dependencies.map(depKey));
-                        const depChanged = curKeys.size !== initialDepKeys.size
-                            || [...curKeys].some(k => !initialDepKeys.has(k));
-                        if (depChanged) {
+                        depState.current.all = dependencies;
+                        if (hasDependencyChanges(depState.current)) {
                             const ok = await confirmDialog('Save Dependencies',
                                 "You've made changes to deploy/start dependencies, which will be saved now. Are you sure you wish to continue?");
-                            if (!ok) return false;
-                            await api.server.setChannelDependencies(
-                                dependencies.map((d: any) => ({ dependentId: d.dependentId, dependencyId: d.dependencyId })));
+                            if (!isCurrent() || !ok) return false;
+                            await persistChannelDependencies(depState);
+                            if (!isCurrent()) return false;
+                            dependencies = depState.current.all;
+                            pending.dependencies.current = copyDependencySelection(depState.current);
                             toast('Channel dependencies saved');
                         }
 
-                        // 2. Code template libraries — mutate this channel's
-                        //    membership, then PUT the full list. Changing a
-                        //    library's channel set edits the SHARED libraries,
-                        //    so confirm first (matches Swing).
-                        const changedLibs = libraries.filter((lib: any) => libChecked.get(lib.id) !== libInitial.get(lib.id));
-                        if (changedLibs.length) {
+                        // 2. Confirm and merge library membership intents using
+                        //    the same guarded bulk API as Swing's dialog.
+                        if (hasLibraryChanges(libState.current)) {
                             const ok = await confirmDialog('Save Code Template Libraries',
                                 "You've made changes to code template libraries, which will be saved now. Are you sure you wish to continue?");
-                            if (!ok) return false;
-                            for (const lib of changedLibs) {
-                                const enabled = new Set(idSet(lib.enabledChannelIds));
-                                const disabled = new Set(idSet(lib.disabledChannelIds));
-                                if (libChecked.get(lib.id)) { enabled.add(channel.id); disabled.delete(channel.id); }
-                                else { enabled.delete(channel.id); disabled.add(channel.id); }
-                                (lib as any).enabledChannelIds = enabled.size ? { string: [...enabled] } : '';
-                                (lib as any).disabledChannelIds = disabled.size ? { string: [...disabled] } : '';
-                            }
-                            // '@version' must be the FIRST key on both the library
-                            // and each template ref (array-nested; the engine's
-                            // JSON→XML reorder fallback doesn't run there).
-                            const payload = libraries.map((lib: any) => {
-                                const { '@version': _v, codeTemplates: _ct, ...rest } = lib as any;
-                                const ids = api.asList(lib.codeTemplates, 'codeTemplate')
-                                    .map(t => t && t.id).filter(Boolean);
-                                return {
-                                    '@version': (lib as any)['@version'] || version,
-                                    ...rest,
-                                    codeTemplates: ids.length
-                                        ? { codeTemplate: ids.map(id => ({ '@version': version, id })) }
-                                        : null
-                                };
-                            });
-                            await api.codeTemplates.updateLibraries(payload);
+                            if (!isCurrent() || !ok) return false;
+                            const saved = await persistLibraryAssociations(channel, libState, version, confirmLibraryOverwrite);
+                            if (!isCurrent() || !saved) return false;
+                            pending.libraries.current = copyLibrarySelection(libState.current);
                             toast('Code template libraries saved');
                         }
 
@@ -940,9 +926,14 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                             };
                             if (JSON.stringify(before) !== JSON.stringify(after)) resChanged = true;
                         }
+                        // Commit no-write reversions only once OK succeeds.
+                        // Earlier accepted server writes are checkpointed above
+                        // even when a later confirmation or request fails.
+                        pending.dependencies.current = copyDependencySelection(depState.current);
+                        pending.libraries.current = copyLibrarySelection(libState.current);
                         if (resChanged) markDirty();
                     } catch (e: any) {
-                        toast(e.message, 'error');
+                        if (isCurrent()) toast(e.message, 'error');
                         return false;
                     }
                 }
@@ -1059,6 +1050,8 @@ function openAdvancedQueueSettings(dcp: any, markDirty: any, onDone: any) {
    connector, destination response transformer
    (DebuggerUtil.parseDebugOptions). */
 function openDebugDeployModal(channel: any, save: any) {
+    const isCurrent = channelSessionActive();
+    if (!isCurrent()) return;
     const options = [
         { label: 'Deploy/Undeploy/Preprocessor/Postprocessor scripts' },
         { label: 'Attachment/Batch scripts' },
@@ -1083,14 +1076,17 @@ function openDebugDeployModal(channel: any, save: any) {
             {
                 label: 'Debug Deploy', primary: true,
                 onClick: async () => {
-                    if (!await save()) return false;
+                    if (!isCurrent()) return false;
+                    const saved = await save();
+                    if (!isCurrent() || !saved) return false;
                     const debugOptions = state.map(on => on ? 't' : 'f').join(',');
                     try {
                         await api.post(`/channels/${channel.id}/_deploy`, null,
                             { params: { returnErrors: true, debugOptions } });
+                        if (!isCurrent()) return false;
                         toast(`Deployed ${channel.name} in debug mode`);
                     } catch (e: any) {
-                        toast(e.message, 'error');
+                        if (isCurrent()) toast(e.message, 'error');
                         return false;
                     }
                 }
@@ -2176,10 +2172,17 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         refresh();
     }
 
-    function exportConnector() {
+    async function exportConnector() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         const dest = needSelection();
         if (!dest) return;
-        saveFile(`${dest.name || 'destination'}.json`, 'application/json', () => JSON.stringify({ connector: dest }, null, 2));
+        try {
+            await saveFile(`${dest.name || 'destination'}.json`, 'application/json', () => JSON.stringify({ connector: dest }, null, 2), assertSession);
+        } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Export failed: ${e.message}`, 'error');
+        }
     }
 
     function cloneDestination() {
@@ -2482,21 +2485,10 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     const setupRef = useRef<any>(null);
     if (!setupRef.current) {
         const channel = store.getState('editingChannel');
-        // Baseline for the concurrent-edit check (override=false): the channel's
-        // OWN last-modified AS LOADED — NOT wall-clock time (immune to clock
-        // skew). Round UP to the whole second (the engine parses startEdit at
-        // second precision). A channel with NO stored last-modified can't be
-        // guarded: its first save skips the check (override=true) and stamps a
-        // real last-modified, healing it for later saves.
-        const loadedLM = channel && channel.exportData && channel.exportData.metadata
-            && channel.exportData.metadata.lastModified;
-        const loadedLMms = loadedLM ? Number(loadedLM.time != null ? loadedLM.time : loadedLM) : NaN;
         setupRef.current = {
             channel,
             version: channel['@version'] || store.getState('serverVersion') || '4.5.2',
-            startEdit: Number.isFinite(loadedLMms) ? new Date(Math.ceil(loadedLMms / 1000) * 1000) : new Date(),
-            guardable: Number.isFinite(loadedLMms),
-            isNew: query.new === '1' || store.getState('editingChannelNew') === true,
+            get isNew() { return channelEditState(channel, query.new === '1' || store.getState('editingChannelNew') === true).isNew; },
             // Tags cache shared by the Summary field and save().
             tagState: { loaded: false, available: false, all: [], assigned: new Set(), initial: new Set() }
         };
@@ -2636,6 +2628,8 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     function save() { return withEditorSave(saveUnlocked); }
 
     async function saveUnlocked() {
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return false;
         const problems = [...oie.validateChannel(channel), ...validateConnectors()];
         if (problems.length) {
             highlightInvalidFields();
@@ -2651,6 +2645,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         // Swing parity (Frame.checkChannelName, run from saveChanges): block the
         // save on a too-long / illegal / duplicate channel name.
         const nameError = await checkChannelName();
+        if (!isCurrent()) return false;
         if (nameError) {
             modal({ title: 'Cannot Save Channel', body: h('div', nameError), buttons: [{ label: 'OK' }] });
             return false;
@@ -2659,77 +2654,47 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             // Reconcile tag membership into the channel itself so the PUT attaches
             // them (idempotent — survives a follow-up Deploy that re-saves).
             await ensureTags(tagState, channel);
+            if (!isCurrent()) return false;
             applyTagsToChannel(tagState, channel, version);
-            // Swing parity (ChannelSetup.setLastModified): stamp the metadata's
-            // last-modified at save time — the engine stores whatever we send,
-            // and an absent value makes every later concurrent-edit check
-            // falsely prompt "Channel Modified".
-            const savedMeta = (channel.exportData = channel.exportData || {}).metadata
-                = channel.exportData.metadata || { enabled: true };
-            const saveStamp = Date.now();
-            savedMeta.lastModified = {
-                time: saveStamp,
-                timezone: (savedMeta.lastModified && savedMeta.lastModified.timezone)
-                    || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
-            };
-            // Rebase the edit window onto the stamp we are storing, rounded UP to
-            // the whole second (the engine parses startEdit at second precision).
-            const rebase = () => { setup.startEdit = new Date(Math.ceil(saveStamp / 1000) * 1000); };
-            if (setup.isNew) {
-                await api.channels.create(channel);
-                setup.isNew = false;
-                store.setState('editingChannel', null);
-                store.setState('editingChannelNew', false);
-            } else {
-                channel.revision = (Number(channel.revision) || 0) + 1;
-                // An unguardable channel saves with override=true — the check
-                // would false-positive unconditionally. The stamp above heals
-                // it, so the guard is live from the next save on.
-                const ok = await api.channels.update(channel.id, channel, !setup.guardable, setup.guardable ? setup.startEdit : undefined);
-                if (String(ok) === 'false') {
-                    const overwrite = await confirmDialog('Channel Modified',
-                        'This channel has been modified since you first opened it. Are you sure you want to overwrite it?',
-                        { danger: true, okLabel: 'Overwrite' });
-                    if (!overwrite) {
-                        channel.revision = (Number(channel.revision) || 0) - 1;
-                        return false;
-                    }
-                    await api.channels.update(channel.id, channel, true);
-                }
-            }
-            setup.guardable = true;   // the save stored our stamp — the guard is live now
-            rebase();
+            const saved = await persistChannelEdits(channel);
+            if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
             onTasksChange();
             bumpRev();
             toast(`Saved ${channel.name}`);
             return true;
         } catch (e: any) {
-            toast(e.message, 'error');
+            if (isCurrent()) toast(e.message, 'error');
             return false;
         }
     }
 
     async function deploy() {
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return;
         // Match the Swing channel-view deploy (Frame.doDeployFromChannelView):
         // unsaved changes prompt to save-and-deploy; otherwise a plain confirm.
         if (isDirty()) {
-            if (!await confirmDialog('Deploy Channel',
+            const confirmed = await confirmDialog('Deploy Channel',
                 'This channel will be saved before it is deployed. Are you sure you want to save and deploy this channel?',
-                { okLabel: 'Save and Deploy' })) return;
-            if (!await save()) return;
-        } else if (!await confirmDialog('Deploy Channel', 'Are you sure you want to deploy this channel?', { okLabel: 'Deploy' })) {
-            return;
+                { okLabel: 'Save and Deploy' });
+            if (!isCurrent() || !confirmed) return;
+            const saved = await save();
+            if (!isCurrent() || !saved) return;
+        } else {
+            const confirmed = await confirmDialog('Deploy Channel', 'Are you sure you want to deploy this channel?', { okLabel: 'Deploy' });
+            if (!isCurrent() || !confirmed) return;
         }
         try {
             await api.engine.deploy(channel.id);
+            if (!isCurrent()) return;
             // Switch to the Dashboard to watch deployment (matches Swing).
             toast(`Deploying ${channel.name}`);
             router.navigate('/dashboard');
         } catch (e: any) {
             // A deploy failure returns the engine's full exception — far too
             // long for a corner toast; show the detail modal and stay here.
-            errorModal('Channel Deployment Failed', e, channel.name);
+            if (isCurrent()) errorModal('Channel Deployment Failed', e, channel.name);
         }
     }
 
@@ -2766,8 +2731,15 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         toast('Channel scripts validated successfully');
     }
 
-    function exportChannel() {
-        saveFile(`${channel.name || channel.id}.json`, 'application/json', () => JSON.stringify({ channel }, null, 2));
+    async function exportChannel() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        try {
+            await saveFile(`${channel.name || channel.id}.json`, 'application/json', () => JSON.stringify({ channel }, null, 2), assertSession);
+        } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Export failed: ${e.message}`, 'error');
+        }
     }
 
     function backToChannels() { router.navigate('/channels'); }
@@ -2782,11 +2754,16 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
        navigation and must not drop the working copy — state clears only on
        allow (Don't Save, or a successful Save). */
     guardImplRef.current = async ({ path }: any) => {
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return false;
         if (path.startsWith(`/channels/${params.channelId}/`)) return; // same editing flow
         if (isDirty()) {
             const choice = await promptSaveChanges(channel);
-            if (choice === 'cancel') return false;
-            if (choice === 'save' && !await save()) return false;
+            if (!isCurrent() || choice === 'cancel') return false;
+            if (choice === 'save') {
+                const saved = await save();
+                if (!isCurrent() || !saved) return false;
+            }
         }
         // Leaving the editor: drop the working copy AND this guard — it must
         // never prompt again for navigation outside the editor.
@@ -2914,7 +2891,7 @@ export function ChannelEditorView({ params, query }: any) {
     useEffect(() => {
         if (ready) return undefined;
         let alive = true;
-        api.channels.get(params.channelId).then((loaded: any) => {
+        loadChannelForEdit(params.channelId).then((loaded: any) => {
             if (!alive) return;
             /* An id the engine doesn't know is NOT an error response: it answers 200
                with an empty body, so this resolves with nothing. Without this check
