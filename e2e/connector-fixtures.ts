@@ -17,7 +17,7 @@
  * another's expected value.
  */
 
-const V = '4.5.0';
+const V = '4.6.0';
 const RESOURCE_IDS = () => ({ '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } });
 
 // The common source/destination wrapper every connector's properties embed

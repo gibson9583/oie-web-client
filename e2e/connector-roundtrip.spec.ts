@@ -31,7 +31,7 @@ for (const c of CASES) {
         let putBody: any = null;
         await page.route((url) => url.pathname === `/api/channels/${id}`, async (route) => {
             const req = route.request();
-            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: 'true' }); }
             return route.fallback();
         });
 
@@ -95,7 +95,7 @@ for (const c of CASES.filter((x) => x.edit)) {
         let putBody: any = null;
         await page.route((url) => url.pathname === `/api/channels/${id}`, async (route) => {
             const req = route.request();
-            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: 'true' }); }
             return route.fallback();
         });
 

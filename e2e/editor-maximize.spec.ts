@@ -16,7 +16,7 @@ import { CASES as CONNECTOR_CASES, makeChannel } from './connector-fixtures.js';
 
 test('transformer step editor has ONE grow affordance: the code view (no region maximize)', async ({ page }) => {
     const id = 'max-tx';
-    const element = { '@version': '4.5.0', name: 'Original', sequenceNumber: '0', enabled: true, script: '// hi\n' };
+    const element = { '@version': '4.6.0', name: 'Original', sequenceNumber: '0', enabled: true, script: '// hi\n' };
     const channel = channelWithSourceElement(id, 'transformer', 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep', element);
     await mockEngine(page, { [`GET /channels/${id}`]: { channel } });
 

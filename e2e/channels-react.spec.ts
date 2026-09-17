@@ -25,7 +25,7 @@ const GROUPS_FIXTURE = {
         list: {
             channelGroup: [
                 {
-                    '@version': '4.5.0', id: 'g-1', name: 'Demo Group', revision: 1,
+                    '@version': '4.6.0', id: 'g-1', name: 'Demo Group', revision: 1,
                     description: 'A demo channel group',
                     channels: { channel: [{ id: 'c-started' }] }
                 }
@@ -38,9 +38,9 @@ const GROUPS_FIXTURE = {
 
 // The stock channels with Demo Stopped disabled (Demo Started stays enabled).
 const STOPPED_DISABLED_CHANNELS = { list: { channel: [
-    { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1,
+    { '@version': '4.6.0', id: 'c-started', name: 'Demo Started', revision: 1,
         exportData: { metadata: { enabled: true } } },
-    { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1,
+    { '@version': '4.6.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1,
         exportData: { metadata: { enabled: false } } }
 ] } };
 
@@ -153,13 +153,13 @@ test.describe('Channels React view', () => {
             name: 'imported-group.xml',
             mimeType: 'application/xml',
             buffer: Buffer.from(`
-                <channelGroup version="4.5.0">
+                <channelGroup version="4.6.0">
                   <id>g-imported</id>
                   <name>Imported Group</name>
                   <revision>1</revision>
                   <description>Swing export</description>
                   <channels>
-                    <channel version="4.5.0">
+                    <channel version="4.6.0">
                       <id>c-imported</id>
                       <name>Imported Channel</name>
                       <revision>1</revision>
@@ -203,23 +203,23 @@ test.describe('Channels React view', () => {
         await (await chooser).setFiles({
             name: 'libraries-group.xml',
             mimeType: 'application/xml',
-            buffer: Buffer.from(`<channelGroup version="4.5.0">
+            buffer: Buffer.from(`<channelGroup version="4.6.0">
                 <id>group-with-libraries</id><name>Group With Libraries</name><revision>1</revision>
                 <channels>
-                    <channel version="4.5.0"><id>group-channel-a</id><name>Group Channel A</name><revision>1</revision>
-                        <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.5.0">
+                    <channel version="4.6.0"><id>group-channel-a</id><name>Group Channel A</name><revision>1</revision>
+                        <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.6.0">
                             <id>group-library</id><name>Group Library</name><revision>1</revision>
-                            <codeTemplates><codeTemplate version="4.5.0"><id>group-template-a</id><name>Template A</name><revision>0</revision>
-                                <properties version="4.5.0"><type>FUNCTION</type><code>function a() {}</code></properties>
+                            <codeTemplates><codeTemplate version="4.6.0"><id>group-template-a</id><name>Template A</name><revision>0</revision>
+                                <properties version="4.6.0"><type>FUNCTION</type><code>function a() {}</code></properties>
                             </codeTemplate></codeTemplates><includeNewChannels>false</includeNewChannels>
                             <enabledChannelIds/><disabledChannelIds/>
                         </codeTemplateLibrary></codeTemplateLibraries></exportData>
                     </channel>
-                    <channel version="4.5.0"><id>group-channel-b</id><name>Group Channel B</name><revision>1</revision>
-                        <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.5.0">
+                    <channel version="4.6.0"><id>group-channel-b</id><name>Group Channel B</name><revision>1</revision>
+                        <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.6.0">
                             <id>group-library</id><name>Group Library</name><revision>1</revision>
-                            <codeTemplates><codeTemplate version="4.5.0"><id>group-template-b</id><name>Template B</name><revision>0</revision>
-                                <properties version="4.5.0"><type>FUNCTION</type><code>function b() {}</code></properties>
+                            <codeTemplates><codeTemplate version="4.6.0"><id>group-template-b</id><name>Template B</name><revision>0</revision>
+                                <properties version="4.6.0"><type>FUNCTION</type><code>function b() {}</code></properties>
                             </codeTemplate></codeTemplates><includeNewChannels>false</includeNewChannels>
                             <enabledChannelIds/><disabledChannelIds/>
                         </codeTemplateLibrary></codeTemplateLibraries></exportData>
@@ -268,9 +268,9 @@ test.describe('Channels React view', () => {
         await (await chooser).setFiles({
             name: 'rejected-libraries-group.xml',
             mimeType: 'application/xml',
-            buffer: Buffer.from(`<channelGroup version="4.5.0"><id>rejected-group</id><name>Rejected Group</name>
-                <channels><channel version="4.5.0"><id>rejected-channel</id><name>Rejected Channel</name><revision>1</revision>
-                    <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.5.0">
+            buffer: Buffer.from(`<channelGroup version="4.6.0"><id>rejected-group</id><name>Rejected Group</name>
+                <channels><channel version="4.6.0"><id>rejected-channel</id><name>Rejected Channel</name><revision>1</revision>
+                    <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.6.0">
                         <id>rejected-library</id><name>Rejected Library</name><revision>0</revision>
                         <codeTemplates/><includeNewChannels>false</includeNewChannels><enabledChannelIds/><disabledChannelIds/>
                     </codeTemplateLibrary></codeTemplateLibraries></exportData>
@@ -289,18 +289,18 @@ test.describe('Channels React view', () => {
         await mockEngine(page, {
             ...GROUPS_FIXTURE,
             'GET /channelgroups': (request: any) => request.headers()['accept']?.includes('application/xml')
-                ? `<list><channelGroup version="4.5.0"><id>g-1</id><name>Demo Group</name><revision>1</revision><description>A demo channel group</description><channels><channel version="4.5.0"><id>c-started</id><revision>1</revision></channel></channels></channelGroup></list>`
+                ? `<list><channelGroup version="4.6.0"><id>g-1</id><name>Demo Group</name><revision>1</revision><description>A demo channel group</description><channels><channel version="4.6.0"><id>c-started</id><revision>1</revision></channel></channels></channelGroup></list>`
                 : GROUPS_FIXTURE['GET /channelgroups'],
             'GET /channels': (request: any) => request.headers()['accept']?.includes('application/xml')
                 ? `<list>
-                    <channel version="4.5.0"><id>c-started</id><nextMetaDataId>2</nextMetaDataId><name>Demo Started</name><revision>1</revision><sourceConnector><name>Source</name></sourceConnector><exportData><metadata><enabled>true</enabled></metadata></exportData></channel>
-                    <channel version="4.5.0"><id>c-stopped</id><nextMetaDataId>2</nextMetaDataId><name>Demo Stopped</name><revision>1</revision><sourceConnector><name>Source</name></sourceConnector><exportData><metadata><enabled>true</enabled></metadata></exportData></channel>
-                    <com.mirth.connect.model.InvalidChannel version="4.5.0"><id>c-invalid</id><name>Broken Channel</name><revision>1</revision><missingExtension>custom-connector</missingExtension></com.mirth.connect.model.InvalidChannel>
+                    <channel version="4.6.0"><id>c-started</id><nextMetaDataId>2</nextMetaDataId><name>Demo Started</name><revision>1</revision><sourceConnector><name>Source</name></sourceConnector><exportData><metadata><enabled>true</enabled></metadata></exportData></channel>
+                    <channel version="4.6.0"><id>c-stopped</id><nextMetaDataId>2</nextMetaDataId><name>Demo Stopped</name><revision>1</revision><sourceConnector><name>Source</name></sourceConnector><exportData><metadata><enabled>true</enabled></metadata></exportData></channel>
+                    <com.mirth.connect.model.InvalidChannel version="4.6.0"><id>c-invalid</id><name>Broken Channel</name><revision>1</revision><missingExtension>custom-connector</missingExtension></com.mirth.connect.model.InvalidChannel>
                   </list>`
                 : { list: { channel: [
-                    { '@version': '4.5.0', id: 'c-started', name: 'Demo Started', revision: 1 },
-                    { '@version': '4.5.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1 },
-                    { '@class': 'com.mirth.connect.model.InvalidChannel', '@version': '4.5.0', id: 'c-invalid', name: 'Broken Channel', revision: 1 },
+                    { '@version': '4.6.0', id: 'c-started', name: 'Demo Started', revision: 1 },
+                    { '@version': '4.6.0', id: 'c-stopped', name: 'Demo Stopped', revision: 1 },
+                    { '@class': 'com.mirth.connect.model.InvalidChannel', '@version': '4.6.0', id: 'c-invalid', name: 'Broken Channel', revision: 1 },
                 ] } },
         });
         await gotoChannels(page);
@@ -366,10 +366,10 @@ test.describe('Channels React view', () => {
                 enabledChannelIds: { string: ['c-started'] }, disabledChannelIds: ''
             }] } },
             'GET /channelgroups': (request: any) => request.headers()['accept']?.includes('application/xml')
-                ? '<list><channelGroup version="4.5.0"><id>g-1</id><name>Demo Group</name><channels><channel><id>c-started</id></channel></channels></channelGroup></list>'
+                ? '<list><channelGroup version="4.6.0"><id>g-1</id><name>Demo Group</name><channels><channel><id>c-started</id></channel></channels></channelGroup></list>'
                 : GROUPS_FIXTURE['GET /channelgroups'],
             'GET /channels': (request: any) => request.headers()['accept']?.includes('application/xml')
-                ? '<list><channel version="4.5.0"><id>c-started</id><name>Demo Started</name><exportData><codeTemplateLibraries/></exportData></channel></list>'
+                ? '<list><channel version="4.6.0"><id>c-started</id><name>Demo Started</name><exportData><codeTemplateLibraries/></exportData></channel></list>'
                 : { list: { channel: [{ id: 'c-started', name: 'Demo Started' }, { id: 'c-stopped', name: 'Demo Stopped' }] } }
         });
         await gotoChannels(page);
@@ -394,7 +394,7 @@ test.describe('Channels React view', () => {
         await mockEngine(page, {
             ...GROUPS_FIXTURE,
             'GET /codeTemplateLibraries': { __status: 403, body: { error: 'library view forbidden' } },
-            'GET /channels/c-stopped': '<channel version="4.5.0"><id>c-stopped</id><name>Demo Stopped</name></channel>'
+            'GET /channels/c-stopped': '<channel version="4.6.0"><id>c-stopped</id><name>Demo Stopped</name></channel>'
         });
         await gotoChannels(page);
         await page.getByText('Demo Stopped', { exact: true }).click();
@@ -423,9 +423,9 @@ test.describe('Channels React view', () => {
         await (await chooser).setFiles({
             name: 'default-group.xml',
             mimeType: 'application/xml',
-            buffer: Buffer.from(`<channelGroup version="4.5.0">
+            buffer: Buffer.from(`<channelGroup version="4.6.0">
                 <id>Default Group</id><name>[Default Group]</name>
-                <channels><channel version="4.5.0"><id>default-import</id><name>Default Import</name><revision>1</revision></channel></channels>
+                <channels><channel version="4.6.0"><id>default-import</id><name>Default Import</name><revision>1</revision></channel></channels>
             </channelGroup>`)
         });
 
@@ -456,7 +456,7 @@ test.describe('Channels React view', () => {
         await (await chooser).setFiles({
             name: 'dependency-channel.xml',
             mimeType: 'application/xml',
-            buffer: Buffer.from(`<channel version="4.5.0">
+            buffer: Buffer.from(`<channel version="4.6.0">
                 <id>imported-channel</id><name>Imported Dependency Channel</name><revision>4</revision>
                 <properties><resourceIds class="linked-hash-map"><entry><string>resource-old</string><string>Shared Resource</string></entry></resourceIds></properties>
                 <sourceConnector><properties><sourceConnectorProperties><resourceIds class="linked-hash-map"><entry><string>resource-existing</string><string>Stale Resource Name</string></entry></resourceIds></sourceConnectorProperties></properties></sourceConnector>
@@ -496,7 +496,7 @@ test.describe('Channels React view', () => {
         await (await chooser).setFiles({
             name: 'dependency-failure.xml',
             mimeType: 'application/xml',
-            buffer: Buffer.from(`<channel version="4.5.0">
+            buffer: Buffer.from(`<channel version="4.6.0">
                 <id>dependency-failure</id><name>Dependency Failure</name><revision>1</revision>
                 <exportData><dependencyIds><string>upstream</string></dependencyIds></exportData>
             </channel>`)
@@ -531,10 +531,10 @@ test.describe('Channels React view', () => {
             buffer: Buffer.from(JSON.stringify({
                 id: 'json-channel', name: 'JSON Channel', revision: 3,
                 exportData: { codeTemplateLibraries: { codeTemplateLibrary: [{
-                    '@version': '4.5.0', id: 'json-library', name: 'JSON Library', revision: 7,
+                    '@version': '4.6.0', id: 'json-library', name: 'JSON Library', revision: 7,
                     codeTemplates: { codeTemplate: [{
-                        '@version': '4.5.0', id: 'json-template', name: 'JSON Template', revision: 9,
-                        properties: { '@version': '4.5.0', type: 'FUNCTION', code: 'return true;' }
+                        '@version': '4.6.0', id: 'json-template', name: 'JSON Template', revision: 9,
+                        properties: { '@version': '4.6.0', type: 'FUNCTION', code: 'return true;' }
                     }] }
                 }] } }
             }))
@@ -570,11 +570,11 @@ test.describe('Channels React view', () => {
         await (await chooser).setFiles({
             name: 'library-channel.xml',
             mimeType: 'application/xml',
-            buffer: Buffer.from(`<channel version="4.5.0">
+            buffer: Buffer.from(`<channel version="4.6.0">
                 <id>xml-library-channel</id><name>XML Library Channel</name><revision>1</revision>
-                <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.5.0">
+                <exportData><codeTemplateLibraries><codeTemplateLibrary version="4.6.0">
                     <id>lib-1</id><name>Demo Library</name><revision>1</revision>
-                    <codeTemplates><codeTemplate version="4.5.0"><id>tpl-1</id></codeTemplate></codeTemplates>
+                    <codeTemplates><codeTemplate version="4.6.0"><id>tpl-1</id></codeTemplate></codeTemplates>
                     <includeNewChannels>false</includeNewChannels><enabledChannelIds/><disabledChannelIds/>
                 </codeTemplateLibrary></codeTemplateLibraries></exportData>
             </channel>`)
@@ -737,7 +737,7 @@ test.describe('Channels React view', () => {
     test('a deploy failure shows the error detail modal and stays on Channels', async ({ page }) => {
         await mockEngine(page, {
             ...GROUPS_FIXTURE,
-            'POST /channels/_deploy': { __status: 500, body: { error: 'compile failed' } },
+            'POST /channels/_deploy?returnErrors=true': { __status: 500, body: { error: 'compile failed' } },
         });
         await gotoChannels(page);
         await page.getByText('Demo Stopped', { exact: true }).click();

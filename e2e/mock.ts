@@ -15,34 +15,53 @@ function fixtureXml(tag: string, value: any): string {
 
 /*
  * Intercept every /api/* request in the browser and fulfill it from fixtures,
- * so the SPA runs end-to-end with no engine. Unmatched calls return an empty
- * body (parseBody → null → asList → []) so the app never hangs or crashes on a
- * call a test didn't anticipate.
+ * so the SPA runs end-to-end with no engine. Unexpected writes fail the test;
+ * read-only requests may return an empty collection. Query-specific fixtures
+ * take precedence over path-only defaults. Async fixtures can hold responses
+ * to exercise ordering and partial completion.
  *
  *   await mockEngine(page);                              // happy-path defaults
  *   await mockEngine(page, { 'GET /users/current': { __status: 401 } });  // override
  */
 export async function mockEngine(page: any, overrides = {}) {
-    const fixtures = { ...DEFAULT_FIXTURES, ...overrides };
+    const normalize = (key: string) => {
+        const space = key.indexOf(' ');
+        const url = new URL(key.slice(space + 1), 'http://fixture');
+        url.searchParams.sort();
+        return `${key.slice(0, space)} ${url.pathname}${url.search}`;
+    };
+    const fixtures = Object.fromEntries(Object.entries({ ...DEFAULT_FIXTURES, ...overrides })
+        .map(([key, value]) => [normalize(key), value]));
     const patterns = Object.keys(fixtures).filter((k) => k.includes('*'));
 
     await page.route('**/api/**', async (route: any) => {
         const req = route.request();
-        const path = new URL(req.url()).pathname.replace(/^\/api/, '');
+        const url = new URL(req.url());
+        const path = url.pathname.replace(/^\/api/, '');
+        url.searchParams.sort();
         const key = `${req.method()} ${path}`;
+        const queryKey = key + url.search;
 
-        let fx = (fixtures as any)[key];
-        if (fx === undefined) {
+        let fx: any;
+        for (const candidate of [...new Set([queryKey, key])]) {
+            if (Object.hasOwn(fixtures, candidate)) { fx = fixtures[candidate]; break; }
             for (const p of patterns) {
                 const [method, pat] = p.split(' ');
                 if (method !== req.method()) continue;
-                const re = new RegExp('^' + pat.replace(/[.]/g, '\\.').replace(/\*/g, '[^/]+') + '$');
-                if (re.test(path)) { fx = (fixtures as any)[p]; break; }
+                if (pat.includes('?') !== candidate.includes('?')) continue;
+                const re = new RegExp('^' + pat.split('*').map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^/?]+') + '$');
+                if (re.test(candidate.slice(method.length + 1))) { fx = fixtures[p]; break; }
             }
+            if (fx !== undefined) break;
         }
 
-        if (typeof fx === 'function') fx = fx(req);
+        if (typeof fx === 'function') fx = await fx(req);
         if (fx === undefined) {
+            if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method())) {
+                const message = `Unexpected engine mutation: ${queryKey}\nBody: ${req.postData() ?? '<empty>'}`;
+                await route.fulfill({ status: 501, contentType: 'text/plain', body: message });
+                throw new Error(message);
+            }
             return route.fulfill({ status: 200, contentType: 'text/plain', body: '' });
         }
         if (typeof fx === 'string') {

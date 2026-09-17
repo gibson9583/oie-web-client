@@ -11,7 +11,7 @@ test('boots straight to the dashboard with channel rows', async ({ page }) => {
     await expect(page.getByText('Demo Started')).toBeVisible();
     await expect(page.getByText('Demo Stopped')).toBeVisible();
     // Server identity chip resolves from /server/version + /server/settings.
-    await expect(page.getByText(/E2E Engine.*v4\.5\.0/)).toBeVisible();
+    await expect(page.getByText(/E2E Engine.*v4\.6\.0/)).toBeVisible();
 });
 
 test('starting a stopped channel POSTs _start', async ({ page }) => {
