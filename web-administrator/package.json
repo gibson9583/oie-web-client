@@ -18,7 +18,7 @@
     "test": "for f in client/core/*.test.js server/*.test.js; do node \"$f\" || exit 1; done"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.18.0"
   },
   "dependencies": {
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",
@@ -37,6 +37,7 @@
     "@radix-ui/react-toast": "^1.2.23",
     "@zip.js/zip.js": "^2.8.34",
     "dicom-parser": "^1.8.21",
+    "dompurify": "3.4.15",
     "express": "^5.2.1",
     "js-beautify": "^2.0.3",
     "monaco-editor": "^0.56.0",
