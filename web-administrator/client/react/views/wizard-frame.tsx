@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast, modal, h } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import * as router from '../../core/router.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import { Icon } from '../bridges.jsx';
 
 /*
@@ -110,6 +111,9 @@ function confirmLeave(entityLabel: any, isNew: any, canSave: any) {
  *             an OK-only "no permission" notice.
  */
 export function useLeaveGuard({ model, isNew, storeKey, storeNewKey, dirtyKey, entityLabel, dirtyRef, savedRef, switchingRef, save, canSave }: any) {
+    const live = useRef({ isNew, save, canSave });
+    live.current = { isNew, save, canSave };
+    const isNewNow = () => typeof live.current.isNew === 'function' ? live.current.isNew() : live.current.isNew;
     const cleanupStore = () => {
         if (store.getState(storeKey) === model) {
             store.setState(storeKey, null);
@@ -120,7 +124,7 @@ export function useLeaveGuard({ model, isNew, storeKey, storeNewKey, dirtyKey, e
     // Point the store at this model for the wizard's lifetime; drop it on a real exit.
     useEffect(() => {
         store.setState(storeKey, model);
-        store.setState(storeNewKey, isNew);
+        store.setState(storeNewKey, isNewNow());
         return () => {
             // switchingRef is read at unmount on purpose — it's set just before a
             // classic-editor switch so we leave the model in the store then.
@@ -135,13 +139,26 @@ export function useLeaveGuard({ model, isNew, storeKey, storeNewKey, dirtyKey, e
     // Prompt on leaving with unsaved work.
     useEffect(() => {
         const guard = async () => {
-            if (savedRef.current) return;               // already created/updated → allow
-            if (!(isNew || dirtyRef.current)) return;   // nothing unsaved → allow
-            const choice = await confirmLeave(entityLabel, isNew, canSave ? canSave() : true);
-            if (choice === 'cancel') return false;      // stay
-            if (choice === 'save') { const ok = await save(); if (!ok) return false; }
-            store.setState('navGuard', null);
-            cleanupStore();
+            let assertSession: () => void;
+            try { assertSession = captureEngineSession(); } catch { return false; }
+            try {
+                assertSession();
+                if (savedRef.current) return;               // already created/updated → allow
+                if (!(isNewNow() || dirtyRef.current)) return;   // nothing unsaved → allow
+                const choice = await confirmLeave(entityLabel, isNewNow(), live.current.canSave ? live.current.canSave() : true);
+                assertSession();
+                if (choice === 'cancel') return false;      // stay
+                if (choice === 'save') {
+                    const ok = await live.current.save();
+                    assertSession();
+                    if (!ok) return false;
+                }
+                store.setState('navGuard', null);
+                cleanupStore();
+            } catch (e) {
+                try { assertSession(); } catch { return false; }
+                throw e;
+            }
         };
         store.setState('navGuard', guard);
         return () => { if (store.getState('navGuard') === guard) store.setState('navGuard', null); };

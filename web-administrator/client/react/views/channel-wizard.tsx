@@ -1,3 +1,7 @@
+import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
+import { persistChannelModel, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
+import { withEditorSave } from '../save-lock.js';
+import { channelDependencyState, persistLibraryAssociations, persistChannelDependencies } from '../../core/channel-dependencies.js';
 /*
  * Guided channel builder — a step-by-step ALTERNATIVE to the classic tabbed
  * channel editor, for NEW channels only. It has FEATURE PARITY with the classic
@@ -31,7 +35,7 @@ import { useWizardModel, useWizardSteps, useLeaveGuard, WizardStepper, WizardHea
 import { createEmbeddedEditor } from './filter-transformer.jsx';
 import {
     ConnectorPropertiesPanels, QueueSettings, ChannelScripts, ChannelSettings, DataTypeBar,
-    DependenciesStep, persistLibraryAssociations, persistChannelDependencies
+    DependenciesStep
 } from './channel-wizard-editors.jsx';
 // Straight from core/mappings.js, not via channel-editor.jsx's re-export of it —
 // the wizard has no other reason to reference the classic editor, and that lone
@@ -632,7 +636,7 @@ function ChannelWizardView({ params }: any) {
             applyDataTypes(c, dt, dt, version);
             return c;
         },
-        fetch: (id: any) => api.channels.get(id),
+        fetch: (id: any) => loadChannelForEdit(id),
         backPath: '/channels'
     });
     if (!ready || !model) return <div className="view"><div className="view-body"><div className="dt-empty">Loading channel…</div></div></div>;
@@ -640,27 +644,19 @@ function ChannelWizardView({ params }: any) {
 }
 
 function ChannelWizardInner({ channel, isNew, version }: any) {
-    // When editing began — for the engine's modified-since-opened check on save.
-    // Baseline it on the channel's OWN last-modified as loaded, not mount
-    // wall-clock time (immune to clock skew), rounded UP to the whole second
-    // (the engine parses startEdit at second precision). A channel without a
-    // stored last-modified falls back to mount time — same as channel-editor.
-    const loadedLM = channel && channel.exportData && channel.exportData.metadata
-        && channel.exportData.metadata.lastModified;
-    const loadedLMms = loadedLM ? Number(loadedLM.time != null ? loadedLM.time : loadedLM) : NaN;
-    const startEditRef = useRef(Number.isFinite(loadedLMms)
-        ? new Date(Math.ceil(loadedLMms / 1000) * 1000) : new Date());
+    const editState = channelEditState(channel, isNew);
+    isNew = editState.isNew;
     const [, forceRender] = useReducer((x: any) => x + 1, 0);
     const switchingRef = useRef(false);   // true when switching to the classic editor (keep editingChannel)
     const typesRef = useRef<any>(null);
     if (!typesRef.current) typesRef.current = dataTypeList();
     const types = typesRef.current;
 
-    const dirtyRef = useRef(false);   // user changed something since the last save
+    const dirtyRef = useRef(store.getState('editingChannelDirty') === true);
     const savedRef = useRef(false);   // channel has been created/updated
     // Mark dirty for BOTH the wizard (dirtyRef → Save/footer) and the classic editor
     // (store editingChannelDirty), so a switchToClassic after wizard edits agrees.
-    const bump = () => { dirtyRef.current = true; store.setState('editingChannelDirty', true); forceRender(); };
+    const bump = () => { setStageFailure(null); savedRef.current = false; dirtyRef.current = true; store.setState('editingChannelDirty', true); forceRender(); };
 
     const [inbound, setInbound] = useState(() => channel.sourceConnector.transformer.inboundDataType || defaultDataType(types));
     const [outbound, setOutbound] = useState(() => channel.sourceConnector.transformer.outboundDataType || defaultDataType(types));
@@ -671,13 +667,16 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     const [existingNames, setExistingNames] = useState<any>(null);
     const [saving, setSaving] = useState(false);
     const [deploying, setDeploying] = useState(false);
-    const libStateRef = useRef<any>(null);            // code-template library selections (persisted after Create)
-    const depStateRef = useRef<any>(null);            // deploy/start channel dependencies (persisted after Create)
+    const actionRef = useRef(false);
+    const [stageFailure, setStageFailure] = useState<{ stage: string; message: string } | null>(null);
+    const pendingDependencies = channelDependencyState(channel);
+    const libStateRef = pendingDependencies.libraries;
+    const depStateRef = pendingDependencies.dependencies;
 
     // Keep the model in the store (the embedded editors read it) + prompt-on-leave.
     // The channel also mirrors a `editingChannelDirty` flag the classic editor reads.
     useLeaveGuard({
-        model: channel, isNew, storeKey: 'editingChannel', storeNewKey: 'editingChannelNew',
+        model: channel, isNew: () => editState.isNew, storeKey: 'editingChannel', storeNewKey: 'editingChannelNew',
         dirtyKey: 'editingChannelDirty', entityLabel: 'channel',
         dirtyRef, savedRef, switchingRef, save: () => saveChannel(false),
         canSave: () => platform.checkTask('channelEdit', 'doSaveChannel')
@@ -806,7 +805,11 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     // Validate the whole channel, then create/update it and persist library +
     // dependency choices. No navigation — callers decide where to go. Returns true
     // on success. On a validation problem it jumps to the offending step.
-    async function saveChannel(deploy: any) {
+    function saveChannel(deploy: any) { return withEditorSave(() => saveChannelUnlocked(deploy)); }
+
+    async function saveChannelUnlocked(deploy: any) {
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return false;
         const probs = allProblems();
         if (probs.length) {
             const s = firstProblemStep();
@@ -814,72 +817,91 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             toast(probs.slice(0, 4).join('  ·  '), 'warn');
             return false;
         }
+        let stage = 'channel';
+        setStageFailure(null);
         try {
-            if (isNew) {
-                await api.channels.create(channel);
-            } else {
-                // Swing parity: every save increments the channel revision.
-                channel.revision = (Number(channel.revision) || 0) + 1;
-                const ok = await api.channels.update(channel.id, channel, false, startEditRef.current);
-                if (String(ok) === 'false') {
-                    const overwrite = await confirmDialog('Channel Modified',
-                        'This channel has been modified since you first opened it. Are you sure you want to overwrite it?',
-                        { danger: true, okLabel: 'Overwrite' });
-                    if (!overwrite) {
-                        channel.revision = (Number(channel.revision) || 0) - 1;
-                        return false;
-                    }
-                    await api.channels.update(channel.id, channel, true);
-                }
-                startEditRef.current = new Date();
-            }
-            // Library associations live on the libraries, not the channel — persist them
-            // after the channel exists. A failure here shouldn't lose the created channel.
-            try { await persistLibraryAssociations(channel, libStateRef, version); }
-            catch (e: any) { toast(`Channel saved, but updating code-template libraries failed: ${e.message}`, 'warn'); }
-            try { await persistChannelDependencies(depStateRef); }
-            catch (e: any) { toast(`Channel saved, but updating dependencies failed: ${e.message}`, 'warn'); }
-            // The channel is saved at this point; a deploy compile failure
-            // shouldn't discard that. Surface the engine's full exception in the
-            // detail modal (not the generic save toast) and still return saved.
-            if (deploy) {
-                try { await api.engine.deploy(channel.id); }
-                catch (e: any) { errorModal('Channel Deployment Failed', e, channel.name); }
-            }
+            const saved = await persistChannelModel(channel);
+            if (!isCurrent() || !saved) return false;
+            stage = 'code template libraries';
+            const librariesSaved = await persistLibraryAssociations(channel, libStateRef, version, confirmLibraryOverwrite);
+            if (!isCurrent() || !librariesSaved) return false;
+            stage = 'deploy/start dependencies';
+            await persistChannelDependencies(depStateRef);
+            if (!isCurrent()) return false;
+            // Only all persisted stages make the edit session clean. Deployment
+            // remains a separate operation and must never erase a pending stage.
             savedRef.current = true;
             dirtyRef.current = false;
+            store.setState('editingChannelDirty', false);
+            if (deploy) {
+                stage = 'deployment';
+                await api.engine.deploy(channel.id);
+                if (!isCurrent()) return false;
+            }
             return true;
         } catch (e: any) {
-            toast(e && e.message ? e.message : 'Could not save the channel.', 'error');
+            if (!isCurrent()) return false;
+            const detail = e?.message || 'The engine did not confirm this operation.';
+            const message = stage === 'deployment' ? `Channel saved. Deployment failed: ${detail}`
+                : stage === 'channel' ? `Channel save failed: ${detail}`
+                    : `Channel saved; ${stage} are still pending: ${detail}`;
+            setStageFailure({ stage, message });
+            if (stage === 'deployment') errorModal('Channel Deployment Failed', e, channel.name);
+            else toast(message, 'error');
             return false;
+        } finally {
+            // A successful create may be followed by a failed related write.
+            // Render the new existing-channel state immediately for recovery.
+            if (isCurrent()) forceRender();
         }
     }
 
     const busy = saving || deploying;
+    const deployLabel = stageFailure?.stage === 'deployment' ? 'Retry Deploy' : 'Deploy';
     async function finish(deploy: any) {
-        if (busy) return;
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return;
+        if (actionRef.current || store.getState('editorSave')) return;
+        actionRef.current = true;
+        const wasNew = editState.isNew;
         if (deploy) setDeploying(true); else setSaving(true);
-        const ok = await saveChannel(deploy);
-        if (!ok) { setSaving(false); setDeploying(false); return; }
-        store.setState('navGuard', null);   // don't prompt on our own navigation
-        const verb = isNew ? 'created' : 'saved';
-        toast(deploy ? `${isNew ? 'Created' : 'Saved'} and deploying “${channel.name}”.` : `Channel “${channel.name}” ${verb}.`, 'info');
-        router.navigate(deploy ? '/dashboard' : '/channels');
+        try {
+            const saved = await saveChannel(deploy);
+            if (!isCurrent() || !saved) return;
+            store.setState('navGuard', null);
+            const verb = wasNew ? 'created' : 'saved';
+            toast(deploy ? `Channel “${channel.name}” saved; deployment requested.` : `Channel “${channel.name}” ${verb}.`, 'info');
+            router.navigate(deploy ? '/dashboard' : '/channels');
+        } finally {
+            actionRef.current = false;
+            if (isCurrent()) { setSaving(false); setDeploying(false); }
+        }
     }
 
-    // Existing channel with no unsaved edits: deploy the saved version directly,
-    // skipping the redundant PUT that "Save & Deploy" would do.
+    // Retrying a failed deployment must not repeat accepted persistence stages.
     async function deployOnly() {
-        if (busy) return;
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return;
+        if (actionRef.current || store.getState('editorSave')) return;
+        actionRef.current = true;
         setDeploying(true);
         try {
-            await api.engine.deploy(channel.id);
+            const ok = await withEditorSave(async () => {
+                await api.engine.deploy(channel.id);
+                return isCurrent();
+            }, 'Deploying channel…');
+            if (!isCurrent() || !ok) return;
+            setStageFailure(null);
             store.setState('navGuard', null);
-            toast(`Deploying “${channel.name}”.`, 'info');
+            toast(`Deployment requested for “${channel.name}”.`, 'info');
             router.navigate('/dashboard');
         } catch (e: any) {
+            if (!isCurrent()) return;
+            setStageFailure({ stage: 'deployment', message: `Deployment failed: ${e?.message || e}` });
             errorModal('Channel Deployment Failed', e, channel.name);
-            setDeploying(false);
+        } finally {
+            actionRef.current = false;
+            if (isCurrent()) setDeploying(false);
         }
     }
 
@@ -900,12 +922,13 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                     <div className="taskbar" data-pane-title="Channel Tasks">
                         {getPref('showViewSwitch') !== false && <TaskButton label="Classic editor" icon="edit" onClick={switchToClassic} />}
                         {!isNew && dirtyRef.current && <TaskButton label="Save Changes" icon="save" primary task="doSaveChannel" onClick={() => finish(false)} />}
-                        {!isNew && <TaskButton label={dirtyRef.current ? 'Save & Deploy' : 'Deploy'} icon="deploy" task="doDeployFromChannelView" onClick={() => (dirtyRef.current ? finish(true) : deployOnly())} />}
+                        {!isNew && <TaskButton label={dirtyRef.current ? 'Save & Deploy' : deployLabel} icon="deploy" task="doDeployFromChannelView" onClick={() => (dirtyRef.current ? finish(true) : deployOnly())} />}
                         <TaskButton label="Back to Channels" icon="channels" onClick={() => router.navigate('/channels')} />
                     </div>
                 </RailPane>
             </ViewTasks>
             <WizardHeader icon="channels" title={isNew ? 'New Channel — Wizard' : `${channel.name || 'Channel'} — Wizard`} />
+            {stageFailure && <div role="status" className="px-4 py-3 border-b border-line text-warning">{stageFailure.message}</div>}
             <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onStep={setStep} />
 
             <div className="view-body overflow-x-hidden">
@@ -916,7 +939,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                             onChange={bump} onNameChange={() => { setNameTouched(true); bump(); }}
                             onInbound={changeInbound} onOutbound={changeOutbound} nameError={nErr} />
                     )}
-                    {stepName === 'Dependencies' && <DependenciesStep channel={channel} libState={libStateRef} depState={depStateRef} />}
+                    {stepName === 'Dependencies' && <DependenciesStep channel={channel} libState={libStateRef} depState={depStateRef} onChange={bump} />}
                     {stepName === 'Channel Options' && <ChannelSettings channel={channel} version={version} onChange={bump} />}
                     {stepName === 'Source' && (
                         <ConnectorTabs channel={channel} connector={channel.sourceConnector} mode="SOURCE" version={version} onChange={bump} />
@@ -956,7 +979,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                                 </button>
                             ) : (
                                 canDeploy && <button className="btn btn-primary" disabled={busy} onClick={deployOnly}>
-                                    <Icon name="deploy" size={14} />{deploying ? 'Deploying…' : 'Deploy'}
+                                    <Icon name="deploy" size={14} />{deploying ? 'Deploying…' : deployLabel}
                                 </button>
                             )}
                         </>
