@@ -21,6 +21,7 @@ import { mountReact } from '../mount.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { openRadixDialog } from '../dialog-host.jsx';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices } from '../../core/channel-dependencies.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
@@ -119,18 +120,16 @@ function resourceHolders(channel: any) {
 
 // Filterable, scrollable multi-select modal — for picking from potentially large
 // lists (channels, libraries, resources). Returns the chosen ids via onAdd.
-function PickerModal({ title, items, onAdd, onClose }: any) {
+function PickerChoices({ items, onAdd, onClose }: any) {
     const [q, setQ] = useState('');
     const [sel, setSel] = useState(() => new Set());
     const needle = q.trim().toLowerCase();
     const filtered = needle ? items.filter((it: any) => it.name.toLowerCase().includes(needle)) : items;
     const toggle = (id: any) => { const n = new Set(sel); if (n.has(id)) n.delete(id); else n.add(id); setSel(n); };
     return (
-        <div className="modal-overlay" onMouseDown={(e: any) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal" style={{ width: '460px', maxWidth: '92vw' }}>
-                <div className="modal-header">{title}<button type="button" className="icon-btn" onClick={onClose} title="Close">✕</button></div>
-                <div className="modal-body flex flex-col gap-2">
-                    <input type="text" autoFocus placeholder="Filter…" value={q} onChange={(e: any) => setQ(e.target.value)} />
+        <>
+                <div className="flex flex-col gap-2">
+                    <input type="text" aria-label="Filter channels" placeholder="Filter…" value={q} onChange={(e: any) => setQ(e.target.value)} />
                     <div className="border border-line rounded-md overflow-auto max-h-[288px]">
                         {filtered.length === 0 && <div className="p-2 text-text-faint text-[11px]">No matches.</div>}
                         {filtered.map((it: any) => (
@@ -145,9 +144,14 @@ function PickerModal({ title, items, onAdd, onClose }: any) {
                     <button type="button" className="btn" onClick={onClose}>Cancel</button>
                     <button type="button" className="btn btn-primary" disabled={sel.size === 0} onClick={() => { onAdd([...sel]); onClose(); }}>Add{sel.size ? ` (${sel.size})` : ''}</button>
                 </div>
-            </div>
-        </div>
+        </>
     );
+}
+
+function openPicker({ title, items, onAdd }: any) {
+    const dialog = openRadixDialog({ title,
+        body: <PickerChoices items={items} onAdd={onAdd} onClose={() => dialog.close()} />,
+    });
 }
 
 // Dependencies step: associate code-template libraries and library resources with
@@ -166,7 +170,6 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
     const [loaded, setLoaded] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [failedLoads, setFailedLoads] = useState(() => new Set<string>());
-    const [picker, setPicker] = useState<any>(null);   // { kind, ids } when the channel picker is open
     const [libQuery, setLibQuery] = useState('');
     const [resQuery, setResQuery] = useState('');
     const [expanded, setExpanded] = useState(() => new Set());   // expanded library ids (show templates)
@@ -288,7 +291,11 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
                     ))}
                 </div>
                 <div>
-                    <button type="button" className="btn btn-sm" disabled={!available.length} onClick={() => setPicker({ kind, ids })}>
+                    <button type="button" className="btn btn-sm" disabled={!available.length} onClick={() => openPicker({
+                        title: 'Add channels',
+                        items: available.map((id: any) => ({ id, name: nameOf(id) })),
+                        onAdd: (chosen: any) => chosen.forEach((id: any) => addDep(kind, id)),
+                    })}>
                         <Icon name="plus" size={12} />Add channel
                     </button>
                 </div>
@@ -399,12 +406,6 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
             )}
             </TabsPrimitive.Content>
 
-            {picker && (
-                <PickerModal title="Add channels"
-                    items={otherChannels.filter((id: any) => !picker.ids.includes(id)).map((id: any) => ({ id, name: nameOf(id) }))}
-                    onAdd={(chosen: any) => chosen.forEach((id: any) => addDep(picker.kind, id))}
-                    onClose={() => setPicker(null)} />
-            )}
         </TabsPrimitive.Root>
     );
 }

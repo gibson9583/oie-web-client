@@ -552,6 +552,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 .wiz-step.done { background: var(--accent-glow); color: var(--accent); }
 .wiz-step.active { background: var(--accent); color: var(--accent-ink); }
 .wiz-step.clickable { cursor: pointer; }
+.wiz-step:focus-visible { outline: 2px solid var(--text); outline-offset: -5px; text-decoration: underline; }
 .wiz-step:not(.clickable) { cursor: default; }
 
 @keyframes wiz-slide { from { opacity: 0; transform: translateX(26px); } to { opacity: 1; transform: none; } }

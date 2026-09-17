@@ -175,12 +175,12 @@ export function WizardStepper({ steps, step, maxStep, onStep }: any) {
                 const visited = i <= maxStep;
                 const done = visited && !active;
                 return (
-                    <div key={label} role="button" aria-current={active ? 'step' : undefined}
+                    <button key={label} type="button" disabled={!visited} aria-current={active ? 'step' : undefined}
                         className={`wiz-step ${done ? 'done' : ''} ${active ? 'active' : ''} ${visited ? 'clickable' : ''}`}
                         onClick={() => visited && onStep(i)}>
                         {done ? <Icon name="check" size={13} /> : null}
                         <span>{label}</span>
-                    </div>
+                    </button>
                 );
             })}
         </div>
