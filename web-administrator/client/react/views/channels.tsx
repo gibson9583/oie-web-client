@@ -32,6 +32,7 @@ import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { createZip } from '../../core/zip.js';
 import { mutateChannelGroups } from '../../core/channel-groups.js';
+import { saveDependencyChanges } from '../../core/channel-dependencies.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, SegPill } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
@@ -363,7 +364,6 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     const dependentIds = strings(dependentIdsEl);
     const dependencyIds = strings(dependencyIdsEl);
     if (dependentIds.length || dependencyIds.length) {
-        const existingDependencies = await api.server.channelDependencies();
         const dependencies = new Map<string, any>();
         const add = (dependentId: any, dependencyId: any) => {
             dependentId = String(dependentId || '').trim();
@@ -371,11 +371,11 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
             if (!dependentId || !dependencyId || dependentId === dependencyId) return;
             dependencies.set(`${dependentId}>${dependencyId}`, { dependentId, dependencyId });
         };
-        for (const dependency of existingDependencies || []) add(dependency.dependentId, dependency.dependencyId);
         for (const dependentId of dependentIds) add(dependentId, resolved.id);
         for (const dependencyId of dependencyIds) add(resolved.id, dependencyId);
         try {
-            await api.server.setChannelDependencies([...dependencies.values()]);
+            // Merge imported edges into a fresh graph using Swing's core setter.
+            await saveDependencyChanges([...dependencies.values()], []);
         } catch (e: any) {
             // Swing reports this failure but still allows the channel import to
             // continue, so retain that partial-completion behavior explicitly.

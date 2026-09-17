@@ -435,11 +435,11 @@ test.describe('Channels React view', () => {
     });
 
     test('channel import preserves dependency links and remaps server-specific resource ids by name', async ({ page }) => {
+        let graph = [{ dependentId: 'existing-dependent', dependencyId: 'existing-prerequisite' }];
         await mockEngine(page, {
             ...GROUPS_FIXTURE,
-            'GET /server/channelDependencies': { set: { channelDependency: [
-                { dependentId: 'existing-dependent', dependencyId: 'existing-prerequisite' }
-            ] } },
+            'GET /server/channelDependencies': () => ({ set: { channelDependency: graph } }),
+            'PUT /server/channelDependencies': (req: any) => { graph = req.postDataJSON().set.channelDependency; return ''; },
             'GET /server/resources': { list: { directoryResourceProperties: [
                 { id: 'resource-new', name: 'Shared Resource', type: 'Directory' },
                 { id: 'resource-existing', name: 'Current Resource Name', type: 'Directory' }
@@ -465,10 +465,13 @@ test.describe('Channels React view', () => {
             </channel>`)
         });
 
-        const dependencyBody = (await dependencyRequest).postData() || '';
-        expect(dependencyBody).toContain('existing-dependent');
-        expect(dependencyBody).toContain('"dependentId":"downstream","dependencyId":"imported-channel"');
-        expect(dependencyBody).toContain('"dependentId":"imported-channel","dependencyId":"upstream"');
+        expect((await dependencyRequest).postDataJSON()).toEqual({
+            set: { channelDependency: [
+                { dependentId: 'existing-dependent', dependencyId: 'existing-prerequisite' },
+                { dependentId: 'downstream', dependencyId: 'imported-channel' },
+                { dependentId: 'imported-channel', dependencyId: 'upstream' }
+            ] }
+        });
         const channelBody = (await channelRequest).postData() || '';
         expect(channelBody).toContain('<string>resource-new</string><string>Shared Resource</string>');
         expect(channelBody).toContain('<string>resource-existing</string><string>Current Resource Name</string>');
