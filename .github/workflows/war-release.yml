@@ -1,45 +1,45 @@
-name: WAR Release
-
+name: Publish validated release artifacts
 on:
-  push:
-    tags: ['v*']
-
+  workflow_call:
 permissions:
   contents: write
-
 jobs:
   release:
-    name: Build and publish WAR
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
-          cache: npm
-      - uses: actions/setup-java@v4
+          node-version: '22.22.3'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          distribution: temurin
-          java-version: '17'
-      - name: Install dependencies
-        run: npm ci
-      - name: Build WAR
-        run: npm run build:war
-      - name: Validate and digest WAR
+          name: release-inputs
+          path: release-artifacts
+      - name: Verify commit, tag, version and tested artifact hashes
+        run: node tools/release-artifacts.mjs verify
+      - name: Publish tested artifacts without rebuilding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          jar --list --file web-administrator/dist/oie-webadmin.war | grep -qx 'index.jsp'
-          jar --list --file web-administrator/dist/oie-webadmin.war | grep -qx 'WEB-INF/web.xml'
-          (cd web-administrator/dist && sha256sum oie-webadmin.war > oie-webadmin.war.sha256)
-      - name: Publish WAR release asset
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            web-administrator/dist/oie-webadmin.war
-            web-administrator/dist/oie-webadmin.war.sha256
-          body: |
-            Deployment options:
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            extra=()
+            [[ "$TAG" != *-* ]] || extra+=(--prerelease)
+            gh release create "$TAG" --verify-tag --draft --title "$TAG" \
+              --notes "Deployment options:
 
-            - `oie-webadmin.war` — embedded OIE deployment
-            - `gibson9583/oie-web-client` — Docker deployment
-            - repository source — standalone Node.js deployment
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          - oie-webadmin.war: embedded OIE deployment
+          - gibson9583/oie-web-client: Docker deployment
+          - repository source: standalone Node.js deployment" "${extra[@]}"
+          fi
+          mkdir existing
+          for file in release-artifacts/*; do
+            name=$(basename "$file")
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$name"; then
+              gh release download "$TAG" --pattern "$name" --dir existing
+              cmp "$file" "existing/$name"
+            else
+              gh release upload "$TAG" "$file"
+            fi
+          done
+          gh release edit "$TAG" --draft=false
