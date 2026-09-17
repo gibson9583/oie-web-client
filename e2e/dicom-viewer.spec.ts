@@ -39,6 +39,24 @@ const DICOM_B64 =
     'iJiouMjY6PgIGCg4SFhoeIiYqLjI2Oj4CBgoOEhYaHiImKi4yNjo+AgYKDhIWGh4iJiouMjY6PgIGCg4SFhoeIiYqLjI2Oj4CBgo' +
     'OEhYaHiImKi4yNjo+AgYKDhIWGh4iJiouMjY6PgIGCg4SFhoeIiYqLjI2Oj4CBgoOEhYaHiImKi4yNjo+AgYKDhIWGg=';
 
+// Three encapsulated frames. Decoding is controlled in the test below; the
+// DICOM parser still reads real transfer syntax, offset table and item lengths.
+function encapsulatedFixture() {
+    const raw = Buffer.from(DICOM_B64, 'base64');
+    const syntax = raw.indexOf(Buffer.from('1.2.840.10008.1.2.1'));
+    const oldLength = raw.readUInt16LE(syntax - 2);
+    const jpegSyntax = Buffer.from('1.2.840.10008.1.2.4.50\0');
+    const prefix = Buffer.from(raw.subarray(0, syntax));
+    prefix.writeUInt16LE(jpegSyntax.length, syntax - 2);
+    const changed = Buffer.concat([prefix, jpegSyntax, raw.subarray(syntax + oldLength)]);
+    const pixel = changed.indexOf(Buffer.from('e07f10004f42', 'hex'));
+    const offsets = Buffer.alloc(12);
+    offsets.writeUInt32LE(12, 4); offsets.writeUInt32LE(24, 8);
+    const fragment = Buffer.from('feff00e004000000ffd8ffd9', 'hex');
+    return Buffer.concat([changed.subarray(0, pixel), Buffer.from('e07f10004f420000fffffffffeff00e00c000000', 'hex'),
+        offsets, fragment, fragment, fragment, Buffer.from('feffdde000000000', 'hex')]).toString('base64');
+}
+
 const MESSAGE = {
     messageId: MID,
     channelId: CID,
@@ -81,6 +99,33 @@ async function openViewer(page: any) {
 
 test.beforeEach(async ({ page }) => {
     await mockEngine(page, FIXTURES);
+});
+
+test('late JPEG frame decode cannot repaint the newly selected frame', async ({ page }) => {
+    await mockEngine(page, { ...FIXTURES,
+        ['POST /channels/' + CID + '/messages/' + MID + '/_getDICOMMessage']: encapsulatedFixture(),
+    });
+    await page.addInitScript(() => {
+        const decode = window.createImageBitmap.bind(window);
+        (window as any).pendingDicomDecodes = [];
+        window.createImageBitmap = (() => new Promise(resolve => {
+            (window as any).pendingDicomDecodes.push(async (color: string) => {
+                const canvas = document.createElement('canvas'); canvas.width = 2; canvas.height = 2;
+                const ctx = canvas.getContext('2d')!; ctx.fillStyle = color; ctx.fillRect(0, 0, 2, 2);
+                resolve(await decode(canvas));
+            });
+        })) as typeof window.createImageBitmap;
+    });
+    await openViewer(page);
+    await expect.poll(() => page.evaluate(() => (window as any).pendingDicomDecodes.length)).toBe(1);
+    await page.getByTitle('Next frame (→)').click();
+    await expect.poll(() => page.evaluate(() => (window as any).pendingDicomDecodes.length)).toBe(2);
+    await page.evaluate(() => (window as any).pendingDicomDecodes[1]('blue'));
+    const pixel = () => page.locator('canvas').first().evaluate(canvas =>
+        Array.from((canvas as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, 1, 1).data));
+    await expect.poll(pixel).toEqual([0, 0, 255, 255]);
+    await page.evaluate(() => (window as any).pendingDicomDecodes[0]('red'));
+    await expect.poll(pixel).toEqual([0, 0, 255, 255]);
 });
 
 test('renders the parsed object with the toolbar above the image', async ({ page }) => {

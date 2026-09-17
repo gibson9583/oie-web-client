@@ -128,13 +128,15 @@ function renderRGB(canvas: any, raw: any, info: any) {
 }
 
 /* Extract encapsulated JPEG frame bytes and let the browser decode + draw it. */
-async function drawJpegFrame(canvas: any, ds: any, bytes: any, info: any, frame: any) {
+async function drawJpegFrame(canvas: any, ds: any, info: any, frame: any, current: () => boolean) {
     const el = ds.elements.x7fe00010;
     const frameBytes = dicomParser.readEncapsulatedImageFrame(ds, el, frame);
     const bitmap = await createImageBitmap(new Blob([frameBytes], { type: 'image/jpeg' }));
-    canvas.width = bitmap.width || info.cols; canvas.height = bitmap.height || info.rows;
-    canvas.getContext('2d').drawImage(bitmap, 0, 0);
-    bitmap.close && bitmap.close();
+    try {
+        if (!current()) return;
+        canvas.width = bitmap.width || info.cols; canvas.height = bitmap.height || info.rows;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    } finally { bitmap.close && bitmap.close(); }
 }
 
 /* Thumbnail strip for multi-frame objects — scanning slices by eye instead of
@@ -203,7 +205,9 @@ function Filmstrip({ state, frame, win, onPick, expanded }: any) {
 export function register(platform: Platform) {
 
     function DicomViewer({ attachment, channelId, messageId, platform }: any) {
-        const [state, setState] = React.useState({ status: 'loading' });
+        const key = JSON.stringify([channelId, messageId, attachment.id]);
+        const [state, setState] = React.useState({ status: 'loading', key });
+        const [attempt, retry] = React.useReducer((value: number) => value + 1, 0);
         const [frame, setFrame] = React.useState(0);
         const [win, setWin] = React.useState(null as any);   // { c, w } window center/width
         const [zoom, setZoom] = React.useState(1);
@@ -244,7 +248,7 @@ export function register(platform: Platform) {
         // Load + parse the object once.
         React.useEffect(() => {
             let cancelled = false;
-            setState({ status: 'loading' }); setFrame(0); setWin(null); setZoom(1);
+            setState({ status: 'loading', key }); setFrame(0); setWin(null); setZoom(1);
             resetPan(); setFitMode(false); setDecodeError(null);
             (async () => {
                 try {
@@ -286,13 +290,13 @@ export function register(platform: Platform) {
 
                     if (cancelled) return;
                     setWin(info.wc != null && info.ww != null ? { c: info.wc, w: info.ww } : null);
-                    setState({ status: 'ready', bytes, ds, ts, info, meta, kind, tsName: COMPRESSED_NAMES[ts] || ts });
+                    setState({ status: 'ready', key, bytes, ds, ts, info, meta, kind, tsName: COMPRESSED_NAMES[ts] || ts });
                 } catch (e: any) {
-                    if (!cancelled) setState({ status: 'error', message: e.message });
+                    if (!cancelled) setState({ status: 'error', key, message: e.message });
                 }
             })();
             return () => { cancelled = true; };
-        }, [channelId, messageId, attachment.id]);
+        }, [channelId, messageId, attachment.id, key, platform.api, resetPan, attempt]);
 
         // Compute a default window from the frame if the header carried none.
         React.useEffect(() => {
@@ -304,7 +308,7 @@ export function register(platform: Platform) {
             const s = state.info.slope, ic = state.info.intercept;
             min = min * s + ic; max = max * s + ic;
             setWin({ c: (min + max) / 2, w: Math.max(1, max - min) });
-        }, [state.status, frame, win]);
+        }, [state, frame, win]);
 
         // Draw the current frame whenever inputs change.
         React.useEffect(() => {
@@ -315,9 +319,11 @@ export function register(platform: Platform) {
                     // A decode failure must not be silent — the user would see a
                     // stale (or blank) canvas with no explanation.
                     setDecodeError(null);
-                    drawJpegFrame(cv, state.ds, state.bytes, state.info, frame)
-                        .catch((e: any) => setDecodeError(e && e.message ? e.message : 'the browser could not decode this frame'));
-                    return;
+                    let current = true;
+                    cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+                    drawJpegFrame(cv, state.ds, state.info, frame, () => current)
+                        .catch((e: any) => { if (current) setDecodeError(e && e.message ? e.message : 'the browser could not decode this frame'); });
+                    return () => { current = false; };
                 }
                 if (state.kind !== 'raw') return;
                 const raw = readFrame(state.ds, state.bytes, state.info, frame);
@@ -325,7 +331,7 @@ export function register(platform: Platform) {
                 if (state.info.spp >= 3) renderRGB(cv, raw, state.info);
                 else if (win) renderGray(cv, raw, state.info, win.c, win.w);
             } catch { /* render failure → the metadata + Save remain usable */ }
-        }, [state.status, frame, win, state.kind]);
+        }, [state, frame, win]);
 
         /* ---- stage sizing: Fit needs to know how much room the image has, and
            that changes when the user drags the detail-pane splitter or enters
@@ -522,11 +528,11 @@ export function register(platform: Platform) {
             return () => document.removeEventListener('keydown', onDocKey);
         });
 
-        if (state.status === 'loading') {
+        if (state.key !== key || state.status === 'loading') {
             return <div className="mt-[13px]"><div className="text-text-faint text-[10px]">Loading DICOM…</div></div>;
         }
         if (state.status === 'error') {
-            return <div className="mt-[13px]"><div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div></div>;
+            return <div className="mt-[13px]"><div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div><button type="button" className="btn" onClick={() => retry()}>Retry</button></div>;
         }
 
         // `info` is already in scope (the gesture handlers above need it before
