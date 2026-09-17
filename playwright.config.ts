@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 
 /*
  * E2E config. Mock-by-default: the `ui` project intercepts /api/* in the browser
@@ -7,8 +8,12 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const LIVE = process.env.E2E_LIVE === '1';
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3030';
+// Shared with retry workers, unique across independent invocations. Cleanup
+// must never remove another run's channel just because its worker index matches.
+const RUN_ID = process.env.E2E_RUN_ID ||= randomUUID();
 
 export default defineConfig({
+    metadata: { runId: RUN_ID },
     testDir: './e2e',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
