@@ -149,21 +149,15 @@ function AlertWizardInner({ alert, isNew }: any) {
     const enabledNames = [...enabledChannels].map((id: any) => ((data.channels.find((c: any) => c.id === id) || {}) as any).name || id);
 
     /* ---- validation ---- */
-    // Hard requirements (block save): name (parity with the classic editor) + a valid
-    // error-filter regex (a genuine bug the classic editor doesn't catch).
+    // Alert filters use java.util.regex.Pattern in the engine. Browser RegExp
+    // rejects valid Java syntax (e.g. inline flags); match the classic/Swing path.
     function nameError() { return String(alert.name || '').trim() ? null : 'An alert name is required.'; }
-    function regexError() {
-        const r = trigger.regex;
-        if (!r || !String(r).trim()) return null;
-        try { new RegExp(r); return null; } catch (e: any) { return `Invalid regular expression: ${e.message}`; }
-    }
     function stepProblems(i: any) {
         if (STEPS[i] === 'Basics') return nameError() ? [nameError()] : [];
-        if (STEPS[i] === 'Trigger') return regexError() ? [regexError()] : [];
         return [];
     }
     function allProblems() {
-        return [nameError(), regexError()].filter(Boolean);
+        return [nameError()].filter(Boolean);
     }
     function firstProblemStep() {
         for (let i = 0; i < STEPS.length; i++) if (stepProblems(i).length) return i;
@@ -299,10 +293,10 @@ function AlertWizardInner({ alert, isNew }: any) {
                             <div className="panel !mt-0">
                                 <div className="panel-header">Error message filter</div>
                                 <div className="panel-body flex flex-col gap-1">
-                                    <textarea className={`w-full ${regexError() ? 'cform-invalid' : ''}`} rows={3} value={trigger.regex || ''}
+                                    <textarea className="w-full" rows={3} value={trigger.regex || ''}
                                         placeholder="Only trigger when the error matches this regular expression (leave blank to match any error)"
                                         onChange={(e: any) => { trigger.regex = e.target.value; bump(); }} />
-                                    {regexError() ? <span className="text-err text-[10px]">{regexError()}</span> : null}
+                                    <span className="text-text-dim text-[10px]">Uses Java regular-expression syntax, as in the desktop administrator.</span>
                                 </div>
                             </div>
                         </div>
