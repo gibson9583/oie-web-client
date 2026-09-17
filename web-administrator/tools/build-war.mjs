@@ -162,6 +162,7 @@ Built-By: npm run build:war
 
 try {
     runBuild();
+    const buildInfo = JSON.parse(readFileSync(path.join(root, 'build-info.json'), 'utf8'));
     mkdirSync(stage, { recursive: true });
 
     // Hashed Vite shell/chunks first; index.html becomes the context-aware JSP.
@@ -185,6 +186,7 @@ try {
         engines: [{ key: 'k:this-oie-server', name: 'This OIE server' }],
         devMode: false,
         version: packageInfo.version,
+        build: { commit: buildInfo.commit || null, dirty: !!buildInfo.dirty, date: buildInfo.date || null },
         codeTemplateCompletions: true,
         deployment: 'war'
     }, null, 2) + '\n');

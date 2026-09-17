@@ -15,7 +15,7 @@
     "pree2e": "npm run build -w web-administrator",
     "e2e": "playwright test",
     "e2e:live": "E2E_LIVE=1 playwright test --project=live",
-    "test": "npm test -w web-administrator",
+    "test": "npm test -w web-administrator && node --test tools/*.test.mjs",
     "build:war": "npm run build:war -w web-administrator",
     "wiki:screenshots": "playwright test --config tools/wiki-playwright.config.ts",
     "vendor:zip": "esbuild node_modules/@zip.js/zip.js/lib/zip-core.js --bundle --format=esm --minify --legal-comments=none --outfile=web-administrator/client/vendor/zipjs.min.js",
