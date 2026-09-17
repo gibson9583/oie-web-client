@@ -11,7 +11,7 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
-import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
+import { alertBaseline, loadAlertForEdit, confirmIfAlertChanged } from '../alert-conflict.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { useInvalidate } from '../queries.js';
 import { toast, saveFile } from '@oie/web-ui';
@@ -47,7 +47,7 @@ function AlertWizardView({ params }: any) {
         storeKey: 'editingAlert',
         isValid: (a: any) => !!a.trigger,
         makeNew: () => newAlert('', version),
-        fetch: (id: any) => api.alerts.get(id),
+        fetch: loadAlertForEdit,
         normalize: normalizeActionGroups,
         backPath: '/alerts'
     });
@@ -56,12 +56,10 @@ function AlertWizardView({ params }: any) {
 }
 
 function AlertWizardInner({ alert, isNew }: any) {
-    const baselineRef = useRef<any>(null);   // server copy at edit start (alert conflict check)
+    const baselineRef = useRef(alertBaseline(alert));
     useEffect(() => {
-        if (!isNew && alert.id) alertBaseline(alert.id).then((b: any) => { baselineRef.current = b; });
         // Tab-close guard: the wizard's dirty flag, synchronous (core/unsaved.js).
         return registerUnsavedCheck(() => dirtyRef.current);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     const [, forceRender] = useReducer((x: any) => x + 1, 0);
     const switchingRef = useRef(false);

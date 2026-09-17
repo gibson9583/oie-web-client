@@ -40,7 +40,7 @@ import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { getPref } from '../../core/prefs.js';
 import { platform } from '@oie/web-shell';
-import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
+import { alertBaseline, loadAlertForEdit, confirmIfAlertChanged } from '../alert-conflict.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { useInvalidate } from '../queries.js';
 import { TreeTable } from '../tree-table.jsx';
@@ -316,11 +316,12 @@ export function AlertEditor({ params, query = {} }: any) {
             if (stored && stored.id === alertId) {
                 model = stored;
             } else {
-                model = await api.alerts.get(alertId);
+                model = await loadAlertForEdit(alertId);
+                store.setState('editingAlertDirty', false);
             }
             if (!model || !model.id) throw new Error('Alert not found');
             modelRef.current = model;
-            if (!isNew) alertBaseline(model.id).then((b: any) => { baselineRef.current = b; });
+            if (!isNew) baselineRef.current = alertBaseline(model);
 
             // route:changed resets the banner to the static route title after this
             // async handler returns; defer past it (rAF runs after that microtask,
