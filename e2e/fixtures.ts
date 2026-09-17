@@ -115,6 +115,9 @@ export const DEFAULT_FIXTURES = {
     // Extensions (restart watcher / extensions view) — empty maps.
     'GET /extensions/connectors': {},
     'GET /extensions/plugins': {},
+    // The native read-only Rhino validator accepts valid scripts by default.
+    // Validation regressions override this with compile errors/unavailability.
+    'POST /javascript/_validate': { error: null },
 
     // Channel lifecycle — accept and no-op (tests assert the request fired).
     'POST /channels/*/_start': '',

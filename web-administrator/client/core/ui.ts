@@ -1069,7 +1069,7 @@ export async function saveFile(suggestedName: string, type: string, getContent: 
 }
 
 export function pickFile(accept?: string, { binary = false }: { binary?: boolean } = {}): Promise<{ name: string; content: string } | null> {
-    return new Promise<{ name: string; content: string } | null>(resolve => {
+    return new Promise<{ name: string; content: string } | null>((resolve, reject) => {
         const input = h('input', { type: 'file', accept, class: 'hidden' }) as HTMLInputElement;
         // Dismissing the OS dialog fires 'cancel' (no 'change'); without this the
         // returned promise never settles and the hidden input leaks.
@@ -1084,7 +1084,10 @@ export function pickFile(accept?: string, { binary = false }: { binary?: boolean
                 name: file.name,
                 content: binary ? (String(reader.result).split(',')[1] || '') : (reader.result as string)
             });
-            if (binary) reader.readAsDataURL(file); else reader.readAsText(file);
+            reader.onerror = () => reject(reader.error || new Error('The selected file could not be read.'));
+            reader.onabort = () => resolve(null);
+            try { if (binary) reader.readAsDataURL(file); else reader.readAsText(file); }
+            catch (error) { reject(error); }
         });
         document.body.appendChild(input);
         input.click();
