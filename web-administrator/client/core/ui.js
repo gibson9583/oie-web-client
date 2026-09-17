@@ -190,6 +190,8 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
     const opener = document.activeElement;
     const titleId = 'modal-title-' + (++modalSeq);
     let closed = false;
+    let pending = false;
+    const pendingStatus = h('div', { role: 'status', hidden: true }, 'Working…');
     const close = () => {
         if (closed)
             return; // idempotent: overlay click + button can race
@@ -201,6 +203,8 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
             opener.focus();
         onClose && onClose();
     };
+    const requestClose = () => { if (!pending)
+        close(); };
     const dialog = h(`div.modal${size ? '.' + size : ''}`, {
         role: 'dialog',
         'aria-modal': 'true',
@@ -208,11 +212,31 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
         tabindex: '-1',
         // Prefer the visible title; `label` covers dialogs built with a node title.
         ...(label ? { 'aria-label': label } : { 'aria-labelledby': titleId })
-    }, h('div.modal-header', h('span', { id: titleId }, title), h('button.icon-btn', { onClick: close, title: 'Close', 'aria-label': 'Close' }, icon('x'))), h('div.modal-body', body), buttons.length ? h('div.modal-foot', buttons.map(btn => h(`button.btn${btn.primary ? '.btn-primary' : ''}${btn.danger ? '.btn-danger' : ''}`, {
+    }, h('div.modal-header', h('span', { id: titleId }, title), h('button.icon-btn', { onClick: requestClose, title: 'Close', 'aria-label': 'Close' }, icon('x'))), h('div.modal-body', body), pendingStatus, buttons.length ? h('div.modal-foot', buttons.map(btn => h(`button.btn${btn.primary ? '.btn-primary' : ''}${btn.danger ? '.btn-danger' : ''}`, {
         onClick: async () => {
-            const result = btn.onClick ? await btn.onClick() : true;
-            if (result !== false)
-                close();
+            if (pending)
+                return;
+            pending = true;
+            try {
+                const result = btn.onClick ? btn.onClick() : true;
+                if (result && typeof result.then === 'function') {
+                    pendingStatus.hidden = false;
+                    dialog.setAttribute('aria-busy', 'true');
+                    dialog.querySelector('.modal-body').inert = true;
+                    for (const button of dialog.querySelectorAll('.modal-foot button'))
+                        button.setAttribute('aria-disabled', 'true');
+                }
+                if (await result !== false)
+                    close();
+            }
+            finally {
+                pending = false;
+                pendingStatus.hidden = true;
+                dialog.removeAttribute('aria-busy');
+                dialog.querySelector('.modal-body').inert = false;
+                for (const button of dialog.querySelectorAll('.modal-foot button'))
+                    button.removeAttribute('aria-disabled');
+            }
         }
     }, btn.label))) : null);
     /* Escape closes; Tab cycles inside the dialog instead of walking out into the
@@ -229,7 +253,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
         if (!isTopmost())
             return;
         if (e.key === 'Escape') {
-            close();
+            requestClose();
             return;
         }
         if (e.key !== 'Tab')
@@ -258,7 +282,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
     }
     overlay.appendChild(dialog);
     overlay.addEventListener('mousedown', (e) => { if (e.target === overlay)
-        close(); });
+        requestClose(); });
     document.body.appendChild(overlay);
     syncAppHidden();
     document.addEventListener('keydown', onKeyDown);

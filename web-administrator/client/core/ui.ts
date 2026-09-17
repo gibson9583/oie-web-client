@@ -291,6 +291,8 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
     const opener = document.activeElement as HTMLElement | null;
     const titleId = 'modal-title-' + (++modalSeq);
     let closed = false;
+    let pending = false;
+    const pendingStatus = h('div', { role: 'status', hidden: true }, 'Working…');
 
     const close = () => {
         if (closed) return;                       // idempotent: overlay click + button can race
@@ -301,6 +303,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
         if (opener && opener.isConnected && opener.focus) opener.focus();
         onClose && onClose();
     };
+    const requestClose = () => { if (!pending) close(); };
 
     const dialog = h(`div.modal${size ? '.' + size : ''}`, {
         role: 'dialog',
@@ -311,13 +314,30 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
         ...(label ? { 'aria-label': label } : { 'aria-labelledby': titleId })
     },
         h('div.modal-header', h('span', { id: titleId }, title),
-            h('button.icon-btn', { onClick: close, title: 'Close', 'aria-label': 'Close' }, icon('x'))),
+            h('button.icon-btn', { onClick: requestClose, title: 'Close', 'aria-label': 'Close' }, icon('x'))),
         h('div.modal-body', body),
+        pendingStatus,
         buttons.length ? h('div.modal-foot', buttons.map(btn =>
             h(`button.btn${btn.primary ? '.btn-primary' : ''}${btn.danger ? '.btn-danger' : ''}`, {
                 onClick: async () => {
-                    const result = btn.onClick ? await btn.onClick() : true;
-                    if (result !== false) close();
+                    if (pending) return;
+                    pending = true;
+                    try {
+                        const result = btn.onClick ? btn.onClick() : true;
+                        if (result && typeof (result as any).then === 'function') {
+                            pendingStatus.hidden = false;
+                            dialog.setAttribute('aria-busy', 'true');
+                            dialog.querySelector<HTMLElement>('.modal-body')!.inert = true;
+                            for (const button of dialog.querySelectorAll('.modal-foot button')) button.setAttribute('aria-disabled', 'true');
+                        }
+                        if (await result !== false) close();
+                    } finally {
+                        pending = false;
+                        pendingStatus.hidden = true;
+                        dialog.removeAttribute('aria-busy');
+                        dialog.querySelector<HTMLElement>('.modal-body')!.inert = false;
+                        for (const button of dialog.querySelectorAll('.modal-foot button')) button.removeAttribute('aria-disabled');
+                    }
                 }
             }, btn.label))) : null
     );
@@ -335,7 +355,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
 
     function onKeyDown(e: KeyboardEvent): void {
         if (!isTopmost()) return;
-        if (e.key === 'Escape') { close(); return; }
+        if (e.key === 'Escape') { requestClose(); return; }
         if (e.key !== 'Tab') return;
         const ring = focusable(dialog);
         if (!ring.length) { e.preventDefault(); return; }
@@ -348,7 +368,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
     }
 
     overlay.appendChild(dialog);
-    overlay.addEventListener('mousedown', (e: MouseEvent) => { if (e.target === overlay) close(); });
+    overlay.addEventListener('mousedown', (e: MouseEvent) => { if (e.target === overlay) requestClose(); });
     document.body.appendChild(overlay);
     syncAppHidden();
     document.addEventListener('keydown', onKeyDown);
