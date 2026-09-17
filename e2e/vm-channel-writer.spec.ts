@@ -28,7 +28,7 @@ const IDS_AND_NAMES = {
 };
 const VISIBLE_OPTIONS = ['<None>', 'Alpha Channel', 'Beta Channel'];
 
-async function openChannelWriter(page: any, channelId: any) {
+async function openChannelWriter(page: any, channelId: any, catalog: any = IDS_AND_NAMES) {
     const writer = CASES.find((c) => c.name === 'Channel Writer');
     const id = `cw-${channelId.replace(/[^a-z0-9]+/gi, '-')}`;
     const channel = makeChannel(id, {
@@ -36,7 +36,7 @@ async function openChannelWriter(page: any, channelId: any) {
     });
     await mockEngine(page, {
         [`GET /channels/${id}`]: { channel },
-        'GET /channels/idsAndNames': IDS_AND_NAMES,
+        'GET /channels/idsAndNames': catalog,
     });
     await page.goto(`/channels/${id}/edit`);
     await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
@@ -68,4 +68,29 @@ test('an unknown channel id shows <Channel Not Found> the same way', async ({ pa
     await expect(combo).toHaveValue('<Channel Not Found>');
     expect(await combo.locator('option:not([hidden])').allTextContents()).toEqual(VISIBLE_OPTIONS);
     expect(await combo.locator('option[hidden]').allTextContents()).toEqual(['<Channel Not Found>']);
+});
+
+test('F20: refreshing the catalog shows renamed and new channels without changing the stored ID', async ({ page }) => {
+    const combo = await openChannelWriter(page, 'ch-alpha-2');
+    await expect(combo).toHaveValue('Alpha Channel');
+    await page.route('**/api/channels/idsAndNames', route => route.fulfill({ json: { map: { entry: [
+        { string: ['ch-alpha-2', 'Renamed Channel'] }, { string: ['ch-new', 'New Channel'] }
+    ] } } }));
+    await page.getByRole('button', { name: 'Refresh channels', exact: true }).click();
+    await expect(combo).toHaveValue('Renamed Channel');
+    expect(await combo.locator('option:not([hidden])').allTextContents()).toEqual(['<None>', 'New Channel', 'Renamed Channel']);
+    await expect(page.locator('input[placeholder="<None>"]')).toHaveValue('ch-alpha-2');
+});
+
+test('F20: failed catalog requests can be retried without reloading the application', async ({ page }) => {
+    let failed = true;
+    const combo = await openChannelWriter(page, 'ch-alpha-2', () => failed
+        ? { __status: 503, body: { message: 'catalog unavailable' } } : IDS_AND_NAMES);
+    await expect(page.getByRole('status')).toContainText('Could not load channels');
+    await expect(combo).toBeDisabled();
+    await expect(page.locator('input[placeholder="<None>"]')).toHaveValue('ch-alpha-2');
+    failed = false;
+    await page.getByRole('button', { name: 'Refresh channels', exact: true }).click();
+    await expect(combo).toBeEnabled();
+    await expect(combo).toHaveValue('Alpha Channel');
 });

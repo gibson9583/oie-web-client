@@ -52,14 +52,6 @@ const channelReader = {
     validate() { return []; }
 };
 
-/* Channel id→name map is fetched once and cached for the editor's lifetime so a
-   form repaint (after picking a channel) reuses it instead of re-fetching. */
-let channelNamesPromise: any = null;
-function loadChannelNames(platform: any) {
-    if (!channelNamesPromise) channelNamesPromise = platform.api.channels.idsAndNames();
-    return channelNamesPromise;
-}
-
 /* Synthetic combo labels Swing surfaces when the text field holds a value that
    isn't a known channel id. They are never standing picker options and never
    written to channelId — they describe the field's current state, shown as the
@@ -154,21 +146,38 @@ function channelControlNode(properties: any, platform: any, onChange: any) {
 
     wrap.appendChild(field);
     wrap.appendChild(combo);
+    const status = h('span', { role: 'status', class: 'text-text-dim' });
+    const refresh = h('button.btn', { type: 'button', onClick: () => { void load(); } }, 'Refresh channels') as HTMLButtonElement;
+    wrap.appendChild(refresh);
+    wrap.appendChild(status);
 
-    loadChannelNames(platform).then((map: any) => {
-        // mapEntries yields [channelId, channelName]; build the name->id list and
-        // sort by NAME (alpha-numeric) to match Collections.sort(channelNameArray).
-        channelList = mapEntries(map)
-            .map(([id, name]) => [name, id])
-            .sort((a: any, b: any) => a[0].localeCompare(b[0]));
-        clear(combo);
-        // '<None>' first, then sorted channel names. No synthetic <Map Variable>/
-        // <Channel Not Found> options — syncCombo adds one transiently (hidden) only
-        // while it describes the field's current value.
-        combo.appendChild(h('option', { value: NONE_LABEL }, NONE_LABEL));
-        for (const [name] of channelList) combo.appendChild(h('option', { value: name }, name));
-        syncCombo();
-    }).catch(() => { /* keep the static <None> option */ });
+    // The catalog belongs to this mounted control. Reopening or refreshing it
+    // reads current names, and a rejected request never poisons later attempts.
+    async function load() {
+        refresh.disabled = true;
+        combo.disabled = true;
+        status.textContent = 'Loading channels…';
+        try {
+            const map = await platform.api.channels.idsAndNames();
+            // mapEntries yields [channelId, channelName]; sort the picker by name.
+            channelList = mapEntries(map)
+                .map(([id, name]) => [name, id])
+                .sort((a: any, b: any) => a[0].localeCompare(b[0]));
+            clear(combo);
+            // Synthetic labels describe the stored value, never selectable options.
+            combo.appendChild(h('option', { value: NONE_LABEL }, NONE_LABEL));
+            for (const [name] of channelList) combo.appendChild(h('option', { value: name }, name));
+            syncCombo();
+            status.textContent = '';
+            combo.disabled = false;
+        } catch {
+            status.textContent = 'Could not load channels. Refresh to retry; the stored channel ID is unchanged.';
+        } finally {
+            refresh.disabled = false;
+        }
+    }
+    syncCombo();
+    void load();
 
     return wrap;
 }
