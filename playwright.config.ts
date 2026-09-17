@@ -60,6 +60,10 @@ export default defineConfig({
             name: 'live',
             testMatch: /live\.spec\.ts/,
             use: { ...devices['Desktop Chrome'] },
+        }, {
+            name: 'live-webkit',
+            testMatch: /live\.spec\.ts/,
+            use: { ...devices['Desktop Safari'] },
         }] : []),
     ],
 });
