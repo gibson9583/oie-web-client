@@ -1,110 +1,136 @@
-name: Docker
-
+name: Validated Docker images
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
-
+  workflow_call:
 permissions:
   contents: read
-
-# Superseded main-branch builds are cancelled; tag builds always run to completion.
-#
-# The PR-close cleanup gets a group of its OWN. Merging fires the PR's `closed`
-# event and the push to main in the same instant, and both resolve to
-# refs/heads/main — so keyed on the ref alone they landed in one group and the
-# main build cancelled the cleanup two seconds in, every time. It is a one-shot
-# tag deletion, so it must also never be superseded.
-concurrency:
-  group: ${{ github.event.action == 'closed' && format('docker-cleanup-pr-{0}', github.event.pull_request.number) || format('docker-{0}', github.ref) }}
-  cancel-in-progress: ${{ github.event.action != 'closed' && github.ref_type == 'branch' }}
-
-# Overridable per fork/deployment via repository variables — no workflow edits
-# needed. Credentials come from repository secrets:
-#   DOCKERHUB_TOKEN     (required) Docker Hub access token
-#   DOCKERHUB_USERNAME  (optional) defaults to gibson9583
 env:
   IMAGE_NAME: ${{ vars.DOCKERHUB_IMAGE || 'gibson9583/oie-web-client' }}
-  PLATFORMS: ${{ vars.DOCKER_PLATFORMS || 'linux/amd64,linux/arm64' }}
-
 jobs:
-  publish:
-    name: Build & push image
-    if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
-    env:
-      # Fork PRs get no repo secrets, so they cannot log in to Docker Hub:
-      # they build the image as validation, while same-repo runs also push.
-      PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+  build:
+    name: Build and test ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.22.3'
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-inputs
+          path: release-artifacts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: runtime-contract-inputs
+          path: release-artifacts/contracts
+      - name: Verify and unpack the tested runtime
+        run: |
+          node tools/release-artifacts.mjs verify
+          mkdir release-artifacts/runtime
+          tar -xzf release-artifacts/oie-webadmin-node.tar.gz -C release-artifacts/runtime
+          tar -xzf release-artifacts/oie-webadmin-node.tar.gz
+      - name: Build image without rebuilding application code
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          docker build --file Dockerfile.release --tag webadmin:validated \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            release-artifacts/runtime
+      - name: Test the image before saving it for promotion
+        run: |
+          container=$(docker run --detach --publish 127.0.0.1:3030:3030 \
+            --env OIE_URL=https://127.0.0.1:1 webadmin:validated)
+          trap 'docker logs "$container"; docker rm -f "$container"' EXIT
+          node tools/smoke-deployment.mjs http://127.0.0.1:3030
+      - name: Build the pinned baseline image
+        run: |
+          mkdir release-artifacts/baseline
+          tar -xzf release-artifacts/contracts/baseline-node.tar.gz -C release-artifacts/baseline
+          docker build --file Dockerfile.release --tag webadmin:baseline release-artifacts/baseline
+      - name: Rehearse real-engine Docker processing, upgrade and rollback
+        run: |
+          python3 tools/engine-contract.py --archive release-artifacts/contracts/oie.tar.gz \
+            --war release-artifacts/oie-webadmin.war --out release-artifacts/evidence \
+            --plugin release-artifacts/contracts/websupport.zip \
+            --baseline-node release-artifacts/contracts/baseline-node.tar.gz \
+            --baseline-war release-artifacts/contracts/baseline.war \
+            --docker-image webadmin:validated --baseline-docker-image webadmin:baseline
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: docker-evidence-${{ matrix.arch }}
+          path: release-artifacts/evidence/
+      - name: Save the exact tested image
+        run: |
+          mkdir image
+          docker save webadmin:validated | gzip > image/image.tar.gz
+          (cd image && sha256sum image.tar.gz > image.tar.gz.sha256)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: docker-${{ matrix.arch }}
+          path: image/
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: Promote tested image manifests
+    needs: build
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: docker-*
+          path: images
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - name: Log in to Docker Hub
-        if: env.PUSH == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME || 'gibson9583' }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Derive image tags
-        id: meta
+      - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ${{ env.IMAGE_NAME }}
-          # main -> main (a rolling build of the branch tip); a vX.Y.Z release
-          # tag -> X.Y.Z, X.Y and latest; a PR -> pr-N, updated on every push
-          # to the PR. `latest` therefore always means "newest release" — the
-          # Docker Hub convention `docker pull` relies on when no tag is given.
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=ref,event=pr
-          # latest=auto pins `latest` to non-prerelease semver tag builds only:
-          # branch pushes never move it, and a v0.7.0-beta gets 0.7.0-beta
-          # without touching it.
-          flavor: |
-            latest=auto
-      - name: Build and push
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          platforms: ${{ env.PLATFORMS }}
-          push: ${{ env.PUSH == 'true' }}
-          # Build metadata for the About dialog / startup log. The version
-          # comes from package.json; this only says which commit built it.
-          build-args: |
-            BUILD_COMMIT=${{ github.sha }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # A merged or closed PR takes its pr-N tag with it. Requires the token to
-  # carry Docker Hub's "delete" scope (a Read/Write-only token gets a 403 —
-  # regenerate as Read, Write, Delete if this job ever fails there). Fork PRs
-  # never pushed a tag, so there is nothing to remove.
-  remove-pr-image:
-    name: Remove PR image
-    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete the pr-N tag from Docker Hub
+          flavor: latest=auto
+      - name: Load and push the exact tested images, then publish their manifest
         env:
-          USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'gibson9583' }}
-          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          TAG: pr-${{ github.event.pull_request.number }}
+          SOURCE_SHA: ${{ github.sha }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          JWT=$(curl -fsS -H 'Content-Type: application/json' \
-                -d "{\"username\":\"$USERNAME\",\"password\":\"$TOKEN\"}" \
-                https://hub.docker.com/v2/users/login | jq -r .token)
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
-                -H "Authorization: Bearer $JWT" \
-                "https://hub.docker.com/v2/repositories/$IMAGE_NAME/tags/$TAG/")
-          case "$STATUS" in
-            2*)  echo "deleted $IMAGE_NAME:$TAG" ;;
-            404) echo "$IMAGE_NAME:$TAG was never pushed — nothing to remove" ;;
-            *)   echo "::error::Docker Hub tag delete failed with HTTP $STATUS"; exit 1 ;;
-          esac
+          digests=()
+          for arch in amd64 arm64; do
+            (cd "images/docker-$arch" && sha256sum -c image.tar.gz.sha256)
+            docker load --input "images/docker-$arch/image.tar.gz"
+            test "$(docker inspect webadmin:validated --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$SOURCE_SHA"
+            test "$(docker inspect webadmin:validated --format '{{ .Architecture }}')" = "$arch"
+            image="$IMAGE_NAME:validated-$RUN_ID-$arch"
+            docker tag webadmin:validated "$image"
+            docker push "$image"
+            digest=$(docker inspect "$image" --format '{{index .RepoDigests 0}}')
+            digests+=("$digest")
+          done
+          tags=()
+          while IFS= read -r tag; do
+            test -z "$tag" || tags+=(--tag "$tag")
+          done <<< "$TAGS"
+          test "${#tags[@]}" -gt 0
+          docker buildx imagetools create "${tags[@]}" "${digests[@]}"

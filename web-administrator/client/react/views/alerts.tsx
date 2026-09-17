@@ -10,6 +10,7 @@ import { useState, useRef } from 'react';
 import { h, icon, modal, toast, confirmDialog, promptDialog, contextMenu, saveFile, pickFile } from '@oie/web-ui';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { useAlerts } from '../queries.js';
@@ -229,6 +230,8 @@ export function AlertsList() {
         }
     }
     async function exportTask() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         const alert = single();
         if (!alert) return;
         try {
@@ -236,12 +239,16 @@ export function AlertsList() {
                 const xml = await api.getXml(`/alerts/${alert.id}`);
                 if (!xml || !String(xml).trim()) throw new Error('Alert not found on the server');
                 return xml;
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }
     async function exportAllTask() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         const all = alerts;
         if (!all.length) { toast('No alerts to export', 'warn'); return; }
         try {
@@ -250,13 +257,16 @@ export function AlertsList() {
                 const parts: any[] = [];
                 for (const a of all) {
                     const xml = await api.getXml(`/alerts/${a.id}`);
+                    assertSession();
                     if (xml && String(xml).trim()) parts.push(String(xml).replace(/^<\?xml[^>]*\?>\s*/, '').trim());
                 }
                 count = parts.length;
                 return `<list>\n${parts.join('\n')}\n</list>`;
-            });
+            }, assertSession);
+            assertSession();
             if (count) toast(`Exported ${count} alert(s)`);
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }

@@ -63,11 +63,11 @@ test('a namespace code template completes its members, scoped to the channel', a
         [`GET /channels/${id}`]: { channel },
         'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [
             {
-                '@version': '4.5.0', id: 'lib-ns', name: 'Toolbox Helpers', revision: 1,
+                '@version': '4.6.0', id: 'lib-ns', name: 'Toolbox Helpers', revision: 1,
                 includeNewChannels: false, disabledChannelIds: '',
                 enabledChannelIds: { string: [id] },
                 codeTemplates: { codeTemplate: [{
-                    '@version': '4.5.0', id: 'tpl-ns', name: 'Toolbox Namespace', revision: 1,
+                    '@version': '4.6.0', id: 'tpl-ns', name: 'Toolbox Namespace', revision: 1,
                     contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
                     properties: {
                         '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties',
@@ -82,11 +82,11 @@ test('a namespace code template completes its members, scoped to the channel', a
                 // can't see through that, so the source is fed UNWRAPPED — Rhino
                 // runs the wrapper at script scope anyway, so the inner var IS a
                 // runtime global.
-                '@version': '4.5.0', id: 'lib-iife', name: 'Test Library', revision: 1,
+                '@version': '4.6.0', id: 'lib-iife', name: 'Test Library', revision: 1,
                 includeNewChannels: false, disabledChannelIds: '',
                 enabledChannelIds: { string: [id] },
                 codeTemplates: { codeTemplate: [{
-                    '@version': '4.5.0', id: 'tpl-iife', name: 'Test.js', revision: 1,
+                    '@version': '4.6.0', id: 'tpl-iife', name: 'Test.js', revision: 1,
                     contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
                     properties: {
                         '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties',
@@ -97,11 +97,11 @@ test('a namespace code template completes its members, scoped to the channel', a
             },
             {
                 // Linked to a DIFFERENT channel — must contribute nothing here.
-                '@version': '4.5.0', id: 'lib-other', name: 'Elsewhere', revision: 1,
+                '@version': '4.6.0', id: 'lib-other', name: 'Elsewhere', revision: 1,
                 includeNewChannels: false, disabledChannelIds: '',
                 enabledChannelIds: { string: ['some-other-channel'] },
                 codeTemplates: { codeTemplate: [{
-                    '@version': '4.5.0', id: 'tpl-other', name: 'Other Namespace', revision: 1,
+                    '@version': '4.6.0', id: 'tpl-other', name: 'Other Namespace', revision: 1,
                     contextSet: { delegate: { contextType: ['SOURCE_FILTER_TRANSFORMER'] } },
                     properties: {
                         '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties',

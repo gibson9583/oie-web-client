@@ -109,7 +109,7 @@ test('Code Templates lists libraries/templates, gates tasks on selection, and ed
     expect(legacyPut).toBe(false);
 });
 
-for (const propertyVersion of [' version="4.5.0"', '']) {
+for (const propertyVersion of [' version="4.6.0"', '']) {
     test(`template import preserves strings and orders attributes (${propertyVersion ? 'versioned' : 'missing properties version'})`, async ({ page }) => {
         await page.goto('/code-templates');
         await expect(page.getByText('Demo Library', { exact: true })).toBeVisible();
@@ -121,7 +121,7 @@ for (const propertyVersion of [' version="4.5.0"', '']) {
         await (await chooser).setFiles({
             name: 'primitive-looking-template.xml',
             mimeType: 'application/xml',
-            buffer: Buffer.from(`<codeTemplate version="4.5.0"><id>numeric-script</id><name>true</name><revision>0</revision><properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties"${propertyVersion}><type>FUNCTION</type><code>123</code></properties></codeTemplate>`)
+            buffer: Buffer.from(`<codeTemplate version="4.6.0"><id>numeric-script</id><name>true</name><revision>0</revision><properties class="com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties"${propertyVersion}><type>FUNCTION</type><code>123</code></properties></codeTemplate>`)
         });
 
         const body = (await bulkRequest).postData() || '';
@@ -129,7 +129,7 @@ for (const propertyVersion of [' version="4.5.0"', '']) {
         expect(body).toContain('"code":"123"');
         expect(body).toContain('"revision":0');
         const parts = assertBulkWire(body);
-        expect(parts.updatedCodeTemplates.list.codeTemplate[0].properties['@version']).toBe(propertyVersion ? '4.5.0' : '4.5.2');
+        expect(parts.updatedCodeTemplates.list.codeTemplate[0].properties['@version']).toBe(propertyVersion ? '4.6.0' : '4.5.2');
     });
 }
 

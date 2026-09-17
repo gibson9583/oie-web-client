@@ -73,9 +73,13 @@ const MESSAGE_FIXTURES = {
     [`GET /channels/${CID}/metaDataColumns`]: '',
     // Channel name lookup for the 'Channel Messages - <name>' banner title.
     'GET /channels/idsAndNames': { map: { entry: [{ string: [CID, 'Demo Started'] }] } },
-    // Remove All uses this to offer Swing's stop/remove/restart behavior.
+    // Deployed status drives Send Message and stop/remove/restart behavior.
     [`GET /channels/${CID}/status`]: { dashboardStatus: {
-        channelId: CID, name: 'Demo Started', state: 'STARTED', statistics: {}
+        channelId: CID, name: 'Demo Started', state: 'STARTED', statistics: {}, statusType: 'CHANNEL',
+        childStatuses: { dashboardStatus: [
+            { channelId: CID, metaDataId: 0, name: 'Source', statusType: 'SOURCE_CONNECTOR' },
+            { channelId: CID, metaDataId: 1, name: 'HTTP Sender', statusType: 'DESTINATION_CONNECTOR' },
+        ] },
     } },
     // Full message + attachments fetched when a row is selected (detail pane).
     [`GET /channels/${CID}/messages/12345`]: MESSAGE,

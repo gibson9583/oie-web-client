@@ -29,7 +29,7 @@ type WorkerFixtures = { workerServer: string };
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Playwright's own signature for "no test-scoped fixtures"
 export const test = base.extend<{}, WorkerFixtures>({
     workerServer: [async ({}, use, workerInfo) => {
-        if (workerInfo.project.name === 'live') {
+        if (workerInfo.project.name.startsWith('live')) {
             await use(process.env.E2E_BASE_URL || 'http://localhost:3030');
             return;
         }

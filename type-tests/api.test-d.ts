@@ -43,6 +43,9 @@ async function goodUsage() {
 
     const msgs: Message[] = await api.messages.search('cid', { limit: 10 });
 
+    await api.messages.processNew('cid', 'payload', null); // all deployed destinations
+    await api.messages.processNew('cid', 'payload', []); // source only
+
     // Helpers + error class.
     const list: string[] = asList<string>(ch, 'string');
     const err = new ApiError(500, 'boom');

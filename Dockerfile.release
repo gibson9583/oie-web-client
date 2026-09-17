@@ -1,0 +1,12 @@
+# CI supplies only the verified release runtime as the build context. The
+# application is already built and browser-tested; this image adds runtime deps.
+FROM node:22-alpine
+ENV NODE_ENV=production WEBADMIN_HOST=0.0.0.0
+WORKDIR /app
+COPY . .
+RUN npm ci --omit=dev && npm cache clean --force
+USER node
+EXPOSE 3030
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.WEBADMIN_PORT||3030)+'/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+CMD ["node", "web-administrator/server/index.js"]

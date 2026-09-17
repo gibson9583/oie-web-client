@@ -218,6 +218,9 @@ export function register(platform: Platform) {
         const [phase, setPhase] = React.useState('loading');     // loading | ready | error
         const [errorMessage, setErrorMessage] = React.useState('');
         const [statusState, setStatusState] = React.useState({ phase: 'loading', pairs: [], message: '' });
+        const [busy, setBusy] = React.useState(false);
+        const operationRef = React.useRef(false);
+        const mountedRef = React.useRef(true);
 
         // The live, mutable property list (round-trips pollingProperties /
         // archiverOptions / includeAttachments and any unknown keys unchanged).
@@ -301,6 +304,8 @@ export function register(platform: Platform) {
             archiveEnabled, archiverBlockSize, includeAttachments, contentKey, encrypt, compressKey,
             passwordEnabled, password, encryptionType, rootFolder, filePattern,
             scheduleType, freqValue, freqUnit, pollTime, cronJobs]);
+        const latestSnapshotRef = React.useRef(snapshot());
+        latestSnapshotRef.current = snapshot();
 
         const getProp = (name: any, dflt = '') => {
             const p = propListRef.current.find((x: any) => x.name === name);
@@ -430,21 +435,33 @@ export function register(platform: Platform) {
         }
 
         async function load() {
+            if (operationRef.current || !mountedRef.current) return;
+            operationRef.current = true;
+            setBusy(true);
             setPhase('loading');
             try {
-                propListRef.current = propsToList(await api.extensions.properties('Data Pruner'));
+                const properties = await api.extensions.properties('Data Pruner');
+                if (!mountedRef.current) return;
+                propListRef.current = propsToList(properties);
+                applyPropsToForm();
+                setPhase('ready');
+                refreshStatus();
             } catch (e: any) {
+                if (!mountedRef.current) return;
                 toast(`Failed to load Data Pruner properties: ${e.message}`, 'error');
                 setErrorMessage(String(e.message || e));
                 setPhase('error');
-                return;
+            } finally {
+                operationRef.current = false;
+                if (mountedRef.current) setBusy(false);
             }
-            applyPropsToForm();
-            setPhase('ready');
-            refreshStatus();
         }
 
         async function save() {
+            if (operationRef.current || phase !== 'ready' || !mountedRef.current) return false;
+            operationRef.current = true;
+            setBusy(true);
+            const submittedSnapshot = snapshot();
             try {
                 setProp('enabled', String(enabled));
                 setProp('pruningBlockSize', blockSize);
@@ -515,14 +532,20 @@ export function register(platform: Platform) {
                    includeAttachments and any unknown keys — they round-trip
                    unchanged. */
                 await api.extensions.setProperties('Data Pruner', listToProps(propListRef.current));
+                if (!mountedRef.current) return false;
                 toast('Data Pruner settings saved');
-                cleanRef.current = snapshot();   // saved state is the new clean baseline
-                dirtyRef.current = false;
-                markClean();
-                return true;
+                // Only the submitted values became clean. Keep newer edits and
+                // refuse a pending Save-and-leave while they still need saving.
+                cleanRef.current = submittedSnapshot;
+                dirtyRef.current = latestSnapshotRef.current !== submittedSnapshot;
+                if (dirtyRef.current) markDirty(); else markClean();
+                return !dirtyRef.current;
             } catch (e: any) {
-                toast(`Save failed: ${e.message}`, 'error');
+                if (mountedRef.current) toast(`Save failed: ${e.message}`, 'error');
                 return false;
+            } finally {
+                operationRef.current = false;
+                if (mountedRef.current) setBusy(false);
             }
         }
 
@@ -548,8 +571,13 @@ export function register(platform: Platform) {
             refreshStatus();
         }
 
-        // Load once on mount.
-        React.useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+        // Initial load only; repeating when edit-state closures change would overwrite the form.
+        React.useEffect(() => {
+            mountedRef.current = true;
+            load();
+            return () => { mountedRef.current = false; };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []);
 
         // Declare the task pane through the ctx.setTasks callback. The task items
         // are legacy DOM taskButton() nodes (the Settings TasksPane mounts those
@@ -561,14 +589,14 @@ export function register(platform: Platform) {
             // can save on the user's behalf.
             setSave(save);
             setTasks('Data Pruner Tasks', [
-                taskButton('Refresh', 'refresh', () => { load(); }),
-                taskButton('Save', 'save', save, { primary: true }),
+                taskButton('Refresh', 'refresh', () => { load(); }, { disabled: busy }),
+                taskButton('Save', 'save', save, { primary: true, disabled: busy || phase !== 'ready' }),
                 taskButton('View Events', 'events', () => platform.router.navigate('/events')),
                 taskButton('Prune Now', 'play', pruneNow),
                 taskButton('Stop Pruner', 'stop', stopPruner, { danger: true })
             ]);
             // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, [enabled, blockSize, pruneEvents, maxEventAge, archiveEnabled, archiverBlockSize,
+        }, [busy, phase, enabled, blockSize, pruneEvents, maxEventAge, archiveEnabled, archiverBlockSize,
             includeAttachments, scheduleType, freqValue, freqUnit, pollTime, cronJobs, scheduleDirty,
             contentKey, encrypt, compressKey, passwordEnabled, password, encryptionType,
             rootFolder, filePattern, archiverDirty]);

@@ -13,34 +13,34 @@ import { mockEngine } from './mock.js';
 const CHANNEL_ID = 'rt-channel';
 
 const FULL_CHANNEL = {
-    '@version': '4.5.0', id: CHANNEL_ID, nextMetaDataId: 2, name: 'RT Channel',
+    '@version': '4.6.0', id: CHANNEL_ID, nextMetaDataId: 2, name: 'RT Channel',
     description: 'desc', revision: 3,
     sourceConnector: {
-        '@version': '4.5.0', metaDataId: 0, name: 'sourceConnector',
+        '@version': '4.6.0', metaDataId: 0, name: 'sourceConnector',
         properties: {
-            '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0',
+            '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.6.0',
             pluginProperties: null,
-            sourceConnectorProperties: { '@version': '4.5.0', responseVariable: 'None', respondAfterProcessing: true, processBatch: false, firstResponse: false, processingThreads: 1, queueBufferSize: 1000, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } } }
+            sourceConnectorProperties: { '@version': '4.6.0', responseVariable: 'None', respondAfterProcessing: true, processBatch: false, firstResponse: false, processingThreads: 1, queueBufferSize: 1000, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } } }
         },
         transformer: {
-            '@version': '4.5.0',
-            elements: { 'com.mirth.connect.plugins.mapper.MapperStep': { '@version': '4.5.0', name: 'Map Patient Id', sequenceNumber: '0', enabled: true, variable: 'patientId', mapping: "msg['PID']['PID.3']['PID.3.1'].toString()", defaultValue: '', replacements: null, scope: 'CHANNEL' } },
+            '@version': '4.6.0',
+            elements: { 'com.mirth.connect.plugins.mapper.MapperStep': { '@version': '4.6.0', name: 'Map Patient Id', sequenceNumber: '0', enabled: true, variable: 'patientId', mapping: "msg['PID']['PID.3']['PID.3.1'].toString()", defaultValue: '', replacements: null, scope: 'CHANNEL' } },
             inboundTemplate: '', outboundTemplate: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null
         },
-        filter: { '@version': '4.5.0', elements: '' },
+        filter: { '@version': '4.6.0', elements: '' },
         transportName: 'Channel Reader', mode: 'SOURCE', enabled: true, waitForPrevious: true
     },
     destinationConnectors: {
         connector: [{
-            '@version': '4.5.0', metaDataId: 1, name: 'Send To Downstream',
-            properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.5.0', pluginProperties: null, destinationConnectorProperties: { '@version': '4.5.0', queueEnabled: false, sendFirst: false, retryIntervalMillis: 10000, regenerateTemplate: false, retryCount: 0, rotate: false, includeFilterTransformer: false, threadCount: 1, threadAssignmentVariable: null, validateResponse: false, reattachAttachments: true, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, queueBufferSize: 1000 }, channelId: 'none', channelTemplate: '${message.encodedData}' },
-            transformer: { '@version': '4.5.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
-            responseTransformer: { '@version': '4.5.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
-            filter: { '@version': '4.5.0', elements: '' }, transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true
+            '@version': '4.6.0', metaDataId: 1, name: 'Send To Downstream',
+            properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.6.0', pluginProperties: null, destinationConnectorProperties: { '@version': '4.6.0', queueEnabled: false, sendFirst: false, retryIntervalMillis: 10000, regenerateTemplate: false, retryCount: 0, rotate: false, includeFilterTransformer: false, threadCount: 1, threadAssignmentVariable: null, validateResponse: false, reattachAttachments: true, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, queueBufferSize: 1000 }, channelId: 'none', channelTemplate: '${message.encodedData}' },
+            transformer: { '@version': '4.6.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
+            responseTransformer: { '@version': '4.6.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
+            filter: { '@version': '4.6.0', elements: '' }, transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true
         }]
     },
     preprocessingScript: 'return message;', postprocessingScript: 'return;', deployScript: 'return;', undeployScript: 'return;',
-    properties: { '@version': '4.5.0', clearGlobalChannelMap: true, messageStorageMode: 'DEVELOPMENT', encryptData: false, removeContentOnCompletion: false, removeOnlyFilteredOnCompletion: false, removeAttachmentsOnCompletion: false, storeAttachments: false, metaDataColumns: { metaDataColumn: [{ name: 'SOURCE', type: 'STRING', mappingName: 'mirth_source' }] }, attachmentProperties: { '@version': '4.5.0', type: 'None', properties: null }, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, initialState: 'STARTED' },
+    properties: { '@version': '4.6.0', clearGlobalChannelMap: true, messageStorageMode: 'DEVELOPMENT', encryptData: false, removeContentOnCompletion: false, removeOnlyFilteredOnCompletion: false, removeAttachmentsOnCompletion: false, storeAttachments: false, metaDataColumns: { metaDataColumn: [{ name: 'SOURCE', type: 'STRING', mappingName: 'mirth_source' }] }, attachmentProperties: { '@version': '4.6.0', type: 'None', properties: null }, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, initialState: 'STARTED' },
     // A stored last-modified marks this a HEALTHY channel: the editor's concurrent-
     // edit guard applies (override=false + startEdit on save). Channels without one
     // are unguardable — the engine substitutes "now" for a missing stored value, so
@@ -55,7 +55,7 @@ test('channel save round-trips the full channel (serialization preserved)', asyn
     let putBody: any = null;
     await page.route((url) => url.pathname === `/api/channels/${CHANNEL_ID}`, async (route) => {
         const req = route.request();
-        if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+        if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: 'true' }); }
         return route.fallback();
     });
 
@@ -75,7 +75,7 @@ test('channel save round-trips the full channel (serialization preserved)', asyn
     expect(sent.name).toBe('RT Channel EDITED');
     expect(Number(sent.revision)).toBe(4);
     // @version preserved.
-    expect(sent['@version']).toBe('4.5.0');
+    expect(sent['@version']).toBe('4.6.0');
     // Source connector + its @class preserved.
     expect(sent.sourceConnector).toBeTruthy();
     expect(sent.sourceConnector.properties['@class']).toBe('com.mirth.connect.connectors.vm.VmReceiverProperties');
@@ -132,12 +132,9 @@ test('a conflicting save prompts "Channel Modified" and Overwrite retries with o
     await expect(page.locator('.toast-msg', { hasText: 'Saved RT Channel EDITED' })).toBeVisible();
 });
 
-test('a channel with no stored last-modified saves once WITHOUT the guard (override=true, no prompt)', async ({ page }) => {
-    // Channels created/saved before the client stamped lastModified have no stored
-    // value; the engine substitutes "now" when it's absent, so an override=false
-    // save would ALWAYS false-positive. The editor detects the missing timestamp
-    // and skips the check for that first save — which also stamps a real
-    // last-modified, healing the channel so the guard applies afterwards.
+test('a channel with no stored last-modified still attempts a guarded save', async ({ page }) => {
+    // Missing legacy timestamps do not authorize an unconditional overwrite.
+    // A false engine result still requires the ordinary explicit conflict decision.
     const { exportData, ...UNGUARDED_CHANNEL } = FULL_CHANNEL;
     await mockEngine(page, { [`GET /channels/${CHANNEL_ID}`]: { channel: UNGUARDED_CHANNEL } });
 
@@ -159,9 +156,9 @@ test('a channel with no stored last-modified saves once WITHOUT the guard (overr
     await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
 
     await expect(page.locator('.toast-msg', { hasText: 'Saved RT Channel EDITED' })).toBeVisible();
-    // Exactly one PUT, guard skipped, and NO "Channel Modified" prompt.
+    // The engine accepted one guarded PUT, so no conflict prompt is needed.
     expect(puts).toHaveLength(1);
-    expect(puts[0].override).toBe('true');
+    expect(puts[0].override).toBe('false');
     await expect(page.getByText('This channel has been modified', { exact: false })).not.toBeVisible();
     // The save healed the channel: a real last-modified was stamped into the body.
     expect(puts[0].body.exportData.metadata.lastModified.time).toBeGreaterThan(0);

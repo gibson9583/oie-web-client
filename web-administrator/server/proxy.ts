@@ -4,7 +4,7 @@
  * The browser talks to /api/... on this server; we stream the request through to
  * the selected engine (.../api/...) and stream the response back. This keeps the
  * web administrator a standalone install: no CORS, no browser warnings about the
- * engine's certificate, and engine cookies retain their paths. Their browser
+ * engine's certificate, and engine cookie paths are mapped to the proxy. Their browser
  * names are scoped to the upstream URL so sessions cannot cross engines.
  *
  * Multi-engine: the browser picks an engine at login and sets an `oie-engine`
@@ -190,15 +190,25 @@ export function forceNoStore(headers: http.OutgoingHttpHeaders): http.OutgoingHt
 /** Apply the browser-facing session-cookie policy shared by the streaming proxy
  * and server-side OIDC callback login. */
 export function rewriteSetCookies(cookies: string[] | undefined, secure: boolean, engine: EngineTarget): string[] {
+    const base = new URL(engine.url).pathname.replace(/\/+$/, '');
     return (cookies || []).map((original) => {
         let cookie = engineCookiePrefix(engine) + original;
         // Cookies now belong to the web administrator's host, not the upstream.
         cookie = cookie.replace(/;\s*domain=[^;]*/ig, '');
+        if (base) cookie = cookie.replace(/(;\s*path=)([^;]*)/ig, (_match, attribute, path: string) =>
+            attribute + (path === base ? '/' : path.startsWith(base + '/') ? path.slice(base.length) : path));
         if (!/;\s*samesite=/i.test(cookie)) cookie += '; SameSite=Lax';
         if (secure) { if (!/;\s*secure\b/i.test(cookie)) cookie += '; Secure'; }
         else cookie = cookie.replace(/;\s*secure\b/ig, '');
         return cookie;
     });
+}
+
+/** Keep the configured context path for every engine transport, including
+ * buffered plugin/auth calls. Preserve the caller's escaped path and query.
+ */
+export function engineRequestPath(target: URL, requestPath: string): string {
+    return target.pathname.replace(/\/+$/, '') + '/' + requestPath.replace(/^\/+/, '');
 }
 
 // Normalize the forwarding headers on the upstream request (mutates `headers`):
@@ -292,7 +302,7 @@ export function createApiProxy(config: WebAdminConfig) {
             hostname: target.hostname,
             port: target.port || (isHttps ? 443 : 80),
             method: req.method,
-            path: req.originalUrl,
+            path: engineRequestPath(target, req.originalUrl),
             headers
         }, (upstreamRes) => {
             const resHeaders: http.OutgoingHttpHeaders = {};
@@ -324,11 +334,19 @@ export function createApiProxy(config: WebAdminConfig) {
                 resHeaders['set-cookie'] = [...(resHeaders['set-cookie'] || []) as string[],
                     `oie-login=${encodeURIComponent(generation)}; Path=/; SameSite=Lax${secure ? '; Secure' : ''}`];
             }
+            // pipe() does not propagate a source error or premature close to its
+            // destination. End the browser's response as a transport failure,
+            // including streams whose callers deliberately have no deadline.
+            const brokenResponse = () => { if (!res.writableEnded) res.destroy(); };
+            upstreamRes.on('error', brokenResponse);
+            upstreamRes.once('aborted', brokenResponse);
+            upstreamRes.once('close', () => { if (!upstreamRes.complete) brokenResponse(); });
             res.writeHead(upstreamRes.statusCode!, resHeaders);
             upstreamRes.pipe(res);
         });
 
         upstream.on('error', (err: any) => {
+            if (res.destroyed) return;
             // Multi-address connect failures (e.g. ::1 and 127.0.0.1 both tried)
             // arrive as an AggregateError with an empty message — unwrap it.
             const causes = err.errors ? err.errors.map((e: Error) => e.message) : [err.message];
@@ -337,9 +355,8 @@ export function createApiProxy(config: WebAdminConfig) {
             // only; the browser gets a generic message so we don't disclose the
             // internal engine address/port or socket topology to a client.
             console.error(`[proxy] ${req.method} ${req.originalUrl} -> ${engine.url} failed: ${detail}`);
-            if (!res.headersSent) {
-                res.writeHead(502, { 'Content-Type': 'application/json' });
-            }
+            if (res.headersSent) { res.destroy(); return; }
+            res.writeHead(502, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
                 error: 'ENGINE_UNREACHABLE',
                 message: 'Could not reach the Open Integration Engine. Check the web administrator logs for details.'
@@ -413,9 +430,10 @@ export function engineRequest(engine: EngineTarget, { method, path: reqPath, hea
             hostname: target.hostname,
             port: target.port || (isHttps ? 443 : 80),
             method,
-            path: reqPath,
+            path: engineRequestPath(target, reqPath),
             headers: h
         }, (res) => {
+            res.on('error', fail);
             const chunks: Buffer[] = [];
             let size = 0;
             res.on('data', (c: Buffer) => {

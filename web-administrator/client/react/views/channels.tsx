@@ -26,10 +26,13 @@ import { useEffect, useRef, useState } from 'react';
 import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorModal, select, field, textInput, saveFile, pickFile, fmtDate } from '@oie/web-ui';
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
 import { createZip } from '../../core/zip.js';
+import { mutateChannelGroups } from '../../core/channel-groups.js';
+import { saveDependencyChanges } from '../../core/channel-dependencies.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, SegPill } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
@@ -167,13 +170,16 @@ function promptExportLibraries(names: any) {
     });
 }
 
-async function chooseExportLibraries(channelIds: any[]) {
+async function chooseExportLibraries(channelIds: any[], assertSession: () => void) {
+    assertSession();
     const pref = getPref('exportLibrariesWithChannels');
     if (pref === 'yes' || pref === 'no') return pref === 'yes';
     let names: any[];
     try {
         names = [...new Set(await linkedLibraryNames(channelIds))];
+        assertSession();
     } catch (e: any) {
+        assertSession();
         // Code-template viewing is independently authorized. Swing consults its
         // cache and still exports the channel when that data is unavailable; keep
         // the backup usable while making the omitted libraries explicit.
@@ -182,6 +188,7 @@ async function chooseExportLibraries(channelIds: any[]) {
     }
     if (!names.length) return false;
     const choice = await promptExportLibraries(names);
+    assertSession();
     return choice === 'cancel' ? null : choice === 'yes';
 }
 
@@ -357,7 +364,6 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     const dependentIds = strings(dependentIdsEl);
     const dependencyIds = strings(dependencyIdsEl);
     if (dependentIds.length || dependencyIds.length) {
-        const existingDependencies = await api.server.channelDependencies();
         const dependencies = new Map<string, any>();
         const add = (dependentId: any, dependencyId: any) => {
             dependentId = String(dependentId || '').trim();
@@ -365,11 +371,11 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
             if (!dependentId || !dependencyId || dependentId === dependencyId) return;
             dependencies.set(`${dependentId}>${dependencyId}`, { dependentId, dependencyId });
         };
-        for (const dependency of existingDependencies || []) add(dependency.dependentId, dependency.dependencyId);
         for (const dependentId of dependentIds) add(dependentId, resolved.id);
         for (const dependencyId of dependencyIds) add(resolved.id, dependencyId);
         try {
-            await api.server.setChannelDependencies([...dependencies.values()]);
+            // Merge imported edges into a fresh graph using Swing's core setter.
+            await saveDependencyChanges([...dependencies.values()], []);
         } catch (e: any) {
             // Swing reports this failure but still allows the channel import to
             // continue, so retain that partial-completion behavior explicitly.
@@ -1070,6 +1076,8 @@ export function ChannelsView() {
        the channel's code template libraries into exportData when asked
        (includeCodeTemplateLibraries) — same format the Swing client produces. */
     async function exportTask(rows: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         const channel = requireSingle(rows);
         if (!channel) return;
         // Ask up front (before the save dialog) whether to bundle code template
@@ -1077,19 +1085,25 @@ export function ChannelsView() {
         // falls back to a normal download if the native picker can't engage
         // outside the click gesture.
         try {
-            const includeLibs = await chooseExportLibraries([channel.id]);
+            const includeLibs = await chooseExportLibraries([channel.id], assertSession);
+            assertSession();
             if (includeLibs == null) return;
             await saveFile(`${channel.name || channel.id}.xml`, 'application/xml',
-                () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined));
+                () => api.getXml(`/channels/${channel.id}`, includeLibs ? { includeCodeTemplateLibraries: true } : undefined), assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }
 
     async function exportAllTask() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!channels.length) { toast('No channels to export', 'warn'); return; }
         try {
-            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id));
+            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id), assertSession);
+            assertSession();
             if (includeLibs == null) return;
             await saveFile('channels.zip', 'application/zip', async () => {
                 const xml = await api.getXml('/channels', includeLibs ? { includeCodeTemplateLibraries: true } : undefined, { timeoutMs: null });
@@ -1108,8 +1122,10 @@ export function ChannelsView() {
                     zip.add(exportFileName(direct('name'), direct('id') || 'channel', used), new XMLSerializer().serializeToString(element));
                 }
                 return zip.blob();
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }
@@ -1170,24 +1186,28 @@ export function ChannelsView() {
         router.navigate(`/messages/${channel.id}`);
     }
 
-    /* Group MUTATIONS build on the latest-known group list, not a render-time
-       snapshot: bulkUpdate replaces the whole set, so acting on a stale copy
-       could resurrect a deleted group. The mirror tracks state each render and
-       is read only at mutation time (the legacy ref semantics, scoped down). */
-    const groupsNowRef = useRef(groups);
-    groupsNowRef.current = groups;
+    function saveGroupChanges(change: (groups: any[]) => any[], removedIds: string[] = [], expectedGroup?: any) {
+        return mutateChannelGroups(change, removedIds, { expectedGroup,
+            confirmOverwrite: () => confirmDialog('Channel Groups Modified',
+                'One or more channel groups have been modified since you last refreshed. Do you want to overwrite the changes?',
+                { danger: true, okLabel: 'Overwrite' }) });
+    }
 
     /* Move channels between groups (used by the modal task and drag/drop).
        targetId DEFAULT_GROUP_ID means "remove from all groups". */
     async function moveChannelsToGroup(ids: any, targetId: any) {
-        const updated = structuredClone(groupsNowRef.current);
-        for (const group of updated) {
-            let members = api.asList(group.channels, 'channel').filter(m => m && m.id && !ids.has(m.id));
-            if (group.id === targetId) members = members.concat([...ids].map(id => ({ id })));
-            group.channels = members.length ? { channel: members } : null;
-        }
         try {
-            await api.channelGroups.bulkUpdate(updated, []);
+            if (!await saveGroupChanges((updated: any[]) => {
+                if (targetId !== DEFAULT_GROUP_ID && !updated.some(g => g.id === targetId)) {
+                    throw new Error('The destination group was removed. Refresh and choose another group.');
+                }
+                for (const group of updated) {
+                    let members = api.asList(group.channels, 'channel').filter(m => m && m.id && !ids.has(m.id));
+                    if (group.id === targetId) members = members.concat([...ids].map(id => ({ id })));
+                    group.channels = members.length ? { channel: members } : null;
+                }
+                return updated;
+            })) return false;
             toast('Channels moved');
             refresh();
             return true;
@@ -1224,10 +1244,9 @@ export function ChannelsView() {
     async function newGroupTask() {
         const name = await promptDialog('New Group', 'Group name');
         if (name === null || !name.trim()) return;
-        const updated = structuredClone(groupsNowRef.current);
-        updated.push({ id: uuid(), name: name.trim(), revision: 0, description: '', channels: null });
         try {
-            await api.channelGroups.bulkUpdate(updated, []);
+            const created = { id: uuid(), name: name.trim(), revision: 0, description: '', channels: null };
+            if (!await saveGroupChanges((updated: any[]) => [...updated, created])) return;
             toast(`Created group ${name.trim()}`);
             refresh();
         } catch (e: any) {
@@ -1247,9 +1266,8 @@ export function ChannelsView() {
         const group = requireGroup(g);
         if (!group) return;
         if (!await confirmDialog('Delete Group', `Delete group "${group.name}"? Its channels move to the Default Group.`, { danger: true, okLabel: 'Delete' })) return;
-        const remaining = structuredClone(groupsNowRef.current.filter(x => x.id !== group.id));
         try {
-            await api.channelGroups.bulkUpdate(remaining, [group.id]);
+            if (!await saveGroupChanges((updated: any[]) => updated.filter(x => x.id !== group.id), [group.id], group)) return;
             toast(`Deleted group ${group.name}`);
             setLastGroupId(null);
             refresh();
@@ -1274,12 +1292,13 @@ export function ChannelsView() {
                     onClick: async () => {
                         const name = nameInput.value.trim();
                         if (!name) { toast('Group name is required', 'warn'); return false; }
-                        const updated = structuredClone(groupsNowRef.current);
-                        const target = updated.find(g => g.id === group.id);
-                        target.name = name;
-                        target.description = (descArea as any).value;
                         try {
-                            await api.channelGroups.bulkUpdate(updated, []);
+                            if (!await saveGroupChanges((updated: any[]) => {
+                                const target = updated.find(current => current.id === group.id);
+                                target.name = name;
+                                target.description = (descArea as any).value;
+                                return updated;
+                            }, [], group)) return false;
                             toast(`Group "${name}" updated`);
                             refresh();
                         } catch (e: any) {
@@ -1345,9 +1364,11 @@ export function ChannelsView() {
             if (verdict.action === 'block') { await alertInformation(verdict.message); return; }
             if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return;
             const parsed = parseGroupXml(file.content);
+            // Fail before importing channels if the group collection is unreadable.
+            await api.channelGroups.list();
             const knownChannels = structuredClone(channels);
             const resolvedChannelIds = new Map();
-            const imported = [];
+            const imported: any[] = [];
             let processedGroups = 0;
 
             // Swing consolidates every bundled library across the group, prompts
@@ -1417,13 +1438,16 @@ export function ChannelsView() {
                 api.asList(g.channels, 'channel').map(ref => ref.id)));
             // Replace same-id groups and pull imported channels out of other
             // groups (a channel may only belong to one group).
-            const updated = structuredClone(groupsNowRef.current.filter(g => !importedIds.has(g.id)));
-            for (const group of updated) {
-                const members = api.asList(group.channels, 'channel')
-                    .filter(ref => ref && ref.id && !importedChannelIds.has(ref.id));
-                group.channels = members.length ? { channel: members } : null;
-            }
-            if (imported.length) await api.channelGroups.bulkUpdate(updated.concat(imported), []);
+            if (imported.length && !await saveGroupChanges((current: any[]) => {
+                const updated = current.filter(g => !importedIds.has(g.id));
+                for (const group of updated) {
+                    const members = api.asList(group.channels, 'channel')
+                        .filter(ref => ref && ref.id && !importedChannelIds.has(ref.id));
+                    group.channels = members.length ? { channel: members } : null;
+                }
+                return updated.concat(imported.map(group => ({ ...group,
+                    revision: current.find(g => g.id === group.id)?.revision ?? group.revision })));
+            })) return;
             toast(`Imported ${processedGroups} group(s) from ${file.name}`);
             refresh();
         } catch (e: any) {
@@ -1435,8 +1459,10 @@ export function ChannelsView() {
        ChannelGroup contains complete Channel objects. Hydrate those references
        from GET /channels before serializing so this file can recreate both the
        group and its channels when imported on another server. */
-    async function channelGroupExportXml(groupId?: any, includeCodeTemplateLibraries = false) {
+    async function channelGroupExportXml(groupId: any, includeCodeTemplateLibraries: boolean, assertSession: () => void) {
+        assertSession();
         const groupsXml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
+        assertSession();
         const groupsDoc = new DOMParser().parseFromString(groupsXml, 'text/xml');
         if (groupsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
 
@@ -1485,6 +1511,7 @@ export function ChannelsView() {
                     ...(includeCodeTemplateLibraries ? { includeCodeTemplateLibraries: true } : {})
                 };
             const channelsXml = await api.getXml('/channels', channelParams, { timeoutMs: null });
+            assertSession();
             const channelsDoc = new DOMParser().parseFromString(channelsXml, 'text/xml');
             if (channelsDoc.querySelector('parsererror')) throw new Error('Engine returned invalid channel XML');
             const channelsRoot = channelsDoc.documentElement;
@@ -1542,25 +1569,33 @@ export function ChannelsView() {
     }
 
     async function exportGroupTask(g: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!g) { toast('Select a group row first', 'warn'); return; }
         const group = g.id === DEFAULT_GROUP_ID ? g : requireGroup(g);
         if (!group) return;
         try {
             const ids = api.asList(group.channels, 'channel').map((channel: any) => channel && channel.id).filter(Boolean);
-            const includeLibs = await chooseExportLibraries(ids);
+            const includeLibs = await chooseExportLibraries(ids, assertSession);
+            assertSession();
             if (includeLibs == null) return;
-            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id, includeLibs));
+            await saveFile(`${group.name || group.id}.xml`, 'application/xml', () => channelGroupExportXml(group.id, includeLibs, assertSession), assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }
 
     async function exportGroupsTask() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         try {
-            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id));
+            const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id), assertSession);
+            assertSession();
             if (includeLibs == null) return;
             await saveFile('channel-groups.zip', 'application/zip', async () => {
-                const xml = await channelGroupExportXml(undefined, includeLibs);
+                const xml = await channelGroupExportXml(undefined, includeLibs, assertSession);
                 const doc = new DOMParser().parseFromString(xml, 'text/xml');
                 if (doc.querySelector('parsererror')) throw new Error('Engine returned invalid channel group XML');
                 const root = doc.documentElement;
@@ -1572,8 +1607,10 @@ export function ChannelsView() {
                     zip.add(exportFileName(direct('name'), direct('id') || 'channel-group', used), new XMLSerializer().serializeToString(element));
                 }
                 return zip.blob();
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
         }
     }

@@ -32,22 +32,22 @@ const CHANNEL_ID = 'test-channel';
    destination connector with its own filter/transformer/response, and channel
    properties (message storage, attachment handler, initial state). */
 const FULL_CHANNEL: any = {
-    '@version': '4.5.0',
+    '@version': '4.6.0',
     id: CHANNEL_ID,
     nextMetaDataId: 2,
     name: 'Round Trip Channel',
     description: 'A full channel used to exercise the editor.',
     revision: 3,
     sourceConnector: {
-        '@version': '4.5.0',
+        '@version': '4.6.0',
         metaDataId: 0,
         name: 'sourceConnector',
         properties: {
             '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties',
-            '@version': '4.5.0',
+            '@version': '4.6.0',
             pluginProperties: null,
             sourceConnectorProperties: {
-                '@version': '4.5.0',
+                '@version': '4.6.0',
                 responseVariable: 'None',
                 respondAfterProcessing: true,
                 processBatch: false,
@@ -58,10 +58,10 @@ const FULL_CHANNEL: any = {
             }
         },
         transformer: {
-            '@version': '4.5.0',
+            '@version': '4.6.0',
             elements: {
                 'com.mirth.connect.plugins.mapper.MapperStep': {
-                    '@version': '4.5.0',
+                    '@version': '4.6.0',
                     name: 'Map Patient Id',
                     sequenceNumber: '0',
                     enabled: true,
@@ -80,7 +80,7 @@ const FULL_CHANNEL: any = {
             outboundProperties: null
         },
         filter: {
-            '@version': '4.5.0',
+            '@version': '4.6.0',
             elements: ''
         },
         transportName: 'Channel Reader',
@@ -91,15 +91,15 @@ const FULL_CHANNEL: any = {
     destinationConnectors: {
         connector: [
             {
-                '@version': '4.5.0',
+                '@version': '4.6.0',
                 metaDataId: 1,
                 name: 'Send To Downstream',
                 properties: {
                     '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties',
-                    '@version': '4.5.0',
+                    '@version': '4.6.0',
                     pluginProperties: null,
                     destinationConnectorProperties: {
-                        '@version': '4.5.0',
+                        '@version': '4.6.0',
                         queueEnabled: false,
                         sendFirst: false,
                         retryIntervalMillis: 10000,
@@ -118,16 +118,16 @@ const FULL_CHANNEL: any = {
                     channelTemplate: '${message.encodedData}'
                 },
                 transformer: {
-                    '@version': '4.5.0', elements: '',
+                    '@version': '4.6.0', elements: '',
                     inboundDataType: 'HL7V2', outboundDataType: 'HL7V2',
                     inboundProperties: null, outboundProperties: null
                 },
                 responseTransformer: {
-                    '@version': '4.5.0', elements: '',
+                    '@version': '4.6.0', elements: '',
                     inboundDataType: 'HL7V2', outboundDataType: 'HL7V2',
                     inboundProperties: null, outboundProperties: null
                 },
-                filter: { '@version': '4.5.0', elements: '' },
+                filter: { '@version': '4.6.0', elements: '' },
                 transportName: 'Channel Writer',
                 mode: 'DESTINATION',
                 enabled: true,
@@ -140,7 +140,7 @@ const FULL_CHANNEL: any = {
     deployScript: '// deploy\nreturn;',
     undeployScript: '// undeploy\nreturn;',
     properties: {
-        '@version': '4.5.0',
+        '@version': '4.6.0',
         clearGlobalChannelMap: true,
         messageStorageMode: 'DEVELOPMENT',
         encryptData: false,
@@ -149,7 +149,7 @@ const FULL_CHANNEL: any = {
         removeAttachmentsOnCompletion: false,
         storeAttachments: false,
         metaDataColumns: { metaDataColumn: [{ name: 'SOURCE', type: 'STRING', mappingName: 'mirth_source' }] },
-        attachmentProperties: { '@version': '4.5.0', type: 'None', properties: null },
+        attachmentProperties: { '@version': '4.6.0', type: 'None', properties: null },
         resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } },
         initialState: 'STARTED'
     },
@@ -161,8 +161,8 @@ const FULL_CHANNEL: any = {
 const CHANNEL_FIXTURES = {
     [`GET /channels/${CHANNEL_ID}`]: { channel: FULL_CHANNEL },
     // Save round-trip targets — accept + no-op (the spec asserts UI, not the save).
-    [`PUT /channels/${CHANNEL_ID}`]: '',
-    'POST /channels': '',
+    [`PUT /channels/${CHANNEL_ID}`]: true,
+    'POST /channels': true,
 };
 
 test.describe('Channel editor', () => {
@@ -436,7 +436,7 @@ test.describe('Channel editor', () => {
         const channel = structuredClone(FULL_CHANNEL);
         channel.sourceConnector.transformer.elements = {
             'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
-                '@version': '4.5.0', name: 'Broken Step', sequenceNumber: '0', enabled: true,
+                '@version': '4.6.0', name: 'Broken Step', sequenceNumber: '0', enabled: true,
                 script: 'var x = ;',
             },
         };
@@ -460,7 +460,7 @@ test.describe('Channel editor', () => {
         const channel = structuredClone(FULL_CHANNEL);
         channel.sourceConnector.transformer.elements = {
             'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
-                '@version': '4.5.0', name: 'Good Step', sequenceNumber: '0', enabled: true,
+                '@version': '4.6.0', name: 'Good Step', sequenceNumber: '0', enabled: true,
                 script: "logger.info('ok');",
             },
         };
@@ -483,7 +483,7 @@ test.describe('Channel editor', () => {
         let putBody: any = null;
         await page.route((url) => url.pathname === `/api/channels/${CHANNEL_ID}`, async (route) => {
             const req = route.request();
-            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: 'true' }); }
             return route.fallback();
         });
         await page.goto(`/channels/${CHANNEL_ID}/edit`);
@@ -521,7 +521,7 @@ test.describe('Channel editor', () => {
         let putBody: any = null;
         await page.route((url) => url.pathname === `/api/channels/${ID}`, async (route) => {
             const req = route.request();
-            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: '' }); }
+            if (req.method() === 'PUT') { putBody = req.postData(); return route.fulfill({ status: 200, contentType: 'text/plain', body: 'true' }); }
             return route.fallback();
         });
 
@@ -555,7 +555,7 @@ test.describe('Channel editor', () => {
         const channel = structuredClone(FULL_CHANNEL);
         channel.sourceConnector.transformer.elements = {
             'com.mirth.connect.model.IteratorStep': {
-                '@version': '4.5.0', name: 'For each ...', sequenceNumber: '0', enabled: true,
+                '@version': '4.6.0', name: 'For each ...', sequenceNumber: '0', enabled: true,
                 properties: { target: '', indexVariable: 'i', prefixSubstitutions: '', children: '' },
             },
         };
@@ -582,7 +582,7 @@ test.describe('Channel editor', () => {
         const channel = structuredClone(FULL_CHANNEL);
         channel.destinationConnectors.connector[0].filter.elements = {
             'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': {
-                '@version': '4.5.0', name: 'Accept ADT Only', sequenceNumber: '0', enabled: true,
+                '@version': '4.6.0', name: 'Accept ADT Only', sequenceNumber: '0', enabled: true,
                 operator: 'NONE', field: "msg['MSH']['MSH.9']['MSH.9.1'].toString()",
                 condition: 'EXISTS', values: '',
             },
@@ -630,13 +630,13 @@ test.describe('Channel editor', () => {
         const dest = channel.destinationConnectors.connector[0];
         dest.transformer.elements = {
             'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
-                '@version': '4.5.0', name: 'Outbound Step (decoy)', sequenceNumber: '0', enabled: true,
+                '@version': '4.6.0', name: 'Outbound Step (decoy)', sequenceNumber: '0', enabled: true,
                 script: 'return;',
             },
         };
         dest.responseTransformer.elements = {
             'com.mirth.connect.plugins.mapper.MapperStep': {
-                '@version': '4.5.0', name: 'Map ACK Code', sequenceNumber: '0', enabled: true,
+                '@version': '4.6.0', name: 'Map ACK Code', sequenceNumber: '0', enabled: true,
                 variable: 'ackCode', mapping: "msg['MSA']['MSA.1'].toString()",
                 defaultValue: '', replacements: '', scope: 'CHANNEL',
             },

@@ -39,6 +39,24 @@ const DICOM_B64 =
     'iJiouMjY6PgIGCg4SFhoeIiYqLjI2Oj4CBgoOEhYaHiImKi4yNjo+AgYKDhIWGh4iJiouMjY6PgIGCg4SFhoeIiYqLjI2Oj4CBgo' +
     'OEhYaHiImKi4yNjo+AgYKDhIWGh4iJiouMjY6PgIGCg4SFhoeIiYqLjI2Oj4CBgoOEhYaHiImKi4yNjo+AgYKDhIWGg=';
 
+// Three encapsulated frames. Decoding is controlled in the test below; the
+// DICOM parser still reads real transfer syntax, offset table and item lengths.
+function encapsulatedFixture() {
+    const raw = Buffer.from(DICOM_B64, 'base64');
+    const syntax = raw.indexOf(Buffer.from('1.2.840.10008.1.2.1'));
+    const oldLength = raw.readUInt16LE(syntax - 2);
+    const jpegSyntax = Buffer.from('1.2.840.10008.1.2.4.50\0');
+    const prefix = Buffer.from(raw.subarray(0, syntax));
+    prefix.writeUInt16LE(jpegSyntax.length, syntax - 2);
+    const changed = Buffer.concat([prefix, jpegSyntax, raw.subarray(syntax + oldLength)]);
+    const pixel = changed.indexOf(Buffer.from('e07f10004f42', 'hex'));
+    const offsets = Buffer.alloc(12);
+    offsets.writeUInt32LE(12, 4); offsets.writeUInt32LE(24, 8);
+    const fragment = Buffer.from('feff00e004000000ffd8ffd9', 'hex');
+    return Buffer.concat([changed.subarray(0, pixel), Buffer.from('e07f10004f420000fffffffffeff00e00c000000', 'hex'),
+        offsets, fragment, fragment, fragment, Buffer.from('feffdde000000000', 'hex')]).toString('base64');
+}
+
 const MESSAGE = {
     messageId: MID,
     channelId: CID,
@@ -81,6 +99,33 @@ async function openViewer(page: any) {
 
 test.beforeEach(async ({ page }) => {
     await mockEngine(page, FIXTURES);
+});
+
+test('late JPEG frame decode cannot repaint the newly selected frame', async ({ page }) => {
+    await mockEngine(page, { ...FIXTURES,
+        ['POST /channels/' + CID + '/messages/' + MID + '/_getDICOMMessage']: encapsulatedFixture(),
+    });
+    await page.addInitScript(() => {
+        const decode = window.createImageBitmap.bind(window);
+        (window as any).pendingDicomDecodes = [];
+        window.createImageBitmap = (() => new Promise(resolve => {
+            (window as any).pendingDicomDecodes.push(async (color: string) => {
+                const canvas = document.createElement('canvas'); canvas.width = 2; canvas.height = 2;
+                const ctx = canvas.getContext('2d')!; ctx.fillStyle = color; ctx.fillRect(0, 0, 2, 2);
+                resolve(await decode(canvas));
+            });
+        })) as typeof window.createImageBitmap;
+    });
+    await openViewer(page);
+    await expect.poll(() => page.evaluate(() => (window as any).pendingDicomDecodes.length)).toBe(1);
+    await page.getByTitle('Next frame (→)').click();
+    await expect.poll(() => page.evaluate(() => (window as any).pendingDicomDecodes.length)).toBe(2);
+    await page.evaluate(() => (window as any).pendingDicomDecodes[1]('blue'));
+    const pixel = () => page.locator('canvas').first().evaluate(canvas =>
+        Array.from((canvas as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, 1, 1).data));
+    await expect.poll(pixel).toEqual([0, 0, 255, 255]);
+    await page.evaluate(() => (window as any).pendingDicomDecodes[0]('red'));
+    await expect.poll(pixel).toEqual([0, 0, 255, 255]);
 });
 
 test('renders the parsed object with the toolbar above the image', async ({ page }) => {
@@ -161,3 +206,53 @@ test('1:1 and Fit drive the canvas transform', async ({ page }) => {
     await expect(page.getByText('100%', { exact: true })).toHaveCount(0);
     expect(await canvas.getAttribute('style')).not.toBe(oneToOne);
 });
+
+for (const outcome of ['save', 'expiry', 'unmount', 'write-failure', 'picker-cancel']) {
+    test(`Save DICOM ${outcome} settles without stale dialogs or unhandled rejection`, async ({ page }) => {
+        const errors: string[] = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await mockEngine(page, { ...FIXTURES, 'GET /session-expiry-probe': { __status: 401 } });
+        await page.addInitScript(outcome => {
+            (window as any).dicomSave = { writes: 0, closes: 0 };
+            (window as any).showSaveFilePicker = async () => {
+                if (outcome === 'picker-cancel') throw new DOMException('Cancelled', 'AbortError');
+                await new Promise<void>(resolve => { (window as any).dicomSave.release = resolve; });
+                return { createWritable: async () => {
+                    if (outcome === 'write-failure') throw new Error('DICOM file unavailable');
+                    return {
+                        write: async (blob: Blob) => { (window as any).dicomSave.writes++; (window as any).dicomSave.bytes = blob.size; },
+                        close: async () => { (window as any).dicomSave.closes++; },
+                        abort: async () => {},
+                    };
+                } };
+            };
+        }, outcome);
+        await openViewer(page);
+        await page.getByRole('button', { name: 'Save DICOM', exact: true }).click();
+        if (outcome !== 'picker-cancel') {
+            await expect.poll(() => page.evaluate(() => typeof (window as any).dicomSave.release)).toBe('function');
+            if (outcome === 'expiry') {
+                await page.evaluate(async () => {
+                    const api = await import(String('/core/api.js'));
+                    await api.get('/session-expiry-probe').catch(() => {});
+                });
+                await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+            } else if (outcome === 'unmount') {
+                await page.getByRole('tab', { name: 'Raw', exact: true }).click();
+                await expect(page.getByRole('button', { name: 'Save DICOM', exact: true })).toHaveCount(0);
+            }
+            await page.evaluate(() => (window as any).dicomSave.release());
+        }
+        if (outcome === 'write-failure') {
+            await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toContainText('DICOM file unavailable');
+        } else if (outcome === 'save') {
+            await expect.poll(() => page.evaluate(() => (window as any).dicomSave.closes)).toBe(1);
+            expect(await page.evaluate(() => (window as any).dicomSave.bytes)).toBe(Buffer.from(DICOM_B64, 'base64').length);
+        } else {
+            await page.waitForTimeout(200);
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+        }
+        expect(await page.evaluate(() => (window as any).dicomSave.writes)).toBe(outcome === 'save' ? 1 : 0);
+        expect(errors).toEqual([]);
+    });
+}

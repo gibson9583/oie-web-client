@@ -19,6 +19,7 @@ import { useStoreKey } from '../bridges.jsx';
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { adoptEngineContext, beginLogin } from '../../core/engine-fetch.js';
+import { setIdleLocked } from '../../core/idle-logout.js';
 
 const STATUS_MESSAGES = {
     FAIL: 'Invalid username or password.',
@@ -343,6 +344,9 @@ export function LoginForm({ onSuccess }: any) {
         // Completes a successful (primary or post-MFA) login: reload on an engine
         // switch, else fetch the user and hand off to the shell.
         const finishLogin = async (result: any) => {
+            // A successful explicit login may reload to refresh plugin permissions
+            // before App.onLoginSuccess runs. Permit that authenticated boot.
+            setIdleLocked(false);
             const status = result?.status || result;
             const graceMessage = status === 'SUCCESS_GRACE_PERIOD' ? String(result?.message || '') : null;
             // Plugins are discovered once per page load, from the connected engine,

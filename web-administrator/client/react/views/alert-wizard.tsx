@@ -1,3 +1,4 @@
+import { withEditorSave } from '../save-lock.js';
 /*
  * Guided Alert builder — a step-by-step alternative to the classic alert editor,
  * modeled on the channel wizard (chevron stepper, validate-on-advance, prompt on
@@ -11,11 +12,12 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
-import { alertBaseline, confirmIfAlertChanged } from '../alert-conflict.js';
+import { alertBaseline, loadAlertForEdit, confirmIfAlertChanged } from '../alert-conflict.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { useInvalidate } from '../queries.js';
 import { toast, saveFile } from '@oie/web-ui';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
 import { Icon } from '../bridges.jsx';
 import { ViewTasks } from '../mount.jsx';
@@ -47,7 +49,7 @@ function AlertWizardView({ params }: any) {
         storeKey: 'editingAlert',
         isValid: (a: any) => !!a.trigger,
         makeNew: () => newAlert('', version),
-        fetch: (id: any) => api.alerts.get(id),
+        fetch: loadAlertForEdit,
         normalize: normalizeActionGroups,
         backPath: '/alerts'
     });
@@ -56,21 +58,19 @@ function AlertWizardView({ params }: any) {
 }
 
 function AlertWizardInner({ alert, isNew }: any) {
-    const baselineRef = useRef<any>(null);   // server copy at edit start (alert conflict check)
+    const baselineRef = useRef(alertBaseline(alert));
     useEffect(() => {
-        if (!isNew && alert.id) alertBaseline(alert.id).then((b: any) => { baselineRef.current = b; });
         // Tab-close guard: the wizard's dirty flag, synchronous (core/unsaved.js).
         return registerUnsavedCheck(() => dirtyRef.current);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     const [, forceRender] = useReducer((x: any) => x + 1, 0);
     const switchingRef = useRef(false);
     const focusedRef = useRef('template');   // which text field a clicked variable inserts into
     const grp = alert.actionGroups.alertActionGroup[0];
 
-    const dirtyRef = useRef(false);
+    const dirtyRef = useRef(store.getState('editingAlertDirty') === true);
     const savedRef = useRef(false);
-    const bump = () => { dirtyRef.current = true; forceRender(); };
+    const bump = () => { dirtyRef.current = true; store.setState('editingAlertDirty', true); forceRender(); };
 
     const invalidate = useInvalidate();   // the list's ['alerts'] cache — see saveAlert()
     const { step, setStep, maxStep, goStep } = useWizardSteps(isNew, STEPS.length);
@@ -106,7 +106,7 @@ function AlertWizardInner({ alert, isNew }: any) {
     // Keep the model in the store + prompt-on-leave (shared with the channel wizard).
     useLeaveGuard({
         model: alert, isNew, storeKey: 'editingAlert', storeNewKey: 'editingAlertNew',
-        entityLabel: 'alert', dirtyRef, savedRef, switchingRef, save: () => saveAlert(false),
+        entityLabel: 'alert', dirtyKey: 'editingAlertDirty', dirtyRef, savedRef, switchingRef, save: () => saveAlert(false),
         canSave: () => platform.checkTask('alertEdit', 'doSaveAlerts')
     });
     const canSave = platform.checkTask('alertEdit', 'doSaveAlerts');
@@ -149,21 +149,15 @@ function AlertWizardInner({ alert, isNew }: any) {
     const enabledNames = [...enabledChannels].map((id: any) => ((data.channels.find((c: any) => c.id === id) || {}) as any).name || id);
 
     /* ---- validation ---- */
-    // Hard requirements (block save): name (parity with the classic editor) + a valid
-    // error-filter regex (a genuine bug the classic editor doesn't catch).
+    // Alert filters use java.util.regex.Pattern in the engine. Browser RegExp
+    // rejects valid Java syntax (e.g. inline flags); match the classic/Swing path.
     function nameError() { return String(alert.name || '').trim() ? null : 'An alert name is required.'; }
-    function regexError() {
-        const r = trigger.regex;
-        if (!r || !String(r).trim()) return null;
-        try { new RegExp(r); return null; } catch (e: any) { return `Invalid regular expression: ${e.message}`; }
-    }
     function stepProblems(i: any) {
         if (STEPS[i] === 'Basics') return nameError() ? [nameError()] : [];
-        if (STEPS[i] === 'Trigger') return regexError() ? [regexError()] : [];
         return [];
     }
     function allProblems() {
-        return [nameError(), regexError()].filter(Boolean);
+        return [nameError()].filter(Boolean);
     }
     function firstProblemStep() {
         for (let i = 0; i < STEPS.length; i++) if (stepProblems(i).length) return i;
@@ -185,10 +179,12 @@ function AlertWizardInner({ alert, isNew }: any) {
         goStep(step + 1);
     }
 
-    async function saveAlert(enable: any) {
+    function saveAlert(enable: any) { return withEditorSave(() => saveAlertUnlocked(enable)); }
+
+    async function saveAlertUnlocked(enable: any) {
         const probs = allProblems();
         if (probs.length) { const s = firstProblemStep(); if (s >= 0) setStep(s); toast(probs.join('  ·  '), 'warn'); return false; }
-        if (enable) alert.enabled = true;
+        if (enable && !alert.enabled) { alert.enabled = true; bump(); }
         try {
             if (isNew) {
                 await api.alerts.create(alert);
@@ -208,7 +204,7 @@ function AlertWizardInner({ alert, isNew }: any) {
         }
     }
     async function finish(enable: any) {
-        if (saving) return;
+        if (saving || store.getState('editorSave')) return;
         setSaving(true);
         const ok = await saveAlert(enable);
         if (!ok) { setSaving(false); return; }
@@ -224,14 +220,20 @@ function AlertWizardInner({ alert, isNew }: any) {
         router.navigate(`/alerts/${alert.id}/edit${isNew ? '?new=1' : ''}`);
     }
     async function exportAlert() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (isNew) { toast('Save the alert first, then export it', 'warn'); return; }
         try {
             await saveFile(`${alert.name || alert.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/alerts/${alert.id}`);
                 if (!xml || !String(xml).trim()) throw new Error('Alert not found on the server — save it first');
                 return xml;
-            });
-        } catch (e: any) { toast(`Export failed: ${e.message}`, 'error'); }
+            }, assertSession);
+            assertSession();
+        } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Export failed: ${e.message}`, 'error');
+        }
     }
 
     const isLast = step === STEPS.length - 1;
@@ -299,10 +301,10 @@ function AlertWizardInner({ alert, isNew }: any) {
                             <div className="panel !mt-0">
                                 <div className="panel-header">Error message filter</div>
                                 <div className="panel-body flex flex-col gap-1">
-                                    <textarea className={`w-full ${regexError() ? 'cform-invalid' : ''}`} rows={3} value={trigger.regex || ''}
+                                    <textarea className="w-full" rows={3} value={trigger.regex || ''}
                                         placeholder="Only trigger when the error matches this regular expression (leave blank to match any error)"
                                         onChange={(e: any) => { trigger.regex = e.target.value; bump(); }} />
-                                    {regexError() ? <span className="text-err text-[10px]">{regexError()}</span> : null}
+                                    <span className="text-text-dim text-[10px]">Uses Java regular-expression syntax, as in the desktop administrator.</span>
                                 </div>
                             </div>
                         </div>

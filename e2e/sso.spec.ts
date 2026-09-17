@@ -1,5 +1,6 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
+import { listen, startWebAdmin } from './server-harness.js';
 
 /*
  * OIDC sign-in with the flow in the ENGINE (the oie-oidc-auth extension).
@@ -10,14 +11,23 @@ import { mockEngine } from './mock.js';
  * and redeems the ticket through the ordinary /users/_login — so the session,
  * the audit event, and any second factor are exactly what a password gets.
  *
- * Everything the browser touches is mocked in the browser, in the engine's wire
+ * Engine endpoints are mocked in the browser, in the engine's wire
  * shapes: String-returning extension servlets arrive as {"string": "<json>"},
  * and the login answers as a LoginStatus under its XStream root key. The
- * provider is a route on a foreign origin that just sends the browser back.
- * There is no web-tier server code to exercise any more; that is the point.
+ * provider is an owned loopback server on a separate origin. Its real HTTP
+ * redirect works across browser engines, including WebKit (which cannot
+ * fulfill an intercepted navigation with a synthetic 302).
  */
 
-const IDP = 'https://idp.test';
+const providers = new WeakMap<object, any>();
+test.afterEach(async ({ page }) => {
+    const server = providers.get(page);
+    if (server) {
+        server.closeAllConnections();
+        await new Promise<void>(resolve => server.close(() => resolve()));
+        providers.delete(page);
+    }
+});
 const envelope = (body: unknown) => ({ string: JSON.stringify(body) });
 const loginStatus = (status: string, extra: Record<string, unknown> = {}) =>
     ({ 'com.mirth.connect.model.LoginStatus': { status, message: '', ...extra } });
@@ -37,6 +47,18 @@ type Knobs = {
 
 async function mockSso(page: any, baseURL: string, knobs: Knobs = {}) {
     const received: any = { start: null, callback: null, logins: [] as any[] };
+    const provider = await listen(async (req, res) => {
+        if (received.beforeRedirect) await received.beforeRedirect();
+        const url = new URL(req.url || '/', 'http://provider');
+        const back = new URL('/oidc/callback', baseURL);
+        if (knobs.provider === 'denied') back.searchParams.set('error', 'access_denied');
+        else back.searchParams.set('code', 'code-1');
+        back.searchParams.set('state', url.searchParams.get('state') || '');
+        res.writeHead(302, { location: received.callbackUrl || back.toString() });
+        res.end();
+    });
+    providers.set(page, provider.server);
+    received.providerUrl = provider.url;
     let authed = !!knobs.signedIn;
     await mockEngine(page, {
         'GET /extensions/oidcauth/public': knobs.configured === false
@@ -45,7 +67,7 @@ async function mockSso(page: any, baseURL: string, knobs: Knobs = {}) {
         'POST /users/_logout': () => { authed = false; return ''; },
         'POST /extensions/oidcauth/start': (req: any) => {
             received.start = JSON.parse(JSON.parse(req.postData() || '{}').string);
-            return envelope(knobs.start || { ok: true, authorizeUrl: `${IDP}/authorize?client_id=web-admin&state=state-1&nonce=n` });
+            return envelope(knobs.start || { ok: true, authorizeUrl: `${provider.url}/authorize?client_id=web-admin&state=state-1&nonce=n` });
         },
         'POST /extensions/oidcauth/callback': (req: any) => {
             received.callback = JSON.parse(JSON.parse(req.postData() || '{}').string);
@@ -57,16 +79,6 @@ async function mockSso(page: any, baseURL: string, knobs: Knobs = {}) {
             return knobs.login || loginStatus('SUCCESS', { updatedUsername: 'jdoe' });
         },
         'GET /users/current': () => (authed ? (knobs.currentAfterLogin || { user: { id: 1, username: 'jdoe' } }) : { __status: 401 }),
-    });
-    // The provider. It never sees the secret or the verifier; it echoes the state
-    // and hands back a code — or a refusal.
-    await page.route(`${IDP}/**`, (route: any) => {
-        const url = new URL(route.request().url());
-        const back = new URL('/oidc/callback', baseURL);
-        if (knobs.provider === 'denied') back.searchParams.set('error', 'access_denied');
-        else back.searchParams.set('code', 'code-1');
-        back.searchParams.set('state', url.searchParams.get('state') || '');
-        route.fulfill({ status: 302, headers: { location: back.toString() } });
     });
     return received;
 }
@@ -104,10 +116,10 @@ test.describe('SSO through the engine', () => {
 
     test('a callback cannot cross a login change made while the tab was at the provider', async ({ page, baseURL }) => {
         const received = await mockSso(page, baseURL!);
-        await page.route(`${IDP}/**`, async route => {
+        received.beforeRedirect = async () => {
             await page.context().addCookies([{ name: 'oie-login', value: 'another-tab-login', url: baseURL! }]);
-            await route.fulfill({ status: 302, headers: { location: `${baseURL}/oidc/callback?code=old-code&state=old-state` } });
-        });
+        };
+        received.callbackUrl = `${baseURL}/oidc/callback?code=old-code&state=old-state`;
         await page.goto('/');
         const callbackPage = page.waitForURL(/\/oidc\/callback/, { waitUntil: 'commit' });
         await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
@@ -133,7 +145,11 @@ test.describe('SSO through the engine', () => {
     test('a provider decline is surfaced inline with local sign-in reachable', async ({ page, baseURL }) => {
         const received = await mockSso(page, baseURL!, { provider: 'denied' });
         await page.goto('/');
+        // Measure the error UI after the real cross-origin redirect returns.
+        // Under WebKit load, navigation itself can consume the assertion window.
+        const returned = page.waitForURL(/\/oidc\/callback\?/, { waitUntil: 'commit' });
         await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await returned;
         await expect(page.getByText('The identity provider declined sign-in.')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('input[type=password]')).toBeVisible();
         expect(received.callback).toBeNull();   // nothing to exchange, so nothing was sent
@@ -142,7 +158,9 @@ test.describe('SSO through the engine', () => {
     test("the engine's refusal to complete the exchange is explained", async ({ page, baseURL }) => {
         await mockSso(page, baseURL!, { callback: { ok: false, message: 'SSO sign-in could not be completed. Try again, or use local sign-in.' } });
         await page.goto('/');
+        const returned = page.waitForURL(/\/oidc\/callback\?/, { waitUntil: 'commit' });
         await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+        await returned;
         await expect(page.getByText('SSO sign-in could not be completed. Try again, or use local sign-in.')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('input[type=password]')).toBeVisible();
     });
@@ -192,21 +210,39 @@ test.describe('SSO through the engine', () => {
         await expect(page.getByRole('button', { name: /Sign in with/ })).toHaveCount(0);
     });
 
-    test('with several engines, the flow is routed to the one selected', async ({ page, baseURL }) => {
-        await page.route('**/webadmin/config.json', (route: any) => route.fulfill({
-            status: 200, contentType: 'application/json',
-            body: JSON.stringify({ engines: [{ key: 'k:production', name: 'Production' }, { key: 'k:staging', name: 'Staging' }], devMode: false })
-        }));
-        const received = await mockSso(page, baseURL!);
-        const cookiesSeen: string[] = [];
-        await page.route('**/api/extensions/oidcauth/start', (route: any) => { cookiesSeen.push(route.request().headers()['cookie'] || ''); route.fallback(); });
-        await page.goto('/');
-        await page.locator('select').selectOption('k:staging');
-        await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
-        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
-        // The routing cookie carried the picker's choice, so the proxy asked Staging.
-        expect(cookiesSeen[0]).toContain('oie-engine=k%3Astaging');
-        expect(received.logins[0].password).toBe('oidc:ticket:ticket-1');
+    test('with several engines, the flow is routed to the one selected', async ({ page }) => {
+        const selected: string[] = [];
+        let received: any;
+        const handler = (engine: string) => async (req: any, res: any) => {
+            res.setHeader('Content-Type', 'application/json');
+            if (req.url !== '/api/extensions/oidcauth/start') { res.end('{}'); return; }
+            const chunks = [];
+            for await (const chunk of req) chunks.push(chunk);
+            received.start = JSON.parse(JSON.parse(Buffer.concat(chunks).toString()).string);
+            selected.push(engine);
+            res.end(JSON.stringify(envelope({ ok: true, authorizeUrl: `${received.providerUrl}/authorize?state=state-1` })));
+        };
+        const production = await listen(handler('production'));
+        const staging = await listen(handler('staging'));
+        const app = await startWebAdmin({ allowedUrls: [
+            { name: 'Production', url: production.url }, { name: 'Staging', url: staging.url },
+        ] });
+        try {
+            received = await mockSso(page, app.url);
+            // This request reaches the real Node proxy and chosen upstream;
+            // WebKit interception metadata does not expose its routing cookie.
+            await page.route('**/api/extensions/oidcauth/start', route => route.continue());
+            await page.goto(app.url + '/');
+            await page.locator('select').selectOption('k:staging');
+            await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
+            await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+            expect(selected).toEqual(['staging']);
+            expect(received.logins[0].password).toBe('oidc:ticket:ticket-1');
+        } finally {
+            app.stop();
+            production.server.closeAllConnections(); staging.server.closeAllConnections();
+            production.server.close(); staging.server.close();
+        }
     });
 
     test('signing out with auto-redirect on shows the card instead of bouncing back to the provider', async ({ page, baseURL }) => {

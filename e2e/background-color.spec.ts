@@ -21,7 +21,7 @@ test('a saved backgroundColor override is applied on login', async ({ page }) =>
 
     // The server chip renders once useServerIdentity resolves (same .then that
     // applies the color), so this also gates the color having been applied.
-    await expect(page.locator('.server-chip')).toContainText('v4.5.0');
+    await expect(page.locator('.server-chip')).toContainText('v4.6.0');
     expect(await railVar(page)).not.toBe('');
 });
 
@@ -29,7 +29,7 @@ test('no override falls back to server default (chrome not user-tinted)', async 
     await mockEngine(page, { 'GET /users/1/preferences/backgroundColor': '' });
     await page.goto('/');
 
-    await expect(page.locator('.server-chip')).toContainText('v4.5.0');
+    await expect(page.locator('.server-chip')).toContainText('v4.6.0');
     // No override and no server default color in the fixtures → env vars cleared.
     expect(await railVar(page)).toBe('');
 });

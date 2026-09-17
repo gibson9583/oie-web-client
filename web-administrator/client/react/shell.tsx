@@ -23,7 +23,9 @@ import { h, icon, modal, toast, confirmDialog, initTruncationTitles } from '@oie
 import { CommandPalette } from './command-palette.jsx';
 import { getPref } from '../core/prefs.js';
 import api, { onEngineUnknown, onSessionExpired, resetSessionExpired } from '@oie/web-api';
-import { startIdleLogout, stopIdleLogout } from '../core/idle-logout.js';
+import { startIdleLogout, stopIdleLogout, isIdleLocked, setIdleLocked } from '../core/idle-logout.js';
+import { closeSessionDialogs } from './dialog-host.js';
+import { discardEngineResponses } from '../core/engine-fetch.js';
 import { getAnchor, describeRef } from '../core/compare.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
 import { hasUnsavedWork } from '../core/unsaved.js';
@@ -234,6 +236,7 @@ function startEngine() {
             h('div.dt-empty', h('div.empty-icon', icon('search', 30)), 'View not found'))));
 
         router.setGuard(async (ctx: any) => {
+            if (store.getState('editorSave')) return false;
             const guard = store.getState('navGuard');
             if (typeof guard === 'function') return await guard(ctx);
         });
@@ -622,7 +625,7 @@ function AppShell({ user, onLogout }: any) {
             if (router.currentPath() === '/') history.replaceState(null, '', routeUrl('/dashboard'));
             router.start();
         })();
-        return () => { cancelled = true; };
+        return () => { cancelled = true; router.setOutlet(null); };
     }, []);
 
     const railVersion = serverInfo && !serverInfo.error ? `engine v${serverInfo.version}` : '';
@@ -744,6 +747,7 @@ async function establishPrefScope(user: any) {
 export function App() {
     const user = useStoreKey('user');
     const [authChecked, setAuthChecked] = useState(false);
+    const [idleRevoking, setIdleRevoking] = useState(false);
     // Bundled MFA/extended-login authenticators register pre-login (see
     // login-authenticators.js) — the login screen may need them before any
     // session or engine-served plugin exists.
@@ -761,6 +765,7 @@ export function App() {
         const sessionChanged = () => {
             store.setState('user', null);
             store.setState('navGuard', null);
+            router.setOutlet(null);
             queryClient.clear();
             takeSsoPending();
             if (isOidcCallback()) takeOidcCallback();
@@ -775,6 +780,11 @@ export function App() {
                 if (res.ok && alive) store.setState('webadminConfig', await res.json());
             } catch { /* optional */ }
             try {
+                if (isIdleLocked()) {
+                    holdAutoRedirect();
+                    store.setState('loginNotice', 'You were signed out after a period of inactivity.');
+                    return;
+                }
                 const u = await api.auth.current();
                 if (u && u.username && alive) {
                     // A page that loads on the provider's callback route must reach
@@ -866,6 +876,10 @@ export function App() {
        layout, the working-copy store keys, and — in devMode — the typed engine
        URL cookie, which otherwise prefills for the next person. */
     const scrubSessionState = () => {
+        store.setState('editorSave', null);
+        discardEngineResponses();
+        router.setOutlet(null);
+        closeSessionDialogs();
         purgeChannelDrafts();
         queryClient.clear();
         invalidateCompletions();
@@ -877,6 +891,9 @@ export function App() {
         store.setState('editingChannel', null);
         store.setState('editingChannelNew', false);
         store.setState('editingChannelDirty', false);
+        store.setState('editingAlert', null);
+        store.setState('editingAlertNew', false);
+        store.setState('editingAlertDirty', false);
         // Drop the devMode routing pair TOGETHER: an oie-engine=custom left
         // behind without its URL is an unresolvable selection every other tab
         // then 421s on. A named-engine choice (k:…) stays — that's the picker's
@@ -947,6 +964,7 @@ export function App() {
         // silently discarded: a fully rendered shell whose every request fails and
         // which never returns the user to the login screen.
         resetSessionExpired();
+        setIdleLocked(false);
         store.setState('user', u);
         // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
         // accepted but the password is expiring — the engine's message says when.
@@ -961,11 +979,12 @@ export function App() {
 
     // Tab-close guard (Swing's confirmLeave on window close): the native browser
     // prompt when any editor holds unsaved work. Channel editor/wizard share the
-    // 'editingChannelDirty' store flag; other editors register checks (core/unsaved).
+    // Dirty flags span channel/alert editor handoffs; other editors register
+    // checks (core/unsaved).
     useEffect(() => {
         const onBeforeUnload = (e: any) => {
             if (!store.getState('user')) return;
-            if (store.getState('editingChannelDirty') || hasUnsavedWork()) {
+            if (store.getState('editorSave') || store.getState('editingChannelDirty') || store.getState('editingAlertDirty') || hasUnsavedWork()) {
                 e.preventDefault();
                 e.returnValue = '';
             }
@@ -980,8 +999,13 @@ export function App() {
     useEffect(() => {
         if (!user) return undefined;
         startIdleLogout(async () => {
-            // Swing parity: the dedicated inactivity operation, audited distinctly.
-            try { await api.auth.inactivityLogout(); } catch { /* session may already be gone */ }
+            setIdleLocked(true);
+            holdAutoRedirect();
+            setIdleRevoking(true);
+            // Start with the old routing context, then conceal the session now.
+            // New sign-in waits for this bounded request to settle, so a late
+            // logout response cannot overwrite the new session's cookies.
+            const revoked = api.auth.inactivityLogout();
             store.emit('session:logout');
             store.setState('user', null);
             store.setState('navGuard', null);
@@ -990,12 +1014,15 @@ export function App() {
             resetSessionExpired();
             history.replaceState(null, '', routeUrl('/'));
             store.setState('loginNotice', 'You were signed out after a period of inactivity.');
+            try { await revoked; } catch { /* local lock persists until a new sign-in */ }
+            finally { setIdleRevoking(false); }
         });
         return () => stopIdleLogout();
          
     }, [user]);
 
     if (!authChecked) return <BootSplash />;
+    if (idleRevoking) return <div className="boot-splash" role="status">Session locked after inactivity. Finishing sign-out…</div>;
     if (!user) return <LoginForm onSuccess={onLoginSuccess} />;
     return <AppShell user={user} onLogout={onLogout} />;
 }

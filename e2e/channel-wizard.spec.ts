@@ -293,20 +293,20 @@ test.describe('channel wizard', () => {
 
     test('opens an existing channel with all steps navigable and a Save button', async ({ page }) => {
         const CH = 'ch-exist';
-        const dt = (io: any) => ({ '@version': '4.5.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
+        const dt = (io: any) => ({ '@version': '4.6.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
         const existing = {
-            '@version': '4.5.0', id: CH, name: 'Existing Channel', nextMetaDataId: 2,
+            '@version': '4.6.0', id: CH, name: 'Existing Channel', nextMetaDataId: 2,
             sourceConnector: {
                 metaDataId: 0, name: 'sourceConnector', transportName: 'Channel Reader', mode: 'SOURCE', enabled: true,
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0', pluginProperties: null, sourceConnectorProperties: {} },
-                transformer: dt('HL7V2'), filter: { '@version': '4.5.0', elements: null }
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.6.0', pluginProperties: null, sourceConnectorProperties: {} },
+                transformer: dt('HL7V2'), filter: { '@version': '4.6.0', elements: null }
             },
             destinationConnectors: { connector: [{
                 metaDataId: 1, name: 'Destination 1', transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true,
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.5.0', pluginProperties: null, destinationConnectorProperties: {} },
-                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.5.0', elements: null }
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.6.0', pluginProperties: null, destinationConnectorProperties: {} },
+                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.6.0', elements: null }
             }] },
-            properties: { '@version': '4.5.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
+            properties: { '@version': '4.6.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
             exportData: { metadata: { enabled: true, pruningSettings: {} } }
         };
         await mockEngine(page, { [`GET /channels/${CH}`]: { channel: existing } });
@@ -334,20 +334,20 @@ test.describe('channel wizard', () => {
 
     test('editing an existing channel transformer marks it dirty (regression: embedded edit → Save)', async ({ page }) => {
         const CH = 'ch-tx-dirty';
-        const dt = (io: any) => ({ '@version': '4.5.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
+        const dt = (io: any) => ({ '@version': '4.6.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
         const existing = {
-            '@version': '4.5.0', id: CH, name: 'Tx Dirty Channel', nextMetaDataId: 2,
+            '@version': '4.6.0', id: CH, name: 'Tx Dirty Channel', nextMetaDataId: 2,
             sourceConnector: {
                 metaDataId: 0, name: 'sourceConnector', transportName: 'Channel Reader', mode: 'SOURCE', enabled: true,
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0', pluginProperties: null, sourceConnectorProperties: {} },
-                transformer: dt('HL7V2'), filter: { '@version': '4.5.0', elements: null }
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.6.0', pluginProperties: null, sourceConnectorProperties: {} },
+                transformer: dt('HL7V2'), filter: { '@version': '4.6.0', elements: null }
             },
             destinationConnectors: { connector: [{
                 metaDataId: 1, name: 'Destination 1', transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true,
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.5.0', pluginProperties: null, destinationConnectorProperties: {} },
-                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.5.0', elements: null }
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.6.0', pluginProperties: null, destinationConnectorProperties: {} },
+                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.6.0', elements: null }
             }] },
-            properties: { '@version': '4.5.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
+            properties: { '@version': '4.6.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
             exportData: { metadata: { enabled: true, pruningSettings: {} } }
         };
         await mockEngine(page, { [`GET /channels/${CH}`]: { channel: existing } });
@@ -365,20 +365,20 @@ test.describe('channel wizard', () => {
 
     test('editing Channel Options and Scripts on an existing channel marks it dirty (regression: silent discard)', async ({ page }) => {
         const CH = 'ch-opts-dirty';
-        const dt = (io: any) => ({ '@version': '4.5.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
+        const dt = (io: any) => ({ '@version': '4.6.0', elements: null, inboundDataType: io, outboundDataType: io, inboundProperties: {}, outboundProperties: {} });
         const existing = {
-            '@version': '4.5.0', id: CH, name: 'Opts Dirty Channel', nextMetaDataId: 2,
+            '@version': '4.6.0', id: CH, name: 'Opts Dirty Channel', nextMetaDataId: 2,
             sourceConnector: {
                 metaDataId: 0, name: 'sourceConnector', transportName: 'Channel Reader', mode: 'SOURCE', enabled: true,
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0', pluginProperties: null, sourceConnectorProperties: {} },
-                transformer: dt('HL7V2'), filter: { '@version': '4.5.0', elements: null }
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.6.0', pluginProperties: null, sourceConnectorProperties: {} },
+                transformer: dt('HL7V2'), filter: { '@version': '4.6.0', elements: null }
             },
             destinationConnectors: { connector: [{
                 metaDataId: 1, name: 'Destination 1', transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true,
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.5.0', pluginProperties: null, destinationConnectorProperties: {} },
-                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.5.0', elements: null }
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.6.0', pluginProperties: null, destinationConnectorProperties: {} },
+                transformer: dt('HL7V2'), responseTransformer: dt('RAW'), filter: { '@version': '4.6.0', elements: null }
             }] },
-            properties: { '@version': '4.5.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
+            properties: { '@version': '4.6.0', initialState: 'STARTED', messageStorageMode: 'DEVELOPMENT', metaDataColumns: {} },
             exportData: { metadata: { enabled: true, pruningSettings: {} } }
         };
         await mockEngine(page, { [`GET /channels/${CH}`]: { channel: existing } });

@@ -9,6 +9,7 @@
 import { icon } from './icons.js';
 import { formatInZone } from './timezone.js';
 import { checkTask } from './authorization.js';
+import { captureEngineSession } from './engine-fetch.js';
 // columns.js imports h/contextMenu from here; the cycle is safe because both
 // sides only use the imported bindings at call time, never at module load.
 import { createColumnManager, decorateColumns, attachColumnMenu } from './columns.js';
@@ -291,6 +292,8 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
     const opener = document.activeElement as HTMLElement | null;
     const titleId = 'modal-title-' + (++modalSeq);
     let closed = false;
+    let pending = false;
+    const pendingStatus = h('div', { role: 'status', hidden: true }, 'Working…');
 
     const close = () => {
         if (closed) return;                       // idempotent: overlay click + button can race
@@ -301,6 +304,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
         if (opener && opener.isConnected && opener.focus) opener.focus();
         onClose && onClose();
     };
+    const requestClose = () => { if (!pending) close(); };
 
     const dialog = h(`div.modal${size ? '.' + size : ''}`, {
         role: 'dialog',
@@ -311,13 +315,30 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
         ...(label ? { 'aria-label': label } : { 'aria-labelledby': titleId })
     },
         h('div.modal-header', h('span', { id: titleId }, title),
-            h('button.icon-btn', { onClick: close, title: 'Close', 'aria-label': 'Close' }, icon('x'))),
+            h('button.icon-btn', { onClick: requestClose, title: 'Close', 'aria-label': 'Close' }, icon('x'))),
         h('div.modal-body', body),
+        pendingStatus,
         buttons.length ? h('div.modal-foot', buttons.map(btn =>
             h(`button.btn${btn.primary ? '.btn-primary' : ''}${btn.danger ? '.btn-danger' : ''}`, {
                 onClick: async () => {
-                    const result = btn.onClick ? await btn.onClick() : true;
-                    if (result !== false) close();
+                    if (pending) return;
+                    pending = true;
+                    try {
+                        const result = btn.onClick ? btn.onClick() : true;
+                        if (result && typeof (result as any).then === 'function') {
+                            pendingStatus.hidden = false;
+                            dialog.setAttribute('aria-busy', 'true');
+                            dialog.querySelector<HTMLElement>('.modal-body')!.inert = true;
+                            for (const button of dialog.querySelectorAll('.modal-foot button')) button.setAttribute('aria-disabled', 'true');
+                        }
+                        if (await result !== false) close();
+                    } finally {
+                        pending = false;
+                        pendingStatus.hidden = true;
+                        dialog.removeAttribute('aria-busy');
+                        dialog.querySelector<HTMLElement>('.modal-body')!.inert = false;
+                        for (const button of dialog.querySelectorAll('.modal-foot button')) button.removeAttribute('aria-disabled');
+                    }
                 }
             }, btn.label))) : null
     );
@@ -335,7 +356,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
 
     function onKeyDown(e: KeyboardEvent): void {
         if (!isTopmost()) return;
-        if (e.key === 'Escape') { close(); return; }
+        if (e.key === 'Escape') { requestClose(); return; }
         if (e.key !== 'Tab') return;
         const ring = focusable(dialog);
         if (!ring.length) { e.preventDefault(); return; }
@@ -348,7 +369,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
     }
 
     overlay.appendChild(dialog);
-    overlay.addEventListener('mousedown', (e: MouseEvent) => { if (e.target === overlay) close(); });
+    overlay.addEventListener('mousedown', (e: MouseEvent) => { if (e.target === overlay) requestClose(); });
     document.body.appendChild(overlay);
     syncAppHidden();
     document.addEventListener('keydown', onKeyDown);
@@ -999,11 +1020,17 @@ export function downloadFile(filename: string, content: Blob | string | BlobPart
    browser supports it (File System Access API — Chromium), falling back to a
    normal download elsewhere. The picker MUST open inside the click gesture, so
    `getContent` (which may fetch/await) runs AFTER the picker is chosen. Pass a
-   string/Blob value or a (sync/async) function returning one. */
-export async function saveFile(suggestedName: string, type: string, getContent: string | Blob | (() => string | Blob | Promise<string | Blob>)): Promise<void> {
+   string/Blob value or a (sync/async) function returning one. assertCurrent can
+   stop an operation whose dialog or session ended across an awaited stage. */
+export async function saveFile(suggestedName: string, type: string, getContent: string | Blob | (() => string | Blob | Promise<string | Blob>), assertCurrent: () => void = () => {}): Promise<void> {
+    const assertSession = captureEngineSession();
+    const assertActive = () => { assertSession(); assertCurrent(); };
+    assertActive();
     const ext = (String(suggestedName).match(/\.[^./\\]+$/) || [''])[0];
     const resolve = async () => {
+        assertActive();
         const v = typeof getContent === 'function' ? await getContent() : getContent;
+        assertActive();
         return v instanceof Blob ? v : new Blob([v == null ? '' : v], { type });
     };
     if ((window as any).showSaveFilePicker) {
@@ -1019,18 +1046,30 @@ export async function saveFile(suggestedName: string, type: string, getContent: 
         }
         if (handle) {
             const blob = await resolve();
+            assertActive();
             const writable = await handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
+            try {
+                assertActive();
+                await writable.write(blob);
+                assertActive();
+                await writable.close();
+            } catch (error) {
+                // File System Access writes commit on close. Discard an owned
+                // temporary stream if cancellation or failure precedes commit.
+                try { await writable.abort(); } catch { /* retain the original failure */ }
+                throw error;
+            }
             return;
         }
     }
     // Fallback: standard download (honors the browser's "ask where to save" setting).
-    downloadFile(suggestedName, await resolve(), type);
+    const blob = await resolve();
+    assertActive();
+    downloadFile(suggestedName, blob, type);
 }
 
 export function pickFile(accept?: string, { binary = false }: { binary?: boolean } = {}): Promise<{ name: string; content: string } | null> {
-    return new Promise<{ name: string; content: string } | null>(resolve => {
+    return new Promise<{ name: string; content: string } | null>((resolve, reject) => {
         const input = h('input', { type: 'file', accept, class: 'hidden' }) as HTMLInputElement;
         // Dismissing the OS dialog fires 'cancel' (no 'change'); without this the
         // returned promise never settles and the hidden input leaks.
@@ -1045,7 +1084,10 @@ export function pickFile(accept?: string, { binary = false }: { binary?: boolean
                 name: file.name,
                 content: binary ? (String(reader.result).split(',')[1] || '') : (reader.result as string)
             });
-            if (binary) reader.readAsDataURL(file); else reader.readAsText(file);
+            reader.onerror = () => reject(reader.error || new Error('The selected file could not be read.'));
+            reader.onabort = () => resolve(null);
+            try { if (binary) reader.readAsDataURL(file); else reader.readAsText(file); }
+            catch (error) { reject(error); }
         });
         document.body.appendChild(input);
         input.click();

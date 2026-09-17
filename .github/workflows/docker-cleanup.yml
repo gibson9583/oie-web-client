@@ -1,0 +1,38 @@
+name: Remove closed PR image
+on:
+  pull_request:
+    types: [closed]
+permissions:
+  contents: read
+concurrency:
+  group: docker-cleanup-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+env:
+  IMAGE_NAME: ${{ vars.DOCKERHUB_IMAGE || 'gibson9583/oie-web-client' }}
+jobs:
+  # A merged or closed PR takes its pr-N tag with it. Requires the token to
+  # carry Docker Hub's "delete" scope (a Read/Write-only token gets a 403 —
+  # regenerate as Read, Write, Delete if this job ever fails there). Fork PRs
+  # never pushed a tag, so there is nothing to remove.
+  remove-pr-image:
+    name: Remove PR image
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the pr-N tag from Docker Hub
+        env:
+          USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'gibson9583' }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          TAG: pr-${{ github.event.pull_request.number }}
+        run: |
+          JWT=$(curl -fsS -H 'Content-Type: application/json' \
+                -d "{\"username\":\"$USERNAME\",\"password\":\"$TOKEN\"}" \
+                https://hub.docker.com/v2/users/login | jq -r .token)
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE \
+                -H "Authorization: Bearer $JWT" \
+                "https://hub.docker.com/v2/repositories/$IMAGE_NAME/tags/$TAG/")
+          case "$STATUS" in
+            2*)  echo "deleted $IMAGE_NAME:$TAG" ;;
+            404) echo "$IMAGE_NAME:$TAG was never pushed — nothing to remove" ;;
+            *)   echo "::error::Docker Hub tag delete failed with HTTP $STATUS"; exit 1 ;;
+          esac

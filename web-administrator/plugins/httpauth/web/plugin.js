@@ -125,10 +125,11 @@ function register(platform2) {
         onChange: (v) => onChangeRef.current(v)
       });
       editorRef.current = editor;
-      if (hostRef.current) hostRef.current.appendChild(editor.el);
+      const host = hostRef.current;
+      if (host) host.appendChild(editor.el);
       return () => {
         if (editor.destroy) editor.destroy();
-        if (hostRef.current) hostRef.current.replaceChildren();
+        if (host) host.replaceChildren();
       };
     }, []);
     return /* @__PURE__ */ React.createElement("div", { ref: hostRef });
