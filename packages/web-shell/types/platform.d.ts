@@ -109,7 +109,7 @@ export interface SettingsPanel {
     component: PluginComponent<{
         platform: Platform;
         setTasks(title: string, items: any[]): void;
-        setSave(save: (() => boolean) | null): void;
+        setSave(save: (() => boolean | Promise<boolean>) | null): void;
         markDirty(): void;
         markClean(): void;
     }>;

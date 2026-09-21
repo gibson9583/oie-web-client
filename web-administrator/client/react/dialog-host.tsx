@@ -22,7 +22,7 @@
  * that targets them still apply.
  */
 
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { isValidElement, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { icon } from '@oie/web-ui';
@@ -63,14 +63,19 @@ export function openRadixDialog(opts: any = {}) {
     return { close, get el() { return entry.node; } };
 }
 
+/** Remove session-owned forms and message content when access ends. */
+export function closeSessionDialogs() {
+    for (const entry of [...dialogs].reverse()) entry.close();
+}
+
 /* ---- rendering ---- */
 
 /** Mounts whatever h() produced — a node, a list of them, or plain text. */
-function NodeSlot({ content, className, id }: any) {
+function NodeSlot({ content, className, id, inert }: any) {
     const ref = useRef<any>(null);
     useEffect(() => {
         const host = ref.current;
-        if (!host || content === null || content === undefined) return undefined;
+        if (!host || content === null || content === undefined || isValidElement(content)) return undefined;
         for (const part of Array.isArray(content) ? content : [content]) {
             if (part instanceof Node) host.appendChild(part);
             else if (part !== null && part !== undefined) host.append(String(part));
@@ -79,7 +84,7 @@ function NodeSlot({ content, className, id }: any) {
         // destroying them, since some callers reuse a body across opens.
         return () => host.replaceChildren();
     }, [content]);
-    return <div ref={ref} className={className} id={id} />;
+    return <div ref={ref} className={className} id={id} inert={inert}>{isValidElement(content) ? content : null}</div>;
 }
 
 /* core/ui.js's icon() returns a DOM node, so it mounts by ref like everything else. */
@@ -91,9 +96,11 @@ function OneDialog({ entry }: any) {
     const { opts, close, opener } = entry;
     const buttons = opts.buttons || [];
     const contentRef = useRef<any>(null);
+    const pendingRef = useRef(false);
+    const [pending, setPending] = useState(false);
 
     return (
-        <Dialog.Root open onOpenChange={(open: any) => { if (!open) close(); }}>
+        <Dialog.Root open onOpenChange={(open: any) => { if (!open && !pendingRef.current) close(); }}>
             <Dialog.Portal>
                 {/* Content nests INSIDE the overlay: that is what the existing
                     `.modal-overlay { display: flex }` centering expects, and it
@@ -108,6 +115,9 @@ function OneDialog({ entry }: any) {
                            has to REPLACE aria-labelledby, not sit beside it. */
                         {...(opts.label ? { 'aria-label': opts.label, 'aria-labelledby': undefined } : null)}
                         aria-describedby={undefined}
+                        aria-busy={pending || undefined}
+                        onEscapeKeyDown={(e: any) => { if (pendingRef.current) e.preventDefault(); }}
+                        onInteractOutside={(e: any) => { if (pendingRef.current) e.preventDefault(); }}
                         onCloseAutoFocus={(e: any) => {
                             // preventDefault also suppresses Radix's own restore-to-trigger.
                             e.preventDefault();
@@ -131,22 +141,29 @@ function OneDialog({ entry }: any) {
                                     : opts.title}</span>
                             </Dialog.Title>
                             <Dialog.Close asChild>
-                                <button className="icon-btn" title="Close" aria-label="Close">
+                                <button className="icon-btn" title="Close" aria-label="Close" disabled={pending}>
                                     <IconSlot name="x" />
                                 </button>
                             </Dialog.Close>
                         </div>
-                        <NodeSlot content={opts.body} className="modal-body" />
+                        <NodeSlot content={opts.body} className="modal-body" inert={pending || undefined} />
+                        {pending && <div role="status" className="px-4 py-2">Working…</div>}
                         {buttons.length ? (
                             <div className="modal-foot">
                                 {buttons.map((btn: any, i: any) => (
                                     <button key={i}
+                                        aria-disabled={pending || undefined}
                                         className={'btn' + (btn.primary ? ' btn-primary' : '') + (btn.danger ? ' btn-danger' : '')}
                                         onClick={async () => {
+                                            if (pendingRef.current) return;
+                                            pendingRef.current = true;
                                             // Same rule as the DOM factory: a handler
                                             // that returns false keeps the dialog open.
-                                            const result = btn.onClick ? await btn.onClick() : true;
-                                            if (result !== false) close();
+                                            try {
+                                                const result = btn.onClick ? btn.onClick() : true;
+                                                if (result && typeof result.then === 'function') setPending(true);
+                                                if (await result !== false) close();
+                                            } finally { pendingRef.current = false; setPending(false); }
                                         }}>
                                         {btn.label}
                                     </button>

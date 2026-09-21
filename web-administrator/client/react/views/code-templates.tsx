@@ -18,11 +18,13 @@
  * cache is invalidate()d on every mutation so script editors refetch the new scope.
  */
 
+import { withEditorSave } from '../save-lock.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import { validateScript } from '../../core/serialize.js';
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { ViewTasks } from '../mount.jsx';
@@ -410,7 +412,9 @@ export function CodeTemplatesView() {
         toast('Deleted — use Save All to commit library changes');
     }
 
-    async function saveAll(overrideConflicts = false): Promise<any> {
+    function saveAll() { return withEditorSave(() => saveAllUnlocked()); }
+
+    async function saveAllUnlocked(overrideConflicts = false): Promise<any> {
         // Swing-parity conflict handling: save with override=false and the revisions AS
         // LOADED (the engine bumps them itself; sending a self-bumped revision would read
         // as a conflict on every save). A "false" response means someone else saved since
@@ -419,7 +423,7 @@ export function CodeTemplatesView() {
             const overwrite = await confirmDialog('Code Templates Modified',
                 'One or more code templates or libraries have been modified since you opened them. Are you sure you want to overwrite them with your changes?',
                 { danger: true, okLabel: 'Overwrite' });
-            if (overwrite) return saveAll(true);
+            if (overwrite) return saveAllUnlocked(true);
             toast('Save cancelled — Refresh to load the latest code templates', 'warn');
         };
         try {
@@ -513,15 +517,21 @@ export function CodeTemplatesView() {
     /* ---- import / export (Swing-compatible XStream XML) ----------------------------- */
 
     async function exportLibraries() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         try {
             await saveFile('codeTemplateLibraries.xml', 'application/xml',
-                () => api.getXml('/codeTemplateLibraries', { includeCodeTemplates: true }));
+                () => api.getXml('/codeTemplateLibraries', { includeCodeTemplates: true }), assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }
 
     async function exportLibrary(found: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!found || !found.entry || found.template) {
             toast('Select a library first', 'warn');
             return;
@@ -532,13 +542,17 @@ export function CodeTemplatesView() {
                 const xml = await api.getXml(`/codeTemplateLibraries/${encodeURIComponent(library.id)}`, { includeCodeTemplates: true });
                 if (!xml || !String(xml).trim()) throw new Error('Library not found on the server — save it first');
                 return xml;
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }
 
     async function exportTemplate(found: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         if (!found || !found.template) {
             toast('Select a code template first', 'warn');
             return;
@@ -548,8 +562,10 @@ export function CodeTemplatesView() {
                 const xml = await api.getXml(`/codeTemplates/${found.template.id}`);
                 if (!xml || !String(xml).trim()) throw new Error('Template not found on the server — save it first');
                 return xml;
-            });
+            }, assertSession);
+            assertSession();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');
         }
     }

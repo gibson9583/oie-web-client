@@ -24,27 +24,31 @@ export function register(platform: Platform) {
 
     // ctx (props): { attachment, channelId, messageId, platform }
     function ImageViewer({ attachment, channelId, messageId, platform }: any) {
-        const [state, setState] = React.useState({ status: 'loading' });
+        const key = JSON.stringify([channelId, messageId, attachment.id]);
+        const [state, setState] = React.useState({ status: 'loading', key });
+        const [attempt, retry] = React.useReducer((value: number) => value + 1, 0);
+        const fallbackType = typeOf(attachment);
 
         React.useEffect(() => {
             let cancelled = false;
+            setState({ status: 'loading', key });
             (async () => {
                 try {
                     const full = await platform.api.messages.attachment(channelId, messageId, attachment.id);
                     const b64 = String(full?.content ?? '').replace(/\s+/g, '');
-                    let mime = typeOf(full) || typeOf(attachment) || 'image/png';
+                    let mime = typeOf(full) || fallbackType || 'image/png';
                     if (!mime.includes('/')) mime = 'image/' + (mime.toLowerCase() === 'jpg' ? 'jpeg' : mime.toLowerCase());
                     if (cancelled) return;
-                    setState({ status: 'ready', src: `data:${mime};base64,${b64}` });
+                    setState({ status: 'ready', key, src: `data:${mime};base64,${b64}` });
                 } catch (e: any) {
                     if (cancelled) return;
-                    setState({ status: 'error', message: e.message });
+                    setState({ status: 'error', key, message: e.message });
                 }
             })();
             return () => { cancelled = true; };
-        }, [channelId, messageId, attachment.id]);
+        }, [channelId, messageId, attachment.id, key, platform.api.messages, attempt, fallbackType]);
 
-        if (state.status === 'loading') {
+        if (state.key !== key || state.status === 'loading') {
             return (
                 <div className="mt-[13px]">
                     <div className="text-text-faint text-[10px] mb-1">Loading image…</div>
@@ -55,12 +59,14 @@ export function register(platform: Platform) {
             return (
                 <div className="mt-[13px]">
                     <div className="text-text-faint">{`Could not load image: ${state.message}`}</div>
+                    <button type="button" className="btn" onClick={() => retry()}>Retry</button>
                 </div>
             );
         }
         return (
             <div className="mt-[13px]">
                 <img
+                    alt="Message attachment"
                     src={state.src}
                     className="max-w-full max-h-[540px] border border-[var(--bg3)] rounded-[4px]"
                 />

@@ -64,7 +64,18 @@ export function register(pattern: string, handler: RouteHandler, meta: Record<st
 // guard down with it when its unmount cleanup runs.
 export function navigationToken(): number { return generation; }
 
-export function setOutlet(el: Element | null): void { outlet = el; }
+export function setOutlet(el: Element | null): void {
+    outlet = el;
+    if (el === null) {
+        // Ending the shell also ends pending guards/lazy routes. Their later
+        // completions must not restore the departed user's URL or view.
+        generation++;
+        acceptedPath = null;
+        const teardown = currentTeardown;
+        currentTeardown = null;
+        if (teardown) { try { teardown(); } catch { /* view cleanup */ } }
+    }
+}
 export function setNotFound(handler: ((ctx: { path: string }) => Node) | null): void { notFound = handler; }
 export function setGuard(fn: RouteGuard | null): void { beforeEach = fn; }
 
@@ -86,6 +97,7 @@ function parseQuery(qsStr: string): Record<string, string> {
 }
 
 async function handleChange(): Promise<void> {
+    if (!outlet) return;
     const gen = ++generation;
     let path = currentPath();
     let query: Record<string, string> = {};

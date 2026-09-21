@@ -24,10 +24,13 @@ export function register(platform: Platform) {
 
     // ctx (props): { attachment, channelId, messageId, platform }
     function TextViewer({ attachment, channelId, messageId, platform }: any) {
-        const [state, setState] = React.useState({ status: 'loading' });
+        const key = JSON.stringify([channelId, messageId, attachment.id]);
+        const [state, setState] = React.useState({ status: 'loading', key });
+        const [attempt, retry] = React.useReducer((value: number) => value + 1, 0);
 
         React.useEffect(() => {
             let cancelled = false;
+            setState({ status: 'loading', key });
             (async () => {
                 try {
                     const full = await platform.api.messages.attachment(channelId, messageId, attachment.id);
@@ -42,16 +45,16 @@ export function register(platform: Platform) {
                         text = new TextDecoder().decode(bytes);
                     } catch (e: any) { /* not Base64 — show as-is */ }
                     if (cancelled) return;
-                    setState({ status: 'ready', text });
+                    setState({ status: 'ready', key, text });
                 } catch (e: any) {
                     if (cancelled) return;
-                    setState({ status: 'error', message: e.message });
+                    setState({ status: 'error', key, message: e.message });
                 }
             })();
             return () => { cancelled = true; };
-        }, [channelId, messageId, attachment.id]);
+        }, [channelId, messageId, attachment.id, key, platform.api.messages, attempt]);
 
-        if (state.status === 'loading') {
+        if (state.key !== key || state.status === 'loading') {
             return (
                 <div className="mt-[13px]">
                     <div className="text-text-faint text-[10px] mb-1">Loading text…</div>
@@ -62,6 +65,7 @@ export function register(platform: Platform) {
             return (
                 <div className="mt-[13px]">
                     <div className="text-text-faint">{`Could not load text: ${state.message}`}</div>
+                    <button type="button" className="btn" onClick={() => retry()}>Retry</button>
                 </div>
             );
         }

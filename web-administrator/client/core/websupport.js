@@ -15,13 +15,12 @@
  */
 import { get } from './api.js';
 let resolved = null;
-// 401 means "not logged in yet" and 421 "the server no longer routes this tab's
-// engine" (ENGINE_UNKNOWN) — neither says anything about whether the endpoint
-// exists, so neither may be cached as "missing" (which would also raise the
-// "plugin not installed" warning over the login screen the tab is dropping to).
-function refused(e) {
+// Only an unsupported route proves absence. Authentication/authorization,
+// network errors and temporary server failures must remain retryable; caching
+// them as absence disables plugin UIs, serialization and validation all session.
+function missing(e) {
     const status = e && e.status;
-    return status === 401 || status === 421;
+    return status === 404 || status === 405;
 }
 async function probe() {
     try {
@@ -29,7 +28,7 @@ async function probe() {
         return '';
     }
     catch (e) {
-        if (refused(e))
+        if (!missing(e))
             throw e;
     }
     try {
@@ -37,7 +36,7 @@ async function probe() {
         return '/extensions/websupport';
     }
     catch (e) {
-        if (refused(e))
+        if (!missing(e))
             throw e;
     }
     return null;

@@ -9,6 +9,7 @@
 import { icon } from './icons.js';
 import { formatInZone } from './timezone.js';
 import { checkTask } from './authorization.js';
+import { captureEngineSession } from './engine-fetch.js';
 // columns.js imports h/contextMenu from here; the cycle is safe because both
 // sides only use the imported bindings at call time, never at module load.
 import { createColumnManager, decorateColumns, attachColumnMenu } from './columns.js';
@@ -190,6 +191,8 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
     const opener = document.activeElement;
     const titleId = 'modal-title-' + (++modalSeq);
     let closed = false;
+    let pending = false;
+    const pendingStatus = h('div', { role: 'status', hidden: true }, 'Working…');
     const close = () => {
         if (closed)
             return; // idempotent: overlay click + button can race
@@ -201,6 +204,8 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
             opener.focus();
         onClose && onClose();
     };
+    const requestClose = () => { if (!pending)
+        close(); };
     const dialog = h(`div.modal${size ? '.' + size : ''}`, {
         role: 'dialog',
         'aria-modal': 'true',
@@ -208,11 +213,31 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
         tabindex: '-1',
         // Prefer the visible title; `label` covers dialogs built with a node title.
         ...(label ? { 'aria-label': label } : { 'aria-labelledby': titleId })
-    }, h('div.modal-header', h('span', { id: titleId }, title), h('button.icon-btn', { onClick: close, title: 'Close', 'aria-label': 'Close' }, icon('x'))), h('div.modal-body', body), buttons.length ? h('div.modal-foot', buttons.map(btn => h(`button.btn${btn.primary ? '.btn-primary' : ''}${btn.danger ? '.btn-danger' : ''}`, {
+    }, h('div.modal-header', h('span', { id: titleId }, title), h('button.icon-btn', { onClick: requestClose, title: 'Close', 'aria-label': 'Close' }, icon('x'))), h('div.modal-body', body), pendingStatus, buttons.length ? h('div.modal-foot', buttons.map(btn => h(`button.btn${btn.primary ? '.btn-primary' : ''}${btn.danger ? '.btn-danger' : ''}`, {
         onClick: async () => {
-            const result = btn.onClick ? await btn.onClick() : true;
-            if (result !== false)
-                close();
+            if (pending)
+                return;
+            pending = true;
+            try {
+                const result = btn.onClick ? btn.onClick() : true;
+                if (result && typeof result.then === 'function') {
+                    pendingStatus.hidden = false;
+                    dialog.setAttribute('aria-busy', 'true');
+                    dialog.querySelector('.modal-body').inert = true;
+                    for (const button of dialog.querySelectorAll('.modal-foot button'))
+                        button.setAttribute('aria-disabled', 'true');
+                }
+                if (await result !== false)
+                    close();
+            }
+            finally {
+                pending = false;
+                pendingStatus.hidden = true;
+                dialog.removeAttribute('aria-busy');
+                dialog.querySelector('.modal-body').inert = false;
+                for (const button of dialog.querySelectorAll('.modal-foot button'))
+                    button.removeAttribute('aria-disabled');
+            }
         }
     }, btn.label))) : null);
     /* Escape closes; Tab cycles inside the dialog instead of walking out into the
@@ -229,7 +254,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
         if (!isTopmost())
             return;
         if (e.key === 'Escape') {
-            close();
+            requestClose();
             return;
         }
         if (e.key !== 'Tab')
@@ -258,7 +283,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
     }
     overlay.appendChild(dialog);
     overlay.addEventListener('mousedown', (e) => { if (e.target === overlay)
-        close(); });
+        requestClose(); });
     document.body.appendChild(overlay);
     syncAppHidden();
     document.addEventListener('keydown', onKeyDown);
@@ -908,11 +933,17 @@ export function downloadFile(filename, content, type = 'application/octet-stream
    browser supports it (File System Access API — Chromium), falling back to a
    normal download elsewhere. The picker MUST open inside the click gesture, so
    `getContent` (which may fetch/await) runs AFTER the picker is chosen. Pass a
-   string/Blob value or a (sync/async) function returning one. */
-export async function saveFile(suggestedName, type, getContent) {
+   string/Blob value or a (sync/async) function returning one. assertCurrent can
+   stop an operation whose dialog or session ended across an awaited stage. */
+export async function saveFile(suggestedName, type, getContent, assertCurrent = () => { }) {
+    const assertSession = captureEngineSession();
+    const assertActive = () => { assertSession(); assertCurrent(); };
+    assertActive();
     const ext = (String(suggestedName).match(/\.[^./\\]+$/) || [''])[0];
     const resolve = async () => {
+        assertActive();
         const v = typeof getContent === 'function' ? await getContent() : getContent;
+        assertActive();
         return v instanceof Blob ? v : new Blob([v == null ? '' : v], { type });
     };
     if (window.showSaveFilePicker) {
@@ -930,17 +961,33 @@ export async function saveFile(suggestedName, type, getContent) {
         }
         if (handle) {
             const blob = await resolve();
+            assertActive();
             const writable = await handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
+            try {
+                assertActive();
+                await writable.write(blob);
+                assertActive();
+                await writable.close();
+            }
+            catch (error) {
+                // File System Access writes commit on close. Discard an owned
+                // temporary stream if cancellation or failure precedes commit.
+                try {
+                    await writable.abort();
+                }
+                catch { /* retain the original failure */ }
+                throw error;
+            }
             return;
         }
     }
     // Fallback: standard download (honors the browser's "ask where to save" setting).
-    downloadFile(suggestedName, await resolve(), type);
+    const blob = await resolve();
+    assertActive();
+    downloadFile(suggestedName, blob, type);
 }
 export function pickFile(accept, { binary = false } = {}) {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         const input = h('input', { type: 'file', accept, class: 'hidden' });
         // Dismissing the OS dialog fires 'cancel' (no 'change'); without this the
         // returned promise never settles and the hidden input leaks.
@@ -956,10 +1003,17 @@ export function pickFile(accept, { binary = false } = {}) {
                 name: file.name,
                 content: binary ? (String(reader.result).split(',')[1] || '') : reader.result
             });
-            if (binary)
-                reader.readAsDataURL(file);
-            else
-                reader.readAsText(file);
+            reader.onerror = () => reject(reader.error || new Error('The selected file could not be read.'));
+            reader.onabort = () => resolve(null);
+            try {
+                if (binary)
+                    reader.readAsDataURL(file);
+                else
+                    reader.readAsText(file);
+            }
+            catch (error) {
+                reject(error);
+            }
         });
         document.body.appendChild(input);
         input.click();

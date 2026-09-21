@@ -58,40 +58,79 @@ export function UsersView() {
     function newTask() {
         const form = userForm();
         const pw = passwordFields();
-        modal({
+        const notice = h('p', { role: 'status', hidden: true });
+        let phase: 'draft' | 'unknown' | 'unverified' | 'created' = 'draft';
+        let busy = false;
+        let createdId: string | number | undefined;
+        let createdUsername = '';
+        const dialog = modal({
             title: 'New User',
             size: 'wide',
-            body: h('div', form.grid, pw.grid),
+            body: h('div', notice, form.grid, pw.grid),
             buttons: [
                 { label: 'Cancel' },
                 {
                     label: 'Create', primary: true,
                     onClick: async () => {
-                        const username = form.inputs.username.value.trim();
+                        if (busy || (phase !== 'draft' && phase !== 'created')) return false;
+                        const username = createdUsername || form.inputs.username.value.trim();
                         if (!username) { toast('Username is required', 'warn'); return false; }
                         if (!pw.validate()) return false;
+                        const password = (pw.password as HTMLInputElement).value;
+                        const user: any = {};
+                        for (const def of USER_FIELDS) user[def.key] = form.inputs[def.key].value.trim();
+                        user.username = username;
+                        busy = true;
+                        form.grid.inert = pw.grid.inert = true;
+                        const submit = dialog.el.querySelector<HTMLButtonElement>('.modal-foot .btn-primary');
+                        if (submit) { submit.disabled = true; submit.textContent = 'Saving…'; }
                         try {
                             // Enforce the password policy BEFORE creating the user
                             // (Swing checks first) — otherwise a rejected password
                             // leaves a passwordless user behind and the requirement
                             // is effectively ignored.
-                            const violations = passwordViolations(await api.users.checkPassword((pw.password as any).value));
+                            const violations = passwordViolations(await api.users.checkPassword(password));
                             if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
 
-                            const user: any = {};
-                            for (const def of USER_FIELDS) user[def.key] = form.inputs[def.key].value.trim();
-                            user.username = username;
-                            await api.users.create(user);
-                            const list = await api.users.list();
-                            const created = list.find(u => u.username === username);
-                            if (!created) throw new Error('User was created but could not be found to set the password');
-                            await api.users.updatePassword(created.id!, (pw.password as any).value);
+                            if (phase === 'draft') {
+                                createdUsername = username;
+                                // A failed response does not prove the write failed. Do
+                                // not repeat creation or reset an unverified account.
+                                phase = 'unknown';
+                                await api.users.create(user);
+                                phase = 'unverified';
+                            }
+                            if (createdId === undefined) {
+                                const list = await api.users.list();
+                                const created = list.find(u => u.username === username);
+                                if (created?.id == null) throw new Error('The created account could not be found to set its password');
+                                createdId = created.id;
+                                phase = 'created';
+                            }
+                            const rejected = passwordViolations(await api.users.updatePassword(createdId, password));
+                            if (rejected.length) throw new Error(`Password rejected: ${rejected.join('; ')}`);
                             toast(`User "${username}" created`);
-                            refresh();
                             return true;
                         } catch (e: any) {
                             toast(e.message, 'error');
                             return false;
+                        } finally {
+                            busy = false;
+                            form.grid.inert = phase !== 'draft';
+                            pw.grid.inert = phase === 'unknown' || phase === 'unverified';
+                            if (phase !== 'draft') {
+                                notice.hidden = false;
+                                notice.textContent = phase === 'created'
+                                    ? `Account "${createdUsername}" was created. Password setup is incomplete; retry below to finish.`
+                                    : phase === 'unverified'
+                                    ? `Account "${createdUsername}" was created, but its identity could not be verified. Close this dialog, refresh Users, and select the account before changing its password.`
+                                    : `Creation of "${createdUsername}" could not be confirmed. Close this dialog, refresh Users, and verify the account before creating it again or changing its password.`;
+                                refresh();
+                            }
+                            if (submit) {
+                                submit.disabled = phase === 'unknown' || phase === 'unverified';
+                                submit.textContent = phase === 'created' ? 'Retry Password Setup' : phase === 'unverified' ? 'Verify Account' : phase === 'unknown' ? 'Outcome Unknown' : 'Create';
+                            }
                         }
                     }
                 }

@@ -81,16 +81,24 @@ test.describe('alert wizard', () => {
         await expect(page.locator('select:has(option[value="Email"])')).toBeVisible();
     });
 
-    test('an invalid error-filter regex blocks advancing', async ({ page }) => {
-        await mockEngine(page);
+    test('F18: Java regular-expression syntax passes through unchanged', async ({ page }) => {
+        let regex = '';
+        await mockEngine(page, { 'POST /alerts': (request: any) => {
+            regex = request.postDataJSON().alertModel.trigger.regex;
+            return '';
+        } });
         await page.goto('/alerts/new/guided');
         await nameField(page).fill('Rx Alert');
         await next(page).click();   // Trigger
 
-        await page.locator('.view-body textarea').fill('([');   // invalid regex
+        await page.locator('.view-body textarea').fill('(?i)patient\\s+error');
         await next(page).click();
-        await expect(page.locator('.view-body').getByText(/Invalid regular expression/)).toBeVisible();
-        await expect(page.getByText('Error types')).toBeVisible();   // still on Trigger
+        await expect(page.getByText('Channels to watch')).toBeVisible();
+        await next(page).click();
+        await next(page).click();
+        await page.getByRole('main').getByRole('button', { name: 'Create Alert', exact: true }).click();
+        await expect(page).toHaveURL(/\/alerts$/);
+        expect(regex).toBe('(?i)patient\\s+error');
     });
 
     test('prompts to save when leaving with unsaved changes', async ({ page }) => {

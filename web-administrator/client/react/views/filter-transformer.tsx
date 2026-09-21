@@ -1,3 +1,6 @@
+import { loadChannelForEdit } from '../../core/channel-save.js';
+import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
+import { withEditorSave } from '../save-lock.js';
 /*
  * Filter / Transformer / Response Transformer editor — parity with the Swing
  * Administrator's filter and transformer panes, fully declarative React. Edits
@@ -41,6 +44,7 @@ import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
 import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
 import * as router from '../../core/router.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
@@ -1216,7 +1220,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     const commitRef = useRef(commit);
     commitRef.current = commit;
 
-    async function saveChannel() {
+    function saveChannel() { return withEditorSave(saveChannelUnlocked); }
+
+    async function saveChannelUnlocked() {
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return false;
         persist();
         const problems = oie.validateChannel(channel);
         if (problems.length) {
@@ -1230,18 +1238,13 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             return;
         }
         try {
-            if (store.getState('editingChannelNew')) {
-                await api.channels.create(channel);
-                store.setState('editingChannelNew', false);
-            } else {
-                channel.revision = (Number(channel.revision) || 0) + 1;
-                await api.channels.update(channel.id, channel);
-            }
+            const saved = await persistChannelEdits(channel);
+            if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
             onTasksChange();
             toast(`Saved ${channel.name}`);
         } catch (e: any) {
-            toast(e.message, 'error');
+            if (isCurrent()) toast(e.message, 'error');
         }
     }
 
@@ -1275,13 +1278,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     guardImplRef.current = async ({ path }: any) => {
+        const isCurrent = channelSessionActive();
+        if (!isCurrent()) return false;
         if (path.startsWith(`/channels/${params.channelId}/`)) return; // same editing flow
         if (channelDirty()) {
             const choice = await promptSaveChanges();
-            if (choice === 'cancel') return false;
+            if (!isCurrent() || choice === 'cancel') return false;
             // saveChannel() clears the dirty flag on success; if it's still dirty
             // (validation blocked or the request failed) keep the user here.
-            if (choice === 'save') { await saveChannel(); if (channelDirty()) return false; }
+            if (choice === 'save') { await saveChannel(); if (!isCurrent() || channelDirty()) return false; }
         }
         // Left the editor entirely: drop the working copy AND this guard so it can
         // never prompt again for navigation outside the editing flow.
@@ -1470,12 +1475,19 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         }
     }
 
-    function exportElements() {
+    async function exportElements() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         // Export the SERIALIZED tree (up-to-date properties.children on
         // iterators), not the raw working model — importing a raw export would
         // rebuild iterator children from their stale wire copies.
-        saveFile(`${channel.name || channel.id}-${kindName}.json`, 'application/json',
-            () => JSON.stringify({ elements: serializeList(elementsRef.current) }, null, 2));
+        try {
+            await saveFile(`${channel.name || channel.id}-${kindName}.json`, 'application/json',
+                () => JSON.stringify({ elements: serializeList(elementsRef.current) }, null, 2), assertSession);
+        } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Export failed: ${e.message}`, 'error');
+        }
     }
 
     /* ---- validation ---- */
@@ -1895,7 +1907,7 @@ function FilterTransformerView({ params, kindName }: any) {
     useEffect(() => {
         if (ready) return undefined;
         let alive = true;
-        api.channels.get(params.channelId).then((loaded: any) => {
+        loadChannelForEdit(params.channelId).then((loaded: any) => {
             if (!alive) return;
             // Same as the channel editor: an unknown id resolves with an empty body
             // rather than rejecting, so an unchecked load builds on nothing.

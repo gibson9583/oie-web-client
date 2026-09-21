@@ -8,9 +8,12 @@ function typeOf(att) {
 }
 function register(platform2) {
   function TextViewer({ attachment, channelId, messageId, platform: platform3 }) {
-    const [state, setState] = React.useState({ status: "loading" });
+    const key = JSON.stringify([channelId, messageId, attachment.id]);
+    const [state, setState] = React.useState({ status: "loading", key });
+    const [attempt, retry] = React.useReducer((value) => value + 1, 0);
     React.useEffect(() => {
       let cancelled = false;
+      setState({ status: "loading", key });
       (async () => {
         try {
           const full = await platform3.api.messages.attachment(channelId, messageId, attachment.id);
@@ -25,21 +28,21 @@ function register(platform2) {
           } catch (e) {
           }
           if (cancelled) return;
-          setState({ status: "ready", text });
+          setState({ status: "ready", key, text });
         } catch (e) {
           if (cancelled) return;
-          setState({ status: "error", message: e.message });
+          setState({ status: "error", key, message: e.message });
         }
       })();
       return () => {
         cancelled = true;
       };
-    }, [channelId, messageId, attachment.id]);
-    if (state.status === "loading") {
+    }, [channelId, messageId, attachment.id, key, platform3.api.messages, attempt]);
+    if (state.key !== key || state.status === "loading") {
       return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, "Loading text\u2026"));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load text: ${state.message}`));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load text: ${state.message}`), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, "Retry"));
     }
     return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement(
       "pre",

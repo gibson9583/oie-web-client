@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
+import { sanitizerEntry, embeddedSanitizer, monacoMain } from './sanitizer.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const clientDir = resolve(here, '..', 'client');
@@ -128,7 +130,7 @@ const monacoOut = resolve(clientDir, 'vendor', 'monaco');
 // isn't auto-injected the way Vite/webpack do it); core/monaco.js links it. The
 // codicon webfont is inlined as a data URL so there are no separate asset files
 // or path rewrites to serve.
-await build({
+const editorBuild = await build({
     // monaco-editor >=0.53 ships an `exports` map that rewrites `monaco-editor/*`
     // to `esm/vs/*`; the old deep `esm/vs/...` specifier now double-resolves, so
     // reference the exports-map path (the `esm/vs/` prefix is added back for us).
@@ -140,8 +142,32 @@ await build({
     target: 'es2022',
     minify: true,
     legalComments: 'none',
-    loader: { '.ttf': 'dataurl' }
+    loader: { '.ttf': 'dataurl' },
+    metafile: true,
+    plugins: [{
+        name: 'patched-monaco-sanitizer',
+        setup(builder) {
+            builder.onResolve({ filter: /dompurify[/\\]dompurify\.js$/ }, args => {
+                if (resolve(args.resolveDir, args.path) === embeddedSanitizer) return { path: sanitizerEntry };
+            });
+        }
+    }]
 });
+const inputs = Object.keys(editorBuild.metafile.inputs).map(input => resolve(input));
+if (!inputs.includes(sanitizerEntry) || inputs.includes(embeddedSanitizer)) {
+    throw new Error('Monaco must bundle the patched npm sanitizer; review its import graph before releasing.');
+}
+const sha256 = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+const sanitizerPackage = JSON.parse(readFileSync(resolve(dirname(sanitizerEntry), '../package.json'), 'utf8'));
+const monacoPackage = JSON.parse(readFileSync(resolve(dirname(monacoMain), '../../../package.json'), 'utf8'));
+writeFileSync(resolve(monacoOut, 'provenance.json'), JSON.stringify({
+    monacoVersion: monacoPackage.version,
+    sanitizer: { package: sanitizerPackage.name, version: sanitizerPackage.version,
+        source: 'dompurify/dist/purify.es.mjs', sha256: sha256(sanitizerEntry) },
+    embeddedSanitizerExcluded: true,
+    editorSha256: sha256(resolve(monacoOut, 'editor.main.js'))
+}, null, 2) + '\n');
+copyFileSync(resolve(dirname(sanitizerEntry), '../LICENSE'), resolve(monacoOut, 'DOMPurify-LICENSE.txt'));
 // Language-service workers — self-contained classic (IIFE) scripts loaded via
 // new Worker(url). Each bundles its own dependencies, so there's no importScripts
 // / AMD baseUrl dance.

@@ -53,15 +53,15 @@ oie-web-client/
 
 | Tool | Version | Notes |
 |---|---|---|
-| **Node.js** | **22 LTS recommended** (20.19+ minimum) | Runs the server, the Vite build, and the tests; bundles a compatible npm. Check with `node -v`. Vite 8 requires 20.19+, and the lint toolchain (Babel 8) wants 22.18+; the built server alone still runs on 18+. |
-| **npm** | **9+** | Bundled with the supported Node 20/22 toolchain. This is an npm-**workspaces** monorepo (npm 7+ required); Yarn/pnpm are not used. |
+| **Node.js** | **22.18+; tested on 22.22.3** | Use the pinned `.nvmrc` for source builds, tests and the packaged Node runtime. |
+| **npm** | Bundled with Node 22 | Run `npm ci` at the repository root; this is an npm-**workspaces** monorepo. Yarn/pnpm are not used. |
 | **JDK** | **17+** (WAR builds only) | Supplies the standard `jar` tool used by `npm run build:war`; it is not needed to run the Node/Docker deployment. |
 | **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://127.0.0.1:8443`. This release line targets OIE 4.6.0. |
 | **OIE Web Support plugin** | available separately | **Optional for the base administrator; required only for** byte-exact message-tree serialization, engine-side JavaScript validation, engine-served plugin UIs, and the plugin-managed embedded WAR. Download it and read its installation notes at **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)**. |
 | **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
 
-Contributors running the end-to-end tests also install Playwright's browser once:
-`npx playwright install chromium`.
+Contributors running the end-to-end tests also install Playwright's browsers:
+`npx playwright install chromium firefox webkit`.
 
 ## Quick start from source
 
@@ -271,8 +271,11 @@ recovery after signing back in. Startup removes drafts saved by older versions
 from browser storage for every engine/account, because they may contain credentials.
 
 Engine requests use `cache: 'no-store'` in both Node and WAR deployments.
-Full-page loads also send [`Clear-Site-Data: "cache"`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data)
-to evict HTTP responses retained by older clients. This also clears cached static
+The client makes a separate background request with [`Clear-Site-Data: "cache"`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data)
+to evict HTTP responses retained by older clients. Successful completion is recorded
+per browser and application path; interrupted or failed cleanup retries on the next
+page load. Keeping this header off the document avoids blocking navigation on
+Chromium's cache deletion. Legacy cleanup also clears cached static
 assets for the origin; it preserves cookies and preferences. For an upgrade on a
 browser without support for this header, clear that site's cached files manually.
 The header requires a secure context, so remote deployments must use HTTPS.
@@ -322,7 +325,7 @@ plugin UIs are disabled with a notice. Format Document runs entirely client-side
 | Login fails, "engine unreachable", or a `502` | The engine isn't running or `engine.url` is wrong. Confirm `<engine.url>/api/server/version` responds. |
 | TLS / certificate errors reaching the engine | Trust the engine CA with `NODE_EXTRA_CA_CERTS` at startup and check the URL matches its certificate hostname. |
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
-| Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22 LTS (`node -v`); Node < 20.19 can't run Vite 8 and the test tooling. |
+| Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22.22.3 from `.nvmrc` (`node -v`); the minimum is 22.18. |
 | WAR URL returns 404 after copying | OIE discovers WARs only at startup. Put the file directly in `<OIE_HOME>/webapps/`, restart OIE, and use the context matching the WAR filename. |
 | Message trees, Validate Script, or engine-served plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install the plugin and restart the engine. Format Document remains available because it is client-side. |
 

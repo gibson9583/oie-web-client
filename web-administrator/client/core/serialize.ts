@@ -25,6 +25,7 @@
 import { js as jsBeautify } from 'js-beautify';
 import { post } from './api.js';
 import { webSupportBase } from './websupport.js';
+import { captureEngineSession } from './engine-fetch.js';
 import type { OieObject } from './wire-types.js';
 
 /* Flatten an engine SerializationProperties object to newline-separated key=value
@@ -80,12 +81,20 @@ export async function serializeTemplate(dataType: string, serializationPropertie
  */
 export async function validateScript(script: string | null | undefined): Promise<{ ok: boolean | null; message?: string }> {
     try {
+        const assertSession = captureEngineSession();
         const base = await webSupportBase();
+        assertSession();
         if (base === null) return { ok: null, message: 'Validation unavailable — the Web Support plugin is not installed on this engine.' };
         const text = await post(`${base}/javascript/_validate`, String(script ?? ''), {
             contentType: 'text/plain', raw: true, noAuthHandler: true
         });
-        const err = (JSON.parse(text).error || '').trim();
+        assertSession();
+        const result = JSON.parse(text);
+        if (!result || typeof result !== 'object' || Array.isArray(result)
+            || !Object.hasOwn(result, 'error') || (result.error !== null && typeof result.error !== 'string')) {
+            return { ok: null, message: 'The engine returned an invalid script-validation response.' };
+        }
+        const err = (result.error ?? '').trim();
         return err ? { ok: false, message: err } : { ok: true };
     } catch (e) {
         return { ok: null, message: (e as { message?: string })?.message || 'Validation unavailable.' };

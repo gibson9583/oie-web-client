@@ -801,14 +801,18 @@ function renderRGB(canvas, raw, info) {
   canvas.height = rows;
   canvas.getContext("2d").putImageData(img, 0, 0);
 }
-async function drawJpegFrame(canvas, ds, bytes, info, frame) {
+async function drawJpegFrame(canvas, ds, info, frame, current) {
   const el = ds.elements.x7fe00010;
   const frameBytes = import_dicom_parser.default.readEncapsulatedImageFrame(ds, el, frame);
   const bitmap = await createImageBitmap(new Blob([frameBytes], { type: "image/jpeg" }));
-  canvas.width = bitmap.width || info.cols;
-  canvas.height = bitmap.height || info.rows;
-  canvas.getContext("2d").drawImage(bitmap, 0, 0);
-  bitmap.close && bitmap.close();
+  try {
+    if (!current()) return;
+    canvas.width = bitmap.width || info.cols;
+    canvas.height = bitmap.height || info.rows;
+    canvas.getContext("2d").drawImage(bitmap, 0, 0);
+  } finally {
+    bitmap.close && bitmap.close();
+  }
 }
 var THUMB_LIMIT = 64;
 var THUMB_PX = 44;
@@ -864,7 +868,9 @@ function Filmstrip({ state, frame, win, onPick, expanded }) {
 }
 function register(platform2) {
   function DicomViewer({ attachment, channelId, messageId, platform: platform3 }) {
-    const [state, setState] = React.useState({ status: "loading" });
+    const key = JSON.stringify([channelId, messageId, attachment.id]);
+    const [state, setState] = React.useState({ status: "loading", key });
+    const [attempt, retry] = React.useReducer((value) => value + 1, 0);
     const [frame, setFrame] = React.useState(0);
     const [win, setWin] = React.useState(null);
     const [zoom, setZoom] = React.useState(1);
@@ -884,7 +890,7 @@ function register(platform2) {
     );
     React.useEffect(() => {
       let cancelled = false;
-      setState({ status: "loading" });
+      setState({ status: "loading", key });
       setFrame(0);
       setWin(null);
       setZoom(1);
@@ -927,15 +933,15 @@ function register(platform2) {
           const kind2 = UNCOMPRESSED.has(ts) ? "raw" : JPEG_BASELINE.has(ts) ? "jpeg" : COMPRESSED_NAMES[ts] ? "unsupported" : ds.elements.x7fe00010 && !ds.elements.x7fe00010.encapsulatedPixelData ? "raw" : "unsupported";
           if (cancelled) return;
           setWin(info2.wc != null && info2.ww != null ? { c: info2.wc, w: info2.ww } : null);
-          setState({ status: "ready", bytes: bytes2, ds, ts, info: info2, meta: meta2, kind: kind2, tsName: COMPRESSED_NAMES[ts] || ts });
+          setState({ status: "ready", key, bytes: bytes2, ds, ts, info: info2, meta: meta2, kind: kind2, tsName: COMPRESSED_NAMES[ts] || ts });
         } catch (e) {
-          if (!cancelled) setState({ status: "error", message: e.message });
+          if (!cancelled) setState({ status: "error", key, message: e.message });
         }
       })();
       return () => {
         cancelled = true;
       };
-    }, [channelId, messageId, attachment.id]);
+    }, [channelId, messageId, attachment.id, key, platform3.api, resetPan, attempt]);
     React.useEffect(() => {
       if (state.status !== "ready" || state.kind !== "raw" || win || state.info.spp > 1) return;
       const raw = readFrame(state.ds, state.bytes, state.info, frame);
@@ -950,15 +956,21 @@ function register(platform2) {
       min = min * s + ic;
       max = max * s + ic;
       setWin({ c: (min + max) / 2, w: Math.max(1, max - min) });
-    }, [state.status, frame, win]);
+    }, [state, frame, win]);
     React.useEffect(() => {
       if (state.status !== "ready" || !canvasRef.current) return;
       const cv = canvasRef.current;
       try {
         if (state.kind === "jpeg") {
           setDecodeError(null);
-          drawJpegFrame(cv, state.ds, state.bytes, state.info, frame).catch((e) => setDecodeError(e && e.message ? e.message : "the browser could not decode this frame"));
-          return;
+          let current = true;
+          cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
+          drawJpegFrame(cv, state.ds, state.info, frame, () => current).catch((e) => {
+            if (current) setDecodeError(e && e.message ? e.message : "the browser could not decode this frame");
+          });
+          return () => {
+            current = false;
+          };
         }
         if (state.kind !== "raw") return;
         const raw = readFrame(state.ds, state.bytes, state.info, frame);
@@ -967,7 +979,7 @@ function register(platform2) {
         else if (win) renderGray(cv, raw, state.info, win.c, win.w);
       } catch {
       }
-    }, [state.status, frame, win, state.kind]);
+    }, [state, frame, win]);
     React.useEffect(() => {
       const el = stageRef.current;
       if (!el || typeof ResizeObserver === "undefined") return void 0;
@@ -1133,20 +1145,33 @@ function register(platform2) {
       document.addEventListener("keydown", onDocKey);
       return () => document.removeEventListener("keydown", onDocKey);
     });
-    if (state.status === "loading") {
+    if (state.key !== key || state.status === "loading") {
       return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px]" }, "Loading DICOM\u2026"));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load DICOM: ${state.message}`));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load DICOM: ${state.message}`), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, "Retry"));
     }
     const { bytes, meta, kind, tsName } = state;
     const renders = kind === "raw" || kind === "jpeg";
     const grayscale = kind === "raw" && info.spp < 3;
-    const saveDicom = () => platform3.ui.saveFile(
-      `attachment-${attachment.id}.dcm`,
-      "application/dicom",
-      () => new Blob([bytes], { type: "application/dicom" })
-    );
+    const saveDicom = async () => {
+      const user = platform3.store.getState("user");
+      const host = rootRef.current;
+      const current = () => !!user && platform3.store.getState("user") === user && !!host?.isConnected && rootRef.current === host;
+      if (!current()) return;
+      try {
+        await platform3.ui.saveFile(
+          `attachment-${attachment.id}.dcm`,
+          "application/dicom",
+          () => new Blob([bytes], { type: "application/dicom" }),
+          () => {
+            if (!current()) throw new Error("The DICOM viewer is no longer active.");
+          }
+        );
+      } catch (error) {
+        if (current()) platform3.ui.toast(`Failed to save DICOM: ${error.message || error}`, "error");
+      }
+    };
     const metaRows = META.filter(([tag]) => meta[tag]).map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { className: "font-semibold pr-4" }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, meta[tag])));
     const title = `DICOM object \u2014 ${info.cols}\xD7${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ""} \u2014 ${bytes.length.toLocaleString()} bytes`;
     const rootCls = expanded ? "modal flex flex-col" : "flex flex-col gap-1.5";

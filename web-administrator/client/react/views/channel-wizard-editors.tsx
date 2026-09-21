@@ -21,7 +21,9 @@ import { mountReact } from '../mount.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { openRadixDialog } from '../dialog-host.jsx';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
+import { dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices } from '../../core/channel-dependencies.js';
 import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 
@@ -87,8 +89,6 @@ export function DataTypeBar({ holder, version, connectorType, onChange }: any) {
 
 /* ---- dependencies: code-template libraries + library resources ---------------- */
 
-const idSet = (v: any) => api.asList(v, 'string').map(String);
-
 function entriesToObj(map: any) {
     const out: any = {};
     if (map && typeof map === 'object') {
@@ -118,67 +118,18 @@ function resourceHolders(channel: any) {
     return holders;
 }
 
-// Whether a library is (initially) associated with this channel — matches the
-// classic CodeTemplateLibrariesPanel: explicit membership, or include-new-channels
-// unless explicitly excluded.
-function libEnabledFor(lib: any, channelId: any) {
-    return idSet(lib.enabledChannelIds).includes(channelId)
-        || (lib.includeNewChannels === true && !idSet(lib.disabledChannelIds).includes(channelId));
-}
-
-// Persist library associations chosen in the Dependencies step. The channel doesn't
-// store these (the LIBRARIES do), so this runs AFTER the channel is created: mutate
-// each changed library's enabled/disabled channel sets and PUT the full list. Returns
-// silently if nothing changed. (Resources ride on the channel and need no extra call.)
-export async function persistLibraryAssociations(channel: any, libState: any, version: any) {
-    const st = libState && libState.current;
-    if (!st) return;
-    const changed = st.libraries.filter((lib: any) => st.checked.get(lib.id) !== st.initial.get(lib.id));
-    if (!changed.length) return;
-    for (const lib of changed) {
-        const enabled = new Set(idSet(lib.enabledChannelIds));
-        const disabled = new Set(idSet(lib.disabledChannelIds));
-        if (st.checked.get(lib.id)) { enabled.add(channel.id); disabled.delete(channel.id); }
-        else { enabled.delete(channel.id); disabled.add(channel.id); }
-        lib.enabledChannelIds = enabled.size ? { string: [...enabled] } : '';
-        lib.disabledChannelIds = disabled.size ? { string: [...disabled] } : '';
-    }
-    const payload = st.libraries.map((lib: any) => {
-        const { '@version': _v, codeTemplates: _ct, ...rest } = lib;
-        const ids = api.asList(lib.codeTemplates, 'codeTemplate').map((t: any) => t && t.id).filter(Boolean);
-        return {
-            '@version': lib['@version'] || version,
-            ...rest,
-            codeTemplates: ids.length ? { codeTemplate: ids.map((id: any) => ({ '@version': version, id })) } : null
-        };
-    });
-    await api.codeTemplates.updateLibraries(payload);
-}
-
-// Persist deploy/start dependencies chosen in the Dependencies step (after Create).
-// setChannelDependencies replaces the whole server list, so we send the full set.
-export async function persistChannelDependencies(depState: any) {
-    const d = depState && depState.current;
-    if (!d || !d.changed) return;
-    const curKey = d.all.map((x: any) => x.dependentId + '>' + x.dependencyId).sort().join('|');
-    if (curKey === d.initial) return;
-    await api.server.setChannelDependencies(d.all.map((x: any) => ({ dependentId: x.dependentId, dependencyId: x.dependencyId })));
-}
-
 // Filterable, scrollable multi-select modal — for picking from potentially large
 // lists (channels, libraries, resources). Returns the chosen ids via onAdd.
-function PickerModal({ title, items, onAdd, onClose }: any) {
+function PickerChoices({ items, onAdd, onClose }: any) {
     const [q, setQ] = useState('');
     const [sel, setSel] = useState(() => new Set());
     const needle = q.trim().toLowerCase();
     const filtered = needle ? items.filter((it: any) => it.name.toLowerCase().includes(needle)) : items;
     const toggle = (id: any) => { const n = new Set(sel); if (n.has(id)) n.delete(id); else n.add(id); setSel(n); };
     return (
-        <div className="modal-overlay" onMouseDown={(e: any) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className="modal" style={{ width: '460px', maxWidth: '92vw' }}>
-                <div className="modal-header">{title}<button type="button" className="icon-btn" onClick={onClose} title="Close">✕</button></div>
-                <div className="modal-body flex flex-col gap-2">
-                    <input type="text" autoFocus placeholder="Filter…" value={q} onChange={(e: any) => setQ(e.target.value)} />
+        <>
+                <div className="flex flex-col gap-2">
+                    <input type="text" aria-label="Filter channels" placeholder="Filter…" value={q} onChange={(e: any) => setQ(e.target.value)} />
                     <div className="border border-line rounded-md overflow-auto max-h-[288px]">
                         {filtered.length === 0 && <div className="p-2 text-text-faint text-[11px]">No matches.</div>}
                         {filtered.map((it: any) => (
@@ -193,9 +144,14 @@ function PickerModal({ title, items, onAdd, onClose }: any) {
                     <button type="button" className="btn" onClick={onClose}>Cancel</button>
                     <button type="button" className="btn btn-primary" disabled={sel.size === 0} onClick={() => { onAdd([...sel]); onClose(); }}>Add{sel.size ? ` (${sel.size})` : ''}</button>
                 </div>
-            </div>
-        </div>
+        </>
     );
+}
+
+function openPicker({ title, items, onAdd }: any) {
+    const dialog = openRadixDialog({ title,
+        body: <PickerChoices items={items} onAdd={onAdd} onClose={() => dialog.close()} />,
+    });
 }
 
 // Dependencies step: associate code-template libraries and library resources with
@@ -208,13 +164,12 @@ const DEP_TABS = [
     ['deploy', 'Deploy/Start Dependencies']
 ];
 
-export function DependenciesStep({ channel, libState, depState }: any) {
+export function DependenciesStep({ channel, libState, depState, onChange }: any) {
     const [, tick] = useReducer((x: any) => x + 1, 0);
     const [tab, setTab] = useState('libraries');
     const [loaded, setLoaded] = useState(false);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [failedLoads, setFailedLoads] = useState(() => new Set<string>());
-    const [picker, setPicker] = useState<any>(null);   // { kind, ids } when the channel picker is open
     const [libQuery, setLibQuery] = useState('');
     const [resQuery, setResQuery] = useState('');
     const [expanded, setExpanded] = useState(() => new Set());   // expanded library ids (show templates)
@@ -239,8 +194,9 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             const deps = (Array.isArray(channelDeps) ? channelDeps : [])
                 .map((d: any) => ({ dependentId: String(d.dependentId), dependencyId: String(d.dependencyId) }));
             if (dependencyResult.status === 'fulfilled' && !depState.current) {
-                depState.current = { all: deps, initial: deps.map((d: any) => d.dependentId + '>' + d.dependencyId).sort().join('|') };
+                depState.current = dependencySelection(deps);
             }
+            if (dependencyResult.status === 'fulfilled') refreshDependencyChoices(depState.current, deps);
             const names = new Map();
             for (const en of api.asList(idsAndNames && idsAndNames.entry)) {
                 const pair = api.asList(en && en.string);
@@ -249,9 +205,9 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             const libs = Array.isArray(libraries) ? libraries : [];
             // Seed the shared library-selection state once.
             if (libraryResult.status === 'fulfilled' && !libState.current) {
-                const checked = new Map(libs.map((l: any) => [l.id, libEnabledFor(l, channel.id)]));
-                libState.current = { libraries: libs, checked, initial: new Map(checked) };
+                libState.current = librarySelection(libs, channel.id);
             }
+            if (libraryResult.status === 'fulfilled') refreshLibraryChoices(libState.current, libs, channel.id);
             // Flatten the resources map (skip the built-in Default Resource).
             const resources: any[] = [];
             const seen = new Set();
@@ -270,7 +226,7 @@ export function DependenciesStep({ channel, libState, depState }: any) {
                 }
             }
             resources.sort((a: any, b: any) => a.name.localeCompare(b.name));
-            dataRef.current = { libraries: libs, resources, names };
+            dataRef.current = { libraries: libState.current?.libraries || libs, resources, names };
             const results = [libraryResult, resourceResult, dependencyResult, nameResult];
             const keys = ['libraries', 'resources', 'dependencies', 'names'];
             const failed = new Set(keys.filter((_key, index) => results[index].status === 'rejected'));
@@ -291,14 +247,15 @@ export function DependenciesStep({ channel, libState, depState }: any) {
     const st = libState.current || { checked: new Map() };
     const resObj = entriesToObj(channel.properties && channel.properties.resourceIds);
 
-    const toggleLib = (id: any, on: any) => { st.checked.set(id, on); tick(); };
+    const changed = () => { tick(); onChange(); };
+    const toggleLib = (id: any, on: any) => { st.checked.set(id, on); changed(); };
     const toggleRes = (id: any, name: any, on: any) => {
         for (const h of resourceHolders(channel)) {
             const obj = entriesToObj(h.resourceIds);
             if (on) obj[id] = name; else delete obj[id];
             h.resourceIds = objToEntries(obj);
         }
-        tick();
+        changed();
     };
 
     // Deploy/start dependencies (flat direct list, add/remove).
@@ -311,13 +268,13 @@ export function DependenciesStep({ channel, libState, depState }: any) {
     const addDep = (kind: any, id: any) => {
         if (!id) return;
         dep.all.push(kind === 'upstream' ? { dependentId: channel.id, dependencyId: id } : { dependentId: id, dependencyId: channel.id });
-        dep.changed = true; tick();
+        dep.changed = true; changed();
     };
     const removeDep = (kind: any, id: any) => {
         dep.all = dep.all.filter((d: any) => kind === 'upstream'
             ? !(d.dependentId === channel.id && d.dependencyId === id)
             : !(d.dependencyId === channel.id && d.dependentId === id));
-        depState.current.all = dep.all; dep.changed = true; tick();
+        depState.current.all = dep.all; dep.changed = true; changed();
     };
     const depSection = (kind: any, title: any, ids: any) => {
         const available = otherChannels.filter((id: any) => !ids.includes(id));
@@ -334,7 +291,11 @@ export function DependenciesStep({ channel, libState, depState }: any) {
                     ))}
                 </div>
                 <div>
-                    <button type="button" className="btn btn-sm" disabled={!available.length} onClick={() => setPicker({ kind, ids })}>
+                    <button type="button" className="btn btn-sm" disabled={!available.length} onClick={() => openPicker({
+                        title: 'Add channels',
+                        items: available.map((id: any) => ({ id, name: nameOf(id) })),
+                        onAdd: (chosen: any) => chosen.forEach((id: any) => addDep(kind, id)),
+                    })}>
                         <Icon name="plus" size={12} />Add channel
                     </button>
                 </div>
@@ -445,12 +406,6 @@ export function DependenciesStep({ channel, libState, depState }: any) {
             )}
             </TabsPrimitive.Content>
 
-            {picker && (
-                <PickerModal title="Add channels"
-                    items={otherChannels.filter((id: any) => !picker.ids.includes(id)).map((id: any) => ({ id, name: nameOf(id) }))}
-                    onAdd={(chosen: any) => chosen.forEach((id: any) => addDep(picker.kind, id))}
-                    onClose={() => setPicker(null)} />
-            )}
         </TabsPrimitive.Root>
     );
 }
@@ -572,12 +527,13 @@ const SCRIPTS = [
 export function ChannelScripts({ channel, onChange }: any) {
     const [which, setWhich] = useState('deployScript');
     const spec = SCRIPTS.find((s: any) => s.key === which);
+    const context = spec!.context;
     // Scope Monaco's variable/code-template completions to the selected script,
     // the same way the classic Scripts tab does (best-effort on an unsaved channel).
     useEffect(() => {
-        setActiveScope(channel.id, [spec!.context!]);
+        setActiveScope(channel.id, [context]);
         return () => clearActiveScope();
-    }, [channel.id, spec!.context!]);
+    }, [channel.id, context]);
     return (
         <div className="panel !mt-0">
             <div className="panel-header flex items-center gap-3">

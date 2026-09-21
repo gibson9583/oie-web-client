@@ -68,7 +68,7 @@ test('importing an alert with a duplicate name can overwrite the existing id', a
     await (await chooser).setFiles({
         name: 'duplicate-alert.xml',
         mimeType: 'application/xml',
-        buffer: Buffer.from('<alertModel version="4.5.0"><id>foreign-id</id><name>Error Alert</name><enabled>true</enabled></alertModel>')
+        buffer: Buffer.from('<alertModel version="4.6.0"><id>foreign-id</id><name>Error Alert</name><enabled>true</enabled></alertModel>')
     });
 
     const dialog = page.getByRole('dialog', { name: 'Import Alert' });
@@ -90,7 +90,7 @@ test('importing an alert with a duplicate name can create a renamed alert with a
     await (await chooser).setFiles({
         name: 'duplicate-alert.xml',
         mimeType: 'application/xml',
-        buffer: Buffer.from('<alertModel version="4.5.0"><id>foreign-id</id><name>Error Alert</name><enabled>true</enabled></alertModel>')
+        buffer: Buffer.from('<alertModel version="4.6.0"><id>foreign-id</id><name>Error Alert</name><enabled>true</enabled></alertModel>')
     });
 
     await page.getByRole('dialog', { name: 'Import Alert' })
@@ -119,7 +119,7 @@ test('alert import blocks an export from a newer server version', async ({ page 
     await (await chooser).setFiles({
         name: 'future-alert.xml',
         mimeType: 'application/xml',
-        buffer: Buffer.from('<alertModel version="4.6.0"><id>future-id</id><name>Future Alert</name><enabled>true</enabled></alertModel>')
+        buffer: Buffer.from('<alertModel version="4.7.0"><id>future-id</id><name>Future Alert</name><enabled>true</enabled></alertModel>')
     });
 
     const dialog = page.getByRole('dialog', { name: 'Information' });

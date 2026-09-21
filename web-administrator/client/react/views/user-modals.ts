@@ -130,10 +130,12 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
         optional: true, label: 'New Password',
         managedNote: isSsoSelf(user, store.getState('user')) ? SSO_MANAGED_NOTE : ''
     });
+    const progress = h('div.hint', { role: 'status' });
+    let acceptedProfile: string | null = null;
     modal({
         title: `Edit User — ${user.username}`,
         size: 'wide',
-        body: h('div', form.grid, pw.grid),
+        body: h('div', form.grid, pw.grid, progress),
         buttons: [
             { label: 'Cancel' },
             {
@@ -143,20 +145,34 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
                     if (!username) { toast('Username is required', 'warn'); return false; }
                     if (!pw.validate()) return false;
                     try {
-                        // Enforce the password policy before saving anything (as New
-                        // User does) so a rejected password never leaves a half-applied
-                        // edit (profile saved, password not).
+                        // Preflight policy can change before the password write;
+                        // its final receipt must still be checked below.
                         if (pw.hasValue()) {
                             const violations = passwordViolations(await api.users.checkPassword((pw.password as any).value));
                             if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
                         }
-                        for (const def of USER_FIELDS) user[def.key] = form.inputs[def.key].value.trim();
-                        await api.users.update(user.id, user);
-                        if (pw.hasValue()) await api.users.updatePassword(user.id, (pw.password as any).value);
+                        const submitted = { ...user };
+                        for (const def of USER_FIELDS) submitted[def.key] = form.inputs[def.key].value.trim();
+                        const signature = JSON.stringify(submitted);
+                        if (acceptedProfile !== signature) {
+                            await api.users.update(user.id, submitted);
+                            acceptedProfile = signature;
+                            Object.assign(user, submitted);
+                        }
+                        if (pw.hasValue()) {
+                            progress.textContent = 'Profile saved. Setting the password…';
+                            const violations = passwordViolations(await api.users.updatePassword(user.id, (pw.password as any).value));
+                            if (violations.length) {
+                                progress.textContent = 'Profile saved. Password was rejected; correct it and save again.';
+                                toast(`Password rejected: ${violations.join('; ')}`, 'warn');
+                                return false;
+                            }
+                        }
                         toast(`User "${username}" saved`);
                         if (onSaved) onSaved(user);
                         return true;
                     } catch (e: any) {
+                        if (acceptedProfile) progress.textContent = 'Profile saved. The remaining changes are not confirmed; review the error before retrying.';
                         toast(e.message, 'error');
                         return false;
                     }

@@ -47,6 +47,13 @@ const tsxLanguageOptions = {
 };
 
 export default [
+    // These generated twins retain their TypeScript source's hook directives.
+    // Hook dependency checks run on the sources; do not report their copied
+    // directives as unused merely because emitted JS has no hook rules.
+    {
+        files: ['web-administrator/client/connectors/index.js', 'web-administrator/client/connectors/react-forms.js'],
+        linterOptions: { reportUnusedDisableDirectives: 'off' },
+    },
     {
         ignores: [
             '**/node_modules/**',

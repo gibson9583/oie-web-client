@@ -66,7 +66,7 @@ test('a cold deep link to /alerts/:alertId/edit fetches and renders the alert', 
     // The default fixtures only serve the alerts LIST; the editor GETs the single
     // alert (and a second time for the conflict baseline), so it needs its own key.
     const existing = {
-        '@version': '4.5.0', id: AL, name: 'Error Alert', enabled: true,
+        '@version': '4.6.0', id: AL, name: 'Error Alert', enabled: true,
         trigger: {
             '@class': 'defaultTrigger',
             alertChannels: {
@@ -125,7 +125,7 @@ test('saving an alert leaves the list showing the new name, not the pre-edit one
     // single-alert GET are served from it (the latter also feeds the conflict
     // baseline, which must match or the save prompts instead of writing).
     let stored = {
-        '@version': '4.5.0', id: AL, name: 'Error Alert', enabled: true,
+        '@version': '4.6.0', id: AL, name: 'Error Alert', enabled: true,
         trigger: {
             '@class': 'defaultTrigger',
             alertChannels: {

@@ -7,6 +7,22 @@ import { test, expect } from './base.js';
  * engine needed, since the document loads before any /api call.
  */
 test.describe('security headers', () => {
+    test('legacy cache cleanup requires an explicit request and preserves cookies/storage', async ({ request }) => {
+        const navigation = await request.get('/webadmin/cache-reset');
+        expect(navigation.status()).toBe(405);
+        expect(navigation.headers()['allow']).toBe('POST');
+        expect(navigation.headers()['clear-site-data']).toBeUndefined();
+        const refused = await request.post('/webadmin/cache-reset');
+        expect(refused.status()).toBe(403);
+        expect(refused.headers()['clear-site-data']).toBeUndefined();
+        const accepted = await request.post('/webadmin/cache-reset', { headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' } });
+        expect(accepted.status()).toBe(204);
+        expect(accepted.headers()['clear-site-data']).toBe('"cache"');
+        expect(accepted.headers()['x-oie-cache-migration']).toBe('1');
+        expect(accepted.headers()['cache-control']).toBe('no-store');
+        expect(accepted.headers()['set-cookie']).toBeUndefined();
+    });
+
     test('the app document carries CSP, nosniff, and Referrer-Policy', async ({ page }) => {
         const resp = await page.goto('/');
         expect(resp, 'the app document responded').toBeTruthy();
@@ -23,7 +39,7 @@ test.describe('security headers', () => {
         for (const path of ['/', '/index.html', '/dashboard']) {
             const resp = await page.request.get(path);
             expect(resp.headers()['cache-control']).toBe('no-store');
-            expect(resp.headers()['clear-site-data']).toBe('"cache"');
+            expect(resp.headers()['clear-site-data']).toBeUndefined();
             const csp = resp.headers()['content-security-policy'];
             const scriptSrc = csp.split(';').map((s) => s.trim()).find((s) => s.startsWith('script-src'));
             expect(scriptSrc, `${path} script-src`).toMatch(/'nonce-[A-Za-z0-9+/=]+'/);

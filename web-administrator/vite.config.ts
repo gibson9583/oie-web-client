@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
+import { sanitizerEntry } from './tools/sanitizer.mjs';
 
 const clientDir = path.join(import.meta.dirname, 'client');
 
@@ -55,6 +56,7 @@ export default defineConfig({
     // same files for plugin authors.)
     resolve: {
         alias: {
+            './dompurify/dompurify.js': sanitizerEntry,
             '@oie/web-api': path.join(clientDir, 'core/pkg-api.js'),
             '@oie/web-ui': path.join(clientDir, 'core/pkg-ui.js'),
             '@oie/web-shell': path.join(clientDir, 'core/pkg-shell.js')

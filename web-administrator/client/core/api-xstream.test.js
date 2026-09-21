@@ -112,6 +112,23 @@ await api.channelGroups.bulkUpdate(groups, ['removed-group']);
 assert.deepEqual(await part('channelGroups'), { set: { channelGroup: groups } });
 assert.deepEqual(await part('removedChannelGroupIds'), { set: { string: ['removed-group'] } });
 
+// The existing Swing endpoint must retain null/all versus empty/none, and
+// preserve source-map values (including whitespace and embedded equals signs).
+for (const selection of [null, [], [3, 7], undefined]) {
+    await api.messages.processNew('test/channel', 'MSH|<>&\r\n', selection,
+        ['origin=first', 'origin=last', 'spacing= value=kept ', 'invalid']);
+    assert.ok(request.url.endsWith('/channels/test%2Fchannel/messagesWithObj'));
+    const raw = JSON.parse(request.body)['com.mirth.connect.donkey.model.message.RawMessage'];
+    assert.equal(raw.rawData, 'MSH|<>&\r\n');
+    assert.equal(raw.binary, false);
+    if (selection === null) assert.equal(Object.hasOwn(raw, 'destinationMetaDataIds'), false);
+    else assert.deepEqual(raw.destinationMetaDataIds, { '@class': 'list', int: selection || [] });
+    assert.deepEqual(raw.sourceMap, { '@class': 'map', entry: [
+        { string: ['origin', 'last'] }, { string: ['spacing', ' value=kept '] }
+    ] });
+    assertAttributesFirst(raw);
+}
+
 // Preserve content order, repeated elements, all attribute names, text nodes,
 // JSON escaping, and normal JSON.stringify handling of dates/undefined values.
 const mixed = freezeTree({

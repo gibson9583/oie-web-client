@@ -61,3 +61,14 @@ function badUsage() {
 void libraries;
 void badUsage;
 void taskGating;
+
+// Settings saves may await an engine receipt; false keeps the editor open.
+platform.registerSettingsPanel({
+    id: 'async-save-contract', label: 'Async save',
+    component: ({ setSave }) => {
+        setSave(async () => true);
+        setSave(() => false);
+        setSave(null);
+        return null;
+    },
+});

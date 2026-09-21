@@ -119,15 +119,15 @@ test('transformer sub-editor stacks its split panes on a narrow viewport', async
     const CH = 'rt';
     await mockEngine(page, {
         [`GET /channels/${CH}`]: { channel: {
-            '@version': '4.5.0', id: CH, name: 'RT', revision: 1, nextMetaDataId: 2,
+            '@version': '4.6.0', id: CH, name: 'RT', revision: 1, nextMetaDataId: 2,
             sourceConnector: {
-                '@version': '4.5.0', metaDataId: 0, name: 'sourceConnector',
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0', pluginProperties: null,
-                    sourceConnectorProperties: { '@version': '4.5.0', responseVariable: 'None', respondAfterProcessing: true, processBatch: false, firstResponse: false, processingThreads: 1, queueBufferSize: 1000, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } } } },
-                transformer: { '@version': '4.5.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
-                filter: { '@version': '4.5.0', elements: '' }, transportName: 'Channel Reader', mode: 'SOURCE', enabled: true, waitForPrevious: true },
+                '@version': '4.6.0', metaDataId: 0, name: 'sourceConnector',
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.6.0', pluginProperties: null,
+                    sourceConnectorProperties: { '@version': '4.6.0', responseVariable: 'None', respondAfterProcessing: true, processBatch: false, firstResponse: false, processingThreads: 1, queueBufferSize: 1000, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } } } },
+                transformer: { '@version': '4.6.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
+                filter: { '@version': '4.6.0', elements: '' }, transportName: 'Channel Reader', mode: 'SOURCE', enabled: true, waitForPrevious: true },
             destinationConnectors: { connector: [] },
-            properties: { '@version': '4.5.0', messageStorageMode: 'DEVELOPMENT', initialState: 'STARTED', metaDataColumns: { metaDataColumn: [] }, attachmentProperties: { '@version': '4.5.0', type: 'None', properties: null } },
+            properties: { '@version': '4.6.0', messageStorageMode: 'DEVELOPMENT', initialState: 'STARTED', metaDataColumns: { metaDataColumn: [] }, attachmentProperties: { '@version': '4.6.0', type: 'None', properties: null } },
             exportData: { metadata: { enabled: true } } } },
     });
     await page.goto(`/channels/${CH}/transformer/0`);
@@ -147,22 +147,22 @@ test('destination connector editor stacks the cform and left-aligns wait-for-pre
     const CH = 'dch';
     await mockEngine(page, {
         [`GET /channels/${CH}`]: { channel: {
-            '@version': '4.5.0', id: CH, name: 'DCh', revision: 1, nextMetaDataId: 2,
+            '@version': '4.6.0', id: CH, name: 'DCh', revision: 1, nextMetaDataId: 2,
             sourceConnector: {
-                '@version': '4.5.0', metaDataId: 0, name: 'sourceConnector',
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.5.0', pluginProperties: null,
-                    sourceConnectorProperties: { '@version': '4.5.0', responseVariable: 'None', respondAfterProcessing: true, processBatch: false, firstResponse: false, processingThreads: 1, queueBufferSize: 1000, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } } } },
-                transformer: { '@version': '4.5.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
-                filter: { '@version': '4.5.0', elements: '' }, transportName: 'Channel Reader', mode: 'SOURCE', enabled: true, waitForPrevious: true },
+                '@version': '4.6.0', metaDataId: 0, name: 'sourceConnector',
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmReceiverProperties', '@version': '4.6.0', pluginProperties: null,
+                    sourceConnectorProperties: { '@version': '4.6.0', responseVariable: 'None', respondAfterProcessing: true, processBatch: false, firstResponse: false, processingThreads: 1, queueBufferSize: 1000, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } } } },
+                transformer: { '@version': '4.6.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
+                filter: { '@version': '4.6.0', elements: '' }, transportName: 'Channel Reader', mode: 'SOURCE', enabled: true, waitForPrevious: true },
             destinationConnectors: { connector: [{
-                '@version': '4.5.0', metaDataId: 1, name: 'Dest',
-                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.5.0', pluginProperties: null,
-                    destinationConnectorProperties: { '@version': '4.5.0', queueEnabled: false, sendFirst: false, retryIntervalMillis: 10000, regenerateTemplate: false, retryCount: 0, rotate: false, includeFilterTransformer: false, threadCount: 1, threadAssignmentVariable: null, validateResponse: false, reattachAttachments: true, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, queueBufferSize: 1000 },
+                '@version': '4.6.0', metaDataId: 1, name: 'Dest',
+                properties: { '@class': 'com.mirth.connect.connectors.vm.VmDispatcherProperties', '@version': '4.6.0', pluginProperties: null,
+                    destinationConnectorProperties: { '@version': '4.6.0', queueEnabled: false, sendFirst: false, retryIntervalMillis: 10000, regenerateTemplate: false, retryCount: 0, rotate: false, includeFilterTransformer: false, threadCount: 1, threadAssignmentVariable: null, validateResponse: false, reattachAttachments: true, resourceIds: { '@class': 'linked-hash-map', entry: { string: ['Default Resource', '[Default Resource]'] } }, queueBufferSize: 1000 },
                     channelId: 'none', channelTemplate: '${message.encodedData}' },
-                transformer: { '@version': '4.5.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
-                responseTransformer: { '@version': '4.5.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
-                filter: { '@version': '4.5.0', elements: '' }, transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true }] },
-            properties: { '@version': '4.5.0', messageStorageMode: 'DEVELOPMENT', initialState: 'STARTED', metaDataColumns: { metaDataColumn: [] }, attachmentProperties: { '@version': '4.5.0', type: 'None', properties: null } },
+                transformer: { '@version': '4.6.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
+                responseTransformer: { '@version': '4.6.0', elements: '', inboundDataType: 'HL7V2', outboundDataType: 'HL7V2', inboundProperties: null, outboundProperties: null },
+                filter: { '@version': '4.6.0', elements: '' }, transportName: 'Channel Writer', mode: 'DESTINATION', enabled: true, waitForPrevious: true }] },
+            properties: { '@version': '4.6.0', messageStorageMode: 'DEVELOPMENT', initialState: 'STARTED', metaDataColumns: { metaDataColumn: [] }, attachmentProperties: { '@version': '4.6.0', type: 'None', properties: null } },
             exportData: { metadata: { enabled: true } } } },
     });
     await page.goto(`/channels/${CH}/edit`);

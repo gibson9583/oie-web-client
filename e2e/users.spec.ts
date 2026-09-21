@@ -161,6 +161,31 @@ test('Edit User blocks a policy-violating password reset (nothing written)', asy
     await expect(page.locator('.modal input[type=password]')).toHaveCount(2);
 });
 
+test('Edit User keeps a rejected password write open and retries without saving the profile twice', async ({ page }) => {
+    let profiles = 0;
+    let passwords = 0;
+    await mockEngine(page, {
+        'PUT /users/2': () => { profiles++; return ''; },
+        'PUT /users/2/password': () => ++passwords === 1 ? { list: { string: ['Password was already used'] } } : { list: [] },
+    });
+    await openEditUser(page);
+    const dialog = page.getByRole('dialog', { name: /Edit User/ });
+    const fields = dialog.locator('input[type=password]');
+    await fields.nth(0).fill('AcceptedByPreflight!');
+    await fields.nth(1).fill('AcceptedByPreflight!');
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('Password rejected: Password was already used', { exact: true })).toBeVisible();
+    await page.getByRole('dialog', { name: 'Warning' }).getByRole('button', { name: 'Close', exact: true }).last().click();
+    await expect(dialog.getByRole('status')).toContainText('Profile saved. Password was rejected');
+    expect(profiles).toBe(1);
+    await fields.nth(0).fill('CorrectedPassword!');
+    await fields.nth(1).fill('CorrectedPassword!');
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(profiles).toBe(1);
+    expect(passwords).toBe(2);
+});
+
 test('New User dialog includes the extended profile fields (country/role/business/description)', async ({ page }) => {
     await mockEngine(page);
     await openNewUser(page);

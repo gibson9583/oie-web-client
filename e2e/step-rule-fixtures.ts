@@ -19,7 +19,7 @@
 
 import { makeChannel } from './connector-fixtures.js';
 
-const V = '4.5.0';
+const V = '4.6.0';
 const P = 'com.mirth.connect.plugins';
 
 /* Build a channel whose SOURCE connector's transformer (or filter) holds one

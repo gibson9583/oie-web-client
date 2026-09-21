@@ -19,8 +19,11 @@
  * Pruner save; Administrator is localStorage-only; Database Tasks has no Save).
  */
 
+import { withEditorSave } from '../save-lock.js';
 import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
 import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
+import { captureEngineSession } from '../../core/engine-fetch.js';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs, PREF_DEFAULTS, DASHBOARD_REFRESH_SECONDS } from '../../core/prefs.js';
@@ -178,7 +181,26 @@ const DEFAULT_META_COLUMNS = {
     VERSION: { name: 'VERSION', type: 'STRING', mappingName: 'mirth_version' }
 };
 
+// Routed React roots can finish requests after logout or a tab switch. Keep
+// their settings callbacks attached to the tab and session that started them.
+function useSettingsSession() {
+    const mounted = useRef(true);
+    const [current] = useState(() => {
+        const assertSession = captureEngineSession();
+        return () => {
+            if (!mounted.current) return false;
+            try { assertSession(); return true; } catch { return false; }
+        };
+    });
+    useEffect(() => {
+        mounted.current = true;
+        return () => { mounted.current = false; };
+    }, []);
+    return current;
+}
+
 function ServerTab({ ctx }: any) {
+    const current = useSettingsSession();
     // Round-trip object (mutated on save; unknown fields survive).
     const settingsRef = useRef<any>(null);        // ServerSettings
     const [form, setForm] = useState<any>(null);  // null = loading
@@ -186,11 +208,15 @@ function ServerTab({ ctx }: any) {
     const patch = (p: any) => setForm((f: any) => ({ ...f, ...p }));
 
     async function load() {
+        if (!current()) return;
         setForm(null);
         setLoadError(null);
         try {
-            settingsRef.current = (await api.server.settings()) || {};
+            const settings = await api.server.settings();
+            if (!current()) return;
+            settingsRef.current = settings || {};
         } catch (e: any) {
+            if (!current()) return;
             toast(`Failed to load server settings: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
             return;
@@ -219,7 +245,10 @@ function ServerTab({ ctx }: any) {
         });
     }
 
-    async function save() {
+    function save() { return withEditorSave(saveUnlocked); }
+
+    async function saveUnlocked() {
+        if (!current()) return false;
         const settings = settingsRef.current;
         const f = formRef.current;
         if (!f || !settings) return;
@@ -264,12 +293,14 @@ function ServerTab({ ctx }: any) {
             settings.loginNotificationMessage = f.loginNotificationMessage;
 
             await api.server.setSettings(settings);
+            if (!current()) return false;
             // Re-tint the rail + topbar live with the saved color.
             applyEnvironmentColor(settings.defaultAdministratorBackgroundColor);
             toast('Server settings saved');
             ctx.markClean();
             return true;
         } catch (e: any) {
+            if (!current()) return false;
             toast(`Save failed: ${e.message}`, 'error');
             return false;
         }
@@ -285,6 +316,7 @@ function ServerTab({ ctx }: any) {
     saveRef.current = save;
 
     function sendTestEmail() {
+        if (!current()) return;
         const f = formRef.current;
         if (!f) return;
         /* Properties keys verified against SettingsPanelServer.sendTestEmail():
@@ -299,6 +331,7 @@ function ServerTab({ ctx }: any) {
                 {
                     label: 'Send', primary: true,
                     onClick: async () => {
+                        if (!current()) return;
                         try {
                             const props = listToProps([
                                 { name: 'port', value: f.smtpPort },
@@ -312,10 +345,12 @@ function ServerTab({ ctx }: any) {
                                 { name: 'fromAddress', value: f.smtpFrom }
                             ]);
                             const response = await api.server.testEmail(props);
+                            if (!current()) return;
                             const message = (response && typeof response === 'object' ? response.message : response) || 'Test email sent';
                             const failed = response && typeof response === 'object' && response.type && response.type !== 'SUCCESS';
                             toast(String(message), failed ? 'error' : 'info');
                         } catch (e: any) {
+                            if (!current()) return;
                             toast(`Test email failed: ${e.message}`, 'error');
                             return false;
                         }
@@ -326,6 +361,7 @@ function ServerTab({ ctx }: any) {
     }
 
     async function backupConfig() {
+        if (!current()) return;
         try {
             // Open the Save dialog within the click gesture; fetch inside the callback.
             await saveFile('server-configuration.xml', 'application/xml', async () => {
@@ -337,9 +373,9 @@ function ServerTab({ ctx }: any) {
                 const text = await res.text();
                 assertEngineResponse(res);
                 return text;
-            });
+            }, () => { if (!current()) throw new Error('The settings editor is no longer active.'); });
         } catch (e: any) {
-            toast(`Backup failed: ${e.message}`, 'error');
+            if (current()) toast(`Backup failed: ${e.message}`, 'error');
         }
     }
 
@@ -365,12 +401,16 @@ function ServerTab({ ctx }: any) {
     }
 
     async function restoreConfig() {
-        const file = await pickFile('.xml');
-        if (!file) return;
+        if (!current()) return;
+        let file;
+        try { file = await pickFile('.xml'); }
+        catch (e: any) { if (current()) toast(`Restore failed: ${e.message}`, 'error'); return; }
+        if (!current() || !file) return;
         // Swing promptObjectMigration("server configuration") before the restore prompt.
         const verdict = checkImportVersionFromDoc(
             new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml'), 'server configuration');
         if (verdict.action !== 'ok' && !await migrationDialog(verdict)) return;
+        if (!current()) return;
         // Match the Swing import prompt: deploy ON by default, overwrite config map OFF.
         const deployCheck = checkbox('Deploy all channels after import', true);
         const overwriteCheck = checkbox('Overwrite Configuration Map', false);
@@ -390,6 +430,7 @@ function ServerTab({ ctx }: any) {
                 {
                     label: 'Restore', danger: true,
                     onClick: async () => {
+                        if (!current()) return;
                         try {
                             await api.put('/server/configuration', file.content, {
                                 contentType: 'application/xml',
@@ -398,9 +439,11 @@ function ServerTab({ ctx }: any) {
                                     overwriteConfigMap: overwriteCheck.input.checked
                                 }
                             });
+                            if (!current()) return;
                             toast('Server configuration restored');
                             loadRef.current();
                         } catch (e: any) {
+                            if (!current()) return;
                             toast(`Restore failed: ${e.message}`, 'error');
                             return false;
                         }
@@ -411,13 +454,17 @@ function ServerTab({ ctx }: any) {
     }
 
     async function clearAllStatistics() {
+        if (!current()) return;
         if (await confirmDialog('Clear All Statistics',
             'Clear the statistics (received, filtered, sent, errored) for all channels and connectors? This cannot be undone.',
             { danger: true, okLabel: 'Clear' })) {
+            if (!current()) return;
             try {
                 await api.statistics.clearAll();
+                if (!current()) return;
                 toast('All statistics cleared');
             } catch (e: any) {
+                if (!current()) return;
                 toast(`Clear failed: ${e.message}`, 'error');
             }
         }
@@ -613,6 +660,7 @@ function channelIdNamePairs(raw: any) {
    ============================================================================ */
 
 function AdministratorTab({ ctx }: any) {
+    const current = useSettingsSession();
     const [form, setForm] = useState<any>(null);
     const patch = (p: any) => setForm((f: any) => ({ ...f, ...p }));
     const serverDefaultColorRef = useRef<any>(null);   // loaded async, for the live re-tint on save
@@ -624,6 +672,7 @@ function AdministratorTab({ ctx }: any) {
     const fontMonoValue = (val: any) => (FONT_MONO_OPTIONS.includes(val) ? val : 'jetbrains');
 
     function load() {
+        if (!current()) return;
         setForm({
             dashRefresh: String(getPref('dashboardRefreshSeconds') ?? ''),
             msgPageSize: String(Number(getPref('messagePageSize')) || 20),
@@ -653,6 +702,7 @@ function AdministratorTab({ ctx }: any) {
                     // getPreferences collapses/mangles the <awt-color> value.
                     userId != null ? api.users.getPreference(userId, 'backgroundColor', { raw: true }).catch(() => null) : Promise.resolve(null)
                 ]);
+                if (!current()) return;
                 serverDefaultColorRef.current = srv && srv.defaultAdministratorBackgroundColor;
                 const override = parseColorPref(bgPref);
                 if (override) patch({ bgMode: 'custom', bgColor: colorToHex(override, '#2a75b2') });
@@ -660,7 +710,10 @@ function AdministratorTab({ ctx }: any) {
         })();
     }
 
-    async function save() {
+    function save() { return withEditorSave(saveUnlocked); }
+
+    async function saveUnlocked() {
+        if (!current()) return false;
         const f = formRef.current;
         if (!f) return;
         setPrefs({
@@ -706,9 +759,12 @@ function AdministratorTab({ ctx }: any) {
                     effective = serverDefaultColorRef.current;
                 }
                 await api.users.setPreference(userId, 'backgroundColor', value);
+                if (!current()) return false;
                 applyEnvironmentColor(effective);
             } catch (e: any) {
+                if (!current()) return false;
                 toast(`Could not save background color: ${e.message}`, 'error');
+                return false;
             }
         }
         ctx.markClean();
@@ -889,6 +945,7 @@ function AdministratorTab({ ctx }: any) {
 }
 
 function TagsTab({ ctx }: any) {
+    const current = useSettingsSession();
     /* Edit-session model: tag objects are mutated in place (their identity is
        the setChannelTags payload); mutations bump the container to repaint.
        Modal-driven mutations (add/edit/remove) call ctx.markDirty() explicitly —
@@ -911,17 +968,20 @@ function TagsTab({ ctx }: any) {
     const currentTag = (tags || []).find((t: any) => t.id === selectedId) || null;
 
     async function load() {
+        if (!current()) return;
         setLoadError(null);
         try {
             const [tagList, idsAndNames] = await Promise.all([
                 api.server.channelTags(),
                 api.channels.idsAndNames()
             ]);
+            if (!current()) return;
             setTags(tagList);
             setAllChannels(channelIdNamePairs(idsAndNames));
             setSelectedId(null);
             tableRef.current?.clearSelection();
         } catch (e: any) {
+            if (!current()) return;
             toast(`Failed to load tags: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
         }
@@ -952,8 +1012,9 @@ function TagsTab({ ctx }: any) {
     }
 
     async function addTag() {
+        if (!current()) return;
         const name = await promptDialog('New Tag', 'Tag name');
-        if (name === null || name.trim() === '') return;
+        if (!current() || name === null || name.trim() === '') return;
         setTags((prev: any) => [...(prev || []), {
             id: crypto.randomUUID(),
             name: fixTagName(name),
@@ -989,23 +1050,30 @@ function TagsTab({ ctx }: any) {
     }
 
     async function removeTag(tagArg: any) {
+        if (!current()) return;
         const tag = tagArg || tagsNowRef.current?.find((t: any) => t.id === selectedId) || null;
         if (!tag) { toast('Select a tag first', 'warn'); return; }
         if (await confirmDialog('Remove Tag', `Remove tag "${tag.name}"? Save to apply.`, { danger: true, okLabel: 'Remove' })) {
+            if (!current()) return;
             setTags((prev: any) => prev.filter((t: any) => t !== tag));
             setSelectedId((prev: any) => (prev === tag.id ? null : prev));
             ctx.markDirty();
         }
     }
 
-    async function save() {
+    function save() { return withEditorSave(saveUnlocked); }
+
+    async function saveUnlocked() {
+        if (!current()) return false;
         try {
             await api.server.setChannelTags(tagsNowRef.current || []);
+            if (!current()) return false;
             ctx.markClean();
             toast('Tags saved');
-            loadRef.current();
-            return true;
+            await loadRef.current();
+            return current();
         } catch (e: any) {
+            if (!current()) return false;
             toast(`Save failed: ${e.message}`, 'error');
             return false;
         }
@@ -1122,6 +1190,7 @@ const newCfgRow = (key = '', value = '', comment = '', propKey = CONFIGURATION_P
     ({ _id: ++cfgRowSeq, key, value, comment, propKey, prop });
 
 function ConfigurationMapTab({ ctx }: any) {
+    const currentSession = useSettingsSession();
     /* Rows are plain state; inputs are controlled with STABLE per-row keys so
        typing keeps focus across re-renders and insert/delete never re-binds a
        neighboring row's value. Insert/delete positions use the ORIGINAL index
@@ -1141,9 +1210,11 @@ function ConfigurationMapTab({ ctx }: any) {
     const bumpStructure = () => setStructureVersion(v => v + 1);
 
     async function load() {
+        if (!currentSession()) return;
         setLoadError(null);
         try {
             const raw = await api.server.configurationMap();
+            if (!currentSession()) return;
             const next: any[] = [];
             for (const entry of api.asList(raw && raw.entry)) {
                 if (!entry || typeof entry !== 'object') continue;
@@ -1165,12 +1236,16 @@ function ConfigurationMapTab({ ctx }: any) {
             setRows(next);
             bumpStructure();
         } catch (e: any) {
+            if (!currentSession()) return;
             toast(`Failed to load configuration map: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
         }
     }
 
-    async function save() {
+    function save() { return withEditorSave(saveUnlocked); }
+
+    async function saveUnlocked() {
+        if (!currentSession()) return false;
         try {
             /* Round-trip each entry's property-class key and any extra fields
                the engine put on the ConfigurationProperty. */
@@ -1179,19 +1254,27 @@ function ConfigurationMapTab({ ctx }: any) {
                 [r.propKey || CONFIGURATION_PROPERTY_CLASS]: { ...(r.prop || {}), value: r.value, comment: r.comment }
             }));
             await api.server.setConfigurationMap({ entry });
+            if (!currentSession()) return false;
             ctx.markClean();
             toast('Configuration map saved');
             return true;
         } catch (e: any) {
+            if (!currentSession()) return false;
             toast(`Save failed: ${e.message}`, 'error');
             return false;
         }
     }
 
     async function importMap() {
+        if (!currentSession()) return;
         if (!rowsNowRef.current) { toast('The configuration map has not loaded yet', 'warn'); return; }
-        const file = await pickFile('.properties');
-        if (!file) return;
+        let file;
+        try { file = await pickFile('.properties'); }
+        catch (e: any) {
+            if (currentSession()) toast(`Import failed: ${e.message}`, 'error');
+            return;
+        }
+        if (!currentSession() || !file) return;
         const imported: any[] = [];
         let pendingComment: any[] = [];
         for (const line of String(file.content).split(/\r?\n/)) {
@@ -1211,7 +1294,7 @@ function ConfigurationMapTab({ ctx }: any) {
             `Import ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} from "${file.name}"?` +
             (overlap ? ` ${overlap} existing key(s) will be overwritten.` : ''),
             { okLabel: 'Import' });
-        if (!ok) return;
+        if (!currentSession() || !ok) return;
         setRows((prev: any) => {
             const next = prev.slice();
             for (const imp of imported) {
@@ -1230,7 +1313,8 @@ function ConfigurationMapTab({ ctx }: any) {
         toast(`Imported ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} — Save to apply`);
     }
 
-    function exportMap() {
+    async function exportMap() {
+        if (!currentSession()) return;
         const lines: any[] = [];
         for (const r of rowsNowRef.current || []) {
             if (r.key.trim() === '') continue;
@@ -1239,7 +1323,13 @@ function ConfigurationMapTab({ ctx }: any) {
             }
             lines.push(`${r.key.trim()}=${r.value ?? ''}`);
         }
-        saveFile('configuration.properties', 'text/plain', lines.join('\n') + '\n');
+        try {
+            await saveFile('configuration.properties', 'text/plain', lines.join('\n') + '\n', () => {
+                if (!currentSession()) throw new Error('The settings editor is no longer active.');
+            });
+        } catch (e: any) {
+            if (currentSession()) toast(`Export failed: ${e.message}`, 'error');
+        }
     }
 
     const loadRef = useRef(load);
@@ -1362,6 +1452,7 @@ function ConfigurationMapTab({ ctx }: any) {
    ============================================================================ */
 
 function DatabaseTasksTab({ ctx }: any) {
+    const current = useSettingsSession();
     const [taskRows, setTaskRows] = useState<any>(null);   // null = loading
     const [selectedId, setSelectedId] = useState<any>(null);
     const [loadError, setLoadError] = useState<any>(null);
@@ -1393,23 +1484,31 @@ function DatabaseTasksTab({ ctx }: any) {
     }
 
     async function load() {
+        if (!current()) return;
         try {
-            setTaskRows(normalize(await api.databaseTasks.list()));
+            const tasks = await api.databaseTasks.list();
+            if (!current()) return;
+            setTaskRows(normalize(tasks));
             setLoadError(null);
         } catch (e: any) {
+            if (!current()) return;
             toast(`Failed to load database tasks: ${e.message}`, 'error');
             if (taskRowsNowRef.current === null) setLoadError(String(e.message || e));
         }
     }
 
     async function runTask(task: any) {
+        if (!current()) return;
         if (!task) { toast('Select a task first', 'warn'); return; }
         const message = task.confirmationMessage || `Run "${task.name}"? This task may take a long time to complete.`;
         if (await confirmDialog('Run Database Task', message, { okLabel: 'Run' })) {
+            if (!current()) return;
             try {
                 const result = await api.databaseTasks.run(task.id);
+                if (!current()) return;
                 toast(typeof result === 'string' && result ? result : 'Task started');
             } catch (e: any) {
+                if (!current()) return;
                 toast(`Run failed: ${e.message}`, 'error');
             }
             loadRef.current();
@@ -1417,12 +1516,15 @@ function DatabaseTasksTab({ ctx }: any) {
     }
 
     async function cancelTask(task: any) {
+        if (!current()) return;
         if (!task) { toast('Select a task first', 'warn'); return; }
         if (!isRunning(task)) { toast(`Task "${task.name}" is not currently running.`, 'warn'); return; }
         try {
             await api.databaseTasks.cancel(task.id);
+            if (!current()) return;
             toast('Cancel requested');
         } catch (e: any) {
+            if (!current()) return;
             toast(`Cancel failed: ${e.message}`, 'error');
         }
         loadRef.current();
@@ -1504,6 +1606,7 @@ function DatabaseTasksTab({ ctx }: any) {
    ============================================================================ */
 
 function ResourcesTab({ ctx }: any) {
+    const current = useSettingsSession();
     /* Edit-session model: [{ className, obj }] — resource objects are mutated
        in place (checkbox columns, the plugin detail editor) and the container
        identity bumps to repaint; save rebuilds the fetched container shape.
@@ -1552,12 +1655,16 @@ function ResourcesTab({ ctx }: any) {
     }
 
     async function load() {
+        if (!current()) return;
         setLoadError(null);
         try {
-            setEntries(normalize(await api.server.resources()));
+            const resources = await api.server.resources();
+            if (!current()) return;
+            setEntries(normalize(resources));
             setSelectedId(null);
             tableRef.current?.clearSelection();
         } catch (e: any) {
+            if (!current()) return;
             toast(`Failed to load resources: ${e.message}`, 'error');
             setLoadError(String(e.message || e));
         }
@@ -1582,10 +1689,12 @@ function ResourcesTab({ ctx }: any) {
     }
 
     async function removeResource(entryArg: any) {
+        if (!current()) return;
         const entry = entryArg || (entriesNowRef.current || []).find((e: any) => e.obj.id === selectedId) || null;
         if (!entry) { toast('Select a resource first', 'warn'); return; }
         if (isDefault(entry)) { toast('The Default Resource cannot be removed', 'warn'); return; }
         if (await confirmDialog('Remove Resource', `Remove resource "${entry.obj.name}"? Save to apply.`, { danger: true, okLabel: 'Remove' })) {
+            if (!current()) return;
             setEntries((prev: any) => prev.filter((e: any) => e !== entry));
             setSelectedId((prev: any) => (prev === entry.obj.id ? null : prev));
             ctx.markDirty();
@@ -1593,24 +1702,32 @@ function ResourcesTab({ ctx }: any) {
     }
 
     async function reloadResource(entryArg: any) {
+        if (!current()) return;
         const entry = entryArg || (entriesNowRef.current || []).find((e: any) => e.obj.id === selectedId) || null;
         if (!entry) { toast('Select a resource first', 'warn'); return; }
         try {
             await api.server.reloadResource(entry.obj.id);
+            if (!current()) return;
             toast(`Resource "${entry.obj.name}" reloaded`);
         } catch (e: any) {
+            if (!current()) return;
             toast(`Reload failed: ${e.message}`, 'error');
         }
     }
 
-    async function save() {
+    function save() { return withEditorSave(saveUnlocked); }
+
+    async function saveUnlocked() {
+        if (!current()) return false;
         try {
             await api.server.setResources(container());
+            if (!current()) return false;
             ctx.markClean();
             toast('Resources saved');
-            loadRef.current();
-            return true;
+            await loadRef.current();
+            return current();
         } catch (e: any) {
+            if (!current()) return false;
             toast(`Save failed: ${e.message}`, 'error');
             return false;
         }
@@ -1884,6 +2001,7 @@ export function SettingsView({ query }: any) {
     // The active tab's declared task pane (title + legacy DOM items).
     const tasksRef = useRef({ title: 'Server Tasks', items: [] });
     const dirtyRef = useRef(false);
+    useEffect(() => registerUnsavedCheck(() => dirtyRef.current), []);
     const saveRef = useRef<any>(null);   // the active tab's save(), if it supports saving
     const activeLabelRef = useRef<any>(null);   // active tab label, for its settings_<Tab> RBAC group
 

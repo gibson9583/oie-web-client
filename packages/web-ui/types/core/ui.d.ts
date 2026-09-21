@@ -219,7 +219,7 @@ export declare function taskButton(label: string, iconName?: string | null, onCl
     title?: string;
 }): HTMLElement | null;
 export declare function downloadFile(filename: string, content: Blob | string | BlobPart, type?: string): void;
-export declare function saveFile(suggestedName: string, type: string, getContent: string | Blob | (() => string | Blob | Promise<string | Blob>)): Promise<void>;
+export declare function saveFile(suggestedName: string, type: string, getContent: string | Blob | (() => string | Blob | Promise<string | Blob>), assertCurrent?: () => void): Promise<void>;
 export declare function pickFile(accept?: string, { binary }?: {
     binary?: boolean;
 }): Promise<{

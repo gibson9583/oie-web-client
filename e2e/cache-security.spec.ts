@@ -1,5 +1,6 @@
 import { test, expect } from './base.js';
 import { listen } from './server-harness.js';
+import { mockEngine } from './mock.js';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -53,11 +54,12 @@ test('engine data is unavailable from disk cache after logout and browser restar
     }
 });
 
-test('the shell cache policy evicts legacy responses without removing sign-in or preferences', async ({ page, request }) => {
-    // Use the real shell's headers on an origin simulating an older WAR. This
+test('the background cache policy evicts legacy responses without removing sign-in or preferences', async ({ page, request }) => {
+    // Use the real reset endpoint's headers on an origin simulating an older WAR. This
     // origin must be separate: the current Node proxy already forces no-store.
-    const shell = await request.get('/');
-    const headers = shell.headers();
+    const reset = await request.post('/webadmin/cache-reset', { headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' } });
+    expect(reset.status()).toBe(204);
+    const headers = reset.headers();
     let loggedIn = true, hits = 0;
     const server = await listen((req, res) => {
         if (req.url === '/api/sensitive') {
@@ -86,10 +88,43 @@ test('the shell cache policy evicts legacy responses without removing sign-in or
         expect(await page.evaluate(async () => (await fetch('/api/sensitive', { cache: 'force-cache' })).text()))
             .toBe('SYNTHETIC-LEGACY-DATA');
         expect(hits).toBe(1);
-        await page.goto(server.url + '/upgraded');
+        // A subresource clears the cache without making the document wait.
+        await page.evaluate(async () => { await (await fetch('/upgraded', { cache: 'no-store' })).text(); });
         expect(await page.evaluate(async () => (await fetch('/api/sensitive', { cache: 'force-cache' })).status)).toBe(401);
         expect(hits).toBe(2);
         expect(await page.evaluate(() => document.cookie)).toContain('synthetic-session=keep');
         expect(await page.evaluate(() => localStorage.getItem('theme'))).toBe('dark');
     } finally { server.server.closeAllConnections(); server.server.close(); }
 });
+
+for (const outcome of ['success', 'failure']) {
+    test(`slow cache cleanup does not block login and ${outcome === 'success' ? 'is not repeated' : 'retries after failure'}`, async ({ page }) => {
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        let calls = 0;
+        await mockEngine(page, { 'GET /users/current': { __status: 401 } });
+        await page.route('**/webadmin/cache-reset', async route => {
+            calls++;
+            await held;
+            await route.fulfill({ status: outcome === 'success' ? 204 : 503,
+                headers: { 'Clear-Site-Data': '"cache"', 'Cache-Control': 'no-store', 'X-OIE-Cache-Migration': '1' } });
+        });
+        try {
+            await page.goto('/', { waitUntil: 'domcontentloaded' });
+            await expect.poll(() => calls).toBe(1);
+            await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+            release();
+            // Await the same migration promise so completion/failure is settled
+            // before reloading; the shell must not have awaited it to render.
+            await page.evaluate(async () => {
+                const migration = await import(String('/core/cache-migration.js'));
+                await migration.migrateLegacyCache().catch(() => {});
+            });
+            const beforeReload = calls;
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+            if (outcome === 'success') expect(calls).toBe(beforeReload);
+            else await expect.poll(() => calls).toBeGreaterThan(beforeReload);
+        } finally { release(); }
+    });
+}

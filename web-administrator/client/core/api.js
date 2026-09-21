@@ -380,7 +380,7 @@ export function asList(value, key) {
 export const auth = {
     // Idle-timeout logout (Swing parity): a distinct engine operation so the event
     // log records "Logged out due to inactivity" instead of a plain logout.
-    inactivityLogout: () => post('/users/_inactivityLogout', '', { noAuthHandler: true }),
+    inactivityLogout: () => post('/users/_inactivityLogout', '', { noAuthHandler: true, timeoutMs: 5_000 }),
     // `loginData`, when present, is the second leg of an extended/MFA login: the
     // engine reads it from the X-Mirth-Login-Data header (UserServletInterface
     // .LOGIN_DATA_HEADER) and delegates to its MFA plugin instead of re-checking
@@ -460,11 +460,11 @@ export const channels = {
 };
 export const channelGroups = {
     list: () => get('/channelgroups').then(v => asList(v, 'channelGroup')),
-    bulkUpdate: (groups, removedIds = []) => {
+    bulkUpdate: (groups, removedIds = [], override = false) => {
         const form = new FormData();
         form.append('channelGroups', new Blob([stringifyEngineJson({ set: { channelGroup: groups } })], { type: 'application/json' }));
         form.append('removedChannelGroupIds', new Blob([stringifyEngineJson({ set: { string: removedIds } })], { type: 'application/json' }));
-        return post('/channelgroups/_bulkUpdate', form, { params: { override: true } });
+        return post('/channelgroups/_bulkUpdate', form, { params: { override } });
     }
 };
 /* ---- Status & statistics --------------------------------------------------- */
@@ -547,12 +547,22 @@ export const messages = {
         raw: true
     }),
     processNew: (channelId, rawData, destinationMetaDataIds, sourceMapEntries) => {
-        const params = {};
-        if (destinationMetaDataIds && destinationMetaDataIds.length)
-            params.destinationMetaDataId = destinationMetaDataIds;
-        if (sourceMapEntries && sourceMapEntries.length)
-            params.sourceMapEntry = sourceMapEntries;
-        return post(`/channels/${enc(channelId)}/messages`, rawData, { contentType: 'text/plain', params });
+        const sourceMap = new Map();
+        for (const entry of sourceMapEntries || []) {
+            const separator = entry.indexOf('=');
+            if (separator > 0)
+                sourceMap.set(entry.slice(0, separator).trim(), entry.slice(separator + 1));
+        }
+        // Swing's existing RawMessage endpoint distinguishes null (all deployed
+        // destinations) from an empty collection (source only). Omit the null
+        // field: an empty XML/JSON collection would instead select no destinations.
+        return post(`/channels/${enc(channelId)}/messagesWithObj`, {
+            rawData, binary: false, overwrite: false, imported: false,
+            ...(destinationMetaDataIds === null ? {} : {
+                destinationMetaDataIds: { '@class': 'list', int: destinationMetaDataIds || [] }
+            }),
+            sourceMap: { '@class': 'map', entry: [...sourceMap].map(([key, value]) => ({ string: [key, value] })) }
+        }, { wrapKey: 'com.mirth.connect.donkey.model.message.RawMessage' });
     },
     reprocess: (channelId, messageId, replace = false, filterDestinations = false, metaDataIds = []) => post(`/channels/${enc(channelId)}/messages/${enc(messageId)}/_reprocess`, null, {
         params: { replace, filterDestinations, metaDataId: metaDataIds }
@@ -627,7 +637,13 @@ export const server = {
     setConfigurationMap: (map) => put('/server/configurationMap', map, { wrapKey: 'map' }),
     channelTags: () => get('/server/channelTags').then(v => asList(v, 'channelTag')),
     setChannelTags: (tags) => put('/server/channelTags', { channelTag: tags }, { wrapKey: 'set' }),
-    channelDependencies: () => get('/server/channelDependencies').then(v => asList(v, 'channelDependency')),
+    channelDependencies: async () => {
+        const dependencies = asList(await get('/server/channelDependencies'), 'channelDependency');
+        if (dependencies.some(d => !d || typeof d.dependentId !== 'string' || !d.dependentId || typeof d.dependencyId !== 'string' || !d.dependencyId)) {
+            throw new Error('The engine returned invalid channel dependencies. Save was stopped.');
+        }
+        return dependencies;
+    },
     setChannelDependencies: (deps) => put('/server/channelDependencies', { channelDependency: deps }, { wrapKey: 'set' }),
     channelMetadata: () => get('/server/channelMetadata'),
     setChannelMetadata: (metadata) => put('/server/channelMetadata', metadata, { wrapKey: 'map' }),

@@ -12,10 +12,10 @@ import { mockEngine } from './mock.js';
  */
 const FIXTURES = {
     'GET /extensions/connectors': { map: { entry: [
-        { string: 'File Reader', connectorMetaData: { name: 'File Reader', author: 'OIE', pluginVersion: '4.5.0', '@path': 'fileconnector' } }
+        { string: 'File Reader', connectorMetaData: { name: 'File Reader', author: 'OIE', pluginVersion: '4.6.0', '@path': 'fileconnector' } }
     ] } },
     'GET /extensions/plugins': { map: { entry: [
-        { string: 'Data Pruner', pluginMetaData: { name: 'Data Pruner', author: 'OIE', pluginVersion: '4.5.0', '@path': 'datapruner' } }
+        { string: 'Data Pruner', pluginMetaData: { name: 'Data Pruner', author: 'OIE', pluginVersion: '4.6.0', '@path': 'datapruner' } }
     ] } },
     // Per-extension enabled flag. The path segment is URL-encoded ("File%20Reader"),
     // so resolve from the decoded name: connector disabled, plugin enabled.
