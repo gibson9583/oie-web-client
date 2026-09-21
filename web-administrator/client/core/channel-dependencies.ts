@@ -41,11 +41,13 @@ export function librarySelection(libraries: any[], channelId: string) {
 export function refreshLibraryChoices(state: any, libraries: any[], channelId: string): void {
     const current = new Map(libraries.map(library => [library.id, library]));
     for (const library of libraries) {
+        const enabled = libraryEnabledFor(library, channelId);
         if (state.checked.get(library.id) === state.initial.get(library.id)) {
-            const enabled = libraryEnabledFor(library, channelId);
             state.checked.set(library.id, enabled);
-            state.initial.set(library.id, enabled);
         }
+        // Preserve local intent, but compare subsequent edits with the refreshed
+        // membership even when another editor has already fulfilled that intent.
+        state.initial.set(library.id, enabled);
     }
     // Retain a removed library with a pending intent so it remains visible and
     // can be reviewed after the guarded save reports its removal.

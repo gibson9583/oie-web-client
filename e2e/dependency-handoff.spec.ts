@@ -2,6 +2,79 @@ import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 
+for (const surface of ['wizard', 'classic']) {
+    for (const initial of [false, true]) {
+        for (const concurrent of [false, true]) {
+            test(`${surface}: ${initial ? 'enable' : 'disable'} after ${concurrent ? 'externally fulfilled' : 'ordinary'} library refresh`, async ({ page }) => {
+                let channel: any = makeChannel('refresh-library');
+                let enabled = initial, reads = 0, writes = 0;
+                await page.addInitScript(() => {
+                    const original = window.fetch;
+                    window.fetch = async (...args: Parameters<typeof fetch>) => {
+                        // Capture the actual multipart payload; WebKit request.postData()
+                        // does not expose the contents of Blob form parts.
+                        if (args[1]?.body instanceof FormData && args[1].body.has('libraries')) {
+                            (window as any).__savedLibraries = JSON.parse(await (args[1].body.get('libraries') as Blob).text());
+                        }
+                        return original(...args);
+                    };
+                });
+                await mockEngine(page, {
+                    'GET /channels/refresh-library': () => ({ channel }),
+                    'PUT /channels/refresh-library': (req: any) => { channel = req.postDataJSON().channel; return true; },
+                    'GET /codeTemplateLibraries': () => ({ list: { codeTemplateLibrary: [{
+                        '@version': '4.6.0', id: 'shared', name: 'Shared Library', revision: ++reads,
+                        includeNewChannels: false, codeTemplates: null,
+                        enabledChannelIds: { string: enabled ? ['other-channel', channel.id] : ['other-channel'] },
+                        disabledChannelIds: enabled ? null : { string: [channel.id] },
+                    }] } }),
+                    'POST /codeTemplateLibraries/_bulkUpdate': async () => {
+                        writes++;
+                        const payload = await page.evaluate(() => (window as any).__savedLibraries);
+                        const saved = payload.list.codeTemplateLibrary[0];
+                        expect(saved.enabledChannelIds.string).toContain('other-channel');
+                        enabled = saved.enabledChannelIds.string.includes(channel.id);
+                        return { result: { overrideNeeded: false, librariesSuccess: true } };
+                    },
+                });
+                await page.goto('/channels/refresh-library/guided');
+                await page.locator('.wiz-step', { hasText: 'Dependencies' }).click();
+                const box = page.getByRole('checkbox').first();
+                await expect(box).toBeChecked({ checked: initial });
+                await box.setChecked(!initial);
+                if (concurrent) enabled = !initial;
+                const previousReads = reads;
+                if (surface === 'wizard') {
+                    await page.locator('.wiz-step', { hasText: 'Basics' }).click();
+                    await page.locator('.wiz-step', { hasText: 'Dependencies' }).click();
+                    await expect.poll(() => reads).toBeGreaterThan(previousReads);
+                    await expect(box).toBeChecked({ checked: !initial });
+                    await box.setChecked(initial);
+                    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+                    await expect(page).toHaveURL(/\/channels$/);
+                } else {
+                    await page.getByRole('button', { name: 'Classic editor', exact: true }).click();
+                    await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+                    const dialog = page.getByRole('dialog', { name: 'Channel Dependencies', exact: true });
+                    const choice = dialog.getByRole('checkbox').first();
+                    await expect(choice).toBeChecked({ checked: !initial });
+                    await choice.setChecked(initial);
+                    await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+                    if (concurrent) {
+                        await page.getByRole('dialog', { name: 'Save Code Template Libraries', exact: true })
+                            .getByRole('button', { name: 'OK', exact: true }).click();
+                    }
+                    await expect(dialog).toHaveCount(0);
+                    await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+                    await expect(page.locator('.toast-msg', { hasText: `Saved ${channel.name}` })).toBeVisible();
+                }
+                expect(enabled, 'saved membership matches the last checkbox selection').toBe(initial);
+                expect(writes).toBe(concurrent ? 1 : 0);
+            });
+        }
+    }
+}
+
 test('dependency refresh carries local intent and external changes through a cancelled classic dialog', async ({ page }) => {
     let channel: any = makeChannel('refresh-intent');
     let graph: any[] = [];

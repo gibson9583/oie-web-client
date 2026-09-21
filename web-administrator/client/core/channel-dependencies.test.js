@@ -167,6 +167,46 @@ assert.equal(retained.libraries.current.checked.get('unchanged'), true, 'unmodif
 assert.deepEqual(retained.libraries.current.libraries.map(l => l.id), ['new', 'unchanged', 'pending']);
 console.log('channel-dependencies: handoff, dialog cancellation and refreshed choices preserve pending intents');
 
+for (const initial of [false, true]) {
+    for (const includeNewChannels of [false, true]) {
+        const snapshot = (enabled, revision) => [library('shared', {
+            revision, includeNewChannels,
+            enabledChannelIds: { string: enabled && !includeNewChannels ? ['other-channel', channel.id] : ['other-channel'] },
+            disabledChannelIds: enabled ? null : { string: [channel.id] },
+        })];
+        const draft = librarySelection(snapshot(initial, 1), channel.id);
+        draft.checked.set('shared', !initial);
+        refreshLibraryChoices(draft, snapshot(initial, 2), channel.id);
+        assert.equal(draft.checked.get('shared'), !initial, 'refresh preserves unfulfilled local intent');
+        assert.equal(hasLibraryChanges(draft), true);
+        const beforeDialog = structuredClone(draft);
+        const refreshed = copyLibrarySelection(draft);
+        latest = snapshot(!initial, 3); // Another editor applied our pending selection.
+        refreshLibraryChoices(refreshed, latest, channel.id);
+        assert.equal(refreshed.checked.get('shared'), !initial);
+        assert.equal(hasLibraryChanges(refreshed), false, 'externally fulfilled selections become clean on refresh');
+        const beforeSave = writes.length;
+        await persistLibraryAssociations(channel, { current: refreshed }, '4.6.0');
+        assert.equal(writes.length, beforeSave, 'fulfilled selections need no write');
+
+        refreshed.checked.set('shared', initial);
+        assert.equal(hasLibraryChanges(refreshed), true, 'reversing a refreshed selection creates a new intent');
+        assert.deepEqual(draft, beforeDialog, 'refresh and reversal in a cancelled dialog leave the draft intact');
+        await persistLibraryAssociations(channel, { current: refreshed }, '4.6.0');
+        assert.equal(writes.length, beforeSave + 1);
+        const savedLibrary = writes.at(-1).payload[0];
+        assert.equal(savedLibrary.revision, 3);
+        assert.equal(savedLibrary.includeNewChannels, includeNewChannels);
+        assert.equal(savedLibrary.enabledChannelIds.string.includes('other-channel'), true);
+        assert.equal(savedLibrary.enabledChannelIds.string.includes(channel.id), initial);
+        assert.equal(savedLibrary.disabledChannelIds?.string?.includes(channel.id) || false, !initial);
+        assert.equal(hasLibraryChanges(refreshed), false);
+        await persistLibraryAssociations(channel, { current: refreshed }, '4.6.0');
+        assert.equal(writes.length, beforeSave + 1, 'the accepted reversal is not written twice');
+    }
+}
+console.log('channel-dependencies: refreshed library selections rebase fulfilled intents and persist later reversals');
+
 const removedElsewhere = { dependentId: 'editing', dependencyId: 'removed-elsewhere' };
 const cleanGraph = dependencySelection([removedElsewhere]);
 refreshDependencyChoices(cleanGraph, [concurrent]);
