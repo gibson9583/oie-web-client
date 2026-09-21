@@ -130,6 +130,17 @@ app.get('/webadmin/config.json', (_req: Request, res: Response) => {
     });
 });
 
+// One-time retirement of legacy HTTP cache entries. Chromium defers responses
+// carrying this header until deletion finishes, so never put it on the shell.
+app.all('/webadmin/cache-reset', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'POST') return res.set('Allow', 'POST').sendStatus(405);
+    if (req.get('X-Requested-With') !== 'OpenIntegrationEngine-WebAdmin') return res.sendStatus(403);
+    res.setHeader('Clear-Site-Data', '"cache"');
+    res.setHeader('X-OIE-Cache-Migration', '1');
+    res.status(204).end();
+});
+
 // --- Vendored Monaco editor (self-hosted ESM, for air-gapped installs) --------
 // Code editors upgrade to Monaco loaded from this local path instead of a CDN, so
 // syntax highlighting/completion work with no internet access. The editor bundle
@@ -189,9 +200,6 @@ async function start() {
             const preloads = plugins.preloadLinks(config).join('\n  ');
             if (preloads) html = html.replace('</head>', `  ${preloads}\n</head>`);
             res.setHeader('Cache-Control', 'no-store');
-            // Also evict API responses retained by older clients. Only HTTP
-            // cache: preferences and authentication cookies stay intact.
-            res.setHeader('Clear-Site-Data', '"cache"');
             res.type('html').send(html);
         };
         // The raw file must never bypass the nonce injection: register the shell

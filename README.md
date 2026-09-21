@@ -271,8 +271,11 @@ recovery after signing back in. Startup removes drafts saved by older versions
 from browser storage for every engine/account, because they may contain credentials.
 
 Engine requests use `cache: 'no-store'` in both Node and WAR deployments.
-Full-page loads also send [`Clear-Site-Data: "cache"`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data)
-to evict HTTP responses retained by older clients. This also clears cached static
+The client makes a separate background request with [`Clear-Site-Data: "cache"`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data)
+to evict HTTP responses retained by older clients. Successful completion is recorded
+per browser and application path; interrupted or failed cleanup retries on the next
+page load. Keeping this header off the document avoids blocking navigation on
+Chromium's cache deletion. Legacy cleanup also clears cached static
 assets for the origin; it preserves cookies and preferences. For an upgrade on a
 browser without support for this header, clear that site's cached files manually.
 The header requires a secure context, so remote deployments must use HTTPS.

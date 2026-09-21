@@ -124,7 +124,6 @@ function indexJsp() {
     return `<%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>\n<%\n` +
         `response.setStatus(200);\n` +
         `response.setHeader("Cache-Control", "no-store");\n` +
-        `response.setHeader("Clear-Site-Data", "\\\"cache\\\"");\n` +
         `response.setHeader("X-Content-Type-Options", "nosniff");\n` +
         `response.setHeader("Referrer-Policy", "same-origin");\n` +
         `String appContext = request.getContextPath();\n` +
@@ -139,6 +138,14 @@ const webXml = `<?xml version="1.0" encoding="UTF-8"?>
          xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd"
          version="3.1">
     <display-name>OIE Web Client</display-name>
+    <servlet>
+        <servlet-name>cache-reset</servlet-name>
+        <jsp-file>/webadmin/cache-reset.jsp</jsp-file>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>cache-reset</servlet-name>
+        <url-pattern>/webadmin/cache-reset</url-pattern>
+    </servlet-mapping>
     <welcome-file-list>
         <welcome-file>index.jsp</welcome-file>
     </welcome-file-list>
@@ -181,6 +188,19 @@ try {
     writeFileSync(path.join(stage, 'index.jsp'), indexJsp());
 
     mkdirSync(path.join(stage, 'webadmin'), { recursive: true });
+    writeFileSync(path.join(stage, 'webadmin', 'cache-reset.jsp'), `<%@ page session="false" %><%
+response.setHeader("Cache-Control", "no-store");
+if (!"POST".equals(request.getMethod())) {
+    response.setStatus(405);
+    response.setHeader("Allow", "POST");
+} else if (!"OpenIntegrationEngine-WebAdmin".equals(request.getHeader("X-Requested-With"))) {
+    response.setStatus(403);
+} else {
+    response.setHeader("Clear-Site-Data", "\\\"cache\\\"");
+    response.setHeader("X-OIE-Cache-Migration", "1");
+    response.setStatus(204);
+}
+%>`);
     writeFileSync(path.join(stage, 'webadmin', 'plugins.json'), JSON.stringify(bundledPluginManifests(), null, 2) + '\n');
     writeFileSync(path.join(stage, 'webadmin', 'config.json'), JSON.stringify({
         engines: [{ key: 'k:this-oie-server', name: 'This OIE server' }],
@@ -206,6 +226,7 @@ try {
         'index.jsp',
         'WEB-INF/web.xml',
         'webadmin/config.json',
+        'webadmin/cache-reset.jsp',
         'webadmin/plugins.json',
         'vendor/fonts/LICENSE-Inter.txt',
         'vendor/fonts/LICENSE-JetBrains-Mono.txt',

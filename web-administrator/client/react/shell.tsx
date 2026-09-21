@@ -26,6 +26,7 @@ import api, { onEngineUnknown, onSessionExpired, resetSessionExpired } from '@oi
 import { startIdleLogout, stopIdleLogout, isIdleLocked, setIdleLocked } from '../core/idle-logout.js';
 import { closeSessionDialogs } from './dialog-host.js';
 import { discardEngineResponses } from '../core/engine-fetch.js';
+import { migrateLegacyCache } from '../core/cache-migration.js';
 import { getAnchor, describeRef } from '../core/compare.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
 import { hasUnsavedWork } from '../core/unsaved.js';
@@ -755,6 +756,9 @@ export function App() {
 
     useEffect(() => {
         purgeChannelDrafts();
+        // Cache deletion can take Chrome tens of seconds. Keep it off the
+        // document response and let the login/shell render while it completes.
+        void migrateLegacyCache().catch(() => console.warn('[cache] Legacy cache cleanup will retry on the next page load.'));
         store.initTheme();
         store.initRailCollapsed();
         initSplitters();
