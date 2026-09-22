@@ -403,6 +403,25 @@ Docker workflow cuts `X.Y.Z` / `X.Y` image tags from it and moves `latest` only
 for a non-prerelease semantic-version tag; the separate `main` tag tracks the
 branch tip.
 
+### Docker tag cleanup
+
+CI publishes `validated-<run-id>-<attempt>-<amd64|arm64>` intermediate tags
+before creating the normal multi-platform tags. The
+[validated-tag cleanup workflow](.github/workflows/docker-validated-cleanup.yml)
+runs daily at 06:23 UTC and removes these intermediate tags after 24 hours,
+only when their CI run is confirmed completed in this repository. Active or
+unverifiable runs are kept and logged. Release, `latest`, `main`, and `pr-*`
+tags are outside its scope; the existing closed-PR workflow handles `pr-*`.
+Cleanup removes tag names through Docker Hub, never manifests by digest.
+
+To preview or clear an existing backlog, open **Actions → Clean up validated
+Docker tags → Run workflow**. Leave **dry_run** checked to preview; uncheck it
+to delete eligible tags. The workflow must be pushed to the default branch
+before the daily schedule is active. It uses the existing `DOCKERHUB_IMAGE`
+variable and `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` secrets; the token needs
+**Read, Write, Delete** permission. API failures fail the job; rerunning safely
+continues after any tags already removed.
+
 ## Documentation
 
 - [User and operator Wiki](https://github.com/gibson9583/oie-web-client/wiki) —

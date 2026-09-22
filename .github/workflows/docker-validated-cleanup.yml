@@ -1,0 +1,36 @@
+name: Clean up validated Docker tags
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview eligible tags without deleting them
+        type: boolean
+        default: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: docker-validated-cleanup
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.22.3'
+      - name: Remove old intermediate tags from completed CI runs
+        env:
+          IMAGE_NAME: ${{ vars.DOCKERHUB_IMAGE || 'gibson9583/oie-web-client' }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'gibson9583' }}
+          # Requires Read, Write, Delete permission, as with PR-tag cleanup.
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: node tools/cleanup-docker-tags.mjs
