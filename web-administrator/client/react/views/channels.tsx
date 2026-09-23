@@ -38,7 +38,10 @@ import { RailPane, TaskButton, SegPill } from '../ui.jsx';
 import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
-import { bulkUpdateWithConflict, xstreamObject } from './code-template-bulk.js';
+import { parseLibraryImport, prepareLibraryImport } from './code-template-import.js';
+import { libraryImportCallbacks } from './code-template-import-dialogs.js';
+import { applyGroupImports, bundledLibrarySaveError, consolidateBundledLibraries, resolveGroupImport } from './channel-import.js';
+import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { runLifecycle } from './channel-lifecycle.js';
 import {
     loadViewMode, saveViewMode, loadTagMode, saveTagMode,
@@ -208,24 +211,37 @@ const CHANNEL_NAME_RE = /^[a-zA-Z_0-9\-\s]*$/;
    (prompt for a free name, fresh id). Returns { id, name, revision, overwrite }
    to apply to the imported channel, or null to abort. `existing` is the current
    channel list (for collision). */
-async function resolveImportName(name: any, id: any, existing: any) {
-    const tempId = uuid();
+async function resolveImportName(name: any, id: any, existing: any, assertSession: () => void, importIds?: Map<string, string>) {
+    assertSession();
+    let tempId = uuid();
+    if (importIds) {
+        let suffix = 0;
+        let key = `channel:${id}:${suffix}`;
+        while (importIds.has(key) && existing.some((channel: any) => channel.id === importIds.get(key))) key = `channel:${id}:${++suffix}`;
+        if (!importIds.has(key)) importIds.set(key, tempId);
+        tempId = importIds.get(key)!;
+    }
     const nameClash = (n: any, candidateId: any) => existing.some((c: any) =>
         String(c.name || '').toLowerCase() === String(n).toLowerCase() && c.id !== candidateId);
 
     async function checkName(n: any, candidateId: any) {
-        if (!n) { await alertWarning('Channel name cannot be empty.'); return false; }
-        if (n.length > 40) { await alertWarning('Channel name cannot be longer than 40 characters.'); return false; }
-        if (!CHANNEL_NAME_RE.test(n)) { await alertWarning('Channel name cannot have special characters besides hyphen, underscore, and space.'); return false; }
-        if (nameClash(n, candidateId)) { await alertWarning(`Channel "${n}" already exists.`); return false; }
+        if (!n) { await alertWarning('Channel name cannot be empty.'); assertSession(); return false; }
+        if (n.length > 40) { await alertWarning('Channel name cannot be longer than 40 characters.'); assertSession(); return false; }
+        if (!CHANNEL_NAME_RE.test(n)) { await alertWarning('Channel name cannot have special characters besides hyphen, underscore, and space.'); assertSession(); return false; }
+        if (nameClash(n, candidateId)) { await alertWarning(`Channel "${n}" already exists.`); assertSession(); return false; }
         return true;
     }
 
-    if (!(await checkName(name, tempId))) {
-        if (!(await optionYesNo('Import Channel', "Would you like to overwrite the existing channel?  Choose 'No' to create a new channel."))) {
+    const validName = await checkName(name, tempId);
+    assertSession();
+    if (!validName) {
+        const overwrite = await optionYesNo('Import Channel', "Would you like to overwrite the existing channel?  Choose 'No' to create a new channel.");
+        assertSession();
+        if (!overwrite) {
             let newName = name;
             do {
                 newName = await promptDialog('Import Channel', 'Please enter a new name for the channel.', newName);
+                assertSession();
                 if (newName == null) return null;             // Cancel → abort
             } while (!(await checkName(newName, tempId)));
             return { id: tempId, name: newName, revision: 0, overwrite: false };
@@ -238,14 +254,15 @@ async function resolveImportName(name: any, id: any, existing: any) {
     return { id: idClash ? tempId : id, name, revision: 0, overwrite: false };
 }
 
-// Merge bundled <codeTemplateLibrary> elements (from a channel XML export) into the
-// server's library list, appending any not already present (by id), and save their
-// full code templates first (the library PUT may keep only refs).
-async function importLibraryElementsXml(bundledEls: Element[], channelId: string) {
-    const imported = bundledEls.map(element => xstreamObject(element)).filter(library => library?.id);
-    if (!imported.length) return;
-    const existing = await api.codeTemplates.libraries(true);
-    await importLibraryObjectsJson(existing, imported, [channelId]);
+function bundledLibrariesFromXml(elements: Element[]) {
+    const version = store.getState('serverVersion') || '4.5.2';
+    return elements.flatMap(element => parseLibraryImport(new XMLSerializer().serializeToString(element), version));
+}
+
+// Bundled exports use the same conflict choices and merge rules as Import Libraries.
+async function importLibraryElementsXml(bundledEls: Element[], channelId: string, assertSession: () => void, ids: Map<string, string>) {
+    const imported = bundledLibrariesFromXml(bundledEls);
+    return importLibraryObjectsJson(consolidateBundledLibraries([{ libraries: imported, channelId }]), assertSession, ids);
 }
 
 function resourceList(resourcesRaw: any) {
@@ -301,7 +318,8 @@ function remapResourceIds(channelEl: Element, resourcesRaw: any) {
 // user cancelled. `existing` is the current channel list (for collision). Group
 // imports already perform migration confirmation for the enclosing document, so
 // they can disable the otherwise-standard per-channel version check.
-async function importChannelXml(xml: any, existing: any, { checkVersion = true, importLibraries = true }: any = {}) {
+async function importChannelXml(xml: any, existing: any, { checkVersion = true, importLibraries = true, assertSession = captureEngineSession(), importIds = new Map<string, string>(), startEdit = new Date(), resolvedIdentity }: any = {}) {
+    assertSession();
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'channel') {
         throw new Error('Not a valid channel XML file');
@@ -320,6 +338,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
             return false;
         }
     }
+    assertSession();
     const directChild = (tag: any) => [...channelEl.children].find(c => c.tagName === tag);
     const setChild = (tag: any, value: any) => {
         let el = directChild(tag);
@@ -330,7 +349,8 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     const name = directChild('name')?.textContent || '';
     const id = directChild('id')?.textContent || '';
 
-    const resolved = await resolveImportName(name, id, existing);
+    const resolved = resolvedIdentity || await resolveImportName(name, id, existing, assertSession, importIds);
+    assertSession();
     if (!resolved) return false;
 
     if (resolved.id !== id) {
@@ -348,8 +368,10 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     const bundled = libsContainer ? [...libsContainer.children].filter(c => c.tagName === 'codeTemplateLibrary') : [];
     if (bundled.length && importLibraries) {
         const choice = await promptImportLibraries(resolved.name, bundled.length);
+        assertSession();
         if (choice === 'cancel') return false;
-        if (choice === 'yes') await importLibraryElementsXml(bundled, resolved.id);
+        if (choice === 'yes') await importLibraryElementsXml(bundled, resolved.id, assertSession, importIds);
+        assertSession();
     }
     // The engine ignores bundled libraries on create; strip them from the channel.
     if (libsContainer && libsContainer.parentNode) libsContainer.parentNode.removeChild(libsContainer);
@@ -375,8 +397,11 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
         for (const dependencyId of dependencyIds) add(resolved.id, dependencyId);
         try {
             // Merge imported edges into a fresh graph using Swing's core setter.
+            assertSession();
             await saveDependencyChanges([...dependencies.values()], []);
+            assertSession();
         } catch (e: any) {
+            assertSession();
             // Swing reports this failure but still allows the channel import to
             // continue, so retain that partial-completion behavior explicitly.
             toast(`Unable to save channel dependencies: ${e.message || e}`, 'error');
@@ -391,84 +416,53 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     // resource assignments to remap.
     const hasResourceAssignments = [...channelEl.querySelectorAll('resourceIds')]
         .some(element => !element.closest('exportData') && element.children.length > 0);
-    if (hasResourceAssignments) remapResourceIds(channelEl, await api.server.resources());
+    if (hasResourceAssignments) {
+        const resources = await api.server.resources();
+        assertSession();
+        remapResourceIds(channelEl, resources);
+    }
+    assertSession();
 
     const body = new XMLSerializer().serializeToString(doc);
-    if (resolved.overwrite) await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override: true });
-    else await api.post('/channels', body, { contentType: 'application/xml' });
+    // POST /channels is an upsert with no action-time conflict timestamp. PUT
+    // supports new IDs as well and rejects an intervening creation of this ID.
+    const saved = await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, {
+        override: false, startEdit: startEdit.toISOString().replace(/\.\d{3}Z$/, '+0000')
+    });
+    assertSession();
+    if (saved === false || saved === 'false') throw new Error('The channel changed during import. Import again to review the latest version.');
     return resolved;
 }
 
-// Merge bundled libraries into the existing server set (port of
-// ChannelPanel.importChannel): dedupe code templates by id, union the
-// enabled/disabled channel ids, and ensure the imported channel is enabled.
-function mergeImportedLibraries(existing: any, imported: any, channelIds: any = []) {
-    const templatesOf = (lib: any) => api.asList(lib.codeTemplates, 'codeTemplate').filter(t => t && t.id);
-    const stringsOf = (v: any) => api.asList(v, 'string').map(String);
-    const enabledChannelIds = (Array.isArray(channelIds) ? channelIds : [channelIds]).map(String).filter(Boolean);
-    const byId = new Map(existing.map((l: any) => [l.id, l]));
-    const seen = new Set();
-    for (const lib of existing) for (const t of templatesOf(lib)) seen.add(t.id);
-
-    for (const lib of imported) {
-        if (!lib || !lib.id) continue;
-        const match = byId.get(lib.id);
-        if (match) {
-            const merged = templatesOf(match).slice();
-            for (const t of templatesOf(lib)) if (seen.add(t.id)) merged.push(t);
-            (match as any).codeTemplates = { codeTemplate: merged };
-            const enabled = new Set([...stringsOf((match as any).enabledChannelIds), ...stringsOf(lib.enabledChannelIds), ...enabledChannelIds]);
-            const disabled = new Set([...stringsOf((match as any).disabledChannelIds), ...stringsOf(lib.disabledChannelIds)]);
-            for (const id of enabled) disabled.delete(id);
-            (match as any).enabledChannelIds = { string: [...enabled] };
-            (match as any).disabledChannelIds = { string: [...disabled] };
-        } else {
-            const tpls: any[] = [];
-            for (const t of templatesOf(lib)) if (seen.add(t.id)) tpls.push(t);
-            lib.codeTemplates = { codeTemplate: tpls };
-            const enabled = new Set([...stringsOf(lib.enabledChannelIds), ...enabledChannelIds]);
-            const disabled = new Set(stringsOf(lib.disabledChannelIds));
-            for (const id of enabled) disabled.delete(id);
-            lib.enabledChannelIds = { string: [...enabled] };
-            lib.disabledChannelIds = { string: [...disabled] };
-            byId.set(lib.id, lib);
-        }
-    }
-    return [...byId.values()];
-}
-
-async function importLibraryObjectsJson(existing: any[], imported: any[], channelIds: string[] = []) {
+async function importLibraryObjectsJson(imported: any[], assertSession: () => void, ids: Map<string, string>) {
+    if (!imported.length) return;
+    assertSession();
+    const existing = await api.codeTemplates.libraries(true);
+    assertSession();
     const version = store.getState('serverVersion') || '4.5.2';
-    const existingLibraryIds = new Set(existing.map(library => String(library.id)));
-    const existingTemplateIds = new Set(existing.flatMap(library =>
-        api.asList(library.codeTemplates, 'codeTemplate').map((template: any) => String(template.id))));
-    const templatesById = new Map<string, any>();
-    for (const template of imported.flatMap(library => api.asList(library.codeTemplates, 'codeTemplate'))) {
-        if (!template?.id || existingTemplateIds.has(String(template.id))
-            || !Object.keys(template).some(key => key !== 'id' && key !== '@version')) continue;
-        templatesById.set(String(template.id), {
-            ...template,
-            '@version': template['@version'] || version,
-            revision: 0,
-            properties: template.properties
-                ? { ...template.properties, '@version': template.properties['@version'] || version }
-                : template.properties
-        });
+    const payload = await prepareLibraryImport(existing, imported, version, libraryImportCallbacks(assertSession, ids));
+    assertSession();
+    // Closing the template-selection dialog in Swing leaves the channel import
+    // available; the outer Yes/No/Cancel prompt is what cancels the whole import.
+    if (!payload) return;
+    let couldHaveSaved = true;
+    try {
+        const result = await api.codeTemplates.bulkUpdate(payload.libraries, payload.templates, [], [], false);
+        assertSession();
+        couldHaveSaved = String(result?.overrideNeeded) !== 'true';
+        const error = bundledLibrarySaveError(result);
+        if (error) throw new Error(error);
+    } catch (error: any) {
+        assertSession();
+        if (!couldHaveSaved) throw error;
+        // The library set may have committed before an individual template
+        // failed. Reconcile the cache and retain generated IDs for a safe retry.
+        invalidateCompletions();
+        try { await api.codeTemplates.libraries(true); } catch { /* Preserve the original save failure. */ }
+        assertSession();
+        throw new Error(`${error.message || error}. Code template libraries may have been partly saved; review them before retrying.`);
     }
-    const libraries = mergeImportedLibraries(existing, imported, channelIds).map((library: any) => {
-        const refs = api.asList(library.codeTemplates, 'codeTemplate')
-            .filter((template: any) => template && template.id)
-            .map((template: any) => ({ '@version': template['@version'] || version, id: template.id }));
-        return {
-            ...library,
-            '@version': library['@version'] || version,
-            revision: existingLibraryIds.has(String(library.id)) ? library.revision : 0,
-            codeTemplates: refs.length ? { codeTemplate: refs } : null
-        };
-    });
-    if (!await bulkUpdateWithConflict(libraries, [...templatesById.values()])) {
-        throw new Error('Code template library import was cancelled');
-    }
+    invalidateCompletions();
 }
 
 /* Enabled flag lives at channel.exportData.metadata.enabled (ChannelMetadata,
@@ -514,6 +508,12 @@ export function ChannelsView() {
        Menu/task actions take EXPLICIT rows/ids computed where they are offered,
        so a context menu can never act on a stale selection. */
     const [channels, setChannels] = useState([] as any[]);
+    const importBusyRef = useRef(false);
+    const pendingImportRef = useRef<{ content: string; ids: Map<string, string> } | null>(null);
+    function importIdsFor(content: string) {
+        if (pendingImportRef.current?.content !== content) pendingImportRef.current = { content, ids: new Map() };
+        return pendingImportRef.current.ids;
+    }
     const [tags, setTags] = useState([] as any[]);
     const [groups, setGroups] = useState([] as any[]);
     const [statusById, setStatusById] = useState({} as any);        // channelId -> dashboardStatus
@@ -889,6 +889,8 @@ export function ChannelsView() {
     /* Reads nothing (only fetches + functional setState), so the mount-captured
        channels:changed listener can safely call the first render's closure. */
     async function refresh() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
         const gen = ++refreshGenRef.current;
         const results: any[] = await Promise.allSettled([
             api.channels.list(),
@@ -896,6 +898,7 @@ export function ChannelsView() {
             api.server.channelTags(),
             api.status.list()
         ]);
+        try { assertSession(); } catch { return; }
         if (gen !== refreshGenRef.current) return;
         const [channelResult, groupResult, tagResult, statusResult] = results;
         const failures = [
@@ -1025,23 +1028,30 @@ export function ChannelsView() {
     }
 
     async function importTask() {
-        const file = await pickFile('.xml,.json');
-        if (!file) return;
+        if (importBusyRef.current) return;
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        importBusyRef.current = true;
         try {
+            const file = await pickFile('.xml,.json');
+            assertSession();
+            if (!file) return;
             const content = String(file.content || '').trim();
+            const importIds = importIdsFor(content);
+            const startEdit = new Date();
+            const existingChannels = await api.channels.list();
+            assertSession();
             if (content.startsWith('<')) {
-                // XML export — name/id collision flow + bundled libraries.
-                if (await importChannelXml(content, channels) === false) return;
+                if (await importChannelXml(content, existingChannels, { assertSession, importIds, startEdit }) === false) return;
             } else {
                 let obj = JSON.parse(content);
                 if (obj && typeof obj === 'object' && obj.channel) obj = obj.channel;
-                const resolved = await resolveImportName(obj.name || '', obj.id || '', channels);
-                if (!resolved) return;   // cancelled
-                // JSON bundle (web-admin native): merge bundled libraries as objects.
+                const resolved = await resolveImportName(obj.name || '', obj.id || '', existingChannels, assertSession, importIds);
+                assertSession();
+                if (!resolved) return;
                 const bundled = api.asList(obj.exportData && obj.exportData.codeTemplateLibraries, 'codeTemplateLibrary')
                     .filter(l => l && typeof l === 'object' && l.id);
                 if (resolved.id !== obj.id) {
-                    // Re-point bundled libraries from the old channel id to the new one.
                     for (const lib of bundled) {
                         const ids = new Set(api.asList(lib.enabledChannelIds, 'string').map(String));
                         ids.delete(String(obj.id)); ids.add(resolved.id);
@@ -1053,22 +1063,25 @@ export function ChannelsView() {
                 obj.revision = resolved.revision;
                 if (bundled.length) {
                     const choice = await promptImportLibraries(resolved.name, bundled.length);
+                    assertSession();
                     if (choice === 'cancel') return;
-                    if (choice === 'yes') {
-                        const existing = await api.codeTemplates.libraries(true);
-                        await importLibraryObjectsJson(existing, bundled, [obj.id]);
-                    }
+                    if (choice === 'yes') await importLibraryObjectsJson(
+                        consolidateBundledLibraries([{ libraries: bundled, channelId: obj.id }]), assertSession, importIds);
                 }
-                // Libraries are saved separately; strip them before saving the channel.
                 if (obj.exportData) delete obj.exportData.codeTemplateLibraries;
-                if (resolved.overwrite) await api.channels.update(obj.id, obj);
-                else await api.channels.create(obj);
+                assertSession();
+                const saved = await api.channels.update(obj.id, obj, false, startEdit);
+                assertSession();
+                if (saved === false || saved === 'false') throw new Error('The channel changed during import. Import again to review the latest version.');
             }
+            pendingImportRef.current = null;
             toast(`Imported ${file.name}`);
-            refresh();
+            await refresh();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(e.message, 'error');
-        }
+            await refresh();
+        } finally { importBusyRef.current = false; }
     }
 
     /* Exports use the engine's own XStream XML (Accept: application/xml) so the
@@ -1354,104 +1367,165 @@ export function ChannelsView() {
     }
 
     async function importGroupTask() {
-        const file = await pickFile('.xml');
-        if (!file) return;
+        if (importBusyRef.current) return;
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        importBusyRef.current = true;
+        let importedChannelCount = 0;
+        let failedChannelCount = 0;
         try {
-            // Swing promptObjectMigration("group"): block newer exports, confirm
-            // conversion of older/unknown ones.
-            const verdict = checkImportVersionFromDoc(
-                new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml'), 'group');
+            const file = await pickFile('.xml');
+            assertSession();
+            if (!file) return;
+            const content = String(file.content || '').trim();
+            const importIds = importIdsFor(content);
+            const verdict = checkImportVersionFromDoc(new DOMParser().parseFromString(content, 'text/xml'), 'group');
             if (verdict.action === 'block') { await alertInformation(verdict.message); return; }
             if (verdict.action === 'confirm' && !await optionYesNo('Select an Option', verdict.message)) return;
-            const parsed = parseGroupXml(file.content);
-            // Fail before importing channels if the group collection is unreadable.
-            await api.channelGroups.list();
-            const knownChannels = structuredClone(channels);
-            const resolvedChannelIds = new Map();
-            const imported: any[] = [];
-            let processedGroups = 0;
-
-            // Swing consolidates every bundled library across the group, prompts
-            // once, and saves that complete set before importing any channel. This
-            // avoids repeated prompts/requests and prevents a later library failure
-            // from leaving an earlier channel imported on its own.
-            let bundledLibraries: any[] = [];
+            assertSession();
+            const parsed = parseGroupXml(content);
+            // All prerequisite reads finish before any library or channel write.
+            const startEdit = new Date();
+            const [baselineGroups, knownChannels] = await Promise.all([api.channelGroups.list(), api.channels.list()]);
+            assertSession();
+            const resolvedChannelIds = new Map<string, string>();
+            const failedChannelIds = new Set<string>();
+            // Resolve imported channel identities before saving library bindings.
+            // Swing saves libraries first, but then changing a channel ID would
+            // leave those bindings on the old channel. All writes still happen
+            // library-first; only the conflict decisions happen beforehand.
+            const preparedChannels = new Map<string, any>();
+            const reservedChannels = structuredClone(knownChannels);
             for (const { embeddedChannels } of parsed) {
                 for (const embedded of embeddedChannels) {
-                    if (!embedded.isDefinition) continue;
+                    if (!embedded.isDefinition || preparedChannels.has(embedded.id) || failedChannelIds.has(embedded.id)) continue;
                     const channelDoc = new DOMParser().parseFromString(embedded.xml, 'text/xml');
-                    const elements = [...channelDoc.querySelectorAll('exportData > codeTemplateLibraries > codeTemplateLibrary')];
-                    const objects = elements.map(element => xstreamObject(element)).filter(library => library?.id);
-                    bundledLibraries = mergeImportedLibraries(bundledLibraries, objects, [embedded.id]);
+                    const name = [...channelDoc.documentElement.children].find(child => child.tagName === 'name')?.textContent || '';
+                    const resolved = await resolveImportName(name, embedded.id, reservedChannels, assertSession, importIds);
+                    assertSession();
+                    if (!resolved) { failedChannelIds.add(embedded.id); failedChannelCount++; continue; }
+                    preparedChannels.set(embedded.id, resolved);
+                    const previous = reservedChannels.find(channel => channel.id === resolved.id);
+                    if (previous) Object.assign(previous, resolved);
+                    else reservedChannels.push(resolved);
                 }
             }
+            const imported: { group: any; replacedId?: string }[] = [];
+            let plannedGroups: any[] = structuredClone(baselineGroups);
+
+            const bundles: { libraries: any[]; channelId: string }[] = [];
+            for (const { embeddedChannels } of parsed) {
+                for (const embedded of embeddedChannels) {
+                    if (!embedded.isDefinition || failedChannelIds.has(embedded.id)) continue;
+                    const channelDoc = new DOMParser().parseFromString(embedded.xml, 'text/xml');
+                    const elements = [...channelDoc.querySelectorAll('exportData > codeTemplateLibraries > codeTemplateLibrary')];
+                    const libraries = bundledLibrariesFromXml(elements);
+                    for (const library of libraries) {
+                        const enabled = api.asList(library.enabledChannelIds, 'string').map(id => preparedChannels.get(String(id))?.id || String(id));
+                        library.enabledChannelIds = enabled.length ? { string: [...new Set(enabled)] } : '';
+                    }
+                    bundles.push({ libraries, channelId: preparedChannels.get(embedded.id)?.id || embedded.id });
+                }
+            }
+            const bundledLibraries = consolidateBundledLibraries(bundles);
             if (bundledLibraries.length) {
                 const groupName = parsed.length === 1 ? parsed[0].group.name : file.name;
                 const choice = await promptImportLibraries(groupName, bundledLibraries.length, 'Group');
+                assertSession();
                 if (choice === 'cancel') return;
-                if (choice === 'yes') {
-                    const existing = await api.codeTemplates.libraries(true);
-                    await importLibraryObjectsJson(existing, bundledLibraries);
-                }
+                if (choice === 'yes') await importLibraryObjectsJson(bundledLibraries, assertSession, importIds);
+                assertSession();
             }
 
-            // With libraries handled above, import every full channel, then save
-            // the group set using the final IDs produced by collision handling.
-            // ID-only entries are existing membership references.
-            for (const { group, embeddedChannels } of parsed) {
-                processedGroups++;
-                const refs = [];
+            // Import definitions first, so an ID-only reference preceding its
+            // definition in a later exported group cannot suppress that import.
+            for (const { embeddedChannels } of parsed) {
                 for (const embedded of embeddedChannels) {
-                    let finalId = resolvedChannelIds.get(embedded.id) || embedded.id;
-                    if (embedded.isDefinition && !resolvedChannelIds.has(embedded.id)) {
-                        let resolved: any;
-                        try {
-                            resolved = await importChannelXml(embedded.xml, knownChannels, {
-                                checkVersion: false,
-                                importLibraries: false
-                            });
-                        } catch (e: any) {
-                            toast(`Error importing channel: ${e.message || e}`, 'error');
-                            continue;
-                        }
-                        // Swing treats a cancelled/invalid channel as an
-                        // unsuccessful member and continues with the group.
-                        if (resolved === false) continue;
-                        finalId = resolved.id;
-                        resolvedChannelIds.set(embedded.id, finalId);
-
-                        const existing = knownChannels.find((channel: any) => channel.id === finalId);
-                        if (existing) Object.assign(existing, resolved);
-                        else knownChannels.push(resolved);
+                    if (!embedded.isDefinition || failedChannelIds.has(embedded.id) || resolvedChannelIds.has(embedded.id)) continue;
+                    let resolved: any;
+                    try {
+                        resolved = await importChannelXml(embedded.xml, knownChannels, {
+                            checkVersion: false, importLibraries: false, assertSession, importIds, startEdit,
+                            resolvedIdentity: preparedChannels.get(embedded.id)
+                        });
+                        assertSession();
+                    } catch (e: any) {
+                        assertSession();
+                        failedChannelIds.add(embedded.id);
+                        failedChannelCount++;
+                        toast(`Error importing channel: ${e.message || e}`, 'error');
+                        continue;
                     }
-                    refs.push({ id: finalId });
+                    if (resolved === false) {
+                        failedChannelIds.add(embedded.id);
+                        failedChannelCount++;
+                        continue;
+                    }
+                    importedChannelCount++;
+                    resolvedChannelIds.set(embedded.id, resolved.id);
+                    const previous = knownChannels.find((channel: any) => channel.id === resolved.id);
+                    if (previous) Object.assign(previous, resolved);
+                    else knownChannels.push(resolved);
                 }
-                group.channels = refs.length ? { channel: refs } : null;
-                // Swing's synthetic Default Group is a transport container for
-                // ungrouped channels, not a persisted group. Import its channels
-                // but never send the reserved id/name to _bulkUpdate.
-                if (group.id === ENGINE_DEFAULT_GROUP_ID || group.name === ENGINE_DEFAULT_GROUP_NAME) continue;
-                imported.push(group);
             }
-            const importedIds = new Set(imported.map(g => g.id));
-            const importedChannelIds = new Set(imported.flatMap(g =>
-                api.asList(g.channels, 'channel').map(ref => ref.id)));
-            // Replace same-id groups and pull imported channels out of other
-            // groups (a channel may only belong to one group).
-            if (imported.length && !await saveGroupChanges((current: any[]) => {
-                const updated = current.filter(g => !importedIds.has(g.id));
-                for (const group of updated) {
-                    const members = api.asList(group.channels, 'channel')
-                        .filter(ref => ref && ref.id && !importedChannelIds.has(ref.id));
-                    group.channels = members.length ? { channel: members } : null;
+            for (const { group, embeddedChannels } of parsed) {
+                const refs = new Map<string, { id: string }>();
+                for (const embedded of embeddedChannels) {
+                    if (failedChannelIds.has(embedded.id)) continue;
+                    const finalId = resolvedChannelIds.get(embedded.id) || embedded.id;
+                    if (!knownChannels.some(channel => channel.id === finalId)) {
+                        failedChannelIds.add(embedded.id);
+                        failedChannelCount++;
+                        continue;
+                    }
+                    refs.set(finalId, { id: finalId });
                 }
-                return updated.concat(imported.map(group => ({ ...group,
-                    revision: current.find(g => g.id === group.id)?.revision ?? group.revision })));
-            })) return;
-            toast(`Imported ${processedGroups} group(s) from ${file.name}`);
-            refresh();
+                group.channels = refs.size ? { channel: [...refs.values()] } : null;
+                // The default group transports ungrouped channels and is never persisted.
+                if (group.id === ENGINE_DEFAULT_GROUP_ID || group.name === ENGINE_DEFAULT_GROUP_NAME) continue;
+                let generatedIds = 0;
+                const resolved = await resolveGroupImport(plannedGroups, group, {
+                    overwrite: async () => {
+                        const result = await optionYesNo('Import Group', "Would you like to overwrite the existing group? Choose 'No' to create a new group.");
+                        assertSession();
+                        return Boolean(result);
+                    },
+                    rename: async name => {
+                        const result = await promptDialog('Import Group', 'Please enter a new name for the group.', name);
+                        assertSession();
+                        return result;
+                    },
+                    newId: () => {
+                        const key = `group:${imported.length}:${group.id}:${generatedIds++}`;
+                        if (!importIds.has(key)) importIds.set(key, uuid());
+                        return importIds.get(key)!;
+                    }
+                });
+                assertSession();
+                if (!resolved) {
+                    toast(`Group import cancelled. ${importedChannelCount} channel(s) already imported have been kept.`, 'warn');
+                    return;
+                }
+                imported.push(resolved);
+                plannedGroups = applyGroupImports(baselineGroups, baselineGroups, imported).groups;
+            }
+            if (imported.length) {
+                const latest = await api.channelGroups.list();
+                assertSession();
+                const payload = applyGroupImports(latest, baselineGroups, imported);
+                const result = await api.channelGroups.bulkUpdate(payload.groups, payload.removedIds, false);
+                assertSession();
+                if (result !== true && result !== 'true') throw new Error('Channel groups changed during import or the engine did not confirm the save. Import again to review the latest groups.');
+            }
+            pendingImportRef.current = null;
+            if (failedChannelCount) toast(`Imported ${parsed.length} group(s) from ${file.name}; ${failedChannelCount} channel(s) were skipped or failed.`, 'warn');
+            else toast(`Imported ${parsed.length} group(s) from ${file.name}`);
         } catch (e: any) {
-            toast(e.message, 'error');
+            try { assertSession(); } catch { return; }
+            toast(`${e.message}${importedChannelCount ? ` ${importedChannelCount} channel(s) already imported have been kept.` : ''}`, 'error');
+        } finally {
+            importBusyRef.current = false;
+            try { assertSession(); await refresh(); } catch { /* A changed session owns its own refresh. */ }
         }
     }
 

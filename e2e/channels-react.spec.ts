@@ -141,7 +141,7 @@ test.describe('Channels React view', () => {
 
         const channelRequest = page.waitForRequest((request: any) => {
             const url = new URL(request.url());
-            return request.method() === 'POST' && url.pathname === '/api/channels';
+            return request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(url.pathname);
         });
         const groupRequest = page.waitForRequest((request: any) => {
             const url = new URL(request.url());
@@ -194,7 +194,7 @@ test.describe('Channels React view', () => {
                 order.push('libraries');
                 bulkBodies.push(request.postData() || '');
             }
-            if (request.method() === 'POST' && path === '/api/channels') order.push('channel');
+            if (request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(path)) order.push('channel');
         });
         await gotoChannels(page);
 
@@ -258,7 +258,7 @@ test.describe('Channels React view', () => {
         let groupWrites = 0;
         page.on('request', request => {
             const path = new URL(request.url()).pathname;
-            if (request.method() === 'POST' && path === '/api/channels') channelWrites++;
+            if (request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(path)) channelWrites++;
             if (request.method() === 'POST' && path === '/api/channelgroups/_bulkUpdate') groupWrites++;
         });
         await gotoChannels(page);
@@ -417,7 +417,7 @@ test.describe('Channels React view', () => {
             if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/channelgroups/_bulkUpdate') groupUpdate = true;
         });
         const channelRequest = page.waitForRequest(request =>
-            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels');
+            request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(new URL(request.url()).pathname));
         const chooser = page.waitForEvent('filechooser');
         await page.getByRole('button', { name: 'Import Group', exact: true }).click();
         await (await chooser).setFiles({
@@ -450,7 +450,7 @@ test.describe('Channels React view', () => {
         const dependencyRequest = page.waitForRequest(request =>
             request.method() === 'PUT' && new URL(request.url()).pathname === '/api/server/channelDependencies');
         const channelRequest = page.waitForRequest(request =>
-            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels');
+            request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(new URL(request.url()).pathname));
         const chooser = page.waitForEvent('filechooser');
         await page.getByRole('button', { name: 'Import Channel', exact: true }).click();
         await (await chooser).setFiles({
@@ -490,7 +490,7 @@ test.describe('Channels React view', () => {
         await gotoChannels(page);
 
         const channelRequest = page.waitForRequest(request =>
-            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels');
+            request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(new URL(request.url()).pathname));
         const chooser = page.waitForEvent('filechooser');
         await page.getByRole('button', { name: 'Import Channel', exact: true }).click();
         await (await chooser).setFiles({
@@ -545,7 +545,7 @@ test.describe('Channels React view', () => {
         const bulkRequest = page.waitForRequest(request =>
             request.method() === 'POST' && new URL(request.url()).pathname === '/api/codeTemplateLibraries/_bulkUpdate');
         const channelRequest = page.waitForRequest(request =>
-            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels');
+            request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(new URL(request.url()).pathname));
         await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
         const body = (await bulkRequest).postData() || '';
         await channelRequest;
@@ -584,8 +584,10 @@ test.describe('Channels React view', () => {
         const bulkRequest = page.waitForRequest(request =>
             request.method() === 'POST' && new URL(request.url()).pathname === '/api/codeTemplateLibraries/_bulkUpdate');
         const channelRequest = page.waitForRequest(request =>
-            request.method() === 'POST' && new URL(request.url()).pathname === '/api/channels');
+            request.method() === 'PUT' && /^\/api\/channels\/[^/]+$/.test(new URL(request.url()).pathname));
         await dialog.getByRole('button', { name: 'Yes', exact: true }).click();
+        await page.getByRole('dialog', { name: 'Import Library Conflict' })
+            .getByRole('button', { name: 'Overwrite', exact: true }).click();
 
         const body = (await bulkRequest).postData() || '';
         await channelRequest;
