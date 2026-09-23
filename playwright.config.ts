@@ -14,7 +14,7 @@ const RUN_ID = process.env.E2E_RUN_ID ||= randomUUID();
 // Run the failure-sensitive flows in every supported browser engine.
 // The full UI catalog remains in Chromium; these cover saves, dialogs,
 // downloads, Monaco/fallback, authentication and plugin recovery across engines.
-const CRITICAL = /(?:login|sso|dashboard|global-scripts|send-message|message-import|message-result-lifecycle|keyboard|editor-handoff|alert-save-lifecycle|save-lifecycle|datapruner-save|settings-save|wizard-recovery|channel-dependencies|dependency-handoff|dialog-actions|export|monaco-intellisense|sanitizer|resilience|viewer-lifecycle|dicom-viewer|engine-plugins)\.spec\.ts$/;
+const CRITICAL = /(?:login|sso|dashboard|global-scripts|send-message|message-import|message-result-lifecycle|keyboard|editor-handoff|alert-save-lifecycle|save-lifecycle|code-template-library-import|channel-import-parity|editor-import-parity|settings-import-parity|alert-import-parity|datapruner-save|settings-save|wizard-recovery|channel-dependencies|dependency-handoff|dialog-actions|export|monaco-intellisense|sanitizer|resilience|viewer-lifecycle|dicom-viewer|engine-plugins)\.spec\.ts$/;
 
 export default defineConfig({
     metadata: { runId: RUN_ID },
