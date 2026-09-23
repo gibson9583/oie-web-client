@@ -32,7 +32,8 @@ import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { RailPane, TaskButton, CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
-import { bulkUpdateWithConflict, codeTemplateFromXml, xstreamObject } from './code-template-bulk.js';
+import { parseLibraryImport, prepareLibraryImport, parseTemplateImport, prepareTemplateImport } from './code-template-import.js';
+import { libraryImportCallbacks } from './code-template-import-dialogs.js';
 
 
 const CT_COLUMNS = [
@@ -174,6 +175,10 @@ export function CodeTemplatesView() {
     const persistedLibraryIdsRef = useRef(new Set<string>());
     const persistedTemplateIdsRef = useRef(new Set<string>());
     const persistedTemplatesRef = useRef(new Map<string, string>());
+    // Keep generated import IDs through a failed/ambiguous write so selecting
+    // the same file again can reconcile it against a fresh server baseline.
+    const templateImportRef = useRef<{ xml: string; targetId: string; templates: any[]; ids: Map<string, string> } | null>(null);
+    const libraryImportRef = useRef<{ xml: string; libraries: any[]; ids: Map<string, string> } | null>(null);
     const [filterText, setFilterText] = useState('');
     const [focusName, setFocusName] = useState(false);   // focus the Name field after creating
     const [collapsed, setCollapsed] = useState(() => new Set());   // collapsed library keys ('library:<id>')
@@ -414,7 +419,9 @@ export function CodeTemplatesView() {
 
     function saveAll() { return withEditorSave(() => saveAllUnlocked()); }
 
-    async function saveAllUnlocked(overrideConflicts = false): Promise<any> {
+    async function saveAllUnlocked(overrideConflicts = false, session?: () => void): Promise<any> {
+        let assertSession: () => void;
+        try { assertSession = session || captureEngineSession(); assertSession(); } catch { return; }
         // Swing-parity conflict handling: save with override=false and the revisions AS
         // LOADED (the engine bumps them itself; sending a self-bumped revision would read
         // as a conflict on every save). A "false" response means someone else saved since
@@ -423,7 +430,8 @@ export function CodeTemplatesView() {
             const overwrite = await confirmDialog('Code Templates Modified',
                 'One or more code templates or libraries have been modified since you opened them. Are you sure you want to overwrite them with your changes?',
                 { danger: true, okLabel: 'Overwrite' });
-            if (overwrite) return saveAllUnlocked(true);
+            assertSession();
+            if (overwrite) return saveAllUnlocked(true, assertSession);
             toast('Save cancelled — Refresh to load the latest code templates', 'warn');
         };
         try {
@@ -459,7 +467,8 @@ export function CodeTemplatesView() {
                 removedTemplateIds,
                 overrideConflicts
             );
-            if (String(result?.overrideNeeded) === 'true') return conflict();
+            assertSession();
+            if (String(result?.overrideNeeded) === 'true') return await conflict();
             const failure = bulkSaveError(result);
             if (failure) {
                 if (String(result?.librariesSuccess) === 'true') {
@@ -510,6 +519,7 @@ export function CodeTemplatesView() {
             toast('Code templates saved');
             await load();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
             toast(`Save failed: ${e.message}`, 'error');
         }
     }
@@ -570,120 +580,140 @@ export function CodeTemplatesView() {
         }
     }
 
-    /* Accepts a Swing/web export: libraries, templates, and removals are sent in
-       the same _bulkUpdate request used by Swing. */
-    async function importLibraries() {
-        const file = await pickFile('.xml');
-        if (!file) return;
-        if (!await confirmDialog('Import Libraries',
-            `Import "${file.name}"? This replaces the entire code template library list on the server — libraries not present in the file will be removed.`,
-            { danger: true, okLabel: 'Import' })) return;
-        try {
-            const doc = new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml');
-            if (doc.querySelector('parsererror')) throw new Error('Not a valid XML file');
-            const root = doc.documentElement;
-            if (root.tagName !== 'codeTemplateLibrary' && root.tagName !== 'list') {
-                throw new Error('Expected a <list> of <codeTemplateLibrary> elements');
-            }
-            const libraryEls = root.tagName === 'codeTemplateLibrary'
-                ? [root]
-                : [...root.querySelectorAll(':scope > codeTemplateLibrary')];
-            if (!libraryEls.length) throw new Error('No code template libraries found');
+    /* Swing imports merge into the current collection. The engine endpoint
+       replaces that collection, so always obtain a fresh, complete baseline,
+       send no removals, and never force a stale import over concurrent edits. */
+    function importLibraries() {
+        return withEditorSave(importLibrariesUnlocked, 'Importing libraries…');
+    }
 
-            const v = store.getState('serverVersion') || '4.5.2';
-            const currentLibraries = new Map(entriesNowRef.current.map(en => [String(en.library.id), en.library]));
-            const currentTemplates = new Map(entriesNowRef.current.flatMap(en => en.templates)
-                .map((template: any) => [String(template.id), template]));
-            const templates: any[] = [];
-            const libraries = libraryEls.map(el => {
-                const library = xstreamObject(el);
-                const refs: any[] = [];
-                for (const templateEl of [...el.querySelectorAll(':scope > codeTemplates > codeTemplate')]) {
-                    const id = [...templateEl.children].find(child => child.tagName === 'id')?.textContent;
-                    if (!id) continue;
-                    refs.push({ '@version': templateEl.getAttribute('version') || v, id });
-                    if ([...templateEl.children].some(child => child.tagName !== 'id')) {
-                        const template = codeTemplateFromXml(templateEl, v);
-                        template.revision = currentTemplates.get(String(id))?.revision ?? 0;
-                        templates.push(template);
-                    }
+    async function importLibrariesUnlocked() {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        let writeAttempted = false;
+        try {
+            if (dirtyRef.current) {
+                if (!platform.checkTask('codeTemplate', 'doSaveCodeTemplates')) {
+                    toast('You do not have permission to save these changes. Refresh to discard them before importing libraries.', 'warn');
+                    return;
                 }
-                library.revision = currentLibraries.get(String(library.id))?.revision ?? 0;
-                library.codeTemplates = refs.length ? { codeTemplate: refs } : null;
-                return library;
-            });
-            const libraryIds = new Set(libraries.map(library => String(library.id)));
-            const templateIds = new Set(libraries.flatMap(library => api.asList(library.codeTemplates, 'codeTemplate').map((ref: any) => String(ref.id))));
-            const removedLibraries = [...persistedLibraryIdsRef.current].filter(id => !libraryIds.has(id));
-            const removedTemplates = [...persistedTemplateIdsRef.current].filter(id => !templateIds.has(id));
-            if (!await bulkUpdateWithConflict(libraries, templates, removedLibraries, removedTemplates)) return;
+                const save = await confirmDialog('Unsaved Changes',
+                    'Save your code template changes before importing libraries?', { okLabel: 'Save and Import' });
+                assertSession();
+                if (!save) return;
+                await saveAllUnlocked();
+                assertSession();
+                if (dirtyRef.current) return; // cancelled, failed, or partial save
+            }
+            const file = await pickFile('.xml');
+            assertSession();
+            if (!file) return;
+            const v = store.getState('serverVersion') || '4.5.2';
+            const xml = String(file.content || '').trim();
+            if (libraryImportRef.current?.xml !== xml) {
+                libraryImportRef.current = { xml, libraries: parseLibraryImport(xml, v), ids: new Map() };
+            }
+            const pending = libraryImportRef.current;
+            const confirmed = await confirmDialog('Import Libraries',
+                `Import libraries from "${file.name}"? Existing libraries and templates will be kept. Any conflicts will be reviewed before saving.`,
+                { okLabel: 'Import' });
+            assertSession();
+            if (!confirmed) return;
+            const current = await api.codeTemplates.libraries(true);
+            assertSession();
+            const payload = await prepareLibraryImport(current, pending.libraries, v,
+                libraryImportCallbacks(assertSession, pending.ids));
+            assertSession();
+            if (!payload) return;
+            writeAttempted = true;
+            const result = await api.codeTemplates.bulkUpdate(payload.libraries, payload.templates, [], [], false);
+            assertSession();
+            if (String(result?.overrideNeeded) === 'true') {
+                writeAttempted = false; // the engine checks conflicts before writing
+                throw new Error('Libraries or code templates changed during import. Import again to merge with the latest server versions.');
+            }
+            const failure = bulkSaveError(result);
+            if (failure) throw new Error(failure);
+            libraryImportRef.current = null;
             invalidateCompletions();   // script editors refetch the new scope on next focus
             toast(`Imported ${file.name}`);
             setSelected(null);
             await load();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            if (writeAttempted) {
+                // Bulk updates can commit the libraries before a template fails;
+                // network errors can also arrive after a commit. Retain import IDs
+                // for retry, and reconcile the editor with the server's outcome.
+                invalidateCompletions();
+                await load();
+                try { assertSession(); } catch { return; }
+            }
             toast(`Import failed: ${e.message}`, 'error');
         }
     }
 
-    /* Import individual code templates into the selected library (Swing's
-       "Import Code Templates"). Templates and the updated library references
-       are committed together through the engine's _bulkUpdate endpoint. */
-    async function importCodeTemplates(entryArg: any) {
-        // Re-resolve the target by id (the offering menu may have outlived a reload).
-        let target = entryArg && entriesNowRef.current.find(en => en.library.id === entryArg.library.id);
-        if (!target) {
-            if (entriesNowRef.current.length === 1) target = entriesNowRef.current[0];
-            else { toast('Select a library to import into first', 'warn'); return; }
-        }
-        const targetId = target.library.id;
-        if (dirtyRef.current && !await confirmDialog('Import Code Templates',
-            'Discard unsaved changes and import? The imported templates are added to the selected library and saved.',
-            { okLabel: 'Import' })) return;
-        const file = await pickFile('.xml');
-        if (!file) return;
-        try {
-            const doc = new DOMParser().parseFromString(String(file.content || '').trim(), 'text/xml');
-            if (doc.querySelector('parsererror')) throw new Error('Not a valid XML file');
-            // Full <codeTemplate> elements (more than a bare <id> reference).
-            const els = [...doc.querySelectorAll('codeTemplate')]
-                .filter(el => [...el.children].some(c => c.tagName !== 'id'));
-            if (!els.length) throw new Error('No <codeTemplate> elements found in the file');
+    function importCodeTemplates(entryArg: any) {
+        return withEditorSave(() => importCodeTemplatesUnlocked(entryArg), 'Importing code templates…');
+    }
 
-            const v = store.getState('serverVersion') || '4.5.2';
-            const currentTemplates = new Map(entriesNowRef.current.flatMap(en => en.templates)
-                .map((template: any) => [String(template.id), template]));
-            const imported: any[] = [];
-            for (const el of els) {
-                let id = [...el.children].find(c => c.tagName === 'id')?.textContent;
-                if (!id) {
-                    id = uuid();
-                    const idEl = doc.createElement('id');
-                    idEl.textContent = id;
-                    el.insertBefore(idEl, el.firstChild);
+    async function importCodeTemplatesUnlocked(entryArg: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        let writeAttempted = false;
+        try {
+            const target = entriesNowRef.current.find(en => en.library.id === entryArg?.library.id)
+                || (entriesNowRef.current.length === 1 ? entriesNowRef.current[0] : null);
+            if (!target) { toast('Select a library to import into first', 'warn'); return; }
+            const targetId = target.library.id;
+            if (dirtyRef.current) {
+                if (!platform.checkTask('codeTemplate', 'doSaveCodeTemplates')) {
+                    toast('You do not have permission to save these changes. Refresh to discard them before importing code templates.', 'warn');
+                    return;
                 }
-                const template = codeTemplateFromXml(el, v);
-                template.revision = currentTemplates.get(String(id))?.revision ?? 0;
-                imported.push(template);
+                const save = await confirmDialog('Unsaved Changes',
+                    'Save your code template changes before importing code templates?', { okLabel: 'Save and Import' });
+                assertSession();
+                if (!save) return;
+                await saveAllUnlocked(false, assertSession);
+                assertSession();
+                if (dirtyRef.current) return;
             }
-            const newIds = imported.map(template => String(template.id));
-            // Rewrite the library set with the new refs appended to the target,
-            // matched by id rather than object identity.
-            const payload = entriesNowRef.current.map(en => {
-                const ids = [...new Set((en.library.id === targetId
-                    ? [...en.templates.map((t: any) => t.id), ...newIds]
-                    : en.templates.map((t: any) => t.id)).map(String))];
-                return {
-                    '@version': en.library['@version'] || v,
-                    ...en.library,
-                    codeTemplates: ids.length ? { codeTemplate: ids.map((id: any) => ({ '@version': v, id })) } : null
-                };
-            });
-            if (!await bulkUpdateWithConflict(payload, imported)) return;
-            invalidateCompletions();   // script editors refetch the new scope on next focus
-            toast(`Imported ${els.length} code template${els.length === 1 ? '' : 's'} into "${target.library.name || 'library'}"`);
+            const file = await pickFile('.xml');
+            assertSession();
+            if (!file) return;
+            const version = store.getState('serverVersion') || '4.5.2';
+            const xml = String(file.content || '').trim();
+            if (templateImportRef.current?.xml !== xml || templateImportRef.current.targetId !== targetId) {
+                templateImportRef.current = { xml, targetId, templates: parseTemplateImport(xml, version), ids: new Map() };
+            }
+            const pending = templateImportRef.current;
+            const current = await api.codeTemplates.libraries(true);
+            assertSession();
+            const payload = await prepareTemplateImport(current, pending.templates, targetId, version,
+                libraryImportCallbacks(assertSession, pending.ids));
+            assertSession();
+            if (!payload || !payload.templates.length) return;
+            writeAttempted = true;
+            const result = await api.codeTemplates.bulkUpdate(payload.libraries, payload.templates, [], [], false);
+            assertSession();
+            if (String(result?.overrideNeeded) === 'true') {
+                writeAttempted = false;
+                throw new Error('Libraries or code templates changed during import. Import again to merge with the latest server versions.');
+            }
+            const failure = bulkSaveError(result);
+            if (failure) throw new Error(failure);
+            templateImportRef.current = null;
+            invalidateCompletions();
+            toast(`Imported ${payload.templates.length} code template(s) into "${target.library.name || 'library'}"`);
             await load();
         } catch (e: any) {
+            try { assertSession(); } catch { return; }
+            if (writeAttempted) {
+                invalidateCompletions();
+                await load();
+                try { assertSession(); } catch { return; }
+            }
             toast(`Import failed: ${e.message}`, 'error');
         }
     }
