@@ -20,6 +20,7 @@
  */
 
 import { withEditorSave } from '../save-lock.js';
+import { loadConfigurationMapImport, serializeConfigurationMap } from './configuration-map-import.js';
 import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
 import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
@@ -1249,8 +1250,13 @@ function ConfigurationMapTab({ ctx }: any) {
         try {
             /* Round-trip each entry's property-class key and any extra fields
                the engine put on the ConfigurationProperty. */
-            const entry = (rowsNowRef.current || []).filter((r: any) => r.key.trim() !== '').map((r: any) => ({
-                string: r.key.trim(),
+            const current = rowsNowRef.current || [];
+            if (current.some((row: any) => !row.key.trim() && (row.value.trim() || row.comment.trim()))) {
+                toast('Blank keys are not allowed.', 'warn');
+                return false;
+            }
+            const entry = current.filter((r: any) => r.key.trim() !== '').map((r: any) => ({
+                string: r.key,
                 [r.propKey || CONFIGURATION_PROPERTY_CLASS]: { ...(r.prop || {}), value: r.value, comment: r.comment }
             }));
             await api.server.setConfigurationMap({ entry });
@@ -1265,7 +1271,9 @@ function ConfigurationMapTab({ ctx }: any) {
         }
     }
 
-    async function importMap() {
+    function importMap() { return withEditorSave(importMapUnlocked, 'Importing configuration map…'); }
+
+    async function importMapUnlocked() {
         if (!currentSession()) return;
         if (!rowsNowRef.current) { toast('The configuration map has not loaded yet', 'warn'); return; }
         let file;
@@ -1275,39 +1283,37 @@ function ConfigurationMapTab({ ctx }: any) {
             return;
         }
         if (!currentSession() || !file) return;
-        const imported: any[] = [];
-        let pendingComment: any[] = [];
-        for (const line of String(file.content).split(/\r?\n/)) {
-            const t = line.trim();
-            if (t === '') { pendingComment = []; continue; }
-            if (t.startsWith('#') || t.startsWith('!')) { pendingComment.push(t.replace(/^[#!]\s?/, '')); continue; }
-            const idx = t.indexOf('=');
-            if (idx <= 0) { pendingComment = []; continue; }
-            imported.push({ key: t.slice(0, idx).trim(), value: t.slice(idx + 1), comment: pendingComment.join(' ') });
-            pendingComment = [];
+        let imported;
+        try {
+            imported = await loadConfigurationMapImport(String(file.content), file.name, async include => {
+                if (!currentSession()) return undefined;
+                const choice = await new Promise<'select' | 'skip' | null>(resolve => modal({
+                    title: 'Import Included Properties',
+                    body: h('p', `Select "${include.path}", referenced by the configuration map.${include.optional ? ' You can skip this optional file if it does not exist.' : ''}`),
+                    onClose: () => resolve(null),
+                    buttons: [
+                        { label: 'Cancel', onClick: () => resolve(null) },
+                        ...(include.optional ? [{ label: 'Skip', onClick: () => resolve('skip') }] : []),
+                        { label: 'Select File', primary: true, onClick: () => resolve('select') }
+                    ]
+                }));
+                if (!currentSession() || choice === null) return undefined;
+                if (choice === 'skip') return null;
+                const included = await pickFile('.properties');
+                if (!currentSession() || !included) return undefined;
+                return String(included.content);
+            });
         }
-        if (!imported.length) { toast('No properties found in file', 'warn'); return; }
-        const current = rowsNowRef.current || [];
-        const existing = new Set(current.map((r: any) => r.key));
-        const overlap = imported.filter(i => existing.has(i.key)).length;
+        catch (e: any) {
+            if (currentSession()) toast(`Import failed: ${e.message}`, 'error');
+            return;
+        }
+        if (!currentSession() || imported === null) return;
         const ok = await confirmDialog('Import Configuration Map',
-            `Import ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} from "${file.name}"?` +
-            (overlap ? ` ${overlap} existing key(s) will be overwritten.` : ''),
+            `Replace the configuration map with ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} from "${file.name}"? Existing entries and comments will be replaced. Save to apply the imported map.`,
             { okLabel: 'Import' });
         if (!currentSession() || !ok) return;
-        setRows((prev: any) => {
-            const next = prev.slice();
-            for (const imp of imported) {
-                const row = next.find((r: any) => r.key === imp.key);
-                if (row) {
-                    row.value = imp.value;
-                    if (imp.comment) row.comment = imp.comment;
-                } else {
-                    next.push(newCfgRow(imp.key, imp.value, imp.comment));
-                }
-            }
-            return next;
-        });
+        setRows(imported.map(imp => newCfgRow(imp.key, imp.value, imp.comment)));
         bumpStructure();
         ctx.markDirty();
         toast(`Imported ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} — Save to apply`);
@@ -1315,16 +1321,9 @@ function ConfigurationMapTab({ ctx }: any) {
 
     async function exportMap() {
         if (!currentSession()) return;
-        const lines: any[] = [];
-        for (const r of rowsNowRef.current || []) {
-            if (r.key.trim() === '') continue;
-            if (r.comment && String(r.comment).trim() !== '') {
-                for (const c of String(r.comment).split(/\r?\n/)) lines.push('# ' + c);
-            }
-            lines.push(`${r.key.trim()}=${r.value ?? ''}`);
-        }
+        const content = serializeConfigurationMap(rowsNowRef.current || []);
         try {
-            await saveFile('configuration.properties', 'text/plain', lines.join('\n') + '\n', () => {
+            await saveFile('configuration.properties', 'text/plain', content, () => {
                 if (!currentSession()) throw new Error('The settings editor is no longer active.');
             });
         } catch (e: any) {
