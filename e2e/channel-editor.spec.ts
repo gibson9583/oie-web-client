@@ -513,7 +513,7 @@ test.describe('Channel editor', () => {
     // The transport doesn't change, so nothing remounts unless the panel host also
     // keys off the properties object — regressed, the panel keeps showing the
     // pre-import values and edits write to a detached object (lost on save).
-    test('same-transport Import Connector rebinds the settings panel', async ({ page }) => {
+    test('same-transport Import Connector adds a destination and rebinds the settings panel', async ({ page }) => {
         const ID = 'tcp-rebind';
         const tcp = CONNECTOR_CASES.find((c) => c.name === 'TCP Sender');
         const channel = makeChannel(ID, { destination: { transportName: 'TCP Sender', properties: tcp!.properties() } });
@@ -535,16 +535,19 @@ test.describe('Channel editor', () => {
         const chooser = page.waitForEvent('filechooser');
         await page.getByRole('button', { name: 'Import Connector', exact: true }).click();
         await (await chooser).setFiles({ name: 'conn.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(imported)) });
-        await page.locator('.modal').getByRole('button', { name: 'OK', exact: true }).click();
 
-        // The panel rebinds to the imported properties despite the unchanged transport.
+        // The panel rebinds to the newly appended destination despite the unchanged transport.
         await expect(page.locator('[data-fkey="remoteAddress"]')).toHaveValue('10.9.9.9');
 
         // Edits after the import reach the live object — both survive the save.
         await page.locator('[data-fkey="remotePort"]').fill('7777');
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
         await expect.poll(() => putBody, { timeout: 8000 }).not.toBeNull();
-        const sent = JSON.parse(putBody).channel.destinationConnectors.connector[0].properties;
+        const destinations = JSON.parse(putBody).channel.destinationConnectors.connector;
+        expect(destinations).toHaveLength(2);
+        expect(destinations[0].properties).toEqual(tcp!.properties());
+        expect(destinations[1].metaDataId).toBe(2);
+        const sent = destinations[1].properties;
         expect(sent.remoteAddress).toBe('10.9.9.9');
         expect(sent.remotePort).toBe('7777');
     });

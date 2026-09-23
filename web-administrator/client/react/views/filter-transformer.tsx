@@ -1,6 +1,7 @@
 import { loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
+import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTypes, updateImportedAttachmentHandler, normalizeImportedElementTypes } from './editor-import.js';
 /*
  * Filter / Transformer / Response Transformer editor — parity with the Swing
  * Administrator's filter and transformer panes, fully declarative React. Edits
@@ -1169,6 +1170,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     /* ---- state + execution-time mirrors ---- */
     const elementsRef = useRef(setupRef.current.elements);
+    const mountedRef = useRef(true);
+    const importingRef = useRef(false);
+    useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
     const [selectedPath, setSelectedPathState] = useState(() =>
         setupRef.current.elements.length ? [0] : null);
     const selectedPathRef = useRef(selectedPath);
@@ -1447,31 +1451,58 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     }
 
     async function importElements() {
-        const file = await pickFile('.json');
-        if (!file) return;
+        if (importingRef.current) return;
+        const isCurrent = channelSessionActive();
+        const active = () => isCurrent() && mountedRef.current && store.getState('editingChannel') === channel;
+        if (!active()) return;
+        importingRef.current = true;
         try {
-            const parsed = JSON.parse(file.content);
-            let source: any = null;
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                source = parsed.elements ?? parsed.steps ?? parsed.rules ??
-                    (parsed[kind.targetKey] && parsed[kind.targetKey].elements) ?? null;
-            } else if (Array.isArray(parsed)) {
-                source = parsed;
-            }
-            let imported: any = null;
-            if (Array.isArray(source)) imported = source;
-            else if (source && typeof source === 'object') imported = oie.elementsToArray(source);
-            if (!imported) throw new Error('no steps/rules/elements found in the file');
-            const cleaned = imported.filter((item: any) =>
-                item && typeof item === 'object' && typeof item.__type === 'string');
-            if (!cleaned.length) throw new Error(`the file does not contain any valid ${kind.noun.toLowerCase()}s`);
-            elementsRef.current = cleaned;
+            const file = await pickFile('.xml,.json');
+            if (!file || !active()) return;
+            const imported = parseFilterTransformerImport(file.content, isFilter, version, target);
+            const registry = isFilter ? platform.ruleTypes() : platform.stepTypes();
+            normalizeImportedElementTypes(imported, type => registry.get(type)?.create?.());
+            const cleaned = oie.elementsToArray(imported.elements);
             hydrateChildren(cleaned);
-            setSelected(cleaned.length ? [0] : null);
+            let choice: 'append' | 'replace' | null = 'replace';
+            if (elementsRef.current.length) {
+                choice = await new Promise<'append' | 'replace' | null>(resolve => modal({
+                    title: `Import ${kind.title}`,
+                    body: h('p', `Append the imported ${kind.noun.toLowerCase()}s to the existing ${kind.title.toLowerCase()}, or replace the entire ${kind.title.toLowerCase()}?`),
+                    onClose: () => resolve(null),
+                    buttons: [
+                        { label: 'Cancel', onClick: () => resolve(null) },
+                        { label: 'Replace', onClick: () => resolve('replace') },
+                        { label: 'Append', primary: true, onClick: () => resolve('append') }
+                    ]
+                }));
+            }
+            if (!choice || !active()) return;
+            if (choice === 'replace' && !isFilter) {
+                for (const side of ['inbound', 'outbound']) {
+                    normalizeImportTypes(imported[`${side}Properties`], dataTypeDef(imported[`${side}DataType`])?.defaults(version));
+                }
+                if (isSourceConnector) {
+                    alignDestinationTypes(channel, imported.outboundDataType, type => dataTypeDef(type)?.defaults(version) || { '@version': version });
+                    updateImportedAttachmentHandler(channel, imported.inboundDataType);
+                }
+            }
+            if (choice === 'append') {
+                elementsRef.current = [...elementsRef.current, ...cleaned];
+            } else {
+                // Mutate the stable target object used by the message-template panels;
+                // replacement imports all transformer settings, including empty templates.
+                for (const key of Object.keys(target)) delete target[key];
+                Object.assign(target, imported);
+                elementsRef.current = cleaned;
+            }
+            setSelected(elementsRef.current.length ? [0] : null);
             commitRef.current();
             toast(`Imported ${cleaned.length} ${kind.noun.toLowerCase()}${cleaned.length === 1 ? '' : 's'}`);
-        } catch (e: any) {
-            toast(`Import failed: ${e.message}`, 'error');
+        } catch (error: any) {
+            if (active()) toast(`Import failed: ${error.message}`, 'error');
+        } finally {
+            importingRef.current = false;
         }
     }
 
@@ -1483,7 +1514,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // rebuild iterator children from their stale wire copies.
         try {
             await saveFile(`${channel.name || channel.id}-${kindName}.json`, 'application/json',
-                () => JSON.stringify({ elements: serializeList(elementsRef.current) }, null, 2), assertSession);
+                () => JSON.stringify({ ...target, elements: serializeList(elementsRef.current) }, null, 2), assertSession);
         } catch (e: any) {
             try { assertSession(); } catch { return; }
             toast(`Export failed: ${e.message}`, 'error');

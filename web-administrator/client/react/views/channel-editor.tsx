@@ -33,6 +33,7 @@ import { channelDependencyState, copyLibrarySelection, copyDependencySelection, 
  */
 
 import { withEditorSave } from '../save-lock.js';
+import { parseConnectorImport, normalizeImportTypes, appendImportedDestination, alignDestinationTypes, updateImportedAttachmentHandler, remapImportedResources, hasImportedResources, normalizeImportedElementTypes } from './editor-import.js';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
@@ -1595,6 +1596,31 @@ function SummaryTab({ channel, version, isNewRef, tagState, markDirty }: any) {
 
 /* ---- connector helpers (shared by Source / Destinations) ---------------------- */
 
+function importDataTypeDefaults(type: string, version: string) {
+    return dataTypeDef(type)?.defaults(version) || { '@version': version };
+}
+
+async function prepareConnectorImport(text: string, mode: 'SOURCE' | 'DESTINATION', version: string) {
+    const imported = parseConnectorImport(text, mode, version);
+    const definition = platform.connectorPanel(imported.transportName, mode);
+    normalizeImportTypes(imported.properties, definition?.defaults?.(version));
+    // Common settings are typed even when the transport only has a generic editor.
+    const common = mode === 'SOURCE' ? oie.defaultSourceConnector(version) : oie.defaultDestinationConnector(version, 1, 'Destination');
+    normalizeImportTypes(imported.properties, common.properties);
+    normalizeImportedElementTypes(imported.filter, type => platform.ruleTypes().get(type)?.create?.());
+    for (const key of ['transformer', 'responseTransformer']) {
+        const transformer = imported[key];
+        if (!transformer) continue;
+        normalizeImportedElementTypes(transformer, type => platform.stepTypes().get(type)?.create?.());
+        for (const side of ['inbound', 'outbound']) {
+            normalizeImportTypes(transformer[`${side}Properties`], importDataTypeDefaults(transformer[`${side}DataType`], version));
+        }
+    }
+    if (hasImportedResources(imported)) remapImportedResources(imported, await api.server.resources());
+    return imported;
+}
+
+
 function transportNamesFor(mode: any, current: any) {
     const names: any[] = [];
     for (const key of platform.connectorPanels().keys()) {
@@ -2055,6 +2081,9 @@ function MappingsRail({ onInsert, dragRef }: any) {
 }
 
 function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef, destTasksRef, onTasksChange, gotoElements }: any) {
+    const mountedRef = useRef(true);
+    const importingRef = useRef(false);
+    useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
     // Selection lives in the ref (execution-time reads); the state twin only
     // drives re-renders.
     const [, setSelectedIdState] = useState<any>(null);
@@ -2138,38 +2167,26 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         refresh();
     }
 
-    /* Classic connector import/export: replace the selected destination's
-       content but keep its identity (metaDataId + name). */
     async function importConnector() {
-        const dest = needSelection();
-        if (!dest) return;
-        const file = await pickFile('.json');
-        if (!file) return;
-        let imported: any;
+        if (importingRef.current) return;
+        const isCurrent = channelSessionActive();
+        const active = () => isCurrent() && mountedRef.current && store.getState('editingChannel') === channel;
+        if (!active()) return;
+        importingRef.current = true;
         try {
-            imported = JSON.parse(String(file.content || ''));
-        } catch (e: any) {
-            toast(`Invalid JSON: ${e.message}`, 'error');
-            return;
+            const file = await pickFile('.xml,.json');
+            if (!file || !active()) return;
+            const imported = await prepareConnectorImport(file.content, 'DESTINATION', version);
+            if (!active()) return;
+            const metaDataId = appendImportedDestination(channel, imported, type => importDataTypeDefaults(type, version));
+            setSelectedId(metaDataId);
+            markDirty();
+            refresh();
+        } catch (error: any) {
+            if (active()) toast(`Import failed: ${error.message}`, 'error');
+        } finally {
+            importingRef.current = false;
         }
-        if (imported && typeof imported === 'object' && imported.connector) imported = imported.connector;
-        if (!imported || typeof imported !== 'object' || !imported.transportName) {
-            toast('File is not a connector export', 'error');
-            return;
-        }
-        if (imported.mode && imported.mode !== 'DESTINATION') {
-            toast('Not a destination connector export', 'error');
-            return;
-        }
-        if (!await confirmDialog('Import Connector',
-            `Replace the settings of "${dest.name}" with the imported ${imported.transportName} connector? The destination keeps its id and name.`)) return;
-        dest.transportName = imported.transportName;
-        dest.properties = imported.properties;
-        dest.filter = imported.filter || oie.emptyFilter(version);
-        dest.transformer = imported.transformer || oie.emptyTransformer(version);
-        dest.responseTransformer = imported.responseTransformer || dest.responseTransformer || oie.emptyTransformer(version);
-        markDirty();
-        refresh();
     }
 
     async function exportConnector() {
@@ -2506,6 +2523,10 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     const [, bumpRev] = useReducer((x: any) => x + 1, 0);
     const [activeTab, setActiveTabState] = useState('Summary');
     const activeTabRef = useRef('Summary');
+    const mountedRef = useRef(true);
+    const sourceImportingRef = useRef(false);
+    useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+    const [sourceImportRevision, bumpSourceImportRevision] = useReducer((revision: number) => revision + 1, 0);
     const setActiveTab = (label: any) => { activeTabRef.current = label; setActiveTabState(label); onTasksChange(); };
     const destTasksRef = useRef<any>(null);
     const actionsRef = useRef<any>(null);
@@ -2557,6 +2578,30 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         }
         return engineTypesPromiseRef.current;
     }, []);
+
+    async function importSourceConnector() {
+        if (sourceImportingRef.current) return;
+        const isCurrent = channelSessionActive();
+        const active = () => isCurrent() && mountedRef.current && activeTabRef.current === 'Source' && store.getState('editingChannel') === channel;
+        if (!active()) return;
+        sourceImportingRef.current = true;
+        try {
+            const file = await pickFile('.xml,.json');
+            if (!file || !active()) return;
+            const imported = await prepareConnectorImport(file.content, 'SOURCE', version);
+            if (!active()) return;
+            imported.metaDataId = 0;
+            alignDestinationTypes(channel, imported.transformer.outboundDataType, type => importDataTypeDefaults(type, version));
+            channel.sourceConnector = imported;
+            updateImportedAttachmentHandler(channel, imported.transformer.inboundDataType);
+            bumpSourceImportRevision();
+            markDirty();
+        } catch (error: any) {
+            if (active()) toast(`Import failed: ${error.message}`, 'error');
+        } finally {
+            sourceImportingRef.current = false;
+        }
+    }
 
     /* ---- validation + save flow ---- */
 
@@ -2807,6 +2852,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             openDebugDeployModal: () => openDebugDeployModal(channel, save),
             exportChannel, backToChannels,
             gotoElements, withCount,
+            sourceImport: importSourceConnector,
             sourceStepCount: (key: any) => stepCount(channel.sourceConnector, key),
             destStepCount: (key: any) => (destTasksRef.current ? destTasksRef.current.stepCountOf(key) : 0),
             destNew: () => destTasksRef.current && destTasksRef.current.newDestination(),
@@ -2830,7 +2876,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         body = <SummaryTab key="Summary" channel={channel} version={version} isNewRef={isNewRef}
             tagState={tagState} markDirty={markDirty} />;
     } else if (activeTab === 'Source') {
-        body = <SourceTab key="Source" channel={channel} version={version} engineTypes={engineTypes} markDirty={markDirty} />;
+        body = <SourceTab key={`Source-${sourceImportRevision}`} channel={channel} version={version} engineTypes={engineTypes} markDirty={markDirty} />;
     } else if (activeTab === 'Destinations') {
         body = <DestinationsTab key="Destinations" channel={channel} version={version} engineTypes={engineTypes}
             markDirty={markDirty} actionsRef={actionsRef} destTasksRef={destTasksRef}
@@ -2929,6 +2975,7 @@ export function ChannelEditorView({ params, query }: any) {
                         {t && <TaskButton label="Back to Channels" icon="channels" onClick={t.backToChannels} />}
 
                         {/* Contextual connector tasks (Swing ctx-tasks), gated by active tab. */}
+                        {t && ts.tab === 'Source' && <TaskButton label="Import Connector" icon="import" task="doImportConnector" onClick={t.sourceImport} />}
                         {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Filter', t.sourceStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => t.gotoElements('filter', 0)} />}
                         {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Transformer', t.sourceStepCount('transformer'))} icon="transform" task="doEditTransformer" onClick={() => t.gotoElements('transformer', 0)} />}
 
