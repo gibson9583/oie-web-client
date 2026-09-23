@@ -23,8 +23,8 @@ existing templates that are absent from the file. Other libraries are retained.
 template into another library creates a separate ID and keeps the original.
 
 Save pending edits before importing. Both import actions read the current server
-collection and use the engine's revision checks to detect intervening additions
-or edits before the import saves.
+collection and use the engine's revision checks to detect intervening edits to
+existing libraries and templates before the import saves.
 Review conflicts again when retrying. A failed import can have partially saved;
 the editor refreshes to show the server's state. Keep the page open when retrying
 the same file after a failure so generated copy IDs can be reused.
