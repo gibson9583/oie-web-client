@@ -27,6 +27,8 @@ import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorM
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
+import { updateChannelWithConflict } from '../../core/channel-save.js';
+import { confirmChannelOverwrite } from '../channel-persistence.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { checkImportVersion, checkImportVersionFromDoc } from '../../core/import-guard.js';
@@ -318,7 +320,7 @@ function remapResourceIds(channelEl: Element, resourcesRaw: any) {
 // user cancelled. `existing` is the current channel list (for collision). Group
 // imports already perform migration confirmation for the enclosing document, so
 // they can disable the otherwise-standard per-channel version check.
-async function importChannelXml(xml: any, existing: any, { checkVersion = true, importLibraries = true, assertSession = captureEngineSession(), importIds = new Map<string, string>(), startEdit = new Date(), resolvedIdentity }: any = {}) {
+async function importChannelXml(xml: any, existing: any, { checkVersion = true, importLibraries = true, assertSession = captureEngineSession(), importIds = new Map<string, string>(), resolvedIdentity }: any = {}) {
     assertSession();
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'channel') {
@@ -424,14 +426,12 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     assertSession();
 
     const body = new XMLSerializer().serializeToString(doc);
-    // POST /channels is an upsert with no action-time conflict timestamp. PUT
-    // supports new IDs as well and rejects an intervening creation of this ID.
-    const saved = await api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, {
-        override: false, startEdit: startEdit.toISOString().replace(/\.\d{3}Z$/, '+0000')
-    });
-    assertSession();
-    if (saved === false || saved === 'false') throw new Error('The channel changed during import. Import again to review the latest version.');
-    return resolved;
+    // Omit startEdit so the engine supplies its own clock. PUT also accepts
+    // new IDs; a reported conflict follows the editor's Swing-style choices.
+    const saved = await updateChannelWithConflict(resolved.id,
+        override => api.putXml(`/channels/${encodeURIComponent(resolved.id)}`, body, { override }),
+        { userId: store.getState('user')?.id, confirmConflict: confirmChannelOverwrite, assertSession });
+    return saved ? resolved : false;
 }
 
 async function importLibraryObjectsJson(imported: any[], assertSession: () => void, ids: Map<string, string>) {
@@ -1038,11 +1038,10 @@ export function ChannelsView() {
             if (!file) return;
             const content = String(file.content || '').trim();
             const importIds = importIdsFor(content);
-            const startEdit = new Date();
             const existingChannels = await api.channels.list();
             assertSession();
             if (content.startsWith('<')) {
-                if (await importChannelXml(content, existingChannels, { assertSession, importIds, startEdit }) === false) return;
+                if (await importChannelXml(content, existingChannels, { assertSession, importIds }) === false) return;
             } else {
                 let obj = JSON.parse(content);
                 if (obj && typeof obj === 'object' && obj.channel) obj = obj.channel;
@@ -1070,9 +1069,10 @@ export function ChannelsView() {
                 }
                 if (obj.exportData) delete obj.exportData.codeTemplateLibraries;
                 assertSession();
-                const saved = await api.channels.update(obj.id, obj, false, startEdit);
-                assertSession();
-                if (saved === false || saved === 'false') throw new Error('The channel changed during import. Import again to review the latest version.');
+                const saved = await updateChannelWithConflict(obj.id,
+                    override => api.channels.update(obj.id, obj, override),
+                    { userId: store.getState('user')?.id, confirmConflict: confirmChannelOverwrite, assertSession });
+                if (!saved) return;
             }
             pendingImportRef.current = null;
             toast(`Imported ${file.name}`);
@@ -1385,7 +1385,6 @@ export function ChannelsView() {
             assertSession();
             const parsed = parseGroupXml(content);
             // All prerequisite reads finish before any library or channel write.
-            const startEdit = new Date();
             const [baselineGroups, knownChannels] = await Promise.all([api.channelGroups.list(), api.channels.list()]);
             assertSession();
             const resolvedChannelIds = new Map<string, string>();
@@ -1445,7 +1444,7 @@ export function ChannelsView() {
                     let resolved: any;
                     try {
                         resolved = await importChannelXml(embedded.xml, knownChannels, {
-                            checkVersion: false, importLibraries: false, assertSession, importIds, startEdit,
+                            checkVersion: false, importLibraries: false, assertSession, importIds,
                             resolvedIdentity: preparedChannels.get(embedded.id)
                         });
                         assertSession();

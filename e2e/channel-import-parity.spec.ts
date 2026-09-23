@@ -46,7 +46,23 @@ async function setup(page: Page, overrides: Model = {}) {
 async function importFile(page: Page, xml: string, task = 'Import Group') {
     const chooser = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: task, exact: true }).click();
-    await (await chooser).setFiles({ name: 'parity.xml', mimeType: 'application/xml', buffer: Buffer.from(xml) });
+    const format = xml.trim().startsWith('<') ? 'xml' : 'json';
+    await (await chooser).setFiles({ name: `parity.${format}`, mimeType: `application/${format}`, buffer: Buffer.from(xml) });
+}
+
+type ChannelWrite = { override: string | null; startEdit: string | null; body: string | null };
+function channelWrite(request: any): ChannelWrite {
+    const params = new URL(request.url()).searchParams;
+    return { override: params.get('override'), startEdit: params.get('startEdit'), body: request.postData() };
+}
+function importChannelContent(format: 'xml' | 'json', id = 'c-started', name = 'Demo Started') {
+    return format === 'xml' ? channelXml(id, name) : JSON.stringify({ channel: { '@version': '4.6.0', id, name, revision: 1 } });
+}
+const latestChannel = (userId?: number | string) => ({ channel: { id: 'c-started', name: 'Demo Started', revision: 8,
+    exportData: { metadata: { userId, lastModified: { time: 1_900_000_000_000, timezone: 'UTC' } } } } });
+async function acceptChannelOverwrite(page: Page) {
+    await page.getByRole('dialog', { name: 'Warning', exact: true }).getByRole('button', { name: 'OK', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Import Channel', exact: true }).getByRole('button', { name: 'Yes', exact: true }).click();
 }
 
 test('group import remaps same-ID different-name groups and preserves unrelated groups', async ({ page }) => {
@@ -220,17 +236,249 @@ for (const stage of ['warning', 'overwrite', 'rename']) test(`channel import clo
 });
 
 
-test('new channel imports use the guarded update endpoint and stop on an intervening creation', async ({ page }) => {
-    const calls: { override: string | null; startEdit: string | null }[] = [];
-    await setup(page, { 'PUT /channels/new-channel': (request: any) => {
-        const url = new URL(request.url());
-        calls.push({ override: url.searchParams.get('override'), startEdit: url.searchParams.get('startEdit') });
-        return false;
-    } });
-    await importFile(page, channelXml('new-channel', 'New Channel'), 'Import Channel');
-    await expect(page.getByRole('dialog', { name: 'Error' })).toContainText('channel changed during import');
-    expect(calls).toEqual([{ override: 'false', startEdit: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+0000$/) }]);
+for (const format of ['xml', 'json'] as const) {
+    for (const clock of ['2001-01-01T00:00:00Z', '2040-01-01T00:00:00Z']) {
+        test(`${format} overwrite import omits startEdit with browser clock ${clock.slice(0, 4)}`, async ({ page }) => {
+            const calls: ChannelWrite[] = [];
+            let latestReads = 0;
+            await page.clock.setFixedTime(new Date(clock));
+            await setup(page, {
+                'GET /channels/c-started': () => { latestReads++; return latestChannel(2); },
+                'PUT /channels/c-started': (request: any) => { calls.push(channelWrite(request)); return true; }
+            });
+            await importFile(page, importChannelContent(format), 'Import Channel');
+            await acceptChannelOverwrite(page);
+            await expect(page.getByText(`Imported parity.${format}`, { exact: true })).toBeVisible();
+            expect(calls).toEqual([{ override: 'false', startEdit: null, body: expect.any(String) }]);
+            expect(latestReads).toBe(0);
+        });
+    }
+
+    test(`${format} import retries a conflict saved by the current user without prompting`, async ({ page }) => {
+        const calls: ChannelWrite[] = [], events: string[] = [];
+        await setup(page, {
+            'GET /channels/c-started': () => { events.push('read'); return latestChannel('1'); },
+            'PUT /channels/c-started': (request: any) => {
+                const call = channelWrite(request);
+                calls.push(call); events.push(`write:${call.override}`);
+                return calls.length > 1;
+            }
+        });
+        await importFile(page, importChannelContent(format), 'Import Channel');
+        await acceptChannelOverwrite(page);
+        await expect(page.getByText(`Imported parity.${format}`, { exact: true })).toBeVisible();
+        expect(events).toEqual(['write:false', 'read', 'write:true']);
+        expect(calls).toEqual([
+            { override: 'false', startEdit: null, body: expect.any(String) },
+            { override: 'true', startEdit: null, body: calls[0].body }
+        ]);
+        await expect(page.getByRole('dialog', { name: 'Channel Modified', exact: true })).toHaveCount(0);
+    });
+
+    for (const saver of ['another user', 'unknown user'] as const) {
+        for (const choice of ['Overwrite', 'Cancel'] as const) {
+            test(`${format} import lets the user ${choice.toLowerCase()} a conflict saved by ${saver}`, async ({ page }) => {
+                const calls: ChannelWrite[] = [];
+                let latestReads = 0;
+                await setup(page, {
+                    'GET /channels/c-started': () => { latestReads++; return latestChannel(saver === 'another user' ? 2 : undefined); },
+                    'PUT /channels/c-started': (request: any) => { calls.push(channelWrite(request)); return calls.length > 1; }
+                });
+                await importFile(page, importChannelContent(format), 'Import Channel');
+                await acceptChannelOverwrite(page);
+                const conflict = page.getByRole('dialog', { name: 'Channel Modified', exact: true });
+                await expect(conflict).toContainText('Overwrite the saved channel with your changes?');
+                expect(calls).toHaveLength(1);
+                expect(latestReads).toBe(1);
+                await conflict.getByRole('button', { name: choice, exact: true }).click();
+                if (choice === 'Overwrite') {
+                    await expect(page.getByText(`Imported parity.${format}`, { exact: true })).toBeVisible();
+                    expect(calls).toEqual([
+                        { override: 'false', startEdit: null, body: expect.any(String) },
+                        { override: 'true', startEdit: null, body: calls[0].body }
+                    ]);
+                } else {
+                    await expect(conflict).toHaveCount(0);
+                    await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toHaveCount(0);
+                    await expect(page.getByText(`Imported parity.${format}`, { exact: true })).toHaveCount(0);
+                    expect(calls).toHaveLength(1);
+                    // Cancellation releases the import action and a fresh attempt
+                    // starts guarded, rather than retaining an override decision.
+                    await importFile(page, importChannelContent(format), 'Import Channel');
+                    await acceptChannelOverwrite(page);
+                    await expect(page.getByText(`Imported parity.${format}`, { exact: true })).toBeVisible();
+                    expect(calls).toHaveLength(2);
+                    expect(calls[1].override).toBe('false');
+                }
+            });
+        }
+    }
+
+    test(`${format} new channel import handles an intervening creation with the same overwrite choice`, async ({ page }) => {
+        const calls: ChannelWrite[] = [];
+        let latestReads = 0;
+        await setup(page, {
+            'GET /channels/new-channel': () => { latestReads++; return { channel: { ...latestChannel(2).channel, id: 'new-channel' } }; },
+            'PUT /channels/new-channel': (request: any) => { calls.push(channelWrite(request)); return calls.length > 1; }
+        });
+        await importFile(page, importChannelContent(format, 'new-channel', 'New Channel'), 'Import Channel');
+        await page.getByRole('dialog', { name: 'Channel Modified', exact: true }).getByRole('button', { name: 'Overwrite', exact: true }).click();
+        await expect(page.getByText(`Imported parity.${format}`, { exact: true })).toBeVisible();
+        expect(latestReads).toBe(1);
+        expect(calls).toEqual([
+            { override: 'false', startEdit: null, body: expect.any(String) },
+            { override: 'true', startEdit: null, body: calls[0].body }
+        ]);
+    });
+
+    test(`${format} conflict lookup and library bindings use the resolved overwrite ID`, async ({ page }) => {
+        const sourceId = 'exported-channel', calls: (ChannelWrite & { id: string })[] = [];
+        let latestReads = 0, sourceReads = 0;
+        const writes = await setup(page, {
+            'GET /channels/c-started': () => { latestReads++; return latestChannel(2); },
+            'GET /channels/exported-channel': () => { sourceReads++; return { channel: { ...latestChannel(1).channel, id: sourceId } }; },
+            'PUT /channels/*': (request: any) => {
+                calls.push({ ...channelWrite(request), id: new URL(request.url()).pathname.split('/').at(-1)! });
+                return calls.length > 1;
+            }
+        });
+        const content = format === 'xml'
+            ? channelXml(sourceId, 'Demo Started', importedLibrary.replace('<enabledChannelIds/>', `<enabledChannelIds><string>${sourceId}</string></enabledChannelIds>`))
+            : JSON.stringify({ channel: { '@version': '4.6.0', id: sourceId, name: 'Demo Started', revision: 1,
+                exportData: { codeTemplateLibraries: { codeTemplateLibrary: [{ ...library('lib', [template('tpl')]), enabledChannelIds: { string: [sourceId] } }] } } } });
+        await importFile(page, content, 'Import Channel');
+        await acceptChannelOverwrite(page);
+        await page.getByRole('dialog', { name: 'Import Channel', exact: true }).getByRole('button', { name: 'Yes', exact: true }).click();
+        const conflict = page.getByRole('dialog', { name: 'Channel Modified', exact: true });
+        await expect(conflict).toBeVisible();
+        expect(latestReads).toBe(1);
+        expect(sourceReads).toBe(0);
+        expect(calls).toHaveLength(1);
+        await conflict.getByRole('button', { name: 'Overwrite', exact: true }).click();
+        await expect(page.getByText(`Imported parity.${format}`, { exact: true })).toBeVisible();
+        expect(calls).toEqual([
+            { id: 'c-started', override: 'false', startEdit: null, body: expect.any(String) },
+            { id: 'c-started', override: 'true', startEdit: null, body: calls[0].body }
+        ]);
+        expect(calls[0].body).not.toContain(sourceId);
+        expect(calls[0].body).not.toContain('codeTemplateLibraries');
+        const libraries = writes.filter(write => write.path.includes('codeTemplateLibraries'));
+        expect(libraries).toHaveLength(1);
+        expect(libraries[0].parts.libraries.list.codeTemplateLibrary[0].enabledChannelIds.string).toEqual(['c-started']);
+    });
+}
+
+for (const failure of ['lookup error', 'missing channel', 'wrong channel ID', 'retry rejected', 'retry error'] as const) {
+    test(`channel overwrite import stops safely on ${failure}`, async ({ page }) => {
+        const calls: ChannelWrite[] = [];
+        let latestReads = 0;
+        await setup(page, {
+            'GET /channels/c-started': () => {
+                latestReads++;
+                if (failure === 'lookup error') return { __status: 500, body: 'latest channel lookup failed' };
+                if (failure === 'missing channel') return { channel: null };
+                if (failure === 'wrong channel ID') return { channel: { ...latestChannel(1).channel, id: 'another-channel' } };
+                return latestChannel(1);
+            },
+            'PUT /channels/c-started': (request: any) => {
+                calls.push(channelWrite(request));
+                return calls.length > 1 && failure === 'retry error' ? { __status: 500, body: 'forced overwrite failed' } : false;
+            }
+        });
+        await importFile(page, channelXml('c-started', 'Demo Started'), 'Import Channel');
+        await acceptChannelOverwrite(page);
+        const error = page.getByRole('dialog', { name: 'Error', exact: true });
+        await expect(error).toBeVisible();
+        if (failure === 'lookup error') await expect(error).toContainText('latest channel lookup failed');
+        if (failure === 'retry error') await expect(error).toContainText('forced overwrite failed');
+        if (failure === 'retry rejected') await expect(error).toContainText('engine did not confirm the channel save');
+        expect(latestReads).toBe(1);
+        expect(calls.map(call => call.override)).toEqual(failure.startsWith('retry') ? ['false', 'true'] : ['false']);
+        expect(calls.every(call => call.startEdit === null)).toBe(true);
+        await expect(page.getByText('Imported parity.xml', { exact: true })).toHaveCount(0);
+    });
+}
+
+test('group import keeps completed libraries once and skips a declined channel conflict', async ({ page }) => {
+    const calls: { id: string; override: string | null; startEdit: string | null }[] = [];
+    const writes = await setup(page, {
+        'GET /channels/c-started': latestChannel(2),
+        'PUT /channels/*': (request: any) => {
+            const id = new URL(request.url()).pathname.split('/').at(-1)!;
+            const { override, startEdit } = channelWrite(request);
+            calls.push({ id, override, startEdit });
+            return id !== 'c-started';
+        }
+    });
+    await importFile(page, groupXml('new-group', 'Imported Group', channelXml('c-started', 'Demo Started', importedLibrary) + channelXml('good', 'Good')));
+    await acceptChannelOverwrite(page);
+    await page.getByRole('dialog', { name: 'Import Group', exact: true }).getByRole('button', { name: 'Yes', exact: true }).click();
+    const conflict = page.getByRole('dialog', { name: 'Channel Modified', exact: true });
+    await expect(conflict).toBeVisible();
+    expect(writes.filter(write => write.path.includes('codeTemplateLibraries'))).toHaveLength(1);
+    expect(writes.filter(write => write.path.includes('channelgroups'))).toHaveLength(0);
+    await conflict.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Warning', exact: true })).toContainText('Imported 1 group(s) from parity.xml; 1 channel(s) were skipped or failed.');
+    expect(calls).toEqual([
+        { id: 'c-started', override: 'false', startEdit: null },
+        { id: 'good', override: 'false', startEdit: null }
+    ]);
+    const libraries = writes.filter(write => write.path.includes('codeTemplateLibraries'));
+    expect(libraries).toHaveLength(1);
+    expect(libraries[0].parts.libraries.list.codeTemplateLibrary[0].enabledChannelIds.string).toEqual(['c-started']);
+    const groups = writes.find(write => write.path.includes('channelgroups'))!.parts.channelGroups.set.channelGroup;
+    expect(groups.find((group: Model) => group.id === 'new-group').channels.channel).toEqual([{ id: 'good' }]);
+    expect(groups.find((group: Model) => group.id === 'g-1').channels.channel).toEqual([{ id: 'c-started' }]);
+    await expect(page.getByRole('dialog', { name: 'Error', exact: true })).toHaveCount(0);
 });
+
+test('group conflict retry sends the same channel without repeating bundled library writes', async ({ page }) => {
+    const calls: ChannelWrite[] = [];
+    const writes = await setup(page, {
+        'GET /channels/c-started': latestChannel(1),
+        'PUT /channels/c-started': (request: any) => { calls.push(channelWrite(request)); return calls.length > 1; }
+    });
+    await importFile(page, groupXml('new-group', 'Imported Group', channelXml('c-started', 'Demo Started', importedLibrary)));
+    await acceptChannelOverwrite(page);
+    await page.getByRole('dialog', { name: 'Import Group', exact: true }).getByRole('button', { name: 'Yes', exact: true }).click();
+    await expect(page.getByText('Imported 1 group(s) from parity.xml', { exact: true })).toBeVisible();
+    expect(calls).toEqual([
+        { override: 'false', startEdit: null, body: expect.any(String) },
+        { override: 'true', startEdit: null, body: calls[0].body }
+    ]);
+    expect(calls[0].body).not.toContain('<codeTemplateLibraries>');
+    expect(writes.filter(write => write.path.includes('codeTemplateLibraries'))).toHaveLength(1);
+    const groups = writes.find(write => write.path.includes('channelgroups'))!.parts.channelGroups.set.channelGroup;
+    expect(groups.find((group: Model) => group.id === 'new-group').channels.channel).toEqual([{ id: 'c-started' }]);
+    expect(groups.find((group: Model) => group.id === 'g-1').channels).toBeNull();
+});
+
+for (const stage of ['lookup', 'prompt', 'retry'] as const) {
+    test(`group channel conflict stops further writes when the session expires during ${stage}`, async ({ page }) => {
+        const calls: ChannelWrite[] = [];
+        const writes = await setup(page, {
+            'GET /session-expiry-probe': { __status: 401 },
+            'GET /channels/c-started': stage === 'lookup' ? { __status: 401 } : latestChannel(stage === 'prompt' ? 2 : 1),
+            'PUT /channels/*': (request: any) => {
+                calls.push(channelWrite(request));
+                return calls.length > 1 ? { __status: 401 } : false;
+            }
+        });
+        await importFile(page, groupXml('new-group', 'Imported Group', channelXml('c-started', 'Demo Started') + channelXml('good', 'Good')));
+        await acceptChannelOverwrite(page);
+        if (stage === 'prompt') {
+            await expect(page.getByRole('dialog', { name: 'Channel Modified', exact: true })).toBeVisible();
+            await page.evaluate(async () => {
+                const api = await import(String('/core/api.js'));
+                await api.get('/session-expiry-probe').catch(() => {});
+            });
+        }
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        expect(calls.map(call => call.override)).toEqual(stage === 'retry' ? ['false', 'true'] : ['false']);
+        expect(writes).toHaveLength(0);
+    });
+}
 
 test('a group reference preceding its channel definition does not suppress the import', async ({ page }) => {
     let channelWrites = 0;
