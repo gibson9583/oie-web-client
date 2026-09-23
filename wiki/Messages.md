@@ -31,7 +31,10 @@ Administrator preferences.
 ## Message tasks
 
 - **Send Message** submits a new message to the selected channel.
-- **Import Messages** prepares and submits complete top-level message blocks.
+- **Import Messages** imports XML files, folders, ZIP, TAR, TAR/GZip, or TAR/BZip2
+  archives from your computer, or a file/folder/archive path on the server.
+  **Include Sub-folders** controls recursion. Imported messages receive new IDs
+  and are stored without processing through the channel.
 - **Export Results** exports browser or server-side results and records audit
   events around sensitive exports.
 - **Reprocess Message/Results** runs existing message data through the channel.

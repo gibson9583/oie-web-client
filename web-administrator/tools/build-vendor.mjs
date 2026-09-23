@@ -117,6 +117,20 @@ for (const [pkg, entry] of Object.entries(VENDOR)) {
     console.log(`[build-vendor] bundled ${pkg} -> client/vendor/${pkg}.js`);
 }
 
+// Swing's message importer accepts .tar.bz2 as well as ZIP/TAR/GZip. Keep the
+// decoder self-hosted and load it only when a bzip2 archive is selected.
+await build({
+    stdin: { contents: "export { default } from 'seek-bzip';", resolveDir: clientDir, loader: 'js' },
+    outfile: resolve(clientDir, 'vendor', 'seek-bzip.js'),
+    inject: [resolve(here, 'browser-buffer.mjs')],
+    bundle: true, minify: true, format: 'esm', platform: 'browser', target: 'es2022', legalComments: 'inline'
+});
+const dependencyPath = createRequire(import.meta.url);
+for (const pkg of ['seek-bzip', 'buffer', 'base64-js', 'ieee754']) {
+    const dir = dirname(dependencyPath.resolve(`${pkg}/package.json`));
+    copyFileSync(resolve(dir, 'LICENSE'), resolve(clientDir, 'vendor', `${pkg}.LICENSE`));
+}
+
 /*
  * Monaco is special: a large multi-module ESM package with its own CSS + webfont
  * that also spawns web workers. core/monaco.js imports it via the 'monaco-editor'
