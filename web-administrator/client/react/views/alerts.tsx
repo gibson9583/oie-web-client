@@ -43,6 +43,7 @@ export function AlertsList() {
     const alerts = alertsQuery.data ?? [];
     const [sel, setSel] = useState([] as any[]);
     const tableRef = useRef<any>(null);
+    const importInFlight = useRef(false);
 
     const selectedRows = () => (tableRef.current ? tableRef.current.selectedRows() : []);
 
@@ -121,37 +122,66 @@ export function AlertsList() {
         refresh();
     }
     async function importTask() {
-        const file = await pickFile('.xml,.json');
-        if (!file) return;
+        if (importInFlight.current) return;
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        importInFlight.current = true;
+        let imported = 0;
+        const refreshImported = async () => {
+            const result = await alertsQuery.refetch();
+            assertSession();
+            if (result.error) toast(result.error.message, 'error');
+            setSel(selectedRows());
+        };
         try {
+            const file = await pickFile('.xml,.json');
+            assertSession();
+            if (!file) return;
             const content = String(file.content || '').trim();
-            // Re-read after the file picker closes so a poll or another user
-            // cannot turn a render-time non-conflict into a silent overwrite.
+            // Resolve names against the server after the picker closes, and
+            // remember each successful item while importing an exported list.
             const currentAlerts = await api.alerts.list();
-            const known = currentAlerts.map(alert => ({ id: String(alert.id), name: String(alert.name || '') }));
-            const validName = (name: string) => !!name && /^[a-zA-Z_0-9\-\s]*$/.test(name);
+            assertSession();
+            const known = currentAlerts.map(alert => ({ id: String(alert.id), name: String(alert.name ?? '') }));
+            const nameError = (name: string): string | null => {
+                if (!name) return 'Alert name cannot be empty.';
+                if (!/^[a-zA-Z_0-9\- \t\n\r\f\v]*$/.test(name)) return 'Alert name cannot have special characters besides hyphen, underscore, and space.';
+                if (known.some(alert => alert.name.toLowerCase() === name.toLowerCase())) return `Alert "${name}" already exists.`;
+                return null;
+            };
             const resolveIdentity = async (nameValue: any, idValue: any) => {
-                let name = String(nameValue || '');
+                let name = String(nameValue ?? '');
                 let id = String(idValue || uuid());
-                const clash = known.find(alert => alert.name.toLowerCase() === name.toLowerCase());
-                if (clash) {
-                    const overwrite = await new Promise<boolean>(resolve => modal({
+                const warning = nameError(name);
+                if (warning) {
+                    // Swing validates every imported name. Its overwrite branch
+                    // may explicitly proceed even when the warning is about an
+                    // invalid name rather than an existing alert.
+                    const choice = await new Promise<'overwrite' | 'create' | null>(resolve => modal({
                         title: 'Import Alert',
-                        body: h('div', 'Would you like to overwrite the existing alert?'),
-                        onClose: () => resolve(false),
+                        body: h('div', h('p', warning), h('p', 'Would you like to overwrite the existing alert? Choose Create New to enter a valid, unique name.')),
+                        onClose: () => resolve(null),
                         buttons: [
-                            { label: 'Create New', onClick: () => resolve(false) },
-                            { label: 'Overwrite', primary: true, onClick: () => resolve(true) }
+                            { label: 'Cancel', onClick: () => resolve(null) },
+                            { label: 'Create New', onClick: () => resolve('create') },
+                            { label: 'Overwrite', primary: true, onClick: () => resolve('overwrite') }
                         ]
                     }));
-                    if (overwrite) id = clash.id;
-                    else {
+                    assertSession();
+                    if (choice === null) return null;
+                    if (choice === 'overwrite') {
+                        const clash = known.find(alert => alert.name.toLowerCase() === name.toLowerCase());
+                        if (clash) id = clash.id;
+                    } else {
+                        let error: string | null;
                         do {
-                            name = await promptDialog('Import Alert', 'Please enter a new name for the alert.', name) as any;
-                            if (name == null) return null;
-                            if (!validName(name)) toast(name ? 'Alert name cannot contain special characters besides hyphen, underscore, and space.' : 'Alert name cannot be empty.', 'warn');
-                            else if (known.some(alert => alert.name.toLowerCase() === name.toLowerCase())) toast(`Alert "${name}" already exists.`, 'warn');
-                        } while (!validName(name) || known.some(alert => alert.name.toLowerCase() === name.toLowerCase()));
+                            const next = await promptDialog('Import Alert', 'Please enter a new name for the alert.', name);
+                            assertSession();
+                            if (next == null) return null;
+                            name = next;
+                            error = nameError(name);
+                            if (error) toast(error, 'warn');
+                        } while (error);
                         id = uuid();
                     }
                 }
@@ -174,12 +204,13 @@ export function AlertsList() {
             };
             const allowVersions = async (versions: any[]) => {
                 for (const version of [...new Set(versions.map(value => String(value || '')))]) {
-                    if (!await allowVersion(version || undefined)) return false;
+                    const allowed = await allowVersion(version || undefined);
+                    assertSession();
+                    if (!allowed) return false;
                 }
                 return true;
             };
 
-            let imported = 0;
             if (content.startsWith('<')) {
                 const doc = new DOMParser().parseFromString(content, 'text/xml');
                 if (doc.querySelector('parsererror')) throw new Error('Not a valid XML file');
@@ -198,10 +229,13 @@ export function AlertsList() {
                         child.textContent = value;
                     }
                     try {
+                        assertSession();
                         await api.postXml('/alerts', new XMLSerializer().serializeToString(element));
-                        known.push(identity);
+                        assertSession();
+                        known.splice(0, known.length, ...known.filter(alert => alert.id !== identity.id), identity);
                         imported++;
                     } catch (e: any) {
+                        assertSession();
                         toast(`Error importing alert: ${e.message || e}`, 'error');
                     }
                 }
@@ -215,18 +249,27 @@ export function AlertsList() {
                     const identity = await resolveIdentity(object?.name, object?.id);
                     if (!identity) break;
                     try {
+                        assertSession();
                         await api.alerts.create({ ...object, ...identity });
-                        known.push(identity);
+                        assertSession();
+                        known.splice(0, known.length, ...known.filter(alert => alert.id !== identity.id), identity);
                         imported++;
                     } catch (e: any) {
+                        assertSession();
                         toast(`Error importing alert: ${e.message || e}`, 'error');
                     }
                 }
             }
             if (imported) toast(`Imported ${imported} alert${imported === 1 ? '' : 's'} from ${file.name}`);
-            refresh();
+            await refreshImported();
         } catch (e: any) {
-            toast(`Import failed: ${e.message}`, 'error');
+            try { assertSession(); } catch { return; }
+            toast(`Import failed: ${e.message}${imported ? ` (${imported} alert(s) already imported)` : ''}`, 'error');
+            if (imported) {
+                try { await refreshImported(); } catch { /* The session may have ended while refreshing. */ }
+            }
+        } finally {
+            importInFlight.current = false;
         }
     }
     async function exportTask() {

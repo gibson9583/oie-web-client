@@ -25,6 +25,11 @@ interface ZipJsLib {
     Uint8ArrayReader: new (data: Uint8Array) => object;
     BlobReader: new (blob: Blob) => object;
     TextReader: new (text: string) => object;
+    Uint8ArrayWriter: new () => object;
+    ZipReader: new (reader: object, options?: Record<string, unknown>) => {
+        getEntries(): Promise<Array<{ filename: string; directory: boolean; getData(writer: object): Promise<Uint8Array> }>>;
+        close(): Promise<void>;
+    };
 }
 
 // `new URL(..., import.meta.url)` resolves to the served `/vendor/zipjs.min.js`
@@ -44,6 +49,22 @@ function lib(): Promise<ZipJsLib> {
 }
 
 export type ZipStrength = 128 | 192 | 256 | 'standard';
+
+/** Stream archive members to the importer and release the reader on failure/cancellation. */
+export async function* readZip(data: Uint8Array, recursive = true, assertActive: () => void = () => {}): AsyncGenerator<{ name: string; data: Uint8Array }> {
+    const zipjs = await lib();
+    assertActive();
+    const reader = new zipjs.ZipReader(new zipjs.Uint8ArrayReader(data));
+    try {
+        for (const entry of await reader.getEntries()) {
+            assertActive();
+            if (entry.directory || (!recursive && entry.filename.replace(/^\.\//, '').includes('/'))) continue;
+            const content = await entry.getData(new zipjs.Uint8ArrayWriter());
+            assertActive();
+            yield { name: entry.filename, data: content };
+        }
+    } finally { await reader.close(); }
+}
 
 export interface ZipArchive {
     add(name: string, content: string | Uint8Array | Blob | null | undefined): void;

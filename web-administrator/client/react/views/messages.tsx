@@ -62,6 +62,9 @@ import {
 import { CompareChip } from '../compare-chip.jsx';
 import { CompareOverlay } from '../compare-overlay.jsx';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
+import { withEditorSave } from '../save-lock.js';
+import { messageImportDialog } from './message-import-dialog.js';
+import { readMessageFiles } from '../../core/message-import-files.js';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
@@ -2766,48 +2769,68 @@ export function MessagesView({ params, query }: any) {
         });
     }
 
-    async function importMessagesTask() {
+    function importMessagesTask() {
+        return withEditorSave(importMessagesUnlocked, 'Importing messages…');
+    }
+
+    async function importMessagesUnlocked() {
         let assertSession: () => void;
-        try { assertSession = captureEngineSession(); }
-        catch { return; }
-        let file;
-        try {
-            file = await pickFile('.xml,application/xml,text/xml');
-            assertSession();
-        } catch (error: any) {
-            try { assertSession(); } catch { return; }
-            toast(`Import failed: ${error.message || error}`, 'error');
-            return;
-        }
-        if (!file) return;
-        // Engine-exported files hold serialized <message>...</message> blocks
-        // (optionally inside <list>), exactly what the Swing MessageImporter
-        // scans for. POST /messages/_import takes one Message per request; the
-        // server assigns a fresh message ID and keeps the original as importId
-        // (Channel.importMessage), so the XML is posted unmodified.
-        const blocks = String(file.content).match(/<message>[\s\S]*?<\/message>/g) || [];
-        if (!blocks.length) {
-            toast('No <message> elements found — pick an XML file exported by the engine', 'warn');
-            return;
-        }
+        try { assertSession = captureEngineSession(); } catch { return; }
         let imported = 0;
         let failed = 0;
         let lastError: any = null;
-        for (const xml of blocks) {
+        let writeAttempted = false;
+        try {
+            const source = await messageImportDialog(assertSession);
+            assertSession();
+            if (!source) return;
+            if ('path' in source) {
+                writeAttempted = true;
+                const response = await api.post(`/channels/${channelId}/messages/_importFromPath`, source.path, {
+                    contentType: 'text/plain', params: { includeSubfolders: source.recursive }, timeoutMs: null
+                });
+                assertSession();
+                const result = response?.messageImportResult || response;
+                imported = Number(result?.successCount);
+                const total = Number(result?.totalCount);
+                if (!Number.isInteger(imported) || !Number.isInteger(total) || imported < 0 || total < imported) {
+                    throw new Error('The server returned an invalid import result. Refresh to check the imported messages.');
+                }
+                failed = total - imported;
+                toast(`${imported} out of ${total} message(s) have been successfully imported from ${source.path}.`, failed ? 'warn' : undefined);
+            } else {
+                for await (const file of readMessageFiles(source.files, source.recursive, assertSession)) {
+                    assertSession();
+                    // Preserve the serialized engine message and its original
+                    // importId; the engine assigns the newly imported message ID.
+                    const blocks = file.content.match(/<message>[\s\S]*?<\/message>/g) || [];
+                    for (const xml of blocks) {
+                        try {
+                            assertSession();
+                            writeAttempted = true;
+                            await api.post(`/channels/${channelId}/messages/_import`, xml, { contentType: 'application/xml' });
+                            assertSession();
+                            imported++;
+                        } catch (error: any) {
+                            assertSession();
+                            failed++;
+                            lastError = error;
+                        }
+                    }
+                }
+                if (!imported && !failed) toast('No messages were found to import', 'warn');
+                else if (failed) toast(`Imported ${imported} message(s); ${failed} failed: ${lastError.message}`, 'error');
+                else toast(`Imported ${imported} message(s)`);
+            }
+        } catch (error: any) {
+            try { assertSession(); } catch { return; }
+            toast(`Import failed${imported || failed ? ` after ${imported} imported and ${failed} failed message(s)` : ''}: ${error.message || error}`, 'error');
+        } finally {
             try {
                 assertSession();
-                await api.post(`/channels/${channelId}/messages/_import`, xml, { contentType: 'application/xml' });
-                assertSession();
-                imported++;
-            } catch (e: any) {
-                try { assertSession(); } catch { return; }
-                failed++;
-                lastError = e;
-            }
+                if (writeAttempted) searchRef.current(true);
+            } catch { /* an expired session must not trigger another request */ }
         }
-        if (failed) toast(`Imported ${imported} message(s); ${failed} failed: ${lastError.message}`, 'error');
-        else toast(`Imported ${imported} message(s)`);
-        searchRef.current(true);
     }
 
     async function exportResultsTask() {

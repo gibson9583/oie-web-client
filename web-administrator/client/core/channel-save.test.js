@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { channelEditState, loadChannelForEdit, saveChannelModel } from './channel-save.js';
-import { discardEngineResponses } from './engine-fetch.js';
+import { channelEditState, loadChannelForEdit, saveChannelModel, updateChannelWithConflict } from './channel-save.js';
+import { captureEngineSession, discardEngineResponses } from './engine-fetch.js';
 
 const original = () => ({ id: 'one', name: 'Original', revision: 3, pluginField: { keep: 'untouched' },
     exportData: { metadata: { enabled: true, lastModified: { time: Date.now() + 86400000, timezone: 'UTC' }, userId: 8 } } });
@@ -325,3 +325,127 @@ for (const failure of ['unavailable', 'session ended']) {
     readbackFailure = null;
 }
 console.log('channel-save: readback availability and session cancellation preserve the accepted create checkpoint');
+
+// Exercise the shared import/editor conflict flow independently of an editor's
+// preflight. Only an explicit false receipt permits the overriding retry.
+function conflictAttempt({ firstResult = false, retryResult = true, userId = 4,
+    latest = original(), consent = true, readFailure, writeFailure, invalidateAt } = {}) {
+    const events = [];
+    globalThis.fetch = async (url, init) => {
+        assert.equal(init.method, 'GET', 'conflict resolution only reads the latest channel');
+        assert.match(String(url), /\/channels\/one(?:\?|$)/);
+        events.push('read');
+        if (invalidateAt === 'read') discardEngineResponses();
+        if (readFailure instanceof Error) throw readFailure;
+        if (readFailure) return new Response('latest channel unavailable', { status: readFailure });
+        return Response.json({ channel: latest });
+    };
+    const assertSession = captureEngineSession();
+    if (invalidateAt === 'before') discardEngineResponses();
+    const result = updateChannelWithConflict('one', async override => {
+        events.push(`write:${override}`);
+        if (writeFailure?.[override ? 'retry' : 'first']) throw writeFailure[override ? 'retry' : 'first'];
+        if (invalidateAt === (override ? 'retry' : 'first')) discardEngineResponses();
+        return override ? retryResult : firstResult;
+    }, {
+        userId,
+        assertSession,
+        confirmConflict: async () => {
+            events.push('confirm');
+            if (invalidateAt === 'prompt') discardEngineResponses();
+            return consent;
+        }
+    });
+    return { result, events };
+}
+
+for (const firstResult of [true, 'true']) {
+    const attempt = conflictAttempt({ firstResult });
+    assert.equal(await attempt.result, true);
+    assert.deepEqual(attempt.events, ['write:false'], 'an accepted write needs no conflict read or prompt');
+}
+for (const firstResult of [false, 'false']) {
+    const attempt = conflictAttempt({ firstResult, retryResult: 'true', userId: '8', consent: false });
+    assert.equal(await attempt.result, true);
+    assert.deepEqual(attempt.events, ['write:false', 'read', 'write:true'], 'same saver retries automatically, including string user IDs');
+}
+for (const consent of [false, true]) {
+    const attempt = conflictAttempt({ consent });
+    assert.equal(await attempt.result, consent);
+    assert.deepEqual(attempt.events, ['write:false', 'read', 'confirm', ...(consent ? ['write:true'] : [])], 'another saver requires the overwrite decision before a retry');
+}
+for (const unknown of [
+    { userId: null },
+    { latest: { id: 'one', exportData: { metadata: {} } } },
+    { userId: null, latest: { id: 'one' } }
+]) {
+    const attempt = conflictAttempt({ ...unknown, consent: false });
+    assert.equal(await attempt.result, false);
+    assert.deepEqual(attempt.events, ['write:false', 'read', 'confirm'], 'missing saver identities never imply the same user');
+}
+for (const latest of [null, {}, { id: 'different', exportData: { metadata: { userId: 4 } } }]) {
+    const attempt = conflictAttempt({ latest });
+    await assert.rejects(attempt.result);
+    assert.deepEqual(attempt.events, ['write:false', 'read'], 'missing or mismatched channel identity must not authorize an overwrite');
+}
+for (const readFailure of [404, 503, new Error('latest transport failed')]) {
+    const attempt = conflictAttempt({ readFailure });
+    await assert.rejects(attempt.result, /latest channel unavailable|latest transport failed/);
+    assert.deepEqual(attempt.events, ['write:false', 'read'], 'failed conflict prerequisites cannot prompt or replay the write');
+}
+for (const firstResult of [null, '', {}, 1, 'TRUE']) {
+    const attempt = conflictAttempt({ firstResult });
+    await assert.rejects(attempt.result, /engine did not confirm the channel save/);
+    assert.deepEqual(attempt.events, ['write:false'], 'an unknown receipt is not permission to retry');
+}
+for (const retryResult of [false, 'false', null, '', {}, 1]) {
+    const attempt = conflictAttempt({ retryResult });
+    await assert.rejects(attempt.result, /engine did not confirm the channel save/);
+    assert.deepEqual(attempt.events, ['write:false', 'read', 'confirm', 'write:true'], 'a refused or unconfirmed override gets no further retries');
+}
+for (const stage of ['first', 'retry']) {
+    const failure = new Error(`lost ${stage} receipt`);
+    const attempt = conflictAttempt({ writeFailure: { [stage]: failure } });
+    await assert.rejects(attempt.result, error => error === failure);
+    assert.deepEqual(attempt.events, stage === 'first' ? ['write:false'] : ['write:false', 'read', 'confirm', 'write:true'], 'transport failures propagate without replaying a possibly accepted write');
+}
+for (const [invalidateAt, expected] of [
+    ['before', []],
+    ['first', ['write:false']],
+    ['read', ['write:false', 'read']],
+    ['prompt', ['write:false', 'read', 'confirm']],
+    ['retry', ['write:false', 'read', 'confirm', 'write:true']]
+]) {
+    const attempt = conflictAttempt({ invalidateAt });
+    await assert.rejects(attempt.result, /previous session/);
+    assert.deepEqual(attempt.events, expected, `session loss during ${invalidateAt} stops all subsequent stages`);
+}
+console.log('channel-save: shared conflict receipts, saver identity, cancellation, failure boundaries and session fencing passed');
+
+// The shared helper must preserve the editor's original timestamp check while
+// dropping that prerequisite only for a confirmed overriding retry.
+let editorServer = original();
+const editorWrites = [];
+globalThis.fetch = async (url, init) => {
+    if (init.method === 'GET') return Response.json({ channel: editorServer });
+    const query = new URL(String(url), 'https://engine.invalid').searchParams;
+    editorWrites.push(query);
+    if (query.get('override') === 'false') return Response.json(false);
+    editorServer = JSON.parse(init.body).channel;
+    return Response.json(true);
+};
+const editorRetry = await loadChannelForEdit('one');
+editorRetry.name = 'Editor conflict retry';
+let editorPrompts = 0;
+assert.equal(await saveChannelModel(editorRetry, {
+    userId: 4,
+    confirmConflict: async () => { editorPrompts++; return true; }
+}), true);
+assert.equal(editorPrompts, 1);
+assert.equal(editorWrites.length, 2);
+assert.equal(editorWrites[0].get('override'), 'false');
+assert.ok(editorWrites[0].get('startEdit'), 'ordinary editor saves retain their captured timestamp');
+assert.equal(editorWrites[1].get('override'), 'true');
+assert.equal(editorWrites[1].has('startEdit'), false, 'confirmed overriding saves omit startEdit');
+assert.equal(editorServer.name, 'Editor conflict retry');
+console.log('channel-save: editor timestamp check and confirmed overwrite retry preserved');

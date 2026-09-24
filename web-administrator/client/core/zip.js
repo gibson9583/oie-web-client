@@ -29,6 +29,25 @@ function lib() {
     }
     return libPromise;
 }
+/** Stream archive members to the importer and release the reader on failure/cancellation. */
+export async function* readZip(data, recursive = true, assertActive = () => { }) {
+    const zipjs = await lib();
+    assertActive();
+    const reader = new zipjs.ZipReader(new zipjs.Uint8ArrayReader(data));
+    try {
+        for (const entry of await reader.getEntries()) {
+            assertActive();
+            if (entry.directory || (!recursive && entry.filename.replace(/^\.\//, '').includes('/')))
+                continue;
+            const content = await entry.getData(new zipjs.Uint8ArrayWriter());
+            assertActive();
+            yield { name: entry.filename, data: content };
+        }
+    }
+    finally {
+        await reader.close();
+    }
+}
 export function createZip() {
     const entries = [];
     function add(name, content) {

@@ -38,6 +38,35 @@ function modifiedTime(channel) {
     const modified = channel?.exportData?.metadata?.lastModified;
     return modified == null ? NaN : Number(modified.time ?? modified);
 }
+function savedByUser(channel, userId) {
+    const saver = channel?.exportData?.metadata?.userId;
+    return userId != null && saver != null && String(userId) === String(saver);
+}
+/** Swing's conflict choice is shared by imports and editor saves. Retry only
+ * the channel write, using the latest saver rather than a cached channel list. */
+export async function updateChannelWithConflict(channelId, update, options) {
+    const { assertSession } = options;
+    assertSession();
+    let accepted = await update(false);
+    assertSession();
+    if (String(accepted) === 'false') {
+        const latest = await api.channels.get(channelId);
+        assertSession();
+        if (!latest || latest.id !== channelId)
+            throw new Error('The channel was removed. Reopen the channel list before saving.');
+        if (!savedByUser(latest, options.userId)) {
+            const confirmed = await options.confirmConflict();
+            assertSession();
+            if (!confirmed)
+                return false;
+        }
+        accepted = await update(true);
+        assertSession();
+    }
+    if (String(accepted) !== 'true')
+        throw new Error('The engine did not confirm the channel save. Your changes are still unsaved.');
+    return true;
+}
 function channelContent(channel) {
     // Compare templates in their wire form too: decoded template text must
     // not acquire the scalar coercion applied to ordinary XML element text.
@@ -104,8 +133,6 @@ export async function saveChannelModel(channel, options) {
         return accepted;
     };
     const state = channelEditState(channel);
-    const sameUser = (model) => options.userId != null && model?.exportData?.metadata?.userId != null
-        && String(options.userId) === String(model.exportData.metadata.userId);
     if (state.saving)
         return false;
     state.saving = true;
@@ -149,7 +176,7 @@ export async function saveChannelModel(channel, options) {
             if (!current || current.id !== channel.id)
                 throw new Error('The channel was removed. Reopen the channel list before saving.');
             const conflict = fingerprint(current) !== state.baseline;
-            if (conflict && !sameUser(current) && !await confirm(options.confirmConflict()))
+            if (conflict && !savedByUser(current, options.userId) && !await confirm(options.confirmConflict()))
                 return false;
             if (!conflict && options.skipUnchanged && fingerprint(channel) === state.workingBaseline)
                 return true;
@@ -174,18 +201,9 @@ export async function saveChannelModel(channel, options) {
         }
         else {
             const startEdit = new Date(Math.ceil((Number.isFinite(previousTime) ? previousTime : Date.now()) / 1000) * 1000);
-            accepted = await api.channels.update(channel.id, submitted, false, startEdit);
-            assertSession();
-            if (String(accepted) === 'false') {
-                const latest = await api.channels.get(channel.id);
-                assertSession();
-                if (!latest || latest.id !== channel.id)
-                    throw new Error('The channel was removed. Reopen the channel list before saving.');
-                if (!sameUser(latest) && !await confirm(options.confirmConflict()))
-                    return false;
-                accepted = await api.channels.update(channel.id, submitted, true);
-                assertSession();
-            }
+            accepted = await updateChannelWithConflict(channel.id, override => api.channels.update(channel.id, submitted, override, override ? undefined : startEdit), { ...options, assertSession });
+            if (!accepted)
+                return false;
         }
         if (String(accepted) !== 'true')
             throw new Error('The engine did not confirm the channel save. Your changes are still unsaved.');

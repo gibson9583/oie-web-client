@@ -36,8 +36,12 @@ newer group changes.
 
 Channel import accepts exported XML and prompts when names or IDs collide. The
 workflow can also bring code-template libraries, dependencies, and group
-membership when present. Review every collision decision before the first
-write; a cancel during preparation should result in no import.
+membership when present. Bundled libraries use the same overwrite, copy, and
+rename choices as standalone library imports. Group name conflicts offer overwrite
+or create-new; a reused group ID with a different name receives a fresh ID.
+
+A group import may save libraries and channels before its group record. Cancelling
+a later decision keeps completed writes; the result reports partial completion.
 
 After a partial or network-ambiguous import, reconcile the server inventory
 before retrying. Re-importing an ID-less or partially committed package can

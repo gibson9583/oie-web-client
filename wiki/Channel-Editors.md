@@ -65,3 +65,17 @@ administrator changed it, review the conflict rather than automatically
 overwriting. After a lost response, refresh/reconcile before retrying: the write
 may have committed even though the browser did not receive the response.
 
+
+
+## Importing connectors, filters, and transformers
+
+Import accepts Swing XML exports and existing web JSON exports. On Destinations,
+**Import Connector** adds a destination with a fresh ID and an available name;
+existing destinations stay intact. On Source, it replaces the source connector.
+Source output data types are kept consistent with destination input types.
+
+Filter, transformer, and response-transformer imports offer **Append** or
+**Replace** when rules or steps already exist. Append retains current settings;
+Replace loads the complete imported model, including transformer data types,
+properties, and message templates. Imported changes remain drafts until the
+channel is saved.

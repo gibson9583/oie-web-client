@@ -13,9 +13,21 @@ channels receive them.
 4. Save all pending library/template changes as one bulk operation.
 
 Import and export can operate on complete libraries or templates within a
-selected library. Imports without stable IDs require extra care after partial or
-ambiguous failures; use the retained recovery payload instead of parsing the
-file again and generating new IDs.
+selected library. **Import Libraries** adds to the existing collection. Matching
+IDs offer **Overwrite**, **Import as Copy**, or keeping the existing item;
+conflicting names must be renamed.
+Overwriting a library merges its templates and channel associations, preserving
+existing templates that are absent from the file. Other libraries are retained.
+
+**Import Code Templates** uses the same template conflict choices. Importing a
+template into another library creates a separate ID and keeps the original.
+
+Save pending edits before importing. Both import actions read the current server
+collection and use the engine's revision checks to detect intervening edits to
+existing libraries and templates before the import saves.
+Review conflicts again when retrying. A failed import can have partially saved;
+the editor refreshes to show the server's state. Keep the page open when retrying
+the same file after a failure so generated copy IDs can be reused.
 
 External change notifications and manual Refresh never justify silently losing
 dirty edits. Resolve the prompt or save/reconcile before replacing the editor
@@ -34,7 +46,7 @@ controlled deployment process.
 3. Save the complete script map.
 4. Review Events and relevant channel behavior after deployment.
 
-Import replaces the complete global script set. Export before making changes,
+Import updates the scripts supplied by the file and keeps omitted script drafts.
+Save commits the complete script map. Export before making changes,
 and treat timeout/5xx responses as potentially committed until a server refresh
 proves otherwise.
-
