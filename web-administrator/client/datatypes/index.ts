@@ -14,17 +14,40 @@
  *                         the root and on every group),
  *     groups: [{ key, label, class, fields: [{ key, label, type, default,
  *                options?, hint? }] }] }
- *   Field types: 'text' | 'number' | 'checkbox' | 'select' | 'code'.
+ *   Field types: 'text' | 'number' | 'checkbox' | 'select' | 'code' | 'list'.
+ *   List fields specify item: 'int' | 'string', optionally xmlNames: true.
  *
  * This module is just the read side over the platform registry.
  */
 
 import { platform } from '@oie/web-shell';
+import { normalizeDataTypeList } from '../core/datatype-arrays.js';
 
 /** Look up a registered data type definition; undefined for unknown types
  *  (the properties editor then shows a raw-JSON panel). */
 export function dataTypeDef(name: any) {
     return platform.dataType(name);
+}
+
+/** Validate every list in a dialog draft, including groups/rows not currently
+ * mounted. Blank lists omit their keys; invalid text stays in the draft so OK
+ * cannot silently commit the previous valid value. */
+export function normalizeDataTypeProperties(name: any, props: any): string[] {
+    const errors: string[] = [];
+    const def = dataTypeDef(name);
+    if (!def || !props || typeof props !== 'object') return errors;
+    for (const group of def.groups || []) {
+        const values = props[group.key];
+        if (!values || typeof values !== 'object') continue;
+        for (const field of group.fields || []) {
+            if (field.type !== 'list') continue;
+            const result = normalizeDataTypeList(values[field.key], field.item === 'int' ? 'int' : 'string', field.xmlNames);
+            if (result.error) errors.push(`${group.label} — ${field.label}: ${result.error}`);
+            else if (result.value === undefined) delete values[field.key];
+            else values[field.key] = result.value;
+        }
+    }
+    return errors;
 }
 
 /** Available data types for dropdowns, ordered by each plugin's `order`

@@ -50,7 +50,7 @@ import { generateElementScript } from '../../core/step-script.js';
 import * as router from '../../core/router.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../../core/serialize.js';
-import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
+import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { REFERENCE_CATALOG } from '../../core/reference-catalog.js';
 import { platform } from '@oie/web-shell';
@@ -804,20 +804,28 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     const openPropsModal = () => {
         let draft = JSON.parse(JSON.stringify(ensureProps()));
         const editorHost = h('div');
+        const validationErrors = h('div', { role: 'alert', class: 'hint whitespace-pre-line', style: { color: 'var(--err)' } });
         const root = mountReact(editorHost, <DataTypePropertiesEditor
             typeName={typeName} props={draft} version={version}
             direction={side} connectorType={connectorType}
+            onChange={() => { validationErrors.textContent = ''; }}
             onReplace={(obj: any) => { draft = obj; }} />);
         modal({
             title: `${title} Data Type Properties — ${dtLabel(typeName)}`,
             size: 'wide',
-            body: editorHost,
+            body: h('div', validationErrors, editorHost),
             onClose: () => { try { root(); } catch { /* ignore */ } },
             buttons: [
                 { label: 'Cancel' },
                 {
                     label: 'OK', primary: true,
-                    onClick: () => { target[`${side}Properties`] = draft; commit(); }
+                    onClick: () => {
+                        const errors = normalizeDataTypeProperties(typeName, draft);
+                        validationErrors.textContent = errors.join('\n');
+                        if (errors.length) return false;
+                        target[`${side}Properties`] = draft;
+                        commit();
+                    }
                 }
             ]
         });

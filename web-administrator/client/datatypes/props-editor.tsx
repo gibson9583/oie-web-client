@@ -15,6 +15,7 @@ import { useReducer } from 'react';
 import { toast, modal, pickFile, createCodeEditor } from '@oie/web-ui';
 import { validateScript } from '../core/serialize.js';
 import { dataTypeDef } from './index.js';
+import { dataTypeListText, normalizeDataTypeList } from '../core/datatype-arrays.js';
 
 /* Script editor in a modal (the Swing data-type properties "Edit" → Script
    dialog): code editor + Open File / Validate Script / OK / Cancel. */
@@ -85,6 +86,29 @@ function Field({ label, hint, children }: any) {
 function FieldControl({ groupObj, f, notify }: any) {
     const value = groupObj[f.key];
     switch (f.type) {
+        case 'list': {
+            const item = f.item === 'int' ? 'int' : 'string';
+            const error = normalizeDataTypeList(value, item, f.xmlNames).error;
+            return (
+                <Field label={f.label} hint={f.hint}>
+                    <input type="text" aria-label={f.label} data-datatype-key={f.key}
+                        value={dataTypeListText(value, item)} aria-invalid={!!error}
+                        className={error ? 'cform-invalid' : undefined}
+                        onChange={(e: any) => {
+                            const text = e.target.value;
+                            const result = normalizeDataTypeList(text, item, f.xmlNames);
+                            if (!result.error && result.value === undefined) delete groupObj[f.key];
+                            else {
+                                // Keep wire attributes/unknown children when editing a loaded array.
+                                const previous = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+                                groupObj[f.key] = { ...previous, [item]: result.error ? text : result.value![item] };
+                            }
+                            notify();
+                        }} />
+                    {error && <div className="hint" role="alert">{error}</div>}
+                </Field>
+            );
+        }
         case 'checkbox':
             return (
                 <label className="check" title={f.hint || undefined}>

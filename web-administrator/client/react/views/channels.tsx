@@ -28,6 +28,7 @@ import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { updateChannelWithConflict } from '../../core/channel-save.js';
+import { normalizeChannelDataTypeArrays } from '../../core/datatype-arrays.js';
 import { confirmChannelOverwrite } from '../channel-persistence.js';
 import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
@@ -1045,6 +1046,10 @@ export function ChannelsView() {
             } else {
                 let obj = JSON.parse(content);
                 if (obj && typeof obj === 'object' && obj.channel) obj = obj.channel;
+                // This parsed model is isolated from the channel list. Validate
+                // before identity/library actions so invalid arrays cannot leave
+                // bundled libraries saved for a channel we must reject.
+                normalizeChannelDataTypeArrays(obj);
                 const resolved = await resolveImportName(obj.name || '', obj.id || '', existingChannels, assertSession, importIds);
                 assertSession();
                 if (!resolved) return;
@@ -1148,6 +1153,7 @@ export function ChannelsView() {
         if (!channel) return;
         try {
             const copy = structuredClone(channel);
+            normalizeChannelDataTypeArrays(copy);
             copy.id = uuid();
             copy.name = `${channel.name} copy`;
             copy.revision = 0;

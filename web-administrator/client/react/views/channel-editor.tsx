@@ -45,7 +45,7 @@ import * as router from '../../core/router.js';
 import { validateScript } from '../../core/serialize.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { getPref } from '../../core/prefs.js';
-import { dataTypeDef, dataTypeList } from '../../datatypes/index.js';
+import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
@@ -378,6 +378,15 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
         }
     };
 
+    const validationErrors = h('div', { role: 'alert', class: 'hint whitespace-pre-line', style: { color: 'var(--err)' } });
+    function validDrafts(drafts: any[], sides = ['inbound', 'outbound']) {
+        const errors = drafts.flatMap(row => sides.flatMap(side =>
+            normalizeDataTypeProperties(row.draft[`${side}DataType`], row.draft[`${side}Properties`])
+                .map(error => `${row.label} ${side}: ${error}`)));
+        validationErrors.textContent = errors.join('\n');
+        return errors.length === 0;
+    }
+
     const tableHost = h('div');
     const panelsHost = h('div', {
         class: 'grid grid-cols-[repeat(auto-fit,minmax(min(340px,100%),1fr))] gap-3.5 mt-3.5 items-start'
@@ -389,6 +398,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
 
     function setType(row: any, side: any, name: any) {
         if (row.draft[`${side}DataType`] === name) return;
+        validationErrors.textContent = '';
         const def = dataTypeDef(name);
         const freshProps = () => def ? def.defaults(version) : { '@version': version };
         row.draft[`${side}DataType`] = name;
@@ -477,6 +487,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             version={version}
             direction={side}
             connectorType={row.label === 'Source Connector' ? 'SOURCE' : 'DESTINATION'}
+            onChange={() => { validationErrors.textContent = ''; }}
             onReplace={(obj: any) => { (row as any).draft[`${side}Properties`] = obj; }} />));
         return h('div.panel', { class: 'mt-0' },
             h('div.panel-header', `${title} — ${row.label}`),
@@ -496,6 +507,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
                     const targets = rows.filter(r => bulkSel.has(r));
                     if (!targets.length) { toast('Select at least one connector', 'warn'); return; }
                     if (!applySides.inbound && !applySides.outbound) { toast('Choose Inbound and/or Outbound to apply', 'warn'); return; }
+                    if (!validDrafts([bulkRow], ['inbound', 'outbound'].filter(side => (applySides as any)[side]))) return;
                     for (const r of targets) {
                         if (applySides.inbound) {
                             (r as any).draft.inboundDataType = bulkRow.draft.inboundDataType;
@@ -541,6 +553,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
         onClose: clearDtEditors,
         body: h('div',
             modeBar,
+            validationErrors,
             h('div.panel', { class: 'mt-0' }, h('div.panel-body.flush', tableHost)),
             panelsHost,
             h('div.hint', { class: 'mt-2.5' },
@@ -550,6 +563,12 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             {
                 label: 'OK', primary: true,
                 onClick: () => {
+                    if (!validDrafts(rows)) return false;
+                    // Unchecked sides and a bulk draft with no targets are not
+                    // applied; they must not block otherwise valid row edits.
+                    const bulkSides = bulkMode && bulkSel.size
+                        ? ['inbound', 'outbound'].filter(side => (applySides as any)[side]) : [];
+                    if (bulkSides.length && !validDrafts([bulkRow], bulkSides)) return false;
                     for (const row of rows) Object.assign(row.transformer, (row as any).draft);
                     markDirty();
                 }

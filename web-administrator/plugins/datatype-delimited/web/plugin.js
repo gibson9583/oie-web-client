@@ -7,6 +7,7 @@ var num = (key, label, def, hint) => ({ key, label, type: "number", default: def
 var bool = (key, label, def, hint) => ({ key, label, type: "checkbox", default: def, hint });
 var opt = (key, label, options, def, hint) => ({ key, label, type: "select", options, default: def, hint });
 var code = (key, label, def, hint) => ({ key, label, type: "code", default: def, hint });
+var list = (key, label, item, hint) => ({ key, label, type: "list", item, xmlNames: item === "string", hint });
 var BATCH_SCRIPT_HINT = "JavaScript that splits the batch and returns the next message. Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.";
 var DEF = {
   name: "DELIMITED",
@@ -21,11 +22,11 @@ var DEF = {
       fields: [
         text("columnDelimiter", "Column Delimiter", ",", "Character(s) that separate columns (e.g. a comma in a CSV file)."),
         text("recordDelimiter", "Record Delimiter", "\\n", "Character(s) that separate each record (e.g. a newline in a CSV file)."),
-        text("columnWidths", "Column Widths", null, "Comma separated list of fixed column widths; leave blank for delimited columns."),
+        list("columnWidths", "Column Widths", "int", "Comma separated positive integer column widths; leave blank for delimited columns."),
         text("quoteToken", "Quote Token", '"', "Quote character(s) used to bracket values containing embedded special characters."),
         bool("escapeWithDoubleQuote", "Double Quote Escaping", true, "Two consecutive quote tokens are an embedded quote token; uncheck to use the Escape Token instead."),
         text("quoteEscapeToken", "Escape Token", "\\", "Character(s) used to escape embedded quote tokens (only when Double Quote Escaping is unchecked)."),
-        text("columnNames", "Column Names", null, "Comma separated list overriding the default column names (column1\u2026columnN)."),
+        list("columnNames", "Column Names", "string", "Comma separated XML column names overriding the defaults (column1\u2026columnN)."),
         bool("numberedRows", "Numbered Rows", false, "Number each row in the XML representation of the message."),
         bool("ignoreCR", "Ignore Carriage Returns", true, "Carriage return (\\r) characters are skipped without processing.")
       ]
@@ -37,7 +38,7 @@ var DEF = {
       fields: [
         text("columnDelimiter", "Column Delimiter", ",", "Character(s) that separate columns (e.g. a comma in a CSV file)."),
         text("recordDelimiter", "Record Delimiter", "\\n", "Character(s) that separate each record (e.g. a newline in a CSV file)."),
-        text("columnWidths", "Column Widths", null, "Comma separated list of fixed column widths; leave blank for delimited columns."),
+        list("columnWidths", "Column Widths", "int", "Comma separated positive integer column widths; leave blank for delimited columns."),
         text("quoteToken", "Quote Token", '"', "Quote character(s) used to bracket values containing embedded special characters."),
         bool("escapeWithDoubleQuote", "Double Quote Escaping", true, "Two consecutive quote tokens are an embedded quote token; uncheck to use the Escape Token instead."),
         text("quoteEscapeToken", "Escape Token", "\\", "Character(s) used to escape embedded quote tokens (only when Double Quote Escaping is unchecked).")
@@ -67,7 +68,9 @@ DEF.defaults = (version) => {
   const props = { "@class": DEF.propertiesClass, "@version": version };
   for (const group of DEF.groups) {
     const obj = { "@class": group.class, "@version": version };
-    for (const f of group.fields) obj[f.key] = f.default ?? null;
+    for (const f of group.fields) {
+      if (f.type !== "list") obj[f.key] = f.default ?? null;
+    }
     props[group.key] = obj;
   }
   return props;

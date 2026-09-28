@@ -2,6 +2,7 @@
 import api from './api.js';
 import { encodeChannelTemplates } from './oie.js';
 import { captureEngineSession } from './engine-fetch.js';
+import { normalizeChannelDataTypeArrays } from './datatype-arrays.js';
 const sessions = new WeakMap();
 const clone = (value) => JSON.parse(JSON.stringify(value));
 // External library/graph exports are not written by a channel save. Keep them
@@ -182,6 +183,7 @@ export async function saveChannelModel(channel, options) {
                 return true;
         }
         const submitted = clone(channel);
+        normalizeChannelDataTypeArrays(submitted);
         const exportData = submitted.exportData = submitted.exportData || {};
         const metadata = exportData.metadata = exportData.metadata || { enabled: true };
         const previousTime = modifiedTime(current);

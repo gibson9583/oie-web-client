@@ -1,6 +1,7 @@
 import api from './api.js';
 import { encodeChannelTemplates } from './oie.js';
 import { captureEngineSession } from './engine-fetch.js';
+import { normalizeChannelDataTypeArrays } from './datatype-arrays.js';
 
 type EditState = { isNew: boolean; baseline: string | null; workingBaseline: string | null; saving: boolean; creationAttempts?: any[] };
 const sessions = new WeakMap<object, EditState>();
@@ -180,6 +181,7 @@ export async function saveChannelModel(channel: any, options: {
             if (!conflict && options.skipUnchanged && fingerprint(channel) === state.workingBaseline) return true;
         }
         const submitted = clone(channel);
+        normalizeChannelDataTypeArrays(submitted);
         const exportData = submitted.exportData = submitted.exportData || {};
         const metadata = exportData.metadata = exportData.metadata || { enabled: true };
         const previousTime = modifiedTime(current);
