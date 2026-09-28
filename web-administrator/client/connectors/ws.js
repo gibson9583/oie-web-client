@@ -216,9 +216,9 @@ function wsTestConnectionButton(properties, channel, wsdlUrl) {
 }
 let uidCounter = 0;
 /* Editable text input with datalist suggestions (combo box stand-in). */
-function comboInput(value, options, { placeholder, onInput, onCommit } = {}) {
+function comboInput(value, options, { placeholder, onInput, onCommit, fkey } = {}) {
     const id = `ws-list-${++uidCounter}`;
-    return h('div', h('input', { type: 'text', value: value ?? '', list: id, placeholder, onInput, onChange: onCommit }), h('datalist', { id }, options.map((o) => h('option', { value: o }))));
+    return h('div', h('input', { type: 'text', value: value ?? '', list: id, placeholder, onInput, onChange: onCommit, 'data-fkey': fkey }), h('datalist', { id }, options.map((o) => h('option', { value: o }))));
 }
 function attachmentsTable(properties, onChange, disabled) {
     const wrap = h('div');
@@ -387,7 +387,7 @@ const wsSender = {
                     type: 'custom', label: 'WSDL URL', span: true,
                     render: (p, ctx) => {
                         const input = textInput(p.wsdlUrl ?? '', {
-                            class: 'flex-1',
+                            class: 'flex-1', 'data-fkey': 'wsdlUrl',
                             onInput: (e) => { p.wsdlUrl = e.target.value; onChange(); }
                         });
                         const getOpsBtn = taskButton('Get Operations', 'refresh', () => getOperations(getOpsBtn, ctx.repaint));
@@ -400,6 +400,7 @@ const wsSender = {
                 {
                     type: 'custom', label: 'Service', width: '320px',
                     render: (p, ctx) => comboInput(p.service, [...getServices().keys()], {
+                        fkey: 'service',
                         onInput: (e) => { p.service = e.target.value; onChange(); },
                         onCommit: () => ctx.repaint()
                     })
@@ -409,6 +410,7 @@ const wsSender = {
                     render: (p, ctx) => {
                         const ports = getServices().get(String(p.service ?? ''));
                         return comboInput(p.port, ports ? [...ports.keys()] : [], {
+                            fkey: 'port',
                             onInput: (e) => { p.port = e.target.value; onChange(); },
                             onCommit: () => {
                                 const info = currentPortInfo();

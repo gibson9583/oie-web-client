@@ -97,7 +97,9 @@ function insertUrlTemplateButton(properties, platform, onChange) {
    list (falling back to a free-text input on error). Mirrors the imperative
    driverSelectField; the wrench append opens the drivers modal. */
 function driverControlNode(properties, platform, onChange) {
-    const wrap = h('div', { class: 'flex items-center gap-1.5' });
+    // The control is replaced after loading (or falling back after a failure).
+    // Keep validation state on the stable wrapper so neither result erases it.
+    const wrap = h('div', { class: 'cform-driver flex items-center gap-1.5', 'data-fkey': 'driver' });
     const wrench = h('button.icon-btn', {
         type: 'button', title: 'View and manage the list of database JDBC drivers',
         class: 'ml-1.5',

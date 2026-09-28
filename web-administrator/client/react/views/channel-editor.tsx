@@ -2706,6 +2706,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             });
             return false;
         }
+        clearFieldHighlights();
         // Swing parity (Frame.checkChannelName, run from saveChanges): block the
         // save on a too-long / illegal / duplicate channel name.
         const nameError = await checkChannelName();

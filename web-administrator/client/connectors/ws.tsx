@@ -221,10 +221,10 @@ function wsTestConnectionButton(properties: any, channel: any, wsdlUrl: any) {
 let uidCounter = 0;
 
 /* Editable text input with datalist suggestions (combo box stand-in). */
-function comboInput(value: any, options: any, { placeholder, onInput, onCommit }: any = {}) {
+function comboInput(value: any, options: any, { placeholder, onInput, onCommit, fkey }: any = {}) {
     const id = `ws-list-${++uidCounter}`;
     return h('div',
-        h('input', { type: 'text', value: value ?? '', list: id, placeholder, onInput, onChange: onCommit }),
+        h('input', { type: 'text', value: value ?? '', list: id, placeholder, onInput, onChange: onCommit, 'data-fkey': fkey }),
         h('datalist', { id }, options.map((o: any) => h('option', { value: o }))));
 }
 
@@ -403,7 +403,7 @@ const wsSender = {
                     type: 'custom', label: 'WSDL URL', span: true,
                     render: (p: any, ctx: any) => {
                         const input = textInput(p.wsdlUrl ?? '', {
-                            class: 'flex-1',
+                            class: 'flex-1', 'data-fkey': 'wsdlUrl',
                             onInput: (e: any) => { p.wsdlUrl = e.target.value; onChange(); }
                         });
                         const getOpsBtn = taskButton('Get Operations', 'refresh', () => getOperations(getOpsBtn, ctx.repaint));
@@ -416,6 +416,7 @@ const wsSender = {
                 {
                     type: 'custom', label: 'Service', width: '320px',
                     render: (p: any, ctx: any) => comboInput(p.service, [...getServices().keys()], {
+                        fkey: 'service',
                         onInput: (e: any) => { p.service = e.target.value; onChange(); },
                         onCommit: () => ctx.repaint()
                     })
@@ -425,6 +426,7 @@ const wsSender = {
                     render: (p: any, ctx: any) => {
                         const ports = getServices().get(String(p.service ?? ''));
                         return comboInput(p.port, ports ? [...ports.keys()] : [], {
+                            fkey: 'port',
                             onInput: (e: any) => { p.port = e.target.value; onChange(); },
                             onCommit: () => {
                                 const info = currentPortInfo();

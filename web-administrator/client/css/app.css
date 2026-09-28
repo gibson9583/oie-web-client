@@ -3178,12 +3178,14 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
 
 /* Invalid required field (Swing INVALID_COLOR) — red fill + border on the control
    that failed validation. Added by the channel editor's highlightInvalidFields()
-   on Save/Validate; cleared on the next edit (the form repaints). */
-input.cform-invalid, select.cform-invalid, textarea.cform-invalid {
+   on Save/Validate; refreshed by subsequent validation or a form remount. */
+input.cform-invalid, select.cform-invalid, textarea.cform-invalid,
+.cform-driver.cform-invalid > input, .cform-driver.cform-invalid > select {
     border-color: var(--err) !important;
     background: color-mix(in srgb, var(--err) 12%, var(--bg2)) !important;
 }
 .radio-group.cform-invalid { outline: 1px solid var(--err); outline-offset: 3px; border-radius: 5px; }
+.cform-code.cform-invalid { outline: 1px solid var(--err); outline-offset: 1px; border-radius: var(--radius); }
 
 /* Destination connector header row: "Connector Type: [select]  [x] Wait for previous".
    The checkbox is pushed to the right on a wide row, but once the row is narrow

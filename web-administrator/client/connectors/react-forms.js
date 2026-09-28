@@ -52,7 +52,7 @@ let cformUid = 0;
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
    SOAP envelope, then repaints), the editor is updated to the new value — but
    only when it differs, so normal typing never clobbers the cursor. */
-function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label }) {
+function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label, fkey }) {
     const hostRef = useRef(null);
     const edRef = useRef(null);
     const onChangeRef = useRef(onChange);
@@ -99,7 +99,9 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
         if (ed && ed.area)
             ed.area.readOnly = !!disabled;
     }, [disabled]);
-    return React.createElement("div", { ref: hostRef, style: disabled ? { opacity: 0.6 } : undefined });
+    // Keep the marker outside either editor implementation so validation reaches
+    // Monaco and the fallback textarea without depending on their internals.
+    return React.createElement("div", { ref: hostRef, "data-fkey": fkey, className: "cform-code", style: disabled ? { opacity: 0.6 } : undefined });
 }
 /* Mounts a DOM Node (returned by a field's custom render() or an `append`
    helper) into the React tree. */
@@ -214,7 +216,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
             wide = true;
             break;
         case 'code':
-            control = React.createElement(CodeField, { value: value, label: typeof f.label === 'function' ? f.label(properties) : f.label, language: typeof f.language === 'function' ? f.language(properties) : f.language, minHeight: f.minHeight, placeholder: f.placeholder, onChange: (v) => set(v), disabled: disabled });
+            control = React.createElement(CodeField, { value: value, label: typeof f.label === 'function' ? f.label(properties) : f.label, language: typeof f.language === 'function' ? f.language(properties) : f.language, minHeight: f.minHeight, placeholder: f.placeholder, onChange: (v) => set(v), disabled: disabled, fkey: f.key });
             wide = true;
             break;
         case 'keyvalue':

@@ -67,7 +67,7 @@ export function listenerAddressField(hostKey, label = 'Listener Address') {
             // "Specific" stays selected even before an address is typed.
             let mode = String(getPath(p, hostKey) ?? '0.0.0.0') === '0.0.0.0' ? 'all' : 'specific';
             const input = textInput(String(getPath(p, hostKey) ?? ''), {
-                class: 'w-[180px]',
+                class: 'w-[180px]', 'data-fkey': hostKey,
                 onInput: (e) => { setPath(p, hostKey, e.target.value); ctx.onChange(); }
             });
             const sync = () => { input.disabled = mode === 'all'; input.style.opacity = mode === 'all' ? '0.5' : '1'; };

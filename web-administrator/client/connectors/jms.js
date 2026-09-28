@@ -251,7 +251,8 @@ const jmsSender = {
             { key: 'jndiInitialContextFactory', label: 'Initial Context Factory', when: usingJndi },
             { key: 'jndiConnectionFactoryName', label: 'Connection Factory Name', when: usingJndi },
             { key: 'connectionFactoryClass', label: 'Connection Factory Class', when: (p) => !usingJndi(p) },
-            { key: 'destinationName', label: 'Destination Name' }
+            { key: 'destinationName', label: 'Destination Name' },
+            { key: 'template', label: 'Template' }
         ]);
     }
 };
