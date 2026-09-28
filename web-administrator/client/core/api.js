@@ -17,6 +17,7 @@
 import * as oie from './oie.js';
 import { API_BASE } from './deployment.js';
 import { engineFetch, assertEngineResponse } from './engine-fetch.js';
+import { parseMessageXml } from './message-xml.js';
 const BASE = API_BASE;
 const listeners = { sessionExpired: [], engineUnknown: [] };
 let sessionExpiredFired = false;
@@ -535,7 +536,9 @@ export const messages = {
     // A COUNT over a large message table is legitimately slow (it's why the
     // browser defers it to an explicit button, like Swing) — no client ceiling.
     count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params, { timeoutMs: null }),
-    get: (channelId, messageId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}`),
+    // The engine's JSON conversion rejects XStream's NCPDP/control references.
+    // Use the lossless XML reader; generic parseBody also coerces Java Strings.
+    get: (channelId, messageId) => getXml(`/channels/${enc(channelId)}/messages/${enc(messageId)}`).then(parseMessageXml),
     maxMessageId: (channelId) => get(`/channels/${enc(channelId)}/messages/maxMessageId`),
     attachments: (channelId, messageId, includeContent = false) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments`, { includeContent })
         .then(v => asList(v, 'attachment')),

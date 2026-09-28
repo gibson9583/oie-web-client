@@ -9,6 +9,8 @@
  * generic fallback for any other dispatcher type.
  */
 
+import { parseMessageDocument } from './message-xml.js';
+
 const ct = (root: Element, tag: string): string => {
     for (const n of root.childNodes) if (n.nodeType === 1 && n.nodeName === tag) return n.textContent || '';
     return '';
@@ -241,7 +243,7 @@ export function formatSentProperties(content: unknown): string | null {
     if (typeof content !== 'string' || !/^\s*</.test(content)) return null;
     let root: Element | null = null;
     try {
-        const doc = new DOMParser().parseFromString(content, 'text/xml');
+        const doc = parseMessageDocument(content);
         root = doc.documentElement;
         if (!root || doc.querySelector('parsererror')) return null;
     } catch { return null; }

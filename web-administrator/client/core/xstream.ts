@@ -21,6 +21,8 @@
 
 /* An XStream-encoded node as it reaches the browser: shapes are only knowable
    by inspection, so everything here narrows from `unknown` at the boundary. */
+import { parseMessageDocument } from './message-xml.js';
+
 type XNode = Record<string, unknown>;
 
 const XSTREAM_SCALARS = new Set(['string', 'int', 'long', 'short', 'byte', 'double', 'float', 'boolean', 'char', 'date', 'null', 'big-decimal', 'big-int']);
@@ -172,7 +174,7 @@ function directChildText(root: Element, tag: string): string {
 export function parseResponse(content: unknown): { status: string; statusMessage: string; message: string } | null {
     if (typeof content !== 'string' || !/^\s*</.test(content)) return null;
     try {
-        const doc = new DOMParser().parseFromString(content, 'text/xml');
+        const doc = parseMessageDocument(content);
         const root = doc.documentElement;
         if (!root || doc.querySelector('parsererror') || root.nodeName !== 'response') return null;
         return {

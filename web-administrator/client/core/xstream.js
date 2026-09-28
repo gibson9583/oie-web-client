@@ -19,6 +19,9 @@
  * Add new XStream quirks HERE (with a fixture in xstream.test.js) rather than in
  * any individual view, so every screen benefits at once.
  */
+/* An XStream-encoded node as it reaches the browser: shapes are only knowable
+   by inspection, so everything here narrows from `unknown` at the boundary. */
+import { parseMessageDocument } from './message-xml.js';
 const XSTREAM_SCALARS = new Set(['string', 'int', 'long', 'short', 'byte', 'double', 'float', 'boolean', 'char', 'date', 'null', 'big-decimal', 'big-int']);
 const XSTREAM_COLLECTIONS = new Set(['list', 'linked-list', 'array-list', 'set', 'linked-hash-set', 'sorted-set', 'tree-set']);
 const XSTREAM_MAPS = new Set(['map', 'linked-hash-map', 'hash-map', 'tree-map', 'sorted-map', 'concurrent-hash-map', 'properties']);
@@ -190,7 +193,7 @@ export function parseResponse(content) {
     if (typeof content !== 'string' || !/^\s*</.test(content))
         return null;
     try {
-        const doc = new DOMParser().parseFromString(content, 'text/xml');
+        const doc = parseMessageDocument(content);
         const root = doc.documentElement;
         if (!root || doc.querySelector('parsererror') || root.nodeName !== 'response')
             return null;

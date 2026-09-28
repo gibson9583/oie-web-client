@@ -2371,9 +2371,16 @@ export function MessagesView({ params, query }: any) {
     }
 
     async function showDetail(row: any, metaDataId: any) {
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        // The selection object is unique per click: A -> B -> A must not let
+        // the first A request replace the last, even when both use the same row.
+        const selection = selectedRef.current;
         setDetail({ status: 'loading' });
-        const isCurrentSelection = () => selectedRef.current?.m === row
-            && String(selectedRef.current?.metaDataId) === String(metaDataId);
+        const isCurrentSelection = () => {
+            try { assertSession(); } catch { return false; }
+            return selectedRef.current === selection;
+        };
         let message: any;
         try {
             message = await api.messages.get(channelId, row.messageId);
@@ -2390,6 +2397,7 @@ export function MessagesView({ params, query }: any) {
             const attachments = await api.messages.attachments(channelId, row.messageId);
             message.__attachments = Array.isArray(attachments) ? attachments : [];
         } catch (e: any) {
+            if (!isCurrentSelection()) return;
             message.__attachments = [];
             message.__attachmentsError = String(e.message || e);
             toast(`Failed to load attachments: ${e.message || e}`, 'error');
@@ -2933,7 +2941,7 @@ export function MessagesView({ params, query }: any) {
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
         // Invalidate the latest request counter, including searches started since mount.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        return () => { cancelled = true; ++searchGenRef.current; resultRef.current = null; closeStatusMenu(); };
+        return () => { cancelled = true; ++searchGenRef.current; selectedRef.current = null; resultRef.current = null; closeStatusMenu(); };
         // Build once; channelId is stable for the view's lifetime (route remount on change).
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

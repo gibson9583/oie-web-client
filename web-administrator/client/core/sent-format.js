@@ -9,6 +9,7 @@
  * (VM/Channel Writer, HTTP, TCP, Database, JavaScript, SMTP) with a readable
  * generic fallback for any other dispatcher type.
  */
+import { parseMessageDocument } from './message-xml.js';
 const ct = (root, tag) => {
     for (const n of root.childNodes)
         if (n.nodeType === 1 && n.nodeName === tag)
@@ -298,7 +299,7 @@ export function formatSentProperties(content) {
         return null;
     let root = null;
     try {
-        const doc = new DOMParser().parseFromString(content, 'text/xml');
+        const doc = parseMessageDocument(content);
         root = doc.documentElement;
         if (!root || doc.querySelector('parsererror'))
             return null;

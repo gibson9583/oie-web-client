@@ -155,11 +155,11 @@ test('selection gates Remove/Reprocess Message', async ({ page }) => {
 
 test('a slower detail request cannot replace a newer connector selection from the same message', async ({ page }) => {
     let detailRequests = 0;
-    await page.route(`**/api/channels/${CID}/messages/12345`, async route => {
+    await mockEngine(page, { ...MESSAGE_FIXTURES, [`GET /channels/${CID}/messages/12345`]: async () => {
         detailRequests++;
         await new Promise(resolve => setTimeout(resolve, detailRequests === 1 ? 150 : 10));
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MESSAGE) });
-    });
+        return MESSAGE;
+    } });
     await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
 

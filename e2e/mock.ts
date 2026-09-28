@@ -5,12 +5,15 @@ import { DEFAULT_FIXTURES } from './fixtures.js';
 // their other consumers; individual wire-contract tests can provide raw XML.
 function fixtureXml(tag: string, value: any): string {
     if (Array.isArray(value)) return value.map(item => fixtureXml(tag, item)).join('');
-    const escape = (text: any) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escape = (text: any) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\r]/g, c => `&#x${c.charCodeAt(0).toString(16)};`);
     if (value == null) return `<${tag}/>`;
+    const entries = typeof value === 'object' ? Object.entries(value) : [];
+    const attributes = entries.filter(([key]) => key.startsWith('@')).map(([key, child]) => ` ${key.slice(1)}="${escape(child)}"`).join('');
     const content = typeof value === 'object'
-        ? Object.entries(value).map(([key, child]) => fixtureXml(key, child)).join('')
+        ? entries.filter(([key]) => !key.startsWith('@')).map(([key, child]) => key === '$' ? escape(child) : fixtureXml(key, child)).join('')
         : escape(value);
-    return `<${tag}>${content}</${tag}>`;
+    return `<${tag}${attributes}>${content}</${tag}>`;
 }
 
 /*
@@ -71,7 +74,10 @@ export async function mockEngine(page: any, overrides = {}) {
             return route.fulfill({ status: fx.__status, contentType: 'application/json', body: JSON.stringify(fx.body ?? {}) });
         }
         if (req.method() === 'GET' && req.headers().accept?.includes('application/xml')
-            && (path === '/server/globalScripts' || /^\/channels\/[^/]+\/status$/.test(path))) {
+            && (path === '/server/globalScripts' || /^\/channels\/[^/]+\/status$/.test(path) || /^\/channels\/[^/]+\/messages\/[^/]+$/.test(path))) {
+            if (/^\/channels\/[^/]+\/messages\/[^/]+$/.test(path)) {
+                return route.fulfill({ status: 200, contentType: 'application/xml', body: fixtureXml('message', fx.message ?? fx) });
+            }
             return route.fulfill({ status: 200, contentType: 'application/xml',
                 body: Object.entries(fx).map(([tag, value]) => fixtureXml(tag, value)).join('') });
         }

@@ -1,0 +1,129 @@
+<message>
+  <messageId>12345</messageId>
+  <serverId>synthetic-server</serverId>
+  <channelId>c-started</channelId>
+  <receivedDate>
+    <time>1700000000000</time>
+    <timezone>UTC</timezone>
+  </receivedDate>
+  <processed>true</processed>
+  <connectorMessages class="linked-hash-map">
+    <entry>
+      <int>0</int>
+      <connectorMessage>
+        <messageId>12345</messageId>
+        <metaDataId>0</metaDataId>
+        <channelId>c-started</channelId>
+        <channelName>Synthetic channel</channelName>
+        <connectorName>Source</connectorName>
+        <serverId>synthetic-server</serverId>
+        <receivedDate>
+          <time>1700000000000</time>
+          <timezone>UTC</timezone>
+        </receivedDate>
+        <status>RECEIVED</status>
+        <raw>
+          <encrypted>false</encrypted>
+          <channelId>c-started</channelId>
+          <messageId>12345</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>RAW</contentType>
+          <content>  SYNTHETIC-NCPDP&#x1c;FIELD&#x1d;GROUP&#x1e;SEGMENT	LINE
+CR&#xd;&lt;&gt;&amp;&quot;&apos; café 😀 0; &amp;#x1c;  </content>
+          <dataType>NCPDP</dataType>
+        </raw>
+        <processedRaw>
+          <encrypted>false</encrypted>
+          <channelId>c-started</channelId>
+          <messageId>12345</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>PROCESSED_RAW</contentType>
+          <content>null</content>
+          <dataType>TEXT</dataType>
+        </processedRaw>
+        <transformed>
+          <encrypted>false</encrypted>
+          <channelId>c-started</channelId>
+          <messageId>12345</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>TRANSFORMED</contentType>
+          <content>false</content>
+          <dataType>TEXT</dataType>
+        </transformed>
+        <encoded>
+          <encrypted>false</encrypted>
+          <channelId>c-started</channelId>
+          <messageId>12345</messageId>
+          <metaDataId>0</metaDataId>
+          <contentType>ENCODED</contentType>
+          <content>000123</content>
+          <dataType>TEXT</dataType>
+        </encoded>
+        <sourceMapContent>
+          <encrypted>false</encrypted>
+          <content class="linked-hash-map">
+            <entry>
+              <string>numeric</string>
+              <string>000123</string>
+            </entry>
+            <entry>
+              <string>boolean</string>
+              <string>false</string>
+            </entry>
+            <entry>
+              <string>typedBoolean</string>
+              <boolean>false</boolean>
+            </entry>
+            <entry>
+              <string>typedInteger</string>
+              <int>17</int>
+            </entry>
+            <entry>
+              <string>controls</string>
+              <string>  SYNTHETIC-NCPDP&#x1c;FIELD&#x1d;GROUP&#x1e;SEGMENT	LINE
+CR&#xd;&lt;&gt;&amp;&quot;&apos; café 😀 0; &amp;#x1c;  </string>
+            </entry>
+            <entry>
+              <string>nested</string>
+              <linked-hash-map>
+                <entry>
+                  <string>one</string>
+                  <list>
+                    <string>0001</string>
+                    <string>false</string>
+                  </list>
+                </entry>
+              </linked-hash-map>
+            </entry>
+          </content>
+        </sourceMapContent>
+        <connectorMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </connectorMapContent>
+        <channelMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </channelMapContent>
+        <responseMapContent>
+          <encrypted>false</encrypted>
+          <content class="map"/>
+        </responseMapContent>
+        <metaDataMap/>
+        <processingErrorContent>
+          <encrypted>false</encrypted>
+        </processingErrorContent>
+        <postProcessorErrorContent>
+          <encrypted>false</encrypted>
+        </postProcessorErrorContent>
+        <responseErrorContent>
+          <encrypted>false</encrypted>
+        </responseErrorContent>
+        <errorCode>0</errorCode>
+        <sendAttempts>0</sendAttempts>
+        <chainId>0</chainId>
+        <orderId>0</orderId>
+      </connectorMessage>
+    </entry>
+  </connectorMessages>
+</message>
