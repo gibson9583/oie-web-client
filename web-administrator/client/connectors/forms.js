@@ -47,7 +47,7 @@ export function requireFields(properties, specs) {
         if (typeof spec.when === 'function' && !spec.when(properties))
             continue;
         const v = getPath(properties, spec.key);
-        if (v === undefined || v === null || String(v).trim() === '') {
+        if (v === undefined || v === null || String(v).trim() === '' || (spec.unset !== undefined && String(v) === spec.unset)) {
             errors.push({ key: spec.key, label: spec.label });
         }
     }

@@ -331,15 +331,16 @@ const databaseReader = {
             </div>
         );
     },
-    // Swing DatabaseReader.checkProperties: URL required unless Use JavaScript; the
+    // Swing DatabaseReader.checkProperties: URL is required unless Use JavaScript; the
     // SQL/JavaScript select is always required; the post-process SQL/script is
-    // required unless Run Post-Process = Never (UPDATE_NEVER = 1); Driver required.
+    // required unless Run Post-Process = Never (UPDATE_NEVER = 1).
+    // A nonblank, non-placeholder driver is required in both SQL and JavaScript.
     validate(properties: any) {
         return requireFields(properties, [
             { key: 'url', label: 'URL', when: (p: any) => !asBool(p.useScript) },
             { key: 'select', label: 'SQL' },
             { key: 'update', label: 'Post-Process SQL', when: (p: any) => Number(p.updateMode) !== 1 },
-            { key: 'driver', label: 'Driver' }
+            { key: 'driver', label: 'Driver', unset: DRIVER_DEFAULT }
         ]);
     }
 };
@@ -384,13 +385,13 @@ const databaseWriter = {
             ]} />
         );
     },
-    // Swing DatabaseWriter.checkProperties: URL required unless Use JavaScript; the
-    // SQL/JavaScript query is always required; Driver required (must not be blank).
+    // Swing DatabaseWriter.checkProperties: URL is required unless Use JavaScript;
+    // the SQL/JavaScript query and a nonblank, non-placeholder driver are always required.
     validate(properties: any) {
         return requireFields(properties, [
             { key: 'url', label: 'URL', when: (p: any) => !asBool(p.useScript) },
             { key: 'query', label: 'SQL' },
-            { key: 'driver', label: 'Driver' }
+            { key: 'driver', label: 'Driver', unset: DRIVER_DEFAULT }
         ]);
     }
 };

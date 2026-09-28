@@ -46,6 +46,8 @@ export interface RequiredFieldSpec {
     key: string;
     label: string;
     when?(properties: any): boolean;
+    /** A placeholder that counts as missing, such as a driver select prompt. */
+    unset?: string;
 }
 export declare function getPath(obj: any, path: string): any;
 export declare function setPath(obj: any, path: string, value: any): any;

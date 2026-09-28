@@ -45,7 +45,13 @@ export interface FormField {
     [extra: string]: any;
 }
 
-export interface RequiredFieldSpec { key: string; label: string; when?(properties: any): boolean; }
+export interface RequiredFieldSpec {
+    key: string;
+    label: string;
+    when?(properties: any): boolean;
+    /** A placeholder that counts as missing, such as a driver select prompt. */
+    unset?: string;
+}
 
 /* ---- dot-path access ----------------------------------------------------- */
 
@@ -84,7 +90,7 @@ export function requireFields(properties: any, specs: RequiredFieldSpec[]): Arra
     for (const spec of specs) {
         if (typeof spec.when === 'function' && !spec.when(properties)) continue;
         const v = getPath(properties, spec.key);
-        if (v === undefined || v === null || String(v).trim() === '') {
+        if (v === undefined || v === null || String(v).trim() === '' || (spec.unset !== undefined && String(v) === spec.unset)) {
             errors.push({ key: spec.key, label: spec.label });
         }
     }

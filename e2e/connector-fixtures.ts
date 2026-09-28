@@ -130,14 +130,14 @@ const fileDispatcher = () => ({
 const dbReceiver = () => ({
     '@class': 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties', '@version': V, pluginProperties: null,
     pollConnectorProperties: pollProps(), sourceConnectorProperties: sourceConnectorProperties(),
-    driver: 'Please Select One', url: 'jdbc:test', username: '', password: '', select: 'SELECT 1', update: '', useScript: false,
+    driver: 'org.postgresql.Driver', url: 'jdbc:test', username: '', password: '', select: 'SELECT 1', update: '', useScript: false,
     aggregateResults: false, cacheResults: true, keepConnectionOpen: true, updateMode: 1, retryCount: '3',
     retryInterval: '10000', fetchSize: '1000', encoding: 'DEFAULT_ENCODING'
 });
 const dbDispatcher = () => ({
     '@class': 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties', '@version': V, pluginProperties: null,
     destinationConnectorProperties: destinationConnectorProperties(),
-    driver: 'Please Select One', url: 'jdbc:test', username: '', password: '', query: 'INSERT 1', parameters: null, useScript: false
+    driver: 'org.postgresql.Driver', url: 'jdbc:test', username: '', password: '', query: 'INSERT 1', parameters: null, useScript: false
 });
 
 const jmsReceiver = () => Object.assign({
