@@ -108,7 +108,10 @@ test('the palette offers exactly the rail\'s items, not a parallel list', async 
     await page.goto('/dashboard');
     await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
 
-    const railLabels = await page.locator('.rail-nav [data-nav-item] .rail-label, .rail-nav [data-nav-item] span')
+    const railItems = page.locator('.rail-nav [data-nav-item] .rail-label, .rail-nav [data-nav-item] span');
+    // The shell frame can mount before its navigation registry renders.
+    await expect(railItems.first()).toBeVisible();
+    const railLabels = await railItems
         .evaluateAll((els) => [...new Set(els.map((e) => e.textContent.trim()).filter(Boolean))].sort());
 
     await open(page);

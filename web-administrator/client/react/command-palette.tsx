@@ -111,11 +111,15 @@ function channelEntries(fallback: any) {
        "a channel" means in the Channels view, so it leads and the browser follows
        one arrow-key away. The hint says which is which. */
     return source.filter((c: any) => {
-        if (!c || seen.has(c.id)) return false;
+        if (!c || typeof c.id !== 'string' || !c.id.trim() || seen.has(c.id)) return false;
         seen.add(c.id);
         return true;
     }).flatMap((c: any) => {
-        const base = { kind: 'channel', label: c.name || c.id, group: 'Channels', state: c.state };
+        // Keep both cached and fetched channel labels safe for React and for
+        // Highlight's string operations, even if a response has a bad name.
+        const label = c.name != null && ['string', 'number', 'boolean'].includes(typeof c.name)
+            ? String(c.name) || c.id : c.id;
+        const base = { kind: 'channel', label, group: 'Channels', state: c.state };
         // Gated through the same (group, task) pairs as the nav/menu twins, per
         // this file's own header contract — the palette must never surface an
         // entry RBAC hides elsewhere.
@@ -155,7 +159,16 @@ export function CommandPalette() {
         api.channels.idsAndNames()
             .then((map: any) => {
                 if (cancelled) return;
-                const rows = Object.entries(map || {}).map(([id, name]) => ({ id, name }));
+                // idsAndNames is an XStream Map<String,String>, not an ID-keyed
+                // object. One entry is a singleton; two string children form a
+                // pair. Ignore malformed entries without losing valid siblings.
+                const rows = api.asList(map?.entry).flatMap((entry: any) => {
+                    const pair = entry?.string;
+                    if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[0] !== 'string' || !pair[0].trim()) return [];
+                    const [id, name] = pair;
+                    if (name != null && !['string', 'number', 'boolean'].includes(typeof name)) return [];
+                    return [{ id, name: name == null ? id : String(name) || id }];
+                });
                 setFallbackChannels(rows);
             })
             .catch(() => { /* the palette is still useful without channels */ });
