@@ -45,11 +45,15 @@ const passwordRequired = (p) => credentialsRequired(p)
 /* anonymousYesActionPerformed / anonymousNoActionPerformed forced text:
    Anonymous=Yes -> 'anonymous'/'anonymous' (''/'' for S3); S3+No clears both. */
 function applyAnonymous(p) {
-    // Anonymous / S3 just clear + disable the credential fields — we do NOT
-    // prefill the placeholder 'anonymous'/'anonymous' the Swing client used.
-    if (p.scheme === 'S3' || asBool(p.anonymous)) {
+    // FTP/WebDAV use the stored credentials even when anonymous is set. Match
+    // Swing's login values; S3 alone represents anonymous access with blanks.
+    if (p.scheme === 'S3') {
         p.username = '';
         p.password = '';
+    }
+    else if (asBool(p.anonymous)) {
+        p.username = 'anonymous';
+        p.password = 'anonymous';
     }
 }
 /* Selecting Binary forces Encoding back to Default and disables it
@@ -588,8 +592,8 @@ const fileReader = {
             directoryRecursion: false,
             ignoreDot: true,
             anonymous: true,
-            username: '',
-            password: '',
+            username: 'anonymous',
+            password: 'anonymous',
             timeout: '10000',
             secure: true,
             passive: true,
@@ -694,8 +698,8 @@ const fileWriter = {
             host: '',
             outputPattern: '',
             anonymous: true,
-            username: '',
-            password: '',
+            username: 'anonymous',
+            password: 'anonymous',
             timeout: '10000',
             keepConnectionOpen: true,
             maxIdleTime: '0',
