@@ -21,7 +21,7 @@ function legacyChannel() {
         }
     }
     channel.sourceConnector.transformer.outboundProperties.serializationProperties.columnWidths = '5,3';
-    channel.sourceConnector.transformer.outboundProperties.serializationProperties.columnNames = 'first,second';
+    channel.sourceConnector.transformer.outboundProperties.serializationProperties.columnNames = 'ª,µ,º';
     channel.destinationConnectors.connector[0].transformer.inboundProperties.serializationProperties.columnWidths = { int: 7, '@class': 'int-array', '@future': 'keep' };
     return channel;
 }
@@ -38,7 +38,7 @@ function expectNormalized(channel: any) {
                 expect(props.deserializationProperties).toEqual({ optional: null });
                 if (transformer === channel.sourceConnector.transformer && side === 'outbound') {
                     expect(props.serializationProperties.columnWidths).toEqual({ int: [5, 3] });
-                    expect(props.serializationProperties.columnNames).toEqual({ string: ['first', 'second'] });
+                    expect(props.serializationProperties.columnNames).toEqual({ string: ['ª', 'µ', 'º'] });
                 } else {
                     expect(props.serializationProperties).not.toHaveProperty('columnNames');
                     if (transformer === destination.transformer && side === 'inbound') {

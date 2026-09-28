@@ -237,7 +237,7 @@ function renderRow(grid, properties, f, onChange, repaint, displays) {
         if (f.key !== undefined)
             setPath(properties, f.key, v);
         if (f.onSet)
-            f.onSet(properties, v);
+            f.onSet(properties, v, value);
         onChange();
         if (repaint)
             repaint();

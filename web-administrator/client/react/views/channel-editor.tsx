@@ -330,8 +330,8 @@ function openAttachmentPropsModal(ap: any, markDirty: any) {
 }
 
 /* ---- Set Data Types modal ----------------------------------------------------
- * Mirror of the Swing DataTypesDialog: a connector table (source + each
- * destination) with inbound/outbound type selects, and grouped property
+ * Mirror of the Swing DataTypesDialog: a connector table (source, destinations,
+ * and each destination's response) with inbound/outbound type selects, and grouped property
  * panels for the selected row. All edits go to deep-copied drafts and are
  * committed back onto the transformers on OK; Cancel/Escape discards. The
  * registered data-type editors MUTATE the shared draft objects in place (no
@@ -342,12 +342,16 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
     const clone = (obj: any) => obj == null ? null : JSON.parse(JSON.stringify(obj));
     const dtOptions = dataTypeList().map(dt => ({ value: dt.name, label: dt.label }));
 
-    channel.sourceConnector.transformer =
-        channel.sourceConnector.transformer || oie.emptyTransformer(version);
-    const rows = [{ label: 'Source Connector', transformer: channel.sourceConnector.transformer }];
+    // Missing transformers are created in the dialog draft, too: Cancel must
+    // not alter even a partial/imported channel merely by opening this dialog.
+    const rowFor = (owner: any, key: string, label: string, connectorType: string) => ({
+        owner, key, label, connectorType, transformer: owner[key] || oie.emptyTransformer(version)
+    });
+    const rows = [rowFor(channel.sourceConnector, 'transformer', 'Source Connector', 'SOURCE')];
     for (const dest of oie.destinationsOf(channel)) {
-        dest.transformer = dest.transformer || oie.emptyTransformer(version);
-        rows.push({ label: dest.name || `Destination ${dest.metaDataId}`, transformer: dest.transformer });
+        const label = dest.name || `Destination ${dest.metaDataId}`;
+        rows.push(rowFor(dest, 'transformer', label, 'DESTINATION'));
+        rows.push(rowFor(dest, 'responseTransformer', `${label} — Response`, 'RESPONSE'));
     }
     for (const row of rows) {
         (row as any).draft = {
@@ -366,7 +370,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
     // all checked connectors at once. `bulkRow` is the shared draft the panels
     // edit; `bulkSel` is the set of target rows.
     let bulkMode = false;
-    const bulkSel = new Set(rows);
+    const bulkSel = new Set<any>();
     const applySides = { inbound: true, outbound: true };
     const bulkRow = {
         label: 'Selected connectors',
@@ -407,9 +411,19 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
         // data type IS the source's outbound, so changing the SOURCE outbound
         // type also sets every destination's inbound type + default properties.
         if (side === 'outbound' && row === rows[0]) {
-            for (let i = 1; i < rows.length; i++) {
-                (rows[i] as any).draft.inboundDataType = name;
-                (rows[i] as any).draft.inboundProperties = freshProps();
+            for (const dest of rows.filter(r => r.connectorType === 'DESTINATION')) {
+                (dest as any).draft.inboundDataType = name;
+                (dest as any).draft.inboundProperties = freshProps();
+            }
+        } else if (side === 'outbound' && row.connectorType === 'DESTINATION') {
+            // Swing also resets this destination's response types when its
+            // outbound type changes. Other destinations' responses are independent.
+            const response = rows.find(r => r.connectorType === 'RESPONSE' && r.owner === row.owner);
+            if (response) {
+                for (const responseSide of ['inbound', 'outbound']) {
+                    (response as any).draft[`${responseSide}DataType`] = name;
+                    (response as any).draft[`${responseSide}Properties`] = freshProps();
+                }
             }
         }
         renderAll();
@@ -432,7 +446,11 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             if (bulkMode) {
                 // Checkbox to include this connector; type columns are read-only here.
                 const cb = checkbox('', bulkSel.has(row), {
-                    onChange: (e: any) => { e.target.checked ? bulkSel.add(row) : bulkSel.delete(row); }
+                    'aria-label': `Include ${row.label}`,
+                    onChange: (e: any) => {
+                        e.target.checked ? bulkSel.add(row) : bulkSel.delete(row);
+                        renderPanels();
+                    }
                 });
                 tbody.appendChild(h('tr',
                     h('td', { class: 'w-[32px]' }, cb.el),
@@ -486,7 +504,9 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             props={(row as any).draft[`${side}Properties`]}
             version={version}
             direction={side}
-            connectorType={row.label === 'Source Connector' ? 'SOURCE' : 'DESTINATION'}
+            connectorType={row === (bulkRow as any)
+                ? [...new Set(rows.filter(r => bulkSel.has(r)).map(r => r.connectorType))]
+                : row.connectorType}
             onChange={() => { validationErrors.textContent = ''; }}
             onReplace={(obj: any) => { (row as any).draft[`${side}Properties`] = obj; }} />));
         return h('div.panel', { class: 'mt-0' },
@@ -536,7 +556,12 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
     const editModeName = 'dt-edit-mode';
     function modeRadio(label: any, isBulk: any) {
         const input = h('input', { type: 'radio', name: editModeName, checked: bulkMode === isBulk,
-            onChange: () => { if ((input as any).checked) { bulkMode = isBulk; renderAll(); } } });
+            onChange: () => {
+                if (!(input as any).checked) return;
+                if (isBulk && !bulkMode) bulkSel.clear();
+                bulkMode = isBulk;
+                renderAll();
+            } });
         return h('label.check', input, label);
     }
     const modeBar = h('div', { class: 'flex gap-[16px] items-center mb-2.5' },
@@ -569,7 +594,10 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
                     const bulkSides = bulkMode && bulkSel.size
                         ? ['inbound', 'outbound'].filter(side => (applySides as any)[side]) : [];
                     if (bulkSides.length && !validDrafts([bulkRow], bulkSides)) return false;
-                    for (const row of rows) Object.assign(row.transformer, (row as any).draft);
+                    for (const row of rows) {
+                        Object.assign(row.transformer, (row as any).draft);
+                        row.owner[row.key] = row.transformer;
+                    }
                     markDirty();
                 }
             }
@@ -2685,7 +2713,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         if (!def || typeof def.validate !== 'function') return;
         const esc = (window.CSS && CSS.escape) ? (s: any) => CSS.escape(s) : (s: any) => String(s).replace(/["\\]/g, '\\$&');
         for (const err of (def.validate(connector.properties) || [])) {
-            for (const el of document.querySelectorAll(`[data-fkey="${esc(err.key)}"]`)) el.classList.add('cform-invalid');
+            for (const el of document.querySelectorAll(`[data-fkey="${esc(err.key)}"]:not(:disabled)`)) el.classList.add('cform-invalid');
         }
     }
 

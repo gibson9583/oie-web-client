@@ -39,7 +39,7 @@ export interface FormField {
         onChange: () => void;
         repaint: () => void;
     }): HTMLElement | null;
-    onSet?(properties: any, value: any): void;
+    onSet?(properties: any, value: any, previousValue?: any): void;
     [extra: string]: any;
 }
 export interface RequiredFieldSpec {

@@ -73,4 +73,39 @@ for (const [name, mode] of [['File Reader', 'SOURCE'], ['File Writer', 'DESTINAT
         }, { name, mode });
         expect(defaults).toMatchObject({ username: 'anonymous', password: 'anonymous', anonymous: true });
     });
+
+    test(`${name}: saving legacy blank anonymous FTP credentials repairs both fields`, async ({ page }) => {
+        const writes = await open(page, { scheme: 'FTP', anonymous: 'true', username: '', password: '' });
+        await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+        await page.locator('.panel input[type=text]').first().fill('Repair legacy File credentials');
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        expect(propertiesOf(writes[0])).toMatchObject({ anonymous: 'true', username: 'anonymous', password: 'anonymous' });
+    });
+
+    test(`${name}: stale SFTP Anonymous flag does not overwrite named credentials on scheme change`, async ({ page }) => {
+        const writes = await open(page, { scheme: 'SFTP', anonymous: true, username: 'named-user', password: 'named-password' });
+        const scheme = page.locator('[data-fkey="scheme"]');
+        await scheme.selectOption('FTP');
+        await expect(page.locator('[data-fkey="anonymous"]').getByRole('radio', { name: 'No', exact: true })).toBeChecked();
+        await expect(page.locator('[data-fkey="username"]')).toHaveValue('named-user');
+        await expect(page.locator('[data-fkey="password"]')).toHaveValue('named-password');
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        expect(propertiesOf(writes[0])).toMatchObject({ scheme: 'FTP', anonymous: false,
+            username: 'named-user', password: 'named-password' });
+        await scheme.selectOption('SMB');
+        await expect(page.locator('[data-fkey="anonymous"]').getByRole('radio', { name: 'No', exact: true })).toBeChecked();
+        await expect(page.locator('[data-fkey="username"]')).toHaveValue('named-user');
+        await expect(page.locator('[data-fkey="password"]')).toHaveValue('named-password');
+    });
+
+    test(`${name}: stale SFTP Anonymous flag cannot bypass required credentials`, async ({ page }) => {
+        const writes = await open(page, { scheme: 'SFTP', anonymous: true, username: '', password: '' });
+        await page.getByRole('button', { name: 'Validate Connector', exact: true }).click();
+        const errors = page.getByRole('dialog', { name: 'Validation Errors', exact: true });
+        await expect(errors).toContainText('Username');
+        await expect(errors).toContainText('Password');
+        expect(writes).toHaveLength(0);
+    });
 }

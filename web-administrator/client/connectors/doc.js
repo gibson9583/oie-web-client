@@ -119,11 +119,11 @@ const scale2Down = (value) => (Math.trunc(value * 100) / 100).toFixed(2);
  * pageUnit (pageSizeComboBoxActionPerformed). */
 function pageSizeRow(p, { onChange }) {
     const widthField = h('input', {
-        type: 'text', value: p.pageWidth ?? '', class: 'w-[49px]',
+        type: 'text', value: p.pageWidth ?? '', class: 'w-[49px]', 'data-fkey': 'pageWidth',
         onInput: (e) => { p.pageWidth = e.target.value; onChange(); }
     });
     const heightField = h('input', {
-        type: 'text', value: p.pageHeight ?? '', class: 'w-[49px]',
+        type: 'text', value: p.pageHeight ?? '', class: 'w-[49px]', 'data-fkey': 'pageHeight',
         onInput: (e) => { p.pageHeight = e.target.value; onChange(); }
     });
     const unitField = select(PAGE_UNITS, p.pageUnit ?? 'INCHES', {

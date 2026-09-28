@@ -7,11 +7,12 @@ type ListResult = { value?: Record<string, any>; error?: string };
 const widthError = 'Enter comma-separated whole numbers from 1 to 2147483647, or leave blank.';
 const nameError = 'Enter comma-separated XML column names starting with a letter, underscore or colon.';
 // XML 1.0 NameStartChar/NameChar (also used by the engine's DatabaseReceiver).
-// Swing's Delimited property setter uses a narrower, BMP-only approximation;
-// do not reject valid stored names containing combining/supplementary characters.
+// The Delimited property setter also accepts Java Character.isLetter names
+// outside this range, including ª, µ and º. Keep both accepted wire shapes.
 const isEngineLiteral = (entry: any) => entry === null || typeof entry === 'boolean';
 const engineString = (entry: any) => isEngineLiteral(entry) ? String(entry) : entry;
 const XML_NAME = /^[:A-Z_a-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u{10000}-\u{EFFFF}][:A-Z_a-z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u02FF\u0370-\u037D\u037F-\u1FFF\u200C-\u200D\u2070-\u218F\u2C00-\u2FEF\u3001-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD\u{10000}-\u{EFFFF}\-.0-9\u00B7\u0300-\u036F\u203F-\u2040]*$/u;
+const ENGINE_NAME = /^[:_\p{L}][:_\p{L}\p{Nd}.\-]*$/u;
 
 export function dataTypeListText(value: any, item: DataTypeListItem): string {
     if (value == null) return '';
@@ -45,6 +46,8 @@ export function normalizeDataTypeList(value: any, item: DataTypeListItem, xmlNam
         values = value;
     } else if (typeof value === 'string' || typeof value === 'number') {
         values = String(value).split(',').map(part => part.trim());
+        // Java String.split drops trailing empty fields, but keeps interior ones.
+        while (values.length > 1 && values[values.length - 1] === '') values.pop();
     } else {
         return { error: item === 'int' ? widthError : nameError };
     }
@@ -59,11 +62,12 @@ export function normalizeDataTypeList(value: any, item: DataTypeListItem, xmlNam
     }
     if (item === 'int') {
         if (!values.every(part => (typeof part === 'string' || typeof part === 'number')
-            && /^\d+$/.test(String(part)) && Number.isInteger(Number(part))
+            && /^\+?\d+$/.test(String(part)) && Number.isInteger(Number(part))
             && Number(part) > 0 && Number(part) <= 2147483647)) return { error: widthError };
         return { value: wire || { int: values.map(Number) } };
     }
-    if (!values.every(part => typeof part === 'string' && part.length > 0 && (!xmlNames || XML_NAME.test(part)))) {
+    if (!values.every(part => typeof part === 'string' && part.length > 0
+        && (!xmlNames || XML_NAME.test(part) || ENGINE_NAME.test(part)))) {
         return { error: nameError };
     }
     return { value: wire || { string: values } };

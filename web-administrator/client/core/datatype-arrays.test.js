@@ -4,22 +4,31 @@ import { dataTypeListText, normalizeDataTypeList, normalizeDelimitedProperties, 
 for (const value of [undefined, null, '', '  ', [], {}, { int: [] }, { int: null }]) {
     assert.deepEqual(normalizeDataTypeList(value, 'int'), {}, `empty ${JSON.stringify(value)}`);
 }
-for (const value of ['0', '-1', '1.5', '1e3', '2147483648', '999999999999999999999', '5,', ',3', '5,,3', { int: 0 }, { int: [5, -3] }, true]) {
+for (const value of ['0', '-1', '1.5', '1e3', '2147483648', '999999999999999999999', ',3', '5,,3', { int: 0 }, { int: [5, -3] }, true]) {
     assert.ok(normalizeDataTypeList(value, 'int').error, `reject ${JSON.stringify(value)}`);
 }
 assert.deepEqual(normalizeDataTypeList('5, 3', 'int').value, { int: [5, 3] });
+assert.deepEqual(normalizeDataTypeList('5,3,', 'int').value, { int: [5, 3] });
+assert.deepEqual(normalizeDataTypeList('+5', 'int').value, { int: [5] });
+assert.deepEqual(normalizeDataTypeList('5,,,', 'int').value, { int: [5] });
 assert.deepEqual(normalizeDataTypeList('2147483647', 'int').value, { int: [2147483647] });
 for (const wire of [{ int: 5 }, { int: '5' }, { int: [5, 3], '@class': 'int-array' }]) {
     assert.equal(normalizeDataTypeList(wire, 'int').value, wire, 'valid wire shape preserved');
 }
 assert.equal(dataTypeListText({ int: 5 }, 'int'), '5');
 assert.equal(dataTypeListText({ int: [5, 3] }, 'int'), '5,3');
-assert.equal(dataTypeListText('5,', 'int'), '5,', 'invalid text remains editable');
+assert.equal(dataTypeListText('5,', 'int'), '5,', 'trailing comma remains editable');
 assert.deepEqual(normalizeDataTypeList('first,second', 'string', true).value, { string: ['first', 'second'] });
 assert.deepEqual(normalizeDataTypeList('名字,_other,a:b', 'string', true).value, { string: ['名字', '_other', 'a:b'] });
+assert.deepEqual(normalizeDataTypeList('first,second,', 'string', true).value, { string: ['first', 'second'] });
+assert.deepEqual(normalizeDataTypeList('ª,µ,º', 'string', true).value, { string: ['ª', 'µ', 'º'] });
 for (const name of ['e\u0301', 'a\u00B7b', '\u{10000}field', 'a\u203F', '\u200Cname']) {
     const wire = { string: name };
     assert.equal(normalizeDataTypeList(wire, 'string', true).value, wire, `preserve XML name ${name}`);
+}
+for (const name of ['ª', 'µ', 'º']) {
+    const wire = { string: name };
+    assert.equal(normalizeDataTypeList(wire, 'string', true).value, wire, `preserve engine name ${name}`);
 }
 for (const [wire, names] of [[{ string: true }, 'true'], [{ string: false }, 'false'], [{ string: null }, 'null'],
     [{ string: [true, false, null, 'normal'], '@class': 'string-array' }, ['true', 'false', 'null', 'normal']]]) {
@@ -31,7 +40,7 @@ for (const [wire, names] of [[{ string: true }, 'true'], [{ string: false }, 'fa
     assert.equal(dataTypeListText(wire, 'string'), [names].flat().join(','));
 }
 assert.deepEqual(normalizeDataTypeList({ int: null }, 'int'), {}, 'null int wire remains empty');
-for (const value of ['first,', '1first', 'a b', { string: ['good', ''] }, { string: 1 }]) {
+for (const value of ['1first', 'a b', { string: ['good', ''] }, { string: 1 }]) {
     assert.ok(normalizeDataTypeList(value, 'string', true).error, `invalid names ${JSON.stringify(value)}`);
 }
 const unknownArray = { int: [5], future: 'retain' };

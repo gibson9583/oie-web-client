@@ -55,6 +55,7 @@ function openScriptModal(value: any, onSave: any) {
  *   outbound: Deserialization, then serialization relabeled "Template Serialization"
  */
 function groupSpecsFor(def: any, direction: any, connectorType: any) {
+    const connectorTypes = Array.isArray(connectorType) ? connectorType : [connectorType];
     const has = (key: any) => def.groups.some((g: any) => g.key === key);
     const specs: any[] = [];
     if (direction === 'outbound') {
@@ -62,9 +63,9 @@ function groupSpecsFor(def: any, direction: any, connectorType: any) {
         if (has('serializationProperties')) specs.push({ key: 'serializationProperties', label: 'Template Serialization' });
     } else {
         if (has('serializationProperties')) specs.push({ key: 'serializationProperties', label: 'Serialization' });
-        if (has('batchProperties') && connectorType === 'SOURCE') specs.push({ key: 'batchProperties', label: 'Batch' });
-        if (has('responseGenerationProperties') && connectorType === 'SOURCE') specs.push({ key: 'responseGenerationProperties', label: 'Response Generation' });
-        if (has('responseValidationProperties') && connectorType === 'RESPONSE') specs.push({ key: 'responseValidationProperties', label: 'Response Validation' });
+        if (has('batchProperties') && connectorTypes.includes('SOURCE')) specs.push({ key: 'batchProperties', label: 'Batch' });
+        if (has('responseGenerationProperties') && connectorTypes.includes('SOURCE')) specs.push({ key: 'responseGenerationProperties', label: 'Response Generation' });
+        if (has('responseValidationProperties') && connectorTypes.includes('RESPONSE')) specs.push({ key: 'responseValidationProperties', label: 'Response Validation' });
     }
     return specs;
 }
@@ -175,7 +176,7 @@ function RawProperties({ typeName, props, onReplace }: any) {
  *   props          the properties object to edit (mutated in place)
  *   version        engine version (for seeding group defaults)
  *   direction      'inbound' | 'outbound'
- *   connectorType  'SOURCE' | 'DESTINATION' | 'RESPONSE' (default 'SOURCE')
+ *   connectorType  'SOURCE' | 'DESTINATION' | 'RESPONSE', or an array for bulk edits
  *   onChange       called after each grouped-field edit
  *   onReplace      called with a new object when an unknown type's raw JSON is edited
  */

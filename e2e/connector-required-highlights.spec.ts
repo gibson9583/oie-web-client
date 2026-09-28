@@ -8,7 +8,8 @@ const cases: HighlightCase[] = [
     { name: 'JavaScript Writer', keys: ['script'] },
     { name: 'Database Reader', keys: ['select', 'update'], extras: { updateMode: 3 } },
     { name: 'Database Writer', keys: ['query'] },
-    ...['File Writer', 'TCP Sender', 'DICOM Sender', 'JMS Sender', 'Document Writer'].map(name => ({ name, keys: ['template'] })),
+    ...['File Writer', 'TCP Sender', 'DICOM Sender', 'JMS Sender'].map(name => ({ name, keys: ['template'] })),
+    { name: 'Document Writer', keys: ['template', 'pageWidth', 'pageHeight'] },
     { name: 'Web Service Sender', keys: ['wsdlUrl', 'service', 'port', 'envelope'] },
     ...['HTTP Listener', 'TCP Listener', 'Web Service Listener', 'DICOM Listener'].map(name => ({ name, keys: ['listenerConnectorProperties.host'] })),
 ];
@@ -39,6 +40,22 @@ async function openPanel(page: any, spec: HighlightCase, { fallback = true, fixt
     if (c.mode === 'DESTINATION') await page.getByRole('cell', { name: c.name, exact: true }).first().click();
     await expect(page.locator('.cform-section').first()).toBeVisible();
     return { writes };
+}
+
+for (const name of ['File Reader', 'File Writer']) {
+    test(`${name}: remote Host error highlights the editable host instead of disabled Directory`, async ({ page }) => {
+        await openPanel(page, { name, keys: ['host'], extras: {
+            scheme: 'FTP', anonymous: true, username: 'anonymous', password: 'anonymous',
+        } });
+        const dialog = await validate(page);
+        await expect(dialog).toContainText('Host');
+        const hostInputs = page.locator('input[data-fkey="host"]');
+        await expect(hostInputs).toHaveCount(2);
+        await expect(hostInputs.nth(0)).toBeDisabled();
+        await expect(hostInputs.nth(0)).not.toHaveClass(/cform-invalid/);
+        await expect(hostInputs.nth(1)).toBeEnabled();
+        await expect(hostInputs.nth(1)).toHaveClass(/cform-invalid/);
+    });
 }
 
 async function validate(page: any, action = 'Validate Connector') {

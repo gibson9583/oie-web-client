@@ -5,6 +5,34 @@ import { captureEngineSession } from './engine-fetch.js';
 import { normalizeChannelDataTypeArrays } from './datatype-arrays.js';
 const sessions = new WeakMap();
 const clone = (value) => JSON.parse(JSON.stringify(value));
+/** Repair File settings left by older web clients without changing intentional
+ * anonymous credentials (including a custom password with a blank username). */
+function repairFileCredentials(channel) {
+    const destinations = channel?.destinationConnectors?.connector;
+    const connectors = [channel?.sourceConnector,
+        ...(Array.isArray(destinations) ? destinations : destinations ? [destinations] : [])];
+    let changed = false;
+    for (const connector of connectors) {
+        const p = connector?.properties;
+        const fileConnector = connector?.transportName === 'File Reader' || connector?.transportName === 'File Writer'
+            || p?.['@class'] === 'com.mirth.connect.connectors.file.FileReceiverProperties'
+            || p?.['@class'] === 'com.mirth.connect.connectors.file.FileDispatcherProperties';
+        if (!fileConnector || !p)
+            continue;
+        const anonymous = p.anonymous === true || p.anonymous === 'true';
+        if ((p.scheme === 'SFTP' || p.scheme === 'SMB') && anonymous) {
+            p.anonymous = false;
+            changed = true;
+        }
+        else if ((p.scheme === 'FTP' || p.scheme === 'WEBDAV') && anonymous
+            && String(p.username ?? '').trim() === '' && String(p.password ?? '').trim() === '') {
+            p.username = 'anonymous';
+            p.password = 'anonymous';
+            changed = true;
+        }
+    }
+    return changed;
+}
 // External library/graph exports are not written by a channel save. Keep them
 // out of its baseline; resources, tags and all channel metadata remain included.
 function fingerprint(channel) {
@@ -169,6 +197,7 @@ export async function saveChannelModel(channel, options) {
             else if (!options.confirmCreationRetry || !await confirm(options.confirmCreationRetry()))
                 return false;
         }
+        let conflict = false;
         if (!state.isNew) {
             if (!state.baseline)
                 throw new Error('Cannot verify the original channel. Reopen it before saving.');
@@ -176,13 +205,21 @@ export async function saveChannelModel(channel, options) {
             assertSession();
             if (!current || current.id !== channel.id)
                 throw new Error('The channel was removed. Reopen the channel list before saving.');
-            const conflict = fingerprint(current) !== state.baseline;
+            conflict = fingerprint(current) !== state.baseline;
             if (conflict && !savedByUser(current, options.userId) && !await confirm(options.confirmConflict()))
                 return false;
-            if (!conflict && options.skipUnchanged && fingerprint(channel) === state.workingBaseline)
-                return true;
         }
         const submitted = clone(channel);
+        const workingAtSubmit = fingerprint(channel);
+        const credentialRepair = repairFileCredentials(submitted);
+        const normalizedAtSubmit = credentialRepair ? fingerprint(submitted) : workingAtSubmit;
+        if (!state.isNew && !conflict && options.skipUnchanged
+            && normalizedAtSubmit === state.workingBaseline) {
+            // A recovered create may already have persisted this repair.
+            if (credentialRepair)
+                repairFileCredentials(channel);
+            return true;
+        }
         normalizeChannelDataTypeArrays(submitted);
         const exportData = submitted.exportData = submitted.exportData || {};
         const metadata = exportData.metadata = exportData.metadata || { enabled: true };
@@ -209,11 +246,14 @@ export async function saveChannelModel(channel, options) {
         }
         if (String(accepted) !== 'true')
             throw new Error('The engine did not confirm the channel save. Your changes are still unsaved.');
+        const unchangedDuringWrite = fingerprint(channel) === workingAtSubmit;
         // Creation is accepted independently of later dependency/deploy stages.
         state.isNew = false;
         state.creationAttempts = undefined;
         channel.revision = submitted.revision || 1;
         (channel.exportData = channel.exportData || {}).metadata = metadata;
+        if (credentialRepair && unchangedDuringWrite)
+            repairFileCredentials(channel);
         state.baseline = fingerprint({ ...submitted, revision: channel.revision });
         // The engine can retain the old revision for a metadata-only save and
         // normalize model fields. Rebase only a receipt carrying our save stamp;
@@ -233,7 +273,10 @@ export async function saveChannelModel(channel, options) {
             // library/dependency/deployment stages as a departed user.
             assertSession();
         }
-        state.workingBaseline = fingerprint(channel);
+        // A credential edit made during the request must remain unsaved. Force
+        // the next Save to send it instead of treating the live draft as sent.
+        state.workingBaseline = credentialRepair && !unchangedDuringWrite
+            ? workingAtSubmit : fingerprint(channel);
         return true;
     }
     finally {

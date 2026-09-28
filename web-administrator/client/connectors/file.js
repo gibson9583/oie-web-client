@@ -35,10 +35,11 @@ const validateEnabled = (p) => p.scheme === 'FTP';
    disabled when scheme==FILE (no credentials) or Anonymous=Yes. */
 const credentialsDisabled = (p) => p.scheme === 'FILE' || (anonymousEnabled(p) && asBool(p.anonymous));
 /* Swing FileReader/FileWriter.checkProperties credential requirements (shared):
-   with Anonymous=No, Username is required unless S3 is using the default
-   credential provider chain. Password is additionally required unless SFTP is
-   using key-only auth (ignorePassword = SFTP && !passwordAuth). */
-const credentialsRequired = (p) => !asBool(p.anonymous)
+   SFTP/SMB always need named credentials, even if an older channel carries a
+   stale Anonymous=Yes flag. Other remote schemes require them with Anonymous=No,
+   except S3's default provider chain and SFTP key-only password auth. */
+const credentialsRequired = (p) => p.scheme !== 'FILE'
+    && (!anonymousEnabled(p) || !asBool(p.anonymous))
     && (p.scheme !== 'S3' || !asBool(p.schemeProperties && p.schemeProperties.useDefaultCredentialProviderChain));
 const passwordRequired = (p) => credentialsRequired(p)
     && !(p.scheme === 'SFTP' && !asBool(p.schemeProperties && p.schemeProperties.passwordAuth));
@@ -166,7 +167,7 @@ function hostPathField(onChange) {
             const slash = host.indexOf('/');
             const hostPart = slash === -1 ? host : host.slice(0, slash);
             const pathPart = slash === -1 ? '' : host.slice(slash + 1);
-            const hostInput = textInput(hostPart, { class: 'w-[198px]' });
+            const hostInput = textInput(hostPart, { class: 'w-[198px]', 'data-fkey': 'host' });
             const pathInput = textInput(pathPart, { class: 'flex-1 min-w-[144px]' });
             const recompose = () => { p.host = hostInput.value + '/' + pathInput.value; onChange(); };
             hostInput.addEventListener('input', recompose);
@@ -327,20 +328,28 @@ function ensureSchemeProperties(properties) {
    rebuild schemeProperties for the new scheme and apply the forced selections
    Swing performs — WEBDAV forces Passive Mode=No, and the Anonymous radios are
    re-applied (forcing username/password defaults). */
-function onSchemeChange(properties) {
+function onSchemeChange(properties, _scheme, previousScheme) {
     // ensureSchemeProperties handles both directions: it builds the concrete
     // subclass for FTP/SFTP/S3/SMB and DELETES the key for FILE/WEBDAV. It must
     // never be set to null here — a scheme change only repaints the form, so the
     // mount-time cleanup won't run again before a save PUTs the poison payload.
     ensureSchemeProperties(properties);
+    // Swing forces Anonymous by scheme. An old SFTP/SMB channel can still carry
+    // a stale true flag; clear it before switching to FTP/WebDAV so its named
+    // credentials are not replaced by the anonymous defaults.
+    if (properties.scheme === 'FILE' || properties.scheme === 'S3')
+        properties.anonymous = true;
+    else if (properties.scheme === 'SFTP' || properties.scheme === 'SMB'
+        || previousScheme === 'SFTP' || previousScheme === 'SMB')
+        properties.anonymous = false;
     if (properties.scheme === 'WEBDAV')
         properties.passive = false;
     applyAnonymous(properties);
 }
 /* Writer scheme switch additionally forces Validate Connection=No for WEBDAV,
    and for S3 forces Create Temp File=No (allowAppend=false; tempFile disabled). */
-function onWriterSchemeChange(properties) {
-    onSchemeChange(properties);
+function onWriterSchemeChange(properties, scheme, previousScheme) {
+    onSchemeChange(properties, scheme, previousScheme);
     if (properties.scheme === 'WEBDAV')
         properties.validateConnection = false;
     if (properties.scheme === 'S3') {

@@ -173,7 +173,7 @@ function FieldRow({ properties, field, onChange, repaint }: { properties: any; f
     const labelText = typeof f.label === 'function' ? f.label(properties) : f.label;
     const set = (v: any) => {
         if (f.key !== undefined) setPath(properties, f.key, v);
-        if (f.onSet) f.onSet(properties, v);
+        if (f.onSet) f.onSet(properties, v, value);
         onChange();
         if (repaint) repaint();
     };

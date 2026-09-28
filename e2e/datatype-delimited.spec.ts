@@ -117,11 +117,21 @@ test('engine JSON literals for true/false/null column names stay valid and save 
     expect(writes[0].sourceConnector.transformer.outboundProperties.serializationProperties.columnNames).toEqual({ string: 'true' });
 });
 
+test('engine-accepted legacy column names survive an unrelated save', async ({ page }) => {
+    const channel = fixture();
+    channel.sourceConnector.transformer.inboundProperties.serializationProperties.columnNames = { string: ['ª', 'µ', 'º'] };
+    const writes = await setup(page, channel);
+    await page.locator('.panel input[type=text]').first().fill('Legacy column names retained');
+    await save(page, writes, 1);
+    expect(writes[0].sourceConnector.transformer.inboundProperties.serializationProperties.columnNames)
+        .toEqual({ string: ['ª', 'µ', 'º'] });
+});
+
 test('invalid Delimited widths/names block OK even on hidden rows, then valid values save as typed arrays', async ({ page }) => {
     const writes = await setup(page);
     const modal = await dialog(page);
     const widths = modal.getByLabel('Column Widths', { exact: true }).first();
-    for (const invalid of ['0', '-1', '1.5', '2147483648', '5,']) {
+    for (const invalid of ['0', '-1', '1.5', '2147483648', '5,,3']) {
         await widths.fill(invalid);
         await expect(widths).toHaveAttribute('aria-invalid', 'true');
         await modal.getByRole('button', { name: 'OK', exact: true }).click();
@@ -132,13 +142,13 @@ test('invalid Delimited widths/names block OK even on hidden rows, then valid va
     await modal.getByRole('button', { name: 'OK', exact: true }).click();
     await expect(modal).toBeVisible();
     await modal.locator('table.dt tbody tr').first().locator('td').first().click();
-    await expect(widths).toHaveValue('5,');
-    await widths.fill('5,3');
+    await expect(widths).toHaveValue('5,,3');
+    await widths.fill('+5,3,');
     await expect(widths).toHaveAttribute('aria-invalid', 'false');
     await modal.getByLabel('Column Names', { exact: true }).first().fill('1bad');
     await modal.getByRole('button', { name: 'OK', exact: true }).click();
     await expect(modal).toBeVisible();
-    await modal.getByLabel('Column Names', { exact: true }).first().fill('first,second');
+    await modal.getByLabel('Column Names', { exact: true }).first().fill('first,second,');
     await modal.getByLabel('Column Widths', { exact: true }).nth(1).fill('4,2');
     await modal.getByRole('button', { name: 'OK', exact: true }).click();
     await save(page, writes, 1);
@@ -150,6 +160,7 @@ test('invalid bulk lists cannot apply; type switches discard obsolete list error
     const writes = await setup(page);
     const modal = await dialog(page);
     await modal.getByLabel('Bulk Edit', { exact: true }).check();
+    await modal.locator('table.dt tbody tr').first().getByRole('checkbox').check();
     await modal.getByLabel('Column Widths', { exact: true }).first().fill('0');
     await modal.getByRole('button', { name: 'Apply to Selected Connectors', exact: true }).click();
     await modal.getByRole('button', { name: 'OK', exact: true }).click();
@@ -167,6 +178,8 @@ test('partial bulk ignores disabled invalid outbound lists while applying valid 
     const writes = await setup(page);
     const modal = await dialog(page);
     await modal.getByLabel('Bulk Edit', { exact: true }).check();
+    await modal.locator('table.dt tbody tr').nth(0).getByRole('checkbox').check();
+    await modal.locator('table.dt tbody tr').nth(1).getByRole('checkbox').check();
     await modal.getByLabel('Column Widths', { exact: true }).first().fill('5,3');
     await modal.getByLabel('Column Widths', { exact: true }).nth(1).fill('0');
     await modal.getByRole('checkbox', { name: 'Outbound', exact: true }).uncheck();
@@ -189,6 +202,7 @@ for (const disabled of ['targets', 'sides']) {
         await modal.getByLabel('Column Widths', { exact: true }).first().fill('0');
         const checkboxes = disabled === 'targets' ? modal.locator('table input[type=checkbox]')
             : modal.getByRole('checkbox', { name: /^(Inbound|Outbound)$/ });
+        if (disabled === 'sides') await modal.locator('table.dt tbody tr').first().getByRole('checkbox').check();
         for (const checkbox of await checkboxes.all()) await checkbox.uncheck();
         await modal.getByRole('button', { name: 'Apply to Selected Connectors', exact: true }).click();
         const warning = page.getByRole('dialog', { name: 'Warning', exact: true });

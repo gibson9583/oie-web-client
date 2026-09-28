@@ -41,7 +41,7 @@ export interface FormField {
     compute?(properties: any): any;
     render?(properties: any, ctx: { onChange: () => void; repaint: () => void }): HTMLElement;
     append?(properties: any, ctx: { onChange: () => void; repaint: () => void }): HTMLElement | null;
-    onSet?(properties: any, value: any): void;
+    onSet?(properties: any, value: any, previousValue?: any): void;
     [extra: string]: any;
 }
 
@@ -273,7 +273,7 @@ function renderRow(grid: HTMLElement, properties: any, f: FormField, onChange: (
     const value = f.key === undefined ? undefined : getPath(properties, f.key);
     const set = (v: any) => {
         if (f.key !== undefined) setPath(properties, f.key, v);
-        if (f.onSet) f.onSet(properties, v);
+        if (f.onSet) f.onSet(properties, v, value);
         onChange();
         if (repaint) repaint();
     };
