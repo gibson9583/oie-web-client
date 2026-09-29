@@ -120,7 +120,7 @@ test('Administrator selector does not create a dirty edit and another tab keeps 
 });
 
 for (const deployment of ['node', 'war']) {
-    for (const apiMin of [undefined, '4.6', '4.7']) {
+    for (const apiMin of [undefined, '4.6', '4.7', '4.8']) {
         test(`${deployment} plugin catalog loads with ${apiMin ?? 'no'} apiMin before module evaluation`, async ({ page }) => {
             await setLanguage(page, 'zh-CN');
             if (deployment === 'war') {
@@ -154,7 +154,7 @@ for (const deployment of ['node', 'war']) {
                 const { platform } = await import(module);
                 const item = platform.navItems().find((item: any) => item.id === 'locale-plug');
                 return { apiVersion: platform.apiVersion, section: item?.section, sectionLabel: item?.sectionLabel };
-            })).toEqual({ apiVersion: '4.7.0', section: 'plugin-tools', sectionLabel: '插件工具' });
+            })).toEqual({ apiVersion: '4.8.0', section: 'plugin-tools', sectionLabel: '插件工具' });
             expect(catalogHeaders['x-requested-with']).toBe('OpenIntegrationEngine-WebAdmin');
             expect(catalogHeaders['x-oie-context']).toBeTruthy();
         });

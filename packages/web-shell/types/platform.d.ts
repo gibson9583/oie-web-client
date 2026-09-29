@@ -272,7 +272,7 @@ export interface PluginManifest {
     apiMin?: string | null;
     [key: string]: any;
 }
-export declare const OIE_API_VERSION = "4.7.0";
+export declare const OIE_API_VERSION = "4.8.0";
 declare const i18n: Readonly<{
     t: typeof translate;
     tc: typeof tc;

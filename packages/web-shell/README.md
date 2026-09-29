@@ -79,9 +79,9 @@ MPL-2.0
 
 ## Localization
 
-Localization is optional and does not change the API version or `oie.apiMin`.
-Detect `platform.i18n` and retain English rendering for older hosts. Plugins shipped
-with this host can also use its shared `@oie/web-ui` exports. Declare a
+Localization arrived in API 4.8. Declare `"oie": { "apiMin": "4.8" }` to use
+the shared `@oie/web-ui` exports directly, or detect `platform.i18n` and retain
+English rendering to keep loading on API 4.7. Declare a
 plugin-scoped catalog in `plugin.json`; the host loads it before importing your
 module. Keep IDs, enum values, routes and RBAC groups stable, and translate only
 display labels. See the [i18n authoring and migration guide](../../docs/i18n.md)
