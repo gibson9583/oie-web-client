@@ -233,7 +233,7 @@ test.describe('SSO through the engine', () => {
             // WebKit interception metadata does not expose its routing cookie.
             await page.route('**/api/extensions/oidcauth/start', route => route.continue());
             await page.goto(app.url + '/');
-            await page.locator('select').selectOption('k:staging');
+            await page.getByRole('combobox', { name: 'Engine', exact: true }).selectOption('k:staging');
             await page.getByRole('button', { name: 'Sign in with Acme SSO' }).click();
             await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
             expect(selected).toEqual(['staging']);

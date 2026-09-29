@@ -1,3 +1,4 @@
+import { compareText } from "./i18n.js";
 /*
  * Command registry — the flat list of things the command palette can run.
  *
@@ -48,9 +49,9 @@ export function registerCommand(command: Command): () => void {
 /** All registered commands, in section then order then label. */
 export function allCommands(): Command[] {
     return commands.slice().sort((a, b) =>
-        String(a.section || '').localeCompare(String(b.section || ''))
+        compareText(String(a.section || ''), String(b.section || ''))
         || (a.order ?? 100) - (b.order ?? 100)
-        || String(a.label).localeCompare(String(b.label)));
+        || compareText(String(a.label), String(b.label)));
 }
 
 /* ---- matching ---------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 /*
  * SMTP Sender (SmtpDispatcherProperties).
  *
@@ -66,12 +67,12 @@ function attachmentsTable(properties: any, onChange: any, disabled: any) {
         clear(wrap);
         rows.forEach((row: any, i: number) => {
             wrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
-                textInput(row.name, { placeholder: 'Name', disabled, class: 'flex-1', onInput: (e: any) => { row.name = e.target.value; commit(); } }),
-                textInput(row.content, { placeholder: 'Content', disabled, class: 'flex-[2]', onInput: (e: any) => { row.content = e.target.value; commit(); } }),
-                textInput(row.mimeType, { placeholder: 'MIME type', disabled, class: 'flex-1', onInput: (e: any) => { row.mimeType = e.target.value; commit(); } }),
-                h('button.icon-btn', { type: 'button', title: 'Remove', disabled, onClick: disabled ? null : () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
+                textInput(row.name, { placeholder: translate("Name"), disabled, class: 'flex-1', onInput: (e: any) => { row.name = e.target.value; commit(); } }),
+                textInput(row.content, { placeholder: translate("Content"), disabled, class: 'flex-[2]', onInput: (e: any) => { row.content = e.target.value; commit(); } }),
+                textInput(row.mimeType, { placeholder: translate("MIME type"), disabled, class: 'flex-1', onInput: (e: any) => { row.mimeType = e.target.value; commit(); } }),
+                h('button.icon-btn', { type: 'button', title: translate("Remove"), disabled, onClick: disabled ? null : () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
         });
-        wrap.appendChild(h('button.btn', { type: 'button', disabled, onClick: disabled ? null : () => { rows.push({ name: '', content: '', mimeType: '' }); paint(); } }, 'New'));
+        wrap.appendChild(h('button.btn', { type: 'button', disabled, onClick: disabled ? null : () => { rows.push({ name: '', content: '', mimeType: '' }); paint(); } }, translate("New")));
     }
     paint();
     return wrap;
@@ -115,46 +116,46 @@ const smtpSender = {
         return (
             <div>
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: 'Connection Settings' },
-                    { key: 'smtpHost', label: 'SMTP Host', type: 'text', width: '200px', append: () => connectorTestButton({ label: 'Send Test Email', icon: 'mail', path: '/connectors/smtp/_sendTestEmail', channel, properties }) },
-                    { key: 'smtpPort', label: 'SMTP Port', type: 'number', width: '90px' },
-                    { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: (p: any) => !usingLocalBinding(p) },
-                    { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', disabled: (p: any) => !usingLocalBinding(p) },
-                    { key: 'timeout', label: 'Send Timeout (ms)', type: 'number', width: '120px' },
-                    { key: 'encryption', label: 'Encryption', type: 'radio', options: [
-                        { value: 'none', label: 'None' },
-                        { value: 'TLS', label: 'STARTTLS' },
-                        { value: 'SSL', label: 'SSL' }
+                    { section: translate("Connection Settings") },
+                    { key: 'smtpHost', label: translate("SMTP Host"), type: 'text', width: '200px', append: () => connectorTestButton({ label: translate("Send Test Email"), icon: 'mail', path: '/connectors/smtp/_sendTestEmail', channel, properties }) },
+                    { key: 'smtpPort', label: translate("SMTP Port"), type: 'number', width: '90px' },
+                    { key: 'overrideLocalBinding', label: translate("Override Local Binding"), type: 'radio', options: YES_NO, refresh: true },
+                    { key: 'localAddress', label: translate("Local Address"), type: 'text', width: '200px', disabled: (p: any) => !usingLocalBinding(p) },
+                    { key: 'localPort', label: translate("Local Port"), type: 'number', width: '90px', disabled: (p: any) => !usingLocalBinding(p) },
+                    { key: 'timeout', label: translate("Send Timeout (ms)"), type: 'number', width: '120px' },
+                    { key: 'encryption', label: translate("Encryption"), type: 'radio', options: [
+                        { value: 'none', label: translate("None") },
+                        { value: 'TLS', label: translate("STARTTLS") },
+                        { value: 'SSL', label: translate("SSL") }
                     ] },
-                    { key: 'authentication', label: 'Use Authentication', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'username', label: 'Username', type: 'text', width: '220px', disabled: (p: any) => !usingAuth(p) },
-                    { key: 'password', label: 'Password', type: 'password', width: '220px', disabled: (p: any) => !usingAuth(p) },
-                    { section: 'Email Settings' },
-                    { key: 'to', label: 'To', type: 'text', tooltip: 'The name of the mailbox (person, usually) to which the email should be sent.' },
-                    { key: 'from', label: 'From', type: 'text', width: '220px' },
-                    { key: 'subject', label: 'Subject', type: 'text' },
-                    { key: 'charsetEncoding', label: 'Charset Encoding', type: 'select', options: CHARSETS, width: '160px' },
-                    { key: 'html', label: 'HTML Body', type: 'radio', options: YES_NO },
-                    { key: 'body', label: 'Body', type: 'code', minHeight: '260px' },
-                    { key: 'isUseHeadersVariable', label: 'Headers', type: 'radio', refresh: true, options: [
-                        { value: false, label: 'Use Table' },
-                        { value: true, label: 'Use Map:' }
+                    { key: 'authentication', label: translate("Use Authentication"), type: 'radio', options: YES_NO, refresh: true },
+                    { key: 'username', label: translate("Username"), type: 'text', width: '220px', disabled: (p: any) => !usingAuth(p) },
+                    { key: 'password', label: translate("Password"), type: 'password', width: '220px', disabled: (p: any) => !usingAuth(p) },
+                    { section: translate("Email Settings") },
+                    { key: 'to', label: translate("To"), type: 'text', tooltip: translate("The name of the mailbox (person, usually) to which the email should be sent.") },
+                    { key: 'from', label: translate("From"), type: 'text', width: '220px' },
+                    { key: 'subject', label: translate("Subject"), type: 'text' },
+                    { key: 'charsetEncoding', label: translate("Charset Encoding"), type: 'select', options: CHARSETS, width: '160px' },
+                    { key: 'html', label: translate("HTML Body"), type: 'radio', options: YES_NO },
+                    { key: 'body', label: translate("Body"), type: 'code', minHeight: '260px' },
+                    { key: 'isUseHeadersVariable', label: translate("Headers"), type: 'radio', refresh: true, options: [
+                        { value: false, label: translate("Use Table") },
+                        { value: true, label: translate("Use Map:") }
                     ] },
                     // Swing useHeadersVariableFieldsEnabled() greys BOTH the table and the
                     // variable field (setEnabled) — both stay VISIBLE. Grey-both, not swap.
                     { key: 'headers', type: 'keyvalue', mapShape: 'string', disabled: (p: any) => asBool(p.isUseHeadersVariable) },
-                    { key: 'headersVariable', label: 'Map Variable', type: 'text', width: '320px', disabled: (p: any) => !asBool(p.isUseHeadersVariable) },
-                    { key: 'isUseAttachmentsVariable', label: 'Attachments', type: 'radio', refresh: true, options: [
-                        { value: false, label: 'Use Table' },
-                        { value: true, label: 'Use List:' }
+                    { key: 'headersVariable', label: translate("Map Variable"), type: 'text', width: '320px', disabled: (p: any) => !asBool(p.isUseHeadersVariable) },
+                    { key: 'isUseAttachmentsVariable', label: translate("Attachments"), type: 'radio', refresh: true, options: [
+                        { value: false, label: translate("Use Table") },
+                        { value: true, label: translate("Use List:") }
                     ] },
                     // Swing useAttachmentsVariableFieldsEnabled() greys BOTH the table and the
                     // variable field (setEnabled) — both stay VISIBLE. Grey-both, not swap. The
                     // 'custom' branch doesn't propagate disabled, so derive it inside render().
                     { type: 'custom', label: '', span: true,
                         render: (p: any) => attachmentsTable(p, onChange, asBool(p.isUseAttachmentsVariable)) },
-                    { key: 'attachmentsVariable', label: 'List Variable', type: 'text', width: '320px', disabled: (p: any) => !asBool(p.isUseAttachmentsVariable) }
+                    { key: 'attachmentsVariable', label: translate("List Variable"), type: 'text', width: '320px', disabled: (p: any) => !asBool(p.isUseAttachmentsVariable) }
                 ]} />
             </div>
         );
@@ -165,15 +166,15 @@ const smtpSender = {
     // attachments variable is required when the matching Use Map/Use List mode is on.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'smtpHost', label: 'SMTP Host' },
-            { key: 'smtpPort', label: 'SMTP Port' },
-            { key: 'localAddress', label: 'Local Address', when: usingLocalBinding },
-            { key: 'localPort', label: 'Local Port', when: usingLocalBinding },
-            { key: 'timeout', label: 'Send Timeout' },
-            { key: 'to', label: 'To' },
-            { key: 'from', label: 'From' },
-            { key: 'headersVariable', label: 'Headers Map Variable', when: (p: any) => asBool(p.isUseHeadersVariable) },
-            { key: 'attachmentsVariable', label: 'Attachments List Variable', when: (p: any) => asBool(p.isUseAttachmentsVariable) }
+            { key: 'smtpHost', label: translate("SMTP Host") },
+            { key: 'smtpPort', label: translate("SMTP Port") },
+            { key: 'localAddress', label: translate("Local Address"), when: usingLocalBinding },
+            { key: 'localPort', label: translate("Local Port"), when: usingLocalBinding },
+            { key: 'timeout', label: translate("Send Timeout") },
+            { key: 'to', label: translate("To") },
+            { key: 'from', label: translate("From") },
+            { key: 'headersVariable', label: translate("Headers Map Variable"), when: (p: any) => asBool(p.isUseHeadersVariable) },
+            { key: 'attachmentsVariable', label: translate("Attachments List Variable"), when: (p: any) => asBool(p.isUseAttachmentsVariable) }
         ]);
     }
 };

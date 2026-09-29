@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 /*
  * React bridges over the existing framework singletons. These DO NOT
  * reimplement state/routing/theme — they subscribe React to the same
@@ -59,7 +60,7 @@ export function useViewTitle() {
         };
     }, []);
     useEffect(() => {
-        document.title = (title ? title + ' — ' : '') + 'OIE Administrator';
+        document.title = translate("{value1}OIE Administrator", { value1: String(title ? title + ' — ' : '') });
     }, [title]);
     return title;
 }

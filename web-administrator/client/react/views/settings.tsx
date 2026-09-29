@@ -1,3 +1,5 @@
+import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { LanguageSelect } from '../language-select.jsx';
 /*
  * Settings view — server configuration with the same tabs as the Swing
  * Administrator's Settings panel: Server, Administrator, Tags, Configuration
@@ -132,7 +134,7 @@ function RadioGroup({ options, value, onChange }: any) {
 
 function YesNo({ value, onChange }: any) {
     return <RadioGroup value={value ? 'yes' : 'no'} onChange={(v: any) => onChange(v === 'yes')}
-        options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />;
+        options={[{ value: 'yes', label: translate("Yes") }, { value: 'no', label: translate("No") }]} />;
 }
 
 function TabLoadFailed({ error }: any) {
@@ -141,7 +143,7 @@ function TabLoadFailed({ error }: any) {
             <div className="empty-icon">{/* warning glyph, same as loadFailed() */}
                 <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('warning', 30)); }} />
             </div>
-            <div>Failed to load</div>
+            <div>{translate("Failed to load")}</div>
             <div className="text-text-faint mt-[14px]">{String(error)}</div>
         </div>
     );
@@ -218,7 +220,7 @@ function ServerTab({ ctx }: any) {
             settingsRef.current = settings || {};
         } catch (e: any) {
             if (!current()) return;
-            toast(`Failed to load server settings: ${e.message}`, 'error');
+            toast(translate("Failed to load server settings: {value1}", { value1: String(e.message) }), 'error');
             setLoadError(String(e.message || e));
             return;
         }
@@ -297,12 +299,12 @@ function ServerTab({ ctx }: any) {
             if (!current()) return false;
             // Re-tint the rail + topbar live with the saved color.
             applyEnvironmentColor(settings.defaultAdministratorBackgroundColor);
-            toast('Server settings saved');
+            toast(translate("Server settings saved"));
             ctx.markClean();
             return true;
         } catch (e: any) {
             if (!current()) return false;
-            toast(`Save failed: ${e.message}`, 'error');
+            toast(translate("Save failed: {value1}", { value1: String(e.message) }), 'error');
             return false;
         }
     }
@@ -325,12 +327,12 @@ function ServerTab({ ctx }: any) {
            password, toAddress, fromAddress. */
         const toInput = textInput(f.smtpFrom);
         modal({
-            title: 'Send Test Email',
-            body: field('To address', toInput),
+            title: translate("Send Test Email"),
+            body: field(translate("To address"), toInput),
             buttons: [
-                { label: 'Cancel' },
+                { label: translate("Cancel") },
                 {
-                    label: 'Send', primary: true,
+                    label: translate("Send"), primary: true,
                     onClick: async () => {
                         if (!current()) return;
                         try {
@@ -347,12 +349,12 @@ function ServerTab({ ctx }: any) {
                             ]);
                             const response = await api.server.testEmail(props);
                             if (!current()) return;
-                            const message = (response && typeof response === 'object' ? response.message : response) || 'Test email sent';
+                            const message = (response && typeof response === 'object' ? response.message : response) || translate("Test email sent");
                             const failed = response && typeof response === 'object' && response.type && response.type !== 'SUCCESS';
                             toast(String(message), failed ? 'error' : 'info');
                         } catch (e: any) {
                             if (!current()) return;
-                            toast(`Test email failed: ${e.message}`, 'error');
+                            toast(translate("Test email failed: {value1}", { value1: String(e.message) }), 'error');
                             return false;
                         }
                     }
@@ -374,9 +376,9 @@ function ServerTab({ ctx }: any) {
                 const text = await res.text();
                 assertEngineResponse(res);
                 return text;
-            }, () => { if (!current()) throw new Error('The settings editor is no longer active.'); });
+            }, () => { if (!current()) throw new Error(translate("The settings editor is no longer active.")); });
         } catch (e: any) {
-            if (current()) toast(`Backup failed: ${e.message}`, 'error');
+            if (current()) toast(translate("Backup failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -384,19 +386,19 @@ function ServerTab({ ctx }: any) {
     function migrationDialog(verdict: any) {
         if (verdict.action === 'block') {
             return new Promise((resolve: any) => modal({
-                title: 'Information',
+                title: translate("Information"),
                 body: h('div', { style: 'white-space: pre-line' }, verdict.message),
                 onClose: () => resolve(false),
-                buttons: [{ label: 'OK', primary: true, onClick: () => resolve(false) }]
+                buttons: [{ label: translate("OK"), primary: true, onClick: () => resolve(false) }]
             }));
         }
         return new Promise((resolve: any) => modal({
-            title: 'Select an Option',
+            title: translate("Select an Option"),
             body: h('div', { style: 'white-space: pre-line' }, verdict.message),
             onClose: () => resolve(false),
             buttons: [
-                { label: 'No', onClick: () => resolve(false) },
-                { label: 'Yes', primary: true, onClick: () => resolve(true) }
+                { label: translate("No"), onClick: () => resolve(false) },
+                { label: translate("Yes"), primary: true, onClick: () => resolve(true) }
             ]
         }));
     }
@@ -405,7 +407,7 @@ function ServerTab({ ctx }: any) {
         if (!current()) return;
         let file;
         try { file = await pickFile('.xml'); }
-        catch (e: any) { if (current()) toast(`Restore failed: ${e.message}`, 'error'); return; }
+        catch (e: any) { if (current()) toast(translate("Restore failed: {value1}", { value1: String(e.message) }), 'error'); return; }
         if (!current() || !file) return;
         // Swing promptObjectMigration("server configuration") before the restore prompt.
         const verdict = checkImportVersionFromDoc(
@@ -413,23 +415,22 @@ function ServerTab({ ctx }: any) {
         if (verdict.action !== 'ok' && !await migrationDialog(verdict)) return;
         if (!current()) return;
         // Match the Swing import prompt: deploy ON by default, overwrite config map OFF.
-        const deployCheck = checkbox('Deploy all channels after import', true);
-        const overwriteCheck = checkbox('Overwrite Configuration Map', false);
+        const deployCheck = checkbox(translate("Deploy all channels after import"), true);
+        const overwriteCheck = checkbox(translate("Overwrite Configuration Map"), false);
         // Swing labels the prompt with the configuration's saved date; fall back to the file name.
         const dateMatch = String(file.content || '').match(/<date>([^<]*)<\/date>/);
         const source = (dateMatch && dateMatch[1].trim()) || file.name;
         modal({
-            title: 'Restore Server Configuration',
+            title: translate("Restore Server Configuration"),
             body: h('div',
                 h('div.mb-[14px]',
-                    `Import configuration from ${source}? WARNING: This will overwrite all current channels, ` +
-                    'alerts, server properties, and plugin properties.'),
+                    translate("Import configuration from {value1}? WARNING: This will overwrite all current channels, alerts, server properties, and plugin properties.", { value1: String(source) })),
                 deployCheck.el,
                 overwriteCheck.el),
             buttons: [
-                { label: 'Cancel' },
+                { label: translate("Cancel") },
                 {
-                    label: 'Restore', danger: true,
+                    label: translate("Restore"), danger: true,
                     onClick: async () => {
                         if (!current()) return;
                         try {
@@ -441,11 +442,11 @@ function ServerTab({ ctx }: any) {
                                 }
                             });
                             if (!current()) return;
-                            toast('Server configuration restored');
+                            toast(translate("Server configuration restored"));
                             loadRef.current();
                         } catch (e: any) {
                             if (!current()) return;
-                            toast(`Restore failed: ${e.message}`, 'error');
+                            toast(translate("Restore failed: {value1}", { value1: String(e.message) }), 'error');
                             return false;
                         }
                     }
@@ -456,37 +457,37 @@ function ServerTab({ ctx }: any) {
 
     async function clearAllStatistics() {
         if (!current()) return;
-        if (await confirmDialog('Clear All Statistics',
-            'Clear the statistics (received, filtered, sent, errored) for all channels and connectors? This cannot be undone.',
-            { danger: true, okLabel: 'Clear' })) {
+        if (await confirmDialog(translate("Clear All Statistics"),
+            translate("Clear the statistics (received, filtered, sent, errored) for all channels and connectors? This cannot be undone."),
+            { danger: true, okLabel: translate("Clear") })) {
             if (!current()) return;
             try {
                 await api.statistics.clearAll();
                 if (!current()) return;
-                toast('All statistics cleared');
+                toast(translate("All statistics cleared"));
             } catch (e: any) {
                 if (!current()) return;
-                toast(`Clear failed: ${e.message}`, 'error');
+                toast(translate("Clear failed: {value1}", { value1: String(e.message) }), 'error');
             }
         }
     }
 
     useEffect(() => {
         ctx.setSave(() => saveRef.current());
-        ctx.setTasks('Server Tasks', [
-            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Server' }),
-            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Server' }),
+        ctx.setTasks(translate("Server Tasks"), [
+            taskButton(translate("Refresh"), 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Server' }),
+            taskButton(translate("Save"), 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Server' }),
             '-',
-            taskButton('Backup Config', 'export', backupConfig, { task: 'doBackup', group: 'settings_Server' }),
-            taskButton('Restore Config', 'import', restoreConfig, { task: 'doRestore', group: 'settings_Server' }),
-            taskButton('Clear All Statistics', 'clear', clearAllStatistics, { danger: true, task: 'doClearAllStats', group: 'settings_Server' })
+            taskButton(translate("Backup Config"), 'export', backupConfig, { task: 'doBackup', group: 'settings_Server' }),
+            taskButton(translate("Restore Config"), 'import', restoreConfig, { task: 'doRestore', group: 'settings_Server' }),
+            taskButton(translate("Clear All Statistics"), 'clear', clearAllStatistics, { danger: true, task: 'doClearAllStats', group: 'settings_Server' })
         ]);
         loadRef.current();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     if (loadError) return <TabLoadFailed error={loadError} />;
-    if (!form) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+    if (!form) return <div className="loading-block">{richText("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
 
     /* Live preview of the rail + topbar tint in both light and dark mode
        (Swing's color-chooser Preview panel), updating as the color changes. */
@@ -497,17 +498,17 @@ function ServerTab({ ctx }: any) {
         const paneBg = surf ? surf['--bg1'] : (dark ? '#111922' : '#f4f7fa');
         return (
             <div className="w-[190px]">
-                <div className="text-[10px] text-text-faint mb-[3px] uppercase tracking-[0.1em]">{dark ? 'Dark mode' : 'Light mode'}</div>
+                <div className="text-[10px] text-text-faint mb-[3px] uppercase tracking-[0.1em]">{dark ? translate("Dark mode") : translate("Light mode")}</div>
                 <div className="border border-line rounded overflow-hidden">
-                    <div className="py-[5px] px-[9px] text-[11px] font-[650]" style={{ background: (v as any).topbarBg, color: (v as any).fg }}>Dashboard</div>
+                    <div className="py-[5px] px-[9px] text-[11px] font-[650]" style={{ background: (v as any).topbarBg, color: (v as any).fg }}>{translate("Dashboard")}</div>
                     <div className="flex min-h-16">
                         <div className="py-[7px] px-2 w-16 text-[10px]" style={{ background: v!.railBg! }}>
-                            <div className="font-bold tracking-[0.1em] mb-[3px]" style={{ color: v!.fgDim! }}>TASKS</div>
-                            <div style={{ color: v!.fg! }}>Channels</div>
-                            <div style={{ color: v!.fgDim! }}>Messages</div>
-                            <div style={{ color: v!.fgDim! }}>Settings</div>
+                            <div className="font-bold tracking-[0.1em] mb-[3px]" style={{ color: v!.fgDim! }}>{translate("TASKS")}</div>
+                            <div style={{ color: v!.fg! }}>{translate("Channels")}</div>
+                            <div style={{ color: v!.fgDim! }}>{translate("Messages")}</div>
+                            <div style={{ color: v!.fgDim! }}>{translate("Settings")}</div>
                         </div>
-                        <div className="flex-1 p-2 text-[11px]" style={{ color: dark ? '#c8d4e0' : '#33414f', background: paneBg }}>Sample Text</div>
+                        <div className="flex-1 p-2 text-[11px]" style={{ color: dark ? '#c8d4e0' : '#33414f', background: paneBg }}>{translate("Sample Text")}</div>
                     </div>
                 </div>
             </div>
@@ -517,90 +518,88 @@ function ServerTab({ ctx }: any) {
     return (
         <>
             <div className="panel">
-                <div className="panel-header">General</div>
+                <div className="panel-header">{translate("General")}</div>
                 <div className="panel-body"><div className="form-grid">
-                    <Field label="Environment name">
+                    <Field label={translate("Environment name")}>
                         <input type="text" value={form.envName} onChange={(e: any) => patch({ envName: e.target.value })} />
                     </Field>
-                    <Field label="Server name">
+                    <Field label={translate("Server name")}>
                         <input type="text" value={form.srvName} onChange={(e: any) => patch({ srvName: e.target.value })} />
                     </Field>
-                    <Field label="Default Background Color">
+                    <Field label={translate("Default Background Color")}>
                         <div className="flex items-center">
                             <input type="color" className="w-[60px] p-0.5 h-8" value={form.bgColor}
                                 onChange={(e: any) => patch({ bgColor: e.target.value })} />
                             {/* Reset the picker to the engine default (ServerSettings.DEFAULT_COLOR = 0x2A75B2). */}
-                            <button type="button" className="btn ml-2" title="Reset to the default background color"
-                                onClick={() => patch({ bgColor: '#2a75b2' })}>Restore Default</button>
+                            <button type="button" className="btn ml-2" title={translate("Reset to the default background color")}
+                                onClick={() => patch({ bgColor: '#2a75b2' })}>{translate("Restore Default")}</button>
                         </div>
                     </Field>
                     <div className="field span-2">
-                        <label>Preview</label>
+                        <label>{translate("Preview")}</label>
                         <div className="flex gap-3.5 flex-wrap">{miniPreview(false)}{miniPreview(true)}</div>
                     </div>
-                    <Field label="Enable Auto Logout">
+                    <Field label={translate("Enable Auto Logout")}>
                         <YesNo value={form.autoLogout} onChange={(v: any) => patch({ autoLogout: v })} />
                     </Field>
-                    <Field label="Auto Logout Interval (minutes)">
+                    <Field label={translate("Auto Logout Interval (minutes)")}>
                         <input type="number" min="1" disabled={!form.autoLogout} value={form.autoLogoutInterval}
                             onChange={(e: any) => patch({ autoLogoutInterval: e.target.value })} />
                     </Field>
                 </div></div>
             </div>
             <div className="panel">
-                <div className="panel-header">Channel</div>
+                <div className="panel-header">{translate("Channel")}</div>
                 <div className="panel-body"><div className="form-grid">
-                    <Field label="Clear global map on redeploy">
+                    <Field label={translate("Clear global map on redeploy")}>
                         <YesNo value={form.clearMap} onChange={(v: any) => patch({ clearMap: v })} />
                     </Field>
-                    <Field label="Default Queue Buffer Size">
+                    <Field label={translate("Default Queue Buffer Size")}>
                         <input type="number" min="1" value={form.queueBuffer}
                             onChange={(e: any) => patch({ queueBuffer: e.target.value })} />
                     </Field>
-                    <Field label="Default Metadata Columns">
+                    <Field label={translate("Default Metadata Columns")}>
                         <div className="radio-group inline-row">
-                            <label className="check"><input type="checkbox" checked={form.metaSource} onChange={(e: any) => patch({ metaSource: e.target.checked })} />Source</label>
-                            <label className="check"><input type="checkbox" checked={form.metaType} onChange={(e: any) => patch({ metaType: e.target.checked })} />Type</label>
-                            <label className="check"><input type="checkbox" checked={form.metaVersion} onChange={(e: any) => patch({ metaVersion: e.target.checked })} />Version</label>
+                            <label className="check">{richText("{value1}Source", { value1: <input type="checkbox" checked={form.metaSource} onChange={(e: any) => patch({ metaSource: e.target.checked })} /> })}</label>
+                            <label className="check">{richText("{value1}Type", { value1: <input type="checkbox" checked={form.metaType} onChange={(e: any) => patch({ metaType: e.target.checked })} /> })}</label>
+                            <label className="check">{richText("{value1}Version", { value1: <input type="checkbox" checked={form.metaVersion} onChange={(e: any) => patch({ metaVersion: e.target.checked })} /> })}</label>
                         </div>
                     </Field>
                 </div></div>
             </div>
             <div className="panel">
-                <div className="panel-header">Email</div>
+                <div className="panel-header">{translate("Email")}</div>
                 <div className="panel-body"><div className="form-grid">
-                    <Field label="SMTP Host">
+                    <Field label={translate("SMTP Host")}>
                         <div className="flex items-center gap-2">
                             <input type="text" value={form.smtpHost} onChange={(e: any) => patch({ smtpHost: e.target.value })} />
-                            <button type="button" className="btn whitespace-nowrap" onClick={sendTestEmail}>
-                                <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('mail')); }} />Send Test Email
-                            </button>
+                            <button type="button" className="btn whitespace-nowrap" onClick={sendTestEmail}>{richText("{value1}Send Test Email", { value1: <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('mail')); }} /> })}</button>
                         </div>
                     </Field>
-                    <Field label="SMTP Port">
+                    <Field label={translate("SMTP Port")}>
                         <input type="text" value={form.smtpPort} onChange={(e: any) => patch({ smtpPort: e.target.value })} />
                     </Field>
-                    <Field label="Send Timeout (ms)">
+                    <Field label={translate("Send Timeout (ms)")}>
                         <input type="text" value={form.smtpTimeout} onChange={(e: any) => patch({ smtpTimeout: e.target.value })} />
                     </Field>
-                    <Field label="Default From Address">
+                    <Field label={translate("Default From Address")}>
                         <input type="text" value={form.smtpFrom} onChange={(e: any) => patch({ smtpFrom: e.target.value })} />
                     </Field>
-                    <Field label="Secure Connection">
+                    <Field label={translate("Secure Connection")}>
                         <RadioGroup value={form.smtpSecure} onChange={(v: any) => patch({ smtpSecure: v })} options={[
-                            { value: 'none', label: 'None' },
-                            { value: 'tls', label: 'STARTTLS' },
-                            { value: 'ssl', label: 'SSL' }
+                            { value: 'none', label: translate("None") },
+                            { value: 'tls', label: translate("STARTTLS") },
+                            { value: 'ssl', label: translate("SSL") }
                         ]} />
                     </Field>
-                    <Field label="Require Authentication">
+                    <Field label={translate("Require Authentication")}>
                         <YesNo value={form.smtpAuth} onChange={(v: any) => patch({ smtpAuth: v })} />
                     </Field>
-                    <Field label="Username">
+                    <Field label={translate("Username")}>
                         <input type="text" disabled={!form.smtpAuth} value={form.smtpUsername}
                             onChange={(e: any) => patch({ smtpUsername: e.target.value })} />
                     </Field>
-                    <Field label="Password">
+                    <Field label={translate("Password")}>
                         {/* SMTP relay credential, not the user's own login — don't
                             let the browser save or autofill it (#24). */}
                         <input type="password" autoComplete="off" disabled={!form.smtpAuth} value={form.smtpPassword}
@@ -609,12 +608,12 @@ function ServerTab({ ctx }: any) {
                 </div></div>
             </div>
             <div className="panel">
-                <div className="panel-header">Notification</div>
+                <div className="panel-header">{translate("Notification")}</div>
                 <div className="panel-body">
-                    <Field label="Require Login Notification and Consent">
+                    <Field label={translate("Require Login Notification and Consent")}>
                         <YesNo value={form.loginNotification} onChange={(v: any) => patch({ loginNotification: v })} />
                     </Field>
-                    <Field label="Login Notification">
+                    <Field label={translate("Login Notification")}>
                         <textarea disabled={!form.loginNotification} value={form.loginNotificationMessage}
                             onChange={(e: any) => patch({ loginNotificationMessage: e.target.value })} />
                     </Field>
@@ -649,7 +648,7 @@ function channelIdNamePairs(raw: any) {
             out.push({ id, name: String(name ?? id) });
         }
     }
-    out.sort((a: any, b: any) => a.name.localeCompare(b.name));
+    out.sort((a: any, b: any) => compareText(a.name, b.name));
     return out;
 }
 
@@ -764,12 +763,12 @@ function AdministratorTab({ ctx }: any) {
                 applyEnvironmentColor(effective);
             } catch (e: any) {
                 if (!current()) return false;
-                toast(`Could not save background color: ${e.message}`, 'error');
+                toast(translate("Could not save background color: {value1}", { value1: String(e.message) }), 'error');
                 return false;
             }
         }
         ctx.markClean();
-        toast('Preferences saved');
+        toast(translate("Preferences saved"));
         return true;
     }
 
@@ -783,7 +782,7 @@ function AdministratorTab({ ctx }: any) {
         setFontMono(PREF_DEFAULTS.fontMono);
         loadRef.current();
         ctx.markClean();
-        toast('Preferences reset to defaults');
+        toast(translate("Preferences reset to defaults"));
     }
 
     const formRef = useRef<any>(null);
@@ -795,67 +794,67 @@ function AdministratorTab({ ctx }: any) {
 
     useEffect(() => {
         ctx.setSave(() => saveRef.current());
-        ctx.setTasks('Administrator Tasks', [
-            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Administrator' }),
-            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Administrator' }),
-            taskButton('Restore Defaults', 'refresh', restoreDefaults, { task: 'doSetAdminDefaults', group: 'settings_Administrator' })
+        ctx.setTasks(translate("Administrator Tasks"), [
+            taskButton(translate("Refresh"), 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Administrator' }),
+            taskButton(translate("Save"), 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Administrator' }),
+            taskButton(translate("Restore Defaults"), 'refresh', restoreDefaults, { task: 'doSetAdminDefaults', group: 'settings_Administrator' })
         ]);
         loadRef.current();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    if (!form) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+    if (!form) return <div className="loading-block">{richText("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
 
     const pageSizeOptions = [20, 50, 100].map((n: any) => <option key={n} value={String(n)}>{n}</option>);
 
     return (
         <>
             <div className="panel">
-                <div className="panel-header">System Preferences</div>
+                <div className="panel-header">{translate("System Preferences")}</div>
                 <div className="panel-body">
-                    <PrefRow label="Dashboard refresh interval (seconds)">
+                    <PrefRow label={translate("Dashboard refresh interval (seconds)")}>
                         <input type="number" min="1" value={form.dashRefresh}
                             onChange={(e: any) => patch({ dashRefresh: e.target.value })} />
                     </PrefRow>
-                    <PrefRow label="Message browser page size">
+                    <PrefRow label={translate("Message browser page size")}>
                         <select value={form.msgPageSize} onChange={(e: any) => patch({ msgPageSize: e.target.value })}>{pageSizeOptions}</select>
                     </PrefRow>
-                    <PrefRow label="Event browser page size">
+                    <PrefRow label={translate("Event browser page size")}>
                         <select value={form.evtPageSize} onChange={(e: any) => patch({ evtPageSize: e.target.value })}>{pageSizeOptions}</select>
                     </PrefRow>
-                    <PrefRow label="Format text in message browser">
+                    <PrefRow label={translate("Format text in message browser")}>
                         <YesNo value={form.formatMsgs} onChange={(v: any) => patch({ formatMsgs: v })} />
                     </PrefRow>
-                    <PrefRow label="Reprocess/remove messages confirmation">
+                    <PrefRow label={translate("Reprocess/remove messages confirmation")}>
                         <YesNo value={form.confirmReprocess} onChange={(v: any) => patch({ confirmReprocess: v })} />
                     </PrefRow>
-                    <PrefRow label="Import code template libraries with channels">
+                    <PrefRow label={translate("Import code template libraries with channels")}>
                         <select value={form.importLibs} onChange={(e: any) => patch({ importLibs: e.target.value })}>
-                            <option value="yes">Yes</option><option value="no">No</option><option value="ask">Ask</option>
+                            <option value="yes">{translate("Yes")}</option><option value="no">{translate("No")}</option><option value="ask">{translate("Ask")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label="Export code template libraries with channels">
+                    <PrefRow label={translate("Export code template libraries with channels")}>
                         <select value={form.exportLibs} onChange={(e: any) => patch({ exportLibs: e.target.value })}>
-                            <option value="yes">Yes</option><option value="no">No</option><option value="ask">Ask</option>
+                            <option value="yes">{translate("Yes")}</option><option value="no">{translate("No")}</option><option value="ask">{translate("Ask")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label="Default new-channel builder">
+                    <PrefRow label={translate("Default new-channel builder")}>
                         <select value={form.newChannelDefault} onChange={(e: any) => patch({ newChannelDefault: e.target.value })}>
-                            <option value="ask">Ask each time</option><option value="classic">Classic editor</option><option value="guided">Wizard</option>
+                            <option value="ask">{translate("Ask each time")}</option><option value="classic">{translate("Classic editor")}</option><option value="guided">{translate("Wizard")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label="Default new-alert builder">
+                    <PrefRow label={translate("Default new-alert builder")}>
                         <select value={form.newAlertDefault} onChange={(e: any) => patch({ newAlertDefault: e.target.value })}>
-                            <option value="ask">Ask each time</option><option value="classic">Classic editor</option><option value="guided">Wizard</option>
+                            <option value="ask">{translate("Ask each time")}</option><option value="classic">{translate("Classic editor")}</option><option value="guided">{translate("Wizard")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label={'Show "switch view" in the channel/alert editor'}>
+                    <PrefRow label={translate("Show \"switch view\" in the channel/alert editor")}>
                         <YesNo value={form.showViewSwitch} onChange={(v: any) => patch({ showViewSwitch: v })} />
                     </PrefRow>
                 </div>
             </div>
             <div className="panel">
-                <div className="panel-header">User Preferences</div>
+                <div className="panel-header">{translate("User Preferences")}</div>
                 <div className="panel-body">
                     {/* The pending choices, before Save applies them to the app.
                         Theme, density and the typeface pair are plain data attributes,
@@ -870,24 +869,24 @@ function AdministratorTab({ ctx }: any) {
                         data-table-density={form.tableDensity}
                         data-font-ui={form.fontUi} data-font-mono={form.fontMono}
                         style={form.bgMode === 'custom' ? { '--rail-bg': form.bgColor } as any : undefined}>
-                        <div className="pref-preview-label">Preview</div>
+                        <div className="pref-preview-label">{translate("Preview")}</div>
                         <div className="pref-preview-frame">
                             <div className="pref-preview-rail">
                                 <span className="pref-preview-brand" /><span /><span /><span />
                             </div>
                             <table className="dt">
                                 <thead>
-                                    <tr><th>Status</th><th>Name</th><th className="num">Received</th></tr>
+                                    <tr><th>{translate("Status")}</th><th>{translate("Name")}</th><th className="num">{translate("Received")}</th></tr>
                                 </thead>
                                 <tbody>
                                     {[
-                                        ['ok', 'Started', 'Demo Channel', '48,316'],
-                                        ['ok', 'Started', 'HL7 Inbound', '12,004'],
-                                        ['warn', 'Paused', 'DICOM Sender', '1,204'],
-                                        ['ok', 'Started', 'Web Demonstration', '860'],
-                                        ['err', 'Stopped', 'Example - Validate XSD', '0'],
-                                        ['ok', 'Started', 'Global Router', '9,431'],
-                                        ['ok', 'Started', 'File Drop', '77'],
+                                        ['ok', translate("Started"), translate("Demo Channel"), '48,316'],
+                                        ['ok', translate("Started"), translate("HL7 Inbound"), '12,004'],
+                                        ['warn', translate("Paused"), translate("DICOM Sender"), '1,204'],
+                                        ['ok', translate("Started"), translate("Web Demonstration"), '860'],
+                                        ['err', translate("Stopped"), translate("Example - Validate XSD"), '0'],
+                                        ['ok', translate("Started"), translate("Global Router"), '9,431'],
+                                        ['ok', translate("Started"), translate("File Drop"), '77'],
                                     ].map(([pip, state, name, count]) => (
                                         <tr key={name}>
                                             <td><span className={'pip ' + pip} /> {state}</td>
@@ -898,42 +897,43 @@ function AdministratorTab({ ctx }: any) {
                             </table>
                         </div>
                     </div>
-                    <PrefRow label="Table density">
+                    <PrefRow label={translate("Table density")}>
                         <select value={form.tableDensity} onChange={(e: any) => patch({ tableDensity: e.target.value })}>
-                            <option value="compact">Compact</option>
-                            <option value="normal">Normal</option>
-                            <option value="wide">Wide</option>
+                            <option value="compact">{translate("Compact")}</option>
+                            <option value="normal">{translate("Normal")}</option>
+                            <option value="wide">{translate("Wide")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label="Theme">
+                    <PrefRow label={translate("Language")}><LanguageSelect /></PrefRow>
+                    <PrefRow label={translate("Theme")}>
                         <select value={form.theme} onChange={(e: any) => patch({ theme: e.target.value })}>
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
+                            <option value="light">{translate("Light")}</option>
+                            <option value="dark">{translate("Dark")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label="UI font">
+                    <PrefRow label={translate("UI font")}>
                         <select value={form.fontUi} onChange={(e: any) => patch({ fontUi: e.target.value })}>
-                            <option value="inter">Inter (default)</option>
-                            <option value="plex">IBM Plex Sans</option>
-                            <option value="b612">B612 — avionics</option>
-                            <option value="martian">Martian Mono — terminal</option>
-                            <option value="system">System</option>
+                            <option value="inter">{translate("Inter (default)")}</option>
+                            <option value="plex">{translate("IBM Plex Sans")}</option>
+                            <option value="b612">{translate("B612 — avionics")}</option>
+                            <option value="martian">{translate("Martian Mono — terminal")}</option>
+                            <option value="system">{translate("System")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label="Data font">
+                    <PrefRow label={translate("Data font")}>
                         <select value={form.fontMono} onChange={(e: any) => patch({ fontMono: e.target.value })}>
-                            <option value="jetbrains">JetBrains Mono (default)</option>
-                            <option value="plexmono">IBM Plex Mono</option>
-                            <option value="b612mono">B612 Mono — avionics</option>
-                            <option value="martian">Martian Mono — terminal</option>
-                            <option value="system">System</option>
+                            <option value="jetbrains">{translate("JetBrains Mono (default)")}</option>
+                            <option value="plexmono">{translate("IBM Plex Mono")}</option>
+                            <option value="b612mono">{translate("B612 Mono — avionics")}</option>
+                            <option value="martian">{translate("Martian Mono — terminal")}</option>
+                            <option value="system">{translate("System")}</option>
                         </select>
                     </PrefRow>
-                    <PrefRow label="Background color">
+                    <PrefRow label={translate("Background color")}>
                         <div className="flex items-center">
                             <select value={form.bgMode} onChange={(e: any) => patch({ bgMode: e.target.value })}>
-                                <option value="default">Server Default</option>
-                                <option value="custom">Custom</option>
+                                <option value="default">{translate("Server Default")}</option>
+                                <option value="custom">{translate("Custom")}</option>
                             </select>
                             <input type="color" className="w-[60px] p-0.5 h-8 ml-2" disabled={form.bgMode !== 'custom'}
                                 value={form.bgColor} onChange={(e: any) => patch({ bgColor: e.target.value })} />
@@ -983,7 +983,7 @@ function TagsTab({ ctx }: any) {
             tableRef.current?.clearSelection();
         } catch (e: any) {
             if (!current()) return;
-            toast(`Failed to load tags: ${e.message}`, 'error');
+            toast(translate("Failed to load tags: {value1}", { value1: String(e.message) }), 'error');
             setLoadError(String(e.message || e));
         }
     }
@@ -1002,7 +1002,7 @@ function TagsTab({ ctx }: any) {
 
     function bulkSelect(checked: any) {
         const tag = tagsNowRef.current?.find((t: any) => t.id === selectedId) || null;
-        if (!tag) { toast('Select a tag first', 'warn'); return; }
+        if (!tag) { toast(translate("Select a tag first"), 'warn'); return; }
         const cur = new Set(tagChannelIds(tag));
         for (const ch of visibleChannels()) {
             if (checked) cur.add(ch.id); else cur.delete(ch.id);
@@ -1014,7 +1014,7 @@ function TagsTab({ ctx }: any) {
 
     async function addTag() {
         if (!current()) return;
-        const name = await promptDialog('New Tag', 'Tag name');
+        const name = await promptDialog(translate("New Tag"), translate("Tag name"));
         if (!current() || name === null || name.trim() === '') return;
         setTags((prev: any) => [...(prev || []), {
             id: crypto.randomUUID(),
@@ -1026,17 +1026,17 @@ function TagsTab({ ctx }: any) {
     }
 
     function editTag(tag: any) {
-        const nameInput = textInput(tag.name || '', { maxlength: 24, title: 'Letters, numbers, spaces, - and _ only (max 24 chars)' });
+        const nameInput = textInput(tag.name || '', { maxlength: 24, title: translate("Letters, numbers, spaces, - and _ only (max 24 chars)") });
         const colorInput = h('input', { type: 'color', value: colorToHex(tag.backgroundColor), class: 'w-[60px] p-0.5' });
         modal({
-            title: 'Edit Tag',
+            title: translate("Edit Tag"),
             body: h('div',
-                field('Name', nameInput),
-                field('Color', colorInput)),
+                field(translate("Name"), nameInput),
+                field(translate("Color"), colorInput)),
             buttons: [
-                { label: 'Cancel' },
+                { label: translate("Cancel") },
                 {
-                    label: 'OK', primary: true,
+                    label: translate("OK"), primary: true,
                     onClick: () => {
                         tag.name = fixTagName(nameInput.value);
                         const alpha = tag.backgroundColor && tag.backgroundColor.alpha !== undefined
@@ -1053,8 +1053,8 @@ function TagsTab({ ctx }: any) {
     async function removeTag(tagArg: any) {
         if (!current()) return;
         const tag = tagArg || tagsNowRef.current?.find((t: any) => t.id === selectedId) || null;
-        if (!tag) { toast('Select a tag first', 'warn'); return; }
-        if (await confirmDialog('Remove Tag', `Remove tag "${tag.name}"? Save to apply.`, { danger: true, okLabel: 'Remove' })) {
+        if (!tag) { toast(translate("Select a tag first"), 'warn'); return; }
+        if (await confirmDialog(translate("Remove Tag"), translate("Remove tag \"{value1}\"? Save to apply.", { value1: String(tag.name) }), { danger: true, okLabel: translate("Remove") })) {
             if (!current()) return;
             setTags((prev: any) => prev.filter((t: any) => t !== tag));
             setSelectedId((prev: any) => (prev === tag.id ? null : prev));
@@ -1070,12 +1070,12 @@ function TagsTab({ ctx }: any) {
             await api.server.setChannelTags(tagsNowRef.current || []);
             if (!current()) return false;
             ctx.markClean();
-            toast('Tags saved');
+            toast(translate("Tags saved"));
             await loadRef.current();
             return current();
         } catch (e: any) {
             if (!current()) return false;
-            toast(`Save failed: ${e.message}`, 'error');
+            toast(translate("Save failed: {value1}", { value1: String(e.message) }), 'error');
             return false;
         }
     }
@@ -1095,13 +1095,13 @@ function TagsTab({ ctx }: any) {
     // through the refs above so it always runs the latest closure.
     const columns = useRef([
         { key: 'color', label: '', width: '36px', sortable: false, render: (t: any) => swatch(t.backgroundColor) },
-        { key: 'name', label: 'Name', render: (t: any) => t.name || '' },
-        { key: 'channels', label: 'Channel Count', className: 'num', width: '130px', sortValue: (t: any) => channelCount(t), render: (t: any) => String(channelCount(t)) }
+        { key: 'name', label: translate("Name"), render: (t: any) => t.name || '' },
+        { key: 'channels', label: translate("Channel Count"), className: 'num', width: '130px', sortValue: (t: any) => channelCount(t), render: (t: any) => String(channelCount(t)) }
     ]).current;
     const options = useRef({
         selectable: 'single',
         rowKey: (t: any) => t.id,
-        emptyText: 'No tags defined',
+        emptyText: translate("No tags defined"),
         columnsMenu: true,
         columnsMenuKey: 'webadmin-cols-tags',
         onSelect: (rows: any) => setSelectedId(rows[0] ? rows[0].id : null),
@@ -1112,10 +1112,10 @@ function TagsTab({ ctx }: any) {
             // Tag mutations ride settings_Tags/doSave (no Swing constants —
             // same convention as the Config Map Add Row, RBAC.md §3).
             contextMenu(e.clientX, e.clientY, [
-                { label: 'New Tag', icon: 'plus', task: 'doSave', group: 'settings_Tags', onClick: () => addRef.current() },
-                { label: 'Edit Tag', icon: 'edit', task: 'doSave', group: 'settings_Tags', onClick: () => editRef.current(t) },
+                { label: translate("New Tag"), icon: 'plus', task: 'doSave', group: 'settings_Tags', onClick: () => addRef.current() },
+                { label: translate("Edit Tag"), icon: 'edit', task: 'doSave', group: 'settings_Tags', onClick: () => editRef.current(t) },
                 '-',
-                { label: 'Remove Tag', icon: 'trash', danger: true, task: 'doSave', group: 'settings_Tags', onClick: () => removeRef.current(t) }
+                { label: translate("Remove Tag"), icon: 'trash', danger: true, task: 'doSave', group: 'settings_Tags', onClick: () => removeRef.current(t) }
             ]);
         }
     }).current;
@@ -1128,17 +1128,17 @@ function TagsTab({ ctx }: any) {
 
     // Selection-dependent tasks only show when a tag is selected.
     useEffect(() => {
-        ctx.setTasks('Tag Tasks', [
-            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Tags' }),
-            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Tags' }),
-            taskButton('Add Tag', 'plus', () => addRef.current(), { task: 'doSave', group: 'settings_Tags' }),
-            selectedId ? taskButton('Remove Tag', 'trash', () => removeRef.current(), { danger: true, task: 'doSave', group: 'settings_Tags' }) : null
+        ctx.setTasks(translate("Tag Tasks"), [
+            taskButton(translate("Refresh"), 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Tags' }),
+            taskButton(translate("Save"), 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Tags' }),
+            taskButton(translate("Add Tag"), 'plus', () => addRef.current(), { task: 'doSave', group: 'settings_Tags' }),
+            selectedId ? taskButton(translate("Remove Tag"), 'trash', () => removeRef.current(), { danger: true, task: 'doSave', group: 'settings_Tags' }) : null
         ]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedId]);
 
     if (loadError) return <TabLoadFailed error={loadError} />;
-    if (!tags) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+    if (!tags) return <div className="loading-block">{richText("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
 
     const ids = currentTag ? new Set(tagChannelIds(currentTag)) : null;
     const visible = visibleChannels();
@@ -1150,20 +1150,20 @@ function TagsTab({ ctx }: any) {
                     onReady={(t: any) => { tableRef.current = t; }} />
             </div></div>
             <div className="panel">
-                <div className="panel-header">Channels</div>
+                <div className="panel-header">{translate("Channels")}</div>
                 <div className="panel-body">
-                    <div className="hint mb-[14px]">Channel selections will be applied to the currently selected tag.</div>
+                    <div className="hint mb-[14px]">{translate("Channel selections will be applied to the currently selected tag.")}</div>
                     <div className="flex items-center gap-2 mb-[14px]">
-                        <input type="text" placeholder="Filter channels" className="max-w-[280px]"
+                        <input type="text" placeholder={translate("Filter channels")} className="max-w-[280px]"
                             value={chFilter} onChange={(e: any) => setChFilter(e.target.value)} />
-                        <button type="button" className="btn" onClick={() => bulkSelect(true)}>Select All</button>
-                        <button type="button" className="btn" onClick={() => bulkSelect(false)}>Deselect All</button>
+                        <button type="button" className="btn" onClick={() => bulkSelect(true)}>{translate("Select All")}</button>
+                        <button type="button" className="btn" onClick={() => bulkSelect(false)}>{translate("Deselect All")}</button>
                     </div>
                     <div className="max-h-[260px] overflow-auto flex flex-col gap-1.5">
                         {!currentTag ? (
-                            <div className="text-text-faint">Select a tag above to edit its channel assignments</div>
+                            <div className="text-text-faint">{translate("Select a tag above to edit its channel assignments")}</div>
                         ) : visible.length === 0 ? (
-                            <div className="text-text-faint">No channels match the filter</div>
+                            <div className="text-text-faint">{translate("No channels match the filter")}</div>
                         ) : (
                             visible.map((ch: any) => (
                                 <label key={ch.id} className="check">
@@ -1238,7 +1238,7 @@ function ConfigurationMapTab({ ctx }: any) {
             bumpStructure();
         } catch (e: any) {
             if (!currentSession()) return;
-            toast(`Failed to load configuration map: ${e.message}`, 'error');
+            toast(translate("Failed to load configuration map: {value1}", { value1: String(e.message) }), 'error');
             setLoadError(String(e.message || e));
         }
     }
@@ -1252,7 +1252,7 @@ function ConfigurationMapTab({ ctx }: any) {
                the engine put on the ConfigurationProperty. */
             const current = rowsNowRef.current || [];
             if (current.some((row: any) => !row.key.trim() && (row.value.trim() || row.comment.trim()))) {
-                toast('Blank keys are not allowed.', 'warn');
+                toast(translate("Blank keys are not allowed."), 'warn');
                 return false;
             }
             const entry = current.filter((r: any) => r.key.trim() !== '').map((r: any) => ({
@@ -1262,24 +1262,24 @@ function ConfigurationMapTab({ ctx }: any) {
             await api.server.setConfigurationMap({ entry });
             if (!currentSession()) return false;
             ctx.markClean();
-            toast('Configuration map saved');
+            toast(translate("Configuration map saved"));
             return true;
         } catch (e: any) {
             if (!currentSession()) return false;
-            toast(`Save failed: ${e.message}`, 'error');
+            toast(translate("Save failed: {value1}", { value1: String(e.message) }), 'error');
             return false;
         }
     }
 
-    function importMap() { return withEditorSave(importMapUnlocked, 'Importing configuration map…'); }
+    function importMap() { return withEditorSave(importMapUnlocked, translate("Importing configuration map…")); }
 
     async function importMapUnlocked() {
         if (!currentSession()) return;
-        if (!rowsNowRef.current) { toast('The configuration map has not loaded yet', 'warn'); return; }
+        if (!rowsNowRef.current) { toast(translate("The configuration map has not loaded yet"), 'warn'); return; }
         let file;
         try { file = await pickFile('.properties'); }
         catch (e: any) {
-            if (currentSession()) toast(`Import failed: ${e.message}`, 'error');
+            if (currentSession()) toast(translate("Import failed: {value1}", { value1: String(e.message) }), 'error');
             return;
         }
         if (!currentSession() || !file) return;
@@ -1288,13 +1288,13 @@ function ConfigurationMapTab({ ctx }: any) {
             imported = await loadConfigurationMapImport(String(file.content), file.name, async include => {
                 if (!currentSession()) return undefined;
                 const choice = await new Promise<'select' | 'skip' | null>(resolve => modal({
-                    title: 'Import Included Properties',
-                    body: h('p', `Select "${include.path}", referenced by the configuration map.${include.optional ? ' You can skip this optional file if it does not exist.' : ''}`),
+                    title: translate("Import Included Properties"),
+                    body: h('p', translate("{value2, select, yes {Select \"{value1}\", referenced by the configuration map. You can skip this optional file if it does not exist.} other {Select \"{value1}\", referenced by the configuration map.}}", { value1: String(include.path), value2: (include.optional) ? "yes" : "no" })),
                     onClose: () => resolve(null),
                     buttons: [
-                        { label: 'Cancel', onClick: () => resolve(null) },
-                        ...(include.optional ? [{ label: 'Skip', onClick: () => resolve('skip') }] : []),
-                        { label: 'Select File', primary: true, onClick: () => resolve('select') }
+                        { label: translate("Cancel"), onClick: () => resolve(null) },
+                        ...(include.optional ? [{ label: translate("Skip"), onClick: () => resolve('skip') }] : []),
+                        { label: translate("Select File"), primary: true, onClick: () => resolve('select') }
                     ]
                 }));
                 if (!currentSession() || choice === null) return undefined;
@@ -1305,18 +1305,18 @@ function ConfigurationMapTab({ ctx }: any) {
             });
         }
         catch (e: any) {
-            if (currentSession()) toast(`Import failed: ${e.message}`, 'error');
+            if (currentSession()) toast(translate("Import failed: {value1}", { value1: String(e.message) }), 'error');
             return;
         }
         if (!currentSession() || imported === null) return;
-        const ok = await confirmDialog('Import Configuration Map',
-            `Replace the configuration map with ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} from "${file.name}"? Existing entries and comments will be replaced. Save to apply the imported map.`,
-            { okLabel: 'Import' });
+        const ok = await confirmDialog(translate("Import Configuration Map"),
+            translate("{value2, plural, one {Replace the configuration map with {value1} property from \"{value3}\"? Existing entries and comments will be replaced. Save to apply the imported map.} other {Replace the configuration map with {value1} properties from \"{value3}\"? Existing entries and comments will be replaced. Save to apply the imported map.}}", { value1: String(imported.length), value2: imported.length, value3: String(file.name) }),
+            { okLabel: translate("Import") });
         if (!currentSession() || !ok) return;
         setRows(imported.map(imp => newCfgRow(imp.key, imp.value, imp.comment)));
         bumpStructure();
         ctx.markDirty();
-        toast(`Imported ${imported.length} propert${imported.length === 1 ? 'y' : 'ies'} — Save to apply`);
+        toast(translate("{value2, plural, one {Imported {value1} property — Save to apply} other {Imported {value1} properties — Save to apply}}", { value1: String(imported.length), value2: imported.length }));
     }
 
     async function exportMap() {
@@ -1324,10 +1324,10 @@ function ConfigurationMapTab({ ctx }: any) {
         const content = serializeConfigurationMap(rowsNowRef.current || []);
         try {
             await saveFile('configuration.properties', 'text/plain', content, () => {
-                if (!currentSession()) throw new Error('The settings editor is no longer active.');
+                if (!currentSession()) throw new Error(translate("The settings editor is no longer active."));
             });
         } catch (e: any) {
-            if (currentSession()) toast(`Export failed: ${e.message}`, 'error');
+            if (currentSession()) toast(translate("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -1342,11 +1342,11 @@ function ConfigurationMapTab({ ctx }: any) {
 
     useEffect(() => {
         ctx.setSave(() => saveRef.current());
-        ctx.setTasks('Configuration Map Tasks', [
-            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Configuration Map' }),
-            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Configuration Map' }),
-            taskButton('Import Map', 'import', () => importRef.current(), { task: 'doImportMap', group: 'settings_Configuration Map' }),
-            taskButton('Export Map', 'export', () => exportRef.current(), { task: 'doExportMap', group: 'settings_Configuration Map' })
+        ctx.setTasks(translate("Configuration Map Tasks"), [
+            taskButton(translate("Refresh"), 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Configuration Map' }),
+            taskButton(translate("Save"), 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Configuration Map' }),
+            taskButton(translate("Import Map"), 'import', () => importRef.current(), { task: 'doImportMap', group: 'settings_Configuration Map' }),
+            taskButton(translate("Export Map"), 'export', () => exportRef.current(), { task: 'doExportMap', group: 'settings_Configuration Map' })
         ]);
         loadRef.current();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1369,7 +1369,7 @@ function ConfigurationMapTab({ ctx }: any) {
     }, [filterText, structureVersion]);
 
     if (loadError) return <TabLoadFailed error={loadError} />;
-    if (!rows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+    if (!rows) return <div className="loading-block">{richText("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
 
     const shown = rows.filter((r: any) => visibleIds.has(r._id)).length;
     const patchRow = (id: any, patch: any) => setRows((prev: any) => prev.map((r: any) => (r._id === id ? { ...r, ...patch } : r)));
@@ -1383,31 +1383,25 @@ function ConfigurationMapTab({ ctx }: any) {
         <div className="panel">
             {/* Controls live in the panel header (this app's convention — panels carry
                 their tools in .panel-tools), so the filter attaches to the table it acts on. */}
-            <div className="panel-header">Configuration Map
-                <div className="panel-tools">
+            <div className="panel-header">{translate("Configuration Map")}<div className="panel-tools">
                     <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius)] border border-line-strong bg-bg2 text-text-dim min-w-[260px]">
                         <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('search', 15)); }} />
-                        <input type="search" placeholder="Filter entries…" autoComplete="off"
+                        <input type="search" placeholder={translate("Filter entries…")} autoComplete="off"
                             className="flex-1 min-w-0 bg-transparent border-0 outline-none text-text"
                             value={filterText} onChange={(e: any) => setFilterText(e.target.value)} />
                     </div>
-                    <label className="check">
-                        <input type="checkbox" checked={showValues} onChange={(e: any) => setShowValues(e.target.checked)} />
-                        Show values
-                    </label>
+                    <label className="check">{richText("{value1}Show values", { value1: <input type="checkbox" checked={showValues} onChange={(e: any) => setShowValues(e.target.checked)} /> })}</label>
                     {/* Add Row rides the tab's doSave permission — adding a row is
                         meaningless without save rights, so no separate identifier. */}
                     {platform.checkTask('settings_Configuration Map', 'doSave') && (
-                        <button type="button" className="btn" onClick={addRow}>
-                            <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('plus')); }} />Add Row
-                        </button>
+                        <button type="button" className="btn" onClick={addRow}>{richText("{value1}Add Row", { value1: <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('plus')); }} /> })}</button>
                     )}
                 </div>
             </div>
             <div className="panel-body flush">
                 <div className="dt-wrap">
                     <table className="dt">
-                        <thead><tr><th>Key</th><th>Value</th><th>Comment</th><th className="w-10"></th></tr></thead>
+                        <thead><tr><th>{translate("Key")}</th><th>{translate("Value")}</th><th>{translate("Comment")}</th><th className="w-10"></th></tr></thead>
                         <tbody>
                             {rows.map((row: any, i: any) => visibleIds.has(row._id) && (
                                 <tr key={row._id}
@@ -1415,26 +1409,26 @@ function ConfigurationMapTab({ ctx }: any) {
                                         e.preventDefault();
                                         // Row edits ride doSave like the Add Row button (RBAC.md §3).
                                         contextMenu(e.clientX, e.clientY, [
-                                            { label: 'Insert Row Above', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i) },
-                                            { label: 'Insert Row Below', icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i + 1) },
+                                            { label: translate("Insert Row Above"), icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i) },
+                                            { label: translate("Insert Row Below"), icon: 'plus', task: 'doSave', group: 'settings_Configuration Map', onClick: () => insertAt(i + 1) },
                                             '-',
-                                            { label: 'Delete Row', icon: 'trash', task: 'doSave', group: 'settings_Configuration Map', onClick: () => deleteAt(i) }
+                                            { label: translate("Delete Row"), icon: 'trash', task: 'doSave', group: 'settings_Configuration Map', onClick: () => deleteAt(i) }
                                         ]);
                                     }}>
                                     <td><input type="text" value={row.key} onChange={(e: any) => patchRow(row._id, { key: e.target.value })} /></td>
                                     <td><input type={valueType} value={row.value} onChange={(e: any) => patchRow(row._id, { value: e.target.value })} /></td>
                                     <td><input type="text" value={row.comment} onChange={(e: any) => patchRow(row._id, { comment: e.target.value })} /></td>
                                     <td>
-                                        <button type="button" className="icon-btn" title="Remove row" onClick={() => deleteAt(i)}>
+                                        <button type="button" className="icon-btn" title={translate("Remove row")} onClick={() => deleteAt(i)}>
                                             <span className="inline-flex" ref={(el: any) => { if (el && !el.firstChild) el.appendChild(icon('trash')); }} />
                                         </button>
                                     </td>
                                 </tr>
                             ))}
                             {rows.length === 0 ? (
-                                <tr><td colSpan={4}><span className="text-text-faint">No configuration map entries</span></td></tr>
+                                <tr><td colSpan={4}><span className="text-text-faint">{translate("No configuration map entries")}</span></td></tr>
                             ) : shown === 0 ? (
-                                <tr><td colSpan={4}><span className="text-text-faint">{`No entries match “${filterText.trim().toLowerCase()}”`}</span></td></tr>
+                                <tr><td colSpan={4}><span className="text-text-faint">{translate("No entries match “{value1}”", { value1: String(filterText.trim().toLowerCase()) })}</span></td></tr>
                             ) : null}
                         </tbody>
                     </table>
@@ -1491,24 +1485,24 @@ function DatabaseTasksTab({ ctx }: any) {
             setLoadError(null);
         } catch (e: any) {
             if (!current()) return;
-            toast(`Failed to load database tasks: ${e.message}`, 'error');
+            toast(translate("Failed to load database tasks: {value1}", { value1: String(e.message) }), 'error');
             if (taskRowsNowRef.current === null) setLoadError(String(e.message || e));
         }
     }
 
     async function runTask(task: any) {
         if (!current()) return;
-        if (!task) { toast('Select a task first', 'warn'); return; }
-        const message = task.confirmationMessage || `Run "${task.name}"? This task may take a long time to complete.`;
-        if (await confirmDialog('Run Database Task', message, { okLabel: 'Run' })) {
+        if (!task) { toast(translate("Select a task first"), 'warn'); return; }
+        const message = task.confirmationMessage || translate("Run \"{value1}\"? This task may take a long time to complete.", { value1: String(task.name) });
+        if (await confirmDialog(translate("Run Database Task"), message, { okLabel: translate("Run") })) {
             if (!current()) return;
             try {
                 const result = await api.databaseTasks.run(task.id);
                 if (!current()) return;
-                toast(typeof result === 'string' && result ? result : 'Task started');
+                toast(typeof result === 'string' && result ? result : translate("Task started"));
             } catch (e: any) {
                 if (!current()) return;
-                toast(`Run failed: ${e.message}`, 'error');
+                toast(translate("Run failed: {value1}", { value1: String(e.message) }), 'error');
             }
             loadRef.current();
         }
@@ -1516,15 +1510,15 @@ function DatabaseTasksTab({ ctx }: any) {
 
     async function cancelTask(task: any) {
         if (!current()) return;
-        if (!task) { toast('Select a task first', 'warn'); return; }
-        if (!isRunning(task)) { toast(`Task "${task.name}" is not currently running.`, 'warn'); return; }
+        if (!task) { toast(translate("Select a task first"), 'warn'); return; }
+        if (!isRunning(task)) { toast(translate("Task \"{value1}\" is not currently running.", { value1: String(task.name) }), 'warn'); return; }
         try {
             await api.databaseTasks.cancel(task.id);
             if (!current()) return;
-            toast('Cancel requested');
+            toast(translate("Cancel requested"));
         } catch (e: any) {
             if (!current()) return;
-            toast(`Cancel failed: ${e.message}`, 'error');
+            toast(translate("Cancel failed: {value1}", { value1: String(e.message) }), 'error');
         }
         loadRef.current();
     }
@@ -1538,20 +1532,20 @@ function DatabaseTasksTab({ ctx }: any) {
 
     // Table config is mount-captured by DataTableHost — callbacks route through refs.
     const columns = useRef([
-        { key: 'name', label: 'Name', render: (t: any) => t.name || '' },
-        { key: 'description', label: 'Description', render: (t: any) => t.description || '' },
+        { key: 'name', label: translate("Name"), render: (t: any) => t.name || '' },
+        { key: 'description', label: translate("Description"), render: (t: any) => t.description || '' },
         {
-            key: 'status', label: 'Status', width: '120px',
+            key: 'status', label: translate("Status"), width: '120px',
             render: (t: any) => {
                 const running = String(t.status || '').toUpperCase() === 'RUNNING';
-                return h('span.status-cell', h(`span.pip${running ? '.busy' : ''}`), running ? 'Running' : 'Idle');
+                return h('span.status-cell', h(`span.pip${running ? '.busy' : ''}`), running ? translate("Running") : translate("Idle"));
             }
         }
     ]).current;
     const options = useRef({
         selectable: 'single',
         rowKey: (t: any) => t.id,
-        emptyText: 'No database tasks — the engine has no cleanup work to do',
+        emptyText: translate("No database tasks — the engine has no cleanup work to do"),
         columnsMenu: true,
         columnsMenuKey: 'webadmin-cols-dbtasks',
         onSelect: (rows: any) => setSelectedId(rows[0] ? rows[0].id : null),
@@ -1559,8 +1553,8 @@ function DatabaseTasksTab({ ctx }: any) {
             setSelectedId(row.id);
             if (tableRef.current) { tableRef.current.selected = new Set([row.id]); tableRef.current.render(); }
             contextMenu(e.clientX, e.clientY, [
-                { label: 'Run Task', icon: 'play', hidden: anyRunning(), task: 'doRunDatabaseTask', group: 'settings_Database Tasks', onClick: () => runRef.current(row) },
-                { label: 'Cancel Task', icon: 'stop', danger: true, hidden: !isRunning(row), task: 'doCancelDatabaseTask', group: 'settings_Database Tasks', onClick: () => cancelRef.current(row) }
+                { label: translate("Run Task"), icon: 'play', hidden: anyRunning(), task: 'doRunDatabaseTask', group: 'settings_Database Tasks', onClick: () => runRef.current(row) },
+                { label: translate("Cancel Task"), icon: 'stop', danger: true, hidden: !isRunning(row), task: 'doCancelDatabaseTask', group: 'settings_Database Tasks', onClick: () => cancelRef.current(row) }
             ]);
         }
     }).current;
@@ -1572,16 +1566,16 @@ function DatabaseTasksTab({ ctx }: any) {
     // Selection/status-gated task pane (no Save — this tab is read/run only).
     const selected = (taskRows || []).find((t: any) => t.id === selectedId) || null;
     useEffect(() => {
-        ctx.setTasks('Database Task Tasks', [
-            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Database Tasks' }),
-            selected && !anyRunning() ? taskButton('Run Task', 'play', () => runRef.current(selected), { task: 'doRunDatabaseTask', group: 'settings_Database Tasks' }) : null,
-            selected && isRunning(selected) ? taskButton('Cancel Task', 'stop', () => cancelRef.current(selected), { danger: true, task: 'doCancelDatabaseTask', group: 'settings_Database Tasks' }) : null
+        ctx.setTasks(translate("Database Task Tasks"), [
+            taskButton(translate("Refresh"), 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Database Tasks' }),
+            selected && !anyRunning() ? taskButton(translate("Run Task"), 'play', () => runRef.current(selected), { task: 'doRunDatabaseTask', group: 'settings_Database Tasks' }) : null,
+            selected && isRunning(selected) ? taskButton(translate("Cancel Task"), 'stop', () => cancelRef.current(selected), { danger: true, task: 'doCancelDatabaseTask', group: 'settings_Database Tasks' }) : null
         ]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedId, taskRows]);
 
     if (loadError) return <TabLoadFailed error={loadError} />;
-    if (!taskRows) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+    if (!taskRows) return <div className="loading-block">{richText("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
 
     return (
         <div className="panel"><div className="panel-body flush">
@@ -1664,7 +1658,7 @@ function ResourcesTab({ ctx }: any) {
             tableRef.current?.clearSelection();
         } catch (e: any) {
             if (!current()) return;
-            toast(`Failed to load resources: ${e.message}`, 'error');
+            toast(translate("Failed to load resources: {value1}", { value1: String(e.message) }), 'error');
             setLoadError(String(e.message || e));
         }
     }
@@ -1673,7 +1667,7 @@ function ResourcesTab({ ctx }: any) {
     // in the detail panel below — the type plugin supplies the factory + editor.
     function addResource() {
         const def = platform.resourceTypes()[0];
-        if (!def || !def.create) { toast('No resource types are registered', 'warn'); return; }
+        if (!def || !def.create) { toast(translate("No resource types are registered"), 'warn'); return; }
         const list = entriesNowRef.current || [];
         const template = list.find((e: any) => e.obj && e.obj['@version']);
         const obj = def.create({ version: template ? template.obj['@version'] : undefined, containerIsArray: containerIsArrayRef.current });
@@ -1690,9 +1684,9 @@ function ResourcesTab({ ctx }: any) {
     async function removeResource(entryArg: any) {
         if (!current()) return;
         const entry = entryArg || (entriesNowRef.current || []).find((e: any) => e.obj.id === selectedId) || null;
-        if (!entry) { toast('Select a resource first', 'warn'); return; }
-        if (isDefault(entry)) { toast('The Default Resource cannot be removed', 'warn'); return; }
-        if (await confirmDialog('Remove Resource', `Remove resource "${entry.obj.name}"? Save to apply.`, { danger: true, okLabel: 'Remove' })) {
+        if (!entry) { toast(translate("Select a resource first"), 'warn'); return; }
+        if (isDefault(entry)) { toast(translate("The Default Resource cannot be removed"), 'warn'); return; }
+        if (await confirmDialog(translate("Remove Resource"), translate("Remove resource \"{value1}\"? Save to apply.", { value1: String(entry.obj.name) }), { danger: true, okLabel: translate("Remove") })) {
             if (!current()) return;
             setEntries((prev: any) => prev.filter((e: any) => e !== entry));
             setSelectedId((prev: any) => (prev === entry.obj.id ? null : prev));
@@ -1703,14 +1697,14 @@ function ResourcesTab({ ctx }: any) {
     async function reloadResource(entryArg: any) {
         if (!current()) return;
         const entry = entryArg || (entriesNowRef.current || []).find((e: any) => e.obj.id === selectedId) || null;
-        if (!entry) { toast('Select a resource first', 'warn'); return; }
+        if (!entry) { toast(translate("Select a resource first"), 'warn'); return; }
         try {
             await api.server.reloadResource(entry.obj.id);
             if (!current()) return;
-            toast(`Resource "${entry.obj.name}" reloaded`);
+            toast(translate("Resource \"{value1}\" reloaded", { value1: String(entry.obj.name) }));
         } catch (e: any) {
             if (!current()) return;
-            toast(`Reload failed: ${e.message}`, 'error');
+            toast(translate("Reload failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -1722,12 +1716,12 @@ function ResourcesTab({ ctx }: any) {
             await api.server.setResources(container());
             if (!current()) return false;
             ctx.markClean();
-            toast('Resources saved');
+            toast(translate("Resources saved"));
             await loadRef.current();
             return current();
         } catch (e: any) {
             if (!current()) return false;
-            toast(`Save failed: ${e.message}`, 'error');
+            toast(translate("Save failed: {value1}", { value1: String(e.message) }), 'error');
             return false;
         }
     }
@@ -1745,10 +1739,10 @@ function ResourcesTab({ ctx }: any) {
 
     // Table config is mount-captured by DataTableHost — callbacks route through refs.
     const columns = useRef([
-        { key: 'name', label: 'Name', sortValue: (e: any) => e.obj.name, render: (e: any) => e.obj.name || '' },
-        { key: 'type', label: 'Type', width: '120px', sortValue: (e: any) => e.obj.type, render: (e: any) => e.obj.type || '' },
+        { key: 'name', label: translate("Name"), sortValue: (e: any) => e.obj.name, render: (e: any) => e.obj.name || '' },
+        { key: 'type', label: translate("Type"), width: '120px', sortValue: (e: any) => e.obj.type, render: (e: any) => e.obj.type || '' },
         {
-            key: 'globalScripts', label: 'Global Scripts', width: '110px',
+            key: 'globalScripts', label: translate("Global Scripts"), width: '110px',
             sortValue: (e: any) => e.obj.includeWithGlobalScripts === true ? 1 : 0,
             render: (e: any) => h('input', {
                 type: 'checkbox', checked: e.obj.includeWithGlobalScripts === true,
@@ -1757,7 +1751,7 @@ function ResourcesTab({ ctx }: any) {
             })
         },
         {
-            key: 'loadParentFirst', label: 'Load Parent-First', width: '130px',
+            key: 'loadParentFirst', label: translate("Load Parent-First"), width: '130px',
             sortValue: (e: any) => e.obj.loadParentFirst === true ? 1 : 0,
             render: (e: any) => h('input', {
                 type: 'checkbox', checked: e.obj.loadParentFirst === true,
@@ -1769,7 +1763,7 @@ function ResourcesTab({ ctx }: any) {
     const options = useRef({
         selectable: 'single',
         rowKey: (e: any) => e.obj.id,
-        emptyText: 'No resources',
+        emptyText: translate("No resources"),
         columnsMenu: true,
         columnsMenuKey: 'webadmin-cols-resources',
         onSelect: (rows: any) => setSelectedId(rows[0] ? rows[0].obj.id : null),
@@ -1777,9 +1771,9 @@ function ResourcesTab({ ctx }: any) {
             setSelectedId(row.obj.id);
             if (tableRef.current) { tableRef.current.selected = new Set([row.obj.id]); tableRef.current.render(); }
             contextMenu(e.clientX, e.clientY, [
-                { label: 'Add Resource', icon: 'plus', task: 'doAddResource', group: 'settings_Resources', onClick: () => addRef.current() },
-                { label: 'Remove Resource', icon: 'trash', danger: true, hidden: isDefault(row), task: 'doRemoveResource', group: 'settings_Resources', onClick: () => removeRef.current(row) },
-                { label: 'Reload Resource', icon: 'refresh', task: 'doReloadResource', group: 'settings_Resources', onClick: () => reloadRef.current(row) }
+                { label: translate("Add Resource"), icon: 'plus', task: 'doAddResource', group: 'settings_Resources', onClick: () => addRef.current() },
+                { label: translate("Remove Resource"), icon: 'trash', danger: true, hidden: isDefault(row), task: 'doRemoveResource', group: 'settings_Resources', onClick: () => removeRef.current(row) },
+                { label: translate("Reload Resource"), icon: 'refresh', task: 'doReloadResource', group: 'settings_Resources', onClick: () => reloadRef.current(row) }
             ]);
         }
     }).current;
@@ -1793,18 +1787,18 @@ function ResourcesTab({ ctx }: any) {
     // Selection-gated task pane (the Default Resource cannot be removed).
     const selected = (entries || []).find((e: any) => e.obj.id === selectedId) || null;
     useEffect(() => {
-        ctx.setTasks('Resource Tasks', [
-            taskButton('Refresh', 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Resources' }),
-            taskButton('Save', 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Resources' }),
-            taskButton('Add Resource', 'plus', () => addRef.current(), { task: 'doAddResource', group: 'settings_Resources' }),
-            selected && !isDefault(selected) ? taskButton('Remove Resource', 'trash', () => removeRef.current(selected), { danger: true, task: 'doRemoveResource', group: 'settings_Resources' }) : null,
-            selected ? taskButton('Reload Resource', 'refresh', () => reloadRef.current(selected), { task: 'doReloadResource', group: 'settings_Resources' }) : null
+        ctx.setTasks(translate("Resource Tasks"), [
+            taskButton(translate("Refresh"), 'refresh', () => loadRef.current(), { task: 'doRefresh', group: 'settings_Resources' }),
+            taskButton(translate("Save"), 'save', () => saveRef.current(), { primary: true, task: 'doSave', group: 'settings_Resources' }),
+            taskButton(translate("Add Resource"), 'plus', () => addRef.current(), { task: 'doAddResource', group: 'settings_Resources' }),
+            selected && !isDefault(selected) ? taskButton(translate("Remove Resource"), 'trash', () => removeRef.current(selected), { danger: true, task: 'doRemoveResource', group: 'settings_Resources' }) : null,
+            selected ? taskButton(translate("Reload Resource"), 'refresh', () => reloadRef.current(selected), { task: 'doReloadResource', group: 'settings_Resources' }) : null
         ]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedId, entries]);
 
     if (loadError) return <TabLoadFailed error={loadError} />;
-    if (!entries) return <div className="loading-block"><div className="spinner" />Loading…</div>;
+    if (!entries) return <div className="loading-block">{richText("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
 
     const types = platform.resourceTypes();
     const detailDef = selected ? (types.find(t => t.type === selected.obj.type) || types[0]) : null;
@@ -1816,17 +1810,17 @@ function ResourcesTab({ ctx }: any) {
                     onReady={(t: any) => { tableRef.current = t; }} />
             </div></div>
             <div className="panel">
-                <div className="panel-header">{(types[0] || {}).detailHeader || 'Resource Settings'}</div>
+                <div className="panel-header">{(types[0] || {}).detailHeader || translate("Resource Settings")}</div>
                 <div className="panel-body">
                     {!selected ? (
-                        <div className="text-text-faint">Select a resource above to edit its settings</div>
+                        <div className="text-text-faint">{translate("Select a resource above to edit its settings")}</div>
                     ) : detailDef && (detailDef as any).component ? (
                         <PluginSlot key={selected.obj.id} def={detailDef} ctx={{
                             entry: selected, locked: isDefault(selected), platform,
                             refreshTable: () => touch()
                         }} />
                     ) : (
-                        <div className="text-text-faint">{`No editor registered for resource type "${selected.obj.type || '?'}"`}</div>
+                        <div className="text-text-faint">{translate("No editor registered for resource type \"{value1}\"", { value1: String(selected.obj.type || '?') })}</div>
                     )}
                 </div>
             </div>
@@ -1846,12 +1840,12 @@ function ResourcesTab({ ctx }: any) {
    ============================================================================ */
 
 const BUILTIN_TABS = [
-    { label: 'Server', render: (ctx: any) => reactTab(ctx, ServerTab) },
-    { label: 'Administrator', render: (ctx: any) => reactTab(ctx, AdministratorTab) },
-    { label: 'Tags', render: (ctx: any) => reactTab(ctx, TagsTab) },
-    { label: 'Configuration Map', render: (ctx: any) => reactTab(ctx, ConfigurationMapTab) },
-    { label: 'Database Tasks', render: (ctx: any) => reactTab(ctx, DatabaseTasksTab) },
-    { label: 'Resources', render: (ctx: any) => reactTab(ctx, ResourcesTab) }
+    { id: 'Server', taskGroup: 'settings_Server', label: translate("Server"), render: (ctx: any) => reactTab(ctx, ServerTab) },
+    { id: 'Administrator', taskGroup: 'settings_Administrator', label: translate("Administrator"), render: (ctx: any) => reactTab(ctx, AdministratorTab) },
+    { id: 'Tags', taskGroup: 'settings_Tags', label: translate("Tags"), render: (ctx: any) => reactTab(ctx, TagsTab) },
+    { id: 'Configuration Map', taskGroup: 'settings_Configuration Map', label: translate("Configuration Map"), render: (ctx: any) => reactTab(ctx, ConfigurationMapTab) },
+    { id: 'Database Tasks', taskGroup: 'settings_Database Tasks', label: translate("Database Tasks"), render: (ctx: any) => reactTab(ctx, DatabaseTasksTab) },
+    { id: 'Resources', taskGroup: 'settings_Resources', label: translate("Resources"), render: (ctx: any) => reactTab(ctx, ResourcesTab) }
     // Data Pruner is a settings-panel plugin (plugins/datapruner), appended
     // below via platform.settingsPanels().
 ];
@@ -1866,8 +1860,7 @@ function buildTabDefs(plat: any) {
     // from everyone but Manage Roles holders, which locked viewers out entirely
     // (and made a missing is_admin assignment look like a permissions
     // chicken-and-egg).
-    const visible = (label: string) => {
-        const taskGroup = `settings_${label}`;
+    const visible = (taskGroup: string) => {
         return plat.checkTask(taskGroup, 'doRefresh') || plat.checkTask(taskGroup, 'doSave');
     };
     // The SAME gate for the built-in tabs. They were appended unconditionally,
@@ -1877,16 +1870,19 @@ function buildTabDefs(plat: any) {
     // built-in tab's tasks (settings_Server/doRefresh → viewServerSettings,
     // settings_Tags/doRefresh → viewTags, …); only Administrator is deliberately
     // unmapped, because it reads and writes the current user's own preferences.
-    const defs = BUILTIN_TABS.filter((tab) => visible(tab.label));
+    const defs = BUILTIN_TABS.filter((tab) => visible(tab.taskGroup));
     for (const panel of plat.settingsPanels()) {
         // A plugin can publish group-prefixed doRefresh/doSave tasks through an
         // ExtensionPermission.
-        if (!visible(panel.label)) continue;
+        const taskGroup = panel.taskGroup || `settings_${panel.label}`;
+        if (!visible(taskGroup)) continue;
         defs.push({
+            id: panel.id || panel.label,
+            taskGroup,
             label: panel.label,
             render: (ctx: any) => {
                 const tabHostEl = tabHost();
-                ctx.setTasks(`${panel.label} Tasks`, []);   // initial pane; the panel calls setTasks itself
+                ctx.setTasks(translate("{value1} Tasks", { value1: String(panel.label) }), []);   // initial pane; the panel calls setTasks itself
                 // Host the panel's React component; teardown is tracked on the
                 // node so SettingsTab can unmount the root on tab switch.
                 (tabHostEl as any).__teardown = mountReact(tabHostEl, <PluginSlot def={panel} ctx={ctx} />);
@@ -1904,21 +1900,21 @@ function promptSaveSettings(canSave?: any) {
     return new Promise((resolve: any) => {
         if (canSave === false) {
             modal({
-                title: 'Unsaved Changes',
-                body: h('div', "You don't have permission to save this settings tab. Your changes will be discarded."),
+                title: translate("Unsaved Changes"),
+                body: h('div', translate("You don''t have permission to save this settings tab. Your changes will be discarded.")),
                 onClose: () => resolve('cancel'),
-                buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }]
+                buttons: [{ label: translate("OK"), primary: true, onClick: () => resolve('discard') }]
             });
             return;
         }
         modal({
-            title: 'Unsaved Changes',
-            body: h('div', 'You have unsaved changes on this settings tab. Would you like to save them?'),
+            title: translate("Unsaved Changes"),
+            body: h('div', translate("You have unsaved changes on this settings tab. Would you like to save them?")),
             onClose: () => resolve('cancel'),
             buttons: [
-                { label: 'Cancel', onClick: () => resolve('cancel') },
-                { label: "Don't Save", danger: true, onClick: () => resolve('discard') },
-                { label: 'Save Changes', primary: true, onClick: () => resolve('save') }
+                { label: translate("Cancel"), onClick: () => resolve('cancel') },
+                { label: translate("Don''t Save"), danger: true, onClick: () => resolve('discard') },
+                { label: translate("Save Changes"), primary: true, onClick: () => resolve('save') }
             ]
         });
     });
@@ -1939,7 +1935,7 @@ function SettingsTab({ def, ctx }: any) {
         ctx.markClean();                 // a freshly built tab starts clean
         // Any user edit marks the tab dirty. Programmatic value sets during the
         // builder's load() don't dispatch input/change, so they don't false-trip.
-        const onEdit = () => ctx.markDirty();
+        const onEdit = (e: Event) => { if (!(e.target as Element)?.closest('[data-language-select]')) ctx.markDirty(); };
         host.addEventListener('input', onEdit);
         host.addEventListener('change', onEdit);
         return () => {
@@ -1962,7 +1958,7 @@ function SettingsTab({ def, ctx }: any) {
 // the column-collapse wiring (`flat`, and the hide chevron as `headerExtra`),
 // and a wrapper that swallowed them left Settings the one view that couldn't
 // collapse its task pane.
-function TasksPane({ title, items, ...paneProps }: any) {
+function TasksPane({ title, items, paneId, ...paneProps }: any) {
     const ref = useRef<any>(null);
     useEffect(() => {
         const host = ref.current;
@@ -1977,7 +1973,7 @@ function TasksPane({ title, items, ...paneProps }: any) {
         return () => host.replaceChildren();
     }, [title, items]);
     return (
-        <RailPane title={title} paneKey={'tasks:' + title} {...paneProps}>
+        <RailPane title={title} paneKey={'tasks:settings:' + paneId} {...paneProps}>
             <div ref={ref} className="[display:contents]" />
         </RailPane>
     );
@@ -1992,13 +1988,13 @@ export function SettingsView({ query }: any) {
     // this role can see (Server for an administrator).
     const [active, setActive] = useState(() => {
         const want = String(query?.tab || '').trim().toLowerCase();
-        const i = want ? defs.findIndex((d: any) => d.label.toLowerCase() === want) : -1;
+        const i = want ? defs.findIndex((d: any) => (d.id || d.label).toLowerCase() === want) : -1;
         return i >= 0 ? i : 0;
     });
     const [dirty, setDirtyState] = useState(false);   // drives the unsaved-tab indicator
     const [, force] = useReducer((x: any) => x + 1, 0);
     // The active tab's declared task pane (title + legacy DOM items).
-    const tasksRef = useRef({ title: 'Server Tasks', items: [] });
+    const tasksRef = useRef({ title: translate("Server Tasks"), items: [] });
     const dirtyRef = useRef(false);
     useEffect(() => registerUnsavedCheck(() => dirtyRef.current), []);
     const saveRef = useRef<any>(null);   // the active tab's save(), if it supports saving
@@ -2013,7 +2009,7 @@ export function SettingsView({ query }: any) {
             if (dirtyRef.current) {
                 setState('navGuard', async () => {
                     const choice = await promptSaveSettings(
-                        platform.checkTask(`settings_${activeLabelRef.current}`, 'doSave'));
+                        platform.checkTask(activeLabelRef.current, 'doSave'));
                     if (choice === 'cancel') return false;
                     if (choice === 'save' && saveRef.current && (await saveRef.current()) === false) return false;
                     setClean();
@@ -2062,7 +2058,7 @@ export function SettingsView({ query }: any) {
     async function performTabSwitch(i: any) {
         if (dirtyRef.current) {
             const choice = await promptSaveSettings(
-                platform.checkTask(`settings_${activeLabelRef.current}`, 'doSave'));
+                platform.checkTask(activeLabelRef.current, 'doSave'));
             if (choice === 'cancel') return;
             if (choice === 'save' && saveRef.current && (await saveRef.current()) === false) return;
         }
@@ -2080,9 +2076,9 @@ export function SettingsView({ query }: any) {
     const shownRef = useRef(active);
     if (shownRef.current !== active) {
         shownRef.current = active;
-        tasksRef.current = { title: `${def.label} Tasks`, items: [] };
+        tasksRef.current = { title: translate("{value1} Tasks", { value1: String(def.label) }), items: [] };
     }
-    activeLabelRef.current = def.label;
+    activeLabelRef.current = def.taskGroup;
 
     // Drop the leave-guard when the settings view itself unmounts.
     useEffect(() => () => { setState('navGuard', null); }, []);
@@ -2092,15 +2088,15 @@ export function SettingsView({ query }: any) {
     return (
         <div className="view">
             <ViewTasks>
-                <TasksPane title={title} items={items} />
+                <TasksPane title={title} items={items} paneId={def.id} />
             </ViewTasks>
             <div className="view-body flush flex flex-col">
                 <TabsPrimitive.Root value={String(active)}
                     onValueChange={(v: any) => requestTab(Number(v))}
                     className="tabs-wrap flex flex-col flex-1 min-h-0 overflow-hidden">
-                    <TabsPrimitive.List className="tabs" aria-label="Settings sections">
+                    <TabsPrimitive.List className="tabs" aria-label={translate("Settings sections")}>
                         {defs.map((d: any, i: any) => (
-                            <TabsPrimitive.Trigger key={d.label} value={String(i)}
+                            <TabsPrimitive.Trigger key={d.id} value={String(i)}
                                 className={'tab' + (i === active ? ' active' : '')}>
                                 {d.label}{i === active && dirty ? ' ●' : ''}
                             </TabsPrimitive.Trigger>
@@ -2109,7 +2105,7 @@ export function SettingsView({ query }: any) {
                     <TabsPrimitive.Content value={String(active)} className="tab-body flex flex-col flex-1 min-h-0">
                         {/* Only the active tab is mounted; keyed by label so switching
                             tabs remounts (and reloads) it, matching vanilla tabs(). */}
-                        <SettingsTab key={def.label} def={def} ctx={ctx} />
+                        <SettingsTab key={def.id} def={def} ctx={ctx} />
                     </TabsPrimitive.Content>
                 </TabsPrimitive.Root>
             </div>

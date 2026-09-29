@@ -1,3 +1,5 @@
+import { formatNumber, scope as i18nScope } from "@oie/web-ui";
+const { t: translate } = i18nScope("attachment-dicomviewer");
 /*
  * DICOM attachment viewer — web admin plugin (AttachmentViewer equivalent, React).
  *
@@ -24,9 +26,9 @@ function typeOf(att: any) {
 
 /* Header tags surfaced in the metadata table (dicom-parser tag form: xGGGGEEEE). */
 const META = [
-    ['x00100010', 'Patient Name'], ['x00100020', 'Patient ID'],
-    ['x00080060', 'Modality'], ['x00080020', 'Study Date'], ['x00081030', 'Study Description'],
-    ['x00280010', 'Rows'], ['x00280011', 'Columns']
+    ['x00100010', translate("Patient Name")], ['x00100020', translate("Patient ID")],
+    ['x00080060', translate("Modality")], ['x00080020', translate("Study Date")], ['x00081030', translate("Study Description")],
+    ['x00280010', translate("Rows")], ['x00280011', translate("Columns")]
 ];
 
 /* Transfer-syntax UIDs → capability. Uncompressed we render directly; JPEG
@@ -187,7 +189,7 @@ function Filmstrip({ state, frame, win, onPick, expanded }: any) {
                 ? 'flex gap-1.5 overflow-x-auto py-1.5 px-3.5 border-t border-line bg-bg1 flex-none'
                 : 'flex gap-1.5 overflow-x-auto py-1.5 px-1 border border-line rounded-[5px] bg-bg1'}>
             {frames.map((f: any) => (
-                <button key={f} type="button" title={`Frame ${f + 1}`} aria-label={`Frame ${f + 1}`}
+                <button key={f} type="button" title={translate("Frame {value1}", { value1: String(f + 1) })} aria-label={translate("Frame {value1}", { value1: String(f + 1) })}
                     aria-pressed={f === frame}
                     onClick={() => onPick(f)}
                     className={f === frame
@@ -260,11 +262,11 @@ export function register(platform: Platform) {
                     const entries = platform.api.asList(msg?.connectorMessages?.entry ?? msg?.connectorMessages);
                     const cms = entries.map((e: any) => e.connectorMessage ?? e).filter(Boolean);
                     const cm = cms.find((c: any) => String(c.metaDataId) === '0') || cms[0];
-                    if (!cm) throw new Error('no connector message found for this message');
+                    if (!cm) throw new Error(translate("no connector message found for this message"));
                     const b64 = String(await platform.api.messages.getDicom(channelId, messageId, cm) ?? '').replace(/\s+/g, '');
-                    if (!b64) throw new Error('the reassembled DICOM is empty');
+                    if (!b64) throw new Error(translate("the reassembled DICOM is empty"));
                     let bin: any;
-                    try { bin = atob(b64); } catch { throw new Error('the attachment content is not valid Base64'); }
+                    try { bin = atob(b64); } catch { throw new Error(translate("the attachment content is not valid Base64")); }
                     const bytes = new Uint8Array(bin.length);
                     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
 
@@ -273,12 +275,12 @@ export function register(platform: Platform) {
                     // parser throw (dicom-parser throws bare objects, not Errors).
                     if (bytes.length < 132 ||
                         String.fromCharCode(bytes[128], bytes[129], bytes[130], bytes[131]) !== 'DICM') {
-                        throw new Error('not a valid DICOM object (missing the DICM header) — the message content may not be raw binary DICOM');
+                        throw new Error(translate("not a valid DICOM object (missing the DICM header) — the message content may not be raw binary DICOM"));
                     }
 
                     let ds: any;
                     try { ds = dicomParser.parseDicom(bytes); }
-                    catch (pe: any) { throw new Error('could not parse the DICOM dataset' + (pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : '')); }
+                    catch (pe: any) { throw new Error(translate("could not parse the DICOM dataset{value1}", { value1: String(pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : '') })); }
                     const ts = (ds.string('x00020010') || '').trim();
                     const info = imageInfo(ds);
                     const meta: any = {};
@@ -322,7 +324,7 @@ export function register(platform: Platform) {
                     let current = true;
                     cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
                     drawJpegFrame(cv, state.ds, state.info, frame, () => current)
-                        .catch((e: any) => { if (current) setDecodeError(e && e.message ? e.message : 'the browser could not decode this frame'); });
+                        .catch((e: any) => { if (current) setDecodeError(e && e.message ? e.message : translate("the browser could not decode this frame")); });
                     return () => { current = false; };
                 }
                 if (state.kind !== 'raw') return;
@@ -529,10 +531,10 @@ export function register(platform: Platform) {
         });
 
         if (state.key !== key || state.status === 'loading') {
-            return <div className="mt-[13px]"><div className="text-text-faint text-[10px]">Loading DICOM…</div></div>;
+            return <div className="mt-[13px]"><div className="text-text-faint text-[10px]">{translate("Loading DICOM…")}</div></div>;
         }
         if (state.status === 'error') {
-            return <div className="mt-[13px]"><div className="text-text-faint">{`Could not load DICOM: ${state.message}`}</div><button type="button" className="btn" onClick={() => retry()}>Retry</button></div>;
+            return <div className="mt-[13px]"><div className="text-text-faint">{translate("Could not load DICOM: {value1}", { value1: String(state.message) })}</div><button type="button" className="btn" onClick={() => retry()}>{translate("Retry")}</button></div>;
         }
 
         // `info` is already in scope (the gesture handlers above need it before
@@ -550,9 +552,9 @@ export function register(platform: Platform) {
             try {
                 await platform.ui.saveFile(`attachment-${attachment.id}.dcm`, 'application/dicom',
                     () => new Blob([bytes], { type: 'application/dicom' }),
-                    () => { if (!current()) throw new Error('The DICOM viewer is no longer active.'); });
+                    () => { if (!current()) throw new Error(translate("The DICOM viewer is no longer active.")); });
             } catch (error: any) {
-                if (current()) platform.ui.toast(`Failed to save DICOM: ${error.message || error}`, 'error');
+                if (current()) platform.ui.toast(translate("Failed to save DICOM: {value1}", { value1: String(error.message || error) }), 'error');
             }
         };
 
@@ -560,8 +562,7 @@ export function register(platform: Platform) {
             <tr key={tag}><td className="font-semibold pr-4">{label}</td><td className="mono">{meta[tag]}</td></tr>
         ));
 
-        const title = `DICOM object — ${info.cols}×${info.rows}`
-            + `${info.numFrames > 1 ? `, ${info.numFrames} frames` : ''} — ${bytes.length.toLocaleString()} bytes`;
+        const title = translate("DICOM object — {value1}×{value2}{value3} — {value4} bytes", { value1: String(info.cols), value2: String(info.rows), value3: String(info.numFrames > 1 ? translate(", {count, plural, one {# frame} other {# frames}}", { count: info.numFrames }) : ''), value4: String(formatNumber(bytes.length)) });
 
         /* Full screen re-classes THIS container — the stage, canvas and controls
            below are the same nodes either way, which is what lets the view carry
@@ -586,39 +587,39 @@ export function register(platform: Platform) {
                     in a short pane. Expanded, the dialog title carries it. */}
                 {!expanded && (
                     <span className="mono text-text-faint whitespace-nowrap">
-                        {`${info.cols}×${info.rows}`}
+                        {info.cols}×{info.rows}
                     </span>
                 )}
                 {info.numFrames > 1 && (
                     <span className="inline-flex items-center gap-1.5">
-                        <button className="btn btn-sm" title="Previous frame (←)"
+                        <button className="btn btn-sm" title={translate("Previous frame (←)")}
                             disabled={frame <= 0} onClick={() => stepFrame(-1)}>‹</button>
-                        <span className="mono">{`Frame ${frame + 1} / ${info.numFrames}`}</span>
-                        <button className="btn btn-sm" title="Next frame (→)"
+                        <span className="mono">{translate("Frame {value1} / {value2}", { value1: String(frame + 1), value2: String(info.numFrames) })}</span>
+                        <button className="btn btn-sm" title={translate("Next frame (→)")}
                             disabled={frame >= info.numFrames - 1} onClick={() => stepFrame(1)}>›</button>
                     </span>
                 )}
                 <span className="inline-flex items-center gap-1.5">
-                    <span className="text-text-faint">Zoom</span>
-                    <button className="btn btn-sm" title="Zoom out" onClick={() => zoomStep(1 / 1.25)}>−</button>
-                    <span className="mono w-[42px] text-center">{`${Math.round(zoom * 100)}%`}</span>
-                    <button className="btn btn-sm" title="Zoom in" onClick={() => zoomStep(1.25)}>+</button>
+                    <span className="text-text-faint">{translate("Zoom")}</span>
+                    <button className="btn btn-sm" title={translate("Zoom out")} onClick={() => zoomStep(1 / 1.25)}>−</button>
+                    <span className="mono w-[42px] text-center">{Math.round(zoom * 100)}%</span>
+                    <button className="btn btn-sm" title={translate("Zoom in")} onClick={() => zoomStep(1.25)}>+</button>
                     <button className={fitMode ? 'btn btn-sm btn-primary' : 'btn btn-sm'}
-                        title="Fit the image to the pane" onClick={fit}>Fit</button>
-                    <button className="btn btn-sm" title="Show at actual size" onClick={actual}>1:1</button>
+                        title={translate("Fit the image to the pane")} onClick={fit}>{translate("Fit")}</button>
+                    <button className="btn btn-sm" title={translate("Show at actual size")} onClick={actual}>1:1</button>
                 </span>
                 {grayscale && win && (
                     <span className="inline-flex items-center gap-1.5">
-                        <span className="text-text-faint">Level</span>
-                        <input type="range" aria-label="Level"
+                        <span className="text-text-faint">{translate("Level")}</span>
+                        <input type="range" aria-label={translate("Level")}
                             min={info.intercept} max={info.intercept + 4096 * info.slope} step="1"
                             value={win.c} onChange={(e: any) => setWin((w: any) => ({ ...w, c: parseFloat(e.target.value) }))} />
-                        <span className="text-text-faint">Window</span>
-                        <input type="range" aria-label="Window"
+                        <span className="text-text-faint">{translate("Window")}</span>
+                        <input type="range" aria-label={translate("Window")}
                             min="1" max={Math.max(2, 4096 * info.slope)} step="1"
                             value={win.w} onChange={(e: any) => setWin((w: any) => ({ ...w, w: parseFloat(e.target.value) }))} />
-                        <button className="btn btn-sm" title="Window/level from this frame's own range"
-                            onClick={autoWindow}>Auto</button>
+                        <button className="btn btn-sm" title={translate("Window/level from this frame''s own range")}
+                            onClick={autoWindow}>{translate("Auto")}</button>
                     </span>
                 )}
                 <span className="flex-1" />
@@ -627,16 +628,16 @@ export function register(platform: Platform) {
                     costs the image ~30px of height in an already short pane. */}
                 {(expanded || rootWidth >= 1400) && (
                     <span className="text-text-faint whitespace-nowrap">
-                        {grayscaleDrag ? 'drag = level/window · shift-drag = pan · wheel = zoom' : 'drag = pan · wheel = zoom'}
+                        {grayscaleDrag ? translate("drag = level/window · shift-drag = pan · wheel = zoom") : translate("drag = pan · wheel = zoom")}
                     </span>
                 )}
                 {/* Expanded, the dialog's own header ✕ and footer Close own
                     dismissal — a third exit in the toolbar just competes. */}
                 {!expanded && (
                     <>
-                        <button className="btn btn-sm" title="Open full screen"
-                            onClick={() => setExpanded(true)}>⤢ Full Screen</button>
-                        <button className="btn btn-sm" onClick={saveDicom}>Save DICOM</button>
+                        <button className="btn btn-sm" title={translate("Open full screen")}
+                            onClick={() => setExpanded(true)}>{translate("⤢ Full Screen")}</button>
+                        <button className="btn btn-sm" onClick={saveDicom}>{translate("Save DICOM")}</button>
                     </>
                 )}
             </div>
@@ -712,7 +713,7 @@ export function register(platform: Platform) {
                 <div className={expanded ? 'modal-header' : 'hidden'}>
                     <span>{title}</span>
                     {expanded && (
-                        <button className="icon-btn" title="Close (Esc)" aria-label="Close"
+                        <button className="icon-btn" title={translate("Close (Esc)")} aria-label={translate("Close")}
                             onClick={() => setExpanded(false)}>✕</button>
                     )}
                 </div>
@@ -730,7 +731,7 @@ export function register(platform: Platform) {
                 ) : (
                     <div className={expanded ? 'p-3.5 flex-1 overflow-auto' : ''}>
                         <div className="text-text-faint text-[11px]">
-                            {`This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM — click Save DICOM to open it in a full viewer.`}
+                            {translate("This DICOM object uses a compressed transfer syntax ({value1}). Inline preview currently supports uncompressed and JPEG DICOM — click Save DICOM to open it in a full viewer.", { value1: String(tsName) })}
                         </div>
                         {metaRows.length > 0 && <table className="dt mt-[13px]"><tbody>{metaRows}</tbody></table>}
                     </div>
@@ -738,7 +739,7 @@ export function register(platform: Platform) {
 
                 {decodeError && (
                     <div className={expanded ? 'text-text-faint text-[11px] px-3.5 py-1.5 flex-none' : 'text-text-faint text-[11px]'}>
-                        {`Could not decode this JPEG frame: ${decodeError}`}
+                        {translate("Could not decode this JPEG frame: {value1}", { value1: String(decodeError) })}
                     </div>
                 )}
 
@@ -754,8 +755,8 @@ export function register(platform: Platform) {
 
                 {expanded && (
                     <div className="modal-foot">
-                        <button className="btn" onClick={saveDicom}>Save DICOM</button>
-                        <button className="btn btn-primary" onClick={() => setExpanded(false)}>Close</button>
+                        <button className="btn" onClick={saveDicom}>{translate("Save DICOM")}</button>
+                        <button className="btn btn-primary" onClick={() => setExpanded(false)}>{translate("Close")}</button>
                     </div>
                 )}
             </div>

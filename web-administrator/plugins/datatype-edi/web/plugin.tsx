@@ -1,3 +1,5 @@
+import { scope as i18nScope } from "@oie/web-ui";
+const { t: translate } = i18nScope("datatype-edi");
 /*
  * EDI/X12 data type — web admin plugin (React, DataTypeClientPlugin equivalent).
  * Transcribed from server/.../plugins/datatypes/edi/*Properties.java.
@@ -19,29 +21,27 @@ const bool = (key: any, label: any, def: any, hint?: any) => ({ key, label, type
 const opt = (key: any, label: any, options: any, def: any, hint?: any) => ({ key, label, type: 'select', options, default: def, hint });
 const code = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'code', default: def, hint });
 
-const BATCH_SCRIPT_HINT = 'JavaScript that splits the batch and returns the next message. ' +
-    "Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. " +
-    'Only used when Process Batch is enabled in the connector.';
+const BATCH_SCRIPT_HINT = translate("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 
 const DEF: any = {
-    name: 'EDI/X12', label: 'EDI / X12', order: 70,
+    name: 'EDI/X12', label: translate("EDI / X12"), order: 70,
     propertiesClass: `${PKG}.EDIDataTypeProperties`,
     groups: [
         {
-            key: 'serializationProperties', label: 'Serialization',
+            key: 'serializationProperties', label: translate("Serialization"),
             class: `${PKG}.EDISerializationProperties`,
             fields: [
-                text('segmentDelimiter', 'Segment Delimiter', '~', 'Character(s) that delimit the segments in the message.'),
-                text('elementDelimiter', 'Element Delimiter', '*', 'Character(s) that delimit the elements in the message.'),
-                text('subelementDelimiter', 'Subelement Delimiter', ':', 'Character(s) that delimit the subelements in the message.'),
-                bool('inferX12Delimiters', 'Infer X12 Delimiters', true, 'X12 only: infer delimiters from the incoming message instead of the properties above.')
+                text('segmentDelimiter', translate("Segment Delimiter"), '~', translate("Character(s) that delimit the segments in the message.")),
+                text('elementDelimiter', translate("Element Delimiter"), '*', translate("Character(s) that delimit the elements in the message.")),
+                text('subelementDelimiter', translate("Subelement Delimiter"), ':', translate("Character(s) that delimit the subelements in the message.")),
+                bool('inferX12Delimiters', translate("Infer X12 Delimiters"), true, translate("X12 only: infer delimiters from the incoming message instead of the properties above."))
             ]
         },
         {
-            key: 'batchProperties', label: 'Batch', class: `${PKG}.EDIBatchProperties`,
+            key: 'batchProperties', label: translate("Batch"), class: `${PKG}.EDIBatchProperties`,
             fields: [
-                opt('splitType', 'Split Batch By', [{ value: 'JavaScript', label: 'JavaScript' }], 'JavaScript',
-                    'Method for splitting the batch message. Only used when Process Batch is enabled in the connector.'),
+                opt('splitType', translate("Split Batch By"), [{ value: 'JavaScript', label: translate("JavaScript") }], 'JavaScript',
+                    translate("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")),
                 code('batchScript', 'JavaScript', null, BATCH_SCRIPT_HINT)
             ]
         }

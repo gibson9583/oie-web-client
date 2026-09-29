@@ -1,3 +1,5 @@
+import { scope as i18nScope } from "@oie/web-ui";
+const { t: translate } = i18nScope("datatype-delimited");
 /*
  * Delimited Text data type — web admin plugin (React, DataTypeClientPlugin equivalent).
  * Transcribed from server/.../plugins/datatypes/delimited/*Properties.java.
@@ -21,54 +23,52 @@ const opt = (key: any, label: any, options: any, def: any, hint?: any) => ({ key
 const code = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'code', default: def, hint });
 const list = (key: string, label: string, item: 'int' | 'string', hint: string) => ({ key, label, type: 'list', item, xmlNames: item === 'string', hint });
 
-const BATCH_SCRIPT_HINT = 'JavaScript that splits the batch and returns the next message. ' +
-    "Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. " +
-    'Only used when Process Batch is enabled in the connector.';
+const BATCH_SCRIPT_HINT = translate("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 
 const DEF: any = {
-    name: 'DELIMITED', label: 'Delimited Text', order: 60,
+    name: 'DELIMITED', label: translate("Delimited Text"), order: 60,
     propertiesClass: `${PKG}.DelimitedDataTypeProperties`,
     groups: [
         {
-            key: 'serializationProperties', label: 'Serialization',
+            key: 'serializationProperties', label: translate("Serialization"),
             class: `${PKG}.DelimitedSerializationProperties`,
             fields: [
-                text('columnDelimiter', 'Column Delimiter', ',', 'Character(s) that separate columns (e.g. a comma in a CSV file).'),
-                text('recordDelimiter', 'Record Delimiter', '\\n', 'Character(s) that separate each record (e.g. a newline in a CSV file).'),
-                list('columnWidths', 'Column Widths', 'int', 'Comma separated positive integer column widths; leave blank for delimited columns.'),
-                text('quoteToken', 'Quote Token', '"', 'Quote character(s) used to bracket values containing embedded special characters.'),
-                bool('escapeWithDoubleQuote', 'Double Quote Escaping', true, 'Two consecutive quote tokens are an embedded quote token; uncheck to use the Escape Token instead.'),
-                text('quoteEscapeToken', 'Escape Token', '\\', 'Character(s) used to escape embedded quote tokens (only when Double Quote Escaping is unchecked).'),
-                list('columnNames', 'Column Names', 'string', 'Comma separated XML column names overriding the defaults (column1…columnN).'),
-                bool('numberedRows', 'Numbered Rows', false, 'Number each row in the XML representation of the message.'),
-                bool('ignoreCR', 'Ignore Carriage Returns', true, 'Carriage return (\\r) characters are skipped without processing.')
+                text('columnDelimiter', translate("Column Delimiter"), ',', translate("Character(s) that separate columns (e.g. a comma in a CSV file).")),
+                text('recordDelimiter', translate("Record Delimiter"), '\\n', translate("Character(s) that separate each record (e.g. a newline in a CSV file).")),
+                list('columnWidths', translate("Column Widths"), 'int', translate("Comma separated positive integer column widths; leave blank for delimited columns.")),
+                text('quoteToken', translate("Quote Token"), '"', translate("Quote character(s) used to bracket values containing embedded special characters.")),
+                bool('escapeWithDoubleQuote', translate("Double Quote Escaping"), true, translate("Two consecutive quote tokens are an embedded quote token; uncheck to use the Escape Token instead.")),
+                text('quoteEscapeToken', translate("Escape Token"), '\\', translate("Character(s) used to escape embedded quote tokens (only when Double Quote Escaping is unchecked).")),
+                list('columnNames', translate("Column Names"), 'string', translate("Comma separated XML column names overriding the defaults (column1…columnN).")),
+                bool('numberedRows', translate("Numbered Rows"), false, translate("Number each row in the XML representation of the message.")),
+                bool('ignoreCR', translate("Ignore Carriage Returns"), true, translate("Carriage return (\\r) characters are skipped without processing."))
             ]
         },
         {
-            key: 'deserializationProperties', label: 'Deserialization',
+            key: 'deserializationProperties', label: translate("Deserialization"),
             class: `${PKG}.DelimitedDeserializationProperties`,
             fields: [
-                text('columnDelimiter', 'Column Delimiter', ',', 'Character(s) that separate columns (e.g. a comma in a CSV file).'),
-                text('recordDelimiter', 'Record Delimiter', '\\n', 'Character(s) that separate each record (e.g. a newline in a CSV file).'),
-                list('columnWidths', 'Column Widths', 'int', 'Comma separated positive integer column widths; leave blank for delimited columns.'),
-                text('quoteToken', 'Quote Token', '"', 'Quote character(s) used to bracket values containing embedded special characters.'),
-                bool('escapeWithDoubleQuote', 'Double Quote Escaping', true, 'Two consecutive quote tokens are an embedded quote token; uncheck to use the Escape Token instead.'),
-                text('quoteEscapeToken', 'Escape Token', '\\', 'Character(s) used to escape embedded quote tokens (only when Double Quote Escaping is unchecked).')
+                text('columnDelimiter', translate("Column Delimiter"), ',', translate("Character(s) that separate columns (e.g. a comma in a CSV file).")),
+                text('recordDelimiter', translate("Record Delimiter"), '\\n', translate("Character(s) that separate each record (e.g. a newline in a CSV file).")),
+                list('columnWidths', translate("Column Widths"), 'int', translate("Comma separated positive integer column widths; leave blank for delimited columns.")),
+                text('quoteToken', translate("Quote Token"), '"', translate("Quote character(s) used to bracket values containing embedded special characters.")),
+                bool('escapeWithDoubleQuote', translate("Double Quote Escaping"), true, translate("Two consecutive quote tokens are an embedded quote token; uncheck to use the Escape Token instead.")),
+                text('quoteEscapeToken', translate("Escape Token"), '\\', translate("Character(s) used to escape embedded quote tokens (only when Double Quote Escaping is unchecked)."))
             ]
         },
         {
-            key: 'batchProperties', label: 'Batch', class: `${PKG}.DelimitedBatchProperties`,
+            key: 'batchProperties', label: translate("Batch"), class: `${PKG}.DelimitedBatchProperties`,
             fields: [
-                opt('splitType', 'Split Batch By', [
-                    { value: 'Record', label: 'Record' },
-                    { value: 'Delimiter', label: 'Delimiter' },
-                    { value: 'Grouping_Column', label: 'Grouping Column' },
-                    { value: 'JavaScript', label: 'JavaScript' }
-                ], 'Record', 'Method for splitting the batch message. Only used when Process Batch is enabled in the connector.'),
-                num('batchSkipRecords', 'Number of Header Records', 0, 'Number of header records to skip.'),
-                text('batchMessageDelimiter', 'Batch Delimiter', null, 'Delimiter (character sequence) that separates messages.'),
-                bool('batchMessageDelimiterIncluded', 'Include Batch Delimiter', false, 'Include the batch delimiter in the message returned by the batch processor.'),
-                text('batchGroupingColumn', 'Grouping Column', null, 'Column used to group records; a change in its value marks a message boundary.'),
+                opt('splitType', translate("Split Batch By"), [
+                    { value: 'Record', label: translate("Record") },
+                    { value: 'Delimiter', label: translate("Delimiter") },
+                    { value: 'Grouping_Column', label: translate("Grouping Column") },
+                    { value: 'JavaScript', label: translate("JavaScript") }
+                ], 'Record', translate("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")),
+                num('batchSkipRecords', translate("Number of Header Records"), 0, translate("Number of header records to skip.")),
+                text('batchMessageDelimiter', translate("Batch Delimiter"), null, translate("Delimiter (character sequence) that separates messages.")),
+                bool('batchMessageDelimiterIncluded', translate("Include Batch Delimiter"), false, translate("Include the batch delimiter in the message returned by the batch processor.")),
+                text('batchGroupingColumn', translate("Grouping Column"), null, translate("Column used to group records; a change in its value marks a message boundary.")),
                 code('batchScript', 'JavaScript', null, BATCH_SCRIPT_HINT)
             ]
         }

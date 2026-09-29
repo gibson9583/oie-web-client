@@ -98,6 +98,7 @@ catch {
 
 // Bare specifier -> entry that re-exports it. Add future core-imported deps here.
 const VENDOR = {
+    'intl-messageformat': "export { IntlMessageFormat } from 'intl-messageformat';",
     // js-beautify is CJS; import the module object and re-export its members as
     // named ESM exports so `import { js } from 'js-beautify'` resolves.
     'js-beautify': "import pkg from 'js-beautify'; export const js = pkg.js; export const css = pkg.css; export const html = pkg.html; export default pkg;",
@@ -116,6 +117,19 @@ for (const [pkg, entry] of Object.entries(VENDOR)) {
     });
     console.log(`[build-vendor] bundled ${pkg} -> client/vendor/${pkg}.js`);
 }
+
+const intlSource = requireHere.resolve('intl-messageformat');
+const intlDir = dirname(intlSource);
+const intlPackages = ['intl-messageformat', '@formatjs/fast-memoize', '@formatjs/icu-messageformat-parser', '@formatjs/icu-skeleton-parser'];
+writeFileSync(resolve(clientDir, 'vendor', 'intl-messageformat.LICENSE'), intlPackages.map(pkg => {
+    const packageDir = dirname(requireHere.resolve(pkg));
+    return pkg + '\n\n' + readFileSync(resolve(packageDir, 'LICENSE.md'), 'utf8');
+}).join('\n\n'));
+writeFileSync(resolve(clientDir, 'vendor', 'intl-messageformat.provenance.json'), JSON.stringify({
+    package: 'intl-messageformat', version: JSON.parse(readFileSync(resolve(intlDir, 'package.json'))).version,
+    sourceSha256: createHash('sha256').update(readFileSync(intlSource)).digest('hex'),
+    bundleSha256: createHash('sha256').update(readFileSync(resolve(clientDir, 'vendor', 'intl-messageformat.js'))).digest('hex')
+}, null, 2) + '\n');
 
 // Swing's message importer accepts .tar.bz2 as well as ZIP/TAR/GZip. Keep the
 // decoder self-hosted and load it only when a bzip2 archive is selected.
@@ -140,6 +154,9 @@ for (const pkg of ['seek-bzip', 'buffer', 'base64-js', 'ieee754']) {
  * modern ESM — replacing the deprecated AMD min/vs loader.
  */
 const monacoOut = resolve(clientDir, 'vendor', 'monaco');
+const chineseNls = requireHere.resolve('monaco-editor/nls/lang/zh-cn.js');
+mkdirSync(resolve(monacoOut, 'nls'), { recursive: true });
+copyFileSync(chineseNls, resolve(monacoOut, 'nls', 'zh-cn.js'));
 // Editor namespace (ESM). esbuild emits editor.main.css alongside (Monaco's CSS
 // isn't auto-injected the way Vite/webpack do it); core/monaco.js links it. The
 // codicon webfont is inlined as a data URL so there are no separate asset files
@@ -176,6 +193,7 @@ const sanitizerPackage = JSON.parse(readFileSync(resolve(dirname(sanitizerEntry)
 const monacoPackage = JSON.parse(readFileSync(resolve(dirname(monacoMain), '../../../package.json'), 'utf8'));
 writeFileSync(resolve(monacoOut, 'provenance.json'), JSON.stringify({
     monacoVersion: monacoPackage.version,
+    nls: { language: "zh-cn", sha256: sha256(chineseNls) },
     sanitizer: { package: sanitizerPackage.name, version: sanitizerPackage.version,
         source: 'dompurify/dist/purify.es.mjs', sha256: sha256(sanitizerEntry) },
     embeddedSanitizerExcluded: true,

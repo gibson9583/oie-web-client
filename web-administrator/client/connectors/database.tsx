@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 /*
  * Database Reader (DatabaseReceiverProperties) / Database Writer (DatabaseDispatcherProperties).
  *
@@ -88,13 +89,13 @@ function insertUrlTemplateButton(properties: any, platform: any, onChange: any) 
             const drivers = await loadDrivers(platform).catch(() => []);
             const d = drivers.find((x: any) => x && String(x.className) === String(properties.driver));
             const template = d && d.template ? String(d.template) : '';
-            if (!template) { toast('The selected driver has no URL template.', 'warn'); return; }
-            if (properties.url && !(await confirmDialog('Insert URL Template',
-                'Replace your current connection URL with the template URL?', { okLabel: 'Replace' }))) return;
+            if (!template) { toast(translate("The selected driver has no URL template."), 'warn'); return; }
+            if (properties.url && !(await confirmDialog(translate("Insert URL Template"),
+                translate("Replace your current connection URL with the template URL?"), { okLabel: translate("Replace") }))) return;
             properties.url = template;
             onChange();
         }
-    }, 'Insert URL Template');
+    }, translate("Insert URL Template"));
 }
 
 /* The Driver <select> DOM node, populated asynchronously from the cached drivers
@@ -105,7 +106,7 @@ function driverControlNode(properties: any, platform: any, onChange: any) {
     // Keep validation state on the stable wrapper so neither result erases it.
     const wrap = h('div', { class: 'cform-driver flex items-center gap-1.5', 'data-fkey': 'driver' });
     const wrench = h('button.icon-btn', {
-        type: 'button', title: 'View and manage the list of database JDBC drivers',
+        type: 'button', title: translate("View and manage the list of database JDBC drivers"),
         class: 'ml-1.5',
         onClick: () => openDriversModal(() => { driversPromise = null; refresh(); })
     }, icon('settings'));
@@ -118,7 +119,7 @@ function driverControlNode(properties: any, platform: any, onChange: any) {
 
     function refresh() {
         loadDrivers(platform).then((drivers: any) => {
-            const options = [{ value: DRIVER_DEFAULT, label: DRIVER_DEFAULT }];
+            const options = [{ value: DRIVER_DEFAULT, label: translate("Please Select One") }];
             for (const d of drivers) {
                 if (d && d.className) options.push({ value: d.className, label: d.name || d.className });
             }
@@ -134,7 +135,7 @@ function driverControlNode(properties: any, platform: any, onChange: any) {
         }).catch(() => {
             // Engine unreachable: fall back to a free-text driver-class input.
             const input = textInput(properties.driver ?? '', {
-                placeholder: 'org.postgresql.Driver',
+                placeholder: translate("org.postgresql.Driver"),
                 onChange: (e: any) => { properties.driver = e.target.value; onChange(); }
             });
             input.style.width = '220px';
@@ -167,7 +168,7 @@ async function openDriversModal(onSaved: any) {
             alt: api.asList(d.alternativeClassNames, 'string').map(String).filter(Boolean).join(', ')
         }));
     } catch (e: any) {
-        toast(`Could not load drivers: ${e.message}`, 'error');
+        toast(translate("Could not load drivers: {value1}", { value1: String(e.message) }), 'error');
         return;
     }
 
@@ -179,37 +180,37 @@ async function openDriversModal(onSaved: any) {
             return h('td', { class: 'py-0.5 px-1' }, inp);
         };
         return h('tr',
-            cell('name', 'Name', '120px'),
+            cell('name', translate("Name"), '120px'),
             cell('className', 'com.example.Driver', '200px'),
             cell('template', 'jdbc:db://host:port/name', '220px'),
             cell('selectLimit', 'SELECT * FROM ? LIMIT 1', '180px'),
             cell('alt', 'legacy.Driver, ...', '160px'),
             h('td', { class: 'py-0.5 px-1' },
-                h('button.icon-btn', { type: 'button', title: 'Remove', onClick: () => { model.splice(model.indexOf(d), 1); renderRows(); } }, icon('x'))));
+                h('button.icon-btn', { type: 'button', title: translate("Remove"), onClick: () => { model.splice(model.indexOf(d), 1); renderRows(); } }, icon('x'))));
     }
     function renderRows() {
         clear(tbody);
-        if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'text-text-faint p-3' }, 'No drivers — click Add.')));
+        if (!model.length) tbody.appendChild(h('tr', h('td', { colSpan: 6, class: 'text-text-faint p-3' }, translate("No drivers — click Add."))));
         else model.forEach((d: any) => tbody.appendChild(rowEl(d)));
     }
     renderRows();
 
     const table = h('table.dt', h('thead', h('tr',
-        h('th', 'Name'), h('th', 'Driver Class'), h('th', 'JDBC URL Template'),
-        h('th', 'Select with Limit Query'), h('th', 'Legacy Driver Classes'), h('th', ''))), tbody);
+        h('th', translate("Name")), h('th', translate("Driver Class")), h('th', translate("JDBC URL Template")),
+        h('th', translate("Select with Limit Query")), h('th', translate("Legacy Driver Classes")), h('th', ''))), tbody);
 
-    const addBtn = h('button.btn', { type: 'button', onClick: () => { model.push({ name: '', className: '', template: '', selectLimit: '', alt: '' }); renderRows(); } }, icon('plus'), 'Add');
+    const addBtn = h('button.btn', { type: 'button', onClick: () => { model.push({ name: '', className: '', template: '', selectLimit: '', alt: '' }); renderRows(); } }, icon('plus'), translate("Add"));
 
     modal({
-        title: 'Database Drivers',
+        title: translate("Database Drivers"),
         size: 'xwide',
         body: h('div', { class: 'flex flex-col gap-2.5' },
             h('div', addBtn),
             h('div', { class: 'max-h-[55vh] overflow-auto' }, table)),
         buttons: [
-            { label: 'Close' },
+            { label: translate("Close") },
             {
-                label: 'Save', primary: true,
+                label: translate("Save"), primary: true,
                 onClick: async () => {
                     const payload = model
                         .filter((d: any) => d.name.trim() || d.className.trim())
@@ -226,10 +227,10 @@ async function openDriversModal(onSaved: any) {
                         });
                     try {
                         await api.server.setDatabaseDrivers(payload);
-                        toast('Database drivers saved');
+                        toast(translate("Database drivers saved"));
                         onSaved && onSaved();
                     } catch (e: any) {
-                        toast(`Save failed: ${e.message}`, 'error');
+                        toast(translate("Save failed: {value1}", { value1: String(e.message) }), 'error');
                         return false;
                     }
                 }
@@ -268,17 +269,17 @@ const databaseReader = {
             <div>
                 <PollSection properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: 'Connection Settings' },
-                    { type: 'custom', label: 'Driver', render: () => driverControlNode(properties, platform, onChange) },
-                    { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p: any, ctx: any) => insertUrlTemplateButton(p, platform, ctx.onChange) },
-                    { key: 'username', label: 'Username', type: 'text', width: '220px' },
-                    { key: 'password', label: 'Password', type: 'password', width: '220px' },
-                    { section: 'Database Reader Settings' },
+                    { section: translate("Connection Settings") },
+                    { type: 'custom', label: translate("Driver"), render: () => driverControlNode(properties, platform, onChange) },
+                    { key: 'url', label: translate("URL"), type: 'text', width: '420px', append: (p: any, ctx: any) => insertUrlTemplateButton(p, platform, ctx.onChange) },
+                    { key: 'username', label: translate("Username"), type: 'text', width: '220px' },
+                    { key: 'password', label: translate("Password"), type: 'password', width: '220px' },
+                    { section: translate("Database Reader Settings") },
                     {
                         // Swing useScriptYes/NoActionPerformed: toggling re-seeds the editors —
                         // Yes fills the Select + Post-Process editors with the connection
                         // boilerplate (and switches them to JavaScript); No clears them back to SQL.
-                        key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true,
+                        key: 'useScript', label: translate("Use JavaScript"), type: 'radio', options: YES_NO, refresh: true,
                         onSet: (p: any, v: any) => {
                             if (asBool(v)) {
                                 p.select = generateConnectionString(p);
@@ -290,40 +291,40 @@ const databaseReader = {
                         }
                     },
                     // Swing useScriptYes/No: Keep Connection Open is disabled in JavaScript mode.
-                    { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, disabled: (p: any) => asBool(p.useScript) },
+                    { key: 'keepConnectionOpen', label: translate("Keep Connection Open"), type: 'radio', options: YES_NO, disabled: (p: any) => asBool(p.useScript) },
                     // Swing aggregateResultsActionPerformed(true): forces Cache Results=Yes and disables it.
                     {
-                        key: 'aggregateResults', label: 'Aggregate Results', type: 'radio', options: YES_NO, refresh: true,
+                        key: 'aggregateResults', label: translate("Aggregate Results"), type: 'radio', options: YES_NO, refresh: true,
                         onSet: (p: any) => { if (asBool(p.aggregateResults)) p.cacheResults = true; }
                     },
                     // Swing: Cache Results enabled only when Use JavaScript=No AND Aggregate Results=No.
-                    { key: 'cacheResults', label: 'Cache Results', type: 'radio', options: YES_NO, refresh: true, disabled: (p: any) => asBool(p.useScript) || asBool(p.aggregateResults) },
+                    { key: 'cacheResults', label: translate("Cache Results"), type: 'radio', options: YES_NO, refresh: true, disabled: (p: any) => asBool(p.useScript) || asBool(p.aggregateResults) },
                     // Swing: Fetch Size enabled only when Use JavaScript=No AND Cache Results=No (aggregate forces cache=Yes).
-                    { key: 'fetchSize', label: 'Fetch Size', type: 'number', width: '110px', disabled: (p: any) => asBool(p.useScript) || asBool(p.cacheResults) || asBool(p.aggregateResults) },
-                    { key: 'retryCount', label: '# of Retries on Error', type: 'number', width: '110px' },
-                    { key: 'retryInterval', label: 'Retry Interval (ms)', type: 'number', width: '120px' },
-                    { key: 'encoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px' },
-                    { section: 'Query' },
+                    { key: 'fetchSize', label: translate("Fetch Size"), type: 'number', width: '110px', disabled: (p: any) => asBool(p.useScript) || asBool(p.cacheResults) || asBool(p.aggregateResults) },
+                    { key: 'retryCount', label: translate("# of Retries on Error"), type: 'number', width: '110px' },
+                    { key: 'retryInterval', label: translate("Retry Interval (ms)"), type: 'number', width: '120px' },
+                    { key: 'encoding', label: translate("Encoding"), type: 'select', options: CHARSETS, width: '160px' },
+                    { section: translate("Query") },
                     {
                         // Swing flips selectSQLLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
-                        key: 'select', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                        key: 'select', label: (p: any) => asBool(p.useScript) ? translate("JavaScript") : translate("SQL"), type: 'code', minHeight: '260px',
                         language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql',
-                        tooltip: 'SQL select statement, or a JavaScript script when "Use JavaScript" is Yes'
+                        tooltip: translate("SQL select statement, or a JavaScript script when \"Use JavaScript\" is Yes")
                     },
                     {
                         // Swing option labels (UPDATE_NEVER=1, UPDATE_EACH=3, UPDATE_ONCE=2);
                         // runPostProcessSQLLabel flips 'SQL'<->'Script' on Use JavaScript.
-                        key: 'updateMode', label: (p: any) => asBool(p.useScript) ? 'Run Post-Process Script' : 'Run Post-Process SQL', type: 'radio', refresh: true,
+                        key: 'updateMode', label: (p: any) => asBool(p.useScript) ? translate("Run Post-Process Script") : translate("Run Post-Process SQL"), type: 'radio', refresh: true,
                         // Swing aggregateResultsActionPerformed relabels the per-message
                         // options to per-row when Aggregate Results = Yes.
                         options: (p: any) => asBool(p.aggregateResults)
-                            ? [{ value: 1, label: 'Never' }, { value: 3, label: 'For each row' }, { value: 2, label: 'Once for all rows' }]
-                            : [{ value: 1, label: 'Never' }, { value: 3, label: 'After each message' }, { value: 2, label: 'Once after all messages' }]
+                            ? [{ value: 1, label: translate("Never") }, { value: 3, label: translate("For each row") }, { value: 2, label: translate("Once for all rows") }]
+                            : [{ value: 1, label: translate("Never") }, { value: 3, label: translate("After each message") }, { value: 2, label: translate("Once after all messages") }]
                     },
                     {
                         // Swing updateNeverActionPerformed keeps this editor VISIBLE but disabled at Never.
                         // The `code` field now honours `disabled`, so match Swing: grey it out (not hide it).
-                        key: 'update', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                        key: 'update', label: (p: any) => asBool(p.useScript) ? translate("JavaScript") : translate("SQL"), type: 'code', minHeight: '260px',
                         language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql',
                         disabled: (p: any) => Number(p.updateMode) === 1
                     }
@@ -337,10 +338,10 @@ const databaseReader = {
     // A nonblank, non-placeholder driver is required in both SQL and JavaScript.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'url', label: 'URL', when: (p: any) => !asBool(p.useScript) },
-            { key: 'select', label: 'SQL' },
-            { key: 'update', label: 'Post-Process SQL', when: (p: any) => Number(p.updateMode) !== 1 },
-            { key: 'driver', label: 'Driver', unset: DRIVER_DEFAULT }
+            { key: 'url', label: translate("URL"), when: (p: any) => !asBool(p.useScript) },
+            { key: 'select', label: translate("SQL") },
+            { key: 'update', label: translate("Post-Process SQL"), when: (p: any) => Number(p.updateMode) !== 1 },
+            { key: 'driver', label: translate("Driver"), unset: DRIVER_DEFAULT }
         ]);
     }
 };
@@ -364,22 +365,22 @@ const databaseWriter = {
     component({ properties, platform, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
-                { section: 'Connection Settings' },
-                { type: 'custom', label: 'Driver', render: () => driverControlNode(properties, platform, onChange) },
-                { key: 'url', label: 'URL', type: 'text', width: '420px', append: (p: any, ctx: any) => insertUrlTemplateButton(p, platform, ctx.onChange) },
-                { key: 'username', label: 'Username', type: 'text', width: '220px' },
-                { key: 'password', label: 'Password', type: 'password', width: '220px' },
-                { section: 'Query' },
+                { section: translate("Connection Settings") },
+                { type: 'custom', label: translate("Driver"), render: () => driverControlNode(properties, platform, onChange) },
+                { key: 'url', label: translate("URL"), type: 'text', width: '420px', append: (p: any, ctx: any) => insertUrlTemplateButton(p, platform, ctx.onChange) },
+                { key: 'username', label: translate("Username"), type: 'text', width: '220px' },
+                { key: 'password', label: translate("Password"), type: 'password', width: '220px' },
+                { section: translate("Query") },
                 {
                     // Swing useJavaScriptYes/NoActionPerformed: toggling re-seeds the editor —
                     // Yes fills it with the connection boilerplate (and switches to JavaScript);
                     // No clears it back to SQL.
-                    key: 'useScript', label: 'Use JavaScript', type: 'radio', options: YES_NO, refresh: true,
+                    key: 'useScript', label: translate("Use JavaScript"), type: 'radio', options: YES_NO, refresh: true,
                     onSet: (p: any, v: any) => { p.query = asBool(v) ? generateWriterConnectionString(p) : ''; }
                 },
                 {
                     // Swing flips sqlLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
-                    key: 'query', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                    key: 'query', label: (p: any) => asBool(p.useScript) ? translate("JavaScript") : translate("SQL"), type: 'code', minHeight: '260px',
                     language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql'
                 }
             ]} />
@@ -389,9 +390,9 @@ const databaseWriter = {
     // the SQL/JavaScript query and a nonblank, non-placeholder driver are always required.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'url', label: 'URL', when: (p: any) => !asBool(p.useScript) },
-            { key: 'query', label: 'SQL' },
-            { key: 'driver', label: 'Driver', unset: DRIVER_DEFAULT }
+            { key: 'url', label: translate("URL"), when: (p: any) => !asBool(p.useScript) },
+            { key: 'query', label: translate("SQL") },
+            { key: 'driver', label: translate("Driver"), unset: DRIVER_DEFAULT }
         ]);
     }
 };

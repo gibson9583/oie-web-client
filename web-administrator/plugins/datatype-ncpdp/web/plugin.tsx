@@ -1,3 +1,5 @@
+import { scope as i18nScope } from "@oie/web-ui";
+const { t: translate } = i18nScope("datatype-ncpdp");
 /*
  * NCPDP data type — web admin plugin (React, DataTypeClientPlugin equivalent).
  * Transcribed from server/.../plugins/datatypes/ncpdp/*Properties.java.
@@ -19,38 +21,36 @@ const bool = (key: any, label: any, def: any, hint?: any) => ({ key, label, type
 const opt = (key: any, label: any, options: any, def: any, hint?: any) => ({ key, label, type: 'select', options, default: def, hint });
 const code = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'code', default: def, hint });
 
-const BATCH_SCRIPT_HINT = 'JavaScript that splits the batch and returns the next message. ' +
-    "Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. " +
-    'Only used when Process Batch is enabled in the connector.';
+const BATCH_SCRIPT_HINT = translate("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 
 const DEF: any = {
-    name: 'NCPDP', label: 'NCPDP', order: 80,
+    name: 'NCPDP', label: translate("NCPDP"), order: 80,
     propertiesClass: `${PKG}.NCPDPDataTypeProperties`,
     groups: [
         {
-            key: 'serializationProperties', label: 'Serialization',
+            key: 'serializationProperties', label: translate("Serialization"),
             class: `${PKG}.NCPDPSerializationProperties`,
             fields: [
-                text('fieldDelimiter', 'Field Delimiter', '0x1C', 'Character(s) that delimit the fields in the message.'),
-                text('groupDelimiter', 'Group Delimiter', '0x1D', 'Character(s) that delimit the groups in the message.'),
-                text('segmentDelimiter', 'Segment Delimiter', '0x1E', 'Character(s) that delimit the segments in the message.')
+                text('fieldDelimiter', translate("Field Delimiter"), '0x1C', translate("Character(s) that delimit the fields in the message.")),
+                text('groupDelimiter', translate("Group Delimiter"), '0x1D', translate("Character(s) that delimit the groups in the message.")),
+                text('segmentDelimiter', translate("Segment Delimiter"), '0x1E', translate("Character(s) that delimit the segments in the message."))
             ]
         },
         {
-            key: 'deserializationProperties', label: 'Deserialization',
+            key: 'deserializationProperties', label: translate("Deserialization"),
             class: `${PKG}.NCPDPDeserializationProperties`,
             fields: [
-                text('fieldDelimiter', 'Field Delimiter', '0x1C', 'Character(s) that delimit the fields in the message.'),
-                text('groupDelimiter', 'Group Delimiter', '0x1D', 'Character(s) that delimit the groups in the message.'),
-                text('segmentDelimiter', 'Segment Delimiter', '0x1E', 'Character(s) that delimit the segments in the message.'),
-                bool('useStrictValidation', 'Use Strict Validation', false, 'Validate the NCPDP message against a schema.')
+                text('fieldDelimiter', translate("Field Delimiter"), '0x1C', translate("Character(s) that delimit the fields in the message.")),
+                text('groupDelimiter', translate("Group Delimiter"), '0x1D', translate("Character(s) that delimit the groups in the message.")),
+                text('segmentDelimiter', translate("Segment Delimiter"), '0x1E', translate("Character(s) that delimit the segments in the message.")),
+                bool('useStrictValidation', translate("Use Strict Validation"), false, translate("Validate the NCPDP message against a schema."))
             ]
         },
         {
-            key: 'batchProperties', label: 'Batch', class: `${PKG}.NCPDPBatchProperties`,
+            key: 'batchProperties', label: translate("Batch"), class: `${PKG}.NCPDPBatchProperties`,
             fields: [
-                opt('splitType', 'Split Batch By', [{ value: 'JavaScript', label: 'JavaScript' }], 'JavaScript',
-                    'Method for splitting the batch message. Only used when Process Batch is enabled in the connector.'),
+                opt('splitType', translate("Split Batch By"), [{ value: 'JavaScript', label: translate("JavaScript") }], 'JavaScript',
+                    translate("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")),
                 code('batchScript', 'JavaScript', null, BATCH_SCRIPT_HINT)
             ]
         }

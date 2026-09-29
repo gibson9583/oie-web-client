@@ -28,7 +28,9 @@ const bundle = await build({
         builder.onLoad({ filter: /.*/, namespace: 'test-services' }, args => ({ contents: args.path === 'registry'
             ? 'const types = new Map(); export const platform = { registerDataType: (name, def) => types.set(name, def), dataType: name => types.get(name) };'
             : args.path === 'serialize' ? 'export const validateScript = () => { throw new Error("Unexpected script validation"); };'
-                : 'export const toast = () => {}, modal = () => {}, pickFile = () => {}, createCodeEditor = () => {};', loader: 'js' }));
+                : `export { t, scope } from ${JSON.stringify(fileURLToPath(new URL('../web-administrator/client/core/i18n.js', import.meta.url)))};
+                   export const toast = () => {}, modal = () => {}, pickFile = () => {}, createCodeEditor = () => {};`,
+            loader: 'js', resolveDir: fileURLToPath(new URL('..', import.meta.url)) }));
     } }]
 });
 const { defaults, render } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);

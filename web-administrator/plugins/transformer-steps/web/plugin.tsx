@@ -1,3 +1,5 @@
+import { scope as i18nScope } from "@oie/web-ui";
+const { t: translate } = i18nScope("transformer-steps");
 /*
  * Built-in transformer step and filter rule editors — web admin plugin (React).
  * (TransformerStepPlugin / FilterRulePlugin equivalent). Bundled steps/rules
@@ -34,26 +36,26 @@ import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
 const SCOPES = [
-    { value: 'CHANNEL', label: 'Channel Map' },
-    { value: 'CONNECTOR', label: 'Connector Map' },
-    { value: 'GLOBAL_CHANNEL', label: 'Global Channel Map' },
-    { value: 'GLOBAL', label: 'Global Map' },
-    { value: 'RESPONSE', label: 'Response Map' }
+    { value: 'CHANNEL', label: translate("Channel Map") },
+    { value: 'CONNECTOR', label: translate("Connector Map") },
+    { value: 'GLOBAL_CHANNEL', label: translate("Global Channel Map") },
+    { value: 'GLOBAL', label: translate("Global Map") },
+    { value: 'RESPONSE', label: translate("Response Map") }
 ];
 
 const CONDITIONS = [
-    { value: 'EXISTS', label: 'Exists' },
-    { value: 'NOT_EXIST', label: 'Not Exist' },
-    { value: 'EQUALS', label: 'Equals' },
-    { value: 'NOT_EQUAL', label: 'Not Equal' },
-    { value: 'CONTAINS', label: 'Contains' },
-    { value: 'NOT_CONTAIN', label: 'Not Contain' }
+    { value: 'EXISTS', label: translate("Exists") },
+    { value: 'NOT_EXIST', label: translate("Not Exist") },
+    { value: 'EQUALS', label: translate("Equals") },
+    { value: 'NOT_EQUAL', label: translate("Not Equal") },
+    { value: 'CONTAINS', label: translate("Contains") },
+    { value: 'NOT_CONTAIN', label: translate("Not Contain") }
 ];
 
 const BEHAVIORS = [
-    { value: 'REMOVE', label: 'Remove the following' },
-    { value: 'REMOVE_ALL_EXCEPT', label: 'Remove all except the following' },
-    { value: 'REMOVE_ALL', label: 'Remove all' }
+    { value: 'REMOVE', label: translate("Remove the following") },
+    { value: 'REMOVE_ALL_EXCEPT', label: translate("Remove all except the following") },
+    { value: 'REMOVE_ALL', label: translate("Remove all") }
 ];
 
 /* Conditions that actually consume the Values list (the Swing DestinationSetFilter
@@ -182,7 +184,7 @@ function CodeEditorIsland({ value, minHeight, fill, onChange }: any) {
 
 function ScriptEditor({ element, onChange }: any) {
     return (
-        <Field label="Script">
+        <Field label={translate("Script")}>
             <CodeEditorIsland
                 value={element.script ?? ''}
                 minHeight="260px"
@@ -197,12 +199,12 @@ function ScriptPathEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <Field
-            label="Script Path"
-            hint="Path to a JavaScript file on the server — its contents are loaded when the channel is deployed"
+            label={translate("Script Path")}
+            hint={translate("Path to a JavaScript file on the server — its contents are loaded when the channel is deployed")}
         >
             <input
                 type="text"
-                placeholder="/opt/scripts/example.js"
+                placeholder={translate("/opt/scripts/example.js")}
                 value={element.scriptPath ?? ''}
                 onChange={(e: any) => { element.scriptPath = e.target.value; onChange(); force(); }}
             />
@@ -225,7 +227,6 @@ function emptyIteratorProperties() {
 
 function makeIteratorEditor(isRule: any) {
     const type = isRule ? 'com.mirth.connect.model.IteratorRule' : 'com.mirth.connect.model.IteratorStep';
-    const childNoun = isRule ? 'rule' : 'step';
 
     function IteratorEditor({ element, onChange }: any) {
         const force = useRerender();
@@ -238,17 +239,17 @@ function makeIteratorEditor(isRule: any) {
             <>
                 <div className="form-grid">
                     <Field
-                        label="Iterate On (target)"
-                        hint="E4X XML node list or JavaScript array to iterate over"
+                        label={translate("Iterate On (target)")}
+                        hint={translate("E4X XML node list or JavaScript array to iterate over")}
                     >
                         <input
                             type="text"
-                            placeholder="msg['OBX']"
+                            placeholder={translate("msg[''OBX'']")}
                             value={props.target ?? ''}
                             onChange={(e: any) => { props.target = e.target.value; onChange(); force(); }}
                         />
                     </Field>
-                    <Field label="Index Variable">
+                    <Field label={translate("Index Variable")}>
                         <input
                             type="text"
                             value={props.indexVariable ?? 'i'}
@@ -257,12 +258,12 @@ function makeIteratorEditor(isRule: any) {
                     </Field>
                     <div className="span-2">
                         <Field
-                            label="Prefix Substitutions"
-                            hint="One prefix per line — when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes"
+                            label={translate("Prefix Substitutions")}
+                            hint={translate("One prefix per line — when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes")}
                         >
                             <textarea
                                 rows={3}
-                                placeholder="msg['OBX']"
+                                placeholder={translate("msg[''OBX'']")}
                                 value={stringListToLines(props.prefixSubstitutions).join('\n')}
                                 onChange={(e: any) => {
                                     props.prefixSubstitutions = linesToStringList(e.target.value);
@@ -277,15 +278,16 @@ function makeIteratorEditor(isRule: any) {
                 {/* Children are managed in the main element list (nested under this
                     Iterator), matching the Swing tree-table — not edited here. */}
                 <div className="text-text-faint pt-2.5 px-0 pb-0 text-[10px]">
-                    {`Child ${childNoun}s appear nested under this Iterator in the ${childNoun} list. `
-                        + `Add a ${childNoun} while a child is selected, or right-click a ${childNoun} and choose "Assign To Iterator".`}
+                    {isRule
+                        ? translate('Child rules appear nested under this Iterator in the rule list. Add a rule while a child is selected, or right-click a rule and choose "Assign To Iterator".')
+                        : translate('Child steps appear nested under this Iterator in the step list. Add a step while a child is selected, or right-click a step and choose "Assign To Iterator".')}
                 </div>
             </>
         );
     }
 
     return {
-        label: 'Iterator',
+        label: translate("Iterator"),
         create: () => ({
             __type: type,
             name: '', enabled: true,
@@ -295,8 +297,8 @@ function makeIteratorEditor(isRule: any) {
         validate: (el: any) => {
             const p = el.properties || {};
             let m = '';
-            if (isBlank(p.target)) m += 'The iteration target expression cannot be blank.\n';
-            if (isBlank(p.indexVariable)) m += 'The iteration index variable cannot be blank.\n';
+            if (isBlank(p.target)) m += translate('The iteration target expression cannot be blank.') + '\n';
+            if (isBlank(p.indexVariable)) m += translate('The iteration index variable cannot be blank.') + '\n';
             return m.trim();
         },
         component: IteratorEditor
@@ -309,14 +311,14 @@ function MapperEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <div className="form-grid">
-            <Field label="Variable">
+            <Field label={translate("Variable")}>
                 <input
                     type="text"
                     value={element.variable ?? ''}
                     onChange={(e: any) => { element.variable = e.target.value; onChange(); force(); }}
                 />
             </Field>
-            <Field label="Add to">
+            <Field label={translate("Add to")}>
                 <Select
                     options={SCOPES}
                     value={element.scope || 'CHANNEL'}
@@ -324,7 +326,7 @@ function MapperEditor({ element, onChange }: any) {
                 />
             </Field>
             <div className="span-2">
-                <Field label="Mapping">
+                <Field label={translate("Mapping")}>
                     <input
                         type="text"
                         value={element.mapping ?? ''}
@@ -333,7 +335,7 @@ function MapperEditor({ element, onChange }: any) {
                 </Field>
             </div>
             <div className="span-2 mt-2">
-                <Field label="Default Value">
+                <Field label={translate("Default Value")}>
                     <input
                         type="text"
                         value={element.defaultValue ?? ''}
@@ -350,17 +352,17 @@ function MessageBuilderEditor({ element, onChange }: any) {
     return (
         <div className="form-grid">
             <div className="span-2">
-                <Field label="Message Segment">
+                <Field label={translate("Message Segment")}>
                     <input
                         type="text"
-                        placeholder="tmp['MSH']['MSH.3']['MSH.3.1']"
+                        placeholder={translate("tmp[''MSH''][''MSH.3''][''MSH.3.1'']")}
                         value={element.messageSegment ?? ''}
                         onChange={(e: any) => { element.messageSegment = e.target.value; onChange(); force(); }}
                     />
                 </Field>
             </div>
             <div className="span-2">
-                <Field label="Mapping">
+                <Field label={translate("Mapping")}>
                     <input
                         type="text"
                         value={element.mapping ?? ''}
@@ -369,7 +371,7 @@ function MessageBuilderEditor({ element, onChange }: any) {
                 </Field>
             </div>
             <div className="span-2">
-                <Field label="Default Value">
+                <Field label={translate("Default Value")}>
                     <input
                         type="text"
                         value={element.defaultValue ?? ''}
@@ -386,15 +388,15 @@ function XsltEditor({ element, onChange }: any) {
     return (
         <>
             <div className="form-grid">
-                <Field label="Source XML String">
+                <Field label={translate("Source XML String")}>
                     <input
                         type="text"
-                        placeholder="msg"
+                        placeholder={translate("msg")}
                         value={element.sourceXml ?? ''}
                         onChange={(e: any) => { element.sourceXml = e.target.value; onChange(); force(); }}
                     />
                 </Field>
-                <Field label="Result Variable">
+                <Field label={translate("Result Variable")}>
                     <input
                         type="text"
                         value={element.resultVariable ?? ''}
@@ -402,7 +404,7 @@ function XsltEditor({ element, onChange }: any) {
                     />
                 </Field>
             </div>
-            <Field label="XSLT Template">
+            <Field label={translate("XSLT Template")}>
                 <CodeEditorIsland
                     value={element.template ?? ''}
                     minHeight="220px"
@@ -462,27 +464,27 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
 
     return (
         <div className="form-grid">
-            <Field label="Behavior">
+            <Field label={translate("Behavior")}>
                 <Select
                     options={BEHAVIORS}
                     value={behavior}
                     onChange={(e: any) => { element.behavior = e.target.value; onChange(); force(); }}
                 />
             </Field>
-            <Field label="Field">
+            <Field label={translate("Field")}>
                 <input
                     type="text"
-                    placeholder="msg['PID']['PID.3']['PID.3.1'].toString()"
+                    placeholder={translate("msg[''PID''][''PID.3''][''PID.3.1''].toString()")}
                     value={element.field ?? ''}
                     onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
                 />
             </Field>
 
             <div className="span-2 mt-2">
-                <Field label="Destinations">
+                <Field label={translate("Destinations")}>
                     <div className="flex gap-2 mb-1.5">
-                        <button type="button" className="btn btn-sm" disabled={listDisabled} onClick={selectAll}>Select All</button>
-                        <button type="button" className="btn btn-sm" disabled={listDisabled} onClick={deselectAll}>Deselect All</button>
+                        <button type="button" className="btn btn-sm" disabled={listDisabled} onClick={selectAll}>{translate("Select All")}</button>
+                        <button type="button" className="btn btn-sm" disabled={listDisabled} onClick={deselectAll}>{translate("Deselect All")}</button>
                     </div>
                     <div
                         className="dt-wrap border border-line rounded max-h-[162px]"
@@ -492,8 +494,8 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                             <thead>
                                 <tr>
                                     <th className="w-[38px]"></th>
-                                    <th>Name</th>
-                                    <th className="w-[63px]">Id</th>
+                                    <th>{translate("Name")}</th>
+                                    <th className="w-[63px]">{translate("Id")}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -509,12 +511,12 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                                                     onChange={(e: any) => toggleId(id, e.target.checked)}
                                                 />
                                             </td>
-                                            <td>{d.name || `Destination ${id}`}</td>
+                                            <td>{d.name || translate("Destination {value1}", { value1: String(id) })}</td>
                                             <td className="num">{id}</td>
                                         </tr>
                                     );
                                 }) : (
-                                    <tr><td colSpan={3}><span className="text-text-faint">No destinations on this channel</span></td></tr>
+                                    <tr><td colSpan={3}><span className="text-text-faint">{translate("No destinations on this channel")}</span></td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -523,7 +525,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
             </div>
 
             <div className="span-2 mt-2">
-                <Field label="Condition">
+                <Field label={translate("Condition")}>
                     <div className="radio-group inline-row">
                         {CONDITIONS.map((opt: any) => (
                             <label className="check" key={opt.value}>
@@ -541,22 +543,22 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
             </div>
 
             <div className="span-2 mt-2">
-                <Field label="Values">
+                <Field label={translate("Values")}>
                     <div className="flex gap-2 mb-1.5">
-                        <button type="button" className="btn btn-sm" disabled={!valuesEnabled} onClick={newValue}>New</button>
+                        <button type="button" className="btn btn-sm" disabled={!valuesEnabled} onClick={newValue}>{translate("New")}</button>
                         <button
                             type="button"
                             className="btn btn-sm btn-danger"
                             disabled={!valuesEnabled || selValue < 0 || selValue >= values.length}
                             onClick={deleteSelected}
-                        >Delete</button>
+                        >{translate("Delete")}</button>
                     </div>
                     <div
                         className="dt-wrap border border-line rounded max-h-[162px]"
                         style={!valuesEnabled ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
                     >
                         <table className="dt">
-                            <thead><tr><th>Value</th></tr></thead>
+                            <thead><tr><th>{translate("Value")}</th></tr></thead>
                             <tbody>
                                 {values.length ? values.map((v: any, i: any) => (
                                     <tr
@@ -575,7 +577,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }: any) {
                                         </td>
                                     </tr>
                                 )) : (
-                                    <tr><td><span className="text-text-faint">No values — use New</span></td></tr>
+                                    <tr><td><span className="text-text-faint">{translate("No values — use New")}</span></td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -590,15 +592,15 @@ function RuleBuilderEditor({ element, onChange }: any) {
     const force = useRerender();
     return (
         <div className="form-grid">
-            <Field label="Field">
+            <Field label={translate("Field")}>
                 <input
                     type="text"
-                    placeholder="msg['MSH']['MSH.9']['MSH.9.1'].toString()"
+                    placeholder={translate("msg[''MSH''][''MSH.9''][''MSH.9.1''].toString()")}
                     value={element.field ?? ''}
                     onChange={(e: any) => { element.field = e.target.value; onChange(); force(); }}
                 />
             </Field>
-            <Field label="Condition">
+            <Field label={translate("Condition")}>
                 <Select
                     options={CONDITIONS}
                     value={element.condition || 'EXISTS'}
@@ -606,11 +608,11 @@ function RuleBuilderEditor({ element, onChange }: any) {
                 />
             </Field>
             <div className="span-2">
-                <Field label="Values">
+                <Field label={translate("Values")}>
                     <textarea
                         rows={4}
-                        placeholder="One value per line"
-                        title="Only used by Equals / Not Equal / Contains / Not Contain"
+                        placeholder={translate("One value per line")}
+                        title={translate("Only used by Equals / Not Equal / Contains / Not Contain")}
                         value={stringListToLines(element.values).join('\n')}
                         onChange={(e: any) => { element.values = linesToStringList(e.target.value); onChange(); force(); }}
                     />
@@ -627,7 +629,7 @@ export function register(platform: Platform) {
     /* ---- transformer steps ---- */
 
     platform.registerStepType('com.mirth.connect.plugins.javascriptstep.JavaScriptStep', {
-        label: 'JavaScript',
+        label: translate("JavaScript"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep',
             name: '', enabled: true,
@@ -637,29 +639,29 @@ export function register(platform: Platform) {
     });
 
     platform.registerStepType('com.mirth.connect.plugins.mapper.MapperStep', {
-        label: 'Mapper',
+        label: translate("Mapper"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.mapper.MapperStep',
             name: '', enabled: true,
             variable: '', mapping: '', defaultValue: '', replacements: '', scope: 'CHANNEL'
         }),
-        validate: (el: any) => isBlank(el.variable) ? 'The variable name cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.variable) ? translate("The variable name cannot be blank.") : '',
         component: MapperEditor
     });
 
     platform.registerStepType('com.mirth.connect.plugins.messagebuilder.MessageBuilderStep', {
-        label: 'Message Builder',
+        label: translate("Message Builder"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep',
             name: '', enabled: true,
             messageSegment: '', mapping: '', defaultValue: '', replacements: ''
         }),
-        validate: (el: any) => isBlank(el.messageSegment) ? 'The message segment value cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.messageSegment) ? translate("The message segment value cannot be blank.") : '',
         component: MessageBuilderEditor
     });
 
     platform.registerStepType('com.mirth.connect.plugins.xsltstep.XsltStep', {
-        label: 'XSLT Step',
+        label: translate("XSLT Step"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.xsltstep.XsltStep',
             name: '', enabled: true,
@@ -676,7 +678,7 @@ export function register(platform: Platform) {
     });
 
     platform.registerStepType('com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep', {
-        label: 'Destination Set Filter',
+        label: translate("Destination Set Filter"),
         // Only available on the source transformer (DestinationSetFilterPlugin
         // .onlySourceConnector()); destinations/response transformers exclude it.
         onlySource: true,
@@ -685,18 +687,18 @@ export function register(platform: Platform) {
             name: '', enabled: true,
             behavior: 'REMOVE', metaDataIds: '', field: '', condition: 'EXISTS', values: ''
         }),
-        validate: (el: any) => isBlank(el.field) ? 'The field cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.field) ? translate("The field cannot be blank.") : '',
         component: DestinationSetFilterEditor
     });
 
     platform.registerStepType('com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep', {
-        label: 'External Script',
+        label: translate("External Script"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep',
             name: '', enabled: true,
             scriptPath: ''
         }),
-        validate: (el: any) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.scriptPath) ? translate("The script path cannot be blank.") : '',
         component: ScriptPathEditor
     });
 
@@ -705,7 +707,7 @@ export function register(platform: Platform) {
     /* ---- filter rules ---- */
 
     platform.registerRuleType('com.mirth.connect.plugins.javascriptrule.JavaScriptRule', {
-        label: 'JavaScript',
+        label: translate("JavaScript"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule',
             name: '', enabled: true, operator: 'AND',
@@ -715,24 +717,24 @@ export function register(platform: Platform) {
     });
 
     platform.registerRuleType('com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', {
-        label: 'Rule Builder',
+        label: translate("Rule Builder"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule',
             name: '', enabled: true, operator: 'AND',
             field: '', condition: 'EXISTS', values: ''
         }),
-        validate: (el: any) => isBlank(el.field) ? 'The field cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.field) ? translate("The field cannot be blank.") : '',
         component: RuleBuilderEditor
     });
 
     platform.registerRuleType('com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule', {
-        label: 'External Script',
+        label: translate("External Script"),
         create: () => ({
             __type: 'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule',
             name: '', enabled: true, operator: 'AND',
             scriptPath: ''
         }),
-        validate: (el: any) => isBlank(el.scriptPath) ? 'The script path cannot be blank.' : '',
+        validate: (el: any) => isBlank(el.scriptPath) ? translate("The script path cannot be blank.") : '',
         component: ScriptPathEditor
     });
 

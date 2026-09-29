@@ -87,13 +87,14 @@ export default [
     // hooks rules guard the same effect-deps/once-only-setup bugs they did on
     // the .jsx sources.
     {
-        files: ['web-administrator/client/react/**/*.tsx', 'web-administrator/client/datatypes/*.tsx', 'web-administrator/client/main.tsx'],
+        files: ['web-administrator/client/react/**/*.tsx', 'web-administrator/client/datatypes/*.tsx', 'web-administrator/client/main.tsx', 'web-administrator/client/app-main.tsx'],
         languageOptions: tsxLanguageOptions,
         plugins: { react, 'react-hooks': reactHooks },
         settings: { react: { version: 'detect' } },
         rules: {
             'no-restricted-imports': ['error', noDeepPackageImports],
             'react/jsx-uses-vars': 'error',
+            'react/jsx-no-literals': ['error', { noStrings: true, ignoreProps: true, allowedStrings: ['—', '·', ':', '/', '→', '×', '%', '*', '✓', '▸', '▾', '(', ')', '+', '–', '-', '?', '⌘', '↵', '▲', '▼', '✕', '↺', '⠿', '…', '|', '#', '⇄', '‹', '›', '−', '1:1', '[', ']'] }],
             'react/jsx-key': 'warn',
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'warn',
@@ -126,6 +127,7 @@ export default [
             'no-restricted-imports': ['error', noDeepPackageImports],
             'react/jsx-uses-vars': 'error',
             'react/jsx-uses-react': 'error',
+            'react/jsx-no-literals': ['error', { noStrings: true, ignoreProps: true, allowedStrings: ['—', '·', ':', '/', '→', '×', '%', '*', '✓', '▸', '▾', '(', ')', '+', '–', '-', '?', '⌘', '↵', '▲', '▼', '✕', '↺', '⠿', '…', '|', '#', '⇄', '‹', '›', '−', '1:1', '[', ']'] }],
             'react/jsx-key': 'warn',
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'warn',

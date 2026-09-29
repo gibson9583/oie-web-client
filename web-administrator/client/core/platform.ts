@@ -1,3 +1,6 @@
+import { t as translate } from "./i18n.js";
+import { loadPluginCatalog } from './plugin-i18n.js';
+import { t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
 /*
  * Plugin platform — the web equivalent of the Swing client's extension points.
  *
@@ -107,6 +110,8 @@ export interface NavItem extends Pick<TaskRef, 'task'> {
     icon?: string;
     path: string;
     section?: string;
+    /** Translated display label for a custom section; section remains its stable id. */
+    sectionLabel?: string;
     order?: number;
     /** RBAC: checked as checkTask('view', task) — the nav entry hides when denied. Omit = always visible. */
     task?: string;
@@ -160,6 +165,8 @@ export interface ChannelTab {
     [key: string]: any;
 }
 export interface SettingsPanel {
+    /** Stable RBAC task group; defaults to settings_<label> for legacy plugins. */
+    taskGroup?: string;
     id?: string;
     label: string;
     order?: number;
@@ -327,7 +334,8 @@ export interface PluginManifest {
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.7.0';   // 4.7: registerMessageAction
+export const OIE_API_VERSION = '4.8.0';   // 4.8: i18n and sectionLabel
+const i18n = Object.freeze({ t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText });
 
 function parseApiVersion(v: unknown): { major: number; minor: number } {
     const [major, minor] = String(v == null ? '' : v).split('.');
@@ -397,6 +405,7 @@ export interface Platform {
     /* extension points */
     /** Add a glyph to the shared icon set: SVG path data on a 24x24 grid, rendered stroke-only in currentColor. Referenced by name anywhere an `icon` is accepted (nav items, actions, `ui.icon()`). Built-in names cannot be overridden. */
     registerIcon(name: string, pathData: string): void;
+    i18n: typeof i18n;
     registerNavItem(item: NavItem): void;
     /** Command-palette entry — same shape as a nav item. Returns an unregister fn. */
     registerCommand(command: Command): () => void;
@@ -444,6 +453,7 @@ export const platform: Platform = {
     /* The @oie/* API contract version this web admin implements (see OIE_API_VERSION).
        Plugins can read platform.apiVersion to feature-detect at runtime. */
     apiVersion: OIE_API_VERSION,
+    i18n,
     /* core libraries, handed to plugins so they share the app's toolkit */
     api: apiModule.default,
     ui,
@@ -582,7 +592,7 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
             // Neither engine-native endpoints nor the websupport plugin: engine-served
             // plugin UIs (and message trees / validation) are off. Say so once, visibly,
             // instead of plugin UIs silently not appearing.
-            ui.toast('The Web Support plugin is not installed on this engine — plugin UIs, message trees, and script validation are disabled. Install "websupport" from the Extensions page.', 'warn');
+            ui.toast(translate("The Web Support plugin is not installed on this engine — plugin UIs, message trees, and script validation are disabled. Install \"websupport\" from the Extensions page."), 'warn');
             return [];
         }
         paths = apiModule.asList(await apiModule.get(`${wsBase}/webplugins`), 'string').map(String).filter(Boolean);
@@ -613,6 +623,8 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
                 // Minimum @oie API version the plugin was built against (compat gate).
                 apiMin: m.oie && m.oie.apiMin ? String(m.oie.apiMin) : null,
                 entry,
+                base,
+                i18n: m.i18n,
                 source: 'engine'
             };
         } catch (e) {
@@ -642,6 +654,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
     // and in a WAR context. Turn those into physical app URLs before import().
     manifests = manifests.map((manifest) => ({
         ...manifest,
+        base: appUrl('/plugins/' + manifest.id),
         entry: manifest.entry && manifest.entry.startsWith('/plugins/')
             ? appUrl(manifest.entry)
             : manifest.entry
@@ -662,7 +675,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
         if (apiCompatible(OIE_API_VERSION, m.apiMin)) return true;
         const message = `requires @oie API ${m.apiMin}, but this web administrator provides ${OIE_API_VERSION}`;
         console.warn(`[plugins] ${m.id} skipped — ${message}`);
-        incompatible.push({ ...m, status: 'incompatible', error: message });
+        incompatible.push({ ...m, status: 'incompatible', error: translate('requires @oie API {required}, but this web administrator provides {provided}', { required: m.apiMin, provided: OIE_API_VERSION }) });
         return false;
     });
 
@@ -681,13 +694,14 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
         // still resolve through the page import map. Node/Docker retain direct URL
         // imports, including support for plugins that split relative modules.
         try {
+            await loadPluginCatalog(manifest);
             if (manifest.source === 'engine' && store.getState('webadminConfig')?.deployment === 'war') {
                 const res = await engineFetch(manifest.entry, {
                     credentials: 'same-origin',
                     headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                     signal: AbortSignal.timeout(120_000)
                 });
-                if (!res.ok) throw new Error(`plugin module request failed (${res.status})`);
+                if (!res.ok) throw new Error(translate("plugin module request failed ({value1})", { value1: String(res.status) }));
                 const source = await res.text();
                 assertEngineResponse(res);
                 const objectUrl = URL.createObjectURL(new Blob([
@@ -724,7 +738,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
                 loaded.push({ ...manifest, status: 'error', error: (e as Error).message });
             }
         } else {
-            loaded.push({ ...manifest, status: 'error', error: 'entry module has no register(platform) export' });
+            loaded.push({ ...manifest, status: 'error', error: translate("entry module has no register(platform) export") });
         }
     }
     // Include the version-skipped plugins so the mismatch is visible in the UI.

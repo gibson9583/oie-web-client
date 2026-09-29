@@ -1,3 +1,6 @@
+import { eventLevelLabel } from '../../core/labels.js';
+import { t as translate, tx as richText } from "../../core/i18n.js";
+import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Events view — criteria bar → paginated results table → resizable detail pane,
  * fully declarative: results and pager position are React state and the table
@@ -86,15 +89,15 @@ function normalizeEvents(rows: any) {
 }
 
 function levelTag(level: any) {
-    if (level === 'ERROR') return h('span.tag.red', icon('warning', 11), 'ERROR');
-    if (level === 'WARNING') return h('span.tag.amber', icon('warning', 11), 'WARNING');
+    if (level === 'ERROR') return h('span.tag.red', icon('warning', 11), translate("ERROR"));
+    if (level === 'WARNING') return h('span.tag.amber', icon('warning', 11), translate("WARNING"));
     return h('span.tag.blue', icon('info', 11), level || '');
 }
 function outcomeTag(outcome: any) {
     if (outcome === 'SUCCESS') {
-        return h('span.tag', { class: 'text-ok border-[color-mix(in_srgb,var(--ok)_40%,transparent)] bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]' }, icon('check', 11), 'SUCCESS');
+        return h('span.tag', { class: 'text-ok border-[color-mix(in_srgb,var(--ok)_40%,transparent)] bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]' }, icon('check', 11), translate("SUCCESS"));
     }
-    if (outcome === 'FAILURE') return h('span.tag.red', icon('x', 11), 'FAILURE');
+    if (outcome === 'FAILURE') return h('span.tag.red', icon('x', 11), translate("FAILURE"));
     return h('span.tag', outcome || '');
 }
 
@@ -117,12 +120,12 @@ function toCount(value: any) {
 }
 
 function shortError(e: any) {
-    let msg = String((e && e.message) || e || 'Unknown error');
+    let msg = String((e && e.message) || e || translate("Unknown error"));
     if (msg.includes('<')) msg = msg.replace(/<[^>]*>/g, ' ');
     msg = msg.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
         .replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
     if (msg.length > 180) msg = msg.slice(0, 180) + '…';
-    if (!msg) msg = 'Unknown error';
+    if (!msg) msg = translate("Unknown error");
     return (e && e.status) ? `${msg} (HTTP ${e.status})` : msg;
 }
 
@@ -135,7 +138,7 @@ function Field({ label, children }: any) {
 /* ---- detail pane ---- */
 
 function EventDetail({ event, username }: any) {
-    if (!event) return <div className="text-text-faint flex-none py-[8px] px-3.5">Select an event to view its details.</div>;
+    if (!event) return <div className="text-text-faint flex-none py-[8px] px-3.5">{translate("Select an event to view its details.")}</div>;
     const kv = (label: any, value: any) => (
         <span className="flex items-center gap-[4px]">
             <span className="text-text-faint text-[9.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
@@ -149,15 +152,15 @@ function EventDetail({ event, username }: any) {
         <>
             <div className="flex flex-wrap items-center gap-[16px] py-2 px-3.5 border-b border-line flex-none">
                 {kv('Id', displayValue(event.id))}
-                {kv('Level', displayValue(event.level))}
-                {kv('Outcome', displayValue(event.outcome))}
-                {kv('User', username(event.userId))}
+                {kv(translate("Level"), displayValue(event.level))}
+                {kv(translate("Outcome"), displayValue(event.outcome))}
+                {kv(translate("User"), username(event.userId))}
                 {kv('IP', displayValue(event.ipAddress))}
             </div>
             <div className="flex-1 min-h-0 overflow-auto">
             {attributes.length
                 ? <table className="dt">
-                    <thead><tr><th className="w-[1%]">Name</th><th>Value</th></tr></thead>
+                    <thead><tr><th className="w-[1%]">{translate("Name")}</th><th>{translate("Value")}</th></tr></thead>
                     <tbody>{attributes.map(([k, v], i) => (
                         <tr key={i}>
                             <td className="whitespace-nowrap align-top font-semibold">{k}</td>
@@ -165,7 +168,7 @@ function EventDetail({ event, username }: any) {
                         </tr>
                     ))}</tbody>
                 </table>
-                : <div className="text-text-faint py-3 px-3.5">This event has no attributes.</div>}
+                : <div className="text-text-faint py-3 px-3.5">{translate("This event has no attributes.")}</div>}
             </div>
         </>
     );
@@ -216,7 +219,7 @@ export function EventsView() {
 
     function username(uid: any) {
         if (uid === null || uid === undefined || uid === '') return '';
-        if (String(uid) === '0') return 'System';   // engine's own (no logged-in user)
+        if (String(uid) === '0') return translate("System");   // engine's own (no logged-in user)
         return usernamesRef.current[String(uid)] ?? String(uid);
     }
 
@@ -258,7 +261,7 @@ export function EventsView() {
             total = toCount(count);
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;
-            toast(`Event search failed: ${shortError(e)}`, 'error');
+            toast(translate("Event search failed: {value1}", { value1: String(shortError(e)) }), 'error');
         }
         if (gen !== searchGenRef.current) return;   // superseded by a newer search
         setEvents(rows);
@@ -272,13 +275,13 @@ export function EventsView() {
     const search = () => runSearch(buildParams(), 0, Number(pageSize) || 20);
 
     async function exportAllEvents() {
-        if (!await confirmDialog('Export All Events',
-            'Export all events to a file in the exports directory on the server?', { okLabel: 'Export' })) return;
+        if (!await confirmDialog(translate("Export All Events"),
+            translate("Export all events to a file in the exports directory on the server?"), { okLabel: translate("Export") })) return;
         try {
             const path = await api.post('/events/_export', null, { raw: true });
-            toast(`Events exported on the server to: ${String(path || '').trim()}`);
+            toast(translate("Events exported on the server to: {value1}", { value1: String(String(path || '').trim()) }));
         } catch (e: any) {
-            toast(`Export failed: ${shortError(e)}`, 'error');
+            toast(translate("Export failed: {value1}", { value1: String(shortError(e)) }), 'error');
         }
     }
 
@@ -286,30 +289,30 @@ export function EventsView() {
     searchRef.current = search;
 
     const COLUMNS = useRef([
-        { key: 'level', label: 'Level', width: '120px', render: (e: any) => levelTag(e.level) },
-        { key: 'eventTime', label: 'Date & Time', width: '160px', className: 'mono', sortValue: (e: any) => fmtDate(e.eventTime), render: (e: any) => fmtDate(e.eventTime) },
-        { key: 'name', label: 'Name' },
-        { key: 'serverId', label: 'Server ID', width: '150px', className: 'mono text-text-faint', render: (e: any) => displayValue(e.serverId) },
-        { key: 'userId', label: 'User', width: '110px', sortValue: (e: any) => username(e.userId), render: (e: any) => username(e.userId) },
-        { key: 'outcome', label: 'Outcome', width: '110px', render: (e: any) => outcomeTag(e.outcome) },
-        { key: 'ipAddress', label: 'IP Address', className: 'mono', width: '130px' },
-        { key: 'channelMsgId', label: 'Channel ID - Message ID', className: 'mono', defaultHidden: true, sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
-        { key: 'channelName', label: 'Channel Name', defaultHidden: true, sortValue: eventChannelName, render: eventChannelName },
-        { key: 'patientId', label: 'Patient ID', defaultHidden: true, sortValue: (e: any) => eventAttr(e, 'patientId'), render: (e: any) => eventAttr(e, 'patientId') }
+        { key: 'level', label: translate("Level"), width: '120px', render: (e: any) => levelTag(e.level) },
+        { key: 'eventTime', label: translate("Date & Time"), width: '160px', className: 'mono', sortValue: (e: any) => fmtDate(e.eventTime), render: (e: any) => fmtDate(e.eventTime) },
+        { key: 'name', label: translate("Name") },
+        { key: 'serverId', label: translate("Server ID"), width: '150px', className: 'mono text-text-faint', render: (e: any) => displayValue(e.serverId) },
+        { key: 'userId', label: translate("User"), width: '110px', sortValue: (e: any) => username(e.userId), render: (e: any) => username(e.userId) },
+        { key: 'outcome', label: translate("Outcome"), width: '110px', render: (e: any) => outcomeTag(e.outcome) },
+        { key: 'ipAddress', label: translate("IP Address"), className: 'mono', width: '130px' },
+        { key: 'channelMsgId', label: translate("Channel ID - Message ID"), className: 'mono', defaultHidden: true, sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
+        { key: 'channelName', label: translate("Channel Name"), defaultHidden: true, sortValue: eventChannelName, render: eventChannelName },
+        { key: 'patientId', label: translate("Patient ID"), defaultHidden: true, sortValue: (e: any) => eventAttr(e, 'patientId'), render: (e: any) => eventAttr(e, 'patientId') }
     ]).current;
 
     const options = useRef({
         selectable: 'single',
         rowKey: (e: any) => String(e.id),
-        emptyText: 'No events found',
+        emptyText: translate("No events found"),
         // Resizable + reorderable + show/hide columns (persisted), like the dashboard.
         columnsKey: 'events',
         onSelect: (rows: any) => setSelected(rows.length ? rows[0] : null),
         onContextMenu: (row: any, ev: any) => {
             setSelected(row);
             contextMenu(ev.clientX, ev.clientY, [
-                { label: 'Refresh', icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current() },
-                { label: 'Export All Events', icon: 'export', task: 'doExportAllEvents', group: 'event', onClick: () => exportAllEvents() }
+                { label: translate("Refresh"), icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current() },
+                { label: translate("Export All Events"), icon: 'export', task: 'doExportAllEvents', group: 'event', onClick: () => exportAllEvents() }
             ]);
         }
     }).current;
@@ -346,7 +349,7 @@ export function EventsView() {
         prevDetailOpenRef.current = detailOpen;
     }, [detailOpen]);
 
-    const enterSearch = (e: any) => { if (e.key === 'Enter') search(); };
+    const enterSearch = (e: any) => { if (isCommitEnter(e)) search(); };
     const from = page.total === 0 ? 0 : page.offset + 1;
     const to = Math.min(page.offset + page.limit, page.total);
 
@@ -354,41 +357,41 @@ export function EventsView() {
     const criteria = (
         <>
                     <div className="form-row">
-                        <Field label="Start Time"><DateTimeField value={start} onChange={setStart} label="Start time" /></Field>
-                        <Field label="End Time"><DateTimeField value={end} onChange={setEnd} label="End time" /></Field>
-                        <Field label="Name"><input type="text" placeholder="Event name contains…" className="w-[171px]" value={name} onChange={(e: any) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label="Level">
+                        <Field label={translate("Start Time")}><DateTimeField value={start} onChange={setStart} label={translate("Start time")} /></Field>
+                        <Field label={translate("End Time")}><DateTimeField value={end} onChange={setEnd} label={translate("End time")} /></Field>
+                        <Field label={translate("Name")}><input type="text" placeholder={translate("Event name contains…")} className="w-[171px]" value={name} onChange={(e: any) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={translate("Level")}>
                             <div className="flex items-center gap-2">
                                 {LEVELS.map((l: any) => (
                                     <label key={l} className="check">
                                         <input type="checkbox" checked={(levels as any)[l]} onChange={(e: any) => setLevels((p: any) => ({ ...p, [l]: e.target.checked }))} />
-                                        {l.charAt(0) + l.slice(1).toLowerCase()}
+                                        {eventLevelLabel(l)}
                                     </label>
                                 ))}
                             </div>
                         </Field>
-                        <Field label="Outcome">
+                        <Field label={translate("Outcome")}>
                             <select value={outcome} onChange={(e: any) => setOutcome(e.target.value)}>
-                                <option value="">Any</option>
-                                {OUTCOMES.map((o: any) => <option key={o} value={o}>{o}</option>)}
+                                <option value="">{translate("Any")}</option>
+                                {OUTCOMES.map((o: any) => <option key={o} value={o}>{o === 'SUCCESS' ? translate("SUCCESS") : translate("FAILURE")}</option>)}
                             </select>
                         </Field>
-                        <Field label="Page Size">
+                        <Field label={translate("Page Size")}>
                             <select value={pageSize} onChange={(e: any) => setPageSize(Number(e.target.value))}>
                                 {[20, 50, 100].map((n: any) => <option key={n} value={n}>{n}</option>)}
                             </select>
                         </Field>
-                        <button className={'btn filter-adv-toggle' + (advancedOpen ? ' btn-primary' : '')} title="Show advanced search criteria"
-                            onClick={() => setAdvancedOpen((o: any) => !o)}><Icon name="filter" />Advanced</button>
-                        <TaskButton label="Search" icon="search" primary onClick={() => { search(); setFiltersOpen(false); }} />
+                        <button className={'btn filter-adv-toggle' + (advancedOpen ? ' btn-primary' : '')} title={translate("Show advanced search criteria")}
+                            onClick={() => setAdvancedOpen((o: any) => !o)}>{richText("{value1}Advanced", { value1: <Icon name="filter" /> })}</button>
+                        <TaskButton label={translate("Search")} icon="search" primary onClick={() => { search(); setFiltersOpen(false); }} />
                     </div>
                     {/* Always rendered; hidden inline behind the Advanced toggle when wide,
                         but always shown inside the Filters popover (no menu-in-a-menu). */}
                     <div className={'form-row mt-2 filter-advanced' + (advancedOpen ? '' : ' adv-hidden')}>
-                        <Field label="User Id"><input type="number" min="0" className="w-[81px]" value={userId} onChange={(e: any) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label="IP Address"><input type="text" className="w-[117px]" value={ip} onChange={(e: any) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label="Server Id"><input type="text" className="w-[207px]" value={serverId} onChange={(e: any) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label="Attribute Search"><input type="text" placeholder="Attribute values contain…" className="w-[171px]" value={attrSearch} onChange={(e: any) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={translate("User Id")}><input type="number" min="0" className="w-[81px]" value={userId} onChange={(e: any) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={translate("IP Address")}><input type="text" className="w-[117px]" value={ip} onChange={(e: any) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={translate("Server Id")}><input type="text" className="w-[207px]" value={serverId} onChange={(e: any) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={translate("Attribute Search")}><input type="text" placeholder={translate("Attribute values contain…")} className="w-[171px]" value={attrSearch} onChange={(e: any) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
                     </div>
         </>
     );
@@ -396,10 +399,10 @@ export function EventsView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Event Tasks" paneKey="tasks:Event Tasks" group="event">
+                <RailPane title={translate("Event Tasks")} paneKey="tasks:Event Tasks" group="event">
                     <div className="taskbar" data-pane-title="Event Tasks">
-                        <TaskButton label="Search" icon="refresh" onClick={() => search()} />
-                        <TaskButton label="Export All Events" icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
+                        <TaskButton label={translate("Search")} icon="refresh" onClick={() => search()} />
+                        <TaskButton label={translate("Export All Events")} icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
                     </div>
                 </RailPane>
             </ViewTasks>
@@ -411,7 +414,7 @@ export function EventsView() {
                         <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
                             <Popover.Trigger asChild>
                                 <button className="btn filter-toggle" type="button">
-                                    <Icon name="filter" /><span>Filters</span><Icon name="chevD" size={14} />
+                                    <Icon name="filter" /><span>{translate("Filters")}</span><Icon name="chevD" size={14} />
                                 </button>
                             </Popover.Trigger>
                             <Popover.Portal>
@@ -430,10 +433,10 @@ export function EventsView() {
                 </div>
                 <div className="filterbar panel overflow-visible mx-[13px] mb-3">
                     <button className="btn" disabled={page.offset <= 0}
-                        onClick={() => runSearch(page.params ?? {}, Math.max(0, page.offset - page.limit), page.limit)}>Prev</button>
+                        onClick={() => runSearch(page.params ?? {}, Math.max(0, page.offset - page.limit), page.limit)}>{translate("Prev")}</button>
                     <button className="btn" disabled={page.offset + page.limit >= page.total}
-                        onClick={() => runSearch(page.params ?? {}, page.offset + page.limit, page.limit)}>Next</button>
-                    <span className="counts">{`${fmtNumber(from)}–${fmtNumber(to)} of ${fmtNumber(page.total)}`}</span>
+                        onClick={() => runSearch(page.params ?? {}, page.offset + page.limit, page.limit)}>{translate("Next")}</button>
+                    <span className="counts">{translate("{value1}–{value2} of {value3}", { value1: String(fmtNumber(from)), value2: String(fmtNumber(to)), value3: String(fmtNumber(page.total)) })}</span>
                 </div>
                 <div className="split-handle mx-[13px] my-1" data-orient="v" data-resize="next" />
                 <div ref={detailPaneRef} className="flex-none h-[36px] overflow-hidden flex flex-col panel mx-[13px] mb-3">

@@ -1,3 +1,4 @@
+import { t as translate } from "./i18n.js";
 import api from './api.js';
 import type { ChannelGroup } from './wire-types.js';
 
@@ -10,12 +11,12 @@ export async function mutateChannelGroups(
     const read = async () => {
         const groups = await api.channelGroups.list();
         if (options.expectedGroup && !groups.some(group => group.id === options.expectedGroup!.id)) {
-            throw new Error('This group was removed. Refresh the channel list before saving.');
+            throw new Error(translate("This group was removed. Refresh the channel list before saving."));
         }
         return groups;
     };
     const confirm = async () => {
-        if (!options.confirmOverwrite) throw new Error('Groups were not saved. Refresh and review the current groups before retrying; another administrator may have changed them.');
+        if (!options.confirmOverwrite) throw new Error(translate("Groups were not saved. Refresh and review the current groups before retrying; another administrator may have changed them."));
         return options.confirmOverwrite();
     };
     let current = await read();
@@ -30,6 +31,6 @@ export async function mutateChannelGroups(
         if (!await confirm()) return false;
         result = await api.channelGroups.bulkUpdate(change(structuredClone(await read())), removedIds, true);
     }
-    if (result !== true && result !== 'true') throw new Error('The engine did not confirm the group save. Your changes are still unsaved.');
+    if (result !== true && result !== 'true') throw new Error(translate("The engine did not confirm the group save. Your changes are still unsaved."));
     return true;
 }

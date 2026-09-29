@@ -1,3 +1,5 @@
+import { t as translate } from "./i18n.js";
+import { isCommitEnter, isComposing } from './keyboard.js';
 /*
  * Lightweight code editor: textarea + synced line-number gutter, tab/indent
  * handling. Dependency-free so the administrator works air-gapped; views and
@@ -58,6 +60,7 @@ export class CodeEditor {
     }
 
     handleKey(e: KeyboardEvent): void {
+        if (isComposing(e)) return;
         if (e.key === 'Tab' && !this.opts.readOnly) {
             e.preventDefault();
             const { selectionStart: start, selectionEnd: end, value } = this.area;
@@ -77,7 +80,7 @@ export class CodeEditor {
             }
             this.syncGutter();
             this.opts.onChange && this.opts.onChange(this.getValue());
-        } else if (e.key === 'Enter' && !this.opts.readOnly) {
+        } else if (isCommitEnter(e) && !this.opts.readOnly) {
             // Keep the indentation of the previous line.
             const { selectionStart: start, value } = this.area;
             const lineStart = value.lastIndexOf('\n', start - 1) + 1;
@@ -160,7 +163,7 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
     let dragToken: string | null = null;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); set(false); } };
 
-    const popBtn = h('button.ce-max-btn.ce-pop-btn', { type: 'button', title: 'Open code view' }, icon('popout'));
+    const popBtn = h('button.ce-max-btn.ce-pop-btn', { type: 'button', title: translate("Open code view") }, icon('popout'));
 
     function insertAtDrop(e: DragEvent, token: string): void {
         if (editor.monaco) {
@@ -199,9 +202,9 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
             }, label));
         }
         return h('div.ce-popout-vars',
-            h('div.ce-popout-vars-head', 'Variables'),
+            h('div.ce-popout-vars-head', translate("Variables")),
             list,
-            h('div.ce-popout-vars-hint', 'Click or drag to insert.'));
+            h('div.ce-popout-vars-hint', translate("Click or drag to insert.")));
     }
 
     // Drag insertion. Monaco swallows/escapes native text drops, so the overlay
@@ -233,9 +236,9 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
         if (rail) body.appendChild(rail);
         overlay = h('div.ce-popout-overlay',
             h('div.ce-popout-head',
-                h('button.btn', { type: 'button', onClick: () => set(false) }, icon('chevL'), 'Back'),
-                h('div.ce-popout-title', String(opts.popoutTitle || 'Code editor')),
-                h('div.ce-popout-esc', 'Esc closes')),
+                h('button.btn', { type: 'button', onClick: () => set(false) }, icon('chevL'), translate("Back")),
+                h('div.ce-popout-title', String(opts.popoutTitle || translate("Code editor"))),
+                h('div.ce-popout-esc', translate("Esc closes"))),
             body);
         // Capture-phase so the insert wins over Monaco's own dnd handling.
         overlay.addEventListener('dragover', onOverlayDragOver, true);
@@ -268,7 +271,7 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
         if (next === open) return;
         open = next;
         popBtn.replaceChildren(icon(open ? 'minimize' : 'popout'));
-        popBtn.title = open ? 'Close code view (Esc)' : 'Open code view';
+        popBtn.title = open ? translate("Close code view (Esc)") : translate("Open code view");
         if (open) {
             openCodeView();
             document.addEventListener('keydown', onKey, true);

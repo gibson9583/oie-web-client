@@ -1,3 +1,5 @@
+import { compareText, scope as i18nScope } from "@oie/web-ui";
+const { t: translate, tx: richText } = i18nScope("connection-status");
 /*
  * Connection Status — web admin plugin (React).
  *
@@ -96,7 +98,7 @@ export function register(platform: Platform) {
 
     platform.registerDashboardColumn({
         id: 'connection',
-        label: 'Connection',
+        label: translate("Connection"),
         order: 10,
         // Channel-level: show the source connector (metaDataId 0) state.
         cell(status: any) {
@@ -159,7 +161,7 @@ export function register(platform: Platform) {
             const val = (it: any) => (num ? (Number(it[sort.key]) || 0) : String(it[sort.key] ?? '').toLowerCase());
             return [...items].sort((a: any, b: any) => {
                 const va: any = val(a), vb: any = val(b);
-                return (num ? va - vb : va.localeCompare(vb)) * sort.dir;
+                return (num ? va - vb : compareText(va, vb)) * sort.dir;
             });
         }, [items, sort]);
         const toggleSort = (key: any) => setSort((s: any) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
@@ -170,12 +172,12 @@ export function register(platform: Platform) {
                 <table className="dt">
                     <thead>
                         <tr>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('logId')}>Id<span className="sort-arrow">{arrow('logId')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('dateAdded')}>Timestamp<span className="sort-arrow">{arrow('dateAdded')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('channelName')}>Channel<span className="sort-arrow">{arrow('channelName')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('connectorType')}>Connector<span className="sort-arrow">{arrow('connectorType')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('eventState')}>Event<span className="sort-arrow">{arrow('eventState')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('information')}>Information<span className="sort-arrow">{arrow('information')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('logId')}>{richText("Id<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('logId') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('dateAdded')}>{richText("Timestamp<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('dateAdded') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('channelName')}>{richText("Channel<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('channelName') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('connectorType')}>{richText("Connector<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('connectorType') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('eventState')}>{richText("Event<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('eventState') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('information')}>{richText("Information<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('information') })}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -193,8 +195,8 @@ export function register(platform: Platform) {
                     {!items.length && (
                         <caption className="[caption-side:bottom] p-3.5 text-text-faint">
                             {error
-                                ? `Connection log unavailable: ${error}`
-                                : (lastError ? `Connection log unavailable: ${lastError}` : 'No connection events yet.')}
+                                ? translate("Connection log unavailable: {value1}", { value1: String(error) })
+                                : (lastError ? translate("Connection log unavailable: {value1}", { value1: String(lastError) }) : translate("No connection events yet."))}
                         </caption>
                     )}
                 </table>
@@ -204,7 +206,7 @@ export function register(platform: Platform) {
 
     platform.registerDashboardTab({
         id: 'connection-log',
-        label: 'Connection Log',
+        label: translate("Connection Log"),
         order: 20,
         component: ConnectionLogTab
     });

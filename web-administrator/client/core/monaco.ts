@@ -1,3 +1,5 @@
+import { locale } from './i18n.js';
+import { t as translate } from "./i18n.js";
 /*
  * Monaco editor integration (lazy, locally served, optional).
  *
@@ -93,6 +95,20 @@ async function loadMonaco(): Promise<Monaco | null> {
             }
         };
         ensureMonacoCss();
+        if (locale() === 'zh-CN') {
+            // The positional NLS pack is copied from the SAME installed Monaco.
+            try {
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                try {
+                    const loaded = await Promise.race([
+                        import(/* @vite-ignore */ `${MONACO_VENDOR}/nls/zh-cn.js`).then(() => true),
+                        new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 2000); })
+                    ]);
+                    if (!loaded) return null;
+                } finally { clearTimeout(timer); }
+                (globalThis as any)._VSCODE_NLS_LANGUAGE = 'zh-cn';
+            } catch { /* English Monaco remains usable when its pack is unavailable. */ }
+        }
 
         // Load the vendored bundle by absolute URL. @vite-ignore keeps Vite from
         // rewriting/pre-bundling it in dev, so the browser fetches the same
@@ -122,36 +138,36 @@ async function loadMonaco(): Promise<Monaco | null> {
    `logger` uses the small Log4jLogger interface declared alongside. E4X values
    (msg/tmp) and untyped helpers stay `any`. */
 const RHINO_GLOBALS: Array<{ name: string; type: string; doc: string }> = [
-    { name: 'msg', type: 'any', doc: 'The inbound message (E4X XML / JSON object depending on data type)' },
-    { name: 'tmp', type: 'any', doc: 'The outbound template message' },
-    { name: 'template', type: 'string', doc: 'The raw template string' },
-    { name: 'message', type: 'any', doc: 'Raw message string (preprocessor) / ImmutableMessage (postprocessor)' },
-    { name: 'connectorMessage', type: 'ImmutableConnectorMessage', doc: 'The current connector message' },
-    { name: 'response', type: 'Response', doc: 'The Response (response transformer / postprocessor)' },
-    { name: 'sourceMap', type: 'SourceMap', doc: 'Source map (read-only variable map)' },
-    { name: 'connectorMap', type: 'ChannelMap', doc: 'Connector-scoped variable map' },
-    { name: 'channelMap', type: 'ChannelMap', doc: 'Channel-scoped variable map' },
-    { name: 'globalChannelMap', type: 'ChannelMap', doc: 'Channel-scoped map persisted across messages' },
-    { name: 'globalMap', type: 'ChannelMap', doc: 'Server-wide variable map' },
-    { name: 'configurationMap', type: 'ChannelMap', doc: 'Configuration map (Settings → Configuration Map)' },
-    { name: 'responseMap', type: 'ResponseMap', doc: 'Response variable map' },
-    { name: 'logger', type: 'Log4jLogger', doc: 'Log4j logger (logger.info/warn/error)' },
-    { name: 'router', type: 'VMRouter', doc: 'VMRouter — router.routeMessage(channelName, message)' },
-    { name: 'alerts', type: 'AlertSender', doc: 'AlertSender — alerts.sendAlert(message)' },
-    { name: 'replacer', type: 'any', doc: 'TemplateValueReplacer' },
-    { name: 'destinationSet', type: 'DestinationSet', doc: 'Control which destinations process the message' },
-    { name: 'channelId', type: 'string', doc: 'Current channel id' },
-    { name: 'channelName', type: 'string', doc: 'Current channel name' },
-    { name: 'importPackage', type: '(pkg: any) => void', doc: 'Rhino: import a Java package, e.g. importPackage(java.util)' },
-    { name: 'validate', type: '(mapping: any, defaultValue?: any, replacements?: any[]) => any', doc: 'Transformer helper: validate(mapping, defaultValue, replacements)' },
-    { name: '$', type: '(key: string, value?: any) => any', doc: "Shorthand lookup across all maps: $('variable')" },
-    { name: '$co', type: '(key: string, value?: any) => any', doc: 'Connector map accessor' },
-    { name: '$c', type: '(key: string, value?: any) => any', doc: 'Channel map accessor' },
-    { name: '$s', type: '(key: string, value?: any) => any', doc: 'Source map accessor' },
-    { name: '$gc', type: '(key: string, value?: any) => any', doc: 'Global channel map accessor' },
-    { name: '$g', type: '(key: string, value?: any) => any', doc: 'Global map accessor' },
-    { name: '$cfg', type: '(key: string, value?: any) => any', doc: 'Configuration map accessor' },
-    { name: '$r', type: '(key: string, value?: any) => any', doc: 'Response map accessor' }
+    { name: 'msg', type: 'any', doc: translate("The inbound message (E4X XML / JSON object depending on data type)") },
+    { name: 'tmp', type: 'any', doc: translate("The outbound template message") },
+    { name: 'template', type: 'string', doc: translate("The raw template string") },
+    { name: 'message', type: 'any', doc: translate("Raw message string (preprocessor) / ImmutableMessage (postprocessor)") },
+    { name: 'connectorMessage', type: 'ImmutableConnectorMessage', doc: translate("The current connector message") },
+    { name: 'response', type: 'Response', doc: translate("The Response (response transformer / postprocessor)") },
+    { name: 'sourceMap', type: 'SourceMap', doc: translate("Source map (read-only variable map)") },
+    { name: 'connectorMap', type: 'ChannelMap', doc: translate("Connector-scoped variable map") },
+    { name: 'channelMap', type: 'ChannelMap', doc: translate("Channel-scoped variable map") },
+    { name: 'globalChannelMap', type: 'ChannelMap', doc: translate("Channel-scoped map persisted across messages") },
+    { name: 'globalMap', type: 'ChannelMap', doc: translate("Server-wide variable map") },
+    { name: 'configurationMap', type: 'ChannelMap', doc: translate("Configuration map (Settings → Configuration Map)") },
+    { name: 'responseMap', type: 'ResponseMap', doc: translate("Response variable map") },
+    { name: 'logger', type: 'Log4jLogger', doc: translate("Log4j logger (logger.info/warn/error)") },
+    { name: 'router', type: 'VMRouter', doc: translate("VMRouter — router.routeMessage(channelName, message)") },
+    { name: 'alerts', type: 'AlertSender', doc: translate("AlertSender — alerts.sendAlert(message)") },
+    { name: 'replacer', type: 'any', doc: translate("TemplateValueReplacer") },
+    { name: 'destinationSet', type: 'DestinationSet', doc: translate("Control which destinations process the message") },
+    { name: 'channelId', type: 'string', doc: translate("Current channel id") },
+    { name: 'channelName', type: 'string', doc: translate("Current channel name") },
+    { name: 'importPackage', type: '(pkg: any) => void', doc: translate("Rhino: import a Java package, e.g. importPackage(java.util)") },
+    { name: 'validate', type: '(mapping: any, defaultValue?: any, replacements?: any[]) => any', doc: translate("Transformer helper: validate(mapping, defaultValue, replacements)") },
+    { name: '$', type: '(key: string, value?: any) => any', doc: translate("Shorthand lookup across all maps: $(''variable'')") },
+    { name: '$co', type: '(key: string, value?: any) => any', doc: translate("Connector map accessor") },
+    { name: '$c', type: '(key: string, value?: any) => any', doc: translate("Channel map accessor") },
+    { name: '$s', type: '(key: string, value?: any) => any', doc: translate("Source map accessor") },
+    { name: '$gc', type: '(key: string, value?: any) => any', doc: translate("Global channel map accessor") },
+    { name: '$g', type: '(key: string, value?: any) => any', doc: translate("Global map accessor") },
+    { name: '$cfg', type: '(key: string, value?: any) => any', doc: translate("Configuration map accessor") },
+    { name: '$r', type: '(key: string, value?: any) => any', doc: translate("Response map accessor") }
 ];
 
 /* A .d.ts for the injected scope variables above, added as its own extraLib so
@@ -367,7 +383,7 @@ function setup(monaco: Monaco): void {
                     label: t.params.length ? `${t.name}(${t.params.join(', ')})` : `${t.name}()`,
                     filterText: t.name,
                     kind: monaco.languages.CompletionItemKind.Function,
-                    detail: t.library ? `Code template · ${t.library}` : 'Code template',
+                    detail: t.library ? translate("Code template · {value1}", { value1: String(t.library) }) : translate("Code template"),
                     documentation: t.doc || undefined,
                     insertText: `${t.name}(${args})`,
                     insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,

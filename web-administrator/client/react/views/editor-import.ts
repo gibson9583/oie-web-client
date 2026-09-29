@@ -1,3 +1,4 @@
+import { t as translate } from "../../core/i18n.js";
 import * as oie from '@oie/web-api';
 
 type Model = Record<string, any>;
@@ -5,7 +6,7 @@ type Model = Record<string, any>;
 /** XStream XML without guessing the types of numeric-looking names, scripts or transport fields. */
 function xmlObject(element: Element): any {
     const attributes = Object.fromEntries([...element.attributes].map(attribute => [`@${attribute.name}`, attribute.value]));
-    if (attributes['@reference']) throw new Error('The export contains an unresolved XML reference');
+    if (attributes['@reference']) throw new Error(translate("The export contains an unresolved XML reference"));
     if (!element.children.length) {
         const text = element.textContent || '';
         return Object.keys(attributes).length ? { ...attributes, ...(text ? { $: text } : {}) } : text;
@@ -33,7 +34,7 @@ function parse(text: string, rootName: string): any {
     if (text.trimStart().startsWith('<')) {
         const document = new DOMParser().parseFromString(text, 'text/xml');
         if (document.querySelector('parsererror') || document.documentElement.tagName !== rootName) {
-            throw new Error(`Expected a valid <${rootName}> export`);
+            throw new Error(translate("Expected a valid <{value1}> export", { value1: String(rootName) }));
         }
         return xmlObject(document.documentElement) || {};
     }
@@ -43,18 +44,18 @@ function parse(text: string, rootName: string): any {
 
 function normalizeElements(container: Model): void {
     const source = container.elements;
-    if (source != null && source !== '' && typeof source !== 'object') throw new Error('Invalid elements collection');
+    if (source != null && source !== '' && typeof source !== 'object') throw new Error(translate("Invalid elements collection"));
     if (source && typeof source === 'object' && !Array.isArray(source)) {
         for (const [type, value] of Object.entries(source)) {
             if (type.startsWith('@')) continue;
             for (const element of Array.isArray(value) ? value : [value]) {
-                if (!element || typeof element !== 'object' || Array.isArray(element)) throw new Error('Invalid filter rule or transformer step');
+                if (!element || typeof element !== 'object' || Array.isArray(element)) throw new Error(translate("Invalid filter rule or transformer step"));
             }
         }
     }
     const elements = Array.isArray(container.elements) ? container.elements : oie.elementsToArray(container.elements);
     for (const element of elements) {
-        if (!element || typeof element !== 'object' || typeof element.__type !== 'string') throw new Error('Invalid filter rule or transformer step');
+        if (!element || typeof element !== 'object' || typeof element.__type !== 'string') throw new Error(translate("Invalid filter rule or transformer step"));
         if (element.enabled === 'false') element.enabled = false;
         else if (element.enabled === 'true') element.enabled = true;
         if (element.properties?.children && /Iterator(Step|Rule)$/.test(element.__type)) {
@@ -71,21 +72,21 @@ export function parseFilterTransformerImport(text: string, isFilter: boolean, ve
     const fromXml = text.trimStart().startsWith('<');
     let parsed = parse(text, rootName);
     if (fromXml && (Object.hasOwn(parsed, 'steps') || Object.hasOwn(parsed, 'rules'))) {
-        throw new Error('This legacy export requires engine migration. Import it in Swing and export it again before importing here.');
+        throw new Error(translate("This legacy export requires engine migration. Import it in Swing and export it again before importing here."));
     }
     if (fromXml && !Object.hasOwn(parsed, 'elements')) parsed.elements = null;
     if (!isFilter && parsed?.responseTransformer) parsed = parsed.responseTransformer;
     if (Array.isArray(parsed)) parsed = { elements: parsed };
-    if (!parsed || typeof parsed !== 'object') throw new Error(`Invalid ${rootName} export`);
+    if (!parsed || typeof parsed !== 'object') throw new Error(translate("Invalid {value1} export", { value1: String(rootName) }));
     if (!Object.hasOwn(parsed, 'elements')) {
         const elements = parsed.steps ?? parsed.rules ?? parsed.responseTransformer?.elements;
-        if (elements === undefined) throw new Error(`No ${isFilter ? 'rules' : 'steps'} found in the file`);
+        if (elements === undefined) throw new Error(translate("{value1, select, yes {No rules found in the file} other {No steps found in the file}}", { value1: (isFilter) ? "yes" : "no" }));
         parsed = { ...parsed, elements };
         delete parsed.steps;
         delete parsed.rules;
         delete parsed.responseTransformer;
     }
-    if (parsed.elements != null && parsed.elements !== '' && typeof parsed.elements !== 'object') throw new Error('Invalid elements collection');
+    if (parsed.elements != null && parsed.elements !== '' && typeof parsed.elements !== 'object') throw new Error(translate("Invalid elements collection"));
     // Historical web exports contained only elements. They cannot replace settings
     // that were never exported; full Swing/XML exports always replace the container.
     const elementsOnly = !fromXml && !['inboundDataType', 'outboundDataType', 'inboundTemplate', 'outboundTemplate', 'inboundProperties', 'outboundProperties'].some(key => Object.hasOwn(parsed, key));
@@ -99,14 +100,14 @@ export function parseFilterTransformerImport(text: string, isFilter: boolean, ve
 export function parseConnectorImport(text: string, mode: 'SOURCE' | 'DESTINATION', version: string): Model {
     const parsed = parse(text, 'connector');
     if (!parsed || typeof parsed !== 'object' || typeof parsed.transportName !== 'string' || !parsed.transportName || !parsed.properties || typeof parsed.properties !== 'object') {
-        throw new Error('File is not a connector export');
+        throw new Error(translate("File is not a connector export"));
     }
-    if (text.trimStart().startsWith('<') && !['SOURCE', 'DESTINATION'].includes(parsed.mode)) throw new Error('Invalid connector mode');
-    if (parsed.mode && parsed.mode !== mode) throw new Error(`You must be on the ${parsed.mode === 'SOURCE' ? 'Source' : 'Destinations'} tab to import this connector`);
+    if (text.trimStart().startsWith('<') && !['SOURCE', 'DESTINATION'].includes(parsed.mode)) throw new Error(translate("Invalid connector mode"));
+    if (parsed.mode && parsed.mode !== mode) throw new Error(translate("{value1, select, yes {You must be on the Source tab to import this connector} other {You must be on the Destinations tab to import this connector}}", { value1: (parsed.mode === 'SOURCE') ? "yes" : "no" }));
     const connector = { '@version': version, enabled: true, waitForPrevious: true, ...parsed, mode };
     if (text.trimStart().startsWith('<') && [connector.filter, connector.transformer, connector.responseTransformer]
         .some(container => container && (Object.hasOwn(container, 'steps') || Object.hasOwn(container, 'rules')))) {
-        throw new Error('This legacy connector requires engine migration. Import it in Swing and export it again before importing here.');
+        throw new Error(translate("This legacy connector requires engine migration. Import it in Swing and export it again before importing here."));
     }
     normalizeImportTypes(connector, { metaDataId: 0, enabled: true, waitForPrevious: true });
     connector.filter = { ...oie.emptyFilter(version), ...connector.filter };
@@ -219,7 +220,7 @@ function decodeImportedTemplates(transformer: Model): void {
     for (const key of ['inboundTemplate', 'outboundTemplate']) {
         const value = transformer[key];
         if (value && typeof value === 'object') {
-            if (value['@encoding'] !== 'base64') throw new Error(`Unsupported ${key} encoding`);
+            if (value['@encoding'] !== 'base64') throw new Error(translate("Unsupported {value1} encoding", { value1: String(key) }));
             const binary = atob(String(value.$ ?? '').replace(/\s+/g, ''));
             transformer[key] = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(binary, char => char.charCodeAt(0)));
         }

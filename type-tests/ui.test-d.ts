@@ -4,6 +4,19 @@
 import { h, DataTable, modal, buildForm, CHARSETS, field, textInput, taskButton, contextMenu, closeContextMenu, toast } from '@oie/web-ui';
 import type { TaskRef, ContextMenuItem } from '@oie/web-ui';
 import type { Column } from '@oie/web-ui';
+import { t as translate, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText, isCommitEnter } from '@oie/web-ui';
+
+function internationalizedPlugin() {
+    const label: string = translate('Hello {name}', {name:'world'});
+    const contextual: string = tc('verb', 'Open');
+    const pluginLabel: string = scope('example').t('Save');
+    const node = {type:'strong'};
+    const rich: Array<string | typeof node> = tx('Read <b>{name}</b>', {name:'guide',b:() => node});
+    const changing: Promise<boolean> = setLocale('zh-CN');
+    const tags: string[] = locales().map(l => l.tag);
+    return [label, contextual, pluginLabel, rich, changing, tags, locale(), formatNumber(10), formatList(['a','b']), compareText('a','b'), isCommitEnter({key:'Enter',isComposing:true})];
+}
+void internationalizedPlugin;
 
 function goodUsage() {
     // h() overloads: string child AND attrs+children both work.

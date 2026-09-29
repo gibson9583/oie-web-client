@@ -1,27 +1,29 @@
 // plugins/datatype-json/web/plugin.tsx
+import { scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t: translate } = i18nScope("datatype-json");
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.json";
 var opt = (key, label, options, def, hint) => ({ key, label, type: "select", options, default: def, hint });
 var code = (key, label, def, hint) => ({ key, label, type: "code", default: def, hint });
-var BATCH_SCRIPT_HINT = "JavaScript that splits the batch and returns the next message. Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.";
+var BATCH_SCRIPT_HINT = translate("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 var DEF = {
   name: "JSON",
-  label: "JSON",
+  label: translate("JSON"),
   order: 40,
   propertiesClass: `${PKG}.JSONDataTypeProperties`,
   groups: [
     {
       key: "batchProperties",
-      label: "Batch",
+      label: translate("Batch"),
       class: `${PKG}.JSONBatchProperties`,
       fields: [
         opt(
           "splitType",
-          "Split Batch By",
-          [{ value: "JavaScript", label: "JavaScript" }],
+          translate("Split Batch By"),
+          [{ value: "JavaScript", label: translate("JavaScript") }],
           "JavaScript",
-          "Method for splitting the batch message. Only used when Process Batch is enabled in the connector."
+          translate("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")
         ),
         code("batchScript", "JavaScript", null, BATCH_SCRIPT_HINT)
       ]

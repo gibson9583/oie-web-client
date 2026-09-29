@@ -1,3 +1,5 @@
+import { scope as i18nScope } from "@oie/web-ui";
+const { t: translate } = i18nScope("datatype-hl7v3");
 /*
  * HL7 v3.x data type — web admin plugin (React, DataTypeClientPlugin equivalent).
  * Field/default shapes transcribed from the engine plugin
@@ -19,26 +21,24 @@ const bool = (key: any, label: any, def: any, hint?: any) => ({ key, label, type
 const opt = (key: any, label: any, options: any, def: any, hint?: any) => ({ key, label, type: 'select', options, default: def, hint });
 const code = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'code', default: def, hint });
 
-const BATCH_SCRIPT_HINT = 'JavaScript that splits the batch and returns the next message. ' +
-    "Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. " +
-    'Only used when Process Batch is enabled in the connector.';
+const BATCH_SCRIPT_HINT = translate("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 
 const DEF: any = {
-    name: 'HL7V3', label: 'HL7 v3.x', order: 20,
+    name: 'HL7V3', label: translate("HL7 v3.x"), order: 20,
     propertiesClass: `${PKG}.HL7V3DataTypeProperties`,
     groups: [
         {
-            key: 'serializationProperties', label: 'Serialization',
+            key: 'serializationProperties', label: translate("Serialization"),
             class: `${PKG}.HL7V3SerializationProperties`,
             fields: [
-                bool('stripNamespaces', 'Strip Namespaces', false, 'Strip namespace definitions from the transformed XML message (prefixes are not removed).')
+                bool('stripNamespaces', translate("Strip Namespaces"), false, translate("Strip namespace definitions from the transformed XML message (prefixes are not removed)."))
             ]
         },
         {
-            key: 'batchProperties', label: 'Batch', class: `${PKG}.HL7V3BatchProperties`,
+            key: 'batchProperties', label: translate("Batch"), class: `${PKG}.HL7V3BatchProperties`,
             fields: [
-                opt('splitType', 'Split Batch By', [{ value: 'JavaScript', label: 'JavaScript' }], 'JavaScript',
-                    'Method for splitting the batch message. Only used when Process Batch is enabled in the connector.'),
+                opt('splitType', translate("Split Batch By"), [{ value: 'JavaScript', label: translate("JavaScript") }], 'JavaScript',
+                    translate("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")),
                 code('batchScript', 'JavaScript', null, BATCH_SCRIPT_HINT)
             ]
         }

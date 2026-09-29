@@ -926,3 +926,43 @@ An engine plugin that registers its own REST servlet (via `apiProviders` in its
 exactly how the bundled `server-log` plugin reads
 `GET /api/extensions/serverlog`. Ship the engine half as a normal engine
 extension and the UI half as a web admin plugin with the same name.
+
+## Localization (API 4.8)
+
+Use the shared `@oie/web-ui` translation functions or `platform.i18n`. Declare a
+plugin-scoped catalog in `plugin.json`; the host loads it before importing your
+module. Keep IDs, enum values, routes and RBAC groups stable, and translate only
+display labels. See the [i18n authoring and migration guide](../docs/i18n.md)
+for ICU messages, catalog manifests, fallback, `sectionLabel`, and validation.
+
+For a plugin that must also load on API 4.7, obtain the optional API inside
+`register` and use a small English fallback. Keep its messages to simple
+`{name}` placeholders; this shim is not an ICU implementation.
+
+```js
+export function register(platform) {
+    const t = platform.i18n?.scope('example').t ?? ((message, values = {}) =>
+        message.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,
+            (token, name) => Object.hasOwn(values, name) ? String(values[name]) : token));
+    platform.registerNavItem({
+        id: 'example', path: '/example',
+        label: t('Example tools'),
+        section: 'example-tools', sectionLabel: t('Example tools')
+    });
+    // t('Connected to {name}', { name: server.name })
+}
+```
+
+Do not statically import `scope` on a 4.7-compatible plugin: an older import map
+cannot provide that export. On API 4.8 declare
+`"i18n": { "zh-CN": "i18n/zh-CN.json" }` at the manifest root and ship:
+
+```json
+{
+  "Example tools": "示例工具",
+  "Connected to {name}": "已连接到 {name}"
+}
+```
+
+The host loads this catalog before `register` runs. The same IDs and section
+keys continue to work on both hosts.

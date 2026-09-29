@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 /*
  * File Reader (FileReceiverProperties) / File Writer (FileDispatcherProperties).
  *
@@ -20,12 +21,12 @@ import {
 } from './react-forms.js';
 
 const SCHEMES = [
-    { value: 'FILE', label: 'File' },
-    { value: 'FTP', label: 'FTP' },
-    { value: 'SFTP', label: 'SFTP' },
-    { value: 'S3', label: 'Amazon S3' },
-    { value: 'SMB', label: 'SMB' },
-    { value: 'WEBDAV', label: 'WebDAV' }
+    { value: 'FILE', label: translate("File") },
+    { value: 'FTP', label: translate("FTP") },
+    { value: 'SFTP', label: translate("SFTP") },
+    { value: 'S3', label: translate("Amazon S3") },
+    { value: 'SMB', label: translate("SMB") },
+    { value: 'WEBDAV', label: translate("WebDAV") }
 ];
 
 /* Per-scheme connection-field enablement, mirroring FileReader/FileWriter
@@ -71,8 +72,8 @@ function onFileTypeSet(p: any) {
 }
 
 const FILE_TYPE_OPTIONS = [
-    { value: true, label: 'Binary' },
-    { value: false, label: 'Text' }
+    { value: true, label: translate("Binary") },
+    { value: false, label: translate("Text") }
 ];
 
 /* File Writer "File Exists" is a single 3-way radio (Append/Overwrite/Error) in
@@ -92,14 +93,14 @@ function fileExistsValue(p: any) {
 function fileExistsField() {
     const allowAppend = (p: any) => p.scheme !== 'S3' && p.scheme !== 'WEBDAV';
     return {
-        label: 'File Exists', type: 'custom', refresh: true,
+        label: translate("File Exists"), type: 'custom', refresh: true,
         render: (p: any, { onChange, repaint }: any) => {
             const current = fileExistsValue(p);
             const group = h('div.radio-group.inline-row');
             const opts = [
-                { value: 'append', label: 'Append' },
-                { value: 'overwrite', label: 'Overwrite' },
-                { value: 'error', label: 'Error' }
+                { value: 'append', label: translate("Append") },
+                { value: 'overwrite', label: translate("Overwrite") },
+                { value: 'error', label: translate("Error") }
             ];
             opts.forEach((o: any) => {
                 const input = h('input', {
@@ -130,7 +131,7 @@ function regionPicker(p: any, ctx: any) {
     const sp = p.schemeProperties || {};
     const current = sp.region || '';
     const isKnown = S3_REGIONS.includes(current);
-    const opts = [{ value: 'Custom', label: 'Custom' }, ...S3_REGIONS.map((r: any) => ({ value: r, label: r }))];
+    const opts = [{ value: 'Custom', label: translate("Custom") }, ...S3_REGIONS.map((r: any) => ({ value: r, label: r }))];
     const sel = select(opts, isKnown ? current : 'Custom', {
         onChange: (e: any) => {
             const v = e.target.value;
@@ -151,7 +152,7 @@ function schemePrefix(p: any) {
     switch (String(p.scheme)) {
         case 'FTP': return 'ftp://';
         case 'SFTP': return 'sftp://';
-        case 'S3': return 'S3 Bucket:';
+        case 'S3': return translate("S3 Bucket:");
         case 'SMB': return 'smb://';
         case 'WEBDAV': return asBool(p.secure) ? 'https://' : 'http://';
         default: return '';
@@ -240,16 +241,16 @@ function sftpKeyEnabled(p: any) {
 }
 function sftpAuthField() {
     return {
-        label: 'Authentication', type: 'custom', refresh: true,
+        label: translate("Authentication"), type: 'custom', refresh: true,
         visible: (p: any) => p.scheme === 'SFTP',
         render: (p: any, { onChange, repaint }: any) => {
             const sp = p.schemeProperties || {};
             const current = sftpAuthValue(sp);
             const group = h('div.radio-group.inline-row');
             const opts = [
-                { value: 'password', label: 'Password' },
-                { value: 'key', label: 'Public Key' },
-                { value: 'both', label: 'Both' }
+                { value: 'password', label: translate("Password") },
+                { value: 'key', label: translate("Public Key") },
+                { value: 'both', label: translate("Both") }
             ];
             opts.forEach((o: any) => {
                 const input = h('input', {
@@ -270,12 +271,12 @@ function sftpAuthField() {
 }
 
 const SMB_VERSIONS = [
-    { value: 'SMB1', label: 'SMB v1' },
-    { value: 'SMB202', label: 'SMB v2.0.2' },
-    { value: 'SMB210', label: 'SMB v2.1' },
-    { value: 'SMB300', label: 'SMB v3.0' },
-    { value: 'SMB302', label: 'SMB v3.0.2' },
-    { value: 'SMB311', label: 'SMB v3.1.1' }
+    { value: 'SMB1', label: translate("SMB v1") },
+    { value: 'SMB202', label: translate("SMB v2.0.2") },
+    { value: 'SMB210', label: translate("SMB v2.1") },
+    { value: 'SMB300', label: translate("SMB v3.0") },
+    { value: 'SMB302', label: translate("SMB v3.0.2") },
+    { value: 'SMB311', label: translate("SMB v3.1.1") }
 ];
 
 function defaultSchemeProperties(scheme: any) {
@@ -370,7 +371,7 @@ function onWriterSchemeChange(properties: any, scheme?: any, previousScheme?: an
 /* FTP initial commands: List<String> rendered one-per-line. */
 function ftpInitialCommandsField() {
     return {
-        label: 'Initial Commands', type: 'custom', span: true,
+        label: translate("Initial Commands"), type: 'custom', span: true,
         visible: (p: any) => p.scheme === 'FTP',
         render: (p: any, { onChange }: any) => {
             const sp = p.schemeProperties || {};
@@ -380,7 +381,7 @@ function ftpInitialCommandsField() {
             if (!Array.isArray(lines)) lines = [lines];
             const area = h('textarea', {
                 rows: 3,
-                placeholder: 'One FTP command per line, sent after connecting',
+                placeholder: translate("One FTP command per line, sent after connecting"),
                 onInput: (e: any) => {
                     const values = e.target.value.split('\n').map((s: any) => s.trim()).filter((s: any) => s !== '');
                     sp.initialCommands = values.length ? { string: values } : null;
@@ -397,44 +398,44 @@ function schemeSettingsFields(): any[] {
     const sftp = (p: any) => p.scheme === 'SFTP';
     const s3 = (p: any) => p.scheme === 'S3';
     return [
-        { section: 'FTP Settings', visible: (p: any) => p.scheme === 'FTP' },
+        { section: translate("FTP Settings"), visible: (p: any) => p.scheme === 'FTP' },
         ftpInitialCommandsField(),
-        { section: 'SFTP Settings', visible: sftp },
+        { section: translate("SFTP Settings"), visible: sftp },
         sftpAuthField(),
-        { key: 'schemeProperties.keyFile', label: 'Public/Private Key File', type: 'text', width: '320px', visible: (p: any) => sftp(p) && sftpKeyEnabled(p) },
-        { key: 'schemeProperties.passPhrase', label: 'Passphrase', type: 'password', width: '220px', visible: (p: any) => sftp(p) && sftpKeyEnabled(p) },
-        { key: 'schemeProperties.hostKeyChecking', label: 'Host Key Checking', type: 'select', width: '120px', visible: sftp, options: [
-            { value: 'yes', label: 'Yes' },
-            { value: 'ask', label: 'Ask' },
-            { value: 'no', label: 'No' }
+        { key: 'schemeProperties.keyFile', label: translate("Public/Private Key File"), type: 'text', width: '320px', visible: (p: any) => sftp(p) && sftpKeyEnabled(p) },
+        { key: 'schemeProperties.passPhrase', label: translate("Passphrase"), type: 'password', width: '220px', visible: (p: any) => sftp(p) && sftpKeyEnabled(p) },
+        { key: 'schemeProperties.hostKeyChecking', label: translate("Host Key Checking"), type: 'select', width: '120px', visible: sftp, options: [
+            { value: 'yes', label: translate("Yes") },
+            { value: 'ask', label: translate("Ask") },
+            { value: 'no', label: translate("No") }
         ] },
-        { key: 'schemeProperties.knownHostsFile', label: 'Known Hosts File', type: 'text', width: '320px', visible: sftp },
-        { key: 'schemeProperties.configurationSettings', label: 'Configuration Options', type: 'keyvalue', visible: sftp },
-        { section: 'Amazon S3 Settings', visible: s3 },
+        { key: 'schemeProperties.knownHostsFile', label: translate("Known Hosts File"), type: 'text', width: '320px', visible: sftp },
+        { key: 'schemeProperties.configurationSettings', label: translate("Configuration Options"), type: 'keyvalue', visible: sftp },
+        { section: translate("Amazon S3 Settings"), visible: s3 },
         {
-            key: 'schemeProperties.useDefaultCredentialProviderChain', label: 'Use Default Credential Provider Chain',
+            key: 'schemeProperties.useDefaultCredentialProviderChain', label: translate("Use Default Credential Provider Chain"),
             type: 'radio', options: YES_NO, refresh: true, visible: s3,
             // Swing AdvancedS3SettingsDialog greys these + shows a red warning when
             // the connector is using Anonymous credentials.
             disabled: (p: any) => asBool(p.anonymous),
             append: (p: any) => asBool(p.anonymous)
-                ? h('span', { class: 'text-[#c0392b] ml-3 font-[500]' }, 'Anonymous credentials are currently in use')
+                ? h('span', { class: 'text-[#c0392b] ml-3 font-[500]' }, translate("Anonymous credentials are currently in use"))
                 : null,
-            tooltip: 'When No, the Username/Password above are used as the AWS access key ID / secret access key'
+            tooltip: translate("When No, the Username/Password above are used as the AWS access key ID / secret access key")
         },
-        { key: 'schemeProperties.useTemporaryCredentials', label: 'Use Temporary Credentials', type: 'radio', options: YES_NO, refresh: true, visible: s3, disabled: (p: any) => asBool(p.anonymous) },
-        { key: 'schemeProperties.duration', label: 'Duration (seconds)', type: 'number', numeric: true, width: '110px', visible: (p: any) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p: any) => asBool(p.anonymous) },
+        { key: 'schemeProperties.useTemporaryCredentials', label: translate("Use Temporary Credentials"), type: 'radio', options: YES_NO, refresh: true, visible: s3, disabled: (p: any) => asBool(p.anonymous) },
+        { key: 'schemeProperties.duration', label: translate("Duration (seconds)"), type: 'number', numeric: true, width: '110px', visible: (p: any) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p: any) => asBool(p.anonymous) },
         {
-            key: 'schemeProperties.region', label: 'Region', type: 'text', width: '160px', visible: s3, placeholder: 'us-east-1', refresh: true,
+            key: 'schemeProperties.region', label: translate("Region"), type: 'text', width: '160px', visible: s3, placeholder: translate("us-east-1"), refresh: true,
             // Region helper combo (AdvancedS3SettingsDialog.regionComboBox): picking
             // a known Region id fills the text field; a non-matching typed value
             // snaps the combo to "Custom" (regionFieldUpdated/regionComboBoxActionPerformed).
             append: (p: any, ctx: any) => regionPicker(p, ctx)
         },
-        { key: 'schemeProperties.customHeaders', label: 'Custom HTTP Headers', type: 'keyvalue', mapShape: 'list', visible: s3 },
-        { section: 'SMB Settings', visible: (p: any) => p.scheme === 'SMB' },
-        { key: 'schemeProperties.smbMinVersion', label: 'SMB Minimum Version', type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p: any) => p.scheme === 'SMB' },
-        { key: 'schemeProperties.smbMaxVersion', label: 'SMB Maximum Version', type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p: any) => p.scheme === 'SMB' }
+        { key: 'schemeProperties.customHeaders', label: translate("Custom HTTP Headers"), type: 'keyvalue', mapShape: 'list', visible: s3 },
+        { section: translate("SMB Settings"), visible: (p: any) => p.scheme === 'SMB' },
+        { key: 'schemeProperties.smbMinVersion', label: translate("SMB Minimum Version"), type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p: any) => p.scheme === 'SMB' },
+        { key: 'schemeProperties.smbMaxVersion', label: translate("SMB Maximum Version"), type: 'select', options: SMB_VERSIONS, width: '140px', visible: (p: any) => p.scheme === 'SMB' }
     ];
 }
 
@@ -528,16 +529,16 @@ function afterProcessingBlock(properties: any, onChange: any): any {
                 };
 
                 const rows = [
-                    [labelCell('After Processing Action'), radioCell('afterProcessingAction', [
-                        { value: 'NONE', label: 'None' }, { value: 'MOVE', label: 'Move' }, { value: 'DELETE', label: 'Delete' }])],
-                    [labelCell('Move-to Directory', moveDis), inputCell('moveToDirectory', '320px', moveDis)],
-                    [labelCell('Move-to File Name', moveDis), inputCell('moveToFileName', '220px', moveDis)],
-                    [labelCell('Error Reading Action'), radioCell('errorReadingAction', [
-                        { value: 'NONE', label: 'None' }, { value: 'MOVE', label: 'Move' }, { value: 'DELETE', label: 'Delete' }])],
-                    [labelCell('Error in Response Action'), radioCell('errorResponseAction', [
-                        { value: 'AFTER_PROCESSING', label: 'After Processing Action' }, { value: 'MOVE', label: 'Move' }, { value: 'DELETE', label: 'Delete' }])],
-                    [labelCell('Error Move-to Directory', errDis), inputCell('errorMoveToDirectory', '320px', errDis)],
-                    [labelCell('Error Move-to File Name', errDis), inputCell('errorMoveToFileName', '220px', errDis)]
+                    [labelCell(translate("After Processing Action")), radioCell('afterProcessingAction', [
+                        { value: 'NONE', label: translate("None") }, { value: 'MOVE', label: translate("Move") }, { value: 'DELETE', label: translate("Delete") }])],
+                    [labelCell(translate("Move-to Directory"), moveDis), inputCell('moveToDirectory', '320px', moveDis)],
+                    [labelCell(translate("Move-to File Name"), moveDis), inputCell('moveToFileName', '220px', moveDis)],
+                    [labelCell(translate("Error Reading Action")), radioCell('errorReadingAction', [
+                        { value: 'NONE', label: translate("None") }, { value: 'MOVE', label: translate("Move") }, { value: 'DELETE', label: translate("Delete") }])],
+                    [labelCell(translate("Error in Response Action")), radioCell('errorResponseAction', [
+                        { value: 'AFTER_PROCESSING', label: translate("After Processing Action") }, { value: 'MOVE', label: translate("Move") }, { value: 'DELETE', label: translate("Delete") }])],
+                    [labelCell(translate("Error Move-to Directory"), errDis), inputCell('errorMoveToDirectory', '320px', errDis)],
+                    [labelCell(translate("Error Move-to File Name"), errDis), inputCell('errorMoveToFileName', '220px', errDis)]
                 ];
                 rows.forEach(([lab, ctrl], i) => {
                     lab.style.gridColumn = '1'; lab.style.gridRow = String(i + 1);
@@ -552,7 +553,7 @@ function afterProcessingBlock(properties: any, onChange: any): any {
                 }, FILE_NAME_VARS.map((v: any) => {
                     const item = h('div', {
                         class: 'py-[3px] px-3 cursor-grab font-mono text-[11px] select-none',
-                        title: `Drag into a Move-to / Error field, or click to insert into the last-focused one`,
+                        title: translate("Drag into a Move-to / Error field, or click to insert into the last-focused one"),
                         onClick: () => insertVar(v)
                     }, v);
                     // Draggable: a text/plain ${var} drops natively into the text
@@ -630,52 +631,52 @@ const fileReader = {
             <div>
                 <PollSection properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: 'Connection Settings' },
-                    { key: 'scheme', label: 'Method', type: 'select', options: SCHEMES, refresh: true, width: '160px', onSet: onSchemeChange, append: () => connectorTestButton({ label: 'Test Read', icon: 'folder', path: '/connectors/file/_testRead', channel, properties }) },
-                    { key: 'host', label: 'Directory', type: 'text', width: '420px', disabled: (p: any) => p.scheme !== 'FILE' },
+                    { section: translate("Connection Settings") },
+                    { key: 'scheme', label: translate("Method"), type: 'select', options: SCHEMES, refresh: true, width: '160px', onSet: onSchemeChange, append: () => connectorTestButton({ label: translate("Test Read"), icon: 'folder', path: '/connectors/file/_testRead', channel, properties }) },
+                    { key: 'host', label: translate("Directory"), type: 'text', width: '420px', disabled: (p: any) => p.scheme !== 'FILE' },
                     hostPathField(onChange),
-                    { key: 'fileFilter', label: 'Filename Filter Pattern', type: 'text', width: '220px' },
-                    { key: 'regex', label: 'Regular Expression', type: 'radio', options: YES_NO },
-                    { key: 'directoryRecursion', label: 'Include All Subdirectories', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'ignoreDot', label: 'Ignore . files', type: 'radio', options: YES_NO },
+                    { key: 'fileFilter', label: translate("Filename Filter Pattern"), type: 'text', width: '220px' },
+                    { key: 'regex', label: translate("Regular Expression"), type: 'radio', options: YES_NO },
+                    { key: 'directoryRecursion', label: translate("Include All Subdirectories"), type: 'radio', options: YES_NO, refresh: true },
+                    { key: 'ignoreDot', label: translate("Ignore . files"), type: 'radio', options: YES_NO },
                     {
-                        key: 'anonymous', label: 'Anonymous', type: 'radio', options: YES_NO, refresh: true,
+                        key: 'anonymous', label: translate("Anonymous"), type: 'radio', options: YES_NO, refresh: true,
                         disabled: (p: any) => !anonymousEnabled(p), onSet: applyAnonymous
                     },
-                    { key: 'username', label: (p: any) => p.scheme === 'S3' ? 'AWS Access Key ID' : 'Username', type: 'text', width: '220px', disabled: credentialsDisabled },
-                    { key: 'password', label: (p: any) => p.scheme === 'S3' ? 'AWS Secret Access Key' : 'Password', type: 'password', width: '220px', disabled: credentialsDisabled },
-                    { key: 'timeout', label: 'Timeout (ms)', type: 'number', width: '120px', disabled: (p: any) => !timeoutEnabled(p) },
-                    { key: 'secure', label: 'Secure Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !secureEnabled(p) },
-                    { key: 'passive', label: 'Passive Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !passiveEnabled(p) },
-                    { key: 'validateConnection', label: 'Validate Connection', type: 'radio', options: YES_NO, disabled: (p: any) => !validateEnabled(p) },
+                    { key: 'username', label: (p: any) => p.scheme === 'S3' ? translate("AWS Access Key ID") : translate("Username"), type: 'text', width: '220px', disabled: credentialsDisabled },
+                    { key: 'password', label: (p: any) => p.scheme === 'S3' ? translate("AWS Secret Access Key") : translate("Password"), type: 'password', width: '220px', disabled: credentialsDisabled },
+                    { key: 'timeout', label: translate("Timeout (ms)"), type: 'number', width: '120px', disabled: (p: any) => !timeoutEnabled(p) },
+                    { key: 'secure', label: translate("Secure Mode"), type: 'radio', options: YES_NO, disabled: (p: any) => !secureEnabled(p) },
+                    { key: 'passive', label: translate("Passive Mode"), type: 'radio', options: YES_NO, disabled: (p: any) => !passiveEnabled(p) },
+                    { key: 'validateConnection', label: translate("Validate Connection"), type: 'radio', options: YES_NO, disabled: (p: any) => !validateEnabled(p) },
                     ...schemeSettingsFields(),
-                    { section: 'After Processing' },
+                    { section: translate("After Processing") },
                     afterProcessingBlock(properties, onChange),
-                    { key: 'checkFileAge', label: 'Check File Age', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'fileAge', label: 'File Age (ms)', type: 'number', width: '120px', disabled: (p: any) => !asBool(p.checkFileAge) },
+                    { key: 'checkFileAge', label: translate("Check File Age"), type: 'radio', options: YES_NO, refresh: true },
+                    { key: 'fileAge', label: translate("File Age (ms)"), type: 'number', width: '120px', disabled: (p: any) => !asBool(p.checkFileAge) },
                     // Swing renders File Size as one row: [min] - [max] [Ignore Maximum].
                     // Min/Max stay as separate typed fields (a typed input cannot live
                     // in `append`, which is rebuilt on every repaint); the Ignore Maximum
                     // checkbox is appended to the Maximum field and greys it out when set
                     // (ignoreFileSizeMaximumCheckBox.setEnabled), matching Swing.
-                    { key: 'fileSizeMinimum', label: 'File Size (bytes)', type: 'number', width: '120px' },
+                    { key: 'fileSizeMinimum', label: translate("File Size (bytes)"), type: 'number', width: '120px' },
                     {
-                        key: 'fileSizeMaximum', label: 'to', type: 'number', width: '120px', refresh: true,
+                        key: 'fileSizeMaximum', label: translate("to"), type: 'number', width: '120px', refresh: true,
                         disabled: (p: any) => asBool(p.ignoreFileSizeMaximum),
-                        append: (p: any, ctx: any) => checkbox('Ignore Maximum', asBool(p.ignoreFileSizeMaximum), {
+                        append: (p: any, ctx: any) => checkbox(translate("Ignore Maximum"), asBool(p.ignoreFileSizeMaximum), {
                             onChange: (e: any) => { p.ignoreFileSizeMaximum = e.target.checked; ctx.onChange(); ctx.repaint && ctx.repaint(); }
                         }).el
                     },
-                    { key: 'sortBy', label: 'Sort Files By', type: 'select', width: '120px', options: [
-                        { value: 'date', label: 'Date' },
-                        { value: 'name', label: 'Name' },
-                        { value: 'size', label: 'Size' }
+                    { key: 'sortBy', label: translate("Sort Files By"), type: 'select', width: '120px', options: [
+                        { value: 'date', label: translate("Date") },
+                        { value: 'name', label: translate("Name") },
+                        { value: 'size', label: translate("Size") }
                     ] },
                     {
-                        key: 'binary', label: 'File Type', type: 'radio', refresh: true,
+                        key: 'binary', label: translate("File Type"), type: 'radio', refresh: true,
                         onSet: onFileTypeSet, options: FILE_TYPE_OPTIONS
                     },
-                    { key: 'charsetEncoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.binary) }
+                    { key: 'charsetEncoding', label: translate("Encoding"), type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.binary) }
                 ]} />
             </div>
         );
@@ -687,15 +688,15 @@ const fileReader = {
     // maximum required unless Ignore Maximum is set.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'host', label: 'Directory', when: (p: any) => p.scheme === 'FILE' },
-            { key: 'host', label: 'Host', when: (p: any) => p.scheme !== 'FILE' },
-            { key: 'fileFilter', label: 'Filename Filter Pattern' },
-            { key: 'username', label: 'Username', when: credentialsRequired },
-            { key: 'password', label: 'Password', when: passwordRequired },
-            { key: 'timeout', label: 'Timeout', when: (p: any) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) },
-            { key: 'fileAge', label: 'File Age', when: (p: any) => asBool(p.checkFileAge) },
-            { key: 'fileSizeMinimum', label: 'File Size (bytes)' },
-            { key: 'fileSizeMaximum', label: 'File Size Maximum', when: (p: any) => !asBool(p.ignoreFileSizeMaximum) }
+            { key: 'host', label: translate("Directory"), when: (p: any) => p.scheme === 'FILE' },
+            { key: 'host', label: translate("Host"), when: (p: any) => p.scheme !== 'FILE' },
+            { key: 'fileFilter', label: translate("Filename Filter Pattern") },
+            { key: 'username', label: translate("Username"), when: credentialsRequired },
+            { key: 'password', label: translate("Password"), when: passwordRequired },
+            { key: 'timeout', label: translate("Timeout"), when: (p: any) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) },
+            { key: 'fileAge', label: translate("File Age"), when: (p: any) => asBool(p.checkFileAge) },
+            { key: 'fileSizeMinimum', label: translate("File Size (bytes)") },
+            { key: 'fileSizeMaximum', label: translate("File Size Maximum"), when: (p: any) => !asBool(p.ignoreFileSizeMaximum) }
         ]);
     }
 };
@@ -732,39 +733,39 @@ const fileWriter = {
         return (
             <div>
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: 'Connection Settings' },
-                    { key: 'scheme', label: 'Method', type: 'select', options: SCHEMES, refresh: true, width: '160px', onSet: onWriterSchemeChange, append: () => connectorTestButton({ label: 'Test Write', icon: 'folder', path: '/connectors/file/_testWrite', channel, properties }) },
-                    { key: 'host', label: 'Directory', type: 'text', width: '420px', disabled: (p: any) => p.scheme !== 'FILE' },
+                    { section: translate("Connection Settings") },
+                    { key: 'scheme', label: translate("Method"), type: 'select', options: SCHEMES, refresh: true, width: '160px', onSet: onWriterSchemeChange, append: () => connectorTestButton({ label: translate("Test Write"), icon: 'folder', path: '/connectors/file/_testWrite', channel, properties }) },
+                    { key: 'host', label: translate("Directory"), type: 'text', width: '420px', disabled: (p: any) => p.scheme !== 'FILE' },
                     hostPathField(onChange),
-                    { key: 'outputPattern', label: 'File Name', type: 'text', width: '220px' },
+                    { key: 'outputPattern', label: translate("File Name"), type: 'text', width: '220px' },
                     {
-                        key: 'anonymous', label: 'Anonymous', type: 'radio', options: YES_NO, refresh: true,
+                        key: 'anonymous', label: translate("Anonymous"), type: 'radio', options: YES_NO, refresh: true,
                         disabled: (p: any) => !anonymousEnabled(p), onSet: applyAnonymous
                     },
-                    { key: 'username', label: (p: any) => p.scheme === 'S3' ? 'AWS Access Key ID' : 'Username', type: 'text', width: '220px', disabled: credentialsDisabled },
-                    { key: 'password', label: (p: any) => p.scheme === 'S3' ? 'AWS Secret Access Key' : 'Password', type: 'password', width: '220px', disabled: credentialsDisabled },
-                    { key: 'timeout', label: 'Timeout (ms)', type: 'number', width: '120px', disabled: (p: any) => !timeoutEnabled(p) },
-                    { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'maxIdleTime', label: 'Max Idle Time (ms)', type: 'number', width: '120px', disabled: (p: any) => !asBool(p.keepConnectionOpen) },
-                    { key: 'secure', label: 'Secure Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !secureEnabled(p) },
-                    { key: 'passive', label: 'Passive Mode', type: 'radio', options: YES_NO, disabled: (p: any) => !passiveEnabled(p) },
-                    { key: 'validateConnection', label: 'Validate Connection', type: 'radio', options: YES_NO, disabled: (p: any) => !validateEnabled(p) },
+                    { key: 'username', label: (p: any) => p.scheme === 'S3' ? translate("AWS Access Key ID") : translate("Username"), type: 'text', width: '220px', disabled: credentialsDisabled },
+                    { key: 'password', label: (p: any) => p.scheme === 'S3' ? translate("AWS Secret Access Key") : translate("Password"), type: 'password', width: '220px', disabled: credentialsDisabled },
+                    { key: 'timeout', label: translate("Timeout (ms)"), type: 'number', width: '120px', disabled: (p: any) => !timeoutEnabled(p) },
+                    { key: 'keepConnectionOpen', label: translate("Keep Connection Open"), type: 'radio', options: YES_NO, refresh: true },
+                    { key: 'maxIdleTime', label: translate("Max Idle Time (ms)"), type: 'number', width: '120px', disabled: (p: any) => !asBool(p.keepConnectionOpen) },
+                    { key: 'secure', label: translate("Secure Mode"), type: 'radio', options: YES_NO, disabled: (p: any) => !secureEnabled(p) },
+                    { key: 'passive', label: translate("Passive Mode"), type: 'radio', options: YES_NO, disabled: (p: any) => !passiveEnabled(p) },
+                    { key: 'validateConnection', label: translate("Validate Connection"), type: 'radio', options: YES_NO, disabled: (p: any) => !validateEnabled(p) },
                     ...schemeSettingsFields(),
-                    { section: 'File Writer Settings' },
+                    { section: translate("File Writer Settings") },
                     fileExistsField(),
                     {
                         // Create Temp File is disabled when File Exists=Append
                         // (fileExistsAppendRadioActionPerformed) or scheme=S3.
-                        key: 'temporary', label: 'Create Temp File', type: 'radio', options: YES_NO,
+                        key: 'temporary', label: translate("Create Temp File"), type: 'radio', options: YES_NO,
                         disabled: (p: any) => asBool(p.outputAppend) || p.scheme === 'S3'
                     },
                     {
-                        key: 'binary', label: 'File Type', type: 'radio', refresh: true,
+                        key: 'binary', label: translate("File Type"), type: 'radio', refresh: true,
                         onSet: onFileTypeSet, options: FILE_TYPE_OPTIONS
                     },
-                    { key: 'charsetEncoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.binary) },
-                    { section: 'Template' },
-                    { key: 'template', label: 'Template', type: 'code', minHeight: '260px' }
+                    { key: 'charsetEncoding', label: translate("Encoding"), type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.binary) },
+                    { section: translate("Template") },
+                    { key: 'template', label: translate("Template"), type: 'code', minHeight: '260px' }
                 ]} />
             </div>
         );
@@ -776,13 +777,13 @@ const fileWriter = {
     // check, so it is intentionally skipped here.)
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'host', label: 'Directory', when: (p: any) => p.scheme === 'FILE' },
-            { key: 'host', label: 'Host', when: (p: any) => p.scheme !== 'FILE' },
-            { key: 'outputPattern', label: 'File Name' },
-            { key: 'template', label: 'Template' },
-            { key: 'username', label: 'Username', when: credentialsRequired },
-            { key: 'password', label: 'Password', when: passwordRequired },
-            { key: 'timeout', label: 'Timeout', when: (p: any) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) }
+            { key: 'host', label: translate("Directory"), when: (p: any) => p.scheme === 'FILE' },
+            { key: 'host', label: translate("Host"), when: (p: any) => p.scheme !== 'FILE' },
+            { key: 'outputPattern', label: translate("File Name") },
+            { key: 'template', label: translate("Template") },
+            { key: 'username', label: translate("Username"), when: credentialsRequired },
+            { key: 'password', label: translate("Password"), when: passwordRequired },
+            { key: 'timeout', label: translate("Timeout"), when: (p: any) => ['FTP', 'SFTP', 'SMB'].includes(p.scheme) }
         ]);
     }
 };

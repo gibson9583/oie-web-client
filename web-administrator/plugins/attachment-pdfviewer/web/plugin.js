@@ -1,5 +1,7 @@
 // plugins/attachment-pdfviewer/web/plugin.tsx
+import { scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t: translate } = i18nScope("attachment-pdfviewer");
 var React = platform.React;
 function typeOf(att) {
   const t = att && att.type;
@@ -29,15 +31,15 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id, key, platform3.api.messages, attempt]);
     if (state.key !== key || state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, "Loading PDF\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, translate("Loading PDF\u2026")));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load PDF: ${state.message}`), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, "Retry"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, translate("Could not load PDF: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, translate("Retry")));
     }
     return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement(
       "iframe",
       {
-        title: "PDF attachment",
+        title: translate("PDF attachment"),
         sandbox: "allow-same-origin",
         src: state.src,
         className: "w-full h-[576px] border border-[var(--bg3)] rounded-[4px]"

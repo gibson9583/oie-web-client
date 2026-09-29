@@ -1,3 +1,6 @@
+import { navigationSectionLabel } from '../core/labels.js';
+import { t as translate, tx as richText } from "../core/i18n.js";
+import { isCommitEnter, isComposing } from '../core/keyboard.js';
 /*
  * Command palette — ⌘K / Ctrl+K.
  *
@@ -37,9 +40,9 @@ const MAX_RESULTS = 20;
 const MAX_RECENT = 5;
 
 const SCOPES = {
-    '>': { kind: 'command', label: 'Commands' },
-    '#': { kind: 'channel', label: 'Channels' },
-    '/': { kind: 'view', label: 'Views' }
+    '>': { kind: 'command', label: translate("Commands") },
+    '#': { kind: 'channel', label: translate("Channels") },
+    '/': { kind: 'view', label: translate("Views") }
 };
 
 /* State pip colour, matching the dashboard's vocabulary. */
@@ -124,8 +127,8 @@ function channelEntries(fallback: any) {
         // this file's own header contract — the palette must never surface an
         // entry RBAC hides elsewhere.
         return [
-            checkTask('view', 'doShowChannel') ? { ...base, id: 'chan:' + c.id, hint: 'edit', path: '/channels/' + c.id + '/edit' } : null,
-            checkTask('view', 'doShowMessages') ? { ...base, id: 'chanmsg:' + c.id, hint: 'messages', path: '/messages/' + c.id } : null
+            checkTask('view', 'doShowChannel') ? { ...base, id: 'chan:' + c.id, hint: translate("edit"), path: '/channels/' + c.id + '/edit' } : null,
+            checkTask('view', 'doShowMessages') ? { ...base, id: 'chanmsg:' + c.id, hint: translate("messages"), path: '/messages/' + c.id } : null
         ].filter(Boolean);
     });
 }
@@ -225,11 +228,12 @@ export function CommandPalette() {
     }, []);
 
     const onKeyDown = (e: any) => {
+        if (isComposing(e)) return;
         if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c: any) => Math.min(c + 1, results.length - 1)); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c: any) => Math.max(c - 1, 0)); }
         else if (e.key === 'Home') { e.preventDefault(); setCursor(0); }
         else if (e.key === 'End') { e.preventDefault(); setCursor(results.length - 1); }
-        else if (e.key === 'Enter') { e.preventDefault(); run(results[cursor]); }
+        else if (isCommitEnter(e)) { e.preventDefault(); run(results[cursor]); }
     };
 
     useEffect(() => {
@@ -250,33 +254,33 @@ export function CommandPalette() {
                             e.preventDefault();
                             listRef.current?.parentElement?.querySelector('input')?.focus();
                         }}>
-                        <Dialog.Title className="cmdk-sr">Command palette</Dialog.Title>
+                        <Dialog.Title className="cmdk-sr">{translate("Command palette")}</Dialog.Title>
                         <div className="cmdk-field">
                             <Icon name="search" size={15} />
                             <input type="text" autoComplete="off" spellCheck="false"
-                                placeholder="Search views, channels and commands…"
+                                placeholder={translate("Search views, channels and commands…")}
                                 value={query}
                                 role="combobox"
                                 aria-expanded="true"
                                 aria-controls="cmdk-results"
                                 aria-autocomplete="list"
                                 aria-activedescendant={results[cursor] ? 'cmdk-opt-' + cursor : undefined}
-                                aria-label="Search views, channels and commands"
+                                aria-label={translate("Search views, channels and commands")}
                                 onChange={(e: any) => setQuery(e.target.value)}
                                 onKeyDown={onKeyDown} />
                             {scope && <span className="cmdk-scope">{scope.label}</span>}
                         </div>
 
                         <div className="cmdk-list" id="cmdk-results" role="listbox"
-                            aria-label="Results" ref={listRef}>
+                            aria-label={translate("Results")} ref={listRef}>
                             {results.length === 0 && (
-                                <div className="cmdk-empty">Nothing matches “{query}”.</div>
+                                <div className="cmdk-empty">{translate("Nothing matches “{value1}”.", { value1: query })}</div>
                             )}
                             {results.map((entry: any, i: any) => {
                                 const head = entry.group !== lastGroup ? (lastGroup = entry.group) : null;
                                 return (
                                     <div key={entry.id}>
-                                        {head && <div className="cmdk-group">{head}</div>}
+                                        {head && <div className="cmdk-group">{navigationSectionLabel(head)}</div>}
                                         <div id={'cmdk-opt-' + i} role="option" aria-selected={i === cursor}
                                             className="cmdk-opt"
                                             onMouseMove={() => setCursor(i)}
@@ -295,12 +299,10 @@ export function CommandPalette() {
                         </div>
 
                         <div className="cmdk-foot">
-                            <span><kbd>↑↓</kbd> move</span>
-                            <span><kbd>⏎</kbd> run</span>
-                            <span><kbd>esc</kbd> close</span>
-                            <span className="cmdk-grammar">
-                                <kbd>&gt;</kbd> commands <kbd>#</kbd> channels <kbd>/</kbd> views
-                            </span>
+                            <span>{richText("<e1>↑↓</e1> move", { e1: (chunks: any) => <kbd>{chunks}</kbd> })}</span>
+                            <span>{richText("<e1>⏎</e1> run", { e1: (chunks: any) => <kbd>{chunks}</kbd> })}</span>
+                            <span>{richText("<e1>esc</e1> close", { e1: (chunks: any) => <kbd>{chunks}</kbd> })}</span>
+                            <span className="cmdk-grammar">{richText("<e1>></e1> commands <e2>#</e2> channels <e3>/</e3> views", { e1: (chunks: any) => <kbd>{chunks}</kbd>, e2: (chunks: any) => <kbd>{chunks}</kbd>, e3: (chunks: any) => <kbd>{chunks}</kbd> })}</span>
                         </div>
                     </Dialog.Content>
                 </Dialog.Overlay>

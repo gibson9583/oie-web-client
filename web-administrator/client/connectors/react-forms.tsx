@@ -1,3 +1,4 @@
+import { t as translate, tx as richText } from "../core/i18n.js";
 /*
  * React form layer for connector property panels.
  *
@@ -147,15 +148,15 @@ function KeyValueEditor({ properties, field, onChange, disabled }: { properties:
         <div style={disabled ? { opacity: 0.6 } : undefined}>
             {rows.map((row, i) => (
                 <div key={i} className="flex gap-1.5 mb-1.5">
-                    <input type="text" value={row[0]} placeholder="Name" className="flex-1" disabled={disabled}
+                    <input type="text" value={row[0]} placeholder={translate("Name")} className="flex-1" disabled={disabled}
                         onChange={(e) => { row[0] = e.target.value; tick(); commit(); }} />
-                    <input type="text" value={row[1]} placeholder="Value" className="flex-[2]" disabled={disabled}
+                    <input type="text" value={row[1]} placeholder={translate("Value")} className="flex-[2]" disabled={disabled}
                         onChange={(e) => { row[1] = e.target.value; tick(); commit(); }} />
-                    <button type="button" className="icon-btn" title="Remove" disabled={disabled}
+                    <button type="button" className="icon-btn" title={translate("Remove")} disabled={disabled}
                         onClick={() => { rows.splice(i, 1); commit(); tick(); }}><Icon name="x" /></button>
                 </div>
             ))}
-            <button type="button" className="btn" disabled={disabled} onClick={() => { rows.push(['', '']); tick(); }}>Add</button>
+            <button type="button" className="btn" disabled={disabled} onClick={() => { rows.push(['', '']); tick(); }}>{translate("Add")}</button>
         </div>
     );
 }
@@ -356,7 +357,7 @@ export function PortsInUseButton() {
     const ref = useRef<HTMLSpanElement | null>(null);
     useEffect(() => {
         const host = ref.current!;
-        const btn = taskButton('Ports in Use', 'search', async () => {
+        const btn = taskButton(translate("Ports in Use"), 'search', async () => {
             btn.disabled = true;
             try {
                 const ports = await api.channels.portsInUse();
@@ -364,11 +365,11 @@ export function PortsInUseButton() {
                     .filter((p: any) => p && typeof p === 'object')
                     .map((p: any) => h('tr', h('td.num', String(p.port ?? '')), h('td', String(p.name ?? ''))));
                 modal({
-                    title: 'Ports in Use',
+                    title: translate("Ports in Use"),
                     body: h('table.dt',
-                        h('thead', h('tr', h('th', 'Port'), h('th', 'Channel Name'))),
-                        h('tbody', rows.length ? rows : h('tr', h('td', { colSpan: 2 }, 'No listener ports in use')))),
-                    buttons: [{ label: 'Close', primary: true }]
+                        h('thead', h('tr', h('th', translate("Port")), h('th', translate("Channel Name")))),
+                        h('tbody', rows.length ? rows : h('tr', h('td', { colSpan: 2 }, translate("No listener ports in use"))))),
+                    buttons: [{ label: translate("Close"), primary: true }]
                 });
             } catch (e) {
                 toast(apiErrorMessage(e), 'error');
@@ -384,7 +385,7 @@ export function PortsInUseButton() {
 
 /* ---- 'Test Connection' style button ----------------------------------------- */
 
-export function ConnectorTestButton({ label = 'Test Connection', icon: iconName = 'link', path, channel, properties }: { label?: string; icon?: string; path: string; channel: any; properties: any }) {
+export function ConnectorTestButton({ label = translate("Test Connection"), icon: iconName = 'link', path, channel, properties }: { label?: string; icon?: string; path: string; channel: any; properties: any }) {
     const ref = useRef<HTMLSpanElement | null>(null);
     // Latest props captured by ref so the button (built once) always POSTs the
     // current mutated properties.
@@ -398,7 +399,7 @@ export function ConnectorTestButton({ label = 'Test Connection', icon: iconName 
             try {
                 const result = await postConnectorProperties(s.path, s.properties, s.channel);
                 const type = result && typeof result === 'object' ? String(result.type ?? '') : '';
-                const message = (result && typeof result === 'object' && result.message) || type || 'No response received';
+                const message = (result && typeof result === 'object' && result.message) || type || translate("No response received");
                 if (type === 'SUCCESS') successToast(message);
                 else toast(message, 'error');
             } catch (e) {
@@ -418,7 +419,7 @@ export function ConnectorTestButton({ label = 'Test Connection', icon: iconName 
 export function PollSection({ properties, onChange }: { properties: any; onChange: () => void }) {
     return (
         <div className="cform-section mt-4">
-            <div className="cform-section-title">Polling Settings</div>
+            <div className="cform-section-title">{translate("Polling Settings")}</div>
             <PollSettings properties={properties} onChange={onChange} />
         </div>
     );
@@ -429,10 +430,10 @@ export function PollSection({ properties, onChange }: { properties: any; onChang
    is the largest one the stored ms divides into evenly (so 18000000 → 5 hours,
    5000 → 5 seconds), defaulting to milliseconds. */
 const FREQ_UNITS: Array<{ value: string; label: string; ms: number }> = [
-    { value: 'ms', label: 'milliseconds', ms: 1 },
-    { value: 's', label: 'seconds', ms: 1000 },
-    { value: 'm', label: 'minutes', ms: 60000 },
-    { value: 'h', label: 'hours', ms: 3600000 }
+    { value: 'ms', label: translate("milliseconds"), ms: 1 },
+    { value: 's', label: translate("seconds"), ms: 1000 },
+    { value: 'm', label: translate("minutes"), ms: 60000 },
+    { value: 'h', label: translate("hours"), ms: 3600000 }
 ];
 function deriveFreqUnit(freq: any): string {
     const f = Number(freq) || 0;
@@ -468,17 +469,17 @@ function PollSettings({ properties, onChange }: { properties: any; onChange: () 
     return (
         <div className="form-grid">
             <div className="field">
-                <label>Schedule Type</label>
+                <label>{translate("Schedule Type")}</label>
                 <select value={p.pollingType} onChange={(e) => { p.pollingType = e.target.value; notify(); }}>
-                    <option value="INTERVAL">Interval</option>
-                    <option value="TIME">Time</option>
-                    <option value="CRON">Cron</option>
+                    <option value="INTERVAL">{translate("Interval")}</option>
+                    <option value="TIME">{translate("Time")}</option>
+                    <option value="CRON">{translate("Cron")}</option>
                 </select>
             </div>
 
             {p.pollingType === 'INTERVAL' && (
                 <div className="field">
-                    <label>Polling Frequency</label>
+                    <label>{translate("Polling Frequency")}</label>
                     <div className="flex items-center gap-2">
                         <input type="number" min={0} className="w-[99px]"
                             value={Math.round((Number(p.pollingFrequency ?? 5000)) / unitMs(freqUnit))}
@@ -502,12 +503,12 @@ function PollSettings({ properties, onChange }: { properties: any; onChange: () 
             {p.pollingType === 'TIME' && (
                 <>
                     <div className="field">
-                        <label>Hour (0-23)</label>
+                        <label>{translate("Hour (0-23)")}</label>
                         <input type="number" min={0} max={23} value={p.pollingHour ?? 0}
                             onChange={(e) => { p.pollingHour = parseInt(e.target.value, 10) || 0; notify(); }} />
                     </div>
                     <div className="field">
-                        <label>Minute (0-59)</label>
+                        <label>{translate("Minute (0-59)")}</label>
                         <input type="number" min={0} max={59} value={p.pollingMinute ?? 0}
                             onChange={(e) => { p.pollingMinute = parseInt(e.target.value, 10) || 0; notify(); }} />
                     </div>
@@ -516,19 +517,19 @@ function PollSettings({ properties, onChange }: { properties: any; onChange: () 
 
             {p.pollingType === 'CRON' && (
                 <div className="field">
-                    <label>Cron Jobs</label>
+                    <label>{translate("Cron Jobs")}</label>
                     <div className="span-2">
                         {cron.map((row, i) => (
                             <div key={i} className="flex gap-1.5 mb-1.5">
-                                <input type="text" value={row.expression} placeholder="Cron expression (e.g. 0 */5 * ? * *)" className="flex-[2]"
+                                <input type="text" value={row.expression} placeholder={translate("Cron expression (e.g. 0 */5 * ? * *)")} className="flex-[2]"
                                     onChange={(e) => { row.expression = e.target.value; tick(); commitCron(); }} />
-                                <input type="text" value={row.description} placeholder="Description" className="flex-1"
+                                <input type="text" value={row.description} placeholder={translate("Description")} className="flex-1"
                                     onChange={(e) => { row.description = e.target.value; tick(); commitCron(); }} />
-                                <button type="button" className="icon-btn" title="Remove"
+                                <button type="button" className="icon-btn" title={translate("Remove")}
                                     onClick={() => { cron.splice(i, 1); commitCron(); tick(); }}><Icon name="x" /></button>
                             </div>
                         ))}
-                        <button type="button" className="btn" onClick={() => { cron.push({ expression: '', description: '' }); tick(); }}>Add Cron Job</button>
+                        <button type="button" className="btn" onClick={() => { cron.push({ expression: '', description: '' }); tick(); }}>{translate("Add Cron Job")}</button>
                     </div>
                 </div>
             )}
@@ -538,11 +539,8 @@ function PollSettings({ properties, onChange }: { properties: any; onChange: () 
                     aligning with the Schedule Type / Frequency inputs alongside. */}
                 <label>&nbsp;</label>
                 <div className="min-h-[31px] flex items-center">
-                    <label className="check">
-                        <input type="checkbox" checked={asBool(p.pollOnStart)}
-                            onChange={(e) => { p.pollOnStart = e.target.checked; notify(); }} />
-                        Poll Once on Start
-                    </label>
+                    <label className="check">{richText("{value1}Poll Once on Start", { value1: <input type="checkbox" checked={asBool(p.pollOnStart)}
+                            onChange={(e) => { p.pollOnStart = e.target.checked; notify(); }} /> })}</label>
                 </div>
             </div>
 
@@ -560,13 +558,13 @@ function PollSettings({ properties, onChange }: { properties: any; onChange: () 
    is the java.util.Calendar constant used to index the inactiveDays boolean[8]
    (SUNDAY=1 … SATURDAY=7; element 0 is unused). */
 const POLL_DAYS: Array<{ label: string; idx: number; title: string }> = [
-    { label: 'S', idx: 1, title: 'Sunday' },
-    { label: 'M', idx: 2, title: 'Monday' },
-    { label: 'T', idx: 3, title: 'Tuesday' },
-    { label: 'W', idx: 4, title: 'Wednesday' },
-    { label: 'Th', idx: 5, title: 'Thursday' },
-    { label: 'F', idx: 6, title: 'Friday' },
-    { label: 'S', idx: 7, title: 'Saturday' }
+    { label: translate("S"), idx: 1, title: translate("Sunday") },
+    { label: translate("M"), idx: 2, title: translate("Monday") },
+    { label: translate("T"), idx: 3, title: translate("Tuesday") },
+    { label: translate("W"), idx: 4, title: translate("Wednesday") },
+    { label: translate("Th"), idx: 5, title: translate("Thursday") },
+    { label: translate("F"), idx: 6, title: translate("Friday") },
+    { label: translate("S"), idx: 7, title: translate("Saturday") }
 ];
 
 /* Port of AdvancedPollingSettingsDialog. Binds the existing
@@ -613,32 +611,26 @@ function PollAdvancedSettings({ p, pollingType, onChange }: { p: any; pollingTyp
     return (
         <div className="span-2 my-2.5">
             <button type="button" className="btn" onClick={() => setOpen((o) => !o)}>
-                {open ? 'Hide Advanced Settings' : 'Advanced Settings'}
+                {open ? translate("Hide Advanced Settings") : translate("Advanced Settings")}
             </button>
 
             {open && (
                 <div className="cform-section mt-2">
-                    <div className="cform-section-title">Advanced Settings</div>
+                    <div className="cform-section-title">{translate("Advanced Settings")}</div>
                     <div className="form-grid">
                         <div className="field">
-                            <label>Active Days</label>
+                            <label>{translate("Active Days")}</label>
                             <div className="radio-group inline-row">
-                                <label className="check">
-                                    <input type="radio" name={`poll-days-${uid}`} checked={weekly}
-                                        onChange={() => { adv.weekly = true; notify(); }} />
-                                    Weekly
-                                </label>
-                                <label className="check">
-                                    <input type="radio" name={`poll-days-${uid}`} checked={!weekly}
-                                        onChange={() => { adv.weekly = false; notify(); }} />
-                                    Monthly
-                                </label>
+                                <label className="check">{richText("{value1}Weekly", { value1: <input type="radio" name={`poll-days-${uid}`} checked={weekly}
+                                        onChange={() => { adv.weekly = true; notify(); }} /> })}</label>
+                                <label className="check">{richText("{value1}Monthly", { value1: <input type="radio" name={`poll-days-${uid}`} checked={!weekly}
+                                        onChange={() => { adv.weekly = false; notify(); }} /> })}</label>
                             </div>
                         </div>
 
                         {weekly ? (
                             <div className="field">
-                                <label>Days of Week</label>
+                                <label>{translate("Days of Week")}</label>
                                 <div className="radio-group inline-row min-h-[31px] items-center">
                                     {POLL_DAYS.map((d) => (
                                         <label className="check" key={d.idx} title={d.title}>
@@ -651,30 +643,24 @@ function PollAdvancedSettings({ p, pollingType, onChange }: { p: any; pollingTyp
                             </div>
                         ) : (
                             <div className="field">
-                                <label>Day of Month (1-31)</label>
+                                <label>{translate("Day of Month (1-31)")}</label>
                                 {numField(adv.dayOfMonth ?? 1, 1, 31, (v) => { adv.dayOfMonth = Math.min(31, Math.max(1, v || 1)); })}
                             </div>
                         )}
 
                         <div className="field">
-                            <label>Active Time</label>
+                            <label>{translate("Active Time")}</label>
                             <div className="radio-group inline-row">
-                                <label className="check">
-                                    <input type="radio" name={`poll-time-${uid}`} disabled={!timeEnabled}
-                                        checked={allDay} onChange={() => { adv.allDay = true; notify(); }} />
-                                    All Day
-                                </label>
-                                <label className="check">
-                                    <input type="radio" name={`poll-time-${uid}`} disabled={!timeEnabled}
-                                        checked={!allDay} onChange={() => { adv.allDay = false; notify(); }} />
-                                    Range
-                                </label>
+                                <label className="check">{richText("{value1}All Day", { value1: <input type="radio" name={`poll-time-${uid}`} disabled={!timeEnabled}
+                                        checked={allDay} onChange={() => { adv.allDay = true; notify(); }} /> })}</label>
+                                <label className="check">{richText("{value1}Range", { value1: <input type="radio" name={`poll-time-${uid}`} disabled={!timeEnabled}
+                                        checked={!allDay} onChange={() => { adv.allDay = false; notify(); }} /> })}</label>
                             </div>
                         </div>
 
                         {rangeEnabled && (
                             <div className="field span-2">
-                                <label>Time Range (Start - End, H:M 24h)</label>
+                                <label>{translate("Time Range (Start - End, H:M 24h)")}</label>
                                 <div className="flex gap-1.5 items-center">
                                     {numField(adv.startingHour ?? 0, 0, 23, (v) => { adv.startingHour = v; })}
                                     <span>:</span>
@@ -715,7 +701,7 @@ export function TransmissionModePanel({ properties, onChange }: { properties: an
     const modeOf = () => modes.find((m) => m.name === tm.pluginPointName);
 
     const mode = modeOf();
-    const sample = mode && mode.sampleFrame ? mode.sampleFrame(tm) : '<Message Data>';
+    const sample = mode && mode.sampleFrame ? mode.sampleFrame(tm) : translate("<Message Data>");
 
     const openSettings = () => {
         const m = modeOf();
@@ -726,9 +712,9 @@ export function TransmissionModePanel({ properties, onChange }: { properties: an
         <div className="mb-4">
             <div className="cform">
                 <div className="cform-section">
-                    <div className="cform-section-title">Transmission Mode</div>
+                    <div className="cform-section-title">{translate("Transmission Mode")}</div>
                     <div className="cform-grid">
-                        <label className="cform-label">Transmission Mode:</label>
+                        <label className="cform-label">{translate("Transmission Mode:")}</label>
                         <div className="cform-control">
                             <div className="flex gap-1.5 items-center">
                                 <select value={tm.pluginPointName} className="w-[162px]"
@@ -742,12 +728,12 @@ export function TransmissionModePanel({ properties, onChange }: { properties: an
                                     {modes.map((m) => <option key={m.name} value={m.name}>{m.label}</option>)}
                                 </select>
                                 {mode && mode.openSettings && (
-                                    <button type="button" className="icon-btn" title="Transmission Mode Settings"
+                                    <button type="button" className="icon-btn" title={translate("Transmission Mode Settings")}
                                         onClick={openSettings}><Icon name="settings" /></button>
                                 )}
                             </div>
                         </div>
-                        <label className="cform-label">Sample Frame:</label>
+                        <label className="cform-label">{translate("Sample Frame:")}</label>
                         <div className="cform-control"><span className="mono text-text-faint text-[11px]">{sample}</span></div>
                     </div>
                 </div>

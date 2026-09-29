@@ -1,3 +1,4 @@
+import { t as translate } from "./i18n.js";
 import api from './api.js';
 import { captureEngineSession } from './engine-fetch.js';
 
@@ -99,11 +100,11 @@ export async function persistLibraryAssociations(channel: any, ref: any, version
         assertSession();
         const byId = new Map(current.map(library => [library.id, library]));
         for (const id of intents) {
-            if (!byId.has(id)) throw new Error('A selected code template library was removed. Review the pending selections before saving.');
+            if (!byId.has(id)) throw new Error(translate("A selected code template library was removed. Review the pending selections before saving."));
         }
         let needsWrite = false;
         const payload = current.map(library => {
-            if (!library.id || !Number.isFinite(Number(library.revision))) throw new Error('The engine returned an invalid code template library. Save was stopped.');
+            if (!library.id || !Number.isFinite(Number(library.revision))) throw new Error(translate("The engine returned an invalid code template library. Save was stopped."));
             const copy = JSON.parse(JSON.stringify(library));
             if (intents.includes(library.id) && libraryEnabledFor(library, channel.id) !== state.checked.get(library.id)) {
                 needsWrite = true;
@@ -122,7 +123,7 @@ export async function persistLibraryAssociations(channel: any, ref: any, version
             const result = await api.codeTemplates.bulkUpdate(payload, [], [], [], override);
             assertSession();
             if (String(result?.overrideNeeded) === 'true') {
-                if (override || !confirmOverwrite) throw new Error('Code template libraries changed while saving. Your selections are retained; retry to merge them with the current libraries.');
+                if (override || !confirmOverwrite) throw new Error(translate("Code template libraries changed while saving. Your selections are retained; retry to merge them with the current libraries."));
                 const overwriteAccepted = await confirmOverwrite();
                 assertSession();
                 if (!overwriteAccepted) return false;
@@ -130,7 +131,7 @@ export async function persistLibraryAssociations(channel: any, ref: any, version
                 // libraries and memberships that changed while its prompt was open.
                 return attempt(true);
             }
-            if (String(result?.librariesSuccess) !== 'true') throw new Error('Code template library changes were not confirmed. Your selections are retained for retry.');
+            if (String(result?.librariesSuccess) !== 'true') throw new Error(translate("Code template library changes were not confirmed. Your selections are retained for retry."));
         }
         // Includes a lost-response retry whose membership already matches. Checkpoint
         // only after the server confirms this stage, independently of later stages.
@@ -161,7 +162,7 @@ export async function saveDependencyChanges(add: Edge[], remove: Edge[]): Promis
     assertSession();
     const keys = new Set(persisted.map(key));
     if (add.some(edge => !keys.has(key(edge))) || remove.some(edge => keys.has(key(edge)))) {
-        throw new Error('The engine did not persist the selected dependency changes. Check for circular dependencies or concurrent edits. Your selections are retained.');
+        throw new Error(translate("The engine did not persist the selected dependency changes. Check for circular dependencies or concurrent edits. Your selections are retained."));
     }
     return persisted;
 }

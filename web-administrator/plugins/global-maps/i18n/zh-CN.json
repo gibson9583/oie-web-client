@@ -1,0 +1,13 @@
+{
+  "Channel<e1>{value2}</e1>": "通道<e1>{value2}</e1>",
+  "Close": "关闭",
+  "Double-click for the full value": "双击查看完整值",
+  "Global Map Value": "全局映射值",
+  "Global Maps": "全局映射",
+  "Global maps unavailable: {value1}": "全局映射不可用：{value1}",
+  "Key<e1>{value2}</e1>": "键<e1>{value2}</e1>",
+  "No global map variables are set.": "未设置全局映射变量。",
+  "Server Id<e1>{value2}</e1>": "服务器 ID<e1>{value2}</e1>",
+  "Server {value1}": "服务器 {value1}",
+  "Value<e1>{value2}</e1>": "值<e1>{value2}</e1>"
+}

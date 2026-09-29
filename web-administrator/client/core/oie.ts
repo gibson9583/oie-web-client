@@ -1,3 +1,5 @@
+import { t as translate } from "./i18n.js";
+import { t } from './i18n.js';
 /*
  * Engine model helpers.
  *
@@ -90,8 +92,12 @@ export function statePip(state: string): 'ok' | 'warn' | 'err' | 'busy' | '' {
 }
 
 export function stateLabel(state: string | null | undefined): string {
-    if (!state) return 'Unknown';
-    return state.charAt(0) + state.slice(1).toLowerCase();
+    const labels: Record<string, string> = {
+        STARTED: t('Started'), STARTING: t('Starting'), STOPPED: t('Stopped'), STOPPING: t('Stopping'),
+        PAUSED: t('Paused'), PAUSING: t('Pausing'), UNDEPLOYED: t('Undeployed'), DEPLOYING: t('Deploying'),
+        UNDEPLOYING: t('Undeploying'), SYNCING: t('Syncing'), UNKNOWN: t('Unknown')
+    };
+    return state ? labels[state] ?? state : t('Unknown');
 }
 
 export const MESSAGE_STATUSES: string[] = ['RECEIVED', 'FILTERED', 'TRANSFORMED', 'SENT', 'QUEUED', 'ERROR', 'PENDING'];
@@ -113,20 +119,20 @@ export function messageStatusTag(status: string): 'accent' | 'red' | 'blue' | 'a
 /* ---- filter / transformer element types ---------------------------------------------- */
 
 export const STEP_TYPES: Record<string, { label: string }> = {
-    'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': { label: 'JavaScript' },
-    'com.mirth.connect.plugins.mapper.MapperStep': { label: 'Mapper' },
-    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': { label: 'Message Builder' },
-    'com.mirth.connect.plugins.xsltstep.XsltStep': { label: 'XSLT Step' },
-    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': { label: 'Destination Set Filter' },
-    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': { label: 'External Script' },
-    'com.mirth.connect.model.IteratorStep': { label: 'Iterator' }
+    'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': { label: translate("JavaScript") },
+    'com.mirth.connect.plugins.mapper.MapperStep': { label: translate("Mapper") },
+    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': { label: translate("Message Builder") },
+    'com.mirth.connect.plugins.xsltstep.XsltStep': { label: translate("XSLT Step") },
+    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': { label: translate("Destination Set Filter") },
+    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': { label: translate("External Script") },
+    'com.mirth.connect.model.IteratorStep': { label: translate("Iterator") }
 };
 
 export const RULE_TYPES: Record<string, { label: string }> = {
-    'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': { label: 'JavaScript' },
-    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': { label: 'Rule Builder' },
-    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': { label: 'External Script' },
-    'com.mirth.connect.model.IteratorRule': { label: 'Iterator' }
+    'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': { label: translate("JavaScript") },
+    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': { label: translate("Rule Builder") },
+    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': { label: translate("External Script") },
+    'com.mirth.connect.model.IteratorRule': { label: translate("Iterator") }
 };
 
 export function elementTypeLabel(type: string): string {
@@ -377,29 +383,29 @@ export function encodeChannelTemplates<T>(channel: T): T {
    (the polymorphic type the engine needs to construct the connector). */
 function connectorProblems(connector: unknown, label: unknown, problems: string[]): void {
     if (!connector || typeof connector !== 'object') {
-        problems.push(`${label} is missing`);
+        problems.push(translate("{value1} is missing", { value1: String(label) }));
         return;
     }
     const c = connector as OieObject;
-    if (!c.transportName) problems.push(`${label} type is not set`);
+    if (!c.transportName) problems.push(translate("{value1} type is not set", { value1: String(label) }));
     const p = c.properties;
     if (!p || typeof p !== 'object' || !p['@class']) {
-        problems.push(`${label} has no connector settings (properties are missing)`);
+        problems.push(translate("{value1} has no connector settings (properties are missing)", { value1: String(label) }));
     }
 }
 
 export function validateChannel(channel: OieObject | null | undefined): string[] {
     const problems: string[] = [];
-    if (!channel || typeof channel !== 'object') return ['Channel is empty'];
-    if (!channel.name || !String(channel.name).trim()) problems.push('Channel name is required');
-    connectorProblems(channel.sourceConnector, 'Source connector', problems);
+    if (!channel || typeof channel !== 'object') return [t('Channel is empty')];
+    if (!channel.name || !String(channel.name).trim()) problems.push(t('Channel name is required'));
+    connectorProblems(channel.sourceConnector, t('Source connector'), problems);
     const dests = destinationsOf(channel);
-    if (!dests.length) problems.push('At least one destination connector is required');
+    if (!dests.length) problems.push(t('At least one destination connector is required'));
     // Swing never lets a channel reach this state (its disable/delete actions
     // refuse to drop the last enabled destination); catch it at save time too
     // so an imported or previously saved channel can't be persisted this way.
     else if (!dests.some(d => d && d.enabled !== false && (d.enabled as unknown) !== 'false')) {
-        problems.push('At least one destination must be enabled');
+        problems.push(t('At least one destination must be enabled'));
     }
     dests.forEach((d, i) => connectorProblems(d, d && (d.name || `Destination ${d.metaDataId ?? i + 1}`), problems));
     return problems;

@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 /*
  * Shared data-type properties editor — renders the grouped property panels for
  * a data type (the web equivalent of the Swing DataTypePropertiesDialog), or a
@@ -23,26 +24,26 @@ function openScriptModal(value: any, onSave: any) {
     let draft = String(value ?? '');
     const editor = createCodeEditor({ value: draft, language: 'javascript', minHeight: '360px', onChange: (v: any) => { draft = v; } });
     modal({
-        title: 'Script',
+        title: translate("Script"),
         size: 'wide',
         body: editor.el,
         onClose: () => { editor.dispose && editor.dispose(); },
         buttons: [
-            { label: 'Open File…', onClick: async () => { const file = await pickFile('.js,.txt'); if (file) { draft = file.content; editor.setValue(file.content); } return false; } },
+            { label: translate("Open File…"), onClick: async () => { const file = await pickFile('.js,.txt'); if (file) { draft = file.content; editor.setValue(file.content); } return false; } },
             {
-                label: 'Validate Script',
+                label: translate("Validate Script"),
                 // Engine-side Rhino compile check (these scripts execute on the
                 // engine, where E4X is legal — a local `new Function` parse
                 // can't accept it, and it would need 'unsafe-eval' in the CSP).
                 onClick: async () => {
                     const r = await validateScript(draft);
-                    if (r.ok === true) toast('Script is valid.');
-                    else toast(r.ok === false ? `Invalid script: ${r.message}` : r.message, r.ok === false ? 'error' : 'warn');
+                    if (r.ok === true) toast(translate("Script is valid."));
+                    else toast(r.ok === false ? translate("Invalid script: {value1}", { value1: String(r.message) }) : r.message, r.ok === false ? 'error' : 'warn');
                     return false;
                 }
             },
-            { label: 'Cancel' },
-            { label: 'OK', primary: true, onClick: () => onSave(draft === '' ? null : draft) }
+            { label: translate("Cancel") },
+            { label: translate("OK"), primary: true, onClick: () => onSave(draft === '' ? null : draft) }
         ]
     });
 }
@@ -59,13 +60,13 @@ function groupSpecsFor(def: any, direction: any, connectorType: any) {
     const has = (key: any) => def.groups.some((g: any) => g.key === key);
     const specs: any[] = [];
     if (direction === 'outbound') {
-        if (has('deserializationProperties')) specs.push({ key: 'deserializationProperties', label: 'Deserialization' });
-        if (has('serializationProperties')) specs.push({ key: 'serializationProperties', label: 'Template Serialization' });
+        if (has('deserializationProperties')) specs.push({ key: 'deserializationProperties', label: translate("Deserialization") });
+        if (has('serializationProperties')) specs.push({ key: 'serializationProperties', label: translate("Template Serialization") });
     } else {
-        if (has('serializationProperties')) specs.push({ key: 'serializationProperties', label: 'Serialization' });
-        if (has('batchProperties') && connectorTypes.includes('SOURCE')) specs.push({ key: 'batchProperties', label: 'Batch' });
-        if (has('responseGenerationProperties') && connectorTypes.includes('SOURCE')) specs.push({ key: 'responseGenerationProperties', label: 'Response Generation' });
-        if (has('responseValidationProperties') && connectorTypes.includes('RESPONSE')) specs.push({ key: 'responseValidationProperties', label: 'Response Validation' });
+        if (has('serializationProperties')) specs.push({ key: 'serializationProperties', label: translate("Serialization") });
+        if (has('batchProperties') && connectorTypes.includes('SOURCE')) specs.push({ key: 'batchProperties', label: translate("Batch") });
+        if (has('responseGenerationProperties') && connectorTypes.includes('SOURCE')) specs.push({ key: 'responseGenerationProperties', label: translate("Response Generation") });
+        if (has('responseValidationProperties') && connectorTypes.includes('RESPONSE')) specs.push({ key: 'responseValidationProperties', label: translate("Response Validation") });
     }
     return specs;
 }
@@ -143,7 +144,7 @@ function FieldControl({ groupObj, f, notify }: any) {
                 <Field label={f.label} hint={f.hint}>
                     <button type="button" className="btn btn-sm"
                         onClick={() => openScriptModal(groupObj[f.key], (v: any) => { groupObj[f.key] = v; notify(); })}>
-                        {value && String(value).trim() ? 'Edit' : 'Edit…'}
+                        {value && String(value).trim() ? translate("Edit") : translate("Edit…")}
                     </button>
                 </Field>
             );
@@ -162,9 +163,9 @@ const GROUP_LABEL_CLASS = 'font-semibold text-[11px] uppercase tracking-[0.04em]
 /* Unknown/plugin data types: raw JSON editor over the properties object. */
 function RawProperties({ typeName, props, onReplace }: any) {
     return (
-        <Field label="Properties (JSON)" hint={`No schema registered for "${typeName}" — edit the raw properties`}>
+        <Field label={translate("Properties (JSON)")} hint={translate("No schema registered for \"{value1}\" — edit the raw properties", { value1: String(typeName) })}>
             <textarea rows={14} spellCheck={false} defaultValue={JSON.stringify(props ?? {}, null, 2)}
-                onBlur={(e: any) => { try { onReplace(JSON.parse(e.target.value)); } catch (err: any) { toast(`Invalid JSON: ${err.message}`, 'error'); } }} />
+                onBlur={(e: any) => { try { onReplace(JSON.parse(e.target.value)); } catch (err: any) { toast(translate("Invalid JSON: {value1}", { value1: String(err.message) }), 'error'); } }} />
         </Field>
     );
 }
@@ -188,7 +189,7 @@ export function DataTypePropertiesEditor({ typeName, props, version, direction =
     if (!def) return <RawProperties typeName={typeName} props={props} onReplace={onReplace || (() => {})} />;
 
     const specs = groupSpecsFor(def, direction, connectorType);
-    if (!specs.length) return <div className="text-text-faint py-2 px-0">This data type has no properties.</div>;
+    if (!specs.length) return <div className="text-text-faint py-2 px-0">{translate("This data type has no properties.")}</div>;
 
     const defaults = def.defaults(version);
     const byKey = new Map(def.groups.map((g: any) => [g.key, g]));

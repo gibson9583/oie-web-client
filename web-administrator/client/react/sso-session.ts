@@ -1,3 +1,4 @@
+import { t as translate } from '../core/i18n.js';
 /*
  * Did THIS browser session sign in through SSO?
  *
@@ -80,4 +81,4 @@ export function isSsoSelf(user: any, me: any): boolean {
 }
 
 /** Shown wherever a password control is greyed out instead of removed. */
-export const SSO_MANAGED_NOTE = 'Your password is managed by your identity provider.';
+export const SSO_MANAGED_NOTE = translate("Your password is managed by your identity provider.");

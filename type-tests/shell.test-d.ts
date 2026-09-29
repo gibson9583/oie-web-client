@@ -72,3 +72,8 @@ platform.registerSettingsPanel({
         return null;
     },
 });
+import { platform as i18nPlatform } from '@oie/web-shell';
+const translatedLabel: string = i18nPlatform.i18n.scope('example').t('Example');
+i18nPlatform.registerNavItem({id:'localized-example',path:'/localized-example',label:translatedLabel,section:'stable-group',sectionLabel:translatedLabel});
+// @ts-expect-error the host's catalog registration is not a plugin API
+i18nPlatform.i18n.registerCatalog('example', {});

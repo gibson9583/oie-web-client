@@ -1,3 +1,4 @@
+import { t as translate } from "./i18n.js";
 import { readZip } from './zip.js';
 
 export interface MessageImportFile { name: string; content: string }
@@ -16,14 +17,14 @@ export function* readTar(data: Uint8Array, recursive = true): Generator<{ name: 
         if (header.every(byte => byte === 0)) return;
         const octal = (start: number, length: number) => {
             const value = text(header.subarray(start, start + length)).trim();
-            if (!/^[0-7]*$/.test(value)) throw new Error('Invalid TAR numeric field');
+            if (!/^[0-7]*$/.test(value)) throw new Error(translate("Invalid TAR numeric field"));
             return value ? parseInt(value, 8) : 0;
         };
         const checksum = header.reduce((sum, byte, i) => sum + (i >= 148 && i < 156 ? 32 : byte), 0);
-        if (checksum !== octal(148, 8)) throw new Error('Invalid TAR header checksum');
+        if (checksum !== octal(148, 8)) throw new Error(translate("Invalid TAR header checksum"));
         const size = octal(124, 12);
         const start = offset + 512;
-        if (!Number.isSafeInteger(size) || start + size > data.length) throw new Error('Truncated TAR archive');
+        if (!Number.isSafeInteger(size) || start + size > data.length) throw new Error(translate("Truncated TAR archive"));
         const content = data.subarray(start, start + size);
         const type = header[156];
         const prefix = text(header.subarray(345, 500));
@@ -35,7 +36,7 @@ export function* readTar(data: Uint8Array, recursive = true): Generator<{ name: 
                 const space = content.indexOf(32, pos);
                 const length = Number(text(content.subarray(pos, space)));
                 if (space < pos || !Number.isInteger(length) || length <= space - pos + 1 || pos + length > content.length) {
-                    throw new Error('Invalid TAR extended header');
+                    throw new Error(translate("Invalid TAR extended header"));
                 }
                 const field = decoder.decode(content.subarray(space + 1, pos + length - 1));
                 const equals = field.indexOf('=');
@@ -54,7 +55,7 @@ export function* readTar(data: Uint8Array, recursive = true): Generator<{ name: 
         if (!recursive && path.replace(/^(\.\/)+/, '').includes('/')) continue;
         yield { name: path, data: content };
     }
-    if (data.length % 512) throw new Error('Truncated TAR archive');
+    if (data.length % 512) throw new Error(translate("Truncated TAR archive"));
 }
 
 export async function* readMessageArchive(
@@ -103,8 +104,8 @@ function readFile(file: File, binary: boolean): Promise<string | ArrayBuffer> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string | ArrayBuffer);
-        reader.onerror = () => reject(reader.error || new Error(`Could not read ${file.name}`));
-        reader.onabort = () => reject(new Error(`Reading ${file.name} was cancelled`));
+        reader.onerror = () => reject(reader.error || new Error(translate("Could not read {value1}", { value1: String(file.name) })));
+        reader.onabort = () => reject(new Error(translate("Reading {value1} was cancelled", { value1: String(file.name) })));
         if (binary) reader.readAsArrayBuffer(file); else reader.readAsText(file);
     });
 }

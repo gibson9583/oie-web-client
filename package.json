@@ -16,16 +16,20 @@
     "e2e": "playwright test",
     "e2e:live": "E2E_LIVE=1 playwright test --project=live",
     "pretest": "node web-administrator/tools/build-vendor.mjs",
-    "test": "npm test -w web-administrator && node --test tools/*.test.mjs",
+    "test": "npm test -w web-administrator && node --test tools/*.test.mjs && npm run i18n:check",
     "build:war": "npm run build:war -w web-administrator",
     "wiki:screenshots": "playwright test --config tools/wiki-playwright.config.ts",
     "vendor:zip": "esbuild node_modules/@zip.js/zip.js/lib/zip-core.js --bundle --format=esm --minify --legal-comments=none --outfile=web-administrator/client/vendor/zipjs.min.js",
-    "gen:userapi": "node web-administrator/tools/gen-userapi.mjs"
+    "gen:userapi": "node web-administrator/tools/gen-userapi.mjs",
+    "i18n:extract": "node tools/i18n-extract.mjs",
+    "i18n:check": "node tools/i18n-extract.mjs --check && node tools/i18n-check.mjs && node tools/i18n-literals.mjs",
+    "build:i18n-test": "npm run build -w web-administrator && npm exec -w web-administrator -- vite build --mode i18n-test"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@babel/core": "^8.0.1",
     "@babel/eslint-parser": "^8.0.1",
+    "@babel/parser": "^8.0.6",
     "@babel/plugin-syntax-jsx": "^8.0.1",
     "@babel/preset-typescript": "^8.0.1",
     "@playwright/test": "^1.62.0",

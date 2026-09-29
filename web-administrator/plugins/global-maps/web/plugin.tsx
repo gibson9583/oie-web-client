@@ -1,3 +1,5 @@
+import { compareText, scope as i18nScope } from "@oie/web-ui";
+const { t: translate, tx: richText } = i18nScope("global-maps");
 /*
  * Global Maps — web admin plugin (React).
  *
@@ -71,17 +73,17 @@ export function register(platform: Platform) {
        React tree), matching the original. */
     function showValue(row: any) {
         modal({
-            title: 'Global Map Value',
+            title: translate("Global Map Value"),
             size: 'wide',
             body: h('div', { class: 'flex flex-col gap-2 min-w-[558px]' },
                 h('div', { class: 'flex gap-[13px] flex-wrap text-[11px]' },
-                    h('span.mono.text-text-faint', `Server ${row.serverId}`),
+                    h('span.mono.text-text-faint', translate("Server {value1}", { value1: String(row.serverId) })),
                     h('span.mono', row.channel),
                     h('span.mono', { class: 'font-[650]' }, row.key)),
                 h('pre', {
                     class: 'm-0 whitespace-pre-wrap [word-break:break-word] max-h-[60vh] overflow-x-hidden overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]'
                 }, row.value)),
-            buttons: [{ label: 'Close', primary: true }]
+            buttons: [{ label: translate("Close"), primary: true }]
         });
     }
 
@@ -154,7 +156,7 @@ export function register(platform: Platform) {
         const sorted = React.useMemo(() => {
             if (!sort.key) return filtered;
             const val = (r: any) => String((sort.key === 'channel' ? r.channel : r[sort.key]) ?? '').toLowerCase();
-            return [...filtered].sort((a: any, b: any) => val(a).localeCompare(val(b)) * sort.dir);
+            return [...filtered].sort((a: any, b: any) => compareText(val(a), val(b)) * sort.dir);
         }, [filtered, sort]);
         const toggleSort = (key: any) => setSort((s: any) => (s.key === key ? { key, dir: -s.dir } : { key, dir: 1 }));
         const arrow = (key: any) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
@@ -163,21 +165,19 @@ export function register(platform: Platform) {
         if (error) {
             body = (
                 <tr><td colSpan={4} className="text-text-faint p-3">
-                    {`Global maps unavailable: ${error}`}
+                    {translate("Global maps unavailable: {value1}", { value1: String(error) })}
                 </td></tr>
             );
         } else if (!filtered.length) {
             body = (
-                <tr><td colSpan={4} className="text-text-faint p-3">
-                    No global map variables are set.
-                </td></tr>
+                <tr><td colSpan={4} className="text-text-faint p-3">{translate("No global map variables are set.")}</td></tr>
             );
         } else {
             body = sorted.map((r: any, i: any) => {
                 const value = r.value.replace(/\s+/g, ' ').trim();
                 return (
                     <tr key={`${r.serverId}|${r.channelId}|${r.key}|${i}`}
-                        className="cursor-pointer" title="Double-click for the full value"
+                        className="cursor-pointer" title={translate("Double-click for the full value")}
                         onDoubleClick={() => showValue(r)}>
                         <td className="mono text-text-faint">{r.serverId}</td>
                         <td>{r.channel}</td>
@@ -193,10 +193,10 @@ export function register(platform: Platform) {
                 <table className="dt global-maps">
                     <thead>
                         <tr>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('serverId')}>Server Id<span className="sort-arrow">{arrow('serverId')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('channel')}>Channel<span className="sort-arrow">{arrow('channel')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('key')}>Key<span className="sort-arrow">{arrow('key')}</span></th>
-                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('value')}>Value<span className="sort-arrow">{arrow('value')}</span></th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('serverId')}>{richText("Server Id<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('serverId') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('channel')}>{richText("Channel<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('channel') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('key')}>{richText("Key<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('key') })}</th>
+                            <th className="sortable" style={{ cursor: 'pointer' }} onClick={() => toggleSort('value')}>{richText("Value<e1>{value2}</e1>", { e1: (chunks: any) => <span className="sort-arrow">{chunks}</span>, value2: arrow('value') })}</th>
                         </tr>
                     </thead>
                     <tbody>{body}</tbody>
@@ -207,7 +207,7 @@ export function register(platform: Platform) {
 
     platform.registerDashboardTab({
         id: 'global-maps',
-        label: 'Global Maps',
+        label: translate("Global Maps"),
         order: 30,
         component: GlobalMapsTab
     });

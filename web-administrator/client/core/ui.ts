@@ -1,3 +1,5 @@
+import { t as translate, compareText, formatNumber } from "./i18n.js";
+import { isCommitEnter } from './keyboard.js';
 /*
  * Tiny DOM toolkit + shared components (no framework, no build step).
  *
@@ -172,7 +174,7 @@ export { icon };
 
 export function fmtNumber(n: number | string | null | undefined): string {
     if (n === null || n === undefined || n === '') return '0';
-    return Number(n).toLocaleString();
+    return formatNumber(Number(n));
 }
 
 export function fmtDate(value: any): string {
@@ -248,8 +250,8 @@ function domCornerToast(message: string, type: ToastType, timeout: number): UiHa
 export function toast(message: any, type: ToastType = 'info', timeout = 4200): UiHandle {
     if (type === 'error' || type === 'warn') {
         return detailModal({
-            title: type === 'error' ? 'Error' : 'Warning',
-            badge: { text: type === 'error' ? 'Error' : 'Warning', tone: type === 'error' ? 'err' : 'warn' },
+            title: type === 'error' ? translate("Error") : translate("Warning"),
+            badge: { text: type === 'error' ? translate("Error") : translate("Warning"), tone: type === 'error' ? 'err' : 'warn' },
             sections: [{ text: String(message) }]
         });
     }
@@ -293,7 +295,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
     const titleId = 'modal-title-' + (++modalSeq);
     let closed = false;
     let pending = false;
-    const pendingStatus = h('div', { role: 'status', hidden: true }, 'Working…');
+    const pendingStatus = h('div', { role: 'status', hidden: true }, translate("Working…"));
 
     const close = () => {
         if (closed) return;                       // idempotent: overlay click + button can race
@@ -315,7 +317,7 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
         ...(label ? { 'aria-label': label } : { 'aria-labelledby': titleId })
     },
         h('div.modal-header', h('span', { id: titleId }, title),
-            h('button.icon-btn', { onClick: requestClose, title: 'Close', 'aria-label': 'Close' }, icon('x'))),
+            h('button.icon-btn', { onClick: requestClose, title: translate("Close"), 'aria-label': translate("Close") }, icon('x'))),
         h('div.modal-body', body),
         pendingStatus,
         buttons.length ? h('div.modal-foot', buttons.map(btn =>
@@ -401,14 +403,14 @@ function syncAppHidden(): void {
     else app.removeAttribute('aria-hidden');
 }
 
-export function confirmDialog(title: string, message: unknown, { danger = false, okLabel = 'OK' }: { danger?: boolean; okLabel?: string } = {}): Promise<boolean> {
+export function confirmDialog(title: string, message: unknown, { danger = false, okLabel = translate("OK") }: { danger?: boolean; okLabel?: string } = {}): Promise<boolean> {
     return new Promise<boolean>(resolve => {
         modal({
             title,
             body: h('div', String(message)),
             onClose: () => resolve(false),
             buttons: [
-                { label: 'Cancel', onClick: () => { resolve(false); } },
+                { label: translate("Cancel"), onClick: () => { resolve(false); } },
                 { label: okLabel, primary: !danger, danger, onClick: () => { resolve(true); } }
             ]
         });
@@ -423,12 +425,12 @@ export function promptDialog(title: string, label: string, initial = ''): Promis
             body: h('div.field', h('label', label), input),
             onClose: () => resolve(null),
             buttons: [
-                { label: 'Cancel', onClick: () => { resolve(null); } },
-                { label: 'OK', primary: true, onClick: () => { resolve(input.value); } }
+                { label: translate("Cancel"), onClick: () => { resolve(null); } },
+                { label: translate("OK"), primary: true, onClick: () => { resolve(input.value); } }
             ]
         });
         input.addEventListener('keydown', (e: KeyboardEvent) => {
-            if (e.key === 'Enter') { resolve(input.value); m.close(); }
+            if (isCommitEnter(e)) { resolve(input.value); m.close(); }
         });
         // No deferred focus() here: modal() focuses the first form field as it
         // mounts. A setTimeout focus can land mid-keystroke and yank the caret
@@ -443,11 +445,11 @@ async function copyToClipboard(text: unknown): Promise<void> {
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(String(text));
-            toast('Copied to clipboard');
+            toast(translate("Copied to clipboard"));
             return;
         }
     } catch { /* fall through to the unavailable notice */ }
-    toast('Clipboard unavailable', 'warn');
+    toast(translate("Clipboard unavailable"), 'warn');
 }
 
 const DETAIL_TONE: Record<string, string> = { err: 'var(--err)', warn: 'var(--warn)', ok: 'var(--ok)', info: 'var(--accent)' };
@@ -480,7 +482,7 @@ export function detailModal({ title, badge, meta, sections = [], copy }: DetailM
     const tone = badge ? (DETAIL_TONE[badge.tone || ''] || 'var(--text)') : null;
     const badgeEl = badge
         ? h('span.tag', { class: 'font-[650]', style: { color: tone, borderColor: tone } },
-            String(badge.text).toUpperCase())
+            String(badge.text))
         : null;
     const copyText = copy != null ? copy : sections.map(s => s.text).join('\n\n');
     return modal({
@@ -494,8 +496,8 @@ export function detailModal({ title, badge, meta, sections = [], copy }: DetailM
                 h('pre', { class: preClass }, String(s.text ?? ''))
             ])),
         buttons: [
-            { label: 'Copy', onClick: () => { copyToClipboard(copyText); return false; } },
-            { label: 'Close', primary: true }
+            { label: translate("Copy"), onClick: () => { copyToClipboard(copyText); return false; } },
+            { label: translate("Close"), primary: true }
         ]
     });
 }
@@ -506,9 +508,9 @@ export function detailModal({ title, badge, meta, sections = [], copy }: DetailM
 export function errorModal(title: string, error: any, meta?: unknown): ModalHandle {
     return detailModal({
         title,
-        badge: { text: 'Error', tone: 'err' },
+        badge: { text: translate("Error"), tone: 'err' },
         meta,
-        sections: [{ label: 'Message', text: (error && error.message) || String(error) }]
+        sections: [{ label: translate("Message"), text: (error && error.message) || String(error) }]
     });
 }
 
@@ -674,7 +676,7 @@ export function closeContextMenu({ restore = true }: { restore?: boolean } = {})
 
 /* ---- tabs ----------------------------------------------------------------------------------- */
 
-export function tabs(defs: TabDef[], { onChange, active = 0, label = 'Tabs' }: { onChange?: (index: number, def: TabDef) => void; active?: number; label?: string } = {}): TabsHandle {
+export function tabs(defs: TabDef[], { onChange, active = 0, label = translate("Tabs") }: { onChange?: (index: number, def: TabDef) => void; active?: number; label?: string } = {}): TabsHandle {
     // role=tablist + roving tabindex, matching react/ui.jsx useTabList: one tab
     // stop for the strip, arrows move and select (the APG default for tabs).
     const bar = h('div.tabs', { role: 'tablist', 'aria-label': label });
@@ -793,7 +795,7 @@ export class DataTable<T = any> {
                 this.render();
             }
         }));
-        items.push('-', { label: 'Restore Default', onClick: () => { this.hidden = new Set(this.defaultHidden); this.saveHidden(); this.render(); } });
+        items.push('-', { label: translate("Restore Default"), onClick: () => { this.hidden = new Set(this.defaultHidden); this.saveHidden(); this.render(); } });
         contextMenu(e.clientX, e.clientY, items);
     }
 
@@ -821,7 +823,7 @@ export class DataTable<T = any> {
             if (va === null || va === undefined) return 1;
             if (vb === null || vb === undefined) return -1;
             if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * this.sortDir;
-            return String(va).localeCompare(String(vb)) * this.sortDir;
+            return compareText(String(va), String(vb)) * this.sortDir;
         });
     }
 
@@ -832,7 +834,7 @@ export class DataTable<T = any> {
         if (!this.rows.length) {
             this.el.appendChild(h('div.dt-empty',
                 h('div.empty-icon', icon('search', 30)),
-                h('div', options.emptyText || 'Nothing to display')));
+                h('div', options.emptyText || translate("Nothing to display"))));
             return;
         }
 
@@ -1038,7 +1040,7 @@ export async function saveFile(suggestedName: string, type: string, getContent: 
         try {
             handle = await (window as any).showSaveFilePicker({
                 suggestedName,
-                types: ext ? [{ description: 'File', accept: { [type || 'application/octet-stream']: [ext] } }] : undefined
+                types: ext ? [{ description: translate("File"), accept: { [type || 'application/octet-stream']: [ext] } }] : undefined
             });
         } catch (e) {
             if (e && (e as { name?: string }).name === 'AbortError') return;   // user cancelled the dialog
@@ -1084,7 +1086,7 @@ export function pickFile(accept?: string, { binary = false }: { binary?: boolean
                 name: file.name,
                 content: binary ? (String(reader.result).split(',')[1] || '') : (reader.result as string)
             });
-            reader.onerror = () => reject(reader.error || new Error('The selected file could not be read.'));
+            reader.onerror = () => reject(reader.error || new Error(translate("The selected file could not be read.")));
             reader.onabort = () => resolve(null);
             try { if (binary) reader.readAsDataURL(file); else reader.readAsText(file); }
             catch (error) { reject(error); }
@@ -1094,6 +1096,6 @@ export function pickFile(accept?: string, { binary = false }: { binary?: boolean
     });
 }
 
-export function loading(text = 'Loading…'): HTMLElement {
+export function loading(text = translate("Loading…")): HTMLElement {
     return h('div.loading-block', h('div.spinner'), text);
 }

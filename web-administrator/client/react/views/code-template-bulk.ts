@@ -1,3 +1,4 @@
+import { t as translate } from "../../core/i18n.js";
 import { confirmDialog } from '@oie/web-ui';
 import api, { uuid } from '@oie/web-api';
 
@@ -33,14 +34,14 @@ export function codeTemplateFromXml(el: Element, version: string): any {
 
 function saveError(result: any): string {
     if (String(result?.librariesSuccess) !== 'true') {
-        return result?.librariesCause?.detailMessage || 'The library set could not be saved';
+        return result?.librariesCause?.detailMessage || translate("The library set could not be saved");
     }
     let failure = '';
     const scan = (value: any) => {
         if (!value || failure) return;
         if (Array.isArray(value)) return value.forEach(scan);
         if (typeof value !== 'object') return;
-        if (String(value.success) === 'false') failure = value.cause?.detailMessage || 'A code template could not be saved';
+        if (String(value.success) === 'false') failure = value.cause?.detailMessage || translate("A code template could not be saved");
         else Object.values(value).forEach(scan);
     };
     scan(result.codeTemplateResults);
@@ -52,9 +53,9 @@ export async function bulkUpdateWithConflict(
 ): Promise<boolean> {
     let result = await api.codeTemplates.bulkUpdate(libraries, templates, removedLibraryIds, removedTemplateIds, false);
     if (String(result?.overrideNeeded) === 'true') {
-        const overwrite = await confirmDialog('Code Templates Modified',
-            'Code templates or libraries changed while the import was being prepared. Overwrite those changes?',
-            { danger: true, okLabel: 'Overwrite' });
+        const overwrite = await confirmDialog(translate("Code Templates Modified"),
+            translate("Code templates or libraries changed while the import was being prepared. Overwrite those changes?"),
+            { danger: true, okLabel: translate("Overwrite") });
         if (!overwrite) return false;
         result = await api.codeTemplates.bulkUpdate(libraries, templates, removedLibraryIds, removedTemplateIds, true);
     }

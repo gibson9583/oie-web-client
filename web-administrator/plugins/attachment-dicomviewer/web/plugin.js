@@ -692,20 +692,22 @@ var require_dicomParser_min = __commonJS({
 
 // plugins/attachment-dicomviewer/web/plugin.tsx
 var import_dicom_parser = __toESM(require_dicomParser_min());
+import { formatNumber, scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t: translate } = i18nScope("attachment-dicomviewer");
 var React = platform.React;
 function typeOf(att) {
   const t = att && att.type;
   return String(typeof t === "string" ? t : t && (t._ || t.$) || "").trim();
 }
 var META = [
-  ["x00100010", "Patient Name"],
-  ["x00100020", "Patient ID"],
-  ["x00080060", "Modality"],
-  ["x00080020", "Study Date"],
-  ["x00081030", "Study Description"],
-  ["x00280010", "Rows"],
-  ["x00280011", "Columns"]
+  ["x00100010", translate("Patient Name")],
+  ["x00100020", translate("Patient ID")],
+  ["x00080060", translate("Modality")],
+  ["x00080020", translate("Study Date")],
+  ["x00081030", translate("Study Description")],
+  ["x00280010", translate("Rows")],
+  ["x00280011", translate("Columns")]
 ];
 var UNCOMPRESSED = /* @__PURE__ */ new Set(["1.2.840.10008.1.2", "1.2.840.10008.1.2.1", "1.2.840.10008.1.2.2"]);
 var JPEG_BASELINE = /* @__PURE__ */ new Set(["1.2.840.10008.1.2.4.50", "1.2.840.10008.1.2.4.51"]);
@@ -856,8 +858,8 @@ function Filmstrip({ state, frame, win, onPick, expanded }) {
       {
         key: f,
         type: "button",
-        title: `Frame ${f + 1}`,
-        "aria-label": `Frame ${f + 1}`,
+        title: translate("Frame {value1}", { value1: String(f + 1) }),
+        "aria-label": translate("Frame {value1}", { value1: String(f + 1) }),
         "aria-pressed": f === frame,
         onClick: () => onPick(f),
         className: f === frame ? "flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-accent bg-black overflow-hidden p-0 grid place-items-center" : "flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-transparent bg-black overflow-hidden p-0 grid place-items-center"
@@ -903,25 +905,25 @@ function register(platform2) {
           const entries = platform3.api.asList(msg?.connectorMessages?.entry ?? msg?.connectorMessages);
           const cms = entries.map((e) => e.connectorMessage ?? e).filter(Boolean);
           const cm = cms.find((c) => String(c.metaDataId) === "0") || cms[0];
-          if (!cm) throw new Error("no connector message found for this message");
+          if (!cm) throw new Error(translate("no connector message found for this message"));
           const b64 = String(await platform3.api.messages.getDicom(channelId, messageId, cm) ?? "").replace(/\s+/g, "");
-          if (!b64) throw new Error("the reassembled DICOM is empty");
+          if (!b64) throw new Error(translate("the reassembled DICOM is empty"));
           let bin;
           try {
             bin = atob(b64);
           } catch {
-            throw new Error("the attachment content is not valid Base64");
+            throw new Error(translate("the attachment content is not valid Base64"));
           }
           const bytes2 = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) bytes2[i] = bin.charCodeAt(i);
           if (bytes2.length < 132 || String.fromCharCode(bytes2[128], bytes2[129], bytes2[130], bytes2[131]) !== "DICM") {
-            throw new Error("not a valid DICOM object (missing the DICM header) \u2014 the message content may not be raw binary DICOM");
+            throw new Error(translate("not a valid DICOM object (missing the DICM header) \u2014 the message content may not be raw binary DICOM"));
           }
           let ds;
           try {
             ds = import_dicom_parser.default.parseDicom(bytes2);
           } catch (pe) {
-            throw new Error("could not parse the DICOM dataset" + (pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : ""));
+            throw new Error(translate("could not parse the DICOM dataset{value1}", { value1: String(pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : "") }));
           }
           const ts = (ds.string("x00020010") || "").trim();
           const info2 = imageInfo(ds);
@@ -966,7 +968,7 @@ function register(platform2) {
           let current = true;
           cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
           drawJpegFrame(cv, state.ds, state.info, frame, () => current).catch((e) => {
-            if (current) setDecodeError(e && e.message ? e.message : "the browser could not decode this frame");
+            if (current) setDecodeError(e && e.message ? e.message : translate("the browser could not decode this frame"));
           });
           return () => {
             current = false;
@@ -1146,10 +1148,10 @@ function register(platform2) {
       return () => document.removeEventListener("keydown", onDocKey);
     });
     if (state.key !== key || state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px]" }, "Loading DICOM\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px]" }, translate("Loading DICOM\u2026")));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load DICOM: ${state.message}`), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, "Retry"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, translate("Could not load DICOM: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, translate("Retry")));
     }
     const { bytes, meta, kind, tsName } = state;
     const renders = kind === "raw" || kind === "jpeg";
@@ -1165,63 +1167,63 @@ function register(platform2) {
           "application/dicom",
           () => new Blob([bytes], { type: "application/dicom" }),
           () => {
-            if (!current()) throw new Error("The DICOM viewer is no longer active.");
+            if (!current()) throw new Error(translate("The DICOM viewer is no longer active."));
           }
         );
       } catch (error) {
-        if (current()) platform3.ui.toast(`Failed to save DICOM: ${error.message || error}`, "error");
+        if (current()) platform3.ui.toast(translate("Failed to save DICOM: {value1}", { value1: String(error.message || error) }), "error");
       }
     };
     const metaRows = META.filter(([tag]) => meta[tag]).map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { className: "font-semibold pr-4" }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, meta[tag])));
-    const title = `DICOM object \u2014 ${info.cols}\xD7${info.rows}${info.numFrames > 1 ? `, ${info.numFrames} frames` : ""} \u2014 ${bytes.length.toLocaleString()} bytes`;
+    const title = translate("DICOM object \u2014 {value1}\xD7{value2}{value3} \u2014 {value4} bytes", { value1: String(info.cols), value2: String(info.rows), value3: String(info.numFrames > 1 ? translate(", {count, plural, one {# frame} other {# frames}}", { count: info.numFrames }) : ""), value4: String(formatNumber(bytes.length)) });
     const rootCls = expanded ? "modal flex flex-col" : "flex flex-col gap-1.5";
     const toolbar = (
       /* NEVER wraps: a second toolbar row steals ~35px from the image in a
          pane that has little to spare, and it made the height below the
          toolbar unpredictable. Too narrow to fit, the toolbar scrolls
          sideways instead. */
-      /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3 flex-nowrap overflow-x-auto text-[11px] py-1.5 px-2 bg-bg1 border border-line rounded-[5px]" }, !expanded && /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint whitespace-nowrap" }, `${info.cols}\xD7${info.rows}`), info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
+      /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-3 flex-nowrap overflow-x-auto text-[11px] py-1.5 px-2 bg-bg1 border border-line rounded-[5px]" }, !expanded && /* @__PURE__ */ React.createElement("span", { className: "mono text-text-faint whitespace-nowrap" }, info.cols, "\xD7", info.rows), info.numFrames > 1 && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement(
         "button",
         {
           className: "btn btn-sm",
-          title: "Previous frame (\u2190)",
+          title: translate("Previous frame (\u2190)"),
           disabled: frame <= 0,
           onClick: () => stepFrame(-1)
         },
         "\u2039"
-      ), /* @__PURE__ */ React.createElement("span", { className: "mono" }, `Frame ${frame + 1} / ${info.numFrames}`), /* @__PURE__ */ React.createElement(
+      ), /* @__PURE__ */ React.createElement("span", { className: "mono" }, translate("Frame {value1} / {value2}", { value1: String(frame + 1), value2: String(info.numFrames) })), /* @__PURE__ */ React.createElement(
         "button",
         {
           className: "btn btn-sm",
-          title: "Next frame (\u2192)",
+          title: translate("Next frame (\u2192)"),
           disabled: frame >= info.numFrames - 1,
           onClick: () => stepFrame(1)
         },
         "\u203A"
-      )), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Zoom"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: "Zoom out", onClick: () => zoomStep(1 / 1.25) }, "\u2212"), /* @__PURE__ */ React.createElement("span", { className: "mono w-[42px] text-center" }, `${Math.round(zoom * 100)}%`), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: "Zoom in", onClick: () => zoomStep(1.25) }, "+"), /* @__PURE__ */ React.createElement(
+      )), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, translate("Zoom")), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: translate("Zoom out"), onClick: () => zoomStep(1 / 1.25) }, "\u2212"), /* @__PURE__ */ React.createElement("span", { className: "mono w-[42px] text-center" }, Math.round(zoom * 100), "%"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: translate("Zoom in"), onClick: () => zoomStep(1.25) }, "+"), /* @__PURE__ */ React.createElement(
         "button",
         {
           className: fitMode ? "btn btn-sm btn-primary" : "btn btn-sm",
-          title: "Fit the image to the pane",
+          title: translate("Fit the image to the pane"),
           onClick: fit
         },
-        "Fit"
-      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: "Show at actual size", onClick: actual }, "1:1")), grayscale && win && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Level"), /* @__PURE__ */ React.createElement(
+        translate("Fit")
+      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: translate("Show at actual size"), onClick: actual }, "1:1")), grayscale && win && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, translate("Level")), /* @__PURE__ */ React.createElement(
         "input",
         {
           type: "range",
-          "aria-label": "Level",
+          "aria-label": translate("Level"),
           min: info.intercept,
           max: info.intercept + 4096 * info.slope,
           step: "1",
           value: win.c,
           onChange: (e) => setWin((w) => ({ ...w, c: parseFloat(e.target.value) }))
         }
-      ), /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "Window"), /* @__PURE__ */ React.createElement(
+      ), /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, translate("Window")), /* @__PURE__ */ React.createElement(
         "input",
         {
           type: "range",
-          "aria-label": "Window",
+          "aria-label": translate("Window"),
           min: "1",
           max: Math.max(2, 4096 * info.slope),
           step: "1",
@@ -1232,19 +1234,19 @@ function register(platform2) {
         "button",
         {
           className: "btn btn-sm",
-          title: "Window/level from this frame's own range",
+          title: translate("Window/level from this frame''s own range"),
           onClick: autoWindow
         },
-        "Auto"
-      )), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), (expanded || rootWidth >= 1400) && /* @__PURE__ */ React.createElement("span", { className: "text-text-faint whitespace-nowrap" }, grayscaleDrag ? "drag = level/window \xB7 shift-drag = pan \xB7 wheel = zoom" : "drag = pan \xB7 wheel = zoom"), !expanded && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+        translate("Auto")
+      )), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), (expanded || rootWidth >= 1400) && /* @__PURE__ */ React.createElement("span", { className: "text-text-faint whitespace-nowrap" }, grayscaleDrag ? translate("drag = level/window \xB7 shift-drag = pan \xB7 wheel = zoom") : translate("drag = pan \xB7 wheel = zoom")), !expanded && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
         "button",
         {
           className: "btn btn-sm",
-          title: "Open full screen",
+          title: translate("Open full screen"),
           onClick: () => setExpanded(true)
         },
-        "\u2922 Full Screen"
-      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", onClick: saveDicom }, "Save DICOM")))
+        translate("\u2922 Full Screen")
+      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", onClick: saveDicom }, translate("Save DICOM"))))
     );
     const stage = /* @__PURE__ */ React.createElement(
       "div",
@@ -1304,8 +1306,8 @@ function register(platform2) {
         "button",
         {
           className: "icon-btn",
-          title: "Close (Esc)",
-          "aria-label": "Close",
+          title: translate("Close (Esc)"),
+          "aria-label": translate("Close"),
           onClick: () => setExpanded(false)
         },
         "\u2715"
@@ -1323,11 +1325,11 @@ function register(platform2) {
           stage,
           metaPanel
         )
-      ) : /* @__PURE__ */ React.createElement("div", { className: expanded ? "p-3.5 flex-1 overflow-auto" : "" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, `This DICOM object uses a compressed transfer syntax (${tsName}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.`), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt mt-[13px]" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows))),
-      decodeError && /* @__PURE__ */ React.createElement("div", { className: expanded ? "text-text-faint text-[11px] px-3.5 py-1.5 flex-none" : "text-text-faint text-[11px]" }, `Could not decode this JPEG frame: ${decodeError}`),
+      ) : /* @__PURE__ */ React.createElement("div", { className: expanded ? "p-3.5 flex-1 overflow-auto" : "" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, translate("This DICOM object uses a compressed transfer syntax ({value1}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.", { value1: String(tsName) })), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt mt-[13px]" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows))),
+      decodeError && /* @__PURE__ */ React.createElement("div", { className: expanded ? "text-text-faint text-[11px] px-3.5 py-1.5 flex-none" : "text-text-faint text-[11px]" }, translate("Could not decode this JPEG frame: {value1}", { value1: String(decodeError) })),
       renders && info.numFrames > 1 && /* @__PURE__ */ React.createElement(Filmstrip, { state, frame, win, onPick: setFrame, expanded }),
       renders && metaRows.length > 0 && !metaBeside && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)),
-      expanded && /* @__PURE__ */ React.createElement("div", { className: "modal-foot" }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, "Save DICOM"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setExpanded(false) }, "Close"))
+      expanded && /* @__PURE__ */ React.createElement("div", { className: "modal-foot" }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, translate("Save DICOM")), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setExpanded(false) }, translate("Close")))
     );
     return /* @__PURE__ */ React.createElement(
       "div",

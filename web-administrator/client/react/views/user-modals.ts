@@ -1,3 +1,5 @@
+import { formatList } from '../../core/i18n.js';
+import { t as translate } from "../../core/i18n.js";
 /*
  * Shared user create/edit/password modals. Extracted from views/users.js so the
  * top-bar account menu (react/shell.jsx) can offer self-service "Edit Account" /
@@ -9,7 +11,7 @@ import { h, toast, modal, field, textInput, select } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { passwordRequirementHints } from '../../core/passwords.js';
 import * as store from '../../core/store.js';
-import { COUNTRIES, US_STATES, ROLES, INDUSTRIES, placeholderOpts } from '../welcome.js';
+import { countryOptions, US_STATES, ROLES, INDUSTRIES, placeholderOpts } from '../welcome.js';
 import { isSsoSelf, SSO_MANAGED_NOTE } from '../sso-session.js';
 
 /* Fields editable in the web UI; everything else on the User object is
@@ -19,17 +21,17 @@ import { isSsoSelf, SSO_MANAGED_NOTE } from '../sso-session.js';
    round-trip to the engine's User model is identical. `type` selects the input
    (text by default); `default` seeds an empty select. */
 export const USER_FIELDS = [
-    { key: 'username', label: 'Username' },
-    { key: 'firstName', label: 'First Name' },
-    { key: 'lastName', label: 'Last Name' },
-    { key: 'email', label: 'Email' },
-    { key: 'country', label: 'Country', type: 'select', options: COUNTRIES, default: 'United States' },
-    { key: 'stateTerritory', label: 'State/Territory', type: 'select', options: placeholderOpts(US_STATES) },
-    { key: 'phoneNumber', label: 'Phone' },
-    { key: 'organization', label: 'Organization' },
-    { key: 'role', label: 'Role', type: 'select', options: placeholderOpts(ROLES) },
-    { key: 'industry', label: 'Business', type: 'select', options: placeholderOpts(INDUSTRIES) },
-    { key: 'description', label: 'Description', type: 'textarea' }
+    { key: 'username', label: translate("Username") },
+    { key: 'firstName', label: translate("First Name") },
+    { key: 'lastName', label: translate("Last Name") },
+    { key: 'email', label: translate("Email") },
+    { key: 'country', label: translate("Country"), type: 'select', options: countryOptions(), default: 'United States' },
+    { key: 'stateTerritory', label: translate("State/Territory"), type: 'select', options: placeholderOpts(US_STATES) },
+    { key: 'phoneNumber', label: translate("Phone") },
+    { key: 'organization', label: translate("Organization") },
+    { key: 'role', label: translate("Role"), type: 'select', options: placeholderOpts(ROLES) },
+    { key: 'industry', label: translate("Business"), type: 'select', options: placeholderOpts(INDUSTRIES) },
+    { key: 'description', label: translate("Description"), type: 'textarea' }
 ];
 
 export function passwordViolations(result: any) {
@@ -76,7 +78,7 @@ export function userForm(user: any = {}) {
 /* Password + Confirm inputs with up-front policy hints. `optional: true` (Edit
    User) lets a blank pair leave the password unchanged; the default (New User /
    Change Password) requires both. `label` renames the field ("New Password"). */
-export function passwordFields({ optional = false, label = 'Password', managedNote = '' }: any = {}) {
+export function passwordFields({ optional = false, label = translate("Password"), managedNote = '' }: any = {}) {
     // autocomplete=new-password: this pair SETS a password (create user / reset)
     // — the hint stops the browser autofilling the admin's saved login into it
     // and prompts its generator/update flow instead (#24).
@@ -94,14 +96,14 @@ export function passwordFields({ optional = false, label = 'Password', managedNo
         // submit). Skipped when managed — the late resolve would otherwise
         // overwrite the note with a policy nobody here can act on.
         api.server.passwordRequirements()
-            .then((reqs: any) => { const hs = passwordRequirementHints(reqs); if (hs.length) hint.textContent = `Password must include ${hs.join(', ')}.`; })
+            .then((reqs: any) => { const hs = passwordRequirementHints(reqs); if (hs.length) hint.textContent = translate("Password must include {value1}.", { value1: String(formatList(hs)) }); })
             .catch(() => { /* requirements unavailable */ });
     }
     // Required (asterisk) when setting a password; plain when it's optional.
     const passLabel = optional ? label : req(label);
-    const confLabel = optional ? `Confirm ${label}` : req(`Confirm ${label}`);
+    const confLabel = optional ? translate("Confirm {value1}", { value1: String(label) }) : req(translate("Confirm {value1}", { value1: String(label) }));
     const children = [h('div.form-grid', field(passLabel, password), field(confLabel, confirm)), hint];
-    if (optional && !managedNote) children.push(h('div.hint', { class: 'mt-1.5' }, 'Leave blank to keep the current password.'));
+    if (optional && !managedNote) children.push(h('div.hint', { class: 'mt-1.5' }, translate("Leave blank to keep the current password.")));
     // True once either field has input — the caller only pushes a password change then.
     const hasValue = () => Boolean((password as any).value || (confirm as any).value);
     return {
@@ -110,8 +112,8 @@ export function passwordFields({ optional = false, label = 'Password', managedNo
         validate() {
             // Optional + untouched → no password change, nothing to validate.
             if (optional && !hasValue()) return true;
-            if (!(password as any).value) { toast('Password is required', 'warn'); return false; }
-            if ((password as any).value !== (confirm as any).value) { toast('Passwords do not match', 'warn'); return false; }
+            if (!(password as any).value) { toast(translate("Password is required"), 'warn'); return false; }
+            if ((password as any).value !== (confirm as any).value) { toast(translate("Passwords do not match"), 'warn'); return false; }
             return true;
         }
     };
@@ -127,29 +129,29 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
     // Computed here, not passed in, so every caller (account menu and the Users
     // grid both open this) gets it without having to remember.
     const pw = passwordFields({
-        optional: true, label: 'New Password',
+        optional: true, label: translate("New Password"),
         managedNote: isSsoSelf(user, store.getState('user')) ? SSO_MANAGED_NOTE : ''
     });
     const progress = h('div.hint', { role: 'status' });
     let acceptedProfile: string | null = null;
     modal({
-        title: `Edit User — ${user.username}`,
+        title: translate("Edit User — {value1}", { value1: String(user.username) }),
         size: 'wide',
         body: h('div', form.grid, pw.grid, progress),
         buttons: [
-            { label: 'Cancel' },
+            { label: translate("Cancel") },
             {
-                label: 'Save', primary: true,
+                label: translate("Save"), primary: true,
                 onClick: async () => {
                     const username = form.inputs.username.value.trim();
-                    if (!username) { toast('Username is required', 'warn'); return false; }
+                    if (!username) { toast(translate("Username is required"), 'warn'); return false; }
                     if (!pw.validate()) return false;
                     try {
                         // Preflight policy can change before the password write;
                         // its final receipt must still be checked below.
                         if (pw.hasValue()) {
                             const violations = passwordViolations(await api.users.checkPassword((pw.password as any).value));
-                            if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
+                            if (violations.length) { toast(translate("Password rejected: {value1}", { value1: String(violations.join('; ')) }), 'warn'); return false; }
                         }
                         const submitted = { ...user };
                         for (const def of USER_FIELDS) submitted[def.key] = form.inputs[def.key].value.trim();
@@ -160,19 +162,19 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
                             Object.assign(user, submitted);
                         }
                         if (pw.hasValue()) {
-                            progress.textContent = 'Profile saved. Setting the password…';
+                            progress.textContent = translate("Profile saved. Setting the password…");
                             const violations = passwordViolations(await api.users.updatePassword(user.id, (pw.password as any).value));
                             if (violations.length) {
-                                progress.textContent = 'Profile saved. Password was rejected; correct it and save again.';
-                                toast(`Password rejected: ${violations.join('; ')}`, 'warn');
+                                progress.textContent = translate("Profile saved. Password was rejected; correct it and save again.");
+                                toast(translate("Password rejected: {value1}", { value1: String(violations.join('; ')) }), 'warn');
                                 return false;
                             }
                         }
-                        toast(`User "${username}" saved`);
+                        toast(translate("User \"{value1}\" saved", { value1: String(username) }));
                         if (onSaved) onSaved(user);
                         return true;
                     } catch (e: any) {
-                        if (acceptedProfile) progress.textContent = 'Profile saved. The remaining changes are not confirmed; review the error before retrying.';
+                        if (acceptedProfile) progress.textContent = translate("Profile saved. The remaining changes are not confirmed; review the error before retrying.");
                         toast(e.message, 'error');
                         return false;
                     }
@@ -186,18 +188,18 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
 export function openChangePasswordModal(user: any, { onSaved }: any = {}) {
     const pw = passwordFields();
     modal({
-        title: `Change Password — ${user.username}`,
+        title: translate("Change Password — {value1}", { value1: String(user.username) }),
         body: pw.grid,
         buttons: [
-            { label: 'Cancel' },
+            { label: translate("Cancel") },
             {
-                label: 'Change Password', primary: true,
+                label: translate("Change Password"), primary: true,
                 onClick: async () => {
                     if (!pw.validate()) return false;
                     try {
                         const violations = passwordViolations(await api.users.updatePassword(user.id, (pw.password as any).value));
                         if (violations.length) { toast(violations.join('; '), 'warn'); return false; }
-                        toast(`Password updated for "${user.username}"`);
+                        toast(translate("Password updated for \"{value1}\"", { value1: String(user.username) }));
                         if (onSaved) onSaved(user);
                         return true;
                     } catch (e: any) {

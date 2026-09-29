@@ -1,3 +1,6 @@
+import { formatList } from '../core/i18n.js';
+import { COUNTRY_REGIONS } from '../core/country-regions.js';
+import { t as translate, locale } from "../core/i18n.js";
 /*
  * First-login "Welcome" dialog — the web port of Swing's FirstLoginDialog /
  * UserEditPanel (com.mirth.connect.client.ui.FirstLoginDialog). On a user's
@@ -13,7 +16,7 @@ import { h, modal, field, textInput, select, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { passwordRequirementHints } from '../core/passwords.js';
 
-export const DEFAULT_OPTION = '--Select an option--';
+export const DEFAULT_OPTION = translate('--Select an option--');
 
 /* US state/territory codes (Swing UserEditPanel.STATE_TERRITORY_CODES). The
    State/Territory field is US-only — disabled for any other country. */
@@ -291,9 +294,43 @@ function req(label: any) {
     return h('span', label + ' ', h('span', { style: { color: 'var(--danger, #d9534f)' } }, '*'));
 }
 
+const profileLabels: Record<string, string> = {
+    "C-Suite": translate("C-Suite"),
+    "Consultant - Advisor": translate("Consultant - Advisor"),
+    "Consultant - Engineer": translate("Consultant - Engineer"),
+    "Consultant - Implementer": translate("Consultant - Implementer"),
+    "Employee - Engineer": translate("Employee - Engineer"),
+    "Employee - Manager": translate("Employee - Manager"),
+    "Employee - Director": translate("Employee - Director"),
+    "Employee - VP": translate("Employee - VP"),
+    "Independent Contractor": translate("Independent Contractor"),
+    "Other": translate("Other"),
+    "ACO": translate("ACO"),
+    "CHC/FQHC": translate("CHC/FQHC"),
+    "Clinic": translate("Clinic"),
+    "HIE": translate("HIE"),
+    "HIT Consulting": translate("HIT Consulting"),
+    "HIT Software": translate("HIT Software"),
+    "Hospital": translate("Hospital"),
+    "Lab": translate("Lab"),
+    "Network": translate("Network"),
+    "Payer": translate("Payer"),
+    "Physicians Group": translate("Physicians Group"),
+    "Private Practice": translate("Private Practice"),
+    "Public Health Agency": translate("Public Health Agency"),
+    "Radiology Center": translate("Radiology Center"),
+    "University": translate("University"),
+};
+
+export function countryOptions() {
+    const names = new Intl.DisplayNames(locale(), { type: 'region' });
+    return COUNTRIES.map(value => ({ value, label: locale() === 'en' || locale() === 'en-XA'
+        ? value : (COUNTRY_REGIONS[value] ? names.of(COUNTRY_REGIONS[value]) : value) || value }));
+}
+
 /* Prepend the "--Select an option--" placeholder to a value list. */
 export function placeholderOpts(list: any) {
-    return [{ value: '', label: DEFAULT_OPTION }, ...list.map((v: any) => ({ value: v, label: v }))];
+    return [{ value: '', label: DEFAULT_OPTION }, ...list.map((v: any) => ({ value: v, label: profileLabels[v] || v }))];
 }
 
 function showWelcomeDialog(user: any) {
@@ -303,14 +340,14 @@ function showWelcomeDialog(user: any) {
         const confirmInput = h('input', { type: 'password', autocomplete: 'new-password' });
         const pwHint = h('div.hint.span-2');
         api.server.passwordRequirements()
-            .then((req: any) => { const hs = passwordRequirementHints(req); if (hs.length) pwHint.textContent = `Password must include ${hs.join(', ')}.`; })
+            .then((req: any) => { const hs = passwordRequirementHints(req); if (hs.length) pwHint.textContent = translate("Password must include {value1}.", { value1: String(formatList(hs)) }); })
             .catch(() => { /* requirements unavailable */ });
         const firstName = textInput(user.firstName || '');
         const lastName = textInput(user.lastName || '');
         const email = textInput(user.email || '');
         const phone = textInput(user.phoneNumber || '');
         const organization = textInput(user.organization || '');
-        const country = select(COUNTRIES, user.country || 'United States');
+        const country = select(countryOptions(), user.country || 'United States');
         const state = select(placeholderOpts(US_STATES), user.stateTerritory || '');
         const role = select(placeholderOpts(ROLES), user.role || '');
         const industry = select(placeholderOpts(INDUSTRIES), user.industry || '');
@@ -328,35 +365,35 @@ function showWelcomeDialog(user: any) {
 
         const body = h('div',
             h('div.hint', { style: { marginBottom: '12px' } },
-                'You may now customize your account information. You also have the option of changing your account password.'),
+                translate("You may now customize your account information. You also have the option of changing your account password.")),
             h('div.form-grid',
-                field('Username', usernameInput),
-                field(req('New Password'), pwInput),
-                field(req('Confirm New Password'), confirmInput),
+                field(translate("Username"), usernameInput),
+                field(req(translate("New Password")), pwInput),
+                field(req(translate("Confirm New Password")), confirmInput),
                 pwHint,
-                field('First Name', firstName),
-                field('Last Name', lastName),
-                field('Email', email),
-                field('Country', country),
-                field('State/Territory', state),
-                field('Phone', phone),
-                field('Organization', organization),
-                field('Role', role),
-                field('Business', industry),
-                field('Description', description)));
+                field(translate("First Name"), firstName),
+                field(translate("Last Name"), lastName),
+                field(translate("Email"), email),
+                field(translate("Country"), country),
+                field(translate("State/Territory"), state),
+                field(translate("Phone"), phone),
+                field(translate("Organization"), organization),
+                field(translate("Role"), role),
+                field(translate("Business"), industry),
+                field(translate("Description"), description)));
 
         modal({
-            title: 'Welcome to Open Integration Engine',
+            title: translate("Welcome to Open Integration Engine"),
             size: 'wide',
             body,
             onClose: () => resolve(),
             buttons: [
                 {
-                    label: 'Finish', primary: true,
+                    label: translate("Finish"), primary: true,
                     onClick: async () => {
                         const pw = (pwInput as any).value;
-                        if (!pw) { toast('New Password is required', 'warn'); return false; }
-                        if (pw !== (confirmInput as any).value) { toast('Passwords do not match', 'warn'); return false; }
+                        if (!pw) { toast(translate("New Password is required"), 'warn'); return false; }
+                        if (pw !== (confirmInput as any).value) { toast(translate("Passwords do not match"), 'warn'); return false; }
                         try {
                             // Set the password first (Swing order); the engine answers
                             // with a list of policy violations if it's rejected.
@@ -376,10 +413,10 @@ function showWelcomeDialog(user: any) {
                             user.description = (description as any).value;
                             await api.users.update(user.id, user);
                             await api.users.setPreference(user.id, 'firstlogin', 'false');
-                            toast('Welcome — your account is ready');
+                            toast(translate("Welcome — your account is ready"));
                             return true;   // closes the modal → onClose resolves
                         } catch (e: any) {
-                            toast(e.message || 'Could not complete setup', 'error');
+                            toast(e.message || translate("Could not complete setup"), 'error');
                             return false;
                         }
                     }

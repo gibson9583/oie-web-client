@@ -1,3 +1,5 @@
+import { scope as i18nScope } from "@oie/web-ui";
+const { t: translate } = i18nScope("attachment-imageviewer");
 /*
  * Image attachment viewer — web admin plugin (AttachmentViewer equivalent, React).
  * Renders image attachments inline from their Base64 content.
@@ -51,22 +53,22 @@ export function register(platform: Platform) {
         if (state.key !== key || state.status === 'loading') {
             return (
                 <div className="mt-[13px]">
-                    <div className="text-text-faint text-[10px] mb-1">Loading image…</div>
+                    <div className="text-text-faint text-[10px] mb-1">{translate("Loading image…")}</div>
                 </div>
             );
         }
         if (state.status === 'error') {
             return (
                 <div className="mt-[13px]">
-                    <div className="text-text-faint">{`Could not load image: ${state.message}`}</div>
-                    <button type="button" className="btn" onClick={() => retry()}>Retry</button>
+                    <div className="text-text-faint">{translate("Could not load image: {value1}", { value1: String(state.message) })}</div>
+                    <button type="button" className="btn" onClick={() => retry()}>{translate("Retry")}</button>
                 </div>
             );
         }
         return (
             <div className="mt-[13px]">
                 <img
-                    alt="Message attachment"
+                    alt={translate("Message attachment")}
                     src={state.src}
                     className="max-w-full max-h-[540px] border border-[var(--bg3)] rounded-[4px]"
                 />

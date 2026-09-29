@@ -130,6 +130,15 @@ jobs:
           WORKERS: ${{ matrix.workers }}
           PLAYWRIGHT_JSON_OUTPUT_FILE: release-artifacts/browser-results.json
         run: npx playwright test --project="$PROJECT" --workers="$WORKERS" --reporter=github,json
+      - name: Build the development pseudo-locale test bundle
+        run: npm run build:i18n-test
+      - name: Check expanded text, IME input and locale-independent payloads
+        env:
+          PROJECT: ${{ matrix.project }}
+          WORKERS: ${{ matrix.workers }}
+          E2E_PSEUDO: '1'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: release-artifacts/browser-results-i18n.json
+        run: npx playwright test 'e2e/i18n[^/]*\.spec\.ts$' --project="$PROJECT" --workers="$WORKERS" --output=test-results-i18n --reporter=github,json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         # A passing retry still needs its original trace for review.
         if: always()
@@ -137,7 +146,9 @@ jobs:
           name: browser-evidence-${{ matrix.browser }}
           path: |
             test-results/
+            test-results-i18n/
             release-artifacts/browser-results.json
+            release-artifacts/browser-results-i18n.json
           if-no-files-found: ignore
 
   runtime-inputs:

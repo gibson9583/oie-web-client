@@ -1,3 +1,4 @@
+import { t as translate } from "./i18n.js";
 import { appUrl } from './deployment.js';
 
 const marker = `oie-http-cache-migration-v1:${appUrl('/')}`;
@@ -17,7 +18,7 @@ export function migrateLegacyCache(): Promise<void> {
         // Chromium consumes Clear-Site-Data rather than exposing it to fetch.
         // The endpoint's receipt identifies the cache-only migration instead.
         if (response.status !== 204 || response.headers.get('X-OIE-Cache-Migration') !== '1') {
-            throw new Error('Legacy HTTP cache cleanup was not confirmed');
+            throw new Error(translate("Legacy HTTP cache cleanup was not confirmed"));
         }
         await response.text();
         try { localStorage.setItem(marker, 'done'); } catch { /* retry on the next page load */ }

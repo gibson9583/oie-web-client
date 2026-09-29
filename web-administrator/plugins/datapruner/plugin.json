@@ -4,5 +4,13 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Data Pruner settings panel (status, schedule, prune/archive settings, Prune Now/Stop) — web equivalent of the datapruner SettingsPanelPlugin.",
-    "client": { "entry": "web/plugin.js" }
+    "client": {
+        "entry": "web/plugin.js"
+    },
+    "i18n": {
+        "zh-CN": "i18n/zh-CN.json"
+    },
+    "oie": {
+        "apiMin": "4.8"
+    }
 }

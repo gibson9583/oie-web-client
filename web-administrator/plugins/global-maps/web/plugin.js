@@ -1,6 +1,8 @@
 // plugins/global-maps/web/plugin.tsx
+import { compareText, scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
 import { toDisplayString } from "@oie/web-api";
+var { t: translate, tx: richText } = i18nScope("global-maps");
 var React = platform.React;
 var GLOBAL_MAP_LABEL = "<Global Map>";
 function register(platform2) {
@@ -36,7 +38,7 @@ function register(platform2) {
   }
   function showValue(row) {
     modal({
-      title: "Global Map Value",
+      title: translate("Global Map Value"),
       size: "wide",
       body: h(
         "div",
@@ -44,7 +46,7 @@ function register(platform2) {
         h(
           "div",
           { class: "flex gap-[13px] flex-wrap text-[11px]" },
-          h("span.mono.text-text-faint", `Server ${row.serverId}`),
+          h("span.mono.text-text-faint", translate("Server {value1}", { value1: String(row.serverId) })),
           h("span.mono", row.channel),
           h("span.mono", { class: "font-[650]" }, row.key)
         ),
@@ -52,7 +54,7 @@ function register(platform2) {
           class: "m-0 whitespace-pre-wrap [word-break:break-word] max-h-[60vh] overflow-x-hidden overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]"
         }, row.value)
       ),
-      buttons: [{ label: "Close", primary: true }]
+      buttons: [{ label: translate("Close"), primary: true }]
     });
   }
   async function fetchRows() {
@@ -111,15 +113,15 @@ function register(platform2) {
     const sorted = React.useMemo(() => {
       if (!sort.key) return filtered;
       const val = (r) => String((sort.key === "channel" ? r.channel : r[sort.key]) ?? "").toLowerCase();
-      return [...filtered].sort((a, b) => val(a).localeCompare(val(b)) * sort.dir);
+      return [...filtered].sort((a, b) => compareText(val(a), val(b)) * sort.dir);
     }, [filtered, sort]);
     const toggleSort = (key) => setSort((s) => s.key === key ? { key, dir: -s.dir } : { key, dir: 1 });
     const arrow = (key) => sort.key === key ? sort.dir > 0 ? " \u25B2" : " \u25BC" : "";
     let body;
     if (error) {
-      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, `Global maps unavailable: ${error}`));
+      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, translate("Global maps unavailable: {value1}", { value1: String(error) })));
     } else if (!filtered.length) {
-      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, "No global map variables are set."));
+      body = /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 4, className: "text-text-faint p-3" }, translate("No global map variables are set.")));
     } else {
       body = sorted.map((r, i) => {
         const value = r.value.replace(/\s+/g, " ").trim();
@@ -128,7 +130,7 @@ function register(platform2) {
           {
             key: `${r.serverId}|${r.channelId}|${r.key}|${i}`,
             className: "cursor-pointer",
-            title: "Double-click for the full value",
+            title: translate("Double-click for the full value"),
             onDoubleClick: () => showValue(r)
           },
           /* @__PURE__ */ React.createElement("td", { className: "mono text-text-faint" }, r.serverId),
@@ -138,11 +140,11 @@ function register(platform2) {
         );
       });
     }
-    return /* @__PURE__ */ React.createElement("div", { className: "dt-wrap min-h-0" }, /* @__PURE__ */ React.createElement("table", { className: "dt global-maps" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("serverId") }, "Server Id", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("serverId"))), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("channel") }, "Channel", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("channel"))), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("key") }, "Key", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("key"))), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("value") }, "Value", /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, arrow("value"))))), /* @__PURE__ */ React.createElement("tbody", null, body)));
+    return /* @__PURE__ */ React.createElement("div", { className: "dt-wrap min-h-0" }, /* @__PURE__ */ React.createElement("table", { className: "dt global-maps" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("serverId") }, richText("Server Id<e1>{value2}</e1>", { e1: (chunks) => /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, chunks), value2: arrow("serverId") })), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("channel") }, richText("Channel<e1>{value2}</e1>", { e1: (chunks) => /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, chunks), value2: arrow("channel") })), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("key") }, richText("Key<e1>{value2}</e1>", { e1: (chunks) => /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, chunks), value2: arrow("key") })), /* @__PURE__ */ React.createElement("th", { className: "sortable", style: { cursor: "pointer" }, onClick: () => toggleSort("value") }, richText("Value<e1>{value2}</e1>", { e1: (chunks) => /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, chunks), value2: arrow("value") })))), /* @__PURE__ */ React.createElement("tbody", null, body)));
   }
   platform2.registerDashboardTab({
     id: "global-maps",
-    label: "Global Maps",
+    label: translate("Global Maps"),
     order: 30,
     component: GlobalMapsTab
   });

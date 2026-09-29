@@ -1,3 +1,4 @@
+import { t as translate, tx as richText } from "../core/i18n.js";
 /*
  * Error boundaries — the app's answer to "a render threw".
  *
@@ -25,7 +26,7 @@ import { Icon } from './bridges.jsx';
 
 /** Best-effort one-line summary of anything that can be thrown. */
 function messageOf(error: any) {
-    if (!error) return 'Unknown error';
+    if (!error) return translate("Unknown error");
     if (typeof error === 'string') return error;
     return error.message || String(error);
 }
@@ -41,13 +42,9 @@ function DefaultFallback({ error, label, compact, onRetry }: any) {
             </div>
             <div className="view-error-msg">{messageOf(error)}</div>
             <div className="view-error-actions">
-                <button type="button" className="btn" onClick={onRetry}>
-                    <Icon name="refresh" size={13} />Retry
-                </button>
+                <button type="button" className="btn" onClick={onRetry}>{richText("{value1}Retry", { value1: <Icon name="refresh" size={13} /> })}</button>
                 {!compact && (
-                    <button type="button" className="btn" onClick={() => location.reload()}>
-                        Reload page
-                    </button>
+                    <button type="button" className="btn" onClick={() => location.reload()}>{translate("Reload page")}</button>
                 )}
             </div>
         </div>
@@ -77,7 +74,7 @@ export class ErrorBoundary extends Component<any, any> {
 
     render() {
         const { error, resetKey } = this.state;
-        const { children, label = 'This section failed to render', compact = false, fallback } = this.props;
+        const { children, label = translate("This section failed to render"), compact = false, fallback } = this.props;
         if (error) {
             if (typeof fallback === 'function') return fallback({ error, retry: this.retry });
             return <DefaultFallback error={error} label={label} compact={compact} onRetry={this.retry} />;

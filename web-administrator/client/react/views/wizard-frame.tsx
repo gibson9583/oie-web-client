@@ -1,3 +1,4 @@
+import { t as translate } from "../../core/i18n.js";
 /*
  * Shared scaffolding for the guided builders (channel wizard, alert wizard).
  * These are the entity-agnostic, mechanically-duplicated parts — the model
@@ -53,7 +54,7 @@ export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, nor
             store.setState(storeKey, ref.current);
             setReady(true);
         }).catch((e: any) => {
-            if (alive) { toast(e && e.message ? e.message : 'Could not load.', 'error'); router.navigate(backPath); }
+            if (alive) { toast(e && e.message ? e.message : translate("Could not load."), 'error'); router.navigate(backPath); }
         });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,22 +79,22 @@ function confirmLeave(entityLabel: any, isNew: any, canSave: any) {
         // would reject — OK-only notice instead (channel editor parity).
         if (canSave === false) {
             modal({
-                title: `Unsaved ${entityLabel}`,
-                body: h('div', `You don't have permission to save this ${entityLabel}. Your changes will be discarded.`),
-                buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }],
+                title: translate("Unsaved {value1}", { value1: String(entityLabel) }),
+                body: h('div', translate("You don''t have permission to save this {value1}. Your changes will be discarded.", { value1: String(entityLabel) })),
+                buttons: [{ label: translate("OK"), primary: true, onClick: () => resolve('discard') }],
                 onClose: () => resolve('cancel')
             });
             return;
         }
         modal({
-            title: `Unsaved ${entityLabel}`,
+            title: translate("Unsaved {value1}", { value1: String(entityLabel) }),
             body: h('div', isNew
-                ? `This ${entityLabel} hasn’t been created yet. Save it before leaving?`
-                : 'You have unsaved changes. Save before leaving?'),
+                ? translate("This {value1} hasn’t been created yet. Save it before leaving?", { value1: String(entityLabel) })
+                : translate("You have unsaved changes. Save before leaving?")),
             buttons: [
-                { label: 'Discard', danger: true, onClick: () => resolve('discard') },
-                { label: 'Cancel', onClick: () => resolve('cancel') },
-                { label: 'Save', primary: true, onClick: () => resolve('save') }
+                { label: translate("Discard"), danger: true, onClick: () => resolve('discard') },
+                { label: translate("Cancel"), onClick: () => resolve('cancel') },
+                { label: translate("Save"), primary: true, onClick: () => resolve('save') }
             ],
             onClose: () => resolve('cancel')
         });

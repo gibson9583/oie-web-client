@@ -1,3 +1,6 @@
+import { messageStatusLabel } from '../../core/labels.js';
+import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Messages — message browser, fully declarative React. The Swing-parity browser
  * is a hierarchical, sortable tree-table (source rows with expand twisties +
@@ -170,7 +173,7 @@ function messageHasError(message: any) {
 /* Status pill (JSX twin of the imperative h('span.tag…') helper). */
 function StatusTag({ status }: any) {
     const color = messageStatusTag(status);
-    return <span className={'tag' + (color ? ' ' + color : '')}>{status || ''}</span>;
+    return <span className={'tag' + (color ? ' ' + color : '')}>{messageStatusLabel(status || '')}</span>;
 }
 
 /* Calendar query params: yyyy-MM-dd'T'HH:mm:ss.SSSZ (RFC 822 zone, no colon). */
@@ -196,21 +199,21 @@ function toCount(value: any) {
    (MessageServletInterface GET /channels/{id}/messages: rawContentSearch,
    transformedContentSearch, ... responseErrorContentSearch). */
 const CONTENT_SEARCH_TYPES = [
-    { value: 'rawContentSearch', label: 'Raw' },
-    { value: 'processedRawContentSearch', label: 'Processed Raw' },
-    { value: 'transformedContentSearch', label: 'Transformed' },
-    { value: 'encodedContentSearch', label: 'Encoded' },
-    { value: 'sentContentSearch', label: 'Sent' },
-    { value: 'responseContentSearch', label: 'Response' },
-    { value: 'responseTransformedContentSearch', label: 'Response Transformed' },
-    { value: 'processedResponseContentSearch', label: 'Processed Response' },
-    { value: 'connectorMapContentSearch', label: 'Connector Map' },
-    { value: 'channelMapContentSearch', label: 'Channel Map' },
-    { value: 'sourceMapContentSearch', label: 'Source Map' },
-    { value: 'responseMapContentSearch', label: 'Response Map' },
-    { value: 'processingErrorContentSearch', label: 'Processing Error' },
-    { value: 'postprocessorErrorContentSearch', label: 'Postprocessor Error' },
-    { value: 'responseErrorContentSearch', label: 'Response Error' }
+    { value: 'rawContentSearch', label: translate("Raw") },
+    { value: 'processedRawContentSearch', label: translate("Processed Raw") },
+    { value: 'transformedContentSearch', label: translate("Transformed") },
+    { value: 'encodedContentSearch', label: translate("Encoded") },
+    { value: 'sentContentSearch', label: translate("Sent") },
+    { value: 'responseContentSearch', label: translate("Response") },
+    { value: 'responseTransformedContentSearch', label: translate("Response Transformed") },
+    { value: 'processedResponseContentSearch', label: translate("Processed Response") },
+    { value: 'connectorMapContentSearch', label: translate("Connector Map") },
+    { value: 'channelMapContentSearch', label: translate("Channel Map") },
+    { value: 'sourceMapContentSearch', label: translate("Source Map") },
+    { value: 'responseMapContentSearch', label: translate("Response Map") },
+    { value: 'processingErrorContentSearch', label: translate("Processing Error") },
+    { value: 'postprocessorErrorContentSearch', label: translate("Postprocessor Error") },
+    { value: 'responseErrorContentSearch', label: translate("Response Error") }
 ];
 
 /* metaDataSearch / metaDataCaseInsensitiveSearch param format is
@@ -274,33 +277,33 @@ function deployedConnectors(xml: string, channelId: string) {
         .some(node => (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) && !!node.textContent?.trim());
     const field = (parent: Element, name: string) => {
         const matches = Array.from(parent.children).filter(child => child.tagName === name);
-        if (matches.length !== 1) throw new Error('The engine returned invalid destination information.');
+        if (matches.length !== 1) throw new Error(translate("The engine returned invalid destination information."));
         return matches[0];
     };
     const text = (parent: Element, name: string) => {
         const element = field(parent, name);
-        if (element.children.length) throw new Error('The engine returned invalid destination information.');
+        if (element.children.length) throw new Error(translate("The engine returned invalid destination information."));
         return element.textContent ?? '';
     };
     if (doc.querySelector('parsererror') || doc.doctype || status.tagName !== 'dashboardStatus' || hasText(status)
-        || text(status, 'channelId') !== channelId || text(status, 'statusType') !== 'CHANNEL') {
-        throw new Error('The engine returned no channel status information.');
+        || text(status, "channelId") !== channelId || text(status, "statusType") !== 'CHANNEL') {
+        throw new Error(translate("The engine returned no channel status information."));
     }
     const children = field(status, 'childStatuses');
-    if (hasText(children)) throw new Error('The engine returned invalid destination information.');
+    if (hasText(children)) throw new Error(translate("The engine returned invalid destination information."));
     const ids = new Set<number>();
     return Array.from(children.children).map(child => {
-        if (child.tagName !== 'dashboardStatus' || hasText(child) || text(child, 'channelId') !== channelId) {
-            throw new Error('The engine returned invalid destination information.');
+        if (child.tagName !== 'dashboardStatus' || hasText(child) || text(child, "channelId") !== channelId) {
+            throw new Error(translate("The engine returned invalid destination information."));
         }
-        const id = text(child, 'metaDataId');
+        const id = text(child, "metaDataId");
         const metaDataId = Number(id);
         if (!/^\d+$/.test(id) || !Number.isSafeInteger(metaDataId) || ids.has(metaDataId)
-            || text(child, 'statusType') !== (metaDataId === 0 ? 'SOURCE_CONNECTOR' : 'DESTINATION_CONNECTOR')) {
-            throw new Error('The engine returned invalid destination information.');
+            || text(child, "statusType") !== (metaDataId === 0 ? 'SOURCE_CONNECTOR' : 'DESTINATION_CONNECTOR')) {
+            throw new Error(translate("The engine returned invalid destination information."));
         }
         ids.add(metaDataId);
-        return { metaDataId, name: text(child, 'name') };
+        return { metaDataId, name: text(child, "name") };
     });
 }
 
@@ -334,16 +337,16 @@ async function discoverSendMessage(platform: any, channelId: any, onSent: any, a
     } catch (e: any) {
         if (!current()) return;
         modal({
-            title: 'Unable to Load Destinations',
+            title: translate("Unable to Load Destinations"),
             onClose: () => { closed = true; },
-            body: h('div', `No message has been sent. Retry destination discovery before processing. ${e.message || e}`),
-            buttons: [{ label: 'Close' }, { label: 'Retry', primary: true,
+            body: h('div', translate("No message has been sent. Retry destination discovery before processing. {value1}", { value1: String(e.message || e) })),
+            buttons: [{ label: translate("Close") }, { label: translate("Retry"), primary: true,
                 onClick: () => { if (current()) void discoverSendMessage(platform, channelId, onSent, assertSession); } }]
         });
         return;
     }
 
-    const editor = createCodeEditor({ value: '', minHeight: '340px', placeholder: 'Raw message payload…' });
+    const editor = createCodeEditor({ value: '', minHeight: '340px', placeholder: translate("Raw message payload…") });
 
     /* ---- file open buttons -------------------------------------------------- */
 
@@ -354,19 +357,19 @@ async function discoverSendMessage(platform: any, channelId: any, onSent: any, a
                 try {
                     const file = await pickFile();
                     if (file && current()) editor.setValue(file.content);
-                } catch (e: any) { if (current()) toast(`Failed to open file: ${e.message || e}`, 'error'); }
+                } catch (e: any) { if (current()) toast(translate("Failed to open file: {value1}", { value1: String(e.message || e) }), 'error'); }
             }
-        }, 'Open Text File…'),
+        }, translate("Open Text File…")),
         h('button.btn', {
             onClick: async () => {
                 if (!current()) return;
                 const file = await pickBinaryFile();
                 if (file && current()) editor.setValue((file as any).content);
             },
-            title: 'Open a binary file into the editor above. The file will be encoded and displayed as Base64.'
-        }, 'Open Binary File…'),
+            title: translate("Open a binary file into the editor above. The file will be encoded and displayed as Base64.")
+        }, translate("Open Binary File…")),
         h('span.text-text-faint', { class: 'self-center' },
-            'Binary files are Base64-encoded into the editor.'));
+            translate("Binary files are Base64-encoded into the editor.")));
 
     /* ---- destinations table -------------------------------------------------- */
 
@@ -377,7 +380,7 @@ async function discoverSendMessage(platform: any, channelId: any, onSent: any, a
     }));
     const destTable = h('div.dt-wrap', { class: 'max-h-[126px] overflow-auto' },
         h('table.dt',
-            h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[81px]' }, 'Included'))),
+            h('thead', h('tr', h('th', translate("Destination")), h('th', { class: 'w-[81px]' }, translate("Included")))),
             h('tbody', destRows.map(d => {
                 const c = connectors.find(x => x.metaDataId === d.metaDataId);
                 return h('tr',
@@ -418,44 +421,44 @@ async function discoverSendMessage(platform: any, channelId: any, onSent: any, a
 
     const mapTable = h('div.dt-wrap', { class: 'max-h-[126px] overflow-auto' },
         h('table.dt',
-            h('thead', h('tr', h('th', { class: 'w-[40%]' }, 'Variable'), h('th', 'Value'))),
+            h('thead', h('tr', h('th', { class: 'w-[40%]' }, translate("Variable")), h('th', translate("Value")))),
             mapTbody));
     const mapButtons = h('div', { class: 'flex gap-2 mt-1.5' },
-        h('button.btn', { onClick: () => { addMapRow(newMapKey()).key.focus(); } }, 'New'),
+        h('button.btn', { onClick: () => { addMapRow(newMapKey()).key.focus(); } }, translate("New")),
         h('button.btn', {
             onClick: () => {
-                if (!selectedMapRow) { toast('Select a variable row first', 'warn'); return; }
+                if (!selectedMapRow) { toast(translate("Select a variable row first"), 'warn'); return; }
                 const i = mapRows.indexOf(selectedMapRow);
                 selectedMapRow.tr.remove();
                 mapRows.splice(i, 1);
                 selectMapRow(mapRows[Math.min(i, mapRows.length - 1)] ?? null);
             }
-        }, 'Delete'));
+        }, translate("Delete")));
 
     /* ---- dialog -------------------------------------------------------------- */
 
     let sending = false;
     let outcomeUnknown = false;
     const dialog = modal({
-        title: 'Message',
+        title: translate("Message"),
         size: 'wide',
         onClose: () => { closed = true; editor.dispose && editor.dispose(); },
         body: h('div',
             editor.el,
             fileButtons,
             destRows.length ? h('div',
-                h('div.mt-[13px]', 'Send to the following destination(s):'),
+                h('div.mt-[13px]', translate("Send to the following destination(s):")),
                 h('div', { class: 'mt-1.5' }, destTable)) : null,
-            h('div.mt-[13px]', 'Include the following source map variables:'),
+            h('div.mt-[13px]', translate("Include the following source map variables:")),
             h('div', { class: 'mt-1.5' }, mapTable),
             mapButtons),
         buttons: [
             {
-                label: 'Process Message', primary: true,
+                label: translate("Process Message"), primary: true,
                 onClick: async () => {
                     if (sending || !current()) return false;
                     const rawData = editor.getValue();
-                    if (!rawData) { toast('Enter a message payload', 'warn'); return false; }
+                    if (!rawData) { toast(translate("Enter a message payload"), 'warn'); return false; }
                     const selected = destRows.filter(d => (d.input as any).checked).map(d => d.metaDataId);
                     // Match Swing: all selected means all destinations deployed
                     // when processing starts, including any added while open.
@@ -465,32 +468,32 @@ async function discoverSendMessage(platform: any, channelId: any, onSent: any, a
                         .map(r => `${r.key.value.trim()}=${r.value.value}`);
                     sending = true;
                     const submit = dialog.el.querySelector<HTMLButtonElement>('.modal-foot .btn-primary');
-                    if (submit) { submit.disabled = true; submit.textContent = 'Processing…'; }
+                    if (submit) { submit.disabled = true; submit.textContent = translate("Processing…"); }
                     let attempted = false;
                     try {
-                        if (outcomeUnknown && !await confirmDialog('Retry Message',
-                            'The previous send could not be confirmed and may already be processing. Verify its outcome in the engine before retrying. Sending again may create a duplicate.',
-                            { danger: true, okLabel: 'Resend Message' })) return false;
+                        if (outcomeUnknown && !await confirmDialog(translate("Retry Message"),
+                            translate("The previous send could not be confirmed and may already be processing. Verify its outcome in the engine before retrying. Sending again may create a duplicate."),
+                            { danger: true, okLabel: translate("Resend Message") })) return false;
                         if (!current()) return false;
                         attempted = true;
                         await api.messages.processNew(channelId, rawData, metaDataIds, sourceMapEntries);
                         if (!current()) return false;
-                        toast('Message sent for processing');
+                        toast(translate("Message sent for processing"));
                         onSent && onSent();
                     } catch (e: any) {
                         if (!current()) return false;
                         if (attempted) outcomeUnknown = ![400, 401, 403, 404, 405, 415].includes(e.status);
                         toast(outcomeUnknown
-                            ? `Send could not be confirmed: ${e.message}. Verify the engine result before retrying.`
-                            : `Message was rejected: ${e.message}`, 'error');
+                            ? translate("Send could not be confirmed: {value1}. Verify the engine result before retrying.", { value1: String(e.message) })
+                            : translate("Message was rejected: {value1}", { value1: String(e.message) }), 'error');
                         return false;
                     } finally {
                         sending = false;
-                        if (submit) { submit.disabled = false; submit.textContent = 'Process Message'; }
+                        if (submit) { submit.disabled = false; submit.textContent = translate("Process Message"); }
                     }
                 }
             },
-            { label: 'Close' }
+            { label: translate("Close") }
         ]
     });
     setTimeout(() => { if (current()) editor.focus(); }, 30);
@@ -520,11 +523,11 @@ function errorLabel(cm: any) {
     const resp = contentOf(cm && cm.responseErrorContent) !== null;
     const post = contentOf(cm && cm.postProcessorErrorContent) !== null;
     const n = (proc ? 1 : 0) + (resp ? 1 : 0) + (post ? 1 : 0);
-    if (n > 1) return 'Multiple';
-    if (proc) return 'Processing';
-    if (resp) return 'Response';
-    if (post) return 'Postprocessor';
-    if (String(cm && cm.status) === 'ERROR') return 'Yes';
+    if (n > 1) return translate("Multiple");
+    if (proc) return translate("Processing");
+    if (resp) return translate("Response");
+    if (post) return translate("Postprocessor");
+    if (String(cm && cm.status) === 'ERROR') return translate("Yes");
     return '';
 }
 // null (not an empty element) when there's no error, so the cell renders "--".
@@ -535,21 +538,21 @@ const errBadge = (label: any) => label ? <span className="text-err">{label}</spa
    channelName is per-view state, so the set is built per render (memoized). */
 function buildColumns(channelName: any, metaDataColumns: any) {
     const COLUMNS = [
-        { key: 'id', label: 'Id', def: true, w: '90px', cls: 'num', sort: (m: any) => Number(m.messageId), parent: (m: any) => String(m.messageId), child: () => '' },
-        { key: 'connector', label: 'Connector', def: true, sort: (m: any) => sourceOf(m)?.connectorName || '', parent: (m: any, s: any) => s ? (s.connectorName || 'Source') : '', child: (cm: any) => cm.connectorName || `Destination ${cm.metaDataId}` },
-        { key: 'status', label: 'Status', def: true, w: '110px', sort: (m: any) => sourceOf(m)?.status || '', parent: (m: any, s: any) => s ? <StatusTag status={s.status} /> : '', child: (cm: any) => <StatusTag status={cm.status} /> },
-        { key: 'origReceived', label: 'Orig. Received Date', cls: 'mono', sort: (m: any) => fmtDate(m.receivedDate), parent: (m: any) => fmtDate(m.receivedDate), child: () => '' },
-        { key: 'received', label: 'Received Date', def: true, cls: 'mono', sort: (m: any) => fmtDate(sourceOf(m)?.receivedDate ?? m.receivedDate), parent: (m: any, s: any) => s ? fmtDate(s.receivedDate ?? m.receivedDate) : '', child: (cm: any) => fmtDate(cm.receivedDate) },
-        { key: 'sendAttempts', label: 'Send Attempts', w: '100px', cls: 'num', sort: (m: any) => maxAttempts(m), parent: (m: any) => String(maxAttempts(m)), child: (cm: any) => String(Number(cm.sendAttempts) || 0) },
-        { key: 'sendDate', label: 'Send Date', cls: 'mono', sort: (m: any) => fmtDate(sourceOf(m)?.sendDate), parent: (m: any, s: any) => s ? fmtDate(s.sendDate) : '', child: (cm: any) => fmtDate(cm.sendDate) },
-        { key: 'responseDate', label: 'Response Date', def: true, cls: 'mono', sort: (m: any) => fmtDate(sourceOf(m)?.responseDate), parent: (m: any, s: any) => s ? fmtDate(s.responseDate) : '', child: (cm: any) => fmtDate(cm.responseDate) },
-        { key: 'errors', label: 'Errors', def: true, w: '90px', sort: (m: any) => messageHasError(m) ? 0 : 1, parent: (m: any, s: any) => errBadge(errorLabel(s)), child: (cm: any) => errBadge(errorLabel(cm)) },
-        { key: 'serverId', label: 'Server Id', cls: 'mono', sort: (m: any) => m.serverId || '', parent: (m: any) => m.serverId || '', child: (cm: any) => cm.serverId || '' },
-        { key: 'origServerId', label: 'Original Server Id', cls: 'mono', sort: (m: any) => m.originalServerId || '', parent: (m: any) => m.originalServerId || '', child: () => '' },
-        { key: 'originalId', label: 'Original Id', cls: 'num', sort: (m: any) => Number(m.originalId) || 0, parent: (m: any) => m.originalId != null ? String(m.originalId) : '', child: () => '' },
-        { key: 'importId', label: 'Import Id', cls: 'num', sort: (m: any) => Number(m.importId) || 0, parent: (m: any) => m.importId != null ? String(m.importId) : '', child: () => '' },
-        { key: 'importChannelId', label: 'Import Channel Id', cls: 'mono', sort: (m: any) => m.importChannelId || '', parent: (m: any) => m.importChannelId || '', child: () => '' },
-        { key: 'channelName', label: 'Channel Name', sort: () => channelName, parent: () => channelName, child: () => '' }
+        { key: 'id', label: translate("Id"), def: true, w: '90px', cls: 'num', sort: (m: any) => Number(m.messageId), parent: (m: any) => String(m.messageId), child: () => '' },
+        { key: 'connector', label: translate("Connector"), def: true, sort: (m: any) => sourceOf(m)?.connectorName || '', parent: (m: any, s: any) => s ? (s.connectorName || translate("Source")) : '', child: (cm: any) => cm.connectorName || translate("Destination {value1}", { value1: String(cm.metaDataId) }) },
+        { key: 'status', label: translate("Status"), def: true, w: '110px', sort: (m: any) => sourceOf(m)?.status || '', parent: (m: any, s: any) => s ? <StatusTag status={s.status} /> : '', child: (cm: any) => <StatusTag status={cm.status} /> },
+        { key: 'origReceived', label: translate("Orig. Received Date"), cls: 'mono', sort: (m: any) => fmtDate(m.receivedDate), parent: (m: any) => fmtDate(m.receivedDate), child: () => '' },
+        { key: 'received', label: translate("Received Date"), def: true, cls: 'mono', sort: (m: any) => fmtDate(sourceOf(m)?.receivedDate ?? m.receivedDate), parent: (m: any, s: any) => s ? fmtDate(s.receivedDate ?? m.receivedDate) : '', child: (cm: any) => fmtDate(cm.receivedDate) },
+        { key: 'sendAttempts', label: translate("Send Attempts"), w: '100px', cls: 'num', sort: (m: any) => maxAttempts(m), parent: (m: any) => String(maxAttempts(m)), child: (cm: any) => String(Number(cm.sendAttempts) || 0) },
+        { key: 'sendDate', label: translate("Send Date"), cls: 'mono', sort: (m: any) => fmtDate(sourceOf(m)?.sendDate), parent: (m: any, s: any) => s ? fmtDate(s.sendDate) : '', child: (cm: any) => fmtDate(cm.sendDate) },
+        { key: 'responseDate', label: translate("Response Date"), def: true, cls: 'mono', sort: (m: any) => fmtDate(sourceOf(m)?.responseDate), parent: (m: any, s: any) => s ? fmtDate(s.responseDate) : '', child: (cm: any) => fmtDate(cm.responseDate) },
+        { key: 'errors', label: translate("Errors"), def: true, w: '90px', sort: (m: any) => messageHasError(m) ? 0 : 1, parent: (m: any, s: any) => errBadge(errorLabel(s)), child: (cm: any) => errBadge(errorLabel(cm)) },
+        { key: 'serverId', label: translate("Server Id"), cls: 'mono', sort: (m: any) => m.serverId || '', parent: (m: any) => m.serverId || '', child: (cm: any) => cm.serverId || '' },
+        { key: 'origServerId', label: translate("Original Server Id"), cls: 'mono', sort: (m: any) => m.originalServerId || '', parent: (m: any) => m.originalServerId || '', child: () => '' },
+        { key: 'originalId', label: translate("Original Id"), cls: 'num', sort: (m: any) => Number(m.originalId) || 0, parent: (m: any) => m.originalId != null ? String(m.originalId) : '', child: () => '' },
+        { key: 'importId', label: translate("Import Id"), cls: 'num', sort: (m: any) => Number(m.importId) || 0, parent: (m: any) => m.importId != null ? String(m.importId) : '', child: () => '' },
+        { key: 'importChannelId', label: translate("Import Channel Id"), cls: 'mono', sort: (m: any) => m.importChannelId || '', parent: (m: any) => m.importChannelId || '', child: () => '' },
+        { key: 'channelName', label: translate("Channel Name"), sort: () => channelName, parent: () => channelName, child: () => '' }
     ];
     return [...COLUMNS, ...metaDataColumns.map((col: any) => ({
         key: `meta:${col.name}`, label: col.name, def: true,
@@ -654,7 +657,7 @@ function ResultsTable({
         <thead>
             <tr>
                 <th className="w-6" onContextMenu={onColumnMenu}>
-                    <span className="msg-twisty" title={allExpanded ? 'Collapse all' : 'Expand all'}
+                    <span className="msg-twisty" title={allExpanded ? translate("Collapse all") : translate("Expand all")}
                         onClick={onToggleAll}>{allExpanded ? '▾' : '▸'}</span>
                 </th>
                 {cols.map((c: any, i: any) => (
@@ -703,7 +706,7 @@ function ResultsTable({
                         {colgroup}{thead}
                     </table>
                 </div>
-                <div className="dt-empty">No messages found</div>
+                <div className="dt-empty">{translate("No messages found")}</div>
             </>
         );
     }
@@ -712,7 +715,7 @@ function ResultsTable({
     // The row the compare anchor points at, marked with an inset accent bar and a
     // ⇄ in the twisty column — a marker, never any of the content it refers to.
     const anchorMark = (key: any) => key === anchorKey
-        ? <span className="compare-mark" title="Selected for compare" aria-label="Selected for compare">⇄</span>
+        ? <span className="compare-mark" title={translate("Selected for compare")} aria-label={translate("Selected for compare")}>⇄</span>
         : null;
     for (const m of rows) {
         const source = sourceOf(m);
@@ -768,12 +771,12 @@ function ResultsTable({
 function copyText(text: any) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(String(text == null ? '' : text)).then(
-            () => toast('Copied to clipboard'),
-            () => toast('Copy failed', 'warn'));
-    } else { toast('Clipboard unavailable', 'warn'); }
+            () => toast(translate("Copied to clipboard")),
+            () => toast(translate("Copy failed"), 'warn'));
+    } else { toast(translate("Clipboard unavailable"), 'warn'); }
 }
 
-function Loading({ text = 'Loading…' }: any) {
+function Loading({ text = translate("Loading…") }: any) {
     return <div className="loading-block"><div className="spinner" />{text}</div>;
 }
 
@@ -834,19 +837,14 @@ function ContentView({ content, dataType, responseEnvelope, popoutTitle }: any) 
         <div className="flex flex-col min-h-0 h-full">
             <div className="content-toolbar">
                 {(kind === 'xml' || kind === 'json') && (
-                    <label className="check">
-                        <input type="checkbox" checked={formatted} onChange={(e: any) => setFormatted(e.target.checked)} />
-                        Format
-                    </label>
+                    <label className="check">{richText("{value1}Format", { value1: <input type="checkbox" checked={formatted} onChange={(e: any) => setFormatted(e.target.checked)} /> })}</label>
                 )}
                 <span className="flex-1" />
                 {popoutTitle && (
-                    <button className="btn btn-sm" title="Open full screen"
-                        onClick={() => openContentPopout(popoutTitle, { content, dataType, responseEnvelope })}>
-                        <Icon name="popout" />Full Screen
-                    </button>
+                    <button className="btn btn-sm" title={translate("Open full screen")}
+                        onClick={() => openContentPopout(popoutTitle, { content, dataType, responseEnvelope })}>{richText("{value1}Full Screen", { value1: <Icon name="popout" /> })}</button>
                 )}
-                <button className="btn btn-sm" onClick={() => copyText(body)}><Icon name="copy" />Copy</button>
+                <button className="btn btn-sm" onClick={() => copyText(body)}>{richText("{value1}Copy", { value1: <Icon name="copy" /> })}</button>
             </div>
             {env && (
                 <div className="content-banner">
@@ -856,7 +854,7 @@ function ContentView({ content, dataType, responseEnvelope, popoutTitle }: any) 
             )}
             {/* flex:1 so the box always fills the pane — a stable text area even
                 when the body is empty (e.g. a Response with no payload). */}
-            <pre className="content-pre flex-1 min-h-[108px] max-h-none m-2.5" ref={preRef} />
+            <pre lang="en" className="content-pre flex-1 min-h-[108px] max-h-none m-2.5" ref={preRef} />
         </div>
     );
 }
@@ -872,7 +870,7 @@ function openContentPopout(title: any, props: any) {
     const teardown = mountReact(host, <ContentView {...props} />);
     modal({
         title, size: 'fit', body: host,
-        buttons: [{ label: 'Close', primary: true }],
+        buttons: [{ label: translate("Close"), primary: true }],
         onClose: () => { try { teardown(); } catch { /* ignore */ } }
     });
 }
@@ -882,17 +880,17 @@ function openContentPopout(title: any, props: any) {
    stays put (table.dt th is position:sticky) while the rows scroll in the tab
    body, and clicking a column sorts by it (toggling asc/desc). */
 const MAPPING_COLS = [
-    { key: 'scope', label: 'Scope' }, { key: 'variable', label: 'Variable' }, { key: 'value', label: 'Value' }];
+    { key: 'scope', label: translate("Scope") }, { key: 'variable', label: translate("Variable") }, { key: 'value', label: translate("Value") }];
 
 function MappingsTable({ cm }: any) {
     // Scope, deserialized map content. Matches the Swing browser exactly:
     // Source / Connector / Channel / Response only — no Custom Metadata.
     const rows = useMemo(() => {
         const groups = [
-            ['Source', cm.sourceMapContent],
-            ['Connector', cm.connectorMapContent],
-            ['Channel', cm.channelMapContent],
-            ['Response', cm.responseMapContent]
+            [translate("Source"), cm.sourceMapContent],
+            [translate("Connector"), cm.connectorMapContent],
+            [translate("Channel"), cm.channelMapContent],
+            [translate("Response"), cm.responseMapContent]
         ];
         const out: any[] = [];
         for (const [scope, mc] of groups) {
@@ -907,11 +905,11 @@ function MappingsTable({ cm }: any) {
     const [sort, setSort] = useState<any>({ key: null, dir: 1 });
 
     if (!rows.length) {
-        return <div className="p-3.5"><div className="text-text-faint">There are no mappings present.</div></div>;
+        return <div className="p-3.5"><div className="text-text-faint">{translate("There are no mappings present.")}</div></div>;
     }
 
     const view = sort.key
-        ? [...rows].sort((a: any, b: any) => String(a[sort.key]).localeCompare(String(b[sort.key]), undefined, { numeric: true }) * sort.dir)
+        ? [...rows].sort((a: any, b: any) => compareText(String(a[sort.key]), String(b[sort.key])) * sort.dir)
         : rows;
 
     // No inner overflow wrapper: the table scrolls in the tab body
@@ -933,7 +931,7 @@ function MappingsTable({ cm }: any) {
             </thead>
             <tbody>
                 {view.map((r: any, i: any) => (
-                    <tr key={i} className="cursor-pointer" title="Double-click for the full value"
+                    <tr key={i} className="cursor-pointer" title={translate("Double-click for the full value")}
                         onDoubleClick={() => openMappingValue(r.value)}>
                         <td className="w-[108px]">{r.scope}</td>
                         <td className="mono w-[30%]">{r.variable}</td>
@@ -952,10 +950,10 @@ function openTextPopout(title: any, text: any, display = text) {
     modal({
         title,
         size: 'fit',
-        body: h('pre', { class: 'content-pre flex-1 min-h-[108px] max-h-none m-2.5' }, display),
+        body: h('pre', { lang: 'en', class: 'content-pre flex-1 min-h-[108px] max-h-none m-2.5' }, display),
         buttons: [
-            { label: 'Copy', onClick: () => { copyText(text); return false; } },
-            { label: 'Close', primary: true }
+            { label: translate("Copy"), onClick: () => { copyText(text); return false; } },
+            { label: translate("Close"), primary: true }
         ]
     });
 }
@@ -965,7 +963,7 @@ function openTextPopout(title: any, text: any, display = text) {
    Copy takes the value itself — the tab→newline swap is display-only. */
 function openMappingValue(value: any) {
     const text = String(value ?? '');
-    openTextPopout('Mapping Value', text, text.replace(/\t/g, '\n'));
+    openTextPopout(translate("Mapping Value"), text, text.replace(/\t/g, '\n'));
 }
 
 /* ---- attachments ------------------------------------------------------------------ */
@@ -1005,10 +1003,10 @@ async function exportAttachment(channelId: any, message: any, attachment: any, s
             } catch { return content; /* not Base64 — save as-is */ }
         }, assertSession);
         assertSession();
-        if (contentLoaded) toast('Attachment exported');
+        if (contentLoaded) toast(translate("Attachment exported"));
     } catch (e: any) {
         try { assertSession(); } catch { return; }
-        toast(`Failed to export attachment: ${e.message}`, 'error');
+        toast(translate("Failed to export attachment: {value1}", { value1: String(e.message) }), 'error');
     }
 }
 
@@ -1025,21 +1023,21 @@ function AttachmentFallback({ channelId, message, attachment }: any) {
             }
             setContent(displayValue(c));
         } catch (e: any) {
-            toast(`Failed to fetch attachment: ${e.message}`, 'error');
+            toast(translate("Failed to fetch attachment: {value1}", { value1: String(e.message) }), 'error');
         }
     };
     return (
         <div className="mt-[13px]">
             <dl className="kv">
-                <dt>Id</dt><dd>{displayValue(attachment.id)}</dd>
-                <dt>Type</dt><dd>{displayValue(attachment.type)}</dd>
+                <dt>{translate("Id")}</dt><dd>{displayValue(attachment.id)}</dd>
+                <dt>{translate("Type")}</dt><dd>{displayValue(attachment.type)}</dd>
             </dl>
             <div className="mt-[13px] flex gap-2">
-                <button className="btn" onClick={fetchContent}><Icon name="eye" />Fetch Content</button>
-                <TaskButton label="Export" icon="export" task="doExportAttachment" group="message"
+                <button className="btn" onClick={fetchContent}>{richText("{value1}Fetch Content", { value1: <Icon name="eye" /> })}</button>
+                <TaskButton label={translate("Export")} icon="export" task="doExportAttachment" group="message"
                     onClick={() => exportAttachment(channelId, message, attachment)} />
             </div>
-            {content != null && <pre className="content-pre mt-[13px]">{content}</pre>}
+            {content != null && <pre lang="en" className="content-pre mt-[13px]">{content}</pre>}
         </div>
     );
 }
@@ -1071,9 +1069,9 @@ function AttachmentList({ platform, channelId, message }: any) {
         return () => { stale = true; };
     }, [channelId, message]);
 
-    if (state.status === 'loading') return <Loading text="Loading attachments…" />;
-    if (state.status === 'error') return <div className="text-text-faint">{`Failed to load attachments: ${(state as any).error}`}</div>;
-    if (!(state as any).attachments.length) return <div className="text-text-faint">No attachments</div>;
+    if (state.status === 'loading') return <Loading text={translate("Loading attachments…")} />;
+    if (state.status === 'error') return <div className="text-text-faint">{translate("Failed to load attachments: {value1}", { value1: String((state as any).error) })}</div>;
+    if (!(state as any).attachments.length) return <div className="text-text-faint">{translate("No attachments")}</div>;
 
     const shownOnce = new Set();
     const blocks: any[] = [];
@@ -1103,7 +1101,7 @@ function viewAttachmentsModal(platform: any, channelId: any, m: any) {
     const host = h('div', { class: 'w-full min-w-0 max-h-[60vh] overflow-auto' });
     const teardown = mountReact(host, <AttachmentList platform={platform} channelId={channelId} message={m} />);
     modal({
-        title: `Attachments — Message ${m.messageId}`, size: 'wide', body: host, buttons: [{ label: 'Close' }],
+        title: translate("Attachments — Message {value1}", { value1: String(m.messageId) }), size: 'wide', body: host, buttons: [{ label: translate("Close") }],
         onClose: () => { try { teardown(); } catch { /* ignore */ } }
     });
 }
@@ -1118,12 +1116,12 @@ async function exportAttachmentTask(platform: any, channelId: any, m: any) {
         const attachments = m.__attachments ?? await api.messages.attachments(channelId, m.messageId);
         assertSession();
         m.__attachments = attachments;
-        if (!attachments.length) { toast('No attachments on this message', 'warn'); return; }
+        if (!attachments.length) { toast(translate("No attachments on this message"), 'warn'); return; }
         if (attachments.length === 1) { await exportAttachment(channelId, m, attachments[0], assertSession); return; }
         viewAttachmentsModal(platform, channelId, m);
     } catch (e: any) {
         try { assertSession(); } catch { return; }
-        toast(`Failed to load attachments: ${e.message || e}`, 'error');
+        toast(translate("Failed to load attachments: {value1}", { value1: String(e.message || e) }), 'error');
     }
 }
 
@@ -1148,7 +1146,7 @@ function DetailTabs({ defs, anchorType, onActiveStage, onStageMenu }: any) {
     return (
         <TabsPrimitive.Root value={String(active)} onValueChange={(v: any) => setActive(Number(v))}
             className="flex-1 min-h-0 flex flex-col">
-            <TabsPrimitive.List className="tabs flex-none" aria-label="Message sections">
+            <TabsPrimitive.List className="tabs flex-none" aria-label={translate("Message sections")}>
                 {defs.map((def: any, i: any) => (
                     <TabsPrimitive.Trigger key={def.label} value={String(i)}
                         onContextMenu={stageMenu(def)}
@@ -1171,9 +1169,9 @@ function DetailTabs({ defs, anchorType, onActiveStage, onStageMenu }: any) {
    attachments) — mirrors the Swing browser's per-connector tabs. */
 function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, onActiveStage, onStageMenu }: any) {
     const contentDefs = [
-        ['Raw', 'raw'], ['Processed Raw', 'processedRaw'], ['Transformed', 'transformed'],
-        ['Encoded', 'encoded'], ['Sent', 'sent'], ['Response', 'response'],
-        ['Response Transformed', 'responseTransformed'], ['Processed Response', 'processedResponse']
+        [translate("Raw"), 'raw'], [translate("Processed Raw"), 'processedRaw'], [translate("Transformed"), 'transformed'],
+        [translate("Encoded"), 'encoded'], [translate("Sent"), 'sent'], [translate("Response"), 'response'],
+        [translate("Response Transformed"), 'responseTransformed'], [translate("Processed Response"), 'processedResponse']
     ];
     // Which of these tabs Compare understands (the six pipeline stages).
     const comparable = new Map(COMPARE_STAGES.map(s => [s.key, s.type]));
@@ -1203,7 +1201,7 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
     // Full-screen titles carry the connector: the results tree, which normally
     // says whose content this is, sits behind the modal overlay.
     const connectorLabel = cm.connectorName
-        || (Number(cm.metaDataId) === 0 ? 'Source' : `Destination ${cm.metaDataId}`);
+        || (Number(cm.metaDataId) === 0 ? translate("Source") : translate("Destination {value1}", { value1: String(cm.metaDataId) }));
     for (const [label, key] of contentDefs) {
         let content = contentOf(cm[key]);
         if (content === null) continue;
@@ -1225,13 +1223,13 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
     }
 
     const errorDefs = [
-        ['Processing Error', contentOf(cm.processingErrorContent)],
-        ['Postprocessor Error', contentOf(cm.postProcessorErrorContent)],
-        ['Response Error', contentOf(cm.responseErrorContent)]
+        [translate("Processing Error"), contentOf(cm.processingErrorContent)],
+        [translate("Postprocessor Error"), contentOf(cm.postProcessorErrorContent)],
+        [translate("Response Error"), contentOf(cm.responseErrorContent)]
     ].filter(([, content]) => content !== null);
     if (errorDefs.length) {
         defs.push({
-            label: 'Errors',
+            label: translate("Errors"),
             node: (
                 <div className="p-2.5 overflow-auto">
                     {errorDefs.map(([label, content]) => (
@@ -1240,12 +1238,10 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
                                 stage — never the whole tab. */}
                             <div className="mt-[13px] flex items-center">
                                 <span className="text-text-faint">{label}</span>
-                                <button className="btn btn-sm ml-auto" title="Open full screen"
-                                    onClick={() => openTextPopout(`Message ${message.messageId} — ${connectorLabel} — ${label}`, content)}>
-                                    <Icon name="popout" />Full Screen
-                                </button>
+                                <button className="btn btn-sm ml-auto" title={translate("Open full screen")}
+                                    onClick={() => openTextPopout(translate("Message {value1} — {value2} — {value3}", { value1: String(message.messageId), value2: String(connectorLabel), value3: String(label) }), content)}>{richText("{value1}Full Screen", { value1: <Icon name="popout" /> })}</button>
                             </div>
-                            <pre className="content-pre">{content}</pre>
+                            <pre lang="en" className="content-pre">{content}</pre>
                         </div>
                     ))}
                 </div>
@@ -1253,12 +1249,12 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
         });
     }
 
-    defs.push({ label: 'Mappings', node: <MappingsTable cm={cm} /> });
+    defs.push({ label: translate("Mappings"), node: <MappingsTable cm={cm} /> });
     // Keep the tab visible on a failed attachment request so the failure cannot
     // masquerade as a message with no attachments.
     if (message.__attachmentsError || (message.__attachments && message.__attachments.length)) {
         defs.push({
-            label: 'Attachments',
+            label: translate("Attachments"),
             node: (
                 <div className="p-2.5 overflow-auto">
                     <AttachmentList platform={platform} channelId={channelId} message={message} />
@@ -1277,10 +1273,10 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
    no status pill or connector dropdown. */
 function DetailBody({ detail, channelId, channelName, platform, anchor, onActiveStage, onStageMenu }: any) {
     if (detail.status === 'empty') {
-        return <div className="text-text-faint flex-none py-[8px] px-3.5">Select a message to view its contents.</div>;
+        return <div className="text-text-faint flex-none py-[8px] px-3.5">{translate("Select a message to view its contents.")}</div>;
     }
     if (detail.status === 'loading') {
-        return <div className="py-3 px-3.5"><Loading text="Loading message…" /></div>;
+        return <div className="py-3 px-3.5"><Loading text={translate("Loading message…")} /></div>;
     }
     if (detail.status === 'error') {
         return <div className="text-danger py-3 px-3.5" role="alert">{detail.error}</div>;
@@ -1290,15 +1286,15 @@ function DetailBody({ detail, channelId, channelName, platform, anchor, onActive
     if (!cms.length) {
         return (
             <>
-                <div className="panel-header flex-none">{`Message ${message.messageId}`}</div>
-                <div className="text-text-faint py-3 px-3.5">No connector messages</div>
+                <div className="panel-header flex-none">{translate("Message {value1}", { value1: String(message.messageId) })}</div>
+                <div className="text-text-faint py-3 px-3.5">{translate("No connector messages")}</div>
             </>
         );
     }
     const cm = cms.find(c => Number(c.metaDataId) === Number(metaDataId)) || cms[0];
     return (
         <>
-            <div className="panel-header flex-none">{`Message ${message.messageId}`}</div>
+            <div className="panel-header flex-none">{translate("Message {value1}", { value1: String(message.messageId) })}</div>
             <ConnectorTabs key={`${message.messageId}:${cm.metaDataId}`}
                 message={message} cm={cm} channelId={channelId} channelName={channelName} platform={platform}
                 anchor={anchor} onActiveStage={onActiveStage} onStageMenu={onStageMenu} />
@@ -1322,7 +1318,7 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
     };
     const connRows: any[] = [];
     const connTbody = h('tbody');
-    for (const c of [...connectors, { metaDataId: null, name: 'Deleted Connectors' }]) {
+    for (const c of [...connectors, { metaDataId: null, name: translate("Deleted Connectors") }]) {
         const input = h('input', { type: 'checkbox', checked: isConnChecked(c.metaDataId) });
         connRows.push({ key: c.metaDataId, input });
         connTbody.appendChild(h('tr',
@@ -1333,12 +1329,12 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
     const setAllConn = (v: any) => connRows.forEach(r => { r.input.checked = v; });
     const connBlock = h('div',
         h('div', { class: 'flex justify-end gap-2.5 mb-1.5' },
-            h('a', { class: 'link-btn', onClick: () => setAllConn(true) }, 'Select All'),
+            h('a', { class: 'link-btn', onClick: () => setAllConn(true) }, translate("Select All")),
             h('span.text-text-faint', '|'),
-            h('a', { class: 'link-btn', onClick: () => setAllConn(false) }, 'Deselect All')),
+            h('a', { class: 'link-btn', onClick: () => setAllConn(false) }, translate("Deselect All"))),
         h('div.dt-wrap', { class: 'max-h-[135px] overflow-auto' },
             h('table.dt',
-                h('thead', h('tr', h('th', 'Id'), h('th', 'Current Connector Name'), h('th', 'Included'))),
+                h('thead', h('tr', h('th', translate("Id")), h('th', translate("Current Connector Name")), h('th', translate("Included")))),
                 connTbody)));
 
     /* ---- id / numeric ranges (stacked "label: min – max" rows) ---- */
@@ -1356,8 +1352,8 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
     const singleRow = (label: any, el: any) => h('div', { class: 'flex items-center gap-2 mb-2' },
         lbl(label), el);
 
-    const attachmentCheck = checkbox('Has Attachment', adv.attachment);
-    const errorCheck = checkbox('Has Error', adv.error);
+    const attachmentCheck = checkbox(translate("Has Attachment"), adv.attachment);
+    const errorCheck = checkbox(translate("Has Error"), adv.error);
 
     /* ---- selectable search tables with right-side New/Delete ---- */
     function makeSelectableTable(head: any) {
@@ -1382,13 +1378,13 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
             h('div.dt-wrap', { class: 'flex-1 max-h-[135px] overflow-auto' },
                 h('table.dt', h('thead', h('tr', head.map((l: any) => h('th', l)))), tbody)),
             h('div', { class: 'flex flex-col gap-1.5' },
-                h('button.btn', { onClick: onNew }, 'New'), delBtn));
-        delBtn.textContent = 'Delete';
+                h('button.btn', { onClick: onNew }, translate("New")), delBtn));
+        delBtn.textContent = translate("Delete");
         return { tbody, rows, sel, el };
     }
 
     /* Content Searches — one repeatable query param per content type. */
-    const cs = makeSelectableTable(['Content Type', 'Contains']);
+    const cs = makeSelectableTable([translate("Content Type"), translate("Contains")]);
     function addContentSearchRow(type = 'rawContentSearch', text = '') {
         const row = {
             type: select(CONTENT_SEARCH_TYPES, type),
@@ -1403,15 +1399,15 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
     adv.contentSearches.forEach((c: any) => addContentSearchRow(c.type, c.text));
 
     /* Custom Metadata searches — "COLUMN OPERATOR value" strings. */
-    const ms = makeSelectableTable(['Metadata', 'Operator', 'Value', 'Ignore Case']);
+    const ms = makeSelectableTable([translate("Metadata"), translate("Operator"), translate("Value"), translate("Ignore Case")]);
     function addMetaSearchRow(column?: any, operator = 'CONTAINS', value = '', ignoreCase = false) {
         const row = {
             column: metaDataColumns.length
                 ? select(metaDataColumns.map((c: any) => c.name), column ?? metaDataColumns[0].name)
-                : h('input', { type: 'text', value: column ?? '', placeholder: 'COLUMN_NAME' }),
+                : h('input', { type: 'text', value: column ?? '', placeholder: translate("COLUMN_NAME") }),
             operator: select(META_SEARCH_OPERATORS, operator),
             value: h('input', { type: 'text', value, class: 'w-full' }),
-            ignoreCase: h('input', { type: 'checkbox', checked: ignoreCase, title: 'Ignore case' })
+            ignoreCase: h('input', { type: 'checkbox', checked: ignoreCase, title: translate("Ignore case") })
         };
         (row as any).tr = h('tr', { onMousedown: () => ms.sel(row) },
             h('td', row.column), h('td', row.operator), h('td', row.value),
@@ -1426,30 +1422,30 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
     const sectionLabel = (text: any) => h('div', { class: 'font-semibold mt-3.5 mx-0 mb-1.5' }, text);
 
     modal({
-        title: 'Advanced Search Filter',
+        title: translate("Advanced Search Filter"),
         size: 'wide',
         body: h('div',
             connBlock,
             h('div', { class: 'mt-3.5' },
-                rangeRow('Message Id:', inputs.minMessageId, inputs.maxMessageId),
-                rangeRow('Original Id:', inputs.minOriginalId, inputs.maxOriginalId),
-                rangeRow('Import Id:', inputs.minImportId, inputs.maxImportId),
-                singleRow('Server Id:', inputs.serverId),
-                rangeRow('Send Attempts:', inputs.minSendAttempts, inputs.maxSendAttempts)),
+                rangeRow(translate("Message Id:"), inputs.minMessageId, inputs.maxMessageId),
+                rangeRow(translate("Original Id:"), inputs.minOriginalId, inputs.maxOriginalId),
+                rangeRow(translate("Import Id:"), inputs.minImportId, inputs.maxImportId),
+                singleRow(translate("Server Id:"), inputs.serverId),
+                rangeRow(translate("Send Attempts:"), inputs.minSendAttempts, inputs.maxSendAttempts)),
             h('div', { class: 'flex gap-6 mt-1' },
                 attachmentCheck.el, errorCheck.el),
-            sectionLabel('Content Searches'),
+            sectionLabel(translate("Content Searches")),
             cs.el(() => addContentSearchRow().text.focus()),
-            sectionLabel('Custom Metadata Searches'),
+            sectionLabel(translate("Custom Metadata Searches")),
             ms.el(() => addMetaSearchRow().value.focus())),
         buttons: [
             {
-                label: 'Reset',
+                label: translate("Reset"),
                 onClick: () => { onApply(defaultAdvancedCriteria()); }
             },
-            { label: 'Cancel' },
+            { label: translate("Cancel") },
             {
-                label: 'OK', primary: true,
+                label: translate("OK"), primary: true,
                 onClick: () => {
                     // Resolve the connector table into included/excluded ids.
                     let included = null, excluded = null;
@@ -1499,35 +1495,35 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
         metaDataId: c.metaDataId, name: c.name,
         input: h('input', { type: 'checkbox', checked: true })
     }));
-    const overwrite = checkbox('Overwrite existing messages and update statistics', false);
+    const overwrite = checkbox(translate("Overwrite existing messages and update statistics"), false);
     const setAll = (v: any) => destRows.forEach((r: any) => { r.input.checked = v; });
 
     const destTable = destRows.length ? h('div',
         h('div', { class: 'flex justify-end gap-2.5 my-1 mx-0' },
-            h('a', { class: 'link-btn', onClick: () => setAll(true) }, 'Select All'),
+            h('a', { class: 'link-btn', onClick: () => setAll(true) }, translate("Select All")),
             h('span.text-text-faint', '|'),
-            h('a', { class: 'link-btn', onClick: () => setAll(false) }, 'Deselect All')),
+            h('a', { class: 'link-btn', onClick: () => setAll(false) }, translate("Deselect All"))),
         h('div.dt-wrap', { class: 'max-h-[144px] overflow-auto' },
             h('table.dt',
-                h('thead', h('tr', h('th', 'Destination'), h('th', { class: 'w-[81px]' }, 'Included'))),
+                h('thead', h('tr', h('th', translate("Destination")), h('th', { class: 'w-[81px]' }, translate("Included")))),
                 h('tbody', destRows.map((d: any) => h('tr',
-                    h('td', d.name || `Destination ${d.metaDataId}`),
+                    h('td', d.name || translate("Destination {value1}", { value1: String(d.metaDataId) })),
                     h('td', { class: 'text-center' }, d.input))))))) : null;
 
     modal({
-        title: 'Reprocessing Options',
+        title: translate("Reprocessing Options"),
         size: 'wide',
         body: h('div',
             isResults ? h('div', {
                 class: 'text-err mb-2.5 text-[11px]'
-            }, h('b', 'Warning: '), `This will reprocess all ${fmtNumber(total)} result(s) for the current search criteria, including those not listed on the current page.`) : null,
+            }, h('b', translate("Warning: ")), translate("This will reprocess all {value1} result(s) for the current search criteria, including those not listed on the current page.", { value1: String(fmtNumber(total)) })) : null,
             overwrite.el,
-            destRows.length ? h('div.mt-[13px]', 'Reprocess through the following destinations:') : null,
+            destRows.length ? h('div.mt-[13px]', translate("Reprocess through the following destinations:")) : null,
             destTable),
         buttons: [
-            { label: 'Cancel' },
+            { label: translate("Cancel") },
             {
-                label: 'OK', primary: true,
+                label: translate("OK"), primary: true,
                 onClick: async () => {
                     try { assertSession(); } catch { return false; }
                     const checked = destRows.filter((r: any) => r.input.checked).map((r: any) => r.metaDataId);
@@ -1537,12 +1533,12 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
                     // The REPROCESSALL confirmation is gated on the
                     // "Reprocess/remove messages confirmation" preference.
                     if (isResults && getPref('confirmReprocessRemove') !== false) {
-                        const answer = await promptDialog('Reprocess Results',
-                            'This will reprocess all messages matching the current search criteria. Type REPROCESSALL to continue.');
+                        const answer = await promptDialog(translate("Reprocess Results"),
+                            translate("This will reprocess all messages matching the current search criteria. Type REPROCESSALL to continue."));
                         try { assertSession(); } catch { return false; }
                         if (answer === null) return false;
                         if (String(answer).trim() !== 'REPROCESSALL') {
-                            toast('You must type REPROCESSALL to reprocess results.', 'warn');
+                            toast(translate("You must type REPROCESSALL to reprocess results."), 'warn');
                             return false;
                         }
                     }
@@ -1557,16 +1553,16 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
                                 timeoutMs: null
                             });
                             assertSession();
-                            toast('Reprocess task submitted');
+                            toast(translate("Reprocess task submitted"));
                         } else {
                             await api.messages.reprocess(channelId, messageId, overwrite.input.checked, filterDestinations, metaDataIds || []);
                             assertSession();
-                            toast('Reprocess task sent');
+                            toast(translate("Reprocess task sent"));
                         }
                         onDone();
                     } catch (e: any) {
                         try { assertSession(); } catch { return false; }
-                        toast(`Reprocess failed: ${e.message}`, 'error');
+                        toast(translate("Reprocess failed: {value1}", { value1: String(e.message) }), 'error');
                         return false;
                     }
                 }
@@ -1583,40 +1579,40 @@ function reprocessDialog({ channelId, connectors, total, lastParams, messageId, 
    connector message(s). `ct` is the engine ContentType enum name used for
    the server-side _export endpoint. */
 const EXPORT_CONTENT_OPTIONS = [
-    { value: 'xml', label: 'XML serialized message', xml: true },
-    { value: 'src:raw', label: 'Source - Raw', key: 'raw', ct: 'RAW', dest: false },
-    { value: 'src:processedRaw', label: 'Source - Processed Raw', key: 'processedRaw', ct: 'PROCESSED_RAW', dest: false },
-    { value: 'src:transformed', label: 'Source - Transformed', key: 'transformed', ct: 'TRANSFORMED', dest: false },
-    { value: 'src:encoded', label: 'Source - Encoded', key: 'encoded', ct: 'ENCODED', dest: false },
-    { value: 'src:response', label: 'Source - Response', key: 'response', ct: 'RESPONSE', dest: false },
-    { value: 'dst:raw', label: 'Destination - Raw', key: 'raw', ct: 'RAW', dest: true },
-    { value: 'dst:transformed', label: 'Destination - Transformed', key: 'transformed', ct: 'TRANSFORMED', dest: true },
-    { value: 'dst:encoded', label: 'Destination - Encoded', key: 'encoded', ct: 'ENCODED', dest: true },
-    { value: 'dst:sent', label: 'Destination - Sent', key: 'sent', ct: 'SENT', dest: true },
-    { value: 'dst:response', label: 'Destination - Response', key: 'response', ct: 'RESPONSE', dest: true },
-    { value: 'dst:processedResponse', label: 'Destination - Processed Response', key: 'processedResponse', ct: 'PROCESSED_RESPONSE', dest: true }
+    { value: 'xml', label: translate("XML serialized message"), xml: true },
+    { value: 'src:raw', label: translate("Source - Raw"), key: 'raw', ct: 'RAW', dest: false },
+    { value: 'src:processedRaw', label: translate("Source - Processed Raw"), key: 'processedRaw', ct: 'PROCESSED_RAW', dest: false },
+    { value: 'src:transformed', label: translate("Source - Transformed"), key: 'transformed', ct: 'TRANSFORMED', dest: false },
+    { value: 'src:encoded', label: translate("Source - Encoded"), key: 'encoded', ct: 'ENCODED', dest: false },
+    { value: 'src:response', label: translate("Source - Response"), key: 'response', ct: 'RESPONSE', dest: false },
+    { value: 'dst:raw', label: translate("Destination - Raw"), key: 'raw', ct: 'RAW', dest: true },
+    { value: 'dst:transformed', label: translate("Destination - Transformed"), key: 'transformed', ct: 'TRANSFORMED', dest: true },
+    { value: 'dst:encoded', label: translate("Destination - Encoded"), key: 'encoded', ct: 'ENCODED', dest: true },
+    { value: 'dst:sent', label: translate("Destination - Sent"), key: 'sent', ct: 'SENT', dest: true },
+    { value: 'dst:response', label: translate("Destination - Response"), key: 'response', ct: 'RESPONSE', dest: true },
+    { value: 'dst:processedResponse', label: translate("Destination - Processed Response"), key: 'processedResponse', ct: 'PROCESSED_RESPONSE', dest: true }
 ];
 
 /* File Pattern variables (Swing MessageExportPanel variable list). */
 const FILE_PATTERN_VARS = [
-    ['Message ID', '${message.messageId}'],
-    ['Server ID', '${message.serverId}'],
-    ['Channel ID', '${message.channelId}'],
-    ['Original File Name', '${message.originalFileName}'],
-    ['Formatted Message Date', '${message.formattedMessageDate}'],
-    ['Formatted Current Date', '${message.formattedCurrentDate}'],
-    ['Timestamp', '${message.timestamp}'],
-    ['Unique ID', '${message.uniqueId}'],
-    ['Count', '${message.count}']
+    [translate("Message ID"), '${message.messageId}'],
+    [translate("Server ID"), '${message.serverId}'],
+    [translate("Channel ID"), '${message.channelId}'],
+    [translate("Original File Name"), '${message.originalFileName}'],
+    [translate("Formatted Message Date"), '${message.formattedMessageDate}'],
+    [translate("Formatted Current Date"), '${message.formattedCurrentDate}'],
+    [translate("Timestamp"), '${message.timestamp}'],
+    [translate("Unique ID"), '${message.uniqueId}'],
+    [translate("Count"), '${message.count}']
 ];
 const DEFAULT_FILE_PATTERN = '${message.channelId}_message_${message.messageId}.xml';
 
 /* Password-protect algorithms — display name -> { server (EncryptionType),
    strength (core/zip.js generate option) }. */
 const ENCRYPTION_ALGORITHMS = [
-    { value: 'AES128', label: 'AES-128', strength: 128 },
-    { value: 'AES256', label: 'AES-256', strength: 256 },
-    { value: 'STANDARD', label: 'Standard', strength: 'standard' }
+    { value: 'AES128', label: translate("AES-128"), strength: 128 },
+    { value: 'AES256', label: translate("AES-256"), strength: 256 },
+    { value: 'STANDARD', label: translate("Standard"), strength: 'standard' }
 ];
 
 const dateStamp = (millis: any) => (fmtDate(millis) || '').replace(/[:\s]/g, '-');
@@ -1657,7 +1653,7 @@ function suffixName(name: any, suffix: any) {
 function xmlWithAttachments(xml: string, attachments: any[]) {
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror') || doc.documentElement.tagName !== 'message') {
-        throw new Error('Engine returned invalid message XML');
+        throw new Error(translate("Engine returned invalid message XML"));
     }
     const message = doc.documentElement;
     const old = [...message.children].find(child => child.tagName === 'attachments');
@@ -1698,23 +1694,23 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
     };
     const assertActive = () => {
         assertSession();
-        if (aborted) throw new Error('cancelled');
+        if (aborted) throw new Error(translate("cancelled"));
         assertCurrent();
     };
 
     const contentSel = select(EXPORT_CONTENT_OPTIONS, 'xml', { onChange: updateEnabled });
-    const encryptCheck = checkbox('Encrypt', false);
-    const attachCheck = checkbox('Include Attachments', false);
-    const compressionSel = select([{ value: 'none', label: 'None' }, { value: 'zip', label: 'Zip' }], 'none', { onChange: updateEnabled });
+    const encryptCheck = checkbox(translate("Encrypt"), false);
+    const attachCheck = checkbox(translate("Include Attachments"), false);
+    const compressionSel = select([{ value: 'none', label: translate("None") }, { value: 'zip', label: translate("Zip") }], 'none', { onChange: updateEnabled });
 
     const radio = (name: any, checked?: any) => h('input', { type: 'radio', name, checked: checked || null, onChange: updateEnabled });
     const radioLabel = (input: any, text: any) => h('label', { class: 'inline-flex items-center gap-1 cursor-pointer' }, input, text);
     const pwYes = radio('exp-pw'); const pwNo = radio('exp-pw', true);
     const algoSel = select(ENCRYPTION_ALGORITHMS, 'AES128');
-    const pwInput = h('input', { type: 'password', placeholder: 'Password', class: 'w-full' });
+    const pwInput = h('input', { type: 'password', placeholder: translate("Password"), class: 'w-full' });
     const toServer = radio('exp-to'); const toComputer = radio('exp-to', true);
 
-    const rootInput = h('input', { type: 'text', placeholder: '/path/accessible/by/server', class: 'flex-1' });
+    const rootInput = h('input', { type: 'text', placeholder: translate("/path/accessible/by/server"), class: 'flex-1' });
     const patternInput = h('textarea', { rows: '3', class: 'w-full font-[family-name:var(--mono)] resize-y' });
     (patternInput as any).value = DEFAULT_FILE_PATTERN;
 
@@ -1727,18 +1723,18 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
     };
     const varList = h('div.tree', { class: 'max-h-[135px] overflow-auto border border-[var(--border)] rounded-[4px] p-1' },
         FILE_PATTERN_VARS.map(([label, token]) => h('div.tree-node', {
-            title: `Insert ${token}`, draggable: 'true', class: 'cursor-grab',
+            title: translate("Insert {value1}", { value1: String(token) }), draggable: 'true', class: 'cursor-grab',
             onClick: () => insertToken(token),
             onDragstart: (e: any) => { e.dataTransfer.setData('text/plain', token); e.dataTransfer.effectAllowed = 'copy'; }
         }, label)));
 
-    const status = h('div.text-text-faint', `${fmtNumber(total)} message(s) match the current search.`);
+    const status = h('div.text-text-faint', translate("{value1} message(s) match the current search.", { value1: String(fmtNumber(total)) }));
     const fill = h('div.progress-fill', { class: 'w-[0%]' });
     // A progressbar, not an anonymous div: an export of tens of thousands of
     // messages is the one long operation in the app, and its state was visual only.
     const barWrap = h('div.progress', {
         style: { display: 'none' },
-        role: 'progressbar', 'aria-label': 'Export progress',
+        role: 'progressbar', 'aria-label': translate("Export progress"),
         'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': '0'
     }, fill);
 
@@ -1763,26 +1759,26 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
     const lbl = (t: any) => h('div', { class: 'text-right whitespace-nowrap self-center' }, t);
     const cell = (...c: any[]) => h('div', { class: 'flex items-center gap-2 flex-wrap' }, ...c);
     const grid = h('div', { class: 'grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-2 items-center' },
-        lbl('Content:'), cell(contentSel, encryptCheck.el, attachCheck.el),
-        lbl('Compression:'), cell(compressionSel),
-        lbl('Password Protect:'), cell(radioLabel(pwYes, 'Yes'), radioLabel(pwNo, 'No'), algoSel),
-        lbl('Password:'), cell(pwInput),
-        lbl('Export To:'), cell(radioLabel(toServer, 'Server'), radioLabel(toComputer, 'My Computer')),
-        lbl('Root Path:'), cell(rootInput, h('span.text-text-faint', { class: 'whitespace-nowrap' }, '/[timestamp].zip')),
-        lbl('File Pattern:'), cell(patternInput));
+        lbl(translate("Content:")), cell(contentSel, encryptCheck.el, attachCheck.el),
+        lbl(translate("Compression:")), cell(compressionSel),
+        lbl(translate("Password Protect:")), cell(radioLabel(pwYes, translate("Yes")), radioLabel(pwNo, translate("No")), algoSel),
+        lbl(translate("Password:")), cell(pwInput),
+        lbl(translate("Export To:")), cell(radioLabel(toServer, translate("Server")), radioLabel(toComputer, translate("My Computer"))),
+        lbl(translate("Root Path:")), cell(rootInput, h('span.text-text-faint', { class: 'whitespace-nowrap' }, translate("/[timestamp].zip"))),
+        lbl(translate("File Pattern:")), cell(patternInput));
 
     const dlg = modal({
-        title: 'Export Results',
+        title: translate("Export Results"),
         size: 'wide',
         onClose: () => { aborted = true; },
         body: h('div', { class: 'flex flex-wrap gap-[16px]' },
             h('div', { class: 'flex-1 min-w-[234px] flex flex-col gap-2' }, grid, status, barWrap),
             h('div', { class: 'w-full sm:w-[180px] min-w-0 flex flex-col' },
-                h('label', { class: 'block mb-0.5' }, 'Variables:'),
+                h('label', { class: 'block mb-0.5' }, translate("Variables:")),
                 varList)),
         buttons: [
-            { label: 'Cancel', onClick: () => { aborted = true; } },
-            { label: 'Export', primary: true, onClick: () => { if (!running) runExport(); return false; } }
+            { label: translate("Cancel"), onClick: () => { aborted = true; } },
+            { label: translate("Export"), primary: true, onClick: () => { if (!running) runExport(); return false; } }
         ]
     });
     updateEnabled();
@@ -1796,7 +1792,7 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
     function progress(done: any) {
         fill.style.width = total ? Math.round((done / total) * 100) + '%' : '0%';
         barWrap.setAttribute('aria-valuenow', String(done));
-        status.textContent = `Exporting… ${fmtNumber(done)} / ${fmtNumber(total)}`;
+        status.textContent = translate("Exporting… {value1} / {value2}", { value1: String(fmtNumber(done)), value2: String(fmtNumber(total)) });
     }
 
     async function auditExportSuccess(o: any, exportCount: number, rootPath: string) {
@@ -1857,7 +1853,7 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
     }
 
     async function runServerExport(o: any) {
-        status.textContent = 'Submitting server export…';
+        status.textContent = translate("Submitting server export…");
         try {
             const params = { ...lastParams };
             delete params.offset; delete params.limit; delete params.includeContent;
@@ -1879,16 +1875,16 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
             } catch (e: any) {
                 if (!aborted && currentSession()) {
                     dlg.close();
-                    toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                    toast(translate("Messages were exported, but the success audit failed: {value1}", { value1: String(e.message || e) }), 'error');
                 }
                 return;
             }
             if (aborted || !currentSession()) return;
             dlg.close();
-            toast(`Server exported ${fmtNumber(count)} message(s) to ${o.rootFolder}`);
+            toast(translate("Server exported {value1} message(s) to {value2}", { value1: String(fmtNumber(count)), value2: String(o.rootFolder) }));
         } catch (e: any) {
             if (aborted || !currentSession()) return;
-            toast(`Server export failed: ${e.message}`, 'error');
+            toast(translate("Server export failed: {value1}", { value1: String(e.message) }), 'error');
             running = false; setDisabled(false);
         }
     }
@@ -1908,14 +1904,14 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
         const server = (toServer as any).checked;
         const rootFolder = (rootInput as any).value.trim();
 
-        if (server && !rootFolder) { toast('Enter a Root Path for server export', 'warn'); return; }
+        if (server && !rootFolder) { toast(translate("Enter a Root Path for server export"), 'warn'); return; }
 
         // My Computer (browser) export.
         if (!server && encryptContent) {
-            toast('Content encryption requires "Server" export — the encryption key stays on the server. Switch Export To: Server, or uncheck Encrypt.', 'warn');
+            toast(translate("Content encryption requires \"Server\" export — the encryption key stays on the server. Switch Export To: Server, or uncheck Encrypt."), 'warn');
             return;
         }
-        if (pwProtect && !password) { toast('Enter a password, or turn off Password protect', 'warn'); return; }
+        if (pwProtect && !password) { toast(translate("Enter a password, or turn off Password protect"), 'warn'); return; }
 
         // Claim the operation before auditing. Cancel/close is permanent for
         // this dialog, including while the audit or native picker is pending.
@@ -1923,7 +1919,7 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
         try { await api.messages.auditExport({}); assertActive(); }
         catch (e: any) {
             if (aborted || !currentSession()) return;
-            toast(`Export audit failed: ${e.message || e}`, 'error');
+            toast(translate("Export audit failed: {value1}", { value1: String(e.message || e) }), 'error');
             running = false; setDisabled(false); barWrap.style.display = 'none';
             return;
         }
@@ -1937,7 +1933,7 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
             const zip = createZip();
             const result = await eachFile((n: any, c: any) => { zip.add(n, c); }, opt, pattern, includeAttachments);
             assertActive();
-            if (!result.files) throw new Error('No content of that type found in the results');
+            if (!result.files) throw new Error(translate("No content of that type found in the results"));
             const blob = await zip.generate((pwProtect ? { password, strength: algo.strength } : {}) as any);
             assertActive();
             (buildZip as any).result = result;
@@ -1957,21 +1953,21 @@ function exportResultsDialog({ channelId, total, lastParams, assertCurrent = () 
                 } catch (e: any) {
                     if (!aborted && currentSession()) {
                         dlg.close();
-                        toast(`Messages were exported, but the success audit failed: ${e.message || e}`, 'error');
+                        toast(translate("Messages were exported, but the success audit failed: {value1}", { value1: String(e.message || e) }), 'error');
                     }
                     return;
                 }
                 if (aborted || !currentSession()) return;
                 dlg.close();
-                toast(`Exported ${fmtNumber(r.files)} file(s) from ${fmtNumber(r.done)} message(s)`);
+                toast(translate("Exported {value1} file(s) from {value2} message(s)", { value1: String(fmtNumber(r.files)), value2: String(fmtNumber(r.done)) }));
             } else {
                 if (aborted || !currentSession()) return;
                 running = false; setDisabled(false); barWrap.style.display = 'none';
             }
         } catch (e: any) {
             if (aborted || !currentSession()) return;
-            if (e && e.message === 'cancelled') { toast('Export cancelled', 'warn'); dlg.close(); }
-            else { toast(`Export failed: ${e.message}`, 'error'); running = false; setDisabled(false); barWrap.style.display = 'none'; }
+            if (e && e.message === 'cancelled') { toast(translate("Export cancelled"), 'warn'); dlg.close(); }
+            else { toast(translate("Export failed: {value1}", { value1: String(e.message) }), 'error'); running = false; setDisabled(false); barWrap.style.display = 'none'; }
         }
     }
 }
@@ -2031,7 +2027,7 @@ export function MessagesView({ params, query }: any) {
     const [connectorVal, setConnectorVal] = useState('');
     const [pageSize, setPageSize] = useState(() => String(Number(getPref('messagePageSize')) || 20));
     const [advOn, setAdvOn] = useState(() => advIsActive(advRef.current));
-    const [searchSummary, setSearchSummary] = useState('Current Search: (none — press Search)');
+    const [searchSummary, setSearchSummary] = useState(translate("Current Search: (none — press Search)"));
     const [criteriaCollapsed, setCriteriaCollapsed] = useState(false);
     const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -2162,12 +2158,12 @@ export function MessagesView({ params, query }: any) {
         const adv = advRef.current;
         const nameOf = (id: any) => {
             const c = connectors.find(x => String(x.metaDataId) === String(id));
-            return c ? c.name : `Id ${id}`;
+            return c ? c.name : translate("Id {id}", { id });
         };
-        if (adv.includedMetaDataIds) return adv.includedMetaDataIds.length ? adv.includedMetaDataIds.map(nameOf).join(', ') : '(none)';
-        if (adv.excludedMetaDataIds) return `all except ${adv.excludedMetaDataIds.map(nameOf).join(', ')}`;
+        if (adv.includedMetaDataIds) return adv.includedMetaDataIds.length ? adv.includedMetaDataIds.map(nameOf).join(', ') : translate("(none)");
+        if (adv.excludedMetaDataIds) return translate("all except {value1}", { value1: String(adv.excludedMetaDataIds.map(nameOf).join(', ')) });
         if (connectorVal !== '') return nameOf(connectorVal);
-        return '(any)';
+        return translate("(any)");
     }
 
     /* Human-readable "Current Search" summary (Swing's labeled box) rather than a
@@ -2182,30 +2178,30 @@ export function MessagesView({ params, query }: any) {
             if (hi) return `≤ ${hi}`;
             return null;
         };
-        const dt = (v: any) => v ? v.replace('T', ' ') : '(any)';
+        const dt = (v: any) => v ? v.replace('T', ' ') : translate("(any)");
         const parts: any[] = [];
-        parts.push(`Statuses: ${statusSel.size ? [...statusSel].join(', ') : '(any)'}`);
-        parts.push(`Date Range: ${dt(startDate)} to ${dt(endDate)}`);
+        parts.push(translate("Statuses: {statuses}", { statuses: statusSel.size ? [...statusSel].map(value => messageStatusLabel(String(value))).join(', ') : translate("(any)") }));
+        parts.push(translate("Date Range: {value1} to {value2}", { value1: String(dt(startDate)), value2: String(dt(endDate)) }));
         const text = textSearch.trim();
-        if (text) parts.push(`Text Search: "${text}"${textRegex ? ' (regex)' : ''}`);
-        parts.push(`Connectors: ${describeConnectors()}`);
+        if (text) parts.push(translate("{value2, select, yes {Text Search: \"{value1}\" (regex)} other {Text Search: \"{value1}\"}}", { value1: String(text), value2: (textRegex) ? "yes" : "no" }));
+        parts.push(translate("Connectors: {connectors}", { connectors: describeConnectors() }));
         let r: any;
-        if ((r = range(adv.minMessageId, adv.maxMessageId))) parts.push(`Message Id: ${r}`);
-        if ((r = range(adv.minOriginalId, adv.maxOriginalId))) parts.push(`Original Id: ${r}`);
-        if ((r = range(adv.minImportId, adv.maxImportId))) parts.push(`Import Id: ${r}`);
-        if (adv.serverId.trim()) parts.push(`Server Id: ${adv.serverId.trim()}`);
-        if ((r = range(adv.minSendAttempts, adv.maxSendAttempts))) parts.push(`Send Attempts: ${r}`);
+        if ((r = range(adv.minMessageId, adv.maxMessageId))) parts.push(translate("Message Id: {value1}", { value1: String(r) }));
+        if ((r = range(adv.minOriginalId, adv.maxOriginalId))) parts.push(translate("Original Id: {value1}", { value1: String(r) }));
+        if ((r = range(adv.minImportId, adv.maxImportId))) parts.push(translate("Import Id: {value1}", { value1: String(r) }));
+        if (adv.serverId.trim()) parts.push(translate("Server Id: {value1}", { value1: String(adv.serverId.trim()) }));
+        if ((r = range(adv.minSendAttempts, adv.maxSendAttempts))) parts.push(translate("Send Attempts: {value1}", { value1: String(r) }));
         for (const cs of adv.contentSearches) {
             if (!cs.text) continue;
             const label = (CONTENT_SEARCH_TYPES.find(t => t.value === cs.type) || {}).label || cs.type;
-            parts.push(`${label} contains "${cs.text}"`);
+            parts.push(translate('{label} contains "{text}"', { label, text: cs.text }));
         }
         for (const ms of adv.metaDataSearches) {
             if (!ms.column) continue;
-            parts.push(`${ms.column} ${ms.operator} ${ms.value}${ms.ignoreCase ? ' (ignore case)' : ''}`);
+            parts.push(`${ms.column} ${ms.operator} ${ms.value}${ms.ignoreCase ? translate(' (ignore case)') : ''}`);
         }
-        if (adv.attachment) parts.push('Has Attachment');
-        if (adv.error) parts.push('Has Error');
+        if (adv.attachment) parts.push(translate("Has Attachment"));
+        if (adv.error) parts.push(translate("Has Error"));
         return parts.join(' · ');
     }
 
@@ -2224,7 +2220,7 @@ export function MessagesView({ params, query }: any) {
             const error = String(e.message || e);
             metaDataReadyRef.current = false;
             setMetaDataError(error);
-            toast(`Failed to load channel metadata: ${error}`, 'error');
+            toast(translate("Failed to load channel metadata: {value1}", { value1: String(error) }), 'error');
             return false;
         }
     }
@@ -2240,7 +2236,7 @@ export function MessagesView({ params, query }: any) {
             params: structuredClone(resetOffset ? buildParams() : lastParamsRef.current),
             offset: resetOffset ? 0 : offset,
             limit: resetOffset ? Number(pageSize) || 20 : limitRef.current,
-            summary: resetOffset ? `Current Search: ${describeSearch()}` : resultRef.current?.summary,
+            summary: resetOffset ? translate("Current Search: {value1}", { value1: String(describeSearch()) }) : resultRef.current?.summary,
             total: resetOffset ? null : totalRef.current
         };
         try {
@@ -2255,7 +2251,7 @@ export function MessagesView({ params, query }: any) {
             if (candidate.params.maxMessageId == null) {
                 const maximum = await api.messages.maxMessageId(channelId);
                 if (maximum == null || !/^\d+$/.test(String(maximum)) || (typeof maximum === 'number' && !Number.isSafeInteger(maximum))) {
-                    throw new Error('Unable to determine the current message ID boundary');
+                    throw new Error(translate("Unable to determine the current message ID boundary"));
                 }
                 candidate.params.maxMessageId = String(maximum);
             }
@@ -2278,7 +2274,7 @@ export function MessagesView({ params, query }: any) {
                     }
                 }
                 api.messages.auditQueriedPHI(attributes).catch((e: any) =>
-                    toast(`Unable to audit queried PHI: ${e.message || e}`, 'error'));
+                    toast(translate("Unable to audit queried PHI: {value1}", { value1: String(e.message || e) }), 'error'));
             }
             const rows = await search;
             if (gen !== searchGenRef.current) return;   // superseded by a newer search
@@ -2310,7 +2306,7 @@ export function MessagesView({ params, query }: any) {
             setPager({ offset: offsetRef.current, shown: list.length, total: totalRef.current, hasNext });
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
-            toast(`Search failed: ${e.message}`, 'error');
+            toast(translate("Search failed: {value1}", { value1: String(e.message) }), 'error');
         } finally {
             if (gen === searchGenRef.current) searchPendingRef.current = false;
         }
@@ -2324,7 +2320,7 @@ export function MessagesView({ params, query }: any) {
         const gen = searchGenRef.current;
         const assertCurrent = () => {
             if (!result || result !== resultRef.current || gen !== searchGenRef.current || searchPendingRef.current) {
-                throw new Error('Search changed or is still loading. Wait for results and try the action again.');
+                throw new Error(translate("Search changed or is still loading. Wait for results and try the action again."));
             }
         };
         assertCurrent();
@@ -2346,7 +2342,7 @@ export function MessagesView({ params, query }: any) {
         let n;
         try { n = await ensureTotal(); }
         catch (e: any) {
-            if (gen === searchGenRef.current) toast(`Count failed: ${e.message}`, 'error');
+            if (gen === searchGenRef.current) toast(translate("Count failed: {value1}", { value1: String(e.message) }), 'error');
             return;
         }
         finally { setCountBusy(false); }
@@ -2384,10 +2380,10 @@ export function MessagesView({ params, query }: any) {
         let message: any;
         try {
             message = await api.messages.get(channelId, row.messageId);
-            if (!message || typeof message !== 'object') throw new Error('Engine returned an invalid message');
+            if (!message || typeof message !== 'object') throw new Error(translate("Engine returned an invalid message"));
         } catch (e: any) {
             if (!isCurrentSelection()) return;
-            const error = `Failed to load message content: ${e.message || e}`;
+            const error = translate("Failed to load message content: {value1}", { value1: String(e.message || e) });
             toast(error, 'error');
             setDetail({ status: 'error', error });
             return;
@@ -2400,7 +2396,7 @@ export function MessagesView({ params, query }: any) {
             if (!isCurrentSelection()) return;
             message.__attachments = [];
             message.__attachmentsError = String(e.message || e);
-            toast(`Failed to load attachments: ${e.message || e}`, 'error');
+            toast(translate("Failed to load attachments: {value1}", { value1: String(e.message || e) }), 'error');
         }
         if (!isCurrentSelection()) return;
         setDetail({ status: 'ready', message, metaDataId });
@@ -2412,7 +2408,7 @@ export function MessagesView({ params, query }: any) {
                     patientId: String(metaOfCm(connector, 'PATIENT_ID') || ''),
                     channel: `Channel[id=${channelId},name=${channelNameRef.current}]`,
                     messageId: String(connector.messageId ?? message.messageId)
-                }).catch((e: any) => toast(`Unable to audit accessed PHI: ${e.message || e}`, 'error'));
+                }).catch((e: any) => toast(translate("Unable to audit accessed PHI: {value1}", { value1: String(e.message || e) }), 'error'));
             }
         }
     }
@@ -2464,7 +2460,7 @@ export function MessagesView({ params, query }: any) {
                 return next;
             })
         }));
-        (items as any).push('-', { label: 'Restore Default', onClick: () => { saveColumnVis({}); setColumnVis({}); } });
+        (items as any).push('-', { label: translate("Restore Default"), onClick: () => { saveColumnVis({}); setColumnVis({}); } });
         contextMenu(e.clientX, e.clientY, items as any);
     }
 
@@ -2496,10 +2492,10 @@ export function MessagesView({ params, query }: any) {
        could correct themselves. Engine failures below still use toast(). */
     function offerCandidate(ref: any) {
         const result = proposeCompare(ref);
-        if (result === 'none') { cornerToast('Select content for compare first', 'warn'); return; }
+        if (result === 'none') { cornerToast(translate("Select content for compare first"), 'warn'); return; }
         // Diffing content against itself is never the question being asked, so
         // this stops before the modal rather than after it.
-        if (result === 'same') { cornerToast('Same content already selected for compare', 'warn'); return; }
+        if (result === 'same') { cornerToast(translate("Same content already selected for compare"), 'warn'); return; }
         openCompareConfirm();
     }
 
@@ -2515,14 +2511,14 @@ export function MessagesView({ params, query }: any) {
             h('span', { class: 'tag ' + tone }, side),
             h('span.mono', describeRef(ref)));
         modal({
-            title: 'Compare selected content?',
+            title: translate("Compare selected content?"),
             body: h('div',
-                sideRow('Left', left, 'accent'),
-                sideRow('Right', right, 'amber'),
+                sideRow(translate("Left"), left, 'accent'),
+                sideRow(translate("Right"), right, 'amber'),
                 /* Same CHANNEL and message: ids are a per-channel sequence, so
                    comparing message 5 of two channels is not one message's pipeline. */
                 sameMessage(left, right)
-                    ? h('div.compare-confirm-note', 'Two stages of the same message — this traces what the pipeline changed.')
+                    ? h('div.compare-confirm-note', translate("Two stages of the same message — this traces what the pipeline changed."))
                     : null),
             /* Cancel, Esc and a click on the scrim all land here, and all mean the
                same thing: drop the SECOND selection, keep the anchor — the usual
@@ -2530,12 +2526,12 @@ export function MessagesView({ params, query }: any) {
             onClose: () => {
                 if (confirmed) return;
                 cancelPending();
-                toast('Cancelled — second selection discarded');
+                toast(translate("Cancelled — second selection discarded"));
             },
             buttons: [
-                { label: 'Cancel' },
+                { label: translate("Cancel") },
                 {
-                    label: 'Compare', primary: true, onClick: () => {
+                    label: translate("Compare"), primary: true, onClick: () => {
                         confirmed = true;
                         const pair = confirmCompare();
                         if (pair) setComparePair(pair);
@@ -2553,13 +2549,13 @@ export function MessagesView({ params, query }: any) {
         try {
             message = await api.messages.get(channelId, row.messageId);
         } catch (e: any) {
-            toast(`Failed to load message content: ${e.message}`, 'error');
+            toast(translate("Failed to load message content: {value1}", { value1: String(e.message) }), 'error');
             return;
         }
         const cm = connectorMessagesOf(message).find(c => Number(c.metaDataId) === Number(metaDataId));
-        if (!cm) { cornerToast(`Connector ${metaDataId} is no longer part of message ${row.messageId}`, 'warn'); return; }
+        if (!cm) { cornerToast(translate("Connector {value1} is no longer part of message {value2}", { value1: String(metaDataId), value2: String(row.messageId) }), 'warn'); return; }
         if (!storedContentTypes(cm).includes(contentType)) {
-            cornerToast(`${stageLabel(contentType)} content is not stored for message ${row.messageId}`, 'warn');
+            cornerToast(translate("{value1} content is not stored for message {value2}", { value1: String(stageLabel(contentType)), value2: String(row.messageId) }), 'warn');
             return;
         }
         const ref = refFromConnectorMessage({ id: channelId, name: channelName }, row.messageId, cm, contentType);
@@ -2577,7 +2573,7 @@ export function MessagesView({ params, query }: any) {
             // does not exist, so it is not offered at all.
             .filter(s => !(s.type === 'SENT' && Number(metaDataId) === 0))
             .map(s => ({
-                label: s.label + (stored && !stored.includes(s.type) ? '  (not stored)' : ''),
+                label: s.label + (stored && !stored.includes(s.type) ? translate("  (not stored)") : ''),
                 disabled: !!stored && !stored.includes(s.type),
                 onClick: () => pickRowStage(row, metaDataId, s.type, mode)
             }));
@@ -2587,13 +2583,13 @@ export function MessagesView({ params, query }: any) {
     function stageContextMenu(ref: any, e: any) {
         e.preventDefault();
         contextMenu(e.clientX, e.clientY, [
-            { header: true, label: 'Compare', sub: `${ref.connectorName} · ${stageLabel(ref.contentType)}` },
+            { header: true, label: translate("Compare"), sub: `${ref.connectorName} · ${stageLabel(ref.contentType)}` },
             {
-                label: 'Select for Compare', icon: 'compare', task: 'doSelectForCompare', group: 'message',
+                label: translate("Select for Compare"), icon: 'compare', task: 'doSelectForCompare', group: 'message',
                 onClick: () => takeAnchor(ref)
             },
             {
-                label: 'Compare to Selection', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
+                label: translate("Compare to Selection"), icon: 'compare', task: 'doCompareWithSelection', group: 'message',
                 disabled: !getAnchor(), onClick: () => offerCandidate(ref)
             }
         ]);
@@ -2601,13 +2597,13 @@ export function MessagesView({ params, query }: any) {
 
     function selectForCompareTask() {
         const ref = activeStageRef.current;
-        if (!ref) { cornerToast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
+        if (!ref) { cornerToast(translate("Open a message and choose a content tab, or right-click a row, to pick what to compare"), 'warn'); return; }
         takeAnchor(ref);
     }
 
     function compareWithSelectionTask() {
         const ref = activeStageRef.current;
-        if (!ref) { cornerToast('Open a message and choose a content tab, or right-click a row, to pick what to compare', 'warn'); return; }
+        if (!ref) { cornerToast(translate("Open a message and choose a content tab, or right-click a row, to pick what to compare"), 'warn'); return; }
         offerCandidate(ref);
     }
 
@@ -2638,31 +2634,31 @@ export function MessagesView({ params, query }: any) {
         selectMessage(m, metaDataId);
         const pluginItems = messageActionItems(m, metaDataId);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshMessages', group: 'message', onClick: () => searchRef.current(true) },
-            { label: 'Send Message', icon: 'send', task: 'doSendMessage', group: 'message', onClick: () => sendMessageTask() },
+            { label: translate("Refresh"), icon: 'refresh', task: 'doRefreshMessages', group: 'message', onClick: () => searchRef.current(true) },
+            { label: translate("Send Message"), icon: 'send', task: 'doSendMessage', group: 'message', onClick: () => sendMessageTask() },
             '-',
-            { label: 'Import Messages', icon: 'import', task: 'doImportMessages', group: 'message', onClick: () => importMessagesTask() },
-            { label: 'Export Results', icon: 'export', task: 'doExportMessages', group: 'message', onClick: () => exportResultsTask() },
+            { label: translate("Import Messages"), icon: 'import', task: 'doImportMessages', group: 'message', onClick: () => importMessagesTask() },
+            { label: translate("Export Results"), icon: 'export', task: 'doExportMessages', group: 'message', onClick: () => exportResultsTask() },
             '-',
-            { label: 'Reprocess Results', icon: 'transform', task: 'doReprocessFilteredMessages', group: 'message', onClick: () => reprocessResultsTask() },
-            { label: 'Reprocess Message', icon: 'transform', task: 'doReprocessMessage', group: 'message', onClick: () => reprocessTask(m) },
+            { label: translate("Reprocess Results"), icon: 'transform', task: 'doReprocessFilteredMessages', group: 'message', onClick: () => reprocessResultsTask() },
+            { label: translate("Reprocess Message"), icon: 'transform', task: 'doReprocessMessage', group: 'message', onClick: () => reprocessTask(m) },
             '-',
-            { label: 'View Attachment', icon: 'eye', task: 'viewImage', group: 'message', onClick: () => viewAttachmentsModal(platform, channelId, m) },
-            { label: 'Export Attachment', icon: 'export', task: 'doExportAttachment', group: 'message', onClick: () => exportAttachmentTask(platform, channelId, m) },
+            { label: translate("View Attachment"), icon: 'eye', task: 'viewImage', group: 'message', onClick: () => viewAttachmentsModal(platform, channelId, m) },
+            { label: translate("Export Attachment"), icon: 'export', task: 'doExportAttachment', group: 'message', onClick: () => exportAttachmentTask(platform, channelId, m) },
             '-',
             {
-                label: 'Select for Compare', icon: 'compare', task: 'doSelectForCompare', group: 'message',
+                label: translate("Select for Compare"), icon: 'compare', task: 'doSelectForCompare', group: 'message',
                 items: compareStageItems(m, metaDataId, 'select')
             },
             {
-                label: 'Compare to Selection', icon: 'compare', task: 'doCompareWithSelection', group: 'message',
+                label: translate("Compare to Selection"), icon: 'compare', task: 'doCompareWithSelection', group: 'message',
                 disabled: !getAnchor(), items: compareStageItems(m, metaDataId, 'compare')
             },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
-            { label: 'Remove Message', icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask(m) },
-            { label: 'Remove Results', icon: 'trash', danger: true, task: 'doRemoveFilteredMessages', group: 'message', onClick: () => removeResultsTask() },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', group: 'message', onClick: () => removeAllTask() }
+            { label: translate("Remove Message"), icon: 'trash', danger: true, task: 'doRemoveMessage', group: 'message', onClick: () => removeMessageTask(m) },
+            { label: translate("Remove Results"), icon: 'trash', danger: true, task: 'doRemoveFilteredMessages', group: 'message', onClick: () => removeResultsTask() },
+            { label: translate("Remove All Messages"), icon: 'trash', danger: true, task: 'doRemoveAllMessages', group: 'message', onClick: () => removeAllTask() }
         ]);
     }
 
@@ -2670,7 +2666,7 @@ export function MessagesView({ params, query }: any) {
 
     function requireSelection() {
         const sel = selectedRef.current;
-        if (!sel) { toast('Select a message first', 'warn'); return null; }
+        if (!sel) { toast(translate("Select a message first"), 'warn'); return null; }
         return sel.m;
     }
 
@@ -2692,13 +2688,13 @@ export function MessagesView({ params, query }: any) {
     async function removeMessageTask(row = requireSelection()) {
         if (!row) return;
         if (getPref('confirmReprocessRemove') !== false &&
-            !await confirmDialog('Remove message', `Permanently remove message ${row.messageId}? This cannot be undone.`, { danger: true, okLabel: 'Remove' })) return;
+            !await confirmDialog(translate("Remove message"), translate("Permanently remove message {value1}? This cannot be undone.", { value1: String(row.messageId) }), { danger: true, okLabel: translate("Remove") })) return;
         try {
             await api.messages.remove(channelId, row.messageId);
-            toast('Message removed');
+            toast(translate("Message removed"));
             searchRef.current(false);
         } catch (e: any) {
-            toast(`Remove failed: ${e.message}`, 'error');
+            toast(translate("Remove failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -2711,7 +2707,7 @@ export function MessagesView({ params, query }: any) {
             state = status?.state ? String(status.state).toUpperCase() : null;
         } catch (e: any) {
             if (e?.status !== 404) {
-                toast(`Could not determine channel state: ${e.message}`, 'error');
+                toast(translate("Could not determine channel state: {value1}", { value1: String(e.message) }), 'error');
                 return;
             }
         }
@@ -2731,16 +2727,15 @@ export function MessagesView({ params, query }: any) {
         try { snapshot = captureResult(); total = await ensureTotal(snapshot); assertSession(); }
         catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Count failed: ${e.message}`, 'error'); return;
+            toast(translate("Count failed: {value1}", { value1: String(e.message) }), 'error'); return;
         }
         if (getPref('confirmReprocessRemove') !== false) {
-            const text = await promptDialog('Remove Results',
-                `Permanently remove all ${fmtNumber(total)} message(s) matching the current search from ${channelName}? ` +
-                'This cannot be undone. Type REMOVE to confirm.');
+            const text = await promptDialog(translate("Remove Results"),
+                translate("Permanently remove all {value1} message(s) matching the current search from {value2}? This cannot be undone. Type {token} to confirm.", { value1: String(fmtNumber(total)), value2: String(channelName), token: "REMOVE" }));
             try { assertSession(); } catch { return; }
             if (text === null) return;
             if (text.trim() !== 'REMOVE') {
-                toast('Confirmation text did not match — nothing was removed', 'warn');
+                toast(translate("Confirmation text did not match — nothing was removed"), 'warn');
                 return;
             }
         }
@@ -2753,11 +2748,11 @@ export function MessagesView({ params, query }: any) {
             // result set can outlast the default ceiling — no client timeout.
             await api.del(`/channels/${channelId}/messages`, snapshot.result.params, { timeoutMs: null });
             assertSession();
-            toast('Messages removed');
+            toast(translate("Messages removed"));
             searchRef.current(true);
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Remove results failed: ${e.message}`, 'error');
+            toast(translate("Remove results failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -2769,7 +2764,7 @@ export function MessagesView({ params, query }: any) {
         try { snapshot = captureResult(); total = await ensureTotal(snapshot); assertSession(); }
         catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Count failed: ${e.message}`, 'error'); return;
+            toast(translate("Count failed: {value1}", { value1: String(e.message) }), 'error'); return;
         }
         reprocessDialog({
             channelId, connectors, total, lastParams: snapshot.result.params, assertCurrent: snapshot.assertCurrent, assertSession,
@@ -2778,7 +2773,7 @@ export function MessagesView({ params, query }: any) {
     }
 
     function importMessagesTask() {
-        return withEditorSave(importMessagesUnlocked, 'Importing messages…');
+        return withEditorSave(importMessagesUnlocked, translate("Importing messages…"));
     }
 
     async function importMessagesUnlocked() {
@@ -2802,10 +2797,10 @@ export function MessagesView({ params, query }: any) {
                 imported = Number(result?.successCount);
                 const total = Number(result?.totalCount);
                 if (!Number.isInteger(imported) || !Number.isInteger(total) || imported < 0 || total < imported) {
-                    throw new Error('The server returned an invalid import result. Refresh to check the imported messages.');
+                    throw new Error(translate("The server returned an invalid import result. Refresh to check the imported messages."));
                 }
                 failed = total - imported;
-                toast(`${imported} out of ${total} message(s) have been successfully imported from ${source.path}.`, failed ? 'warn' : undefined);
+                toast(translate("{value1} out of {value2} message(s) have been successfully imported from {value3}.", { value1: String(imported), value2: String(total), value3: String(source.path) }), failed ? 'warn' : undefined);
             } else {
                 for await (const file of readMessageFiles(source.files, source.recursive, assertSession)) {
                     assertSession();
@@ -2826,13 +2821,13 @@ export function MessagesView({ params, query }: any) {
                         }
                     }
                 }
-                if (!imported && !failed) toast('No messages were found to import', 'warn');
-                else if (failed) toast(`Imported ${imported} message(s); ${failed} failed: ${lastError.message}`, 'error');
-                else toast(`Imported ${imported} message(s)`);
+                if (!imported && !failed) toast(translate("No messages were found to import"), 'warn');
+                else if (failed) toast(translate("Imported {value1} message(s); {value2} failed: {value3}", { value1: String(imported), value2: String(failed), value3: String(lastError.message) }), 'error');
+                else toast(translate("Imported {value1} message(s)", { value1: String(imported) }));
             }
         } catch (error: any) {
             try { assertSession(); } catch { return; }
-            toast(`Import failed${imported || failed ? ` after ${imported} imported and ${failed} failed message(s)` : ''}: ${error.message || error}`, 'error');
+            toast(translate("Import failed{value1}: {value2}", { value1: String(imported || failed ? translate(" after {imported} imported and {failed} failed message(s)", { imported, failed }) : ''), value2: String(error.message || error) }), 'error');
         } finally {
             try {
                 assertSession();
@@ -2849,9 +2844,9 @@ export function MessagesView({ params, query }: any) {
         try { snapshot = captureResult(); total = await ensureTotal(snapshot); assertSession(); }
         catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Count failed: ${e.message}`, 'error'); return;
+            toast(translate("Count failed: {value1}", { value1: String(e.message) }), 'error'); return;
         }
-        if (!total) { toast('No results to export', 'warn'); return; }
+        if (!total) { toast(translate("No results to export"), 'warn'); return; }
         exportResultsDialog({ channelId, total, lastParams: snapshot.result.params, assertCurrent: snapshot.assertCurrent, assertSession });
     }
 
@@ -2915,14 +2910,14 @@ export function MessagesView({ params, query }: any) {
                     const names = await api.channels.connectorNames(channelId);
                     if (!cancelled) setConnectors(connectorEntries(names));
                 } catch (e: any) {
-                    toast(`Failed to load connectors: ${e.message}`, 'error');
+                    toast(translate("Failed to load connectors: {value1}", { value1: String(e.message) }), 'error');
                 }
                 if (!cancelled) await loadMetaDataColumns();
             }
             try {
                 const map = await api.channels.idsAndNames();
                 const pairs = idNamePairs(map);
-                if (!cancelled) setChannelList(pairs.slice().sort((a: any, b: any) => a.name.localeCompare(b.name)));
+                if (!cancelled) setChannelList(pairs.slice().sort((a: any, b: any) => compareText(a.name, b.name)));
                 const found = pairs.find(c => c.id === channelId);
                 if (found && !cancelled) {
                     setChannelName(found.name);
@@ -2931,10 +2926,10 @@ export function MessagesView({ params, query }: any) {
                     // this async handler returns; defer past it (rAF runs after that
                     // microtask, before paint) so the channel name sticks without a flash.
                     window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('webadmin:set-title', {
-                        detail: { title: `Channel Messages - ${found.name}` }
+                        detail: { title: translate("Channel Messages - {value1}", { value1: String(found.name) }) }
                     })));
                 }
-            } catch (e: any) { toast(`Failed to load channels: ${e.message || e}`, 'error'); }
+            } catch (e: any) { toast(translate("Failed to load channels: {value1}", { value1: String(e.message || e) }), 'error'); }
             // Nothing to search until a channel is chosen.
             if (!cancelled && channelId && metaDataReadyRef.current) searchRef.current(true, { automatic: true });
         })();
@@ -2948,9 +2943,9 @@ export function MessagesView({ params, query }: any) {
 
     /* ---- render ---- */
 
-    const statusLabel = statusSel.size === 0 ? 'Any'
-        : statusSel.size === 1 ? [...statusSel][0]
-            : `${statusSel.size} selected`;
+    const statusLabel = statusSel.size === 0 ? translate("Any")
+        : statusSel.size === 1 ? messageStatusLabel(String([...statusSel][0]))
+            : translate("{count} selected", { count: statusSel.size });
     const totalStr = pager.total == null ? '?' : fmtNumber(pager.total);
     const hasSel = !!selected;
 
@@ -2962,13 +2957,13 @@ export function MessagesView({ params, query }: any) {
        new channel's connectors and metadata columns. */
     const channelPicker = (
         <label className="msg-channel">
-            <span>Channel</span>
-            <select value={channelId || ''} aria-label="Channel"
+            <span>{translate("Channel")}</span>
+            <select value={channelId || ''} aria-label={translate("Channel")}
                 onChange={(e: any) => {
                     const id = e.target.value;
                     router.navigate(id ? `/messages/${id}` : '/messages');
                 }}>
-                <option value="">Select a channel…</option>
+                <option value="">{translate("Select a channel…")}</option>
                 {channelList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
         </label>
@@ -2977,13 +2972,13 @@ export function MessagesView({ params, query }: any) {
     const criteria = (
         <>
                         <div className="form-row">
-                            <Field label="Start Date">
-                                <DateTimeField value={startDate} onChange={setStartDate} label="Start date" />
+                            <Field label={translate("Start Date")}>
+                                <DateTimeField value={startDate} onChange={setStartDate} label={translate("Start date")} />
                             </Field>
-                            <Field label="End Date">
-                                <DateTimeField value={endDate} onChange={setEndDate} label="End date" />
+                            <Field label={translate("End Date")}>
+                                <DateTimeField value={endDate} onChange={setEndDate} label={translate("End date")} />
                             </Field>
-                            <Field label="Status">
+                            <Field label={translate("Status")}>
                                 <DropdownMenu.Root open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>
                                     <DropdownMenu.Trigger asChild>
                                         <button type="button" className="btn justify-between min-w-[119px] font-normal">
@@ -3010,12 +3005,12 @@ export function MessagesView({ params, query }: any) {
                                                     <span className="ctx-check" aria-hidden="true">
                                                         <DropdownMenu.ItemIndicator>✓</DropdownMenu.ItemIndicator>
                                                     </span>
-                                                    {st}
+                                                    {messageStatusLabel(st)}
                                                 </DropdownMenu.CheckboxItem>
                                             ))}
                                             <DropdownMenu.Separator className="ctx-sep" />
                                             <DropdownMenu.Item className="ctx-item"
-                                                onSelect={() => setStatusSel(new Set())}>Clear (Any)</DropdownMenu.Item>
+                                                onSelect={() => setStatusSel(new Set())}>{translate("Clear (Any)")}</DropdownMenu.Item>
                                         </DropdownMenu.Content>
                                     </DropdownMenu.Portal>
                                 </DropdownMenu.Root>
@@ -3023,39 +3018,33 @@ export function MessagesView({ params, query }: any) {
                             {/* The Regex checkbox rides on the label line (top-right of the
                                 field) so it costs no slot in the criteria row. */}
                             <div className="field relative">
-                                <label>Text Search</label>
+                                <label>{translate("Text Search")}</label>
                                 <label className="check msg-regex"
-                                    title="Treat the text search as a regular expression">
-                                    <input type="checkbox" checked={textRegex} onChange={(e: any) => setTextRegex(e.target.checked)} />
-                                    Regex
-                                </label>
-                                <input type="text" placeholder="Search message content…" className="w-[198px]"
+                                    title={translate("Treat the text search as a regular expression")}>{richText("{value1}Regex", { value1: <input type="checkbox" checked={textRegex} onChange={(e: any) => setTextRegex(e.target.checked)} /> })}</label>
+                                <input type="text" placeholder={translate("Search message content…")} className="w-[198px]"
                                     value={textSearch} onChange={(e: any) => setTextSearch(e.target.value)}
-                                    onKeyDown={(e: any) => { if (e.key === 'Enter') runSearch(true); }} />
+                                    onKeyDown={(e: any) => { if (isCommitEnter(e)) runSearch(true); }} />
                             </div>
-                            <Field label="Connector">
+                            <Field label={translate("Connector")}>
                                 <select value={connectorVal} onChange={(e: any) => setConnectorVal(e.target.value)}>
-                                    <option value="">Any</option>
+                                    <option value="">{translate("Any")}</option>
                                     {connectors.map(c => (
-                                        <option key={c.metaDataId} value={String(c.metaDataId)}>{`${c.name} (${c.metaDataId})`}</option>
+                                        <option key={c.metaDataId} value={String(c.metaDataId)}>{c.name} ({c.metaDataId})</option>
                                     ))}
                                 </select>
                             </Field>
-                            <Field label="Page Size">
+                            <Field label={translate("Page Size")}>
                                 <select value={pageSize} onChange={(e: any) => setPageSize(e.target.value)}>
                                     {[20, 50, 100].map(n => <option key={n} value={String(n)}>{n}</option>)}
                                 </select>
                             </Field>
-                            <button className="btn btn-primary" onClick={() => runSearch(true)}><Icon name="search" />Search</button>
-                            <button className="btn" onClick={resetSearch}>Reset</button>
+                            <button className="btn btn-primary" onClick={() => runSearch(true)}>{richText("{value1}Search", { value1: <Icon name="search" /> })}</button>
+                            <button className="btn" onClick={resetSearch}>{translate("Reset")}</button>
                             {/* The Advanced… button carries a dot whenever any advanced
                                 criterion is staged. Applying advanced criteria does NOT
                                 auto-search — the user runs it with Search (Swing parity). */}
                             <button className="btn" onClick={openAdvanced}
-                                title={advOn ? 'Advanced filter applied — press Search to run it' : undefined}>
-                                <Icon name="filter" />Advanced…
-                                {advOn && <span className="inline-block w-[6px] h-[6px] ml-[6px] rounded-full bg-accent" />}
-                            </button>
+                                title={advOn ? translate("Advanced filter applied — press Search to run it") : undefined}>{richText("{value1}Advanced…{value2}", { value1: <Icon name="filter" />, value2: advOn && <span className="inline-block w-[6px] h-[6px] ml-[6px] rounded-full bg-accent" /> })}</button>
                         </div>
                         <div className="text-text-faint mt-1.5">{searchSummary}</div>
         </>
@@ -3067,25 +3056,25 @@ export function MessagesView({ params, query }: any) {
                 pane stays empty until one is chosen rather than offering actions
                 that cannot run. */}
             {channelId && <ViewTasks>
-                <RailPane title="Message Tasks" paneKey="tasks:Message Tasks" group="message">
+                <RailPane title={translate("Message Tasks")} paneKey="tasks:Message Tasks" group="message">
                     <div className="taskbar" data-pane-title="Message Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
-                        <TaskButton label="Send Message" icon="send" primary task="doSendMessage" onClick={sendMessageTask} />
-                        <TaskButton label="Import Messages" icon="import" task="doImportMessages" onClick={importMessagesTask} />
-                        <TaskButton label="Export Results" icon="export" task="doExportMessages" onClick={exportResultsTask} />
-                        <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={removeAllTask} />
-                        <TaskButton label="Remove Results" icon="trash" danger task="doRemoveFilteredMessages" onClick={removeResultsTask} />
-                        {hasSel && <TaskButton label="Remove Message" icon="trash" danger task="doRemoveMessage" onClick={() => removeMessageTask()} />}
-                        <TaskButton label="Reprocess Results" icon="transform" task="doReprocessFilteredMessages" onClick={reprocessResultsTask} />
-                        {hasSel && <TaskButton label="Reprocess Message" icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
-                        <TaskButton label="Select for Compare" icon="compare" task="doSelectForCompare"
+                        <TaskButton label={translate("Refresh")} icon="refresh" task="doRefreshMessages" onClick={() => runSearch(true)} />
+                        <TaskButton label={translate("Send Message")} icon="send" primary task="doSendMessage" onClick={sendMessageTask} />
+                        <TaskButton label={translate("Import Messages")} icon="import" task="doImportMessages" onClick={importMessagesTask} />
+                        <TaskButton label={translate("Export Results")} icon="export" task="doExportMessages" onClick={exportResultsTask} />
+                        <TaskButton label={translate("Remove All Messages")} icon="trash" danger task="doRemoveAllMessages" onClick={removeAllTask} />
+                        <TaskButton label={translate("Remove Results")} icon="trash" danger task="doRemoveFilteredMessages" onClick={removeResultsTask} />
+                        {hasSel && <TaskButton label={translate("Remove Message")} icon="trash" danger task="doRemoveMessage" onClick={() => removeMessageTask()} />}
+                        <TaskButton label={translate("Reprocess Results")} icon="transform" task="doReprocessFilteredMessages" onClick={reprocessResultsTask} />
+                        {hasSel && <TaskButton label={translate("Reprocess Message")} icon="transform" task="doReprocessMessage" onClick={() => reprocessTask()} />}
+                        <TaskButton label={translate("Select for Compare")} icon="compare" task="doSelectForCompare"
                             onClick={selectForCompareTask}
-                            title={activeStage ? `Select ${describeRef(activeStage)} for comparison` : undefined} />
+                            title={activeStage ? translate("Select {value1} for comparison", { value1: String(describeRef(activeStage)) }) : undefined} />
                         {/* Greyed rather than hidden: the task exists, it just has
                             nothing to compare against yet (Swing's task-rail idiom). */}
-                        <TaskButton label="Compare to Selection" icon="compare" task="doCompareWithSelection"
+                        <TaskButton label={translate("Compare to Selection")} icon="compare" task="doCompareWithSelection"
                             disabled={!anchor} onClick={compareWithSelectionTask}
-                            title={anchor ? `Compare against ${describeRef(anchor)}` : 'Select content for compare first'} />
+                            title={anchor ? translate("Compare against {value1}", { value1: String(describeRef(anchor)) }) : translate("Select content for compare first")} />
                         {/* Plugin message actions for the selected row — selection-gated
                             like Remove/Reprocess Message, and the row menu's twins. */}
                         {hasSel && messageActionItems(selected.m, selected.metaDataId).map((a: any) => (
@@ -3095,9 +3084,7 @@ export function MessagesView({ params, query }: any) {
                 </RailPane>
             </ViewTasks>}
             <div className="view-body flush flex flex-col h-full min-h-0">
-                {metaDataError && <div className="panel border-danger text-danger mx-[13px] mt-3" role="alert">
-                    Failed to load channel metadata: {metaDataError}. Search will retry this request.
-                </div>}
+                {metaDataError && <div className="panel border-danger text-danger mx-[13px] mt-3" role="alert">{translate("Failed to load channel metadata: {value1}. Search will retry this request.", { value1: metaDataError })}</div>}
                 {/* Wide: click the "Search Criteria" heading to collapse the criteria
                     in place. Narrow: they collapse into a "Filters" popover. */}
                 {/* Wide: the "Search Criteria" heading is a real disclosure over the
@@ -3106,12 +3093,12 @@ export function MessagesView({ params, query }: any) {
                 <div ref={criteriaPanelRef} className="panel filter-collapse flex-none mx-[13px] mt-3 mb-3">
                     {narrowCriteria ? (
                         <div className="panel-header flex items-center gap-2">
-                            <span className="criteria-heading inline-flex items-center gap-1.5">Search Criteria</span>
+                            <span className="criteria-heading inline-flex items-center gap-1.5">{translate("Search Criteria")}</span>
                             {channelPicker}
                             <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
                                 <Popover.Trigger asChild>
                                     <button className="btn filter-toggle" type="button">
-                                        <Icon name="filter" /><span>Filters</span><Icon name="chevD" />
+                                        <Icon name="filter" /><span>{translate("Filters")}</span><Icon name="chevD" />
                                     </button>
                                 </Popover.Trigger>
                                 <Popover.Portal>
@@ -3127,10 +3114,7 @@ export function MessagesView({ params, query }: any) {
                             onOpenChange={(open: any) => setCriteriaCollapsed(!open)}>
                             <div className="panel-header flex items-center gap-2">
                                 <Collapsible.Trigger asChild>
-                                    <button type="button" className="criteria-heading inline-flex items-center gap-1.5">
-                                        <span aria-hidden="true">{criteriaCollapsed ? '▸' : '▾'}</span>
-                                        Search Criteria
-                                    </button>
+                                    <button type="button" className="criteria-heading inline-flex items-center gap-1.5">{richText("{value2, select, yes {<e1>▸</e1>Search Criteria} other {<e1>▾</e1>Search Criteria}}", { e1: (chunks: any) => <span aria-hidden="true">{chunks}</span>, value2: (criteriaCollapsed) ? "yes" : "no" })}</button>
                                 </Collapsible.Trigger>
                                 {channelPicker}
                             </div>
@@ -3143,9 +3127,7 @@ export function MessagesView({ params, query }: any) {
                 <div className="flex-1 min-h-0 flex flex-col overflow-hidden oie-tablecard px-[13px] pt-3 pb-3">
                     {!channelId ? (
                         <div className="dt-empty">
-                            <div className="empty-icon"><Icon name="messages" size={30} /></div>
-                            Choose a channel to search its messages.
-                        </div>
+                            <div className="empty-icon"><Icon name="messages" size={30} /></div>{translate("Choose a channel to search its messages.")}</div>
                     ) : (
                     <ResultsTable
                         cols={visibleCols} mgr={mgr} rows={sortedMessages}
@@ -3170,23 +3152,23 @@ export function MessagesView({ params, query }: any) {
 
                 <div className="filterbar flex-none panel overflow-visible mx-[13px]">
                     <button className="btn" disabled={pager.offset <= 0}
-                        onClick={() => runSearch(false, { offset: 0 })}>« First</button>
+                        onClick={() => runSearch(false, { offset: 0 })}>{translate("« First")}</button>
                     <button className="btn" disabled={pager.offset <= 0}
-                        onClick={() => runSearch(false, { offset: Math.max(0, offsetRef.current - limitRef.current) })}>‹ Prev</button>
+                        onClick={() => runSearch(false, { offset: Math.max(0, offsetRef.current - limitRef.current) })}>{translate("‹ Prev")}</button>
                     <button className="btn" disabled={!pager.hasNext}
-                        onClick={() => runSearch(false, { offset: offsetRef.current + limitRef.current })}>Next ›</button>
+                        onClick={() => runSearch(false, { offset: offsetRef.current + limitRef.current })}>{translate("Next ›")}</button>
                     {/* Can't jump to the last page without a total. */}
                     <button className="btn" disabled={pager.total == null}
                         onClick={() => {
                             runSearch(false, { offset: Math.max(0, Math.floor(Math.max(0, totalRef.current - 1) / limitRef.current) * limitRef.current) });
-                        }}>Last »</button>
+                        }}>{translate("Last »")}</button>
                     <span className="counts">
                         {pager.shown == null ? ''
-                            : pager.shown === 0 ? 'No results'
-                                : `${fmtNumber(pager.offset + 1)}–${fmtNumber(pager.offset + pager.shown)} of ${totalStr}`}
+                            : pager.shown === 0 ? translate("No results")
+                                : translate("{value1}–{value2} of {value3}", { value1: String(fmtNumber(pager.offset + 1)), value2: String(fmtNumber(pager.offset + pager.shown)), value3: String(totalStr) })}
                     </span>
                     {/* Nothing left to count once the total is known. */}
-                    <button className="btn" disabled={pager.total != null || countBusy} onClick={doCount}>Count</button>
+                    <button className="btn" disabled={pager.total != null || countBusy} onClick={doCount}>{translate("Count")}</button>
                 </div>
 
                 <div className="split-handle mx-[13px]" data-orient="v" data-resize="next" />
@@ -3211,8 +3193,8 @@ export function MessagesView({ params, query }: any) {
                            than what went away. */
                         const kept = info?.cleared ? null : getAnchor();
                         toast(kept
-                            ? `Comparison closed — ${describeRef(kept)} is still selected for compare`
-                            : 'Comparison closed');
+                            ? translate("Comparison closed — {value1} is still selected for compare", { value1: String(describeRef(kept)) })
+                            : translate("Comparison closed"));
                     }} />
             )}
         </div>

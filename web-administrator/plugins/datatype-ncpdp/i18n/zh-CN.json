@@ -1,0 +1,18 @@
+{
+  "Batch": "批处理",
+  "Character(s) that delimit the fields in the message.": "分隔消息中字段的字符。",
+  "Character(s) that delimit the groups in the message.": "分隔消息中组的字符。",
+  "Character(s) that delimit the segments in the message.": "分隔消息中段的字符。",
+  "Deserialization": "反序列化",
+  "Field Delimiter": "字段分隔符",
+  "Group Delimiter": "组分隔符",
+  "JavaScript": "JavaScript",
+  "JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.": "用于拆分批次并返回下一条消息的 JavaScript。可访问 reader（Java BufferedReader）；返回 null／空值表示输入结束。仅在连接器启用“处理批次”时使用。",
+  "Method for splitting the batch message. Only used when Process Batch is enabled in the connector.": "拆分批次消息的方法。仅在连接器启用“处理批次”时使用。",
+  "NCPDP": "NCPDP",
+  "Segment Delimiter": "段分隔符",
+  "Serialization": "序列化",
+  "Split Batch By": "批次拆分方式",
+  "Use Strict Validation": "使用严格验证",
+  "Validate the NCPDP message against a schema.": "依据模式验证 NCPDP 消息。"
+}

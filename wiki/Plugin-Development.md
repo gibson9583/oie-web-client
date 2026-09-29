@@ -922,3 +922,11 @@ An engine plugin that registers its own REST servlet (via `apiProviders` in its
 exactly how the bundled `server-log` plugin reads
 `GET /api/extensions/serverlog`. Ship the engine half as a normal engine
 extension and the UI half as a web admin plugin with the same name.
+
+## Localization (API 4.8)
+
+Use the shared `@oie/web-ui` translation functions or `platform.i18n`. Declare a
+plugin-scoped catalog in `plugin.json`; the host loads it before importing your
+module. Keep IDs, enum values, routes and RBAC groups stable, and translate only
+display labels. See the [i18n authoring and migration guide](../docs/i18n.md)
+for ICU messages, catalog manifests, fallback, `sectionLabel`, and validation.

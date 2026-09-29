@@ -1,3 +1,4 @@
+import { t as translate } from "./i18n.js";
 /*
  * Built-in generic OTP login authenticator.
  *
@@ -41,7 +42,7 @@ function qrImage(text: string, size: number = 148): HTMLElement | null {
         qr.make();
         const dataUrl = qr.createDataURL(4, 8);   // cellSize, margin (px)
         return ui().h('img', {
-            src: dataUrl, width: size, height: size, alt: 'Authenticator QR code',
+            src: dataUrl, width: size, height: size, alt: translate("Authenticator QR code"),
             style: 'image-rendering:pixelated; border:1px solid var(--line); border-radius:6px; background:#fff'
         });
     } catch {
@@ -75,15 +76,15 @@ function promptCode({ title, intro, extra, confirmLabel }: {
             title, body,
             onClose: () => finish(null),
             buttons: [
-                { label: 'Cancel', onClick: () => finish(null) },
+                { label: translate("Cancel"), onClick: () => finish(null) },
                 {
-                    label: confirmLabel || 'Verify', primary: true,
+                    label: confirmLabel || translate("Verify"), primary: true,
                     onClick: () => {
                         const code = String(input.value || '').trim();
                         // Length-agnostic: OTP methods vary (6–8+ digits) and the
                         // server does the real validation. Just require a plausible
                         // numeric code — never advertise the expected length.
-                        if (!/^\d{4,10}$/.test(code)) { err.textContent = 'Enter the code from your authenticator app.'; return false; }
+                        if (!/^\d{4,10}$/.test(code)) { err.textContent = translate("Enter the code from your authenticator app."); return false; }
                         finish(code);
                     }
                 }
@@ -102,11 +103,11 @@ function enrollSetup(info: { secret?: string; otpauthUri?: string }): HTMLElemen
         qr ? h('div', { style: 'flex:none' }, qr) : null,
         h('div', { style: 'display:flex; flex-direction:column; gap:6px; min-width:0' },
             h('div', { style: 'font-size:12px; color:var(--text-dim)' },
-                'Scan with an authenticator app (Google Authenticator, Authy, 1Password, …), or enter the key manually:'),
-            h('div', { style: 'font-size:12px' }, 'Key:'),
+                translate("Scan with an authenticator app (Google Authenticator, Authy, 1Password, …), or enter the key manually:")),
+            h('div', { style: 'font-size:12px' }, translate("Key:")),
             h('div', { class: 'mono', style: 'font-size:13px; letter-spacing:1px; word-break:break-all' }, groupSecret(info.secret)),
             info.otpauthUri
-                ? h('a', { href: info.otpauthUri, style: 'font-size:12px' }, 'Open in an authenticator app')
+                ? h('a', { href: info.otpauthUri, style: 'font-size:12px' }, translate("Open in an authenticator app"))
                 : null));
 }
 
@@ -115,25 +116,25 @@ async function authenticate(ctx: LoginAuthContext): Promise<any> {
     try {
         info = JSON.parse(ctx.primaryStatus.message || '{}');
     } catch {
-        return { status: 'FAIL', message: 'Unexpected authentication challenge.' };
+        return { status: 'FAIL', message: translate("Unexpected authentication challenge.") };
     }
 
     const enrolling = info.mode === 'enroll';
     const code = await promptCode(enrolling
         ? {
-            title: 'Set up two-factor authentication',
-            intro: info.prompt || 'Two-factor authentication is required for your account. Set it up now:',
+            title: translate("Set up two-factor authentication"),
+            intro: info.prompt || translate('Two-factor authentication is required for your account. Set it up now:'),
             extra: enrollSetup(info),
-            confirmLabel: 'Activate'
+            confirmLabel: translate("Activate")
         }
         : {
-            title: 'Two-factor authentication',
-            intro: info.prompt || 'Enter the code from your authenticator app.',
-            confirmLabel: 'Verify'
+            title: translate("Two-factor authentication"),
+            intro: info.prompt || translate("Enter the code from your authenticator app."),
+            confirmLabel: translate("Verify")
         });
 
     if (code == null) {
-        return { status: 'FAIL', message: enrolling ? 'Setup cancelled.' : 'Cancelled.' };
+        return { status: 'FAIL', message: enrolling ? translate("Setup cancelled.") : translate("Cancelled.") };
     }
 
     // Second leg: echo the opaque challenge back with the code (base64 JSON), which

@@ -133,6 +133,7 @@ function install(app, config) {
             author: manifest.author || '',
             description: manifest.description || '',
             // Minimum @oie API version the plugin declares (client-side compat gate).
+            i18n: manifest.i18n,
             apiMin: manifest.oie && manifest.oie.apiMin ? String(manifest.oie.apiMin) : null,
             entry: manifest.client && manifest.client.entry
                 ? `/plugins/${manifest.id}/${manifest.client.entry}`

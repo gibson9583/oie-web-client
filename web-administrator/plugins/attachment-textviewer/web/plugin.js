@@ -1,5 +1,7 @@
 // plugins/attachment-textviewer/web/plugin.tsx
+import { scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t: translate } = i18nScope("attachment-textviewer");
 var React = platform.React;
 var TEXT_RE = /^text\/|xml|json|hl7|html|csv|plain|x-www-form/i;
 function typeOf(att) {
@@ -39,10 +41,10 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id, key, platform3.api.messages, attempt]);
     if (state.key !== key || state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, "Loading text\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, translate("Loading text\u2026")));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load text: ${state.message}`), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, "Retry"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, translate("Could not load text: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, translate("Retry")));
     }
     return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement(
       "pre",

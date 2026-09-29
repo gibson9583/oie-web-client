@@ -1,3 +1,4 @@
+import { t as translate } from "./i18n.js";
 /*
  * Enforces the engine's "Administrator Auto Logout Interval" (Settings → Server:
  * administratorAutoLogoutIntervalEnabled / administratorAutoLogoutIntervalField).
@@ -57,7 +58,7 @@ export async function startIdleLogout(onIdle: () => void): Promise<void> {
             }
             const value = Number(pub?.administratorAutoLogoutIntervalField);
             if ((enabled !== true && enabled !== 'true') || !Number.isInteger(value) || value < 1 || value > 60) {
-                throw new Error('Invalid administrator idle policy');
+                throw new Error(translate("Invalid administrator idle policy"));
             }
             minutes = value;
             check();

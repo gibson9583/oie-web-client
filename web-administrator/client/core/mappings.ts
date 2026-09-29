@@ -1,3 +1,4 @@
+import { t as translate } from "./i18n.js";
 /*
  * Shared variable-reference lists shown beside code editors: the classic
  * Administrator's "Destination Mappings" velocity tokens (connector templates)
@@ -6,46 +7,46 @@
  */
 
 export const DESTINATION_MAPPINGS: Array<[string, string]> = [
-    ['Channel ID', '${channelId}'],
-    ['Channel Name', '${channelName}'],
-    ['Message ID', '${message.messageId}'],
-    ['Raw Data', '${message.rawData}'],
-    ['Transformed Data', '${message.transformedData}'],
-    ['Encoded Data', '${message.encodedData}'],
-    ['Message Source', '${message.source}'],
-    ['Message Type', '${message.type}'],
-    ['Message Version', '${message.version}'],
-    ['Date', '${date}'],
-    ['Formatted Date', "${date.get('yyyy-M-d H.m.s')}"],
-    ['Timestamp', '${SYSTIME}'],
-    ['Unique ID', '${UUID}'],
-    ['Original File Name', '${originalFilename}'],
-    ['Count', '${COUNT}'],
-    ['XML Entity Encoder', '${XmlUtil.encode()}'],
-    ['XML Pretty Printer', '${XmlUtil.prettyPrint()}'],
-    ['Escape JSON String', '${JsonUtil.escape()}'],
-    ['JSON Pretty Printer', '${JsonUtil.prettyPrint()}'],
-    ['CDATA Tag', '<![CDATA[]]>'],
-    ['DICOM Message Raw Data', '${DICOMMESSAGE}']
+    [translate("Channel ID"), '${channelId}'],
+    [translate("Channel Name"), '${channelName}'],
+    [translate("Message ID"), '${message.messageId}'],
+    [translate("Raw Data"), '${message.rawData}'],
+    [translate("Transformed Data"), '${message.transformedData}'],
+    [translate("Encoded Data"), '${message.encodedData}'],
+    [translate("Message Source"), '${message.source}'],
+    [translate("Message Type"), '${message.type}'],
+    [translate("Message Version"), '${message.version}'],
+    [translate("Date"), '${date}'],
+    [translate("Formatted Date"), "${date.get('yyyy-M-d H.m.s')}"],
+    [translate("Timestamp"), '${SYSTIME}'],
+    [translate("Unique ID"), '${UUID}'],
+    [translate("Original File Name"), '${originalFilename}'],
+    [translate("Count"), '${COUNT}'],
+    [translate("XML Entity Encoder"), '${XmlUtil.encode()}'],
+    [translate("XML Pretty Printer"), '${XmlUtil.prettyPrint()}'],
+    [translate("Escape JSON String"), '${JsonUtil.escape()}'],
+    [translate("JSON Pretty Printer"), '${JsonUtil.prettyPrint()}'],
+    [translate("CDATA Tag"), '<![CDATA[]]>'],
+    [translate("DICOM Message Raw Data"), '${DICOMMESSAGE}']
 ];
 
 /* Rhino script scope — the identifiers available inside filter/transformer steps
    and channel scripts (JavaScript context). */
 export const SCRIPT_REFERENCE: Array<[string, string]> = [
-    ['Incoming Message', 'msg'],
-    ['Transformed Message', 'tmp'],
-    ['Connector Message', 'connectorMessage'],
-    ['Channel ID', 'channelId'],
-    ['Channel Name', 'channelName'],
-    ['Channel Map', "$c('key')"],
-    ['Channel Map (put)', "$c('key', value)"],
-    ['Source Map', "$s('key')"],
-    ['Global Map', "$g('key')"],
-    ['Global Channel Map', "$gc('key')"],
-    ['Response Map', "$r('key')"],
-    ['Configuration Map', "$cfg('key')"],
-    ['Attachments', 'getAttachments()'],
-    ['Logger', "logger.info('')"],
-    ['Unique ID', 'UUIDGenerator.getUUID()'],
-    ['Date Util', "DateUtil.getCurrentDate('yyyyMMddHHmmss')"]
+    [translate("Incoming Message"), 'msg'],
+    [translate("Transformed Message"), 'tmp'],
+    [translate("Connector Message"), 'connectorMessage'],
+    [translate("Channel ID"), 'channelId'],
+    [translate("Channel Name"), 'channelName'],
+    [translate("Channel Map"), "$c('key')"],
+    [translate("Channel Map (put)"), "$c('key', value)"],
+    [translate("Source Map"), "$s('key')"],
+    [translate("Global Map"), "$g('key')"],
+    [translate("Global Channel Map"), "$gc('key')"],
+    [translate("Response Map"), "$r('key')"],
+    [translate("Configuration Map"), "$cfg('key')"],
+    [translate("Attachments"), 'getAttachments()'],
+    [translate("Logger"), "logger.info('')"],
+    [translate("Unique ID"), 'UUIDGenerator.getUUID()'],
+    [translate("Date Util"), "DateUtil.getCurrentDate('yyyyMMddHHmmss')"]
 ];

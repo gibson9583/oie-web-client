@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 /*
  * Document Writer (DocumentDispatcherProperties).
  * Field names and defaults mirror server/src/com/mirth/connect/connectors/doc.
@@ -22,7 +23,7 @@ const isRtf = (p: any) => String(p.documentType ?? 'pdf').toLowerCase() === 'rtf
    text/plain body to /connectors/doc/_testWrite — NOT the JSON properties — with
    channelId/channelName query params (DocumentConnectorServletInterface). */
 function docTestWriteButton(properties: any, channel: any) {
-    const btn: any = taskButton('Test Write', 'folder', async () => {
+    const btn: any = taskButton(translate("Test Write"), 'folder', async () => {
         btn.disabled = true;
         try {
             const result = await post('/connectors/doc/_testWrite', properties.host ?? '', {
@@ -30,7 +31,7 @@ function docTestWriteButton(properties: any, channel: any) {
                 contentType: 'text/plain'
             });
             const type = result && typeof result === 'object' ? String(result.type ?? '') : '';
-            const message = (result && typeof result === 'object' && result.message) || type || 'No response received';
+            const message = (result && typeof result === 'object' && result.message) || type || translate("No response received");
             if (type === 'SUCCESS') successToast(message); else toast(message, 'error');
         } catch (e) {
             toast(apiErrorMessage(e), 'error');
@@ -47,20 +48,20 @@ function docTestWriteButton(properties: any, channel: any) {
 // Page Unit combo: Unit.toString() renders the short codes 'in'/'mm'/'twips'; the
 // serialized enum NAMEs (INCHES/MM/TWIPS) remain the stored values.
 const PAGE_UNITS = [
-    { value: 'INCHES', label: 'in' },
-    { value: 'MM', label: 'mm' },
-    { value: 'TWIPS', label: 'twips' }
+    { value: 'INCHES', label: translate("in") },
+    { value: 'MM', label: translate("mm") },
+    { value: 'TWIPS', label: translate("twips") }
 ];
 
 // PageSize presets (server/src/.../doc/PageSize.java). width/height are the enum's
 // native dimensions; unit is the enum's native Unit. CUSTOM is appended only when
 // the current width/height/unit don't match a known preset.
 const PAGE_SIZES = [
-    { name: 'Letter', width: 8.5, height: 11, unit: 'INCHES' },
-    { name: 'Legal', width: 8.5, height: 14, unit: 'INCHES' },
-    { name: 'Ledger', width: 11, height: 17, unit: 'INCHES' },
-    { name: 'Tabloid', width: 17, height: 11, unit: 'INCHES' },
-    { name: 'Executive', width: 7.25, height: 10.55, unit: 'INCHES' },
+    { name: "Letter", label: translate("Letter"), width: 8.5, height: 11, unit: 'INCHES' },
+    { name: "Legal", label: translate("Legal"), width: 8.5, height: 14, unit: 'INCHES' },
+    { name: "Ledger", label: translate("Ledger"), width: 11, height: 17, unit: 'INCHES' },
+    { name: "Tabloid", label: translate("Tabloid"), width: 17, height: 11, unit: 'INCHES' },
+    { name: "Executive", label: translate("Executive"), width: 7.25, height: 10.55, unit: 'INCHES' },
     { name: 'ANSI C', width: 22, height: 17, unit: 'INCHES' },
     { name: 'ANSI D', width: 34, height: 22, unit: 'INCHES' },
     { name: 'ANSI E', width: 44, height: 34, unit: 'INCHES' },
@@ -134,8 +135,8 @@ function pageSizeRow(p: any, { onChange }: any) {
     });
 
     const current = matchingPreset(p);
-    const presetOptions = PAGE_SIZES.map((ps: any) => ({ value: ps.name, label: ps.name }));
-    if (current === 'CUSTOM') presetOptions.push({ value: 'CUSTOM', label: 'Custom' });
+    const presetOptions = PAGE_SIZES.map((ps: any) => ({ value: ps.name, label: ps.label || ps.name }));
+    if (current === 'CUSTOM') presetOptions.push({ value: 'CUSTOM', label: translate("Custom") });
     const presetField = select(presetOptions, current, {
         onChange: (e: any) => {
             const ps = PAGE_SIZES.find((x: any) => x.name === e.target.value);
@@ -174,33 +175,33 @@ const documentWriter = {
     component({ properties, channel, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
-                { key: 'output', label: 'Output', type: 'radio', refresh: true, options: [
-                    { value: 'FILE', label: 'File' },
-                    { value: 'ATTACHMENT', label: 'Attachment' },
-                    { value: 'BOTH', label: 'Both' }
+                { key: 'output', label: translate("Output"), type: 'radio', refresh: true, options: [
+                    { value: 'FILE', label: translate("File") },
+                    { value: 'ATTACHMENT', label: translate("Attachment") },
+                    { value: 'BOTH', label: translate("Both") }
                 ] },
                 {
-                    key: 'host', label: 'Directory', type: 'text', width: '200px',
+                    key: 'host', label: translate("Directory"), type: 'text', width: '200px',
                     disabled: (p: any) => !writesFile(p),
                     append: () => docTestWriteButton(properties, channel)
                 },
-                { key: 'outputPattern', label: 'File Name', type: 'text', width: '200px', disabled: (p: any) => !writesFile(p) },
+                { key: 'outputPattern', label: translate("File Name"), type: 'text', width: '200px', disabled: (p: any) => !writesFile(p) },
                 {
                     // Switching to RTF disables the Encrypted radio and forces Encrypted=No
                     // (documentTypeRTFRadioActionPerformed -> encryptedNoActionPerformed).
-                    key: 'documentType', label: 'Document Type', type: 'radio', refresh: true,
+                    key: 'documentType', label: translate("Document Type"), type: 'radio', refresh: true,
                     onSet: (p: any) => { if (isRtf(p)) p.encrypt = false; },
                     options: [
-                        { value: 'pdf', label: 'PDF' },
-                        { value: 'rtf', label: 'RTF' }
+                        { value: 'pdf', label: translate("PDF") },
+                        { value: 'rtf', label: translate("RTF") }
                     ]
                 },
-                { key: 'encrypt', label: 'Encrypted', type: 'radio', options: YES_NO, refresh: true, disabled: isRtf },
+                { key: 'encrypt', label: translate("Encrypted"), type: 'radio', options: YES_NO, refresh: true, disabled: isRtf },
                 // Password is greyed when Encrypted=No, including under RTF (which calls
                 // encryptedNoActionPerformed and disables the Encrypted radio).
-                { key: 'password', label: 'Password', type: 'password', width: '124px', disabled: (p: any) => isRtf(p) || !asBool(p.encrypt) },
-                { label: 'Page Size', type: 'custom', render: pageSizeRow },
-                { key: 'template', label: 'HTML Template', type: 'code', language: 'html', minHeight: '260px' }
+                { key: 'password', label: translate("Password"), type: 'password', width: '124px', disabled: (p: any) => isRtf(p) || !asBool(p.encrypt) },
+                { label: translate("Page Size"), type: 'custom', render: pageSizeRow },
+                { key: 'template', label: translate("HTML Template"), type: 'code', language: 'html', minHeight: '260px' }
             ]} />
         );
     },
@@ -209,12 +210,12 @@ const documentWriter = {
     // Encrypted = Yes; Page Width/Height must not be blank (numeric/range check skipped).
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'host', label: 'Directory', when: writesFile },
-            { key: 'outputPattern', label: 'File Name', when: writesFile },
-            { key: 'template', label: 'HTML Template' },
-            { key: 'password', label: 'Password', when: (p: any) => asBool(p.encrypt) },
-            { key: 'pageWidth', label: 'Page Width' },
-            { key: 'pageHeight', label: 'Page Height' }
+            { key: 'host', label: translate("Directory"), when: writesFile },
+            { key: 'outputPattern', label: translate("File Name"), when: writesFile },
+            { key: 'template', label: translate("HTML Template") },
+            { key: 'password', label: translate("Password"), when: (p: any) => asBool(p.encrypt) },
+            { key: 'pageWidth', label: translate("Page Width") },
+            { key: 'pageHeight', label: translate("Page Height") }
         ]);
     }
 };

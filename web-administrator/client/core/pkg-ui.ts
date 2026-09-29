@@ -15,3 +15,6 @@ export * from './mappings.js';
 // react-forms re-exports the pure ./forms.js helpers AND adds the React form
 // components (ConnectorForm, PollSection, …) that React connector plugins use.
 export * from '../connectors/react-forms.js';
+
+export { t, tc, tx, locale, locales, setLocale, formatNumber, formatList, compareText, scope } from './i18n.js';
+export { isCommitEnter, isComposing } from './keyboard.js';

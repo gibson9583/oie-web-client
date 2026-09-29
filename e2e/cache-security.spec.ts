@@ -13,7 +13,7 @@ test('engine data is unavailable from disk cache after logout and browser restar
     let loggedIn = true, hits = 0;
     const profile = mkdtempSync(path.join(tmpdir(), 'oie-cache-test-'));
     const server = await listen((req, res) => {
-        if (/^\/core\/[a-z-]+\.js$/.test(req.url || '')) {
+        if (/^\/core\/[a-z0-9-]+\.js$/.test(req.url || '') || req.url === '/vendor/intl-messageformat.js') {
             res.setHeader('Content-Type', 'text/javascript');
             res.end(readFileSync(path.join(process.cwd(), 'web-administrator/client', req.url!)));
         } else if (req.url === '/api/sensitive') {
@@ -23,7 +23,7 @@ test('engine data is unavailable from disk cache after logout and browser restar
             res.end(JSON.stringify(loggedIn ? { data: 'SYNTHETIC-PATIENT-DATA' } : { error: 'unauthorized' }));
         } else {
             res.setHeader('Content-Type', 'text/html');
-            res.end('<meta name="oie-webadmin-api-base" content="/api">');
+            res.end('<meta name="oie-webadmin-api-base" content="/api"><script type="importmap">{"imports":{"intl-messageformat":"/vendor/intl-messageformat.js"}}</script>');
         }
     });
     let context: BrowserContext | undefined;

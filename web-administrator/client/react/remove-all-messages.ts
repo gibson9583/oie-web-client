@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 import { checkbox, h, modal, promptDialog, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
@@ -22,7 +23,7 @@ export interface RemoveAllMessagesDialogOptions {
 export function openRemoveAllMessagesDialog({ channels, onDone }: RemoveAllMessagesDialogOptions): void {
     const selected = channels.filter(channel => channel?.channelId);
     if (!selected.length) {
-        toast('Select a channel first', 'warn');
+        toast(translate("Select a channel first"), 'warn');
         return;
     }
 
@@ -34,37 +35,37 @@ export function openRemoveAllMessagesDialog({ channels, onDone }: RemoveAllMessa
     });
     const canClearStatistics = platform.checkTask('dashboard', 'doClearStats');
     const includeRunning = checkbox(
-        'Include selected channels that are not stopped (they will be temporarily stopped while messages are removed)',
+        translate("Include selected channels that are not stopped (they will be temporarily stopped while messages are removed)"),
         false,
         { disabled: running.length === 0 }
     );
     const clearStatistics = checkbox(
-        'Clear statistics for affected channels',
+        translate("Clear statistics for affected channels"),
         canClearStatistics,
         { disabled: !canClearStatistics }
     );
     const scope = selected.length === 1 && selected[0].name
-        ? `from ${selected[0].name}`
-        : `for ${selected.length} selected channels`;
+        ? translate("from {name}", { name: selected[0].name })
+        : translate("for {value1} selected channels", { value1: String(selected.length) });
 
     modal({
-        title: 'Remove All Messages',
+        title: translate("Remove All Messages"),
         body: h('div',
             h('div.mb-[13px]',
-                `Permanently remove all messages (including QUEUED) ${scope}? This cannot be undone.`),
+                translate("Permanently remove all messages (including QUEUED) {value1}? This cannot be undone.", { value1: String(scope) })),
             h('div', { class: 'flex flex-col gap-1.5' }, includeRunning.el, clearStatistics.el),
             running.length
                 ? h('div.hint.mt-[13px]', running.length === 1
-                    ? `One selected channel is currently ${stateOf(running[0])}. Select the first option to include it.`
-                    : `${running.length} selected channels are not stopped. Select the first option to include them.`)
+                    ? translate("One selected channel is currently {value1}. Select the first option to include it.", { value1: String(stateOf(running[0])) })
+                    : translate("{value1} selected channels are not stopped. Select the first option to include them.", { value1: String(running.length) }))
                 : null,
             !canClearStatistics
-                ? h('div.hint.mt-[13px]', 'You do not have permission to clear dashboard statistics.')
+                ? h('div.hint.mt-[13px]', translate("You do not have permission to clear dashboard statistics."))
                 : null),
         buttons: [
-            { label: 'Cancel' },
+            { label: translate("Cancel") },
             {
-                label: 'Remove All', danger: true,
+                label: translate("Remove All"), danger: true,
                 onClick: async () => {
                     const shouldIncludeRunning = includeRunning.input.checked;
                     const targets = shouldIncludeRunning
@@ -75,16 +76,16 @@ export function openRemoveAllMessagesDialog({ channels, onDone }: RemoveAllMessa
                     // place is a guaranteed no-op. Keep the options open instead
                     // of repeating the old false-success behavior.
                     if (!targets.length) {
-                        toast('Select the option to include running channels, or stop the selected channel first.', 'warn');
+                        toast(translate("Select the option to include running channels, or stop the selected channel first."), 'warn');
                         return false;
                     }
 
                     if (getPref('confirmReprocessRemove') !== false) {
-                        const text = await promptDialog('Remove All Messages',
-                            `This will remove all messages for ${targets.length} channel${targets.length === 1 ? '' : 's'}. Type REMOVEALL to continue.`);
+                        const text = await promptDialog(translate("Remove All Messages"),
+                            translate("{value2, plural, one {This will remove all messages for {value1} channel. Type {token} to continue.} other {This will remove all messages for {value1} channels. Type {token} to continue.}}", { value1: String(targets.length), value2: targets.length, token: "REMOVEALL" }));
                         if (text === null) return false;
                         if (text !== 'REMOVEALL') {
-                            toast('You must type REMOVEALL to remove all messages.', 'warn');
+                            toast(translate("You must type {token} to remove all messages.", { token: "REMOVEALL" }), 'warn');
                             return false;
                         }
                     }
@@ -106,14 +107,14 @@ export function openRemoveAllMessagesDialog({ channels, onDone }: RemoveAllMessa
                     if (failures.length) {
                         const failed = failures.map(({ channel }) => channel.name || channel.channelId).join(', ');
                         const details = failures.map(({ error }) => error?.message || String(error)).join('; ');
-                        toast(`Remove all failed for ${failed}: ${details}`, 'error');
+                        toast(translate("Remove all failed for {value1}: {value2}", { value1: String(failed), value2: String(details) }), 'error');
                         return;
                     }
 
                     const skipped = selected.length - targets.length;
-                    const result = targets.length === 1 ? 'All messages removed' : `Messages removed from ${targets.length} channels`;
+                    const result = targets.length === 1 ? translate("All messages removed") : translate("Messages removed from {value1} channels", { value1: String(targets.length) });
                     toast(skipped
-                        ? `${result}; ${skipped} running channel${skipped === 1 ? '' : 's'} skipped`
+                        ? translate("{value3, plural, one {{value1}; {value2} running channel skipped} other {{value1}; {value2} running channels skipped}}", { value1: String(result), value2: String(skipped), value3: skipped })
                         : result);
                 }
             }

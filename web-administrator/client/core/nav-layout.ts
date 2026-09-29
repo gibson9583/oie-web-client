@@ -1,3 +1,4 @@
+import { t, compareText } from './i18n.js';
 /*
  * User-configurable navigation rail: the merge and the edits, as pure functions.
  *
@@ -51,6 +52,7 @@ export interface NavItemLike {
     id: string;
     label: string;
     section?: string;
+    sectionLabel?: string;
     order?: number;
     [extra: string]: any;
 }
@@ -142,7 +144,7 @@ export function mergeNav(
         const i = sectionOrder.indexOf(s);
         return i >= 0 ? i : (Number.isFinite(sectionRank[s]) ? sectionRank[s] : 500);
     };
-    declared.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    declared.sort((a, b) => rank(a) - rank(b) || compareText(a, b));
 
     // Stored order first, then anything new appended in declared order.
     const ids = l.groups.map((g) => g.id);
@@ -152,7 +154,7 @@ export function mergeNav(
         const stored: Partial<NavLayoutGroupPref> = l.groups.find((g) => g.id === id) || {};
         return {
             id,
-            label: stored.label || id,
+            label: stored.label || (stored.custom ? id : sectionLabel(id, list)),
             custom: !!stored.custom,
             renamed: !!stored.label,
             items: []
@@ -178,7 +180,7 @@ export function mergeNav(
             order: Number.isFinite(pref.order) ? pref.order! : 1000 + (Number.isFinite(it.order) ? it.order! : 0)
         });
     }
-    for (const g of groups) g.items.sort((a, b) => a.order - b.order || String(a.label).localeCompare(String(b.label)));
+    for (const g of groups) g.items.sort((a, b) => a.order - b.order || compareText(String(a.label), String(b.label)));
     return groups;
 }
 
@@ -304,4 +306,12 @@ export function withoutGroup(layout: NavLayout | null | undefined, groupId: stri
         }
     }
     return dropEmpty(l);
+}
+
+function sectionLabel(id: string, items: NavItemLike[]): string {
+    const builtin: Record<string, string> = {
+        Monitor: t('Monitor'), Design: t('Design'), Manage: t('Manage'), Create: t('Create'),
+        Settings: t('Settings'), Session: t('Session'), Other: t('Other'), Plugins: t('Plugins')
+    };
+    return (Object.hasOwn(builtin, id) ? builtin[id] : undefined) ?? items.find(item => item.section === id && item.sectionLabel)?.sectionLabel ?? id;
 }

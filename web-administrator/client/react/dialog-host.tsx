@@ -1,3 +1,4 @@
+import { t as translate } from "../core/i18n.js";
 /*
  * Radix-backed renderer for core/ui.js's modal() factory.
  *
@@ -141,13 +142,13 @@ function OneDialog({ entry }: any) {
                                     : opts.title}</span>
                             </Dialog.Title>
                             <Dialog.Close asChild>
-                                <button className="icon-btn" title="Close" aria-label="Close" disabled={pending}>
+                                <button className="icon-btn" title={translate("Close")} aria-label={translate("Close")} disabled={pending}>
                                     <IconSlot name="x" />
                                 </button>
                             </Dialog.Close>
                         </div>
                         <NodeSlot content={opts.body} className="modal-body" inert={pending || undefined} />
-                        {pending && <div role="status" className="px-4 py-2">Working…</div>}
+                        {pending && <div role="status" className="px-4 py-2">{translate("Working…")}</div>}
                         {buttons.length ? (
                             <div className="modal-foot">
                                 {buttons.map((btn: any, i: any) => (

@@ -1,50 +1,52 @@
 // plugins/datatype-ncpdp/web/plugin.tsx
+import { scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t: translate } = i18nScope("datatype-ncpdp");
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.ncpdp";
 var text = (key, label, def, hint) => ({ key, label, type: "text", default: def, hint });
 var bool = (key, label, def, hint) => ({ key, label, type: "checkbox", default: def, hint });
 var opt = (key, label, options, def, hint) => ({ key, label, type: "select", options, default: def, hint });
 var code = (key, label, def, hint) => ({ key, label, type: "code", default: def, hint });
-var BATCH_SCRIPT_HINT = "JavaScript that splits the batch and returns the next message. Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.";
+var BATCH_SCRIPT_HINT = translate("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 var DEF = {
   name: "NCPDP",
-  label: "NCPDP",
+  label: translate("NCPDP"),
   order: 80,
   propertiesClass: `${PKG}.NCPDPDataTypeProperties`,
   groups: [
     {
       key: "serializationProperties",
-      label: "Serialization",
+      label: translate("Serialization"),
       class: `${PKG}.NCPDPSerializationProperties`,
       fields: [
-        text("fieldDelimiter", "Field Delimiter", "0x1C", "Character(s) that delimit the fields in the message."),
-        text("groupDelimiter", "Group Delimiter", "0x1D", "Character(s) that delimit the groups in the message."),
-        text("segmentDelimiter", "Segment Delimiter", "0x1E", "Character(s) that delimit the segments in the message.")
+        text("fieldDelimiter", translate("Field Delimiter"), "0x1C", translate("Character(s) that delimit the fields in the message.")),
+        text("groupDelimiter", translate("Group Delimiter"), "0x1D", translate("Character(s) that delimit the groups in the message.")),
+        text("segmentDelimiter", translate("Segment Delimiter"), "0x1E", translate("Character(s) that delimit the segments in the message."))
       ]
     },
     {
       key: "deserializationProperties",
-      label: "Deserialization",
+      label: translate("Deserialization"),
       class: `${PKG}.NCPDPDeserializationProperties`,
       fields: [
-        text("fieldDelimiter", "Field Delimiter", "0x1C", "Character(s) that delimit the fields in the message."),
-        text("groupDelimiter", "Group Delimiter", "0x1D", "Character(s) that delimit the groups in the message."),
-        text("segmentDelimiter", "Segment Delimiter", "0x1E", "Character(s) that delimit the segments in the message."),
-        bool("useStrictValidation", "Use Strict Validation", false, "Validate the NCPDP message against a schema.")
+        text("fieldDelimiter", translate("Field Delimiter"), "0x1C", translate("Character(s) that delimit the fields in the message.")),
+        text("groupDelimiter", translate("Group Delimiter"), "0x1D", translate("Character(s) that delimit the groups in the message.")),
+        text("segmentDelimiter", translate("Segment Delimiter"), "0x1E", translate("Character(s) that delimit the segments in the message.")),
+        bool("useStrictValidation", translate("Use Strict Validation"), false, translate("Validate the NCPDP message against a schema."))
       ]
     },
     {
       key: "batchProperties",
-      label: "Batch",
+      label: translate("Batch"),
       class: `${PKG}.NCPDPBatchProperties`,
       fields: [
         opt(
           "splitType",
-          "Split Batch By",
-          [{ value: "JavaScript", label: "JavaScript" }],
+          translate("Split Batch By"),
+          [{ value: "JavaScript", label: translate("JavaScript") }],
           "JavaScript",
-          "Method for splitting the batch message. Only used when Process Batch is enabled in the connector."
+          translate("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")
         ),
         code("batchScript", "JavaScript", null, BATCH_SCRIPT_HINT)
       ]
