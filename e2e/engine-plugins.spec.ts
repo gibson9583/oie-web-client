@@ -178,7 +178,7 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
         'GET /webplugins': ['newplug'],
         'GET /webplugins/newplug/plugin.json': {
             id: 'new-plug', name: 'Too New Plugin', version: '1.0.0',
-            oie: { apiMin: '4.9' }, client: { entry: 'web/plugin.js' }
+            oie: { apiMin: '4.8' }, client: { entry: 'web/plugin.js' }
         }
     });
     // If the gate works, this module is never imported (its code never runs).

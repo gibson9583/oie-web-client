@@ -9,8 +9,5 @@
     },
     "i18n": {
         "zh-CN": "i18n/zh-CN.json"
-    },
-    "oie": {
-        "apiMin": "4.8"
     }
 }

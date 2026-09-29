@@ -8150,7 +8150,7 @@
     "web-administrator/client/connectors/ws.tsx:370"
   ],
   "The Web Support plugin is not installed on this engine — plugin UIs, message trees, and script validation are disabled. Install \"websupport\" from the Extensions page.": [
-    "web-administrator/client/core/platform.ts:595"
+    "web-administrator/client/core/platform.ts:596"
   ],
   "The administrator failed to start": [
     "web-administrator/client/app-main.tsx:58"
@@ -9376,7 +9376,7 @@
     "web-administrator/client/react/shell.tsx:632"
   ],
   "entry module has no register(platform) export": [
-    "web-administrator/client/core/platform.ts:741"
+    "web-administrator/client/core/platform.ts:742"
   ],
   "for {value1} selected channels": [
     "web-administrator/client/react/remove-all-messages.ts:49"
@@ -9455,10 +9455,10 @@
     "web-administrator/client/connectors/database.tsx:138"
   ],
   "plugin module request failed ({value1})": [
-    "web-administrator/client/core/platform.ts:704"
+    "web-administrator/client/core/platform.ts:705"
   ],
   "requires @oie API {required}, but this web administrator provides {provided}": [
-    "web-administrator/client/core/platform.ts:678"
+    "web-administrator/client/core/platform.ts:679"
   ],
   "retries": [
     "web-administrator/client/react/views/channel-wizard-editors.tsx:493"

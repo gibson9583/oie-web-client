@@ -77,9 +77,11 @@ export function register(platform: Platform) { /* ... */ }
 
 MPL-2.0
 
-## Localization (API 4.8)
+## Localization
 
-Use the shared `@oie/web-ui` translation functions or `platform.i18n`. Declare a
+Localization is optional and does not change the API version or `oie.apiMin`.
+Detect `platform.i18n` and retain English rendering for older hosts. Plugins shipped
+with this host can also use its shared `@oie/web-ui` exports. Declare a
 plugin-scoped catalog in `plugin.json`; the host loads it before importing your
 module. Keep IDs, enum values, routes and RBAC groups stable, and translate only
 display labels. See the [i18n authoring and migration guide](../../docs/i18n.md)

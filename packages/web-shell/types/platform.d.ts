@@ -273,7 +273,7 @@ export interface PluginManifest {
     apiMin?: string | null;
     [key: string]: any;
 }
-export declare const OIE_API_VERSION = "4.8.0";
+export declare const OIE_API_VERSION = "4.7.0";
 declare const i18n: Readonly<{
     t: typeof translate;
     tc: typeof tc;
@@ -313,6 +313,7 @@ export interface Platform {
     checkTask: typeof checkTask;
     /** Add a glyph to the shared icon set: SVG path data on a 24x24 grid, rendered stroke-only in currentColor. Referenced by name anywhere an `icon` is accepted (nav items, actions, `ui.icon()`). Built-in names cannot be overridden. */
     registerIcon(name: string, pathData: string): void;
+    /** Shared localization runtime. Feature-detect when supporting older web clients. */
     i18n: typeof i18n;
     registerNavItem(item: NavItem): void;
     /** Command-palette entry — same shape as a nav item. Returns an unregister fn. */

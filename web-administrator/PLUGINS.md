@@ -139,7 +139,7 @@ ones are built.
 | `ChannelTabPlugin` | (commercial, e.g. history tabs) | `registerChannelTab` |
 | `ClientPlugin` adding a task to the Channels panel | `simple-channel-history` ("View History") | `registerChannelAction` — adds a right-click item + Channel Tasks button for a single-channel selection |
 | `ClientPlugin` adding a task to the Code Templates panel | `simple-channel-history` ("View History") | `registerCodeTemplateAction` — adds a right-click item for a selected code template |
-| *(none — Swing's `MessageBrowser` takes no plugin tasks)* | | `registerMessageAction` — adds a right-click item on a message row + a Message Tasks button for the selected row, with the row's connector in context. Web-only; API `4.7`+ |
+| *(none — Swing's `MessageBrowser` takes no plugin tasks)* | | `registerMessageAction` — adds a right-click item on a message row + a Message Tasks button for the selected row, with the row's connector in context. Web-only; feature-detect on older clients |
 | `TransformerStepPlugin` / `FilterRulePlugin` | mapper, messagebuilder, javascriptstep, xsltstep, destinationsetfilter, scriptfilestep, iterator; rulebuilder, javascriptrule, scriptfilerule | bundled as the `transformer-steps` web plugin calling `registerStepType` / `registerRuleType` |
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
@@ -210,41 +210,35 @@ export function register() {
 
 ### API version compatibility
 
-The framework surface — the `platform` registries plus the `@oie/web-*` exports —
-is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
-1.0 implements **4.7.0** against OIE **4.6.0**. The API minor can advance independently
-when exports are added; it is not the application or engine version. It follows
-major.minor (the patch is ignored for compatibility): the **minor** bumps when the
-surface *grows* (new registry, new export), the **major** bumps on any *breaking*
-change (a removed/renamed export or a changed signature).
+The existing compatibility value is exposed as `platform.apiVersion`. Keep its
+version changes coordinated with the engine API. Optional browser features such
+as localization do not change this value or a plugin's existing `oie.apiMin`.
+Detect those features directly, for example with `platform.i18n`.
 
-Your plugin declares the minimum it was built against in `plugin.json`:
+A plugin may retain its existing minimum in `plugin.json`:
 
 ```json
 "oie": { "apiMin": "4.6" }
 ```
 
-At load time the web administrator compares that minimum to the `apiVersion` it
-implements and **only registers your plugin when it's compatible** — same major,
-and its minor ≥ your `apiMin`. This is forward-compatible: a plugin built for `4.6`
-keeps working on `4.7`, `4.9`, … (nothing is removed within a major). It's skipped
-only when the web administrator is **older** than your `apiMin` (it lacks an API you
-use) or a **major** bump dropped something you relied on. A skipped plugin is never
-imported — its code never runs — and it shows as **Incompatible** under
-**Extensions → Web Administrator Plugins** with the reason, rather than crashing.
+The current web plugin loader compares that minimum with `platform.apiVersion`:
+the major must match and the host's minor must be at least the required minor;
+the patch is ignored. A missing minimum skips this check. An incompatible plugin
+is skipped before import and appears under **Extensions → Web Administrator Plugins**.
+This existing loader behavior is unchanged by localization.
 
 Guidance:
-- Omit `oie.apiMin` and your plugin always loads (no gate) — fine for plugins built
-  and shipped in lockstep with a known web administrator (e.g. the bundled ones).
-- Set it to the version that introduced the newest capability you use, so an older
-  host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
-  for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
+- Keep existing compatibility declarations unchanged when adding optional UI
+  capabilities. Bundled plugins may continue to omit `oie.apiMin`.
+- Check the capability you use on the supplied `platform`, such as
+  `platform.i18n` or `typeof platform.registerMessageAction === 'function'`, and
+  retain an appropriate fallback for hosts without it. A version number alone
+  does not identify optional browser features.
 - Settings panel save declarations accept `Promise<boolean>` as well as `boolean`,
-  matching the host's existing await behavior. This is a type correction; the
-  runtime API remains `4.7`.
-- For runtime feature-detection, read `platform.apiVersion` directly (import
-  `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
-  or the comparison helper).
+  matching the host's existing await behavior. This type correction also leaves
+  the version unchanged.
+- `OIE_API_VERSION` and `apiCompatible` remain exported by `@oie/web-shell` for
+  existing consumers of the compatibility value and comparison helper.
 
 ### Two import styles, one runtime instance
 
@@ -470,8 +464,8 @@ platform.registerChannelAction({ id, label, icon, order, task, /* optional RBAC 
 platform.registerCodeTemplateAction({ id, label, icon, order, task,
     onInvoke: (template, ctx) => { /* … */ } });
 
-// Per-message action (web-only — Swing's MessageBrowser has no plugin hook; API
-// 4.7+). One registration shows in the message browser's row right-click menu
+// Per-message action (web-only — Swing's MessageBrowser has no plugin hook).
+// One registration shows in the message browser's row right-click menu
 // (any row) and in the Message Tasks pane (the selected row). onInvoke gets the
 // engine Message; ctx = { platform, channelId, message, metaDataId,
 // connectorMessage } — metaDataId is the row's connector (0 = source) and
@@ -578,7 +572,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.7.0"` in Web Administrator 1.0, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The existing compatibility value, whose version changes are coordinated with the engine API. Optional browser capabilities are detected directly; localization does not change this value or `oie.apiMin`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
@@ -927,15 +921,17 @@ exactly how the bundled `server-log` plugin reads
 `GET /api/extensions/serverlog`. Ship the engine half as a normal engine
 extension and the UI half as a web admin plugin with the same name.
 
-## Localization (API 4.8)
+## Localization
 
-Use the shared `@oie/web-ui` translation functions or `platform.i18n`. Declare a
+Localization is optional and does not change the API version, engine requirements,
+or a plugin's existing `oie.apiMin`. Detect support with `platform.i18n`.
+Plugins shipped with this host can also use its shared `@oie/web-ui` exports. Declare a
 plugin-scoped catalog in `plugin.json`; the host loads it before importing your
 module. Keep IDs, enum values, routes and RBAC groups stable, and translate only
 display labels. See the [i18n authoring and migration guide](../docs/i18n.md)
 for ICU messages, catalog manifests, fallback, `sectionLabel`, and validation.
 
-For a plugin that must also load on API 4.7, obtain the optional API inside
+For a plugin that must also load on a host without localization, obtain the optional API inside
 `register` and use a small English fallback. Keep its messages to simple
 `{name}` placeholders; this shim is not an ICU implementation.
 
@@ -953,8 +949,8 @@ export function register(platform) {
 }
 ```
 
-Do not statically import `scope` on a 4.7-compatible plugin: an older import map
-cannot provide that export. On API 4.8 declare
+Do not statically import `scope` when supporting hosts without localization: their
+import maps cannot provide that export. Declare
 `"i18n": { "zh-CN": "i18n/zh-CN.json" }` at the manifest root and ship:
 
 ```json

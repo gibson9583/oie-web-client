@@ -2,6 +2,7 @@ import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 import type { Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 async function text(page: Page, source: string) {
     return page.evaluate(async source => { const module = '@oie/web-ui'; return (await import(module)).t(source); }, source);
@@ -119,35 +120,65 @@ test('Administrator selector does not create a dirty edit and another tab keeps 
 });
 
 for (const deployment of ['node', 'war']) {
-    test(`${deployment} plugin catalog precedes module evaluation and preserves its section ID`, async ({ page }) => {
-        await setLanguage(page, 'zh-CN');
-        if (deployment === 'war') {
-            await page.route('**/dashboard', async route => {
-                const response = await route.fetch();
-                await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': "frame-ancestors 'none'" } });
+    for (const apiMin of [undefined, '4.6', '4.7']) {
+        test(`${deployment} plugin catalog loads with ${apiMin ?? 'no'} apiMin before module evaluation`, async ({ page }) => {
+            await setLanguage(page, 'zh-CN');
+            if (deployment === 'war') {
+                await page.route('**/dashboard', async route => {
+                    const response = await route.fetch();
+                    await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': "frame-ancestors 'none'" } });
+                });
+                await page.route('**/webadmin/config.json', route => route.fulfill({ json: { deployment: 'war', engines: [{ name: 'Engine' }] } }));
+            }
+            let catalogHeaders: Record<string, string> = {};
+            await mockEngine(page, {
+                'GET /webplugins': { __status: 404 },
+                'GET /extensions/websupport/webplugins': ['localeplug'],
+                'GET /extensions/websupport/webplugins/localeplug/plugin.json': {
+                    id: 'locale-plug', name: 'Locale plugin', version: '1.0.0', oie: { apiMin },
+                    client: { entry: 'web/plugin.js' }, i18n: { 'zh-CN': 'i18n/zh-CN.json' }
+                },
+                'GET /extensions/websupport/webplugins/localeplug/i18n/zh-CN.json': (req: any) => {
+                    catalogHeaders = req.headers(); return { 'Plugin tools': '插件工具' };
+                }
             });
-            await page.route('**/webadmin/config.json', route => route.fulfill({ json: { deployment: 'war', engines: [{ name: 'Engine' }] } }));
-        }
-        let catalogHeaders: Record<string, string> = {};
+            await page.route('**/api/extensions/websupport/webplugins/localeplug/web/plugin.js*', route => route.fulfill({
+                contentType: 'text/javascript', body: `import {scope} from '@oie/web-ui'; const {t}=scope('locale-plug'); const label=t('Plugin tools');
+                    export function register(platform){platform.registerNavItem({id:'locale-plug',path:'/locale-plug',icon:'puzzle',label,section:'plugin-tools',sectionLabel:label});}`
+            }));
+            await page.goto('/dashboard');
+            await expect(page.locator('[data-nav-item=locale-plug]')).toBeVisible();
+            await expect(page.locator('[data-nav-item=locale-plug]')).toContainText('插件工具');
+            expect(await page.evaluate(async () => {
+                const module = '@oie/web-shell';
+                const { platform } = await import(module);
+                const item = platform.navItems().find((item: any) => item.id === 'locale-plug');
+                return { apiVersion: platform.apiVersion, section: item?.section, sectionLabel: item?.sectionLabel };
+            })).toEqual({ apiVersion: '4.7.0', section: 'plugin-tools', sectionLabel: '插件工具' });
+            expect(catalogHeaders['x-requested-with']).toBe('OpenIntegrationEngine-WebAdmin');
+            expect(catalogHeaders['x-oie-context']).toBeTruthy();
+        });
+    }
+}
+
+for (const hasI18n of [true, false]) {
+    test(`documented plugin keeps working with localization ${hasI18n ? 'available' : 'absent'}`, async ({ page }) => {
+        await setLanguage(page, 'zh-CN');
+        const docs = readFileSync(new URL('../web-administrator/PLUGINS.md', import.meta.url), 'utf8');
+        const source = docs.split('## Localization\n')[1].match(/```js\n([\s\S]*?)\n```/)![1];
         await mockEngine(page, {
-            'GET /webplugins': { __status: 404 },
-            'GET /extensions/websupport/webplugins': ['localeplug'],
-            'GET /extensions/websupport/webplugins/localeplug/plugin.json': {
-                id: 'locale-plug', name: 'Locale plugin', version: '1.0.0', oie: { apiMin: '4.8' },
+            'GET /webplugins': ['example'],
+            'GET /webplugins/example/plugin.json': {
+                id: 'example', name: 'Example plugin', version: '1.0.0', oie: { apiMin: '4.6' },
                 client: { entry: 'web/plugin.js' }, i18n: { 'zh-CN': 'i18n/zh-CN.json' }
             },
-            'GET /extensions/websupport/webplugins/localeplug/i18n/zh-CN.json': (req: any) => {
-                catalogHeaders = req.headers(); return { 'Plugin tools': '插件工具' };
-            }
+            'GET /webplugins/example/i18n/zh-CN.json': { 'Example tools': '示例工具' }
         });
-        await page.route('**/api/extensions/websupport/webplugins/localeplug/web/plugin.js*', route => route.fulfill({
-            contentType: 'text/javascript', body: `import {scope} from '@oie/web-ui'; const {t}=scope('locale-plug'); const label=t('Plugin tools');
-                export function register(platform){platform.registerNavItem({id:'locale-plug',path:'/locale-plug',icon:'puzzle',label,section:'plugin-tools',sectionLabel:label});}`
-        }));
+        const body = hasI18n ? source : source.replace('export function register(', 'function registerExample(')
+            + '\nexport function register(platform) { registerExample({ ...platform, i18n: undefined }); }';
+        await page.route('**/api/webplugins/example/web/plugin.js*', route => route.fulfill({ contentType: 'text/javascript', body }));
         await page.goto('/dashboard');
-        await expect(page.locator('[data-nav-item=locale-plug]')).toBeVisible();
-        expect(catalogHeaders['x-requested-with']).toBe('OpenIntegrationEngine-WebAdmin');
-        expect(catalogHeaders['x-oie-context']).toBeTruthy();
+        await expect(page.locator('[data-nav-item=example]')).toContainText(hasI18n ? '示例工具' : 'Example tools');
     });
 }
 

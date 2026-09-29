@@ -46,10 +46,10 @@ import { registerCommand } from './commands.js';
 import { apiUrl, appUrl } from './deployment.js';
 /* ---- @oie/* plugin API contract version --------------------------------------
  * The version of the framework surface (the `platform` registries + the @oie/web-*
- * exports) that this web admin implements. Tracks the OIE engine release line it
- * ships with (major.minor; the patch is ignored for compatibility): bump the MINOR
- * as the surface grows, the MAJOR on any breaking change (removed/renamed export,
- * changed registry signature).
+ * exports) that this web admin implements. Keep version changes coordinated with
+ * the engine API; optional browser features do not change this value. Detect
+ * those capabilities directly (for example, platform.i18n). The compatibility
+ * check uses major.minor and ignores the patch.
  *
  * Plugins declare the MINIMUM they were built against in plugin.json
  * (`"oie": { "apiMin": "4.6" }`). We accept a plugin when it needs no newer than
@@ -58,7 +58,7 @@ import { apiUrl, appUrl } from './deployment.js';
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.8.0'; // 4.8: i18n and sectionLabel
+export const OIE_API_VERSION = '4.7.0';
 const i18n = Object.freeze({ t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText });
 function parseApiVersion(v) {
     const [major, minor] = String(v == null ? '' : v).split('.');
@@ -96,8 +96,8 @@ function sorted(list) {
     return [...list].sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 }
 export const platform = {
-    /* The @oie/* API contract version this web admin implements (see OIE_API_VERSION).
-       Plugins can read platform.apiVersion to feature-detect at runtime. */
+    /* Compatibility version (see OIE_API_VERSION). Optional browser capabilities
+       such as i18n must be detected directly, not inferred from this value. */
     apiVersion: OIE_API_VERSION,
     i18n,
     /* core libraries, handed to plugins so they share the app's toolkit */
