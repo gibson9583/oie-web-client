@@ -1,4 +1,4 @@
-import { t as translate, compareText } from "../core/i18n.js";
+import { t as translate, compareText } from '../core/i18n.js';
 /*
  * Channel Reader (VmReceiverProperties) / Channel Writer (VmDispatcherProperties).
  *

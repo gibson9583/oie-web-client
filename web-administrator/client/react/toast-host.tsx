@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Radix-backed renderer for core/ui.js's corner toasts, registered the same way
  * as the dialog one (see dialog-host.jsx for why core/ui.js can't import React).

@@ -1,4 +1,4 @@
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 /*
  * Code Templates view — fully declarative React. The library/template tree is
  * the controlled <TreeTable>; the editor pane branches on the selection into

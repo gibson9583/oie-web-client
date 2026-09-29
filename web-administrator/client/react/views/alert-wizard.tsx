@@ -1,5 +1,5 @@
 import { wizardStepLabel } from '../../core/labels.js';
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 import { withEditorSave } from '../save-lock.js';
 /*
  * Guided Alert builder — a step-by-step alternative to the classic alert editor,

@@ -1,5 +1,5 @@
 import { wizardStepLabel, connectorTabLabel } from '../../core/labels.js';
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelModel, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';

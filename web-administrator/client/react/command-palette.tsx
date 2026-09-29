@@ -1,5 +1,5 @@
 import { navigationSectionLabel } from '../core/labels.js';
-import { t as translate, tx as richText } from "../core/i18n.js";
+import { t as translate, tx as richText } from '../core/i18n.js';
 import { isCommitEnter, isComposing } from '../core/keyboard.js';
 /*
  * Command palette — ⌘K / Ctrl+K.

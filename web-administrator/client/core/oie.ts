@@ -1,5 +1,4 @@
-import { t as translate } from "./i18n.js";
-import { t } from './i18n.js';
+import { t as translate, t } from './i18n.js';
 /*
  * Engine model helpers.
  *

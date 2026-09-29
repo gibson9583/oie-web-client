@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 import { isCommitEnter } from '../core/keyboard.js';
 /*
  * The navigation rail, and its per-user customization.
@@ -107,7 +107,7 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
     /* ---- edits ---- */
     const move = (itemId: any, toGroup: any, index: any) => apply(withMovedItem(layout, groups, itemId, toGroup, index));
     const toggleHidden = (item: any) => apply(withHidden(layout, item.id, !item.hidden));
-    const renameGroup = (id: any, name: any) => { setRenamingGroup(null); apply(withGroupLabel(layout, id, name)); };
+    const renameGroup = (group: any, name: any) => { setRenamingGroup(null); apply(withGroupLabel(layout, group.id, name, group.declaredLabel)); };
     const renameItem = (item: any, name: any) => { setRenamingItem(null); apply(withItemLabel(layout, item.id, name, item.declaredLabel)); };
     const addGroup = () => {
         const made = withNewGroup(layout, groups, 'New group');
@@ -285,10 +285,10 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
                                 onClick={(e: any) => e.stopPropagation()}
                                 onKeyDown={(e: any) => {
                                     e.stopPropagation();
-                                    if (isCommitEnter(e)) renameGroup(group.id, e.currentTarget.value);
+                                    if (isCommitEnter(e)) renameGroup(group, e.currentTarget.value);
                                     else if (e.key === 'Escape') setRenamingGroup(null);
                                 }}
-                                onBlur={(e: any) => renameGroup(group.id, e.currentTarget.value)} />
+                                onBlur={(e: any) => renameGroup(group, e.currentTarget.value)} />
                         ) : undefined}
                         onHeaderClick={editing ? () => setRenamingGroup(group.id) : undefined}
                         headerDraggable={editing}

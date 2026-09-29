@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * HTTP Listener (HttpReceiverProperties) / HTTP Sender (HttpDispatcherProperties).
  *

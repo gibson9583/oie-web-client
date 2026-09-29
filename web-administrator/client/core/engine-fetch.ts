@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 /* Bind API traffic to the tab's engine/session, including the interval between
    sending a request and receiving its response. Cookies themselves are shared
    across tabs. The proxy checks the same context against the request cookies. */

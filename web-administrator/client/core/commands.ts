@@ -1,4 +1,4 @@
-import { compareText } from "./i18n.js";
+import { compareText } from './i18n.js';
 /*
  * Command registry — the flat list of things the command palette can run.
  *

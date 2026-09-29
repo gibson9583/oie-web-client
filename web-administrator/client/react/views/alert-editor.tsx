@@ -1,5 +1,5 @@
 import { alertEventTypeLabel } from '../../core/labels.js';
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 import { withEditorSave } from '../save-lock.js';
 /*
  * Alert editor — fully declarative React. The form body (name/enabled, the

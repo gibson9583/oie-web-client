@@ -182,7 +182,7 @@ for (const hasI18n of [true, false]) {
     });
 }
 
-test('Chinese calendar and Monaco load localized labels without changing timestamp values', async ({ page }) => {
+test('Chinese Monaco loads localized labels without changing language IDs', async ({ page }) => {
     await setLanguage(page, 'zh-CN');
     await mockEngine(page, { 'GET /channels/locale': { channel: makeChannel('locale') } });
     await page.goto('/global-scripts');
@@ -196,6 +196,30 @@ test('Chinese calendar and Monaco load localized labels without changing timesta
         try { return editor.monaco.getModel().getLanguageId(); }
         finally { editor.dispose(); el.remove(); }
     })).toBe('plaintext');
+});
+
+test('a slow Chinese Monaco pack falls back to English Monaco and is discarded when it arrives', async ({ page }) => {
+    await setLanguage(page, 'zh-CN');
+    let delivered!: () => void;
+    const arrived = new Promise<void>(resolve => { delivered = resolve; });
+    await page.route('**/vendor/monaco/nls/zh-cn.js', async route => {
+        await new Promise(resolve => setTimeout(resolve, 2600));
+        await route.continue();
+        delivered();
+    });
+    await mockEngine(page);
+    await page.goto('/global-scripts');
+    await expect(page.locator('.ce .monaco-editor').first()).toBeVisible({ timeout: 15000 });
+    await arrived;
+    await expect.poll(() => page.evaluate(() => {
+        const g = globalThis as any;
+        return [g._VSCODE_NLS_LANGUAGE ?? null, Array.isArray(g._VSCODE_NLS_MESSAGES)];
+    })).toEqual([null, false]);
+});
+
+test('Chinese calendar loads localized labels without changing timestamp values', async ({ page }) => {
+    await setLanguage(page, 'zh-CN');
+    await mockEngine(page);
     await page.goto('/messages/ch-1');
     await (await button(page, 'Start date')).click();
     await expect(page.getByRole('button', { name: '前往下个月' })).toBeVisible();

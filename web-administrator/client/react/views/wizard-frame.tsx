@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 /*
  * Shared scaffolding for the guided builders (channel wizard, alert wizard).
  * These are the entity-agnostic, mechanically-duplicated parts — the model

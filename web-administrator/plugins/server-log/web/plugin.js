@@ -1,6 +1,5 @@
 // plugins/server-log/web/plugin.tsx
-import { isCommitEnter } from "@oie/web-ui";
-import { compareText, scope as i18nScope } from "@oie/web-ui";
+import { isCommitEnter, compareText, scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
 var { t: translate } = i18nScope("server-log");
 var React = platform.React;

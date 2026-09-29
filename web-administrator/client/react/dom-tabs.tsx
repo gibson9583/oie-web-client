@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Radix Tabs over panels that are still built with h().
  *

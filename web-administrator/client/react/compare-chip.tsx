@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * The "selected for compare" chip — a floating marker, bottom-right of the
  * message browser, for as long as an anchor exists.

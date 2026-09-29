@@ -1,4 +1,4 @@
-import { t as translate, formatNumber } from "../../core/i18n.js";
+import { t as translate, formatNumber } from '../../core/i18n.js';
 /*
  * Card view — a modern, card-based alternative to the classic Dashboard table.
  * Highlights aggregate statistics + channel state, groups by channel group / tag /

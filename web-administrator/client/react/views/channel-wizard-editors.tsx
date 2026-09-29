@@ -1,4 +1,4 @@
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Channel-level sub-editors for the guided wizard — kept out of channel-wizard.jsx so

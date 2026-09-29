@@ -1,4 +1,4 @@
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 import { LanguageSelect } from '../language-select.jsx';
 /*
  * Settings view — server configuration with the same tabs as the Swing
@@ -26,7 +26,6 @@ import { loadConfigurationMapImport, serializeConfigurationMap } from './configu
 import { useState, useEffect, useRef, useReducer, useMemo } from 'react';
 import { h, icon, toast, taskButton, confirmDialog, promptDialog, modal, field, textInput, checkbox, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
-import { captureEngineSession } from '../../core/engine-fetch.js';
 import api from '@oie/web-api';
 import { platform } from '@oie/web-shell';
 import { getPref, setPrefs, resetPrefs, PREF_DEFAULTS, DASHBOARD_REFRESH_SECONDS } from '../../core/prefs.js';
@@ -38,7 +37,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, DataTableHost } from '../ui.jsx';
 import { apiUrl } from '../../core/deployment.js';
-import { engineFetch, assertEngineResponse } from '../../core/engine-fetch.js';
+import { captureEngineSession, engineFetch, assertEngineResponse } from '../../core/engine-fetch.js';
 
 const DIRECTORY_RESOURCE_CLASS = 'com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties';
 const CONFIGURATION_PROPERTY_CLASS = 'com.mirth.connect.util.ConfigurationProperty';

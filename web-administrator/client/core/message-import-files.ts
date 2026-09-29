@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 import { readZip } from './zip.js';
 
 export interface MessageImportFile { name: string; content: string }

@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 /*
  * Import version guard — a faithful port of Swing's Frame.promptObjectMigration
  * (client/src/.../Frame.java) via MigrationUtil. Three branches on the export's

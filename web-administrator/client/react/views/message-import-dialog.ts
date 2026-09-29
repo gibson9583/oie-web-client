@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 import { checkbox, h, modal, select } from '@oie/web-ui';
 import { pickMessageFiles } from '../../core/message-import-files.js';
 

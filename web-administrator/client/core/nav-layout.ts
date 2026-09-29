@@ -67,6 +67,7 @@ export interface MergedNavItem extends NavItemLike {
 export interface MergedNavGroup {
     id: string;
     label: string;
+    declaredLabel?: string;
     custom: boolean;
     renamed: boolean;
     items: MergedNavItem[];
@@ -152,9 +153,11 @@ export function mergeNav(
 
     const groups: MergedNavGroup[] = ids.map((id) => {
         const stored: Partial<NavLayoutGroupPref> = l.groups.find((g) => g.id === id) || {};
+        const declaredLabel = stored.custom ? undefined : sectionLabel(id, list);
         return {
             id,
-            label: stored.label || (stored.custom ? id : sectionLabel(id, list)),
+            label: stored.label || declaredLabel || id,
+            declaredLabel,
             custom: !!stored.custom,
             renamed: !!stored.label,
             items: []
@@ -260,11 +263,11 @@ export function withHidden(layout: NavLayout | null | undefined, itemId: string,
 }
 
 /** Rename a group. An empty name (or the declared id) clears the override. */
-export function withGroupLabel(layout: NavLayout | null | undefined, groupId: string, label: string | null | undefined): NavLayout {
+export function withGroupLabel(layout: NavLayout | null | undefined, groupId: string, label: string | null | undefined, declaredLabel?: string | null): NavLayout {
     const l = clone(layout);
     const e = groupEntry(l, groupId);
     const clean = String(label || '').trim();
-    if (!clean || clean === groupId) delete e.label; else e.label = clean;
+    if (!clean || clean === groupId || clean === declaredLabel) delete e.label; else e.label = clean;
     return dropEmpty(l);
 }
 

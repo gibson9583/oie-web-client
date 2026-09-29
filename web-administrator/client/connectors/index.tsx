@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Connector framework — registers the generic JSON fallback ('*') used for any
  * connector type without a dedicated panel (e.g. a third-party connector with

@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 import { LanguageSelect } from '../language-select.jsx';
 import { isCommitEnter } from '../../core/keyboard.js';
 /*
@@ -13,9 +13,8 @@ import { isCommitEnter } from '../../core/keyboard.js';
  * later /api call) routes to that engine (server/proxy.js).
  */
 import { getLoginAuthenticator } from '../../core/login-auth.js';
-import { appUrl } from '../../core/deployment.js';
 import { markSsoSession, markSsoPending, hasSsoPending, takeSsoPending, takeAutoRedirectHold } from '../sso-session.js';
-import { currentRoutePath, routeUrl } from '../../core/deployment.js';
+import { appUrl, currentRoutePath, routeUrl } from '../../core/deployment.js';
 
 import { useState, useRef, useEffect } from 'react';
 import { useStoreKey } from '../bridges.jsx';

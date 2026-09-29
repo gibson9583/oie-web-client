@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 import * as store from '../core/store.js';
 
 /** Keep a submitted editor model stable through persistence and any reload.

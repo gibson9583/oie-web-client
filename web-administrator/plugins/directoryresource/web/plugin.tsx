@@ -1,4 +1,4 @@
-import { scope as i18nScope } from "@oie/web-ui";
+import { scope as i18nScope } from '@oie/web-ui';
 const { t: translate, tx: richText } = i18nScope("directoryresource");
 /*
  * Directory Resource — web admin plugin (directoryresource ResourceClientPlugin

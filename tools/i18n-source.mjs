@@ -58,7 +58,8 @@ export function extract() {
             }
             const key = context ? context.value + '\u0004' + message.value : message.value;
             if (name === 'tx') richMessages.add(key);
-            (messages[key] ??= []).push(file + ':' + node.loc.start.line);
+            const refs = (messages[key] ??= []);
+            if (!refs.includes(file)) refs.push(file);
             scopes.get(scope).add(key);
             // Values may themselves contain translated labels or rich elements.
             // Keep traversing so those nested messages are extracted too.

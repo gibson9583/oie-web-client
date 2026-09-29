@@ -38,6 +38,8 @@ eq(idsIn(g, 'Monitor'), ['dashboard', 'alerts', 'events'], 'items still resolve 
 ok(g[0].renamed === true, 'a renamed group is flagged for the reset affordance');
 eq(withGroupLabel(l, 'Monitor', '').groups, [], 'an empty name clears the override');
 eq(withGroupLabel(l, 'Monitor', 'Monitor').groups, [], 'renaming back to the id clears it too');
+eq(withGroupLabel(emptyLayout(), 'Monitor', '监控', '监控').groups, [], 'confirming the translated default label stores no override');
+eq(mergeNav(REG, emptyLayout(), OPTS)[0].declaredLabel, 'Monitor', 'a built-in group exposes its declared label');
 
 /* ---- moving items ---- */
 g = mergeNav(REG, emptyLayout(), OPTS);

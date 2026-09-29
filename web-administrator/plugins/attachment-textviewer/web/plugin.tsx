@@ -1,4 +1,4 @@
-import { scope as i18nScope } from "@oie/web-ui";
+import { scope as i18nScope } from '@oie/web-ui';
 const { t: translate } = i18nScope("attachment-textviewer");
 /*
  * Text attachment viewer — web admin plugin (AttachmentViewer equivalent, React).

@@ -1,5 +1,5 @@
 import { eventLevelLabel } from '../../core/labels.js';
-import { t as translate, tx as richText } from "../../core/i18n.js";
+import { t as translate, tx as richText } from '../../core/i18n.js';
 import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Events view — criteria bar → paginated results table → resizable detail pane,

@@ -1,5 +1,4 @@
-import { t as translate } from "./core/i18n.js";
-import { setLocaleChangeGuard, t } from './core/i18n.js';
+import { t as translate, setLocaleChangeGuard, t } from './core/i18n.js';
 import { hasUnsavedWork } from './core/unsaved.js';
 import { getState } from './core/store.js';
 import { confirmDialog } from './core/ui.js';

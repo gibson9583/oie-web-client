@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 /*
  * Global Scripts view (React port of views/global-scripts.js). Four script
  * editors (Deploy/Undeploy/Preprocessor/Postprocessor) in keep-mounted tabs, via

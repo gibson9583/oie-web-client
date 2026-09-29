@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 /*
  * Enforces the engine's "Administrator Auto Logout Interval" (Settings → Server:
  * administratorAutoLogoutIntervalEnabled / administratorAutoLogoutIntervalField).

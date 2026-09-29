@@ -1,5 +1,4 @@
-import { locale } from './i18n.js';
-import { t as translate } from "./i18n.js";
+import { locale, t as translate } from './i18n.js';
 /*
  * Monaco editor integration (lazy, locally served, optional).
  *
@@ -97,17 +96,25 @@ async function loadMonaco(): Promise<Monaco | null> {
         ensureMonacoCss();
         if (locale() === 'zh-CN') {
             // The positional NLS pack is copied from the SAME installed Monaco.
+            let abandoned = false;
+            const discard = () => {
+                delete (globalThis as any)._VSCODE_NLS_MESSAGES;
+                delete (globalThis as any)._VSCODE_NLS_LANGUAGE;
+            };
             try {
                 let timer: ReturnType<typeof setTimeout> | undefined;
                 try {
                     const loaded = await Promise.race([
-                        import(/* @vite-ignore */ `${MONACO_VENDOR}/nls/zh-cn.js`).then(() => true),
+                        import(/* @vite-ignore */ `${MONACO_VENDOR}/nls/zh-cn.js`).then(() => {
+                            if (abandoned) discard();
+                            return true;
+                        }),
                         new Promise<boolean>(resolve => { timer = setTimeout(() => resolve(false), 2000); })
                     ]);
-                    if (!loaded) return null;
+                    if (loaded) (globalThis as any)._VSCODE_NLS_LANGUAGE = 'zh-cn';
+                    else { abandoned = true; discard(); }
                 } finally { clearTimeout(timer); }
-                (globalThis as any)._VSCODE_NLS_LANGUAGE = 'zh-cn';
-            } catch { /* English Monaco remains usable when its pack is unavailable. */ }
+            } catch { abandoned = true; discard(); }
         }
 
         // Load the vendored bundle by absolute URL. @vite-ignore keeps Vite from

@@ -1,5 +1,5 @@
 import { messageStatusLabel } from '../../core/labels.js';
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Messages — message browser, fully declarative React. The Swing-parity browser
@@ -38,7 +38,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as Popover from '@radix-ui/react-popover';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { h, toast, cornerToast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../../core/content-highlight.js';
@@ -47,7 +46,7 @@ import { mappingEntries, parseResponse, toDisplayString } from '../../core/xstre
 import { getPref } from '../../core/prefs.js';
 import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
-import { createCodeEditor, createColumnManager } from '@oie/web-ui';
+import { h, toast, cornerToast, modal, confirmDialog, promptDialog, checkbox, select, fmtDate, fmtNumber, saveFile, pickFile, contextMenu, createCodeEditor, createColumnManager } from '@oie/web-ui';
 import { platform } from '../../core/platform.js';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
@@ -2198,7 +2197,8 @@ export function MessagesView({ params, query }: any) {
         }
         for (const ms of adv.metaDataSearches) {
             if (!ms.column) continue;
-            parts.push(`${ms.column} ${ms.operator} ${ms.value}${ms.ignoreCase ? translate(' (ignore case)') : ''}`);
+            const condition = `${ms.column} ${ms.operator} ${ms.value}`;
+            parts.push(ms.ignoreCase ? translate('{condition} (ignore case)', { condition }) : condition);
         }
         if (adv.attachment) parts.push(translate("Has Attachment"));
         if (adv.error) parts.push(translate("Has Error"));
@@ -2573,7 +2573,7 @@ export function MessagesView({ params, query }: any) {
             // does not exist, so it is not offered at all.
             .filter(s => !(s.type === 'SENT' && Number(metaDataId) === 0))
             .map(s => ({
-                label: s.label + (stored && !stored.includes(s.type) ? translate("  (not stored)") : ''),
+                label: stored && !stored.includes(s.type) ? translate("{label}  (not stored)", { label: s.label }) : s.label,
                 disabled: !!stored && !stored.includes(s.type),
                 onClick: () => pickRowStage(row, metaDataId, s.type, mode)
             }));
@@ -2827,7 +2827,9 @@ export function MessagesView({ params, query }: any) {
             }
         } catch (error: any) {
             try { assertSession(); } catch { return; }
-            toast(translate("Import failed{value1}: {value2}", { value1: String(imported || failed ? translate(" after {imported} imported and {failed} failed message(s)", { imported, failed }) : ''), value2: String(error.message || error) }), 'error');
+            toast(imported || failed
+                ? translate("Import failed after {imported} imported and {failed} failed message(s): {error}", { imported, failed, error: String(error.message || error) })
+                : translate("Import failed: {error}", { error: String(error.message || error) }), 'error');
         } finally {
             try {
                 assertSession();

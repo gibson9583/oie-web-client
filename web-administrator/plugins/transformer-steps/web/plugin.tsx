@@ -1,4 +1,4 @@
-import { scope as i18nScope } from "@oie/web-ui";
+import { scope as i18nScope } from '@oie/web-ui';
 const { t: translate } = i18nScope("transformer-steps");
 /*
  * Built-in transformer step and filter rule editors — web admin plugin (React).

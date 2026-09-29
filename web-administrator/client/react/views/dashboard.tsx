@@ -1,4 +1,4 @@
-import { t as translate, tx as richText, compareText, formatNumber } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText, formatNumber } from '../../core/i18n.js';
 import { isCommitEnter, isComposing } from '../../core/keyboard.js';
 /*
  * Dashboard — live channel status board with the classic Administrator layout,

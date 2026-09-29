@@ -1,5 +1,4 @@
-import { t as translate } from "./i18n.js";
-import { tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
+import { t as translate, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
 import { registerLoginAuthenticator } from './login-auth.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';

@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Shared data-type properties editor — renders the grouped property panels for
  * a data type (the web equivalent of the Swing DataTypePropertiesDialog), or a

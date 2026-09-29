@@ -1,6 +1,5 @@
-import { t as translate } from "./i18n.js";
 import { loadPluginCatalog } from './plugin-i18n.js';
-import { t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
+import { t as translate, t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
 /*
  * Plugin platform — the web equivalent of the Swing client's extension points.
  *

@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 import { h, modal, promptDialog } from '@oie/web-ui';
 import { uuid } from '@oie/web-api';
 import type { LibraryImportCallbacks } from './code-template-import.js';

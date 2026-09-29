@@ -1,5 +1,4 @@
-import { formatList } from '../../core/i18n.js';
-import { t as translate } from "../../core/i18n.js";
+import { formatList, t as translate } from '../../core/i18n.js';
 /*
  * Shared user create/edit/password modals. Extracted from views/users.js so the
  * top-bar account menu (react/shell.jsx) can offer self-service "Edit Account" /

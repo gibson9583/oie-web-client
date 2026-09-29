@@ -1,4 +1,3 @@
-import { scope as i18nScope } from "@oie/web-ui";
 const { t: translate } = i18nScope("mllpmode");
 import type { Platform } from '@oie/web-shell';
 /*
@@ -18,7 +17,7 @@ import type { Platform } from '@oie/web-shell';
  * helpers from @oie/web-ui (which re-exports connectors/forms.js) so the file
  * builds as a bundled plugin.
  */
-import { frameModeSampleFrame, frameModeSettingsDialog } from '@oie/web-ui';
+import { scope as i18nScope, frameModeSampleFrame, frameModeSettingsDialog } from '@oie/web-ui';
 
 export function register(platform: Platform) {
     platform.registerTransmissionMode('MLLP', {

@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 import { xstreamObject } from './code-template-bulk.js';
 
 type Model = Record<string, any>;

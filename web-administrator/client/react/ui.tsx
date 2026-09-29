@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * React UI primitives for ported views. Declarative bits (task panes, buttons,
  * fields) are native React with VERBATIM class names; the data grid wraps the

@@ -1,4 +1,3 @@
-import { scope as i18nScope } from "@oie/web-ui";
 const { t: translate, tx: richText } = i18nScope("httpauth");
 /*
  * HTTP Authentication — web admin plugin (httpauth ConnectorPropertiesPlugin
@@ -21,7 +20,7 @@ const { t: translate, tx: richText } = i18nScope("httpauth");
  */
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
-import { DESTINATION_MAPPINGS } from '@oie/web-ui';
+import { scope as i18nScope, DESTINATION_MAPPINGS } from '@oie/web-ui';
 const React = platform.React;
 
 const AUTH_TYPE_OPTIONS = [

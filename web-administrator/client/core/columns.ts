@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 /*
  * Resizable + reorderable columns for the hand-built `table.dt` grids
  * (Dashboard, Channels). The views render their header/body rows in a fixed

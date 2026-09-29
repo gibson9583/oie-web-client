@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 /*
  * Extensions view — two metadata grids (Connectors / Plugins, mutually-
  * exclusive single selection) drive the selection-gated Extension Tasks pane

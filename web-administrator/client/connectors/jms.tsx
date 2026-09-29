@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * JMS Listener (JmsReceiverProperties) / JMS Sender (JmsDispatcherProperties).
  * Field names and defaults mirror server/src/com/mirth/connect/connectors/jms

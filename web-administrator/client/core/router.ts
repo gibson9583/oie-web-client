@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 /*
  * History-API router. Routes are registered as patterns like:
  *   '/dashboard', '/channels/:channelId/edit', '/messages/:channelId?'

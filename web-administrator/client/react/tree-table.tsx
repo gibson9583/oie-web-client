@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Pure-JSX hierarchical tree-table. Replaces the hand-built imperative table.dt
  * tree-grids (Dashboard / Channels / Code Templates / alert channels) with a

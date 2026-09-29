@@ -1,4 +1,4 @@
-import { t as translate, locale } from "../core/i18n.js";
+import { t as translate, locale } from '../core/i18n.js';
 import { isCommitEnter, isComposing } from '../core/keyboard.js';
 /*
  * Date + time field, replacing <input type="datetime-local">.

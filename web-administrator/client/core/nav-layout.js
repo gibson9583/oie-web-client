@@ -103,9 +103,11 @@ export function mergeNav(items, layout, { sectionOrder = [], sectionRank = {}, l
             ids.push(s);
     const groups = ids.map((id) => {
         const stored = l.groups.find((g) => g.id === id) || {};
+        const declaredLabel = stored.custom ? undefined : sectionLabel(id, list);
         return {
             id,
-            label: stored.label || (stored.custom ? id : sectionLabel(id, list)),
+            label: stored.label || declaredLabel || id,
+            declaredLabel,
             custom: !!stored.custom,
             renamed: !!stored.label,
             items: []
@@ -214,11 +216,11 @@ export function withHidden(layout, itemId, hidden) {
     return dropEmpty(l);
 }
 /** Rename a group. An empty name (or the declared id) clears the override. */
-export function withGroupLabel(layout, groupId, label) {
+export function withGroupLabel(layout, groupId, label, declaredLabel) {
     const l = clone(layout);
     const e = groupEntry(l, groupId);
     const clean = String(label || '').trim();
-    if (!clean || clean === groupId)
+    if (!clean || clean === groupId || clean === declaredLabel)
         delete e.label;
     else
         e.label = clean;

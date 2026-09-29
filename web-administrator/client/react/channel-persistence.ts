@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 import { confirmDialog } from '@oie/web-ui';
 import * as store from '../core/store.js';
 import { saveChannelModel } from '../core/channel-save.js';

@@ -1,4 +1,4 @@
-import { t as translate, compareText, formatNumber } from "./i18n.js";
+import { t as translate, compareText, formatNumber } from './i18n.js';
 import { isCommitEnter } from './keyboard.js';
 /*
  * Tiny DOM toolkit + shared components (no framework, no build step).

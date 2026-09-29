@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 /*
  * Display preferences and tag rendering shared by the Dashboard and Channels
  * boards. Swing keeps ONE set of these user preferences for both panels

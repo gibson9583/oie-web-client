@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Document Writer (DocumentDispatcherProperties).
  * Field names and defaults mirror server/src/com/mirth/connect/connectors/doc.

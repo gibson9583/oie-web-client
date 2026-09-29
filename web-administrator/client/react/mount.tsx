@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * React-view mounting bridge. Lets platform.registerView host a React component
  * inside the EXISTING core/router.js outlet during the migration: the handler
@@ -19,9 +19,8 @@ import { t as translate } from "../core/i18n.js";
  */
 
 import { createRoot } from 'react-dom/client';
-import { flushSync } from 'react-dom';
 import { createContext, useContext, Children, cloneElement, isValidElement } from 'react';
-import { createPortal } from 'react-dom';
+import { flushSync, createPortal } from 'react-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './queries.js';
 import { ErrorBoundary } from './error-boundary.jsx';

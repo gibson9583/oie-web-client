@@ -1,6 +1,5 @@
-import { formatList } from '../core/i18n.js';
 import { COUNTRY_REGIONS } from '../core/country-regions.js';
-import { t as translate, locale } from "../core/i18n.js";
+import { formatList, t as translate, locale } from '../core/i18n.js';
 /*
  * First-login "Welcome" dialog — the web port of Swing's FirstLoginDialog /
  * UserEditPanel (com.mirth.connect.client.ui.FirstLoginDialog). On a user's

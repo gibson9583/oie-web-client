@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Alerts have NO engine-side conflict detection (no revision field, no override
  * check in AlertController — unlike channels and code templates). This web

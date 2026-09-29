@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * Web Service Listener (WebServiceReceiverProperties) /
  * Web Service Sender (WebServiceDispatcherProperties).

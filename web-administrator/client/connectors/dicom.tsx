@@ -1,4 +1,4 @@
-import { t as translate } from "../core/i18n.js";
+import { t as translate } from '../core/i18n.js';
 /*
  * DICOM Listener (DICOMReceiverProperties) / DICOM Sender (DICOMDispatcherProperties).
  * Field names and defaults mirror server/src/com/mirth/connect/connectors/dimse.

@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 import api from './api.js';
 import type { ChannelGroup } from './wire-types.js';
 

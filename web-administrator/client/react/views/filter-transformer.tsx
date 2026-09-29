@@ -1,5 +1,5 @@
 import { referenceTabLabel } from '../../core/labels.js';
-import { t as translate, tx as richText } from "../../core/i18n.js";
+import { t as translate, tx as richText } from '../../core/i18n.js';
 import { loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
@@ -42,10 +42,9 @@ import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTyp
  */
 
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
-import { createCodeEditor } from '@oie/web-ui';
+import { h, modal, detailModal, toast, loading, saveFile, pickFile, contextMenu, createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
@@ -1327,8 +1326,10 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             // (Swing parity). Deferred past the route:changed title reset (see
             // channel-editor) with rAF so it sticks without a flash. Embedded
             // mounts skip this — the wizard owns its banner.
-            const connectorLabel = String(params.metaDataId) === '0' ? 'Source' : (connector.name || `Destination ${params.metaDataId}`);
-            const bannerTitle = (channel.name ? translate("Edit Channel - {value1} - ", { value1: String(channel.name) }) : '') + `${connectorLabel} ${kind.title}`;
+            const connectorLabel = String(params.metaDataId) === '0' ? translate("Source") : (connector.name || translate("Destination {id}", { id: String(params.metaDataId) }));
+            const bannerTitle = channel.name
+                ? translate("Edit Channel - {channel} - {connector} {kind}", { channel: String(channel.name), connector: connectorLabel, kind: kind.title })
+                : translate("{connector} {kind}", { connector: connectorLabel, kind: kind.title });
             window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('webadmin:set-title', {
                 detail: { title: bannerTitle }
             })));

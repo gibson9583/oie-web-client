@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 export interface ConfigurationMapImportRow { key: string; value: string; comment: string }
 
 // Swing uses Commons Configuration's PropertiesReader, not java.util.Properties:

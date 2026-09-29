@@ -1,4 +1,4 @@
-import { scope as i18nScope } from "@oie/web-ui";
+import { scope as i18nScope } from '@oie/web-ui';
 const { t: translate } = i18nScope("datatype-hl7v2");
 /*
  * HL7 v2.x data type — web admin plugin (React).

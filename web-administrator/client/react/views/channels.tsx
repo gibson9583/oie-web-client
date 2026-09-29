@@ -1,4 +1,4 @@
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 /*
  * Channels view (React port of the LIST half of views/channels.js). The Swing
  * channel panel is a GROUPED TREE-TABLE — channels listed under their channel
@@ -1529,7 +1529,9 @@ export function ChannelsView() {
             else toast(translate("Imported {value1} group(s) from {value2}", { value1: String(parsed.length), value2: String(file.name) }));
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`${e.message}${importedChannelCount ? translate(" {value1} channel(s) already imported have been kept.", { value1: String(importedChannelCount) }) : ''}`, 'error');
+            toast(importedChannelCount
+                ? translate("{error} {count} channel(s) already imported have been kept.", { error: String(e.message), count: importedChannelCount })
+                : String(e.message), 'error');
         } finally {
             importBusyRef.current = false;
             try { assertSession(); await refresh(); } catch { /* A changed session owns its own refresh. */ }

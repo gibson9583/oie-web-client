@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 type Model = Record<string, any>;
 
 function list(value: any, key: string): any[] {

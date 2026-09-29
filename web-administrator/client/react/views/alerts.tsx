@@ -1,4 +1,4 @@
-import { t as translate, tx as richText } from "../../core/i18n.js";
+import { t as translate, tx as richText } from '../../core/i18n.js';
 /*
  * Alerts list (React port of the list half of views/alerts.js). Multi-select
  * table + the selection-gated Alert Tasks pane. The alert EDITOR is now also
@@ -265,7 +265,9 @@ export function AlertsList() {
             await refreshImported();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(translate("Import failed: {value1}{value2}", { value1: String(e.message), value2: String(imported ? translate(" ({count, plural, one {# alert already imported} other {# alerts already imported}})", { count: imported }) : '') }), 'error');
+            toast(imported
+                ? translate("Import failed: {error} ({count, plural, one {# alert already imported} other {# alerts already imported}})", { error: String(e.message), count: imported })
+                : translate("Import failed: {error}", { error: String(e.message) }), 'error');
             if (imported) {
                 try { await refreshImported(); } catch { /* The session may have ended while refreshing. */ }
             }

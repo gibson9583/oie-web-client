@@ -1,4 +1,4 @@
-import { compareText } from "../core/i18n.js";
+import { compareText } from '../core/i18n.js';
 /*
  * Data type registry access.
  *

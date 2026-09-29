@@ -1,4 +1,4 @@
-import { t as translate, tx as richText } from "../core/i18n.js";
+import { t as translate, tx as richText } from '../core/i18n.js';
 /*
  * Compare Messages — the side-by-side diff overlay.
  *
@@ -148,7 +148,7 @@ function SideHeader({ side, compareRef, state, onStage }: any) {
                         .map(s => (
                             <option key={s.type} value={s.type}
                                 disabled={!stored.includes(s.type) && s.type !== compareRef.contentType}>
-                                {s.label}{stored.includes(s.type) ? '' : translate(" (not stored)")}
+                                {stored.includes(s.type) ? s.label : translate("{label} (not stored)", { label: s.label })}
                             </option>
                         ))}
                 </select>

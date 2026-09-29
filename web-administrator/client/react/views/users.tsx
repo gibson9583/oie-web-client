@@ -1,4 +1,4 @@
-import { t as translate } from "../../core/i18n.js";
+import { t as translate } from '../../core/i18n.js';
 /*
  * Users view (React port of views/users.js). The grid wraps core/ui.js
  * DataTable via <DataTableHost>; the create/edit/password modals reuse the

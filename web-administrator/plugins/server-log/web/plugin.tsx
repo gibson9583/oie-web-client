@@ -1,5 +1,4 @@
-import { isCommitEnter } from '@oie/web-ui';
-import { compareText, scope as i18nScope } from "@oie/web-ui";
+import { isCommitEnter, compareText, scope as i18nScope } from '@oie/web-ui';
 const { t: translate } = i18nScope("server-log");
 /*
  * Server Log — web admin plugin (React).

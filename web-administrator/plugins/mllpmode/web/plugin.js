@@ -1,6 +1,5 @@
 // plugins/mllpmode/web/plugin.tsx
-import { scope as i18nScope } from "@oie/web-ui";
-import { frameModeSampleFrame, frameModeSettingsDialog } from "@oie/web-ui";
+import { scope as i18nScope, frameModeSampleFrame, frameModeSettingsDialog } from "@oie/web-ui";
 var { t: translate } = i18nScope("mllpmode");
 function register(platform) {
   platform.registerTransmissionMode("MLLP", {

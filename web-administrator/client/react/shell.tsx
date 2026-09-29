@@ -1,5 +1,4 @@
-import { t as translate, tx as richText } from "../core/i18n.js";
-import { isLocaleReloading, locale } from '../core/i18n.js';
+import { t as translate, tx as richText, isLocaleReloading, locale } from '../core/i18n.js';
 /*
  * React application shell — the classic Administrator chrome (rail of task
  * panes, blue topbar, content outlet, status bar), ported from app.js's
@@ -539,7 +538,9 @@ function StatusBar({ user, serverInfo, conn }: any) {
     } else if (conn.state === 'reconnecting') {
         left = translate("Reconnecting to {value1}…", { value1: String(engine) });
     } else if (conn.state === 'unreachable') {
-        left = translate("Engine unreachable at {value1}{value2}", { value1: String(engine), value2: String(conn.retryIn != null ? translate(" — retrying in {seconds}s", { seconds: conn.retryIn }) : '') });
+        left = conn.retryIn != null
+            ? translate("Engine unreachable at {engine} — retrying in {seconds}s", { engine: String(engine), seconds: conn.retryIn })
+            : translate("Engine unreachable at {engine}", { engine: String(engine) });
     } else if (serverInfo && !serverInfo.error) {
         const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
         left = translate("Connected to: {value1} as {value2}{value3}", { value1: String(engine), value2: String(user?.username || ''), value3: String(name ? ` (${name})` : '') });

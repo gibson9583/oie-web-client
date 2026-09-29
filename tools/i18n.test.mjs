@@ -43,6 +43,6 @@ test('translation calls cannot replace XML selector names or wire-property liter
 // Both messages occur inside another translated message's values.
 test('extraction follows nested translations in value objects', () => {
     const { messages } = extract();
-    assert.ok(messages[' — retrying in {seconds}s']?.some(file => file.includes('/react/shell.tsx:')));
-    assert.ok(messages['this channel']?.some(file => file.includes('/views/filter-transformer.tsx:')));
+    assert.ok(messages['{count, plural, one {# channel} other {# channels}}']?.some(file => file.endsWith('/views/channels.tsx')));
+    assert.ok(messages['this channel']?.some(file => file.endsWith('/views/filter-transformer.tsx')));
 });

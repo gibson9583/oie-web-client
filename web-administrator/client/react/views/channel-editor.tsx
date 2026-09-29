@@ -1,5 +1,5 @@
 import { channelTabLabel, wireTransportLabel } from '../../core/labels.js';
-import { t as translate, tx as richText, compareText } from "../../core/i18n.js";
+import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { channelDependencyState, copyLibrarySelection, copyDependencySelection, dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices, hasDependencyChanges, hasLibraryChanges, persistChannelDependencies, persistLibraryAssociations } from '../../core/channel-dependencies.js';
@@ -37,10 +37,9 @@ import { channelDependencyState, copyLibrarySelection, copyDependencySelection, 
 import { withEditorSave } from '../save-lock.js';
 import { parseConnectorImport, normalizeImportTypes, appendImportedDestination, alignDestinationTypes, updateImportedAttachmentHandler, remapImportedResources, hasImportedResources, normalizeImportedElementTypes } from './editor-import.js';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
-import { createCodeEditor } from '@oie/web-ui';
+import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu, createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';

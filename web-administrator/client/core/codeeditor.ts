@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 import { isCommitEnter, isComposing } from './keyboard.js';
 /*
  * Lightweight code editor: textarea + synced line-number gutter, tab/indent

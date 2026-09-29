@@ -1,4 +1,4 @@
-import { t as translate, tx as richText } from "../core/i18n.js";
+import { t as translate, tx as richText } from '../core/i18n.js';
 /*
  * Error boundaries — the app's answer to "a render threw".
  *

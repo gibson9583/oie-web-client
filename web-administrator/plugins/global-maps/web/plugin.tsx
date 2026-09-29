@@ -1,4 +1,4 @@
-import { compareText, scope as i18nScope } from "@oie/web-ui";
+import { compareText, scope as i18nScope } from '@oie/web-ui';
 const { t: translate, tx: richText } = i18nScope("global-maps");
 /*
  * Global Maps — web admin plugin (React).

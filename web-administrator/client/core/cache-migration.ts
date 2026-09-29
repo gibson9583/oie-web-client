@@ -1,4 +1,4 @@
-import { t as translate } from "./i18n.js";
+import { t as translate } from './i18n.js';
 import { appUrl } from './deployment.js';
 
 const marker = `oie-http-cache-migration-v1:${appUrl('/')}`;

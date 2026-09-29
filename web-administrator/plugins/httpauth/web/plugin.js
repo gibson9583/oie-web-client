@@ -1,7 +1,6 @@
 // plugins/httpauth/web/plugin.tsx
-import { scope as i18nScope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
-import { DESTINATION_MAPPINGS } from "@oie/web-ui";
+import { scope as i18nScope, DESTINATION_MAPPINGS } from "@oie/web-ui";
 var { t: translate, tx: richText } = i18nScope("httpauth");
 var React = platform.React;
 var AUTH_TYPE_OPTIONS = [
