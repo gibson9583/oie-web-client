@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * Pure-JSX hierarchical tree-table. Replaces the hand-built imperative table.dt
  * tree-grids (Dashboard / Channels / Code Templates / alert channels) with a
@@ -35,7 +35,7 @@ export function TreeTable({
     selectedKey, selectedKeys, onSelect, onActivate, onRowContextMenu, onEmptyContextMenu,
     rowDraggable, onRowDrop,
     columnsKey, columnWidths = {}, defaultHidden = [], pinnedKeys = [],
-    emptyText = translate("No items"), matches, collapsedKeys, onToggleCollapse,
+    emptyText = t("No items"), matches, collapsedKeys, onToggleCollapse,
     // Controlled sort (opt-in): pass `sort={{key,dir}}` + `onSort(key)` to let the
     // parent own sorting (it pre-sorts `data`, e.g. the dashboard keeping display and
     // shift-select order in sync). Omit both for TreeTable's built-in header sort.
@@ -202,7 +202,7 @@ export function TreeTable({
                 onClick: () => { if (shown && visibleCount <= 1) return; mgr.setHidden(c.key, shown); force(); }
             };
         });
-        items.push('-', { label: translate("Restore Default"), onClick: () => { mgr.reset(); force(); } });
+        items.push('-', { label: t("Restore Default"), onClick: () => { mgr.reset(); force(); } });
         contextMenu(e.clientX, e.clientY, items);
     };
 

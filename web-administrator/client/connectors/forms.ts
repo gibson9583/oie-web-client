@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * Shared helpers for connector property panels.
  *
@@ -103,7 +103,7 @@ export function requireFields(properties: any, specs: RequiredFieldSpec[]): Arra
    address). Returns a custom-field def for the connector form; pass the dotted
    property key holding the host (e.g. 'listenerConnectorProperties.host'). */
 let listenerAddrUid = 0;
-export function listenerAddressField(hostKey: string, label = translate("Listener Address")): FormField {
+export function listenerAddressField(hostKey: string, label = t("Listener Address")): FormField {
     return {
         label, type: 'custom', span: true,
         render: (p, ctx) => {
@@ -127,8 +127,8 @@ export function listenerAddressField(hostKey: string, label = translate("Listene
             specRadio.addEventListener('change', () => setMode('specific'));
             sync();
             return h('div', { class: 'flex items-center gap-[13px] flex-wrap' },
-                h('label.check', allRadio, translate("All interfaces")),
-                h('label.check', specRadio, translate("Specific interface:")),
+                h('label.check', allRadio, t("All interfaces")),
+                h('label.check', specRadio, t("Specific interface:")),
                 input);
         }
     };
@@ -196,11 +196,11 @@ function keyValueEditor(properties: any, f: FormField, onChange: () => void): HT
         clear(wrap);
         rows.forEach((row, i) => {
             wrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
-                textInput(row[0], { placeholder: translate("Name"), class: 'flex-1', onInput: (e: any) => { row[0] = e.target.value; commit(); } }),
-                textInput(row[1], { placeholder: translate("Value"), class: 'flex-[2]', onInput: (e: any) => { row[1] = e.target.value; commit(); } }),
-                h('button.icon-btn', { type: 'button', title: translate("Remove"), onClick: () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
+                textInput(row[0], { placeholder: t("Name"), class: 'flex-1', onInput: (e: any) => { row[0] = e.target.value; commit(); } }),
+                textInput(row[1], { placeholder: t("Value"), class: 'flex-[2]', onInput: (e: any) => { row[1] = e.target.value; commit(); } }),
+                h('button.icon-btn', { type: 'button', title: t("Remove"), onClick: () => { rows.splice(i, 1); commit(); paint(); } }, icon('x'))));
         });
-        wrap.appendChild(h('button.btn', { type: 'button', onClick: () => { rows.push(['', '']); paint(); } }, translate("Add")));
+        wrap.appendChild(h('button.btn', { type: 'button', onClick: () => { rows.push(['', '']); paint(); } }, t("Add")));
     }
     paint();
     return wrap;
@@ -375,7 +375,7 @@ function renderRow(grid: HTMLElement, properties: any, f: FormField, onChange: (
 /* 'Ports in Use' button shared by the TCP/HTTP/WS listener panels: fetches
    /channels/portsInUse and lists port → channel name in a modal. */
 export function portsInUseButton({ disabled = false }: { disabled?: boolean } = {}): HTMLElement {
-    const btn = taskButton(translate("Ports in Use"), 'search', async () => {
+    const btn = taskButton(t("Ports in Use"), 'search', async () => {
         btn.disabled = true;
         try {
             const ports = await api.channels.portsInUse();
@@ -383,11 +383,11 @@ export function portsInUseButton({ disabled = false }: { disabled?: boolean } = 
                 .filter((p: any) => p && typeof p === 'object')
                 .map((p: any) => h('tr', h('td.num', String(p.port ?? '')), h('td', String(p.name ?? ''))));
             modal({
-                title: translate("Ports in Use"),
+                title: t("Ports in Use"),
                 body: h('table.dt',
-                    h('thead', h('tr', h('th', translate("Port")), h('th', translate("Channel Name")))),
-                    h('tbody', rows.length ? rows : h('tr', h('td', { colSpan: 2 }, translate("No listener ports in use"))))),
-                buttons: [{ label: translate("Close"), primary: true }]
+                    h('thead', h('tr', h('th', t("Port")), h('th', t("Channel Name")))),
+                    h('tbody', rows.length ? rows : h('tr', h('td', { colSpan: 2 }, t("No listener ports in use"))))),
+                buttons: [{ label: t("Close"), primary: true }]
             });
         } catch (e) {
             toast(apiErrorMessage(e), 'error');
@@ -403,8 +403,8 @@ export function portsInUseButton({ disabled = false }: { disabled?: boolean } = 
 }
 
 export const YES_NO: Array<{ value: boolean; label: string }> = [
-    { value: true, label: translate("Yes") },
-    { value: false, label: translate("No") }
+    { value: true, label: t("Yes") },
+    { value: false, label: t("No") }
 ];
 
 /* ---- polling schedule (PollConnectorProperties) ------------------------------- */
@@ -412,7 +412,7 @@ export const YES_NO: Array<{ value: boolean; label: string }> = [
 /* pollSettingsPanel wrapped as a classic fieldset-style section. */
 export function pollSection(properties: any, onChange: () => void): HTMLElement {
     return h('div.cform-section', { class: 'mt-4' },
-        h('div.cform-section-title', translate("Polling Settings")),
+        h('div.cform-section-title', t("Polling Settings")),
         pollSettingsPanel(properties, onChange));
 }
 
@@ -431,22 +431,22 @@ export function pollSettingsPanel(properties: any, onChange: () => void): HTMLEl
         clear(host);
         const p = poll();
         const grid = h('div.form-grid');
-        grid.appendChild(field(translate("Schedule Type"), select([
-            { value: 'INTERVAL', label: translate("Interval") },
-            { value: 'TIME', label: translate("Time") },
-            { value: 'CRON', label: translate("Cron") }
+        grid.appendChild(field(t("Schedule Type"), select([
+            { value: 'INTERVAL', label: t("Interval") },
+            { value: 'TIME', label: t("Time") },
+            { value: 'CRON', label: t("Cron") }
         ], p.pollingType, { onChange: (e: any) => { p.pollingType = e.target.value; onChange(); paint(); } })));
 
         if (p.pollingType === 'INTERVAL') {
-            grid.appendChild(field(translate("Polling Frequency (ms)"), numberInput(p.pollingFrequency ?? 5000, {
+            grid.appendChild(field(t("Polling Frequency (ms)"), numberInput(p.pollingFrequency ?? 5000, {
                 onInput: (e: any) => { p.pollingFrequency = parseInt(e.target.value, 10) || 0; onChange(); }
             })));
         } else if (p.pollingType === 'TIME') {
-            grid.appendChild(field(translate("Hour (0-23)"), numberInput(p.pollingHour ?? 0, {
+            grid.appendChild(field(t("Hour (0-23)"), numberInput(p.pollingHour ?? 0, {
                 min: 0, max: 23,
                 onInput: (e: any) => { p.pollingHour = parseInt(e.target.value, 10) || 0; onChange(); }
             })));
-            grid.appendChild(field(translate("Minute (0-59)"), numberInput(p.pollingMinute ?? 0, {
+            grid.appendChild(field(t("Minute (0-59)"), numberInput(p.pollingMinute ?? 0, {
                 min: 0, max: 59,
                 onInput: (e: any) => { p.pollingMinute = parseInt(e.target.value, 10) || 0; onChange(); }
             })));
@@ -461,17 +461,17 @@ export function pollSettingsPanel(properties: any, onChange: () => void): HTMLEl
                 clear(cronWrap);
                 rows.forEach((row: any, i: number) => {
                     cronWrap.appendChild(h('div', { class: 'flex gap-1.5 mb-1.5' },
-                        textInput(row.expression, { placeholder: translate("Cron expression (e.g. 0 */5 * ? * *)"), class: 'flex-[2]', onInput: (e: any) => { row.expression = e.target.value; commit(); } }),
-                        textInput(row.description, { placeholder: translate("Description"), class: 'flex-1', onInput: (e: any) => { row.description = e.target.value; commit(); } }),
-                        h('button.icon-btn', { type: 'button', title: translate("Remove"), onClick: () => { rows.splice(i, 1); commit(); paintCron(); } }, icon('x'))));
+                        textInput(row.expression, { placeholder: t("Cron expression (e.g. 0 */5 * ? * *)"), class: 'flex-[2]', onInput: (e: any) => { row.expression = e.target.value; commit(); } }),
+                        textInput(row.description, { placeholder: t("Description"), class: 'flex-1', onInput: (e: any) => { row.description = e.target.value; commit(); } }),
+                        h('button.icon-btn', { type: 'button', title: t("Remove"), onClick: () => { rows.splice(i, 1); commit(); paintCron(); } }, icon('x'))));
                 });
-                cronWrap.appendChild(h('button.btn', { type: 'button', onClick: () => { rows.push({ expression: '', description: '' }); paintCron(); } }, translate("Add Cron Job")));
+                cronWrap.appendChild(h('button.btn', { type: 'button', onClick: () => { rows.push({ expression: '', description: '' }); paintCron(); } }, t("Add Cron Job")));
             };
             paintCron();
-            grid.appendChild(field(translate("Cron Jobs"), cronWrap));
+            grid.appendChild(field(t("Cron Jobs"), cronWrap));
         }
 
-        const startCb = checkbox(translate("Poll Once on Start"), asBool(p.pollOnStart), {
+        const startCb = checkbox(t("Poll Once on Start"), asBool(p.pollOnStart), {
             onChange: (e: any) => { p.pollOnStart = e.target.checked; onChange(); }
         });
         grid.appendChild(h('div.field', startCb.el));
@@ -605,13 +605,13 @@ export function postConnectorProperties(path: string, properties: any, channel: 
 
 /* 'Test Connection' style button: POSTs the connector properties to a
    /connectors/* test endpoint and toasts the ConnectionTestResponse. */
-export function connectorTestButton({ label = translate("Test Connection"), icon: iconName = 'link', path, channel, properties, disabled = false }: { label?: string; icon?: string; path: string; channel: any; properties: any; disabled?: boolean }): HTMLElement {
+export function connectorTestButton({ label = t("Test Connection"), icon: iconName = 'link', path, channel, properties, disabled = false }: { label?: string; icon?: string; path: string; channel: any; properties: any; disabled?: boolean }): HTMLElement {
     const btn = taskButton(label, iconName, async () => {
         btn.disabled = true;
         try {
             const result = await postConnectorProperties(path, properties, channel);
             const type = result && typeof result === 'object' ? String(result.type ?? '') : '';
-            const message = (result && typeof result === 'object' && result.message) || type || translate("No response received");
+            const message = (result && typeof result === 'object' && result.message) || type || t("No response received");
             if (type === 'SUCCESS') {
                 successToast(message);
             } else {
@@ -631,11 +631,11 @@ export function connectorTestButton({ label = translate("Test Connection"), icon
 }
 
 export const CHARSETS: Array<{ value: string; label: string }> = [
-    { value: 'DEFAULT_ENCODING', label: translate("Default") },
-    { value: 'UTF-8', label: translate("UTF-8") },
-    { value: 'ISO-8859-1', label: translate("ISO-8859-1") },
-    { value: 'US-ASCII', label: translate("US-ASCII") },
-    { value: 'UTF-16', label: translate("UTF-16") }
+    { value: 'DEFAULT_ENCODING', label: t("Default") },
+    { value: 'UTF-8', label: t("UTF-8") },
+    { value: 'ISO-8859-1', label: t("ISO-8859-1") },
+    { value: 'US-ASCII', label: t("US-ASCII") },
+    { value: 'UTF-16', label: t("UTF-16") }
 ];
 
 /* ---- Frame transmission mode (Basic / MLLP) -------------------------------
@@ -670,8 +670,8 @@ function hexToTokens(hex: unknown): string {
 export function frameModeSampleFrame(tm: any): string {
     const start = hexToTokens(tm && tm.startOfMessageBytes);
     const end = hexToTokens(tm && tm.endOfMessageBytes);
-    if (!start && !end) return translate("<Message Data>");
-    return translate("{value1} Message Data {value2}", { value1: String(start), value2: String(end) }).replace(/\s+/g, ' ').trim();
+    if (!start && !end) return t("<Message Data>");
+    return t("{value1} Message Data {value2}", { value1: String(start), value2: String(end) }).replace(/\s+/g, ' ').trim();
 }
 
 /* "Transmission Mode Settings" dialog — Start/End of Message Bytes (hex) plus a
@@ -699,18 +699,18 @@ export function frameModeSettingsDialog(tm: any, onChange: () => void, opts: { m
     const abbrevList = h('div', {
         class: 'max-h-[252px] overflow-auto border border-[var(--bg3)] rounded-[4px] p-1 min-w-[99px]'
     }, Object.entries(CONTROL_ABBR).map(([hex, abbr]) => h('div.tree-node', {
-        title: translate("Insert 0x{value1}", { value1: String(hex) }),
+        title: t("Insert 0x{value1}", { value1: String(hex) }),
         class: 'cursor-pointer font-mono text-[11px]',
         onClick: () => { lastFocused.value = (lastFocused.value || '') + hex; lastFocused.focus(); if (lastFocused.oninput) (lastFocused.oninput as any)(); }
     }, `<${abbr}>`)));
 
     const hexRow = (label: string, input: HTMLElement, abbrevEl?: HTMLElement | null) => h('div.flex', { class: 'items-center gap-1.5 mb-2' },
-        h('label', { class: 'min-w-[144px]' }, label), h('span.mono.text-text-faint', translate("0x")), input, abbrevEl || null);
+        h('label', { class: 'min-w-[144px]' }, label), h('span.mono.text-text-faint', t("0x")), input, abbrevEl || null);
 
     const leftRows = [
-        h('div', { class: 'font-[650] mb-2' }, mllp ? translate("MLLP Settings") : translate("Basic Settings")),
-        hexRow(translate("Start of Message Bytes:"), startInput, h('span.mono.text-text-faint', abbrevFor(tm.startOfMessageBytes))),
-        hexRow(translate("End of Message Bytes:"), endInput, h('span.mono.text-text-faint', abbrevFor(tm.endOfMessageBytes)))
+        h('div', { class: 'font-[650] mb-2' }, mllp ? t("MLLP Settings") : t("Basic Settings")),
+        hexRow(t("Start of Message Bytes:"), startInput, h('span.mono.text-text-faint', abbrevFor(tm.startOfMessageBytes))),
+        hexRow(t("End of Message Bytes:"), endInput, h('span.mono.text-text-faint', abbrevFor(tm.endOfMessageBytes)))
     ];
 
     // MLLP adds Use MLLPv2 + Commit ACK/NACK bytes + Max Retry Count, with the
@@ -731,10 +731,10 @@ export function frameModeSettingsDialog(tm: any, onChange: () => void, opts: { m
         const useV2 = asBool(tm.useMLLPv2);
         const v2Yes = h('input', { type: 'radio', name: 'mllpv2', checked: useV2 }) as HTMLInputElement;
         const v2No = h('input', { type: 'radio', name: 'mllpv2', checked: !useV2 }) as HTMLInputElement;
-        const ackRow = hexRow(translate("Commit ACK Bytes:"), ackInput, ackAbbrev);
-        const nackRow = hexRow(translate("Commit NACK Bytes:"), nackInput, nackAbbrev);
+        const ackRow = hexRow(t("Commit ACK Bytes:"), ackInput, ackAbbrev);
+        const nackRow = hexRow(t("Commit NACK Bytes:"), nackInput, nackAbbrev);
         const retryRow = h('div.flex', { class: 'items-center gap-1.5 mb-2' },
-            h('label', { class: 'min-w-[144px]' }, translate("Max Retry Count:")), retryInput);
+            h('label', { class: 'min-w-[144px]' }, t("Max Retry Count:")), retryInput);
         const setV2Enabled = (on: boolean) => {
             [ackInput, nackInput, retryInput].forEach((el: any) => { el.disabled = !on; });
             [ackRow, nackRow, retryRow].forEach((r: any) => { r.style.opacity = on ? '1' : '0.5'; });
@@ -745,8 +745,8 @@ export function frameModeSettingsDialog(tm: any, onChange: () => void, opts: { m
 
         leftRows.push(
             h('div.flex', { class: 'items-center gap-1.5 mb-2' },
-                h('label', { class: 'min-w-[144px]' }, translate("Use MLLPv2:")),
-                h('label.check', v2Yes, translate("Yes")), h('label.check', v2No, translate("No"))),
+                h('label', { class: 'min-w-[144px]' }, t("Use MLLPv2:")),
+                h('label.check', v2Yes, t("Yes")), h('label.check', v2No, t("No"))),
             ackRow, nackRow, retryRow);
 
         writeMllp = () => {
@@ -761,15 +761,15 @@ export function frameModeSettingsDialog(tm: any, onChange: () => void, opts: { m
     endInput.oninput = () => { leftRows[2].lastChild!.textContent = abbrevFor(endInput.value); };
 
     modal({
-        title: mllp ? translate("MLLP Settings") : translate("Transmission Mode Settings"),
+        title: mllp ? t("MLLP Settings") : t("Transmission Mode Settings"),
         size: 'wide',
         body: h('div', { class: 'flex flex-wrap gap-[16px]' },
             h('div', { class: 'flex-1 min-w-[216px]' }, leftRows),
-            h('div', { class: 'min-w-[180px]' }, h('div', { class: 'font-[650] mb-2' }, translate("Byte Abbreviations")), abbrevList)),
+            h('div', { class: 'min-w-[180px]' }, h('div', { class: 'font-[650] mb-2' }, t("Byte Abbreviations")), abbrevList)),
         buttons: [
-            { label: translate("Cancel") },
+            { label: t("Cancel") },
             {
-                label: translate("OK"), primary: true,
+                label: t("OK"), primary: true,
                 onClick: () => {
                     tm.startOfMessageBytes = startInput.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
                     tm.endOfMessageBytes = endInput.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();

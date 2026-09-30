@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * React-view mounting bridge. Lets platform.registerView host a React component
  * inside the EXISTING core/router.js outlet during the migration: the handler
@@ -46,7 +46,7 @@ export function reactView(Component: any) {
         flushSync(() => root.render(
             <QueryClientProvider client={queryClient}>
                 <TasksHostContext.Provider value={reactTasksHostEl}>
-                    <ErrorBoundary label={translate("This view failed to render")}>
+                    <ErrorBoundary label={t("This view failed to render")}>
                         <Component params={params} query={query} />
                     </ErrorBoundary>
                 </TasksHostContext.Provider>
@@ -66,7 +66,7 @@ export function reactView(Component: any) {
 // `label` names the island in the fallback and in the console line — pass the
 // panel/tab it hosts when the caller knows it, since these roots are usually
 // plugin code and the report is what identifies whose.
-export function mountReact(hostEl: any, element: any, { label = translate("This panel failed to render") }: any = {}) {
+export function mountReact(hostEl: any, element: any, { label = t("This panel failed to render") }: any = {}) {
     const root = createRoot(hostEl);
     flushSync(() => root.render(
         <QueryClientProvider client={queryClient}>
@@ -95,12 +95,12 @@ export function ViewTasks({ children }: any) {
     if (!host) return null;
     if (collapsed) {
         return createPortal(
-            <CollapsedSideStrip label={translate("Tasks")} icon="chevR" onExpand={() => setCollapsed(false)} />,
+            <CollapsedSideStrip label={t("Tasks")} icon="chevR" onExpand={() => setCollapsed(false)} />,
             host);
     }
     const hideBtn = (
         <button type="button" className="icon-btn tasks-collapse-btn"
-            title={translate("Hide the task pane")} aria-label={translate("Hide the task pane")} aria-expanded="true"
+            title={t("Hide the task pane")} aria-label={t("Hide the task pane")} aria-expanded="true"
             onClick={() => setCollapsed(true)}>
             <Icon name="chevL" size={12} />
         </button>

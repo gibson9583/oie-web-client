@@ -1,4 +1,4 @@
-import { t as translate } from './i18n.js';
+import { t } from './i18n.js';
 /*
  * History-API router. Routes are registered as patterns like:
  *   '/dashboard', '/channels/:channelId/edit', '/messages/:channelId?'
@@ -194,10 +194,10 @@ function loadErrorNode(path: string): HTMLElement {
     const empty = document.createElement('div');
     empty.className = 'dt-empty';
     const msg = document.createElement('div');
-    msg.textContent = translate("This view failed to load.");
+    msg.textContent = t("This view failed to load.");
     const retry = document.createElement('button');
     retry.className = 'btn btn-primary';
-    retry.textContent = translate("Retry");
+    retry.textContent = t("Retry");
     retry.addEventListener('click', () => navigate(path));
     empty.append(msg, retry);
     body.appendChild(empty);

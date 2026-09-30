@@ -1,5 +1,5 @@
 import { loadPluginCatalog } from './plugin-i18n.js';
-import { t as translate, t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
+import { t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
 /*
  * Plugin platform — the web equivalent of the Swing client's extension points.
  *
@@ -592,7 +592,7 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
             // Neither engine-native endpoints nor the websupport plugin: engine-served
             // plugin UIs (and message trees / validation) are off. Say so once, visibly,
             // instead of plugin UIs silently not appearing.
-            ui.toast(translate("The Web Support plugin is not installed on this engine — plugin UIs, message trees, and script validation are disabled. Install \"websupport\" from the Extensions page."), 'warn');
+            ui.toast(t("The Web Support plugin is not installed on this engine — plugin UIs, message trees, and script validation are disabled. Install \"websupport\" from the Extensions page."), 'warn');
             return [];
         }
         paths = apiModule.asList(await apiModule.get(`${wsBase}/webplugins`), 'string').map(String).filter(Boolean);
@@ -675,7 +675,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
         if (apiCompatible(OIE_API_VERSION, m.apiMin)) return true;
         const message = `requires @oie API ${m.apiMin}, but this web administrator provides ${OIE_API_VERSION}`;
         console.warn(`[plugins] ${m.id} skipped — ${message}`);
-        incompatible.push({ ...m, status: 'incompatible', error: translate('requires @oie API {required}, but this web administrator provides {provided}', { required: m.apiMin, provided: OIE_API_VERSION }) });
+        incompatible.push({ ...m, status: 'incompatible', error: t('requires @oie API {required}, but this web administrator provides {provided}', { required: m.apiMin, provided: OIE_API_VERSION }) });
         return false;
     });
 
@@ -701,7 +701,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
                     headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                     signal: AbortSignal.timeout(120_000)
                 });
-                if (!res.ok) throw new Error(translate("plugin module request failed ({value1})", { value1: String(res.status) }));
+                if (!res.ok) throw new Error(t("plugin module request failed ({value1})", { value1: String(res.status) }));
                 const source = await res.text();
                 assertEngineResponse(res);
                 const objectUrl = URL.createObjectURL(new Blob([
@@ -738,7 +738,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
                 loaded.push({ ...manifest, status: 'error', error: (e as Error).message });
             }
         } else {
-            loaded.push({ ...manifest, status: 'error', error: translate("entry module has no register(platform) export") });
+            loaded.push({ ...manifest, status: 'error', error: t("entry module has no register(platform) export") });
         }
     }
     // Include the version-skipped plugins so the mismatch is visible in the UI.

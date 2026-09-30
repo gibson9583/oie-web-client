@@ -1,4 +1,4 @@
-import { t as translate, tx as richText, isLocaleReloading, locale } from '../core/i18n.js';
+import { t, tx, isLocaleReloading, locale } from '../core/i18n.js';
 /*
  * React application shell — the classic Administrator chrome (rail of task
  * panes, blue topbar, content outlet, status bar), ported from app.js's
@@ -66,59 +66,59 @@ const ISSUES_URL = 'https://github.com/OpenIntegrationEngine/engine/issues';
  * a template literal here would silently produce a second framework instance.
  */
 const VIEW_ROUTES = [
-    { path: '/dashboard', meta: { title: translate("Dashboard") },
-        nav: { id: 'dashboard', label: translate("Dashboard"), icon: 'dashboard', path: '/dashboard', section: 'Monitor', order: 0, task: 'doShowDashboard' },
+    { path: '/dashboard', meta: { title: t("Dashboard") },
+        nav: { id: 'dashboard', label: t("Dashboard"), icon: 'dashboard', path: '/dashboard', section: 'Monitor', order: 0, task: 'doShowDashboard' },
         load: () => import('./views/dashboard.jsx'), pick: (m: any) => m.DashboardHost },
-    { path: '/channels', meta: { title: translate("Channels") },
-        nav: { id: 'channels', label: translate("Channels"), icon: 'channels', path: '/channels', section: 'Design', order: 0, task: 'doShowChannel' },
+    { path: '/channels', meta: { title: t("Channels") },
+        nav: { id: 'channels', label: t("Channels"), icon: 'channels', path: '/channels', section: 'Design', order: 0, task: 'doShowChannel' },
         load: () => import('./views/channels.jsx'), pick: (m: any) => m.ChannelsView },
-    { path: '/channels/:channelId/edit', meta: { title: translate("Edit Channel") },
+    { path: '/channels/:channelId/edit', meta: { title: t("Edit Channel") },
         load: () => import('./views/channel-editor.jsx'), pick: (m: any) => m.ChannelEditorView },
-    { path: '/channels/:channelId/filter/:metaDataId', meta: { title: translate("Filter") },
+    { path: '/channels/:channelId/filter/:metaDataId', meta: { title: t("Filter") },
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.FilterView },
-    { path: '/channels/:channelId/transformer/:metaDataId', meta: { title: translate("Transformer") },
+    { path: '/channels/:channelId/transformer/:metaDataId', meta: { title: t("Transformer") },
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.TransformerView },
-    { path: '/channels/:channelId/response/:metaDataId', meta: { title: translate("Response Transformer") },
+    { path: '/channels/:channelId/response/:metaDataId', meta: { title: t("Response Transformer") },
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.ResponseTransformerView },
-    { path: '/channels/new/guided', meta: { title: translate("New Channel — Wizard") },
+    { path: '/channels/new/guided', meta: { title: t("New Channel — Wizard") },
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
-    { path: '/channels/:channelId/guided', meta: { title: translate("Channel — Wizard") },
+    { path: '/channels/:channelId/guided', meta: { title: t("Channel — Wizard") },
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
     /* Channel-less entry to the message browser: the same view, with its channel
        picker as the way in. Registered BEFORE the parameterised route so
        '/messages' cannot be read as a channel id. */
-    { path: '/messages', meta: { title: translate("Messages") },
-        nav: { id: 'messages', label: translate("Messages"), icon: 'messages', path: '/messages',
+    { path: '/messages', meta: { title: t("Messages") },
+        nav: { id: 'messages', label: t("Messages"), icon: 'messages', path: '/messages',
             section: 'Monitor', order: 1, task: 'doShowMessages' },
         load: () => import('./views/messages.jsx'), pick: (m: any) => m.MessagesView },
-    { path: '/messages/:channelId', meta: { title: translate("Messages") },
+    { path: '/messages/:channelId', meta: { title: t("Messages") },
         load: () => import('./views/messages.jsx'), pick: (m: any) => m.MessagesView },
-    { path: '/events', meta: { title: translate("Events") },
-        nav: { id: 'events', label: translate("Events"), icon: 'events', path: '/events', section: 'Monitor', order: 3, task: 'doShowEvents' },
+    { path: '/events', meta: { title: t("Events") },
+        nav: { id: 'events', label: t("Events"), icon: 'events', path: '/events', section: 'Monitor', order: 3, task: 'doShowEvents' },
         load: () => import('./views/events.jsx'), pick: (m: any) => m.EventsView },
-    { path: '/alerts', meta: { title: translate("Alerts") },
-        nav: { id: 'alerts', label: translate("Alerts"), icon: 'alerts', path: '/alerts', section: 'Monitor', order: 2, task: 'doShowAlerts' },
+    { path: '/alerts', meta: { title: t("Alerts") },
+        nav: { id: 'alerts', label: t("Alerts"), icon: 'alerts', path: '/alerts', section: 'Monitor', order: 2, task: 'doShowAlerts' },
         load: () => import('./views/alerts.jsx'), pick: (m: any) => m.AlertsList },
-    { path: '/alerts/:alertId/edit', meta: { title: translate("Edit Alert") },
+    { path: '/alerts/:alertId/edit', meta: { title: t("Edit Alert") },
         load: () => import('./views/alert-editor.jsx'), pick: (m: any) => m.AlertEditor },
-    { path: '/alerts/new/guided', meta: { title: translate("New Alert — Wizard") },
+    { path: '/alerts/new/guided', meta: { title: t("New Alert — Wizard") },
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
-    { path: '/alerts/:alertId/guided', meta: { title: translate("Alert — Wizard") },
+    { path: '/alerts/:alertId/guided', meta: { title: t("Alert — Wizard") },
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
-    { path: '/users', meta: { title: translate("Users") },
-        nav: { id: 'users', label: translate("Users"), icon: 'users', path: '/users', section: 'Manage', order: 0, task: 'doShowUsers' },
+    { path: '/users', meta: { title: t("Users") },
+        nav: { id: 'users', label: t("Users"), icon: 'users', path: '/users', section: 'Manage', order: 0, task: 'doShowUsers' },
         load: () => import('./views/users.jsx'), pick: (m: any) => m.UsersView },
-    { path: '/settings', meta: { title: translate("Settings") },
-        nav: { id: 'settings', label: translate("Settings"), icon: 'settings', path: '/settings', section: 'Manage', order: 1, task: 'doShowSettings' },
+    { path: '/settings', meta: { title: t("Settings") },
+        nav: { id: 'settings', label: t("Settings"), icon: 'settings', path: '/settings', section: 'Manage', order: 1, task: 'doShowSettings' },
         load: () => import('./views/settings.jsx'), pick: (m: any) => m.SettingsView },
-    { path: '/code-templates', meta: { title: translate("Code Templates") },
-        nav: { id: 'code-templates', label: translate("Code Templates"), icon: 'code', path: '/code-templates', section: 'Design', order: 1 },
+    { path: '/code-templates', meta: { title: t("Code Templates") },
+        nav: { id: 'code-templates', label: t("Code Templates"), icon: 'code', path: '/code-templates', section: 'Design', order: 1 },
         load: () => import('./views/code-templates.jsx'), pick: (m: any) => m.CodeTemplatesView },
-    { path: '/global-scripts', meta: { title: translate("Global Scripts") },
-        nav: { id: 'global-scripts', label: translate("Global Scripts"), icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2 },
+    { path: '/global-scripts', meta: { title: t("Global Scripts") },
+        nav: { id: 'global-scripts', label: t("Global Scripts"), icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2 },
         load: () => import('./views/global-scripts.jsx'), pick: (m: any) => m.GlobalScriptsView },
-    { path: '/extensions', meta: { title: translate("Extensions") },
-        nav: { id: 'extensions', label: translate("Extensions"), icon: 'extensions', path: '/extensions', section: 'Manage', order: 2, task: 'doShowExtensions' },
+    { path: '/extensions', meta: { title: t("Extensions") },
+        nav: { id: 'extensions', label: t("Extensions"), icon: 'extensions', path: '/extensions', section: 'Manage', order: 2, task: 'doShowExtensions' },
         load: () => import('./views/extensions.jsx'), pick: (m: any) => m.ExtensionsView },
 ];
 
@@ -150,13 +150,13 @@ function lazyView(load: any, pick: any) {
  * while views are gated as "view".
  */
 const OTHER_ACTIONS = [
-    { id: 'rest-api', label: translate("View REST API"), icon: 'apiDoc', section: 'Other', order: 0,
+    { id: 'rest-api', label: t("View REST API"), icon: 'apiDoc', section: 'Other', order: 0,
         task: 'goToUserAPI', rbac: 'other', action: () => openApiDocs() },
-    { id: 'about', label: translate("About"), icon: 'info', section: 'Other', order: 1,
+    { id: 'about', label: t("About"), icon: 'info', section: 'Other', order: 1,
         task: 'goToAbout', rbac: 'other', action: () => showAbout() },
-    { id: 'homepage', label: translate("Visit homepage"), icon: 'globe', section: 'Other', order: 2,
+    { id: 'homepage', label: t("Visit homepage"), icon: 'globe', section: 'Other', order: 2,
         task: 'goToMirth', rbac: 'other', action: () => window.open(HOMEPAGE_URL, '_blank') },
-    { id: 'report-issue', label: translate("Report issue"), icon: 'bug', section: 'Other', order: 3,
+    { id: 'report-issue', label: t("Report issue"), icon: 'bug', section: 'Other', order: 3,
         task: 'doReportIssue', rbac: 'other', action: () => window.open(ISSUES_URL, '_blank') }
     /* Logout is deliberately NOT here. It is chrome, like the customize control:
        both must stay exactly where they are, so neither is hideable, renameable or
@@ -168,9 +168,9 @@ const OTHER_ACTIONS = [
    sections (deep links), and the session actions. A view's selection-dependent
    tasks stay in its task pane, where the selection lives. */
 const SETTINGS_TABS = [
-    [translate("Server"), 'server'], [translate("Administrator"), 'administrator'], [translate("Tags"), 'tags'],
-    [translate("Configuration Map"), 'configurationmap'], [translate("Database Tasks"), 'databasetasks'],
-    [translate("Resources"), 'resources'], [translate("Data Pruner"), 'datapruner']
+    [t("Server"), 'server'], [t("Administrator"), 'administrator'], [t("Tags"), 'tags'],
+    [t("Configuration Map"), 'configurationmap'], [t("Database Tasks"), 'databasetasks'],
+    [t("Resources"), 'resources'], [t("Data Pruner"), 'datapruner']
 ];
 
 function registerCommands(plat: any) {
@@ -178,23 +178,23 @@ function registerCommands(plat: any) {
        Channels view is a chooser (classic vs guided) whose classic path builds a
        channel object the view owns — reproducing that here would fork it, so the
        palette offers the route it can honestly navigate to and says which it is. */
-    plat.registerCommand({ id: 'new-channel', label: translate("New Channel (Wizard)"), icon: 'plus',
+    plat.registerCommand({ id: 'new-channel', label: t("New Channel (Wizard)"), icon: 'plus',
         section: 'Create', order: 0, task: 'doNewChannel', rbac: 'channel',
         keywords: 'create add channel', path: '/channels/new/guided' });
-    plat.registerCommand({ id: 'new-alert', label: translate("New Alert (Wizard)"), icon: 'plus',
+    plat.registerCommand({ id: 'new-alert', label: t("New Alert (Wizard)"), icon: 'plus',
         section: 'Create', order: 1, task: 'doNewAlert', rbac: 'alert',
         keywords: 'create add alert', path: '/alerts/new/guided' });
 
     SETTINGS_TABS.forEach(([label, tab], i) => plat.registerCommand({
-        id: 'settings-' + tab, label: translate("Settings: {value1}", { value1: String(label) }), icon: 'settings', section: 'Settings',
+        id: 'settings-' + tab, label: t("Settings: {value1}", { value1: String(label) }), icon: 'settings', section: 'Settings',
         order: i, task: 'doShowSettings', rbac: 'view', keywords: label,
         path: '/settings?tab=' + tab
     }));
 
-    plat.registerCommand({ id: 'toggle-theme', label: translate("Toggle light/dark mode"), icon: 'sun',
+    plat.registerCommand({ id: 'toggle-theme', label: t("Toggle light/dark mode"), icon: 'sun',
         section: 'Session', order: 0, keywords: 'dark light theme',
         run: () => store.setTheme(store.getState('theme') === 'light' ? 'dark' : 'light') });
-    plat.registerCommand({ id: 'customize-nav', label: translate("Customize navigation"), icon: 'settings',
+    plat.registerCommand({ id: 'customize-nav', label: t("Customize navigation"), icon: 'settings',
         section: 'Session', order: 1, keywords: 'rail sidebar reorder rename',
         run: () => window.dispatchEvent(new CustomEvent('webadmin:customize-nav')) });
 }
@@ -235,7 +235,7 @@ function startEngine() {
         registerViewRoutes(platform);
 
         router.setNotFound(() => h('div.view', h('div.view-body',
-            h('div.dt-empty', h('div.empty-icon', icon('search', 30)), translate("View not found")))));
+            h('div.dt-empty', h('div.empty-icon', icon('search', 30)), t("View not found")))));
 
         router.setGuard(async (ctx: any) => {
             if (store.getState('editorSave')) return false;
@@ -280,7 +280,7 @@ function webAdminIdentity() {
     const cfg: any = store.getState('webadminConfig') || {};
     const build = cfg.build || {};
     const commit = build.commit ? String(build.commit).slice(0, 7) + (build.dirty ? '-dirty' : '') : '';
-    const built = build.date ? translate("built {date}", { date: String(build.date).slice(0, 10) }) : '';
+    const built = build.date ? t("built {date}", { date: String(build.date).slice(0, 10) }) : '';
     const detail = [commit, built].filter(Boolean).join(', ');
     return `${cfg.version || '?'}${detail ? ` (${detail})` : ''}`;
 }
@@ -302,16 +302,16 @@ async function showAbout() {
        VERSION row sits directly above and would otherwise be ambiguous.
        Unreachable engine: the list still renders, carrying the row we can
        always answer plus a note for the one we can't. */
-    entries.push([translate("Web Administrator"), webAdminIdentity()]);
-    if (!about) entries.unshift([translate("Engine"), translate("v{value1} — details unavailable", { value1: String(store.getState('serverVersion') || '?') })]);
+    entries.push([t("Web Administrator"), webAdminIdentity()]);
+    if (!about) entries.unshift([t("Engine"), t("v{value1} — details unavailable", { value1: String(store.getState('serverVersion') || '?') })]);
     const kv = h('dl.kv');
     entries.forEach(([k, v]) => { kv.appendChild(h('dt', String(k))); kv.appendChild(h('dd', String(v ?? ''))); });
     modal({
-        title: translate("About Open Integration Engine"),
+        title: t("About Open Integration Engine"),
         body: h('div',
-            h('div.flex.items-center.gap-2.mb-[13px]', h('img', { src: appUrl('/assets/oie_logo_bottom_text.svg'), alt: translate("Open Integration Engine"), style: { width: '120px', margin: '0 auto', display: 'block' } })),
+            h('div.flex.items-center.gap-2.mb-[13px]', h('img', { src: appUrl('/assets/oie_logo_bottom_text.svg'), alt: t("Open Integration Engine"), style: { width: '120px', margin: '0 auto', display: 'block' } })),
             kv),
-        buttons: [{ label: translate("Close"), primary: true }]
+        buttons: [{ label: t("Close"), primary: true }]
     });
 }
 
@@ -351,7 +351,7 @@ const CONN_PIP = { ok: 'ok', offline: 'err', unreachable: 'warn', reconnecting: 
  */
 function ServerChip({ info }: any) {
     if (!info) return <div className="server-chip"><span>…</span></div>;
-    if (info.error) return <div className="server-chip"><span>{translate("engine details unavailable")}</span></div>;
+    if (info.error) return <div className="server-chip"><span>{t("engine details unavailable")}</span></div>;
     const identity = `${info.settings?.environmentName ? info.settings.environmentName + ' · ' : ''}${info.settings?.serverName || 'engine'} · v${info.version}`;
     return <div className="server-chip"><span>{identity}</span></div>;
 }
@@ -360,12 +360,12 @@ function TopBar({ user, onLogout, serverInfo }: any) {
     const title = useViewTitle();
     const { theme, toggle } = useTheme();
     const tz = useTimezone();
-    const tzLabel = tz.mode === 'server' ? translate('Server') : tz.mode === 'local' ? translate('Local') : translate('UTC');
+    const tzLabel = tz.mode === 'server' ? t('Server') : tz.mode === 'local' ? t('Local') : t('UTC');
     const railCollapsed = useStoreKey('railCollapsed');
     return (
         <header className="topbar">
             <button className="icon-btn rail-toggle"
-                title={railCollapsed ? translate("Show navigation") : translate("Hide navigation")}
+                title={railCollapsed ? t("Show navigation") : t("Hide navigation")}
                 onClick={() => store.setRailCollapsed(!railCollapsed)}>
                 {/* Plain hamburger when collapsed ("open it"), fold/collapse glyph when expanded.
                     size=24 sets the svg attr; `.topbar .rail-toggle svg` reinforces via CSS. */}
@@ -375,11 +375,11 @@ function TopBar({ user, onLogout, serverInfo }: any) {
             <div className="topbar-spacer" />
             <ServerChip info={serverInfo} />
             <button className="btn tz-toggle"
-                title={translate("Timestamps shown in {value1} time ({value2}). Click to cycle Server / Local / UTC.", { value1: String(tzLabel), value2: String(tz.abbr) })}
+                title={t("Timestamps shown in {value1} time ({value2}). Click to cycle Server / Local / UTC.", { value1: String(tzLabel), value2: String(tz.abbr) })}
                 onClick={() => { tz.cycle(); router.navigate(router.currentPath()); }}>
                 <Icon name="clock" /><span>{tzLabel} · {tz.abbr}</span>
             </button>
-            <button className="icon-btn" title={translate("Toggle light/dark mode")} onClick={toggle}>
+            <button className="icon-btn" title={t("Toggle light/dark mode")} onClick={toggle}>
                 <Icon name={theme === 'light' ? 'moon' : 'sun'} />
             </button>
             <UserMenu user={user} onLogout={onLogout} />
@@ -404,7 +404,7 @@ function currentEngineLabel(config: any) {
     // A custom selection is only routable in devMode; without it the proxy
     // ignores the cookie, so don't claim the typed URL as this session's engine
     // — fall through to what the proxy actually resolves.
-    if (sel === 'custom' && config.devMode) return getCookie('oie-engine-url') || translate("custom engine");
+    if (sel === 'custom' && config.devMode) return getCookie('oie-engine-url') || t("custom engine");
     const engines = Array.isArray(config.engines) ? config.engines : [];
     // The server sends key+name only (name host-derived when unset), so the label
     // is just the name — no engine URL is exposed to the browser. Mirror
@@ -474,26 +474,26 @@ function UserMenu({ user, onLogout }: any) {
     return (
         <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-                <button className="user-chip" title={translate("Account")}>
-                    <Icon name="users" /><span>{user?.username || translate("user")}</span><Icon name="chevD" size={14} />
+                <button className="user-chip" title={t("Account")}>
+                    <Icon name="users" /><span>{user?.username || t("user")}</span><Icon name="chevD" size={14} />
                 </button>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
                 <DropdownMenu.Content className="ctx-surface" align="end" sideOffset={4} collisionPadding={8}>
                     <DropdownMenu.Label className="ctx-head">
-                        <div className="ctx-head-name">{me?.username || translate("user")}</div>
+                        <div className="ctx-head-name">{me?.username || t("user")}</div>
                         {fullName ? <div className="ctx-head-sub">{fullName}</div> : null}
                     </DropdownMenu.Label>
                     <DropdownMenu.Separator className="ctx-sep" />
-                    {item(translate("Edit Account"), 'edit', () => openEditUserModal(store.getState('user') || me, { onSaved: refreshMe }))}
+                    {item(t("Edit Account"), 'edit', () => openEditUserModal(store.getState('user') || me, { onSaved: refreshMe }))}
                     {/* An SSO session has no engine password to change — offering it
                         would set a local credential that SSO never consults. Omitted
                         rather than greyed: a disabled row in a short menu is noise. */}
-                    {!isSsoSession() && item(translate("Change Password"), 'key', () => openChangePasswordModal(store.getState('user') || me))}
-                    {can('view', 'doShowSettings') && item(translate("Settings"), 'settings', () => router.navigate('/settings?tab=administrator'))}
+                    {!isSsoSession() && item(t("Change Password"), 'key', () => openChangePasswordModal(store.getState('user') || me))}
+                    {can('view', 'doShowSettings') && item(t("Settings"), 'settings', () => router.navigate('/settings?tab=administrator'))}
                     <DropdownMenu.Separator className="ctx-sep" />
-                    {engineChoiceAvailable(config) && item(translate("Switch Engine"), 'link', () => switchEngine(onLogout))}
-                    {can('other', 'doLogout') && item(translate("Sign out"), 'logout', () => onLogout())}
+                    {engineChoiceAvailable(config) && item(t("Switch Engine"), 'link', () => switchEngine(onLogout))}
+                    {can('other', 'doLogout') && item(t("Sign out"), 'logout', () => onLogout())}
                 </DropdownMenu.Content>
             </DropdownMenu.Portal>
         </DropdownMenu.Root>
@@ -530,22 +530,22 @@ function StatusBar({ user, serverInfo, conn }: any) {
         : (configName && identity && identity !== configName
             ? `${configName} | ${identity}`
             : configName || identity || apiUrl());
-    let left = translate("Connecting…");
+    let left = t("Connecting…");
     // Live connection state outranks the one-shot identity fetch: the identity is
     // from load time, whereas this is how the last request actually went.
     if (conn.state === 'offline') {
-        left = translate("No network connection — showing the last data received");
+        left = t("No network connection — showing the last data received");
     } else if (conn.state === 'reconnecting') {
-        left = translate("Reconnecting to {value1}…", { value1: String(engine) });
+        left = t("Reconnecting to {value1}…", { value1: String(engine) });
     } else if (conn.state === 'unreachable') {
         left = conn.retryIn != null
-            ? translate("Engine unreachable at {engine} — retrying in {seconds}s", { engine: String(engine), seconds: conn.retryIn })
-            : translate("Engine unreachable at {engine}", { engine: String(engine) });
+            ? t("Engine unreachable at {engine} — retrying in {seconds}s", { engine: String(engine), seconds: conn.retryIn })
+            : t("Engine unreachable at {engine}", { engine: String(engine) });
     } else if (serverInfo && !serverInfo.error) {
         const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
-        left = translate("Connected to: {value1} as {value2}{value3}", { value1: String(engine), value2: String(user?.username || ''), value3: String(name ? ` (${name})` : '') });
+        left = t("Connected to: {value1} as {value2}{value3}", { value1: String(engine), value2: String(user?.username || ''), value3: String(name ? ` (${name})` : '') });
     } else if (serverInfo && serverInfo.error) {
-        left = translate("Engine unreachable at {value1}", { value1: String(engine) });
+        left = t("Engine unreachable at {value1}", { value1: String(engine) });
     }
     /* Still waiting on the first identity fetch: pulse rather than claim a state. */
     const pip = conn.state === 'ok' && !serverInfo ? 'busy' : (CONN_PIP as any)[conn.state];
@@ -560,11 +560,11 @@ function StatusBar({ user, serverInfo, conn }: any) {
                 <span className={'pip ' + pip} aria-hidden="true" />
                 {canRetry
                     ? <button type="button" className="status-text status-retry" onClick={conn.retryNow}
-                        title={translate("Retry the connection now instead of waiting for the countdown.")}>{left}</button>
+                        title={t("Retry the connection now instead of waiting for the countdown.")}>{left}</button>
                     : <span className="status-text">{left}</span>}
             </span>
             {compareAnchor && (
-                <span className="status-compare ml-auto" title={describeRef(compareAnchor)}>{richText("<e1>⇄</e1> selected for compare", { e1: (chunks: any) => <span aria-hidden="true">{chunks}</span> })}</span>
+                <span className="status-compare ml-auto" title={describeRef(compareAnchor)}>{tx("<e1>⇄</e1> selected for compare", { e1: (chunks: any) => <span aria-hidden="true">{chunks}</span> })}</span>
             )}
             <span className={compareAnchor ? '' : 'ml-auto'}>{clock}</span>
         </footer>
@@ -580,18 +580,18 @@ function RestartBanner() {
         <div className={'restart-banner' + (state === 'done' ? ' success' : '')}>
             {state === 'waiting' && <>
                 <span className="spinner" style={{ width: 13, height: 13 }} />
-                <span>{translate("Extension change staged — restart the engine to apply. Watching for the engine to come back…")}</span>
+                <span>{t("Extension change staged — restart the engine to apply. Watching for the engine to come back…")}</span>
             </>}
             {state === 'offline' && <>
                 <span className="spinner" style={{ width: 13, height: 13 }} />
-                <span>{translate("Engine is restarting…")}</span>
+                <span>{t("Engine is restarting…")}</span>
             </>}
             {state === 'done' && <>
                 <Icon name="check" size={14} />
-                <span>{translate("Engine restarted with updated extensions.")}</span>
-                <button className="btn btn-sm btn-primary" onClick={() => location.reload()}>{translate("Reload UI")}</button>
+                <span>{t("Engine restarted with updated extensions.")}</span>
+                <button className="btn btn-sm btn-primary" onClick={() => location.reload()}>{t("Reload UI")}</button>
             </>}
-            <button className="icon-btn" style={{ marginLeft: 'auto' }} title={translate("Dismiss")} onClick={dismiss}>
+            <button className="icon-btn" style={{ marginLeft: 'auto' }} title={t("Dismiss")} onClick={dismiss}>
                 <Icon name="x" size={13} />
             </button>
         </div>
@@ -630,7 +630,7 @@ function AppShell({ user, onLogout }: any) {
         return () => { cancelled = true; router.setOutlet(null); };
     }, []);
 
-    const railVersion = serverInfo && !serverInfo.error ? translate("engine v{value1}", { value1: String(serverInfo.version) }) : '';
+    const railVersion = serverInfo && !serverInfo.error ? t("engine v{value1}", { value1: String(serverInfo.version) }) : '';
     const railCollapsed = useStoreKey('railCollapsed');
     const [peek, setPeek] = useState<any>(null);
 
@@ -665,7 +665,7 @@ function AppShell({ user, onLogout }: any) {
                         collapsed: it is a banner lockup, illegible at 56px, and its inline width
                         would beat any CSS that tried to hide it. */}
                     {!railCollapsed && (
-                        <img src={appUrl('/assets/oie_logo_banner_text_white.svg')} alt={translate("Open Integration Engine")}
+                        <img src={appUrl('/assets/oie_logo_banner_text_white.svg')} alt={t("Open Integration Engine")}
                             style={{ width: '100%', height: 'auto', display: 'block' }} />
                     )}
                 </div>
@@ -708,7 +708,7 @@ function BootSplash() {
     return (
         <div className="boot-splash">
             <div className="boot-mark" />
-            <div className="boot-label">{translate("OPEN INTEGRATION ENGINE")}</div>
+            <div className="boot-label">{t("OPEN INTEGRATION ENGINE")}</div>
         </div>
     );
 }
@@ -718,12 +718,12 @@ function BootSplash() {
 function loginNotificationDialog(message: any) {
     return new Promise((resolve: any) => {
         modal({
-            title: translate("Login Notification"),
+            title: t("Login Notification"),
             body: h('div', { style: { whiteSpace: 'pre-wrap', maxWidth: '540px', maxHeight: '55vh', overflow: 'auto', lineHeight: '1.55' } }, String(message ?? '')),
             onClose: () => resolve(false),
             buttons: [
-                { label: translate("I Decline"), onClick: () => resolve(false) },
-                { label: translate("I Accept"), primary: true, onClick: () => resolve(true) }
+                { label: t("I Decline"), onClick: () => resolve(false) },
+                { label: t("I Accept"), primary: true, onClick: () => resolve(true) }
             ]
         });
     });
@@ -787,7 +787,7 @@ export function App() {
             try {
                 if (isIdleLocked()) {
                     holdAutoRedirect();
-                    store.setState('loginNotice', translate("You were signed out after a period of inactivity."));
+                    store.setState('loginNotice', t("You were signed out after a period of inactivity."));
                     return;
                 }
                 const u = await api.auth.current();
@@ -830,12 +830,12 @@ export function App() {
             // bar over the login card for the next person to read (#24).
             history.replaceState(null, '', routeUrl('/'));
         };
-        const off = onSessionExpired(() => dropToLogin(translate("Your session expired — please sign in again.")));
+        const off = onSessionExpired(() => dropToLogin(t("Your session expired — please sign in again.")));
         // The server refuses to route for this tab's remembered engine (421
         // ENGINE_UNKNOWN: the engine was removed or renamed — issue #53). Same
         // exit as expiry; the login screen's picker then demands an explicit
         // re-pick instead of guessing an engine.
-        const offEngine = onEngineUnknown(() => dropToLogin(translate("The engine you were signed in to is no longer available — choose an engine and sign in again.")));
+        const offEngine = onEngineUnknown(() => dropToLogin(t("The engine you were signed in to is no longer available — choose an engine and sign in again.")));
         return () => {
             alive = false; off(); offEngine();
             window.removeEventListener('oie-session-changed', sessionChanged);
@@ -858,7 +858,7 @@ export function App() {
                 const u = await api.auth.current();
                 if (!alive || !u || !u.username) return;
                 if (String(u.id) !== String(user.id)) {
-                    toast(translate("This browser is now signed in as {value1} — reloading", { value1: String(u.username) }), 'warn');
+                    toast(t("This browser is now signed in as {value1} — reloading", { value1: String(u.username) }), 'warn');
                     setTimeout(() => window.location.reload(), 800);
                 }
             } catch { /* expired/unreachable — the session-expiry flow handles it */ }
@@ -914,7 +914,7 @@ export function App() {
         try { await api.auth.logout(); }
         catch (e: any) {
             if (e.status !== 401) {
-                toast(translate("Sign-out failed. Your session may still be active. Please try again."), 'error');
+                toast(t("Sign-out failed. Your session may still be active. Please try again."), 'error');
                 return false;
             }
         }
@@ -949,7 +949,7 @@ export function App() {
                 if (!accepted) {
                     await api.auth.logout().catch(() => {});
                     // Inline on the login screen, like the other reasons we send someone back.
-                    store.setState('loginNotice', translate("Sign-in canceled — the notification must be accepted to continue."));
+                    store.setState('loginNotice', t("Sign-in canceled — the notification must be accepted to continue."));
                     return;
                 }
                 if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
@@ -974,9 +974,9 @@ export function App() {
         // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
         // accepted but the password is expiring — the engine's message says when.
         if (graceMessage != null) {
-            const change = await confirmDialog(translate("Password Expiring"),
-                graceMessage || translate("Your password is expiring soon. Do you want to change it now?"),
-                { okLabel: translate("Change Password") });
+            const change = await confirmDialog(t("Password Expiring"),
+                graceMessage || t("Your password is expiring soon. Do you want to change it now?"),
+                { okLabel: t("Change Password") });
             if (change) openChangePasswordModal(u);
         }
 
@@ -1018,7 +1018,7 @@ export function App() {
             store.setPrefScope(null, null);
             resetSessionExpired();
             history.replaceState(null, '', routeUrl('/'));
-            store.setState('loginNotice', translate("You were signed out after a period of inactivity."));
+            store.setState('loginNotice', t("You were signed out after a period of inactivity."));
             try { await revoked; } catch { /* local lock persists until a new sign-in */ }
             finally { setIdleRevoking(false); }
         });
@@ -1027,7 +1027,7 @@ export function App() {
     }, [user]);
 
     if (!authChecked) return <BootSplash />;
-    if (idleRevoking) return <div className="boot-splash" role="status">{translate("Session locked after inactivity. Finishing sign-out…")}</div>;
+    if (idleRevoking) return <div className="boot-splash" role="status">{t("Session locked after inactivity. Finishing sign-out…")}</div>;
     if (!user) return <LoginForm onSuccess={onLoginSuccess} />;
     return <AppShell user={user} onLogout={onLogout} />;
 }

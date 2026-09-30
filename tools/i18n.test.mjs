@@ -27,9 +27,9 @@ test('the literal ratchet inspects exported functions and excludes wrapped messa
 test('translation calls cannot replace XML selector names or wire-property literals', () => {
     for (const file of sourceFiles()) visit(astOf(file), (node, parent) => {
         if (node.type === 'VariableDeclarator' && node.id?.name === 'LANGUAGES') visit(node.init, child => {
-            if (child.type === 'CallExpression' && ['t','translate'].includes(child.callee?.name)) assert.fail(file + ': Monaco language IDs must remain literal');
+            if (child.type === 'CallExpression' && child.callee?.name === 't') assert.fail(file + ': Monaco language IDs must remain literal');
         });
-        if (node.type !== 'CallExpression' || !['t','tc','tx','translate','richText'].includes(node.callee?.name)) return;
+        if (node.type !== 'CallExpression' || !['t','tc','tx'].includes(node.callee?.name)) return;
         const where = file + ':' + node.loc.start.line;
         if(parent?.type==='CallExpression' && ['querySelector','querySelectorAll','getAttribute','getElementsByTagName','setAttribute'].includes(parent.callee?.property?.name))
             assert.notEqual(parent.arguments[0],node,where+' translates a structural selector');

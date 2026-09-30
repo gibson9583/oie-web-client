@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 import { confirmDialog } from '@oie/web-ui';
 import * as store from '../core/store.js';
 import { saveChannelModel } from '../core/channel-save.js';
@@ -16,13 +16,13 @@ export function channelSessionActive(): () => boolean {
     };
 }
 
-export const confirmLibraryOverwrite = () => confirmDialog(translate("Code Template Libraries Modified"),
-    translate("One or more code templates or libraries have been modified since you last refreshed. Do you want to overwrite the changes?"),
-    { danger: true, okLabel: translate("Overwrite") });
+export const confirmLibraryOverwrite = () => confirmDialog(t("Code Template Libraries Modified"),
+    t("One or more code templates or libraries have been modified since you last refreshed. Do you want to overwrite the changes?"),
+    { danger: true, okLabel: t("Overwrite") });
 
-export const confirmChannelOverwrite = () => confirmDialog(translate("Channel Modified"),
-    translate("This channel has been modified since you first opened it, or its edit timestamp could not be verified. Overwrite the saved channel with your changes?"),
-    { danger: true, okLabel: translate("Overwrite") });
+export const confirmChannelOverwrite = () => confirmDialog(t("Channel Modified"),
+    t("This channel has been modified since you first opened it, or its edit timestamp could not be verified. Overwrite the saved channel with your changes?"),
+    { danger: true, okLabel: t("Overwrite") });
 
 export async function persistChannelModel(channel: any): Promise<boolean> {
     const assertSession = captureEngineSession();
@@ -30,9 +30,9 @@ export async function persistChannelModel(channel: any): Promise<boolean> {
     const saved = await saveChannelModel(channel, {
         userId: store.getState('user')?.id,
         skipUnchanged: true,
-        confirmCreationRetry: () => confirmDialog(translate("Creation Outcome Unknown"),
-            translate("The previous create request did not return a result and the channel is not visible yet. The engine may still be processing it. Retry creation with the same channel ID?"),
-            { danger: true, okLabel: translate("Retry Creation") }),
+        confirmCreationRetry: () => confirmDialog(t("Creation Outcome Unknown"),
+            t("The previous create request did not return a result and the channel is not visible yet. The engine may still be processing it. Retry creation with the same channel ID?"),
+            { danger: true, okLabel: t("Retry Creation") }),
         confirmConflict: confirmChannelOverwrite
     });
     assertSession();

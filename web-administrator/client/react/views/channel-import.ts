@@ -1,4 +1,4 @@
-import { t as translate } from '../../core/i18n.js';
+import { t } from '../../core/i18n.js';
 type Model = Record<string, any>;
 
 function list(value: any, key: string): any[] {
@@ -48,7 +48,7 @@ export async function resolveGroupImport(current: Model[], imported: Model, call
             const id = callbacks.newId();
             if (id && id !== 'Default Group' && !current.some(candidate => candidate.id === id)) return id;
         }
-        throw new Error(translate("Could not allocate an unused channel group ID."));
+        throw new Error(t("Could not allocate an unused channel group ID."));
     };
     const match = current.find(candidate => candidate.name === group.name);
     if (match) {
@@ -80,7 +80,7 @@ export function applyGroupImports(current: Model[], baseline: Model[], imports: 
     if (current.length !== baseline.length || baseline.some(group => {
         const latest = current.find(candidate => candidate.id === group.id);
         return !latest || latest.revision !== group.revision || JSON.stringify(latest) !== JSON.stringify(group);
-    })) throw new Error(translate("Channel groups changed during import. Import again to review the latest groups. Channels already imported have been kept."));
+    })) throw new Error(t("Channel groups changed during import. Import again to review the latest groups. Channels already imported have been kept."));
     let groups = structuredClone(current);
     const removedIds = new Set<string>();
     for (const { group, replacedId } of imports) {
@@ -97,11 +97,11 @@ export function applyGroupImports(current: Model[], baseline: Model[], imports: 
 }
 
 export function bundledLibrarySaveError(result: any): string {
-    if (String(result?.overrideNeeded) === 'true') return translate("Libraries or code templates changed during import. Import again to review the latest server versions.");
-    if (String(result?.librariesSuccess) !== 'true') return result?.librariesCause?.detailMessage || translate("The library set could not be saved");
+    if (String(result?.overrideNeeded) === 'true') return t("Libraries or code templates changed during import. Import again to review the latest server versions.");
+    if (String(result?.librariesSuccess) !== 'true') return result?.librariesCause?.detailMessage || t("The library set could not be saved");
     const scan = (value: any): string => {
         if (!value || typeof value !== 'object') return '';
-        if (String(value.success) === 'false') return value.cause?.detailMessage || translate("A code template could not be saved");
+        if (String(value.success) === 'false') return value.cause?.detailMessage || t("A code template could not be saved");
         return Object.values(value).map(scan).find(Boolean) || '';
     };
     return scan(result.codeTemplateResults);

@@ -1,12 +1,12 @@
 // plugins/attachment-imageviewer/web/plugin.tsx
-import { scope as i18nScope } from "@oie/web-ui";
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
-var { t: translate } = i18nScope("attachment-imageviewer");
+var { t } = scope("attachment-imageviewer");
 var React = platform.React;
 var IMAGE_RE = /^image\/|(^|[^a-z])(png|jpe?g|gif|bmp|webp|svg|tiff?)([^a-z]|$)/i;
 function typeOf(att) {
-  const t = att && att.type;
-  return String(typeof t === "string" ? t : t && (t._ || t.$) || "").trim();
+  const t2 = att && att.type;
+  return String(typeof t2 === "string" ? t2 : t2 && (t2._ || t2.$) || "").trim();
 }
 function register(platform2) {
   function ImageViewer({ attachment, channelId, messageId, platform: platform3 }) {
@@ -35,15 +35,15 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id, key, platform3.api.messages, attempt, fallbackType]);
     if (state.key !== key || state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, translate("Loading image\u2026")));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, t("Loading image\u2026")));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, translate("Could not load image: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, translate("Retry")));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, t("Could not load image: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, t("Retry")));
     }
     return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement(
       "img",
       {
-        alt: translate("Message attachment"),
+        alt: t("Message attachment"),
         src: state.src,
         className: "max-w-full max-h-[540px] border border-[var(--bg3)] rounded-[4px]"
       }

@@ -1,4 +1,4 @@
-import { t as translate, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
+import { t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
 import { registerLoginAuthenticator } from './login-auth.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
@@ -274,7 +274,7 @@ export interface PluginManifest {
 }
 export declare const OIE_API_VERSION = "4.8.0";
 declare const i18n: Readonly<{
-    t: typeof translate;
+    t: typeof t;
     tc: typeof tc;
     tx: typeof tx;
     scope: typeof scope;

@@ -1,4 +1,4 @@
-import { t as translate, setLocaleChangeGuard, t } from './core/i18n.js';
+import { setLocaleChangeGuard, t } from './core/i18n.js';
 import { hasUnsavedWork } from './core/unsaved.js';
 import { getState } from './core/store.js';
 import { confirmDialog } from './core/ui.js';
@@ -54,7 +54,7 @@ setContextMenuRenderer(openRadixContextMenu as any);
 createRoot(document.getElementById('app')!).render(
     <StrictMode>
         <QueryClientProvider client={queryClient}>
-            <ErrorBoundary label={translate("The administrator failed to start")}>
+            <ErrorBoundary label={t("The administrator failed to start")}>
                 <App />
             </ErrorBoundary>
             {/* Outside <App> so these survive the auth gate swapping the tree. */}

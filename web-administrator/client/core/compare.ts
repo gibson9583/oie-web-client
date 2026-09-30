@@ -1,4 +1,4 @@
-import { t as translate } from './i18n.js';
+import { t } from './i18n.js';
 /*
  * Compare Messages — the selection state machine behind the message browser's
  * "Select for Compare" / "Compare with Selection…" workflow.
@@ -53,12 +53,12 @@ export interface ComparePair { left: CompareRef; right: CompareRef; }
 /* Stage order + labels, and the ConnectorMessage field each one reads. One
    table so the menus, the dropdowns and the fetch can never disagree. */
 export const COMPARE_STAGES: ReadonlyArray<{ type: CompareContentType; label: string; key: string }> = [
-    { type: 'RAW', label: translate("Raw"), key: 'raw' },
-    { type: 'PROCESSED_RAW', label: translate("Processed Raw"), key: 'processedRaw' },
-    { type: 'TRANSFORMED', label: translate("Transformed"), key: 'transformed' },
-    { type: 'ENCODED', label: translate("Encoded"), key: 'encoded' },
-    { type: 'SENT', label: translate("Sent"), key: 'sent' },
-    { type: 'RESPONSE', label: translate("Response"), key: 'response' }
+    { type: 'RAW', label: t("Raw"), key: 'raw' },
+    { type: 'PROCESSED_RAW', label: t("Processed Raw"), key: 'processedRaw' },
+    { type: 'TRANSFORMED', label: t("Transformed"), key: 'transformed' },
+    { type: 'ENCODED', label: t("Encoded"), key: 'encoded' },
+    { type: 'SENT', label: t("Sent"), key: 'sent' },
+    { type: 'RESPONSE', label: t("Response"), key: 'response' }
 ];
 
 const BY_TYPE = new Map(COMPARE_STAGES.map(s => [s.type, s]));
@@ -111,7 +111,7 @@ export function refFromConnectorMessage(
         channelName: channel.name ? String(channel.name) : undefined,
         messageId: Number(messageId),
         metaDataId,
-        connectorName: cm?.connectorName || (metaDataId === 0 ? translate("Source") : translate("Connector {id}", { id: metaDataId })),
+        connectorName: cm?.connectorName || (metaDataId === 0 ? t("Source") : t("Connector {id}", { id: metaDataId })),
         contentType,
         storedTypes,
         dataTypes
@@ -138,8 +138,8 @@ export function samePair(a: CompareRef | null, b: CompareRef | null): boolean {
  */
 export function describeRef(ref: CompareRef | null): string {
     if (!ref) return '';
-    const connector = ref.connectorName || translate("Connector {id}", { id: ref.metaDataId });
-    return translate("{channel} · Msg {message} · {connector} · {stage}", { channel: ref.channelName || ref.channelId, message: ref.messageId, connector, stage: stageLabel(ref.contentType) });
+    const connector = ref.connectorName || t("Connector {id}", { id: ref.metaDataId });
+    return t("{channel} · Msg {message} · {connector} · {stage}", { channel: ref.channelName || ref.channelId, message: ref.messageId, connector, stage: stageLabel(ref.contentType) });
 }
 
 /** True when both references are for the same message of the same channel. */

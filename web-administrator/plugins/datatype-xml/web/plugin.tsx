@@ -1,5 +1,5 @@
-import { scope as i18nScope } from '@oie/web-ui';
-const { t: translate } = i18nScope("datatype-xml");
+import { scope } from '@oie/web-ui';
+const { t } = scope("datatype-xml");
 /*
  * XML data type — web admin plugin (React, DataTypeClientPlugin equivalent).
  * Field/default shapes transcribed from the engine plugin
@@ -23,31 +23,31 @@ const bool = (key: any, label: any, def: any, hint?: any) => ({ key, label, type
 const opt = (key: any, label: any, options: any, def: any, hint?: any) => ({ key, label, type: 'select', options, default: def, hint });
 const code = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'code', default: def, hint });
 
-const BATCH_SCRIPT_HINT = translate("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
+const BATCH_SCRIPT_HINT = t("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 
 const DEF: any = {
-    name: 'XML', label: translate("XML"), order: 30,
+    name: 'XML', label: t("XML"), order: 30,
     propertiesClass: `${PKG}.XMLDataTypeProperties`,
     groups: [
         {
-            key: 'serializationProperties', label: translate("Serialization"),
+            key: 'serializationProperties', label: t("Serialization"),
             class: `${PKG}.XMLSerializationProperties`,
             fields: [
-                bool('stripNamespaces', translate("Strip Namespaces"), false, translate("Strip namespace definitions from the transformed XML message (prefixes are not removed)."))
+                bool('stripNamespaces', t("Strip Namespaces"), false, t("Strip namespace definitions from the transformed XML message (prefixes are not removed)."))
             ]
         },
         {
-            key: 'batchProperties', label: translate("Batch"), class: `${PKG}.XMLBatchProperties`,
+            key: 'batchProperties', label: t("Batch"), class: `${PKG}.XMLBatchProperties`,
             fields: [
-                opt('splitType', translate("Split Batch By"), [
-                    { value: 'Element_Name', label: translate("Element Name") },
-                    { value: 'Level', label: translate("Level") },
-                    { value: 'XPath_Query', label: translate("XPath Query") },
-                    { value: 'JavaScript', label: translate("JavaScript") }
-                ], 'Element_Name', translate("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")),
-                text('elementName', translate("Element Name"), null, translate("Each element with this name is split into its own message.")),
-                num('level', translate("Level"), 1, translate("Each element at this level is split into its own message (root element is level 0).")),
-                text('query', translate("XPath Query"), null, translate("Each element found with the XPath query is split into its own message.")),
+                opt('splitType', t("Split Batch By"), [
+                    { value: 'Element_Name', label: t("Element Name") },
+                    { value: 'Level', label: t("Level") },
+                    { value: 'XPath_Query', label: t("XPath Query") },
+                    { value: 'JavaScript', label: t("JavaScript") }
+                ], 'Element_Name', t("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")),
+                text('elementName', t("Element Name"), null, t("Each element with this name is split into its own message.")),
+                num('level', t("Level"), 1, t("Each element at this level is split into its own message (root element is level 0).")),
+                text('query', t("XPath Query"), null, t("Each element found with the XPath query is split into its own message.")),
                 code('batchScript', 'JavaScript', null, BATCH_SCRIPT_HINT)
             ]
         }

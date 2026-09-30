@@ -1,4 +1,4 @@
-import { t as translate, t } from './i18n.js';
+import { t } from './i18n.js';
 /*
  * Engine model helpers.
  *
@@ -118,20 +118,20 @@ export function messageStatusTag(status: string): 'accent' | 'red' | 'blue' | 'a
 /* ---- filter / transformer element types ---------------------------------------------- */
 
 export const STEP_TYPES: Record<string, { label: string }> = {
-    'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': { label: translate("JavaScript") },
-    'com.mirth.connect.plugins.mapper.MapperStep': { label: translate("Mapper") },
-    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': { label: translate("Message Builder") },
-    'com.mirth.connect.plugins.xsltstep.XsltStep': { label: translate("XSLT Step") },
-    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': { label: translate("Destination Set Filter") },
-    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': { label: translate("External Script") },
-    'com.mirth.connect.model.IteratorStep': { label: translate("Iterator") }
+    'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': { label: t("JavaScript") },
+    'com.mirth.connect.plugins.mapper.MapperStep': { label: t("Mapper") },
+    'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': { label: t("Message Builder") },
+    'com.mirth.connect.plugins.xsltstep.XsltStep': { label: t("XSLT Step") },
+    'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': { label: t("Destination Set Filter") },
+    'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': { label: t("External Script") },
+    'com.mirth.connect.model.IteratorStep': { label: t("Iterator") }
 };
 
 export const RULE_TYPES: Record<string, { label: string }> = {
-    'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': { label: translate("JavaScript") },
-    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': { label: translate("Rule Builder") },
-    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': { label: translate("External Script") },
-    'com.mirth.connect.model.IteratorRule': { label: translate("Iterator") }
+    'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': { label: t("JavaScript") },
+    'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': { label: t("Rule Builder") },
+    'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': { label: t("External Script") },
+    'com.mirth.connect.model.IteratorRule': { label: t("Iterator") }
 };
 
 export function elementTypeLabel(type: string): string {
@@ -382,14 +382,14 @@ export function encodeChannelTemplates<T>(channel: T): T {
    (the polymorphic type the engine needs to construct the connector). */
 function connectorProblems(connector: unknown, label: unknown, problems: string[]): void {
     if (!connector || typeof connector !== 'object') {
-        problems.push(translate("{value1} is missing", { value1: String(label) }));
+        problems.push(t("{value1} is missing", { value1: String(label) }));
         return;
     }
     const c = connector as OieObject;
-    if (!c.transportName) problems.push(translate("{value1} type is not set", { value1: String(label) }));
+    if (!c.transportName) problems.push(t("{value1} type is not set", { value1: String(label) }));
     const p = c.properties;
     if (!p || typeof p !== 'object' || !p['@class']) {
-        problems.push(translate("{value1} has no connector settings (properties are missing)", { value1: String(label) }));
+        problems.push(t("{value1} has no connector settings (properties are missing)", { value1: String(label) }));
     }
 }
 

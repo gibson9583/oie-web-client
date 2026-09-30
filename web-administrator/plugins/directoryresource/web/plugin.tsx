@@ -1,5 +1,5 @@
-import { scope as i18nScope } from '@oie/web-ui';
-const { t: translate, tx: richText } = i18nScope("directoryresource");
+import { scope } from '@oie/web-ui';
+const { t, tx } = scope("directoryresource");
 /*
  * Directory Resource — web admin plugin (directoryresource ResourceClientPlugin
  * equivalent, React). Registers the "Directory" resource type with the Settings →
@@ -55,13 +55,13 @@ export function register(platform: Platform) {
         }, [id, api]);
 
         if (state.phase === 'loading') {
-            return <div className="loading-block">{richText("{value1}Loading libraries…", { value1: <div className="spinner" /> })}</div>;
+            return <div className="loading-block">{tx("{value1}Loading libraries…", { value1: <div className="spinner" /> })}</div>;
         }
         if (state.phase === 'error') {
-            return <div className="text-text-faint">{translate("Library list unavailable")}</div>;
+            return <div className="text-text-faint">{t("Library list unavailable")}</div>;
         }
         if (!state.libs.length) {
-            return <div className="text-text-faint">{translate("No libraries loaded")}</div>;
+            return <div className="text-text-faint">{t("No libraries loaded")}</div>;
         }
         return (
             <ul className="m-0 pl-[16px] max-h-[162px] overflow-auto font-mono text-[11px]">
@@ -82,33 +82,33 @@ export function register(platform: Platform) {
         return (
             <div className="form-grid">
                 <div className="field">
-                    <label>{translate("Name")}</label>
+                    <label>{t("Name")}</label>
                     <input type="text" value={name} disabled={locked}
                         onInput={(e: any) => { obj.name = e.target.value; setName(e.target.value); }}
                         onChange={(e: any) => { obj.name = e.target.value; setName(e.target.value); }}
                         onBlur={() => { if (refreshTable) refreshTable(); }} />
-                    {locked ? <div className="hint">{translate("The Default Resource cannot be renamed")}</div> : null}
+                    {locked ? <div className="hint">{t("The Default Resource cannot be renamed")}</div> : null}
                 </div>
                 <div className="field">
-                    <label>{translate("Directory")}</label>
+                    <label>{t("Directory")}</label>
                     <input type="text" value={directory} disabled={locked}
                         onInput={(e: any) => { obj.directory = e.target.value; setDirectory(e.target.value); }}
                         onChange={(e: any) => { obj.directory = e.target.value; setDirectory(e.target.value); }} />
-                    {locked ? <div className="hint">{translate("The Default Resource directory cannot be changed")}</div> : null}
+                    {locked ? <div className="hint">{t("The Default Resource directory cannot be changed")}</div> : null}
                 </div>
                 <div className="field">
-                    <label>{translate("Subdirectories")}</label>
-                    <label className="check">{richText("{value1}Include All Subdirectories", { value1: <input type="checkbox" checked={recursion}
+                    <label>{t("Subdirectories")}</label>
+                    <label className="check">{tx("{value1}Include All Subdirectories", { value1: <input type="checkbox" checked={recursion}
                             onChange={(e: any) => { obj.directoryRecursion = e.target.checked; setRecursion(e.target.checked); }} /> })}</label>
                 </div>
                 <div className="field span-2">
-                    <label>{translate("Description")}</label>
+                    <label>{t("Description")}</label>
                     <textarea value={description}
                         onInput={(e: any) => { obj.description = e.target.value; setDescription(e.target.value); }}
                         onChange={(e: any) => { obj.description = e.target.value; setDescription(e.target.value); }} />
                 </div>
                 <div className="field span-2">
-                    <label>{translate("Loaded Libraries")}</label>
+                    <label>{t("Loaded Libraries")}</label>
                     <LoadedLibraries entry={entry} api={platform.api} />
                 </div>
             </div>
@@ -117,9 +117,9 @@ export function register(platform: Platform) {
 
     platform.registerResourceType('Directory', {
         type: 'Directory',
-        label: translate("Directory"),
+        label: t("Directory"),
         propertiesClass: DIRECTORY_RESOURCE_CLASS,
-        detailHeader: translate("Directory Settings"),
+        detailHeader: t("Directory Settings"),
 
         /* New directory resource. ctx: { version, containerIsArray } — version
            mirrors an existing entry so the engine doesn't migrate from scratch;

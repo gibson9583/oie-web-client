@@ -1,12 +1,12 @@
 // plugins/attachment-textviewer/web/plugin.tsx
-import { scope as i18nScope } from "@oie/web-ui";
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
-var { t: translate } = i18nScope("attachment-textviewer");
+var { t } = scope("attachment-textviewer");
 var React = platform.React;
 var TEXT_RE = /^text\/|xml|json|hl7|html|csv|plain|x-www-form/i;
 function typeOf(att) {
-  const t = att && att.type;
-  return String(typeof t === "string" ? t : t && (t._ || t.$) || "").trim();
+  const t2 = att && att.type;
+  return String(typeof t2 === "string" ? t2 : t2 && (t2._ || t2.$) || "").trim();
 }
 function register(platform2) {
   function TextViewer({ attachment, channelId, messageId, platform: platform3 }) {
@@ -41,10 +41,10 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id, key, platform3.api.messages, attempt]);
     if (state.key !== key || state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, translate("Loading text\u2026")));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, t("Loading text\u2026")));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, translate("Could not load text: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, translate("Retry")));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, t("Could not load text: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, t("Retry")));
     }
     return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement(
       "pre",

@@ -1,4 +1,4 @@
-import { t as translate } from '../../core/i18n.js';
+import { t } from '../../core/i18n.js';
 /*
  * Display preferences and tag rendering shared by the Dashboard and Channels
  * boards. Swing keeps ONE set of these user preferences for both panels
@@ -31,8 +31,8 @@ export function saveViewMode(mode: ViewMode) {
 }
 
 export const VIEW_MODE_OPTIONS = [
-    { value: 'group', icon: 'folder', title: translate("Group view") },
-    { value: 'channel', icon: 'channels', title: translate("Channel view") }
+    { value: 'group', icon: 'folder', title: t("Group view") },
+    { value: 'channel', icon: 'channels', title: t("Channel view") }
 ];
 
 /* Tags as names / icons / hidden — Swing's two tag-mode toggle buttons, where
@@ -47,9 +47,9 @@ export function saveTagMode(mode: TagMode) {
 }
 
 export const TAG_MODE_OPTIONS = [
-    { value: 'names', label: translate("Names"), title: translate("Show tags as names") },
-    { value: 'icons', label: translate("Icons"), title: translate("Show tags as icons") },
-    { value: 'off', label: translate("Off"), title: translate("Hide tags") }
+    { value: 'names', label: t("Names"), title: t("Show tags as names") },
+    { value: 'icons', label: t("Icons"), title: t("Show tags as icons") },
+    { value: 'off', label: t("Off"), title: t("Hide tags") }
 ];
 
 /* ChannelTag backgroundColor arrives as {red, green, blue, alpha}. */

@@ -1,5 +1,5 @@
-import { scope as i18nScope } from '@oie/web-ui';
-const { t: translate } = i18nScope("attachment-textviewer");
+import { scope } from '@oie/web-ui';
+const { t } = scope("attachment-textviewer");
 /*
  * Text attachment viewer — web admin plugin (AttachmentViewer equivalent, React).
  * Decodes the Base64 content and shows it as text.
@@ -59,15 +59,15 @@ export function register(platform: Platform) {
         if (state.key !== key || state.status === 'loading') {
             return (
                 <div className="mt-[13px]">
-                    <div className="text-text-faint text-[10px] mb-1">{translate("Loading text…")}</div>
+                    <div className="text-text-faint text-[10px] mb-1">{t("Loading text…")}</div>
                 </div>
             );
         }
         if (state.status === 'error') {
             return (
                 <div className="mt-[13px]">
-                    <div className="text-text-faint">{translate("Could not load text: {value1}", { value1: String(state.message) })}</div>
-                    <button type="button" className="btn" onClick={() => retry()}>{translate("Retry")}</button>
+                    <div className="text-text-faint">{t("Could not load text: {value1}", { value1: String(state.message) })}</div>
+                    <button type="button" className="btn" onClick={() => retry()}>{t("Retry")}</button>
                 </div>
             );
         }

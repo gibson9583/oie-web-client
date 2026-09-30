@@ -1,4 +1,4 @@
-import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
+import { t, tx, compareText } from '../../core/i18n.js';
 /*
  * Channels view (React port of the LIST half of views/channels.js). The Swing
  * channel panel is a GROUPED TREE-TABLE — channels listed under their channel
@@ -58,14 +58,14 @@ import type { ViewMode, TagMode } from './channel-display.jsx';
 // default widths. Order/visibility/widths are persisted by TreeTable's column
 // manager under the same 'channels' key the legacy grid used.
 const CHANNEL_COLUMNS = [
-    { key: 'status', label: translate("Status"), width: 140 },   // tree column: carries the depth indent + twisty spacer + pip, so needs room for "Disabled"/"Invalid"
-    { key: 'dataType', label: translate("Data Type"), width: 95 },
-    { key: 'name', label: translate("Name"), width: 280 },
-    { key: 'id', label: translate("Id"), width: 250 },
-    { key: 'description', label: translate("Description"), width: 240 },
-    { key: 'revDelta', label: translate("Rev Δ"), width: 60 },
-    { key: 'lastDeployed', label: translate("Last Deployed"), width: 150 },
-    { key: 'lastModified', label: translate("Last Modified"), width: 150 }
+    { key: 'status', label: t("Status"), width: 140 },   // tree column: carries the depth indent + twisty spacer + pip, so needs room for "Disabled"/"Invalid"
+    { key: 'dataType', label: t("Data Type"), width: 95 },
+    { key: 'name', label: t("Name"), width: 280 },
+    { key: 'id', label: t("Id"), width: 250 },
+    { key: 'description', label: t("Description"), width: 240 },
+    { key: 'revDelta', label: t("Rev Δ"), width: 60 },
+    { key: 'lastDeployed', label: t("Last Deployed"), width: 150 },
+    { key: 'lastModified', label: t("Last Modified"), width: 150 }
 ];
 const CHANNEL_COL_WIDTHS = Object.fromEntries(CHANNEL_COLUMNS.map(c => [c.key, c.width]));
 
@@ -81,8 +81,8 @@ const ENGINE_DEFAULT_GROUP_NAME = '[Default Group]';
 // OK-only warning (Swing alertWarning).
 function alertWarning(message: any) {
     return new Promise(resolve => modal({
-        title: translate("Warning"), body: h('div', String(message)), onClose: resolve as any,
-        buttons: [{ label: translate("OK"), primary: true, onClick: resolve as any }]
+        title: t("Warning"), body: h('div', String(message)), onClose: resolve as any,
+        buttons: [{ label: t("OK"), primary: true, onClick: resolve as any }]
     }));
 }
 
@@ -90,10 +90,10 @@ function alertWarning(message: any) {
 // message's \n line breaks the way JOptionPane does.
 function alertInformation(message: any) {
     return new Promise(resolve => modal({
-        title: translate("Information"),
+        title: t("Information"),
         body: h('div', { style: 'white-space: pre-line' }, String(message)),
         onClose: resolve as any,
-        buttons: [{ label: translate("OK"), primary: true, onClick: resolve as any }]
+        buttons: [{ label: t("OK"), primary: true, onClick: resolve as any }]
     }));
 }
 
@@ -102,8 +102,8 @@ function optionYesNo(title: any, message: any) {
     return new Promise(resolve => modal({
         title, body: h('div', { style: 'white-space: pre-line' }, String(message)), onClose: () => resolve(false),
         buttons: [
-            { label: translate("No"), onClick: () => resolve(false) },
-            { label: translate("Yes"), primary: true, onClick: () => resolve(true) }
+            { label: t("No"), onClick: () => resolve(false) },
+            { label: t("Yes"), primary: true, onClick: () => resolve(true) }
         ]
     }));
 }
@@ -120,19 +120,19 @@ function promptImportLibraries(objectName: any, count: any, objectType = 'Channe
         const always = h('input', { type: 'checkbox' });
         const remember = (choice: any) => { if ((always as any).checked) setPrefs({ importLibrariesWithChannels: choice }); return choice; };
         modal({
-            title: objectType === 'Group' ? translate('Import Group') : translate('Import Channel'),
+            title: objectType === 'Group' ? t('Import Group') : t('Import Channel'),
             body: h('div',
                 h('div', { class: 'mb-2.5' },
                     objectType === 'Group'
-                        ? translate('{count, plural, one {Group "{name}" has a code template library included with it. Would you like to import it?} other {Group "{name}" has code template libraries included with it. Would you like to import them?}}', { count, name: objectName })
-                        : translate('{count, plural, one {Channel "{name}" has a code template library included with it. Would you like to import it?} other {Channel "{name}" has code template libraries included with it. Would you like to import them?}}', { count, name: objectName })),
+                        ? t('{count, plural, one {Group "{name}" has a code template library included with it. Would you like to import it?} other {Group "{name}" has code template libraries included with it. Would you like to import them?}}', { count, name: objectName })
+                        : t('{count, plural, one {Channel "{name}" has a code template library included with it. Would you like to import it?} other {Channel "{name}" has code template libraries included with it. Would you like to import them?}}', { count, name: objectName })),
                 h('label', { class: 'flex items-center gap-1.5 text-[11px]' },
-                    always, translate("Always choose this option by default in the future (may be changed in Settings)"))),
+                    always, t("Always choose this option by default in the future (may be changed in Settings)"))),
             onClose: () => resolve('cancel'),
             buttons: [
-                { label: translate("Cancel"), onClick: () => resolve('cancel') },
-                { label: translate("No"), onClick: () => resolve(remember('no')) },
-                { label: translate("Yes"), primary: true, onClick: () => resolve(remember('yes')) }
+                { label: t("Cancel"), onClick: () => resolve('cancel') },
+                { label: t("No"), onClick: () => resolve(remember('no')) },
+                { label: t("Yes"), primary: true, onClick: () => resolve(remember('yes')) }
             ]
         });
     });
@@ -149,7 +149,7 @@ async function linkedLibraryNames(channelIds: any[]) {
         const disabled = new Set(idSet(lib.disabledChannelIds));
         return ids.some(id => enabled.has(id) || (lib.includeNewChannels === true && !disabled.has(id)));
     })
-        .map(lib => lib.name || translate("(unnamed library)"));
+        .map(lib => lib.name || t("(unnamed library)"));
 }
 
 // Swing channel-export dialog: lists the linked libraries and asks whether to
@@ -160,19 +160,19 @@ function promptExportLibraries(names: any) {
         const always = h('input', { type: 'checkbox' });
         const remember = (choice: any) => { if ((always as any).checked) setPrefs({ exportLibrariesWithChannels: choice }); return choice; };
         modal({
-            title: translate("Export Channel"),
+            title: t("Export Channel"),
             body: h('div',
-                h('div', { class: 'mb-1.5' }, translate("The following code template libraries are linked to this channel:")),
+                h('div', { class: 'mb-1.5' }, t("The following code template libraries are linked to this channel:")),
                 h('div', { class: 'border border-line rounded-[4px] bg-bg1 py-1.5 px-2.5 max-h-[126px] overflow-auto' },
                     h('ul', { class: 'm-0 pl-[16px]' }, names.map((n: any) => h('li', n)))),
-                h('div', { class: 'mt-2.5 mx-0 mb-2' }, translate("Do you wish to include these libraries in the channel export?")),
+                h('div', { class: 'mt-2.5 mx-0 mb-2' }, t("Do you wish to include these libraries in the channel export?")),
                 h('label', { class: 'flex items-center gap-1.5 text-[11px]' },
-                    always, translate("Always choose this option by default in the future (may be changed in Settings)"))),
+                    always, t("Always choose this option by default in the future (may be changed in Settings)"))),
             onClose: () => resolve('cancel'),
             buttons: [
-                { label: translate("Cancel"), onClick: () => resolve('cancel') },
-                { label: translate("No"), onClick: () => resolve(remember('no')) },
-                { label: translate("Yes"), primary: true, onClick: () => resolve(remember('yes')) }
+                { label: t("Cancel"), onClick: () => resolve('cancel') },
+                { label: t("No"), onClick: () => resolve(remember('no')) },
+                { label: t("Yes"), primary: true, onClick: () => resolve(remember('yes')) }
             ]
         });
     });
@@ -191,7 +191,7 @@ async function chooseExportLibraries(channelIds: any[], assertSession: () => voi
         // Code-template viewing is independently authorized. Swing consults its
         // cache and still exports the channel when that data is unavailable; keep
         // the backup usable while making the omitted libraries explicit.
-        toast(translate("Could not check linked code template libraries: {value1}. Exporting without them.", { value1: String(e.message || e) }), 'warn');
+        toast(t("Could not check linked code template libraries: {value1}. Exporting without them.", { value1: String(e.message || e) }), 'warn');
         return false;
     }
     if (!names.length) return false;
@@ -230,22 +230,22 @@ async function resolveImportName(name: any, id: any, existing: any, assertSessio
         String(c.name || '').toLowerCase() === String(n).toLowerCase() && c.id !== candidateId);
 
     async function checkName(n: any, candidateId: any) {
-        if (!n) { await alertWarning(translate("Channel name cannot be empty.")); assertSession(); return false; }
-        if (n.length > 40) { await alertWarning(translate("Channel name cannot be longer than 40 characters.")); assertSession(); return false; }
-        if (!CHANNEL_NAME_RE.test(n)) { await alertWarning(translate("Channel name cannot have special characters besides hyphen, underscore, and space.")); assertSession(); return false; }
-        if (nameClash(n, candidateId)) { await alertWarning(translate("Channel \"{value1}\" already exists.", { value1: String(n) })); assertSession(); return false; }
+        if (!n) { await alertWarning(t("Channel name cannot be empty.")); assertSession(); return false; }
+        if (n.length > 40) { await alertWarning(t("Channel name cannot be longer than 40 characters.")); assertSession(); return false; }
+        if (!CHANNEL_NAME_RE.test(n)) { await alertWarning(t("Channel name cannot have special characters besides hyphen, underscore, and space.")); assertSession(); return false; }
+        if (nameClash(n, candidateId)) { await alertWarning(t("Channel \"{value1}\" already exists.", { value1: String(n) })); assertSession(); return false; }
         return true;
     }
 
     const validName = await checkName(name, tempId);
     assertSession();
     if (!validName) {
-        const overwrite = await optionYesNo(translate("Import Channel"), translate("Would you like to overwrite the existing channel?  Choose ''No'' to create a new channel."));
+        const overwrite = await optionYesNo(t("Import Channel"), t("Would you like to overwrite the existing channel?  Choose ''No'' to create a new channel."));
         assertSession();
         if (!overwrite) {
             let newName = name;
             do {
-                newName = await promptDialog(translate("Import Channel"), translate("Please enter a new name for the channel."), newName);
+                newName = await promptDialog(t("Import Channel"), t("Please enter a new name for the channel."), newName);
                 assertSession();
                 if (newName == null) return null;             // Cancel → abort
             } while (!(await checkName(newName, tempId)));
@@ -327,7 +327,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
     assertSession();
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror') || doc.documentElement.nodeName !== 'channel') {
-        throw new Error(translate("Not a valid channel XML file"));
+        throw new Error(t("Not a valid channel XML file"));
     }
     const channelEl = doc.documentElement;
     // Swing promptObjectMigration: block newer-than-server exports (alertInformation),
@@ -339,7 +339,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
             await alertInformation(verdict.message);
             return false;
         }
-        if (verdict.action === 'confirm' && !await optionYesNo(translate("Select an Option"), verdict.message)) {
+        if (verdict.action === 'confirm' && !await optionYesNo(t("Select an Option"), verdict.message)) {
             return false;
         }
     }
@@ -409,7 +409,7 @@ async function importChannelXml(xml: any, existing: any, { checkVersion = true, 
             assertSession();
             // Swing reports this failure but still allows the channel import to
             // continue, so retain that partial-completion behavior explicitly.
-            toast(translate("Unable to save channel dependencies: {value1}", { value1: String(e.message || e) }), 'error');
+            toast(t("Unable to save channel dependencies: {value1}", { value1: String(e.message || e) }), 'error');
         }
     }
     dependentIdsEl?.remove();
@@ -463,7 +463,7 @@ async function importLibraryObjectsJson(imported: any[], assertSession: () => vo
         invalidateCompletions();
         try { await api.codeTemplates.libraries(true); } catch { /* Preserve the original save failure. */ }
         assertSession();
-        throw new Error(translate("{value1}. Code template libraries may have been partly saved; review them before retrying.", { value1: String(error.message || error) }));
+        throw new Error(t("{value1}. Code template libraries may have been partly saved; review them before retrying.", { value1: String(error.message || error) }));
     }
     invalidateCompletions();
 }
@@ -566,7 +566,7 @@ export function ChannelsView() {
         rows.push({
             id: DEFAULT_GROUP_ID,
             name: 'Default Group',
-            description: translate("Channels not part of a group will appear here."),
+            description: t("Channels not part of a group will appear here."),
             channels: channels.filter(c => !claimed.has(c.id))
         });
         return rows;
@@ -594,10 +594,10 @@ export function ChannelsView() {
     }
 
     function statusCell(channel: any) {
-        if (isInvalid(channel)) return <span className="status-cell">{richText("{value1}Invalid", { value1: <span className="pip err" /> })}</span>;
+        if (isInvalid(channel)) return <span className="status-cell">{tx("{value1}Invalid", { value1: <span className="pip err" /> })}</span>;
         return isEnabled(channel)
-            ? <span className="status-cell">{richText("{value1}Enabled", { value1: <span className="pip ok" /> })}</span>
-            : <span className="status-cell"><span className="pip" /><span className="text-text-dim">{translate("Disabled")}</span></span>;
+            ? <span className="status-cell">{tx("{value1}Enabled", { value1: <span className="pip ok" /> })}</span>
+            : <span className="status-cell"><span className="pip" /><span className="text-text-dim">{t("Disabled")}</span></span>;
     }
 
     // Channel name + tag chips (names, icons, or none per the Tags toggle). The
@@ -636,9 +636,9 @@ export function ChannelsView() {
         const outOfSync = delta! > 0 || ctChanged;
         if (delta === null) return '--';
         if (!outOfSync) return '0';
-        const revTitle = delta > 0 && ctChanged ? translate("Channel and code templates changed since last deployment")
-            : delta > 0 ? translate("Channel changed since last deployment")
-                : translate("Code templates changed since last deployment");
+        const revTitle = delta > 0 && ctChanged ? t("Channel and code templates changed since last deployment")
+            : delta > 0 ? t("Channel changed since last deployment")
+                : t("Code templates changed since last deployment");
         return <span className="cell-flag" title={revTitle}>{String(delta)}</span>;
     }
 
@@ -693,10 +693,10 @@ export function ChannelsView() {
                     case 'status': return isGroup ? '' : statusCell(n.channel);
                     case 'dataType': return isGroup ? '' : (n.channel.sourceConnector?.transformer?.inboundDataType || '');
                     case 'name': return isGroup
-                        ? <span className="font-bold">{n.group.id === DEFAULT_GROUP_ID ? translate("[Default Group]") : `[${n.group.name}]`}</span>
+                        ? <span className="font-bold">{n.group.id === DEFAULT_GROUP_ID ? t("[Default Group]") : `[${n.group.name}]`}</span>
                         : nameCell(n.channel);
                     case 'id': return isGroup
-                        ? <span className="text-text-faint">{n.group.id === DEFAULT_GROUP_ID ? translate("Default Group") : (n.group.id || '--')}</span>
+                        ? <span className="text-text-faint">{n.group.id === DEFAULT_GROUP_ID ? t("Default Group") : (n.group.id || '--')}</span>
                         : <span className="text-text-faint">{n.channel.id || ''}</span>;
                     case 'description': return isGroup
                         ? <span className="text-text-dim">{descriptionCell(n.group.description)}</span>
@@ -773,16 +773,16 @@ export function ChannelsView() {
         // Group tasks exist only in Group view (Swing drops the Group Tasks pane
         // in channel mode).
         contextMenu(e.clientX, e.clientY, [
-            { label: translate("Refresh"), icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
             '-',
-            { label: translate("New Channel"), icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
-            { label: translate("Import Channel"), icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
-            { label: translate("Export All Channels"), icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
+            { label: t("New Channel"), icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
+            { label: t("Import Channel"), icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
+            { label: t("Export All Channels"), icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
             ...(groupView ? [
                 '-' as const,
-                { label: translate("New Group"), icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
-                { label: translate("Import Group"), icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
-                { label: translate("Export All Groups"), icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() }
+                { label: t("New Group"), icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
+                { label: t("Import Group"), icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
+                { label: t("Export All Groups"), icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() }
             ] : [])
         ]);
     }
@@ -794,17 +794,17 @@ export function ChannelsView() {
             const isRealGroup = node.group.id !== DEFAULT_GROUP_ID;
             const group = node.group.group || node.group;   // the raw engine group object
             contextMenu(e.clientX, e.clientY, [
-                { label: translate("Refresh"), icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
+                { label: t("Refresh"), icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
                 '-',
-                { label: translate("New Group"), icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
-                { label: translate("Edit Group Details"), icon: 'edit', task: 'doEditGroupDetails', group: 'channelGroup', hidden: !isRealGroup, onClick: () => editGroupTask(group) },
-                { label: translate("Delete Group"), icon: 'trash', danger: true, task: 'doDeleteGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => deleteGroupTask(group) },
+                { label: t("New Group"), icon: 'plus', task: 'doNewGroup', group: 'channelGroup', onClick: () => newGroupTask() },
+                { label: t("Edit Group Details"), icon: 'edit', task: 'doEditGroupDetails', group: 'channelGroup', hidden: !isRealGroup, onClick: () => editGroupTask(group) },
+                { label: t("Delete Group"), icon: 'trash', danger: true, task: 'doDeleteGroup', group: 'channelGroup', hidden: !isRealGroup, onClick: () => deleteGroupTask(group) },
                 '-',
-                { label: translate("Import Group"), icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
-                { label: translate("Export Group"), icon: 'export', task: 'doExportGroup', group: 'channelGroup', onClick: () => exportGroupTask(group) },
-                { label: translate("Export All Groups"), icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() },
+                { label: t("Import Group"), icon: 'import', task: 'doImportGroup', group: 'channelGroup', onClick: () => importGroupTask() },
+                { label: t("Export Group"), icon: 'export', task: 'doExportGroup', group: 'channelGroup', onClick: () => exportGroupTask(group) },
+                { label: t("Export All Groups"), icon: 'export', task: 'doExportAllGroups', group: 'channelGroup', onClick: () => exportGroupsTask() },
                 '-',
-                { label: translate("New Channel"), icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() }
+                { label: t("New Channel"), icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() }
             ]);
             return;
         }
@@ -839,26 +839,26 @@ export function ChannelsView() {
         const anyEnabled = rows.some(isEnabled);
         const anyDisabled = rows.some((c: any) => !isEnabled(c));
         contextMenu(e.clientX, e.clientY, [
-            { label: translate("Refresh"), icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
-            { label: translate("Redeploy All"), icon: 'deploy', task: 'doRedeployAll', group: 'channel', onClick: () => redeployAllTask() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshChannels', group: 'channel', onClick: () => refresh() },
+            { label: t("Redeploy All"), icon: 'deploy', task: 'doRedeployAll', group: 'channel', onClick: () => redeployAllTask() },
             '-',
-            { label: translate("New Channel"), icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
-            { label: translate("Import Channel"), icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
-            { label: translate("Export All Channels"), icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
+            { label: t("New Channel"), icon: 'plus', task: 'doNewChannel', group: 'channel', onClick: () => newTask() },
+            { label: t("Import Channel"), icon: 'import', task: 'doImportChannel', group: 'channel', onClick: () => importTask() },
+            { label: t("Export All Channels"), icon: 'export', task: 'doExportAllChannels', group: 'channel', onClick: () => exportAllTask() },
             '-',
-            { label: translate("Edit Channel"), icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${channel.id}/edit`) },
-            { label: translate("View Messages"), icon: 'messages', task: 'doViewMessages', group: 'channel', onClick: () => messagesTask(rows) },
+            { label: t("Edit Channel"), icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${channel.id}/edit`) },
+            { label: t("View Messages"), icon: 'messages', task: 'doViewMessages', group: 'channel', onClick: () => messagesTask(rows) },
             '-',
-            { label: translate("Deploy Channel"), icon: 'deploy', task: 'doDeployChannel', group: 'channel', hidden: !anyEnabled, onClick: () => deployTask(rows) },
-            { label: translate("Enable Channel"), icon: 'check', task: 'doEnableChannel', group: 'channel', hidden: !anyDisabled, onClick: () => setEnabledTask(true, rows) },
-            { label: translate("Disable Channel"), icon: 'x', task: 'doDisableChannel', group: 'channel', hidden: !anyEnabled, onClick: () => setEnabledTask(false, rows) },
+            { label: t("Deploy Channel"), icon: 'deploy', task: 'doDeployChannel', group: 'channel', hidden: !anyEnabled, onClick: () => deployTask(rows) },
+            { label: t("Enable Channel"), icon: 'check', task: 'doEnableChannel', group: 'channel', hidden: !anyDisabled, onClick: () => setEnabledTask(true, rows) },
+            { label: t("Disable Channel"), icon: 'x', task: 'doDisableChannel', group: 'channel', hidden: !anyEnabled, onClick: () => setEnabledTask(false, rows) },
             '-',
-            { label: translate("Clone Channel"), icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask(rows) },
-            { label: translate("Export Channel"), icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask(rows) },
-            { label: translate("Move to Group…"), icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', hidden: !groupView, onClick: () => moveToGroupTask(rows) },
+            { label: t("Clone Channel"), icon: 'copy', task: 'doCloneChannel', group: 'channel', onClick: () => cloneTask(rows) },
+            { label: t("Export Channel"), icon: 'export', task: 'doExportChannel', group: 'channel', onClick: () => exportTask(rows) },
+            { label: t("Move to Group…"), icon: 'folder', task: 'doAssignChannelToGroup', group: 'channelGroup', hidden: !groupView, onClick: () => moveToGroupTask(rows) },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
             '-',
-            { label: translate("Delete Channel"), icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask(rows) }
+            { label: t("Delete Channel"), icon: 'trash', danger: true, task: 'doDeleteChannel', group: 'channel', onClick: () => deleteTask(rows) }
         ]);
     }
 
@@ -871,9 +871,9 @@ export function ChannelsView() {
         if (!id) return;
         const ids = selected.has(id) ? new Set(selected) : new Set([id]);
         const names = channels.filter(c => ids.has(c.id)).map(c => c.name).join(', ');
-        if (await confirmDialog(translate("Move to Group"),
-            translate("Move {value1} to [{value2}]?", { value1: String(ids.size === 1 ? `"${names}"` : translate("{count, plural, one {# channel} other {# channels}}", { count: ids.size })), value2: toNode.group.id === DEFAULT_GROUP_ID ? translate("Default Group") : String(toNode.group.name) }),
-            { okLabel: translate("Move") })) {
+        if (await confirmDialog(t("Move to Group"),
+            t("Move {value1} to [{value2}]?", { value1: String(ids.size === 1 ? `"${names}"` : t("{count, plural, one {# channel} other {# channels}}", { count: ids.size })), value2: toNode.group.id === DEFAULT_GROUP_ID ? t("Default Group") : String(toNode.group.name) }),
+            { okLabel: t("Move") })) {
             await moveChannelsToGroup(ids, toNode.group.id);
         }
     }
@@ -940,7 +940,7 @@ export function ChannelsView() {
         if (failures.length) {
             const message = failures.join('; ');
             setLoadError(message);
-            toast(translate("Failed to load {value1}", { value1: String(message) }), 'error');
+            toast(t("Failed to load {value1}", { value1: String(message) }), 'error');
         } else {
             setLoadError(null);
         }
@@ -964,25 +964,25 @@ export function ChannelsView() {
     }
 
     const requireSingle = (rows: any) => {
-        if (rows.length !== 1) { toast(translate("Select a single channel"), 'warn'); return null; }
+        if (rows.length !== 1) { toast(t("Select a single channel"), 'warn'); return null; }
         return rows[0];
     };
 
     const requireAny = (rows: any) => {
-        if (!rows.length) { toast(translate("Select a channel first"), 'warn'); return null; }
+        if (!rows.length) { toast(t("Select a channel first"), 'warn'); return null; }
         return rows;
     };
 
     /* ---- channel tasks ----------------------------------------------------------- */
 
     async function redeployAllTask() {
-        if (!await confirmDialog(translate("Redeploy All"), translate("Undeploy and redeploy all channels?"), { okLabel: translate("Redeploy") })) return;
+        if (!await confirmDialog(t("Redeploy All"), t("Undeploy and redeploy all channels?"), { okLabel: t("Redeploy") })) return;
         try {
             await api.engine.redeployAll();
-            toast(translate("Redeploying all channels"));
+            toast(t("Redeploying all channels"));
             router.navigate('/dashboard');
         } catch (e: any) {
-            errorModal(translate("Redeploy Failed"), e);
+            errorModal(t("Redeploy Failed"), e);
         }
     }
 
@@ -1019,14 +1019,14 @@ export function ChannelsView() {
         }, icon(iconName, 20),
             h('div', h('div', { class: 'font-semibold' }, title), h('div.hint', desc)));
         const m = modal({
-            title: translate("New Channel"),
+            title: t("New Channel"),
             body: h('div', { class: 'flex flex-col gap-2.5 min-w-[396px]' },
-                card('classic', 'edit', translate("Classic editor"), translate("The full tabbed editor — every option on one screen.")),
-                card('guided', 'wand', translate("Wizard"), translate("A step-by-step guided builder: dependencies, options, source, destinations, filters and transforms.")),
+                card('classic', 'edit', t("Classic editor"), t("The full tabbed editor — every option on one screen.")),
+                card('guided', 'wand', t("Wizard"), t("A step-by-step guided builder: dependencies, options, source, destinations, filters and transforms.")),
                 h('label', { class: 'flex items-center gap-2 mt-2 text-text-dim' },
                     h('input', { type: 'checkbox', onChange: (e: any) => { remember = e.target.checked; } }),
-                    translate("Remember my choice (set as default)"))),
-            buttons: [{ label: translate("Cancel") }]
+                    t("Remember my choice (set as default)"))),
+            buttons: [{ label: t("Cancel") }]
         });
     }
 
@@ -1082,7 +1082,7 @@ export function ChannelsView() {
                 if (!saved) return;
             }
             pendingImportRef.current = null;
-            toast(translate("Imported {value1}", { value1: String(file.name) }));
+            toast(t("Imported {value1}", { value1: String(file.name) }));
             await refresh();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
@@ -1120,7 +1120,7 @@ export function ChannelsView() {
     async function exportAllTask() {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
-        if (!channels.length) { toast(translate("No channels to export"), 'warn'); return; }
+        if (!channels.length) { toast(t("No channels to export"), 'warn'); return; }
         try {
             const includeLibs = await chooseExportLibraries(channels.map(channel => channel.id), assertSession);
             assertSession();
@@ -1128,13 +1128,13 @@ export function ChannelsView() {
             await saveFile('channels.zip', 'application/zip', async () => {
                 const xml = await api.getXml('/channels', includeLibs ? { includeCodeTemplateLibraries: true } : undefined, { timeoutMs: null });
                 const doc = new DOMParser().parseFromString(xml, 'text/xml');
-                if (doc.querySelector('parsererror')) throw new Error(translate("Engine returned invalid channel XML"));
+                if (doc.querySelector('parsererror')) throw new Error(t("Engine returned invalid channel XML"));
                 const root = doc.documentElement;
                 const elements = channelXmlElements(root);
                 const returnedIds = new Set(elements.map(element =>
                     [...element.children].find(c => c.tagName === 'id')?.textContent).filter(Boolean));
                 const missing = channels.filter(channel => !returnedIds.has(String(channel.id)));
-                if (missing.length) throw new Error(translate("{value2, plural, one {The engine omitted {value1} channel from the export} other {The engine omitted {value1} channels from the export}}", { value1: String(missing.length), value2: missing.length }));
+                if (missing.length) throw new Error(t("{value2, plural, one {The engine omitted {value1} channel from the export} other {The engine omitted {value1} channels from the export}}", { value1: String(missing.length), value2: missing.length }));
                 const zip = createZip();
                 const used = new Set<string>();
                 for (const element of elements) {
@@ -1160,7 +1160,7 @@ export function ChannelsView() {
             copy.name = `${channel.name} copy`;
             copy.revision = 0;
             await api.channels.create(copy);
-            toast(translate("Cloned {value1}", { value1: String(channel.name) }));
+            toast(t("Cloned {value1}", { value1: String(channel.name) }));
             refresh();
         } catch (e: any) {
             toast(e.message, 'error');
@@ -1170,7 +1170,7 @@ export function ChannelsView() {
     async function deleteTask(selRows: any) {
         const rows = requireAny(selRows);
         if (!rows) return;
-        if (!await confirmDialog(translate("Delete channels"), translate("Permanently delete {value1} channel(s)? This cannot be undone.", { value1: String(rows.length) }), { danger: true, okLabel: translate("Delete") })) return;
+        if (!await confirmDialog(t("Delete channels"), t("Permanently delete {value1} channel(s)? This cannot be undone.", { value1: String(rows.length) }), { danger: true, okLabel: t("Delete") })) return;
         for (const channel of rows) {
             try { await api.channels.remove(channel.id); } catch (e: any) { toast(e.message, 'error'); }
         }
@@ -1178,7 +1178,7 @@ export function ChannelsView() {
     }
 
     async function setEnabledTask(enabled: any, rows: any) {
-        if (!rows.length) { toast(translate("Select a channel or group first"), 'warn'); return; }
+        if (!rows.length) { toast(t("Select a channel or group first"), 'warn'); return; }
         for (const channel of rows) {
             try { await api.channels.setEnabled(channel.id, enabled); } catch (e: any) { toast(e.message, 'error'); }
         }
@@ -1186,17 +1186,17 @@ export function ChannelsView() {
     }
 
     async function deployTask(rows: any) {
-        if (!rows.length) { toast(translate("Select a channel or group first"), 'warn'); return; }
+        if (!rows.length) { toast(t("Select a channel or group first"), 'warn'); return; }
         try {
             if (!await runLifecycle('deploy', rows.map((c: any) => c.id))) return;
             // Move to the Dashboard to watch deployment (matches Swing).
-            toast(rows.length === 1 ? translate("Deploying {value1}", { value1: String(rows[0].name) }) : translate("Deploying {value1} channels", { value1: String(rows.length) }));
+            toast(rows.length === 1 ? t("Deploying {value1}", { value1: String(rows[0].name) }) : t("Deploying {value1} channels", { value1: String(rows.length) }));
             router.navigate('/dashboard');
         } catch (e: any) {
             // Deploy compile failures return the engine's full exception — show it
             // in the readable/copyable detail modal, not a giant corner toast.
-            errorModal(translate("Channel Deployment Failed"), e,
-                rows.length === 1 ? rows[0].name : translate("{count, plural, one {# channel} other {# channels}}", { count: rows.length }));
+            errorModal(t("Channel Deployment Failed"), e,
+                rows.length === 1 ? rows[0].name : t("{count, plural, one {# channel} other {# channels}}", { count: rows.length }));
             refresh();
         }
     }
@@ -1209,9 +1209,9 @@ export function ChannelsView() {
 
     function saveGroupChanges(change: (groups: any[]) => any[], removedIds: string[] = [], expectedGroup?: any) {
         return mutateChannelGroups(change, removedIds, { expectedGroup,
-            confirmOverwrite: () => confirmDialog(translate("Channel Groups Modified"),
-                translate("One or more channel groups have been modified since you last refreshed. Do you want to overwrite the changes?"),
-                { danger: true, okLabel: translate("Overwrite") }) });
+            confirmOverwrite: () => confirmDialog(t("Channel Groups Modified"),
+                t("One or more channel groups have been modified since you last refreshed. Do you want to overwrite the changes?"),
+                { danger: true, okLabel: t("Overwrite") }) });
     }
 
     /* Move channels between groups (used by the modal task and drag/drop).
@@ -1220,7 +1220,7 @@ export function ChannelsView() {
         try {
             if (!await saveGroupChanges((updated: any[]) => {
                 if (targetId !== DEFAULT_GROUP_ID && !updated.some(g => g.id === targetId)) {
-                    throw new Error(translate("The destination group was removed. Refresh and choose another group."));
+                    throw new Error(t("The destination group was removed. Refresh and choose another group."));
                 }
                 for (const group of updated) {
                     let members = api.asList(group.channels, 'channel').filter(m => m && m.id && !ids.has(m.id));
@@ -1229,7 +1229,7 @@ export function ChannelsView() {
                 }
                 return updated;
             })) return false;
-            toast(translate("Channels moved"));
+            toast(t("Channels moved"));
             refresh();
             return true;
         } catch (e: any) {
@@ -1243,17 +1243,17 @@ export function ChannelsView() {
         if (!rows) return;
         const ids = new Set(rows.map((c: any) => c.id));
         const picker = select(
-            [{ value: DEFAULT_GROUP_ID, label: translate("[Default Group]") },
+            [{ value: DEFAULT_GROUP_ID, label: t("[Default Group]") },
              ...groups.map(g => ({ value: g.id, label: g.name }))],
             DEFAULT_GROUP_ID);
         modal({
-            title: translate("Move to Group"),
+            title: t("Move to Group"),
             body: h('div.field',
-                h('label', translate("Move {value1} channel(s) to:", { value1: String(rows.length) })), picker),
+                h('label', t("Move {value1} channel(s) to:", { value1: String(rows.length) })), picker),
             buttons: [
-                { label: translate("Cancel") },
+                { label: t("Cancel") },
                 {
-                    label: translate("Move"), primary: true,
+                    label: t("Move"), primary: true,
                     onClick: async () => !(await moveChannelsToGroup(ids, picker.value)) && false
                 }
             ]
@@ -1263,12 +1263,12 @@ export function ChannelsView() {
     /* ---- group tasks --------------------------------------------------------------- */
 
     async function newGroupTask() {
-        const name = await promptDialog(translate("New Group"), translate("Group name"));
+        const name = await promptDialog(t("New Group"), t("Group name"));
         if (name === null || !name.trim()) return;
         try {
             const created = { id: uuid(), name: name.trim(), revision: 0, description: '', channels: null };
             if (!await saveGroupChanges((updated: any[]) => [...updated, created])) return;
-            toast(translate("Created group {value1}", { value1: String(name.trim()) }));
+            toast(t("Created group {value1}", { value1: String(name.trim()) }));
             refresh();
         } catch (e: any) {
             toast(e.message, 'error');
@@ -1279,17 +1279,17 @@ export function ChannelsView() {
        render-resolved current group; the context menu passes its row's group).
        The synthetic Default Group never reaches them — its items are hidden. */
     const requireGroup = (group: any) => {
-        if (!group || group.id === DEFAULT_GROUP_ID) { toast(translate("Select a group row first"), 'warn'); return null; }
+        if (!group || group.id === DEFAULT_GROUP_ID) { toast(t("Select a group row first"), 'warn'); return null; }
         return group;
     };
 
     async function deleteGroupTask(g: any) {
         const group = requireGroup(g);
         if (!group) return;
-        if (!await confirmDialog(translate("Delete Group"), translate("Delete group \"{value1}\"? Its channels move to the Default Group.", { value1: String(group.name) }), { danger: true, okLabel: translate("Delete") })) return;
+        if (!await confirmDialog(t("Delete Group"), t("Delete group \"{value1}\"? Its channels move to the Default Group.", { value1: String(group.name) }), { danger: true, okLabel: t("Delete") })) return;
         try {
             if (!await saveGroupChanges((updated: any[]) => updated.filter(x => x.id !== group.id), [group.id], group)) return;
-            toast(translate("Deleted group {value1}", { value1: String(group.name) }));
+            toast(t("Deleted group {value1}", { value1: String(group.name) }));
             setLastGroupId(null);
             refresh();
         } catch (e: any) {
@@ -1304,15 +1304,15 @@ export function ChannelsView() {
         const descArea = h('textarea', { rows: 4 });
         (descArea as any).value = group.description || '';
         modal({
-            title: translate("Edit Group Details"),
-            body: h('div', field(translate("Name"), nameInput), field(translate("Description"), descArea)),
+            title: t("Edit Group Details"),
+            body: h('div', field(t("Name"), nameInput), field(t("Description"), descArea)),
             buttons: [
-                { label: translate("Cancel") },
+                { label: t("Cancel") },
                 {
-                    label: translate("Save"), primary: true,
+                    label: t("Save"), primary: true,
                     onClick: async () => {
                         const name = nameInput.value.trim();
-                        if (!name) { toast(translate("Group name is required"), 'warn'); return false; }
+                        if (!name) { toast(t("Group name is required"), 'warn'); return false; }
                         try {
                             if (!await saveGroupChanges((updated: any[]) => {
                                 const target = updated.find(current => current.id === group.id);
@@ -1320,7 +1320,7 @@ export function ChannelsView() {
                                 target.description = (descArea as any).value;
                                 return updated;
                             }, [], group)) return false;
-                            toast(translate("Group \"{value1}\" updated", { value1: String(name) }));
+                            toast(t("Group \"{value1}\" updated", { value1: String(name) }));
                             refresh();
                         } catch (e: any) {
                             toast(e.message, 'error');
@@ -1338,12 +1338,12 @@ export function ChannelsView() {
        import instead of reducing them to group membership references. */
     function parseGroupXml(text: any) {
         const doc = new DOMParser().parseFromString(String(text || '').trim(), 'text/xml');
-        if (doc.querySelector('parsererror')) throw new Error(translate("Not a valid XML file"));
+        if (doc.querySelector('parsererror')) throw new Error(t("Not a valid XML file"));
         const root = doc.documentElement;
         const els = root.tagName === 'channelGroup'
             ? [root]
             : [...root.querySelectorAll(':scope > channelGroup')];
-        if (!els.length) throw new Error(translate("No <channelGroup> elements found in the file"));
+        if (!els.length) throw new Error(t("No <channelGroup> elements found in the file"));
         return els.map(el => {
             const childText = (tag: any) => {
                 const child = [...el.children].find(c => c.tagName === tag);
@@ -1389,7 +1389,7 @@ export function ChannelsView() {
             const importIds = importIdsFor(content);
             const verdict = checkImportVersionFromDoc(new DOMParser().parseFromString(content, 'text/xml'), 'group');
             if (verdict.action === 'block') { await alertInformation(verdict.message); return; }
-            if (verdict.action === 'confirm' && !await optionYesNo(translate("Select an Option"), verdict.message)) return;
+            if (verdict.action === 'confirm' && !await optionYesNo(t("Select an Option"), verdict.message)) return;
             assertSession();
             const parsed = parseGroupXml(content);
             // All prerequisite reads finish before any library or channel write.
@@ -1460,7 +1460,7 @@ export function ChannelsView() {
                         assertSession();
                         failedChannelIds.add(embedded.id);
                         failedChannelCount++;
-                        toast(translate("Error importing channel: {value1}", { value1: String(e.message || e) }), 'error');
+                        toast(t("Error importing channel: {value1}", { value1: String(e.message || e) }), 'error');
                         continue;
                     }
                     if (resolved === false) {
@@ -1493,12 +1493,12 @@ export function ChannelsView() {
                 let generatedIds = 0;
                 const resolved = await resolveGroupImport(plannedGroups, group, {
                     overwrite: async () => {
-                        const result = await optionYesNo(translate("Import Group"), translate("Would you like to overwrite the existing group? Choose ''No'' to create a new group."));
+                        const result = await optionYesNo(t("Import Group"), t("Would you like to overwrite the existing group? Choose ''No'' to create a new group."));
                         assertSession();
                         return Boolean(result);
                     },
                     rename: async name => {
-                        const result = await promptDialog(translate("Import Group"), translate("Please enter a new name for the group."), name);
+                        const result = await promptDialog(t("Import Group"), t("Please enter a new name for the group."), name);
                         assertSession();
                         return result;
                     },
@@ -1510,7 +1510,7 @@ export function ChannelsView() {
                 });
                 assertSession();
                 if (!resolved) {
-                    toast(translate("Group import cancelled. {value1} channel(s) already imported have been kept.", { value1: String(importedChannelCount) }), 'warn');
+                    toast(t("Group import cancelled. {value1} channel(s) already imported have been kept.", { value1: String(importedChannelCount) }), 'warn');
                     return;
                 }
                 imported.push(resolved);
@@ -1522,15 +1522,15 @@ export function ChannelsView() {
                 const payload = applyGroupImports(latest, baselineGroups, imported);
                 const result = await api.channelGroups.bulkUpdate(payload.groups, payload.removedIds, false);
                 assertSession();
-                if (result !== true && result !== 'true') throw new Error(translate("Channel groups changed during import or the engine did not confirm the save. Import again to review the latest groups."));
+                if (result !== true && result !== 'true') throw new Error(t("Channel groups changed during import or the engine did not confirm the save. Import again to review the latest groups."));
             }
             pendingImportRef.current = null;
-            if (failedChannelCount) toast(translate("Imported {value1} group(s) from {value2}; {value3} channel(s) were skipped or failed.", { value1: String(parsed.length), value2: String(file.name), value3: String(failedChannelCount) }), 'warn');
-            else toast(translate("Imported {value1} group(s) from {value2}", { value1: String(parsed.length), value2: String(file.name) }));
+            if (failedChannelCount) toast(t("Imported {value1} group(s) from {value2}; {value3} channel(s) were skipped or failed.", { value1: String(parsed.length), value2: String(file.name), value3: String(failedChannelCount) }), 'warn');
+            else toast(t("Imported {value1} group(s) from {value2}", { value1: String(parsed.length), value2: String(file.name) }));
         } catch (e: any) {
             try { assertSession(); } catch { return; }
             toast(importedChannelCount
-                ? translate("{error} {count} channel(s) already imported have been kept.", { error: String(e.message), count: importedChannelCount })
+                ? t("{error} {count} channel(s) already imported have been kept.", { error: String(e.message), count: importedChannelCount })
                 : String(e.message), 'error');
         } finally {
             importBusyRef.current = false;
@@ -1547,7 +1547,7 @@ export function ChannelsView() {
         const groupsXml = await api.getXml('/channelgroups', undefined, { timeoutMs: null });
         assertSession();
         const groupsDoc = new DOMParser().parseFromString(groupsXml, 'text/xml');
-        if (groupsDoc.querySelector('parsererror')) throw new Error(translate("Engine returned invalid channel group XML"));
+        if (groupsDoc.querySelector('parsererror')) throw new Error(t("Engine returned invalid channel group XML"));
 
         const groupsRoot = groupsDoc.documentElement;
         const allGroups = groupsRoot.tagName === 'channelGroup'
@@ -1561,7 +1561,7 @@ export function ChannelsView() {
                 : allGroups.filter(groupEl =>
                     [...groupEl.children].find(c => c.tagName === 'id')?.textContent === groupId);
         if (groupId != null && groupId !== DEFAULT_GROUP_ID && !exportGroups.length) {
-            throw new Error(translate("Channel group not found in the engine XML"));
+            throw new Error(t("Channel group not found in the engine XML"));
         }
 
         const refsByGroup = new Map<any, { container: any; refs: string[] }>();
@@ -1596,7 +1596,7 @@ export function ChannelsView() {
             const channelsXml = await api.getXml('/channels', channelParams, { timeoutMs: null });
             assertSession();
             const channelsDoc = new DOMParser().parseFromString(channelsXml, 'text/xml');
-            if (channelsDoc.querySelector('parsererror')) throw new Error(translate("Engine returned invalid channel XML"));
+            if (channelsDoc.querySelector('parsererror')) throw new Error(t("Engine returned invalid channel XML"));
             const channelsRoot = channelsDoc.documentElement;
             const fullChannels = channelXmlElements(channelsRoot);
             for (const channelEl of fullChannels) {
@@ -1605,7 +1605,7 @@ export function ChannelsView() {
             }
             if (wantsDefault) {
                 const missing = channels.filter(channel => !channelById.has(String(channel.id)));
-                if (missing.length) throw new Error(translate("{value2, plural, one {The engine omitted {value1} channel from the group export} other {The engine omitted {value1} channels from the group export}}", { value1: String(missing.length), value2: missing.length }));
+                if (missing.length) throw new Error(t("{value2, plural, one {The engine omitted {value1} channel from the group export} other {The engine omitted {value1} channels from the group export}}", { value1: String(missing.length), value2: missing.length }));
             }
         }
 
@@ -1619,7 +1619,7 @@ export function ChannelsView() {
             container.replaceChildren();
             for (const id of entry.refs) {
                 const channelEl = channelById.get(id);
-                if (!channelEl) throw new Error(translate("Channel {value1} was not returned while exporting its group", { value1: String(id) }));
+                if (!channelEl) throw new Error(t("Channel {value1} was not returned while exporting its group", { value1: String(id) }));
                 container.appendChild(groupsDoc.importNode(channelEl, true));
             }
         }
@@ -1635,7 +1635,7 @@ export function ChannelsView() {
             };
             add('id', ENGINE_DEFAULT_GROUP_ID);
             add('name', ENGINE_DEFAULT_GROUP_NAME);
-            add('description', translate("Channels not part of a group will appear here."));
+            add('description', t("Channels not part of a group will appear here."));
             const container = groupsDoc.createElement('channels');
             for (const [id, channelEl] of channelById) {
                 if (!assignedIds.has(id)) container.appendChild(groupsDoc.importNode(channelEl, true));
@@ -1654,7 +1654,7 @@ export function ChannelsView() {
     async function exportGroupTask(g: any) {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
-        if (!g) { toast(translate("Select a group row first"), 'warn'); return; }
+        if (!g) { toast(t("Select a group row first"), 'warn'); return; }
         const group = g.id === DEFAULT_GROUP_ID ? g : requireGroup(g);
         if (!group) return;
         try {
@@ -1680,7 +1680,7 @@ export function ChannelsView() {
             await saveFile('channel-groups.zip', 'application/zip', async () => {
                 const xml = await channelGroupExportXml(undefined, includeLibs, assertSession);
                 const doc = new DOMParser().parseFromString(xml, 'text/xml');
-                if (doc.querySelector('parsererror')) throw new Error(translate("Engine returned invalid channel group XML"));
+                if (doc.querySelector('parsererror')) throw new Error(t("Engine returned invalid channel group XML"));
                 const root = doc.documentElement;
                 const elements = root.tagName === 'channelGroup' ? [root] : [...root.querySelectorAll(':scope > channelGroup')];
                 const zip = createZip();
@@ -1773,28 +1773,28 @@ export function ChannelsView() {
         .filter((g: any) => g.channels.length > 0 || !hasFilter);
     const shownChannels = channels.filter((c: any) => !hasFilter || matchesFilter(c));
     const enabledCount = shownChannels.filter(isEnabled).length;
-    const channelsSummary = translate('{count, plural, one {{count} Channel, {enabled} Enabled} other {{count} Channels, {enabled} Enabled}}', { count: shownChannels.length, enabled: enabledCount });
+    const channelsSummary = t('{count, plural, one {{count} Channel, {enabled} Enabled} other {{count} Channels, {enabled} Enabled}}', { count: shownChannels.length, enabled: enabledCount });
     const countsText = groupView
-        ? translate('{count, plural, one {{count} Group, {channels}} other {{count} Groups, {channels}}}', { count: shownGroups.length, channels: channelsSummary })
+        ? t('{count, plural, one {{count} Group, {channels}} other {{count} Groups, {channels}}}', { count: shownGroups.length, channels: channelsSummary })
         : channelsSummary;
 
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title={translate("Channel Tasks")} paneKey="tasks:Channel Tasks" group="channel">
+                <RailPane title={t("Channel Tasks")} paneKey="tasks:Channel Tasks" group="channel">
                     <div className="taskbar" data-pane-title="Channel Tasks">
-                        <TaskButton label={translate("Refresh")} icon="refresh" task="doRefreshChannels" onClick={() => refresh()} />
-                        <TaskButton label={translate("Redeploy All")} icon="deploy" task="doRedeployAll" onClick={redeployAllTask} />
-                        {showDeploy && <TaskButton label={translate("Deploy Channel")} icon="deploy" task="doDeployChannel" onClick={() => deployTask(effectiveChannels())} />}
-                        <TaskButton label={translate("New Channel")} icon="plus" primary task="doNewChannel" onClick={newTask} />
-                        <TaskButton label={translate("Import Channel")} icon="import" task="doImportChannel" onClick={importTask} />
-                        {showExport && <TaskButton label={translate("Export Channel")} icon="export" task="doExportChannel" onClick={() => exportTask(selectedChannels())} />}
-                        {showDelete && <TaskButton label={translate("Delete Channel")} icon="trash" danger task="doDeleteChannel" onClick={() => deleteTask(selectedChannels())} />}
-                        {showClone && <TaskButton label={translate("Clone Channel")} icon="copy" task="doCloneChannel" onClick={() => cloneTask(selectedChannels())} />}
-                        {showEdit && <TaskButton label={translate("Edit Channel")} icon="edit" task="doEditChannel" onClick={() => { const c = requireSingle(selectedChannels()); if (c) router.navigate(`/channels/${c.id}/edit`); }} />}
-                        {showEnable && <TaskButton label={translate("Enable Channel")} icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true, effectiveChannels())} />}
-                        {showDisable && <TaskButton label={translate("Disable Channel")} icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false, effectiveChannels())} />}
-                        {showMessages && <TaskButton label={translate("View Messages")} icon="messages" task="doViewMessages" onClick={() => messagesTask(selectedChannels())} />}
+                        <TaskButton label={t("Refresh")} icon="refresh" task="doRefreshChannels" onClick={() => refresh()} />
+                        <TaskButton label={t("Redeploy All")} icon="deploy" task="doRedeployAll" onClick={redeployAllTask} />
+                        {showDeploy && <TaskButton label={t("Deploy Channel")} icon="deploy" task="doDeployChannel" onClick={() => deployTask(effectiveChannels())} />}
+                        <TaskButton label={t("New Channel")} icon="plus" primary task="doNewChannel" onClick={newTask} />
+                        <TaskButton label={t("Import Channel")} icon="import" task="doImportChannel" onClick={importTask} />
+                        {showExport && <TaskButton label={t("Export Channel")} icon="export" task="doExportChannel" onClick={() => exportTask(selectedChannels())} />}
+                        {showDelete && <TaskButton label={t("Delete Channel")} icon="trash" danger task="doDeleteChannel" onClick={() => deleteTask(selectedChannels())} />}
+                        {showClone && <TaskButton label={t("Clone Channel")} icon="copy" task="doCloneChannel" onClick={() => cloneTask(selectedChannels())} />}
+                        {showEdit && <TaskButton label={t("Edit Channel")} icon="edit" task="doEditChannel" onClick={() => { const c = requireSingle(selectedChannels()); if (c) router.navigate(`/channels/${c.id}/edit`); }} />}
+                        {showEnable && <TaskButton label={t("Enable Channel")} icon="check" task="doEnableChannel" onClick={() => setEnabledTask(true, effectiveChannels())} />}
+                        {showDisable && <TaskButton label={t("Disable Channel")} icon="x" task="doDisableChannel" onClick={() => setEnabledTask(false, effectiveChannels())} />}
+                        {showMessages && <TaskButton label={t("View Messages")} icon="messages" task="doViewMessages" onClick={() => messagesTask(selectedChannels())} />}
                         {singleChannel && (() => {
                             const c = selectedChannels()[0];
                             const ctx = { platform, channel: c, selectedIds: new Set(selected) };
@@ -1806,20 +1806,20 @@ export function ChannelsView() {
                     </div>
                 </RailPane>
                 {/* Swing shows the Group Tasks pane only in Group view. */}
-                {groupView && <RailPane title={translate("Group Tasks")} paneKey="tasks:Group Tasks" group="channelGroup">
+                {groupView && <RailPane title={t("Group Tasks")} paneKey="tasks:Group Tasks" group="channelGroup">
                     <div className="taskbar" data-pane-title="Group Tasks">
-                        {showAssign && <TaskButton label={translate("Assign To Group")} icon="folder" task="doAssignChannelToGroup" onClick={() => moveToGroupTask(selectedChannels())} />}
-                        <TaskButton label={translate("New Group")} icon="plus" task="doNewGroup" onClick={newGroupTask} />
-                        {showGroupEdit && <TaskButton label={translate("Edit Group Details")} icon="edit" task="doEditGroupDetails" onClick={() => editGroupTask(currentGroup)} />}
-                        <TaskButton label={translate("Import Group")} icon="import" task="doImportGroup" onClick={importGroupTask} />
-                        <TaskButton label={translate("Export All Groups")} icon="export" task="doExportAllGroups" onClick={exportGroupsTask} />
-                        {showGroupExport && <TaskButton label={translate("Export Group")} icon="export" task="doExportGroup" onClick={() => exportGroupTask(currentGroup)} />}
-                        {showGroupDelete && <TaskButton label={translate("Delete Group")} icon="trash" danger task="doDeleteGroup" onClick={() => deleteGroupTask(currentGroup)} />}
+                        {showAssign && <TaskButton label={t("Assign To Group")} icon="folder" task="doAssignChannelToGroup" onClick={() => moveToGroupTask(selectedChannels())} />}
+                        <TaskButton label={t("New Group")} icon="plus" task="doNewGroup" onClick={newGroupTask} />
+                        {showGroupEdit && <TaskButton label={t("Edit Group Details")} icon="edit" task="doEditGroupDetails" onClick={() => editGroupTask(currentGroup)} />}
+                        <TaskButton label={t("Import Group")} icon="import" task="doImportGroup" onClick={importGroupTask} />
+                        <TaskButton label={t("Export All Groups")} icon="export" task="doExportAllGroups" onClick={exportGroupsTask} />
+                        {showGroupExport && <TaskButton label={t("Export Group")} icon="export" task="doExportGroup" onClick={() => exportGroupTask(currentGroup)} />}
+                        {showGroupDelete && <TaskButton label={t("Delete Group")} icon="trash" danger task="doDeleteGroup" onClick={() => deleteGroupTask(currentGroup)} />}
                     </div>
                 </RailPane>}
             </ViewTasks>
             <div className="view-body flush flex flex-col overflow-hidden">
-                {loadError && <div className="mx-[13px] mt-3 panel border-danger text-danger" role="alert">{translate("Failed to load channels: {value1}", { value1: loadError })}</div>}
+                {loadError && <div className="mx-[13px] mt-3 panel border-danger text-danger" role="alert">{t("Failed to load channels: {value1}", { value1: loadError })}</div>}
                 {/* Grid so the TreeTable's own .dt-wrap stretches to fill the
                     region (a flex child wouldn't grow on the main axis); this
                     leaves clickable empty space below a short tree for
@@ -1849,22 +1849,22 @@ export function ChannelsView() {
                         emptyText={(
                             <>
                                 <div className="empty-icon"><Icon name="channels" size={30} /></div>
-                                <div>{translate("No channels")}</div>
-                                <div className="text-text-faint mt-[13px]">{translate("Create a channel with \"New Channel\" in the Channels Tasks pane.")}</div>
+                                <div>{t("No channels")}</div>
+                                <div className="text-text-faint mt-[13px]">{t("Create a channel with \"New Channel\" in the Channels Tasks pane.")}</div>
                             </>
                         )} />
                 </div>
                 <div className="filterbar panel overflow-visible mx-[13px] mb-3">
-                    <label>{translate("Filter:")}</label>
-                    <input type="text" placeholder={translate("Enter channel tag or name")} value={filterText}
+                    <label>{t("Filter:")}</label>
+                    <input type="text" placeholder={t("Enter channel tag or name")} value={filterText}
                         onChange={(e: any) => setFilterText(e.target.value)} />
                     <span className="counts">{countsText}</span>
                     {/* The same View / Tags toggles as the Dashboard filter bar. */}
                     <div className="flex items-center gap-x-3.5 gap-y-1.5 flex-wrap ml-auto">
-                        <SegPill value={viewMode} onChange={setViewMode} label={translate("Row grouping")} options={VIEW_MODE_OPTIONS} />
+                        <SegPill value={viewMode} onChange={setViewMode} label={t("Row grouping")} options={VIEW_MODE_OPTIONS} />
                         <span className="inline-flex items-center gap-[4px]">
-                            <span className="text-text-faint text-[10px]">{translate("Tags:")}</span>
-                            <SegPill value={tagMode} onChange={setTagMode} label={translate("Tag display")} options={TAG_MODE_OPTIONS} />
+                            <span className="text-text-faint text-[10px]">{t("Tags:")}</span>
+                            <SegPill value={tagMode} onChange={setTagMode} label={t("Tag display")} options={TAG_MODE_OPTIONS} />
                         </span>
                     </div>
                 </div>

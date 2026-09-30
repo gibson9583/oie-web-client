@@ -1,11 +1,11 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 import * as store from '../core/store.js';
 
 /** Keep a submitted editor model stable through persistence and any reload.
  * Dialogs remain usable for conflict decisions; the editor and its task pane
  * cannot accept another edit/save. The shell also fences route changes.
  */
-export async function withEditorSave<T>(save: () => Promise<T>, label = translate("Saving changes…")): Promise<T | false> {
+export async function withEditorSave<T>(save: () => Promise<T>, label = t("Saving changes…")): Promise<T | false> {
     if (store.getState('editorSave')) return false;
     const token = {};
     const root = document.querySelector<HTMLElement>('.content-row');

@@ -1,5 +1,5 @@
 import { proxyErrorLabel } from './labels.js';
-import { t as translate } from './i18n.js';
+import { t } from './i18n.js';
 /*
  * Engine REST API client.
  *
@@ -177,7 +177,7 @@ function send(url: string, init: RequestInit, opts?: RequestOptions): Promise<Js
             // say what actually happened. A slow answer is also not an
             // unreachable engine, so reachability is left alone.
             if (err && err.name === 'TimeoutError') {
-                throw new Error(translate("No response after {value1} seconds — the web administrator stopped waiting. The engine may still be completing the operation; check its result before retrying.", { value1: String(Math.round((timeoutMs as number) / 1000)) }));
+                throw new Error(t("No response after {value1} seconds — the web administrator stopped waiting. The engine may still be completing the operation; check its result before retrying.", { value1: String(Math.round((timeoutMs as number) / 1000)) }));
             }
             setReachable(false);
             throw err;
@@ -266,7 +266,7 @@ async function handle(response: Response, { raw = false, noAuthHandler = false }
             const text = await response.text().catch(() => '');
             assertEngineResponse(response);
             // parseBody is total (its parses are internally guarded), so no try/catch.
-            let message = translate("Unauthorized");
+            let message = t("Unauthorized");
             const parsed = parseBody(text);
             if (parsed && typeof parsed === 'object') message = proxyErrorLabel(parsed.error, parsed.message || parsed.error || message);
             throw new ApiError(401, message, text);
@@ -277,7 +277,7 @@ async function handle(response: Response, { raw = false, noAuthHandler = false }
             sessionExpiredFired = true;
             listeners.sessionExpired.forEach(fn => fn());
         }
-        throw new ApiError(401, translate("Session expired"));
+        throw new ApiError(401, t("Session expired"));
     }
     const text = await response.text();
     assertEngineResponse(response);
@@ -949,7 +949,7 @@ export const server: ServerApi = {
     channelDependencies: async () => {
         const dependencies = asList<ChannelDependency>(await get('/server/channelDependencies'), 'channelDependency');
         if (dependencies.some(d => !d || typeof d.dependentId !== 'string' || !d.dependentId || typeof d.dependencyId !== 'string' || !d.dependencyId)) {
-            throw new Error(translate("The engine returned invalid channel dependencies. Save was stopped."));
+            throw new Error(t("The engine returned invalid channel dependencies. Save was stopped."));
         }
         return dependencies;
     },

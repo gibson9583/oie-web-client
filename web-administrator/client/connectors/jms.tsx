@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * JMS Listener (JmsReceiverProperties) / JMS Sender (JmsDispatcherProperties).
  * Field names and defaults mirror server/src/com/mirth/connect/connectors/jms
@@ -81,7 +81,7 @@ function connectionTemplatesField() {
     let selected = '';          // persists across form repaints (field built once)
     let serverTemplates: Record<string, any> = {};
     return {
-        label: translate("Connection Template"), type: 'custom', span: true,
+        label: t("Connection Template"), type: 'custom', span: true,
         render: (p: any, ctx: any) => {
             const wrap = h('div', { class: 'flex items-center gap-1.5 flex-wrap' });
             const names = () => [...PREDEFINED_NAMES, ...Object.keys(serverTemplates).filter((n: any) => !isPredefined(n))];
@@ -90,19 +90,19 @@ function connectionTemplatesField() {
             function paint() {
                 clear(wrap);
                 const sel = select(
-                    [{ value: '', label: translate("— Select a template —") }, ...names().map((n: any) => ({ value: n, label: n }))],
+                    [{ value: '', label: t("— Select a template —") }, ...names().map((n: any) => ({ value: n, label: n }))],
                     selected, { onChange: (e: any) => { selected = e.target.value; paint(); } });
                 sel.style.width = '240px';
                 wrap.append(
                     sel,
-                    h('button.btn', { type: 'button', disabled: !selected, onClick: applyTemplate }, translate("Load")),
-                    h('button.btn', { type: 'button', onClick: saveTemplate }, translate("Save")),
-                    h('button.btn', { type: 'button', disabled: !selected || isPredefined(selected), onClick: deleteTemplate }, icon('x'), translate("Delete")));
+                    h('button.btn', { type: 'button', disabled: !selected, onClick: applyTemplate }, t("Load")),
+                    h('button.btn', { type: 'button', onClick: saveTemplate }, t("Save")),
+                    h('button.btn', { type: 'button', disabled: !selected || isPredefined(selected), onClick: deleteTemplate }, icon('x'), t("Delete")));
             }
 
             function applyTemplate() {
                 const tpl = templateFor(selected);
-                if (!tpl) { toast(translate("That template no longer exists on the server."), 'warn'); return; }
+                if (!tpl) { toast(t("That template no longer exists on the server."), 'warn'); return; }
                 p.useJndi = asBool(tpl.useJndi);
                 p.jndiProviderUrl = String(tpl.jndiProviderUrl ?? '');
                 p.jndiInitialContextFactory = String(tpl.jndiInitialContextFactory ?? '');
@@ -114,10 +114,10 @@ function connectionTemplatesField() {
             }
 
             async function saveTemplate() {
-                const raw = await promptDialog(translate("Save Connection Template"), translate("Template name"), selected && !isPredefined(selected) ? selected : '');
+                const raw = await promptDialog(t("Save Connection Template"), t("Template name"), selected && !isPredefined(selected) ? selected : '');
                 const name = raw ? raw.trim() : '';
                 if (!name) return;
-                if (isPredefined(name)) { toast(translate("\"{value1}\" is a reserved template and cannot be overwritten.", { value1: String(name) }), 'warn'); return; }
+                if (isPredefined(name)) { toast(t("\"{value1}\" is a reserved template and cannot be overwritten.", { value1: String(name) }), 'warn'); return; }
                 const body = {
                     useJndi: asBool(p.useJndi),
                     jndiProviderUrl: p.jndiProviderUrl ?? '',
@@ -132,13 +132,13 @@ function connectionTemplatesField() {
                     serverTemplates = await loadServerTemplates();
                     selected = name;
                     paint();
-                    toast(translate("Connection template saved"));
+                    toast(t("Connection template saved"));
                 } catch (e) { toast(apiErrorMessage(e), 'error'); }
             }
 
             async function deleteTemplate() {
                 if (!selected || isPredefined(selected)) return;
-                if (!(await confirmDialog(translate("Delete Template"), translate("Delete the connection template \"{value1}\"?", { value1: String(selected) }), { danger: true, okLabel: translate("Delete") }))) return;
+                if (!(await confirmDialog(t("Delete Template"), t("Delete the connection template \"{value1}\"?", { value1: String(selected) }), { danger: true, okLabel: t("Delete") }))) return;
                 try {
                     await api.del(`/connectors/jms/templates/${encodeURIComponent(selected)}`);
                     templatesPromise = null;
@@ -158,16 +158,16 @@ function connectionTemplatesField() {
 /* Connection fields shared by listener and sender. */
 function jmsConnectionFields() {
     return [
-        { section: translate("Connection Settings") },
+        { section: t("Connection Settings") },
         connectionTemplatesField(),
-        { key: 'useJndi', label: translate("Use JNDI"), type: 'radio', options: YES_NO, refresh: true },
-        { key: 'jndiProviderUrl', label: translate("Provider URL"), type: 'text', width: '420px', disabled: (p: any) => !usingJndi(p) },
-        { key: 'jndiInitialContextFactory', label: translate("Initial Context Factory"), type: 'text', width: '420px', disabled: (p: any) => !usingJndi(p) },
-        { key: 'jndiConnectionFactoryName', label: translate("Connection Factory Name"), type: 'text', width: '320px', disabled: (p: any) => !usingJndi(p) },
-        { key: 'connectionFactoryClass', label: translate("Connection Factory Class"), type: 'text', width: '420px', disabled: usingJndi },
-        { key: 'connectionProperties', label: translate("Connection Properties"), type: 'keyvalue' },
-        { key: 'username', label: translate("Username"), type: 'text', width: '220px' },
-        { key: 'password', label: translate("Password"), type: 'password', width: '220px' }
+        { key: 'useJndi', label: t("Use JNDI"), type: 'radio', options: YES_NO, refresh: true },
+        { key: 'jndiProviderUrl', label: t("Provider URL"), type: 'text', width: '420px', disabled: (p: any) => !usingJndi(p) },
+        { key: 'jndiInitialContextFactory', label: t("Initial Context Factory"), type: 'text', width: '420px', disabled: (p: any) => !usingJndi(p) },
+        { key: 'jndiConnectionFactoryName', label: t("Connection Factory Name"), type: 'text', width: '320px', disabled: (p: any) => !usingJndi(p) },
+        { key: 'connectionFactoryClass', label: t("Connection Factory Class"), type: 'text', width: '420px', disabled: usingJndi },
+        { key: 'connectionProperties', label: t("Connection Properties"), type: 'keyvalue' },
+        { key: 'username', label: t("Username"), type: 'text', width: '220px' },
+        { key: 'password', label: t("Password"), type: 'password', width: '220px' }
     ];
 }
 
@@ -187,27 +187,27 @@ const jmsListener = {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 ...jmsConnectionFields(),
-                { section: translate("Destination Settings") },
+                { section: t("Destination Settings") },
                 {
                     // Swing renders durableTopicCheckbox as a MirthCheckBox appended INLINE onto the
                     // Destination Type radio row (Queue / Topic / [x] Durable, one line). Mirror that
                     // with an append checkbox rather than a separate radio row. Same setEnabled gating:
                     // durable enabled only when Topic is selected (destinationTypeTopicActionPerformed
                     // enables it for the listener; destinationTypeQueueActionPerformed disables it).
-                    key: 'topic', label: translate("Destination Type"), type: 'radio', refresh: true,
+                    key: 'topic', label: t("Destination Type"), type: 'radio', refresh: true,
                     options: [
-                        { value: false, label: translate("Queue") },
-                        { value: true, label: translate("Topic") }
+                        { value: false, label: t("Queue") },
+                        { value: true, label: t("Topic") }
                     ],
-                    append: (p: any, ctx: any) => checkbox(translate("Durable"), asBool(p.durableTopic), {
+                    append: (p: any, ctx: any) => checkbox(t("Durable"), asBool(p.durableTopic), {
                         disabled: !asBool(p.topic),
                         onChange: (e: any) => { p.durableTopic = e.target.checked; ctx.onChange(); ctx.repaint(); }
                     }).el
                 },
-                { key: 'destinationName', label: translate("Destination Name"), type: 'text', width: '320px' },
-                { key: 'clientId', label: translate("Client ID"), type: 'text', width: '220px' },
-                { key: 'reconnectIntervalMillis', label: translate("Reconnect Interval (ms)"), type: 'number', width: '120px' },
-                { key: 'selector', label: translate("Selector"), type: 'text', width: '320px' }
+                { key: 'destinationName', label: t("Destination Name"), type: 'text', width: '320px' },
+                { key: 'clientId', label: t("Client ID"), type: 'text', width: '220px' },
+                { key: 'reconnectIntervalMillis', label: t("Reconnect Interval (ms)"), type: 'number', width: '120px' },
+                { key: 'selector', label: t("Selector"), type: 'text', width: '320px' }
             ]} />
         );
     },
@@ -217,12 +217,12 @@ const jmsListener = {
     // destination is a durable Topic; destination name always required.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'jndiProviderUrl', label: translate("Provider URL"), when: usingJndi },
-            { key: 'jndiInitialContextFactory', label: translate("Initial Context Factory"), when: usingJndi },
-            { key: 'jndiConnectionFactoryName', label: translate("Connection Factory Name"), when: usingJndi },
-            { key: 'connectionFactoryClass', label: translate("Connection Factory Class"), when: (p: any) => !usingJndi(p) },
-            { key: 'clientId', label: translate("Client ID"), when: (p: any) => !usingJndi(p) && asBool(p.topic) && asBool(p.durableTopic) },
-            { key: 'destinationName', label: translate("Destination Name") }
+            { key: 'jndiProviderUrl', label: t("Provider URL"), when: usingJndi },
+            { key: 'jndiInitialContextFactory', label: t("Initial Context Factory"), when: usingJndi },
+            { key: 'jndiConnectionFactoryName', label: t("Connection Factory Name"), when: usingJndi },
+            { key: 'connectionFactoryClass', label: t("Connection Factory Class"), when: (p: any) => !usingJndi(p) },
+            { key: 'clientId', label: t("Client ID"), when: (p: any) => !usingJndi(p) && asBool(p.topic) && asBool(p.durableTopic) },
+            { key: 'destinationName', label: t("Destination Name") }
         ]);
     }
 };
@@ -241,15 +241,15 @@ const jmsSender = {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 ...jmsConnectionFields(),
-                { section: translate("Destination Settings") },
-                { key: 'topic', label: translate("Destination Type"), type: 'radio', disabled: usingJndi, options: [
-                    { value: false, label: translate("Queue") },
-                    { value: true, label: translate("Topic") }
+                { section: t("Destination Settings") },
+                { key: 'topic', label: t("Destination Type"), type: 'radio', disabled: usingJndi, options: [
+                    { value: false, label: t("Queue") },
+                    { value: true, label: t("Topic") }
                 ] },
-                { key: 'destinationName', label: translate("Destination Name"), type: 'text', width: '320px' },
-                { key: 'clientId', label: translate("Client ID"), type: 'text', width: '220px' },
-                { section: translate("Template") },
-                { key: 'template', label: translate("Template"), type: 'code', minHeight: '260px' }
+                { key: 'destinationName', label: t("Destination Name"), type: 'text', width: '320px' },
+                { key: 'clientId', label: t("Client ID"), type: 'text', width: '220px' },
+                { section: t("Template") },
+                { key: 'template', label: t("Template"), type: 'code', minHeight: '260px' }
             ]} />
         );
     },
@@ -259,12 +259,12 @@ const jmsSender = {
     // (The durable-topic client ID requirement is listener-only.)
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'jndiProviderUrl', label: translate("Provider URL"), when: usingJndi },
-            { key: 'jndiInitialContextFactory', label: translate("Initial Context Factory"), when: usingJndi },
-            { key: 'jndiConnectionFactoryName', label: translate("Connection Factory Name"), when: usingJndi },
-            { key: 'connectionFactoryClass', label: translate("Connection Factory Class"), when: (p: any) => !usingJndi(p) },
-            { key: 'destinationName', label: translate("Destination Name") },
-            { key: 'template', label: translate("Template") }
+            { key: 'jndiProviderUrl', label: t("Provider URL"), when: usingJndi },
+            { key: 'jndiInitialContextFactory', label: t("Initial Context Factory"), when: usingJndi },
+            { key: 'jndiConnectionFactoryName', label: t("Connection Factory Name"), when: usingJndi },
+            { key: 'connectionFactoryClass', label: t("Connection Factory Class"), when: (p: any) => !usingJndi(p) },
+            { key: 'destinationName', label: t("Destination Name") },
+            { key: 'template', label: t("Template") }
         ]);
     }
 };

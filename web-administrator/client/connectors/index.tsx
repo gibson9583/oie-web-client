@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * Connector framework — registers the generic JSON fallback ('*') used for any
  * connector type without a dedicated panel (e.g. a third-party connector with
@@ -43,11 +43,11 @@ function GenericPanel({ properties, onChange }: any) {
         try {
             parsed = JSON.parse(editorRef.current.getValue());
         } catch (e: any) {
-            toast(translate("Invalid JSON: {value1}", { value1: String(e.message) }), 'error');
+            toast(t("Invalid JSON: {value1}", { value1: String(e.message) }), 'error');
             return;
         }
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            toast(translate("Properties must be a JSON object"), 'error');
+            toast(t("Properties must be a JSON object"), 'error');
             return;
         }
         for (const key of Object.keys(properties)) {
@@ -55,14 +55,14 @@ function GenericPanel({ properties, onChange }: any) {
         }
         Object.assign(properties, parsed);
         onChange();
-        toast(translate("Properties applied"));
+        toast(t("Properties applied"));
     };
     return (
         <div>
-            <div className="hint mb-1.5">{translate("No dedicated editor for this connector type — edit the raw properties JSON. \"@class\" and \"@version\" must be preserved.")}</div>
+            <div className="hint mb-1.5">{t("No dedicated editor for this connector type — edit the raw properties JSON. \"@class\" and \"@version\" must be preserved.")}</div>
             <div ref={hostRef} />
             <div className="mt-2">
-                <button className="btn btn-primary" onClick={apply}>{translate("Apply")}</button>
+                <button className="btn btn-primary" onClick={apply}>{t("Apply")}</button>
             </div>
         </div>
     );
@@ -84,7 +84,7 @@ export function register(platform: any) {
     // Basic TCP transmission mode (no framing) — the built-in TransmissionMode;
     // MLLP framing ships as the mllpmode plugin.
     platform.registerTransmissionMode('Basic', {
-        label: translate("Basic TCP"), order: 20,
+        label: t("Basic TCP"), order: 20,
         apply(tm: any) {
             tm['@class'] = 'com.mirth.connect.model.transmission.framemode.FrameModeProperties';
             tm.pluginPointName = 'Basic';

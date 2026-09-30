@@ -1,5 +1,5 @@
-import { scope as i18nScope } from '@oie/web-ui';
-const { t: translate } = i18nScope("attachment-pdfviewer");
+import { scope } from '@oie/web-ui';
+const { t } = scope("attachment-pdfviewer");
 /*
  * PDF attachment viewer — web admin plugin (AttachmentViewer equivalent, React).
  * Renders PDF attachments inline in an iframe from their Base64 content.
@@ -48,15 +48,15 @@ export function register(platform: Platform) {
         if (state.key !== key || state.status === 'loading') {
             return (
                 <div className="mt-[13px]">
-                    <div className="text-text-faint text-[10px] mb-1">{translate("Loading PDF…")}</div>
+                    <div className="text-text-faint text-[10px] mb-1">{t("Loading PDF…")}</div>
                 </div>
             );
         }
         if (state.status === 'error') {
             return (
                 <div className="mt-[13px]">
-                    <div className="text-text-faint">{translate("Could not load PDF: {value1}", { value1: String(state.message) })}</div>
-                    <button type="button" className="btn" onClick={() => retry()}>{translate("Retry")}</button>
+                    <div className="text-text-faint">{t("Could not load PDF: {value1}", { value1: String(state.message) })}</div>
+                    <button type="button" className="btn" onClick={() => retry()}>{t("Retry")}</button>
                 </div>
             );
         }
@@ -68,7 +68,7 @@ export function register(platform: Platform) {
         return (
             <div className="mt-[13px]">
                 <iframe
-                    title={translate("PDF attachment")}
+                    title={t("PDF attachment")}
                     sandbox="allow-same-origin"
                     src={state.src}
                     className="w-full h-[576px] border border-[var(--bg3)] rounded-[4px]"

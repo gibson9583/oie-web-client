@@ -22,7 +22,7 @@
     "vendor:zip": "esbuild node_modules/@zip.js/zip.js/lib/zip-core.js --bundle --format=esm --minify --legal-comments=none --outfile=web-administrator/client/vendor/zipjs.min.js",
     "gen:userapi": "node web-administrator/tools/gen-userapi.mjs",
     "i18n:extract": "node tools/i18n-extract.mjs",
-    "i18n:check": "node tools/i18n-extract.mjs --check && node tools/i18n-check.mjs && node tools/i18n-literals.mjs",
+    "i18n:check": "node tools/i18n-check.mjs && node tools/i18n-literals.mjs",
     "build:i18n-test": "npm run build -w web-administrator && npm exec -w web-administrator -- vite build --mode i18n-test"
   },
   "devDependencies": {

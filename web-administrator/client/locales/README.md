@@ -1,6 +1,7 @@
 # English source and Simplified Chinese catalog
 
-`messages.json` is generated from literal t/tc/tx calls and contains source references.
+`npm run i18n:extract` writes `messages.json`, a local list of every source message and the
+files that use it. It is not committed.
 `zh-CN.json` supplies host translations. Bundled plugins own their `i18n/zh-CN.json`.
 See [the authoring guide](../../../docs/i18n.md) for extraction and validation.
 

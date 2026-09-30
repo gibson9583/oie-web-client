@@ -1,4 +1,5 @@
-import { t, compareText } from './i18n.js';
+import { compareText } from './i18n.js';
+import { builtinSectionLabel } from './labels.js';
 /*
  * User-configurable navigation rail: the merge and the edits, as pure functions.
  *
@@ -312,9 +313,5 @@ export function withoutGroup(layout: NavLayout | null | undefined, groupId: stri
 }
 
 function sectionLabel(id: string, items: NavItemLike[]): string {
-    const builtin: Record<string, string> = {
-        Monitor: t('Monitor'), Design: t('Design'), Manage: t('Manage'), Create: t('Create'),
-        Settings: t('Settings'), Session: t('Session'), Other: t('Other'), Plugins: t('Plugins')
-    };
-    return (Object.hasOwn(builtin, id) ? builtin[id] : undefined) ?? items.find(item => item.section === id && item.sectionLabel)?.sectionLabel ?? id;
+    return builtinSectionLabel(id) ?? items.find(item => item.section === id && item.sectionLabel)?.sectionLabel ?? id;
 }

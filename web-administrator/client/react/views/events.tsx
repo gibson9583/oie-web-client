@@ -1,5 +1,5 @@
 import { eventLevelLabel } from '../../core/labels.js';
-import { t as translate, tx as richText } from '../../core/i18n.js';
+import { t, tx } from '../../core/i18n.js';
 import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Events view — criteria bar → paginated results table → resizable detail pane,
@@ -89,15 +89,15 @@ function normalizeEvents(rows: any) {
 }
 
 function levelTag(level: any) {
-    if (level === 'ERROR') return h('span.tag.red', icon('warning', 11), translate("ERROR"));
-    if (level === 'WARNING') return h('span.tag.amber', icon('warning', 11), translate("WARNING"));
+    if (level === 'ERROR') return h('span.tag.red', icon('warning', 11), t("ERROR"));
+    if (level === 'WARNING') return h('span.tag.amber', icon('warning', 11), t("WARNING"));
     return h('span.tag.blue', icon('info', 11), level || '');
 }
 function outcomeTag(outcome: any) {
     if (outcome === 'SUCCESS') {
-        return h('span.tag', { class: 'text-ok border-[color-mix(in_srgb,var(--ok)_40%,transparent)] bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]' }, icon('check', 11), translate("SUCCESS"));
+        return h('span.tag', { class: 'text-ok border-[color-mix(in_srgb,var(--ok)_40%,transparent)] bg-[color-mix(in_srgb,var(--ok)_10%,transparent)]' }, icon('check', 11), t("SUCCESS"));
     }
-    if (outcome === 'FAILURE') return h('span.tag.red', icon('x', 11), translate("FAILURE"));
+    if (outcome === 'FAILURE') return h('span.tag.red', icon('x', 11), t("FAILURE"));
     return h('span.tag', outcome || '');
 }
 
@@ -120,12 +120,12 @@ function toCount(value: any) {
 }
 
 function shortError(e: any) {
-    let msg = String((e && e.message) || e || translate("Unknown error"));
+    let msg = String((e && e.message) || e || t("Unknown error"));
     if (msg.includes('<')) msg = msg.replace(/<[^>]*>/g, ' ');
     msg = msg.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
         .replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
     if (msg.length > 180) msg = msg.slice(0, 180) + '…';
-    if (!msg) msg = translate("Unknown error");
+    if (!msg) msg = t("Unknown error");
     return (e && e.status) ? `${msg} (HTTP ${e.status})` : msg;
 }
 
@@ -138,7 +138,7 @@ function Field({ label, children }: any) {
 /* ---- detail pane ---- */
 
 function EventDetail({ event, username }: any) {
-    if (!event) return <div className="text-text-faint flex-none py-[8px] px-3.5">{translate("Select an event to view its details.")}</div>;
+    if (!event) return <div className="text-text-faint flex-none py-[8px] px-3.5">{t("Select an event to view its details.")}</div>;
     const kv = (label: any, value: any) => (
         <span className="flex items-center gap-[4px]">
             <span className="text-text-faint text-[9.5px] font-[640] tracking-[0.1em] uppercase">{label}</span>
@@ -152,15 +152,15 @@ function EventDetail({ event, username }: any) {
         <>
             <div className="flex flex-wrap items-center gap-[16px] py-2 px-3.5 border-b border-line flex-none">
                 {kv('Id', displayValue(event.id))}
-                {kv(translate("Level"), displayValue(event.level))}
-                {kv(translate("Outcome"), displayValue(event.outcome))}
-                {kv(translate("User"), username(event.userId))}
+                {kv(t("Level"), displayValue(event.level))}
+                {kv(t("Outcome"), displayValue(event.outcome))}
+                {kv(t("User"), username(event.userId))}
                 {kv('IP', displayValue(event.ipAddress))}
             </div>
             <div className="flex-1 min-h-0 overflow-auto">
             {attributes.length
                 ? <table className="dt">
-                    <thead><tr><th className="w-[1%]">{translate("Name")}</th><th>{translate("Value")}</th></tr></thead>
+                    <thead><tr><th className="w-[1%]">{t("Name")}</th><th>{t("Value")}</th></tr></thead>
                     <tbody>{attributes.map(([k, v], i) => (
                         <tr key={i}>
                             <td className="whitespace-nowrap align-top font-semibold">{k}</td>
@@ -168,7 +168,7 @@ function EventDetail({ event, username }: any) {
                         </tr>
                     ))}</tbody>
                 </table>
-                : <div className="text-text-faint py-3 px-3.5">{translate("This event has no attributes.")}</div>}
+                : <div className="text-text-faint py-3 px-3.5">{t("This event has no attributes.")}</div>}
             </div>
         </>
     );
@@ -219,7 +219,7 @@ export function EventsView() {
 
     function username(uid: any) {
         if (uid === null || uid === undefined || uid === '') return '';
-        if (String(uid) === '0') return translate("System");   // engine's own (no logged-in user)
+        if (String(uid) === '0') return t("System");   // engine's own (no logged-in user)
         return usernamesRef.current[String(uid)] ?? String(uid);
     }
 
@@ -261,7 +261,7 @@ export function EventsView() {
             total = toCount(count);
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;
-            toast(translate("Event search failed: {value1}", { value1: String(shortError(e)) }), 'error');
+            toast(t("Event search failed: {value1}", { value1: String(shortError(e)) }), 'error');
         }
         if (gen !== searchGenRef.current) return;   // superseded by a newer search
         setEvents(rows);
@@ -275,13 +275,13 @@ export function EventsView() {
     const search = () => runSearch(buildParams(), 0, Number(pageSize) || 20);
 
     async function exportAllEvents() {
-        if (!await confirmDialog(translate("Export All Events"),
-            translate("Export all events to a file in the exports directory on the server?"), { okLabel: translate("Export") })) return;
+        if (!await confirmDialog(t("Export All Events"),
+            t("Export all events to a file in the exports directory on the server?"), { okLabel: t("Export") })) return;
         try {
             const path = await api.post('/events/_export', null, { raw: true });
-            toast(translate("Events exported on the server to: {value1}", { value1: String(String(path || '').trim()) }));
+            toast(t("Events exported on the server to: {value1}", { value1: String(String(path || '').trim()) }));
         } catch (e: any) {
-            toast(translate("Export failed: {value1}", { value1: String(shortError(e)) }), 'error');
+            toast(t("Export failed: {value1}", { value1: String(shortError(e)) }), 'error');
         }
     }
 
@@ -289,30 +289,30 @@ export function EventsView() {
     searchRef.current = search;
 
     const COLUMNS = useRef([
-        { key: 'level', label: translate("Level"), width: '120px', render: (e: any) => levelTag(e.level) },
-        { key: 'eventTime', label: translate("Date & Time"), width: '160px', className: 'mono', sortValue: (e: any) => fmtDate(e.eventTime), render: (e: any) => fmtDate(e.eventTime) },
-        { key: 'name', label: translate("Name") },
-        { key: 'serverId', label: translate("Server ID"), width: '150px', className: 'mono text-text-faint', render: (e: any) => displayValue(e.serverId) },
-        { key: 'userId', label: translate("User"), width: '110px', sortValue: (e: any) => username(e.userId), render: (e: any) => username(e.userId) },
-        { key: 'outcome', label: translate("Outcome"), width: '110px', render: (e: any) => outcomeTag(e.outcome) },
-        { key: 'ipAddress', label: translate("IP Address"), className: 'mono', width: '130px' },
-        { key: 'channelMsgId', label: translate("Channel ID - Message ID"), className: 'mono', defaultHidden: true, sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
-        { key: 'channelName', label: translate("Channel Name"), defaultHidden: true, sortValue: eventChannelName, render: eventChannelName },
-        { key: 'patientId', label: translate("Patient ID"), defaultHidden: true, sortValue: (e: any) => eventAttr(e, 'patientId'), render: (e: any) => eventAttr(e, 'patientId') }
+        { key: 'level', label: t("Level"), width: '120px', render: (e: any) => levelTag(e.level) },
+        { key: 'eventTime', label: t("Date & Time"), width: '160px', className: 'mono', sortValue: (e: any) => fmtDate(e.eventTime), render: (e: any) => fmtDate(e.eventTime) },
+        { key: 'name', label: t("Name") },
+        { key: 'serverId', label: t("Server ID"), width: '150px', className: 'mono text-text-faint', render: (e: any) => displayValue(e.serverId) },
+        { key: 'userId', label: t("User"), width: '110px', sortValue: (e: any) => username(e.userId), render: (e: any) => username(e.userId) },
+        { key: 'outcome', label: t("Outcome"), width: '110px', render: (e: any) => outcomeTag(e.outcome) },
+        { key: 'ipAddress', label: t("IP Address"), className: 'mono', width: '130px' },
+        { key: 'channelMsgId', label: t("Channel ID - Message ID"), className: 'mono', defaultHidden: true, sortValue: eventChannelIdWithMessageId, render: eventChannelIdWithMessageId },
+        { key: 'channelName', label: t("Channel Name"), defaultHidden: true, sortValue: eventChannelName, render: eventChannelName },
+        { key: 'patientId', label: t("Patient ID"), defaultHidden: true, sortValue: (e: any) => eventAttr(e, 'patientId'), render: (e: any) => eventAttr(e, 'patientId') }
     ]).current;
 
     const options = useRef({
         selectable: 'single',
         rowKey: (e: any) => String(e.id),
-        emptyText: translate("No events found"),
+        emptyText: t("No events found"),
         // Resizable + reorderable + show/hide columns (persisted), like the dashboard.
         columnsKey: 'events',
         onSelect: (rows: any) => setSelected(rows.length ? rows[0] : null),
         onContextMenu: (row: any, ev: any) => {
             setSelected(row);
             contextMenu(ev.clientX, ev.clientY, [
-                { label: translate("Refresh"), icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current() },
-                { label: translate("Export All Events"), icon: 'export', task: 'doExportAllEvents', group: 'event', onClick: () => exportAllEvents() }
+                { label: t("Refresh"), icon: 'refresh', task: 'doRefreshEvents', group: 'event', onClick: () => searchRef.current() },
+                { label: t("Export All Events"), icon: 'export', task: 'doExportAllEvents', group: 'event', onClick: () => exportAllEvents() }
             ]);
         }
     }).current;
@@ -357,10 +357,10 @@ export function EventsView() {
     const criteria = (
         <>
                     <div className="form-row">
-                        <Field label={translate("Start Time")}><DateTimeField value={start} onChange={setStart} label={translate("Start time")} /></Field>
-                        <Field label={translate("End Time")}><DateTimeField value={end} onChange={setEnd} label={translate("End time")} /></Field>
-                        <Field label={translate("Name")}><input type="text" placeholder={translate("Event name contains…")} className="w-[171px]" value={name} onChange={(e: any) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label={translate("Level")}>
+                        <Field label={t("Start Time")}><DateTimeField value={start} onChange={setStart} label={t("Start time")} /></Field>
+                        <Field label={t("End Time")}><DateTimeField value={end} onChange={setEnd} label={t("End time")} /></Field>
+                        <Field label={t("Name")}><input type="text" placeholder={t("Event name contains…")} className="w-[171px]" value={name} onChange={(e: any) => setName(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={t("Level")}>
                             <div className="flex items-center gap-2">
                                 {LEVELS.map((l: any) => (
                                     <label key={l} className="check">
@@ -370,28 +370,28 @@ export function EventsView() {
                                 ))}
                             </div>
                         </Field>
-                        <Field label={translate("Outcome")}>
+                        <Field label={t("Outcome")}>
                             <select value={outcome} onChange={(e: any) => setOutcome(e.target.value)}>
-                                <option value="">{translate("Any")}</option>
-                                {OUTCOMES.map((o: any) => <option key={o} value={o}>{o === 'SUCCESS' ? translate("SUCCESS") : translate("FAILURE")}</option>)}
+                                <option value="">{t("Any")}</option>
+                                {OUTCOMES.map((o: any) => <option key={o} value={o}>{o === 'SUCCESS' ? t("SUCCESS") : t("FAILURE")}</option>)}
                             </select>
                         </Field>
-                        <Field label={translate("Page Size")}>
+                        <Field label={t("Page Size")}>
                             <select value={pageSize} onChange={(e: any) => setPageSize(Number(e.target.value))}>
                                 {[20, 50, 100].map((n: any) => <option key={n} value={n}>{n}</option>)}
                             </select>
                         </Field>
-                        <button className={'btn filter-adv-toggle' + (advancedOpen ? ' btn-primary' : '')} title={translate("Show advanced search criteria")}
-                            onClick={() => setAdvancedOpen((o: any) => !o)}>{richText("{value1}Advanced", { value1: <Icon name="filter" /> })}</button>
-                        <TaskButton label={translate("Search")} icon="search" primary onClick={() => { search(); setFiltersOpen(false); }} />
+                        <button className={'btn filter-adv-toggle' + (advancedOpen ? ' btn-primary' : '')} title={t("Show advanced search criteria")}
+                            onClick={() => setAdvancedOpen((o: any) => !o)}>{tx("{value1}Advanced", { value1: <Icon name="filter" /> })}</button>
+                        <TaskButton label={t("Search")} icon="search" primary onClick={() => { search(); setFiltersOpen(false); }} />
                     </div>
                     {/* Always rendered; hidden inline behind the Advanced toggle when wide,
                         but always shown inside the Filters popover (no menu-in-a-menu). */}
                     <div className={'form-row mt-2 filter-advanced' + (advancedOpen ? '' : ' adv-hidden')}>
-                        <Field label={translate("User Id")}><input type="number" min="0" className="w-[81px]" value={userId} onChange={(e: any) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label={translate("IP Address")}><input type="text" className="w-[117px]" value={ip} onChange={(e: any) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label={translate("Server Id")}><input type="text" className="w-[207px]" value={serverId} onChange={(e: any) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
-                        <Field label={translate("Attribute Search")}><input type="text" placeholder={translate("Attribute values contain…")} className="w-[171px]" value={attrSearch} onChange={(e: any) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={t("User Id")}><input type="number" min="0" className="w-[81px]" value={userId} onChange={(e: any) => setUserId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={t("IP Address")}><input type="text" className="w-[117px]" value={ip} onChange={(e: any) => setIp(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={t("Server Id")}><input type="text" className="w-[207px]" value={serverId} onChange={(e: any) => setServerId(e.target.value)} onKeyDown={enterSearch} /></Field>
+                        <Field label={t("Attribute Search")}><input type="text" placeholder={t("Attribute values contain…")} className="w-[171px]" value={attrSearch} onChange={(e: any) => setAttrSearch(e.target.value)} onKeyDown={enterSearch} /></Field>
                     </div>
         </>
     );
@@ -399,10 +399,10 @@ export function EventsView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title={translate("Event Tasks")} paneKey="tasks:Event Tasks" group="event">
+                <RailPane title={t("Event Tasks")} paneKey="tasks:Event Tasks" group="event">
                     <div className="taskbar" data-pane-title="Event Tasks">
-                        <TaskButton label={translate("Search")} icon="refresh" onClick={() => search()} />
-                        <TaskButton label={translate("Export All Events")} icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
+                        <TaskButton label={t("Search")} icon="refresh" onClick={() => search()} />
+                        <TaskButton label={t("Export All Events")} icon="export" task="doExportAllEvents" onClick={exportAllEvents} />
                     </div>
                 </RailPane>
             </ViewTasks>
@@ -414,7 +414,7 @@ export function EventsView() {
                         <Popover.Root open={filtersOpen} onOpenChange={setFiltersOpen}>
                             <Popover.Trigger asChild>
                                 <button className="btn filter-toggle" type="button">
-                                    <Icon name="filter" /><span>{translate("Filters")}</span><Icon name="chevD" size={14} />
+                                    <Icon name="filter" /><span>{t("Filters")}</span><Icon name="chevD" size={14} />
                                 </button>
                             </Popover.Trigger>
                             <Popover.Portal>
@@ -433,10 +433,10 @@ export function EventsView() {
                 </div>
                 <div className="filterbar panel overflow-visible mx-[13px] mb-3">
                     <button className="btn" disabled={page.offset <= 0}
-                        onClick={() => runSearch(page.params ?? {}, Math.max(0, page.offset - page.limit), page.limit)}>{translate("Prev")}</button>
+                        onClick={() => runSearch(page.params ?? {}, Math.max(0, page.offset - page.limit), page.limit)}>{t("Prev")}</button>
                     <button className="btn" disabled={page.offset + page.limit >= page.total}
-                        onClick={() => runSearch(page.params ?? {}, page.offset + page.limit, page.limit)}>{translate("Next")}</button>
-                    <span className="counts">{translate("{value1}–{value2} of {value3}", { value1: String(fmtNumber(from)), value2: String(fmtNumber(to)), value3: String(fmtNumber(page.total)) })}</span>
+                        onClick={() => runSearch(page.params ?? {}, page.offset + page.limit, page.limit)}>{t("Next")}</button>
+                    <span className="counts">{t("{value1}–{value2} of {value3}", { value1: String(fmtNumber(from)), value2: String(fmtNumber(to)), value3: String(fmtNumber(page.total)) })}</span>
                 </div>
                 <div className="split-handle mx-[13px] my-1" data-orient="v" data-resize="next" />
                 <div ref={detailPaneRef} className="flex-none h-[36px] overflow-hidden flex flex-col panel mx-[13px] mb-3">

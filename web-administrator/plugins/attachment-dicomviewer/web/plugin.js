@@ -37,76 +37,76 @@ var require_zlib = __commonJS({
 // ../node_modules/dicom-parser/dist/dicomParser.min.js
 var require_dicomParser_min = __commonJS({
   "../node_modules/dicom-parser/dist/dicomParser.min.js"(exports, module) {
-    !(function(e, t) {
-      "object" == typeof exports && "object" == typeof module ? module.exports = t(require_zlib()) : "function" == typeof define && define.amd ? define("dicom-parser", ["zlib"], t) : "object" == typeof exports ? exports["dicom-parser"] = t(require_zlib()) : e.dicomParser = t(e.zlib);
+    !(function(e, t2) {
+      "object" == typeof exports && "object" == typeof module ? module.exports = t2(require_zlib()) : "function" == typeof define && define.amd ? define("dicom-parser", ["zlib"], t2) : "object" == typeof exports ? exports["dicom-parser"] = t2(require_zlib()) : e.dicomParser = t2(e.zlib);
     })(exports, function(r) {
-      return a = [function(e, t) {
+      return a = [function(e, t2) {
         e.exports = r;
-      }, function(e, t, s) {
+      }, function(e, t2, s) {
         "use strict";
-        s.r(t), s.d(t, "isStringVr", function() {
+        s.r(t2), s.d(t2, "isStringVr", function() {
           return d;
-        }), s.d(t, "isPrivateTag", function() {
+        }), s.d(t2, "isPrivateTag", function() {
           return f;
-        }), s.d(t, "parsePN", function() {
+        }), s.d(t2, "parsePN", function() {
           return a2;
-        }), s.d(t, "parseTM", function() {
+        }), s.d(t2, "parseTM", function() {
           return n2;
-        }), s.d(t, "parseDA", function() {
+        }), s.d(t2, "parseDA", function() {
           return o;
-        }), s.d(t, "explicitElementToString", function() {
+        }), s.d(t2, "explicitElementToString", function() {
           return l;
-        }), s.d(t, "explicitDataSetToJS", function() {
+        }), s.d(t2, "explicitDataSetToJS", function() {
           return u;
-        }), s.d(t, "createJPEGBasicOffsetTable", function() {
+        }), s.d(t2, "createJPEGBasicOffsetTable", function() {
           return p;
-        }), s.d(t, "parseDicomDataSetExplicit", function() {
+        }), s.d(t2, "parseDicomDataSetExplicit", function() {
           return q;
-        }), s.d(t, "parseDicomDataSetImplicit", function() {
+        }), s.d(t2, "parseDicomDataSetImplicit", function() {
           return T;
-        }), s.d(t, "readFixedString", function() {
+        }), s.d(t2, "readFixedString", function() {
           return b;
-        }), s.d(t, "alloc", function() {
+        }), s.d(t2, "alloc", function() {
           return k;
-        }), s.d(t, "version", function() {
+        }), s.d(t2, "version", function() {
           return L;
-        }), s.d(t, "bigEndianByteArrayParser", function() {
+        }), s.d(t2, "bigEndianByteArrayParser", function() {
           return N;
-        }), s.d(t, "ByteStream", function() {
+        }), s.d(t2, "ByteStream", function() {
           return J;
-        }), s.d(t, "sharedCopy", function() {
+        }), s.d(t2, "sharedCopy", function() {
           return j;
-        }), s.d(t, "DataSet", function() {
+        }), s.d(t2, "DataSet", function() {
           return w;
-        }), s.d(t, "findAndSetUNElementLength", function() {
+        }), s.d(t2, "findAndSetUNElementLength", function() {
           return y;
-        }), s.d(t, "findEndOfEncapsulatedElement", function() {
+        }), s.d(t2, "findEndOfEncapsulatedElement", function() {
           return g;
-        }), s.d(t, "findItemDelimitationItemAndSetElementLength", function() {
+        }), s.d(t2, "findItemDelimitationItemAndSetElementLength", function() {
           return x;
-        }), s.d(t, "littleEndianByteArrayParser", function() {
+        }), s.d(t2, "littleEndianByteArrayParser", function() {
           return M;
-        }), s.d(t, "parseDicom", function() {
+        }), s.d(t2, "parseDicom", function() {
           return V;
-        }), s.d(t, "readDicomElementExplicit", function() {
+        }), s.d(t2, "readDicomElementExplicit", function() {
           return B;
-        }), s.d(t, "readDicomElementImplicit", function() {
+        }), s.d(t2, "readDicomElementImplicit", function() {
           return A;
-        }), s.d(t, "readEncapsulatedImageFrame", function() {
+        }), s.d(t2, "readEncapsulatedImageFrame", function() {
           return W;
-        }), s.d(t, "readEncapsulatedPixelData", function() {
+        }), s.d(t2, "readEncapsulatedPixelData", function() {
           return K;
-        }), s.d(t, "readEncapsulatedPixelDataFromFragments", function() {
+        }), s.d(t2, "readEncapsulatedPixelDataFromFragments", function() {
           return _;
-        }), s.d(t, "readPart10Header", function() {
+        }), s.d(t2, "readPart10Header", function() {
           return G;
-        }), s.d(t, "readSequenceItemsExplicit", function() {
+        }), s.d(t2, "readSequenceItemsExplicit", function() {
           return I;
-        }), s.d(t, "readSequenceItemsImplicit", function() {
+        }), s.d(t2, "readSequenceItemsImplicit", function() {
           return F;
-        }), s.d(t, "readSequenceItem", function() {
+        }), s.d(t2, "readSequenceItem", function() {
           return S;
-        }), s.d(t, "readTag", function() {
+        }), s.d(t2, "readTag", function() {
           return h;
         });
         var r2 = { AE: true, AS: true, AT: false, CS: true, DA: true, DS: true, DT: true, FL: false, FD: false, IS: true, LO: true, LT: true, OB: false, OD: false, OF: false, OW: false, PN: true, SH: true, SL: false, SQ: false, SS: false, ST: true, TM: true, UI: true, UL: false, UN: void 0, UR: true, US: false, UT: true }, d = function(e2) {
@@ -121,19 +121,19 @@ var require_dicomParser_min = __commonJS({
             return { familyName: e2[0], givenName: e2[1], middleName: e2[2], prefix: e2[3], suffix: e2[4] };
           }
         };
-        function n2(e2, t2) {
+        function n2(e2, t3) {
           if (2 <= e2.length) {
             var r3 = parseInt(e2.substring(0, 2), 10), a3 = 4 <= e2.length ? parseInt(e2.substring(2, 4), 10) : void 0, n3 = 6 <= e2.length ? parseInt(e2.substring(4, 6), 10) : void 0, i3 = 8 <= e2.length ? e2.substring(7, 13) : void 0, i3 = i3 ? parseInt(i3, 10) * Math.pow(10, 6 - i3.length) : void 0;
-            if (t2 && (isNaN(r3) || void 0 !== a3 && isNaN(a3) || void 0 !== n3 && isNaN(n3) || void 0 !== i3 && isNaN(i3) || r3 < 0 || 23 < r3 || a3 && (a3 < 0 || 59 < a3) || n3 && (n3 < 0 || 59 < n3) || i3 && (i3 < 0 || 999999 < i3))) throw "invalid TM '".concat(e2, "'");
+            if (t3 && (isNaN(r3) || void 0 !== a3 && isNaN(a3) || void 0 !== n3 && isNaN(n3) || void 0 !== i3 && isNaN(i3) || r3 < 0 || 23 < r3 || a3 && (a3 < 0 || 59 < a3) || n3 && (n3 < 0 || 59 < n3) || i3 && (i3 < 0 || 999999 < i3))) throw "invalid TM '".concat(e2, "'");
             return { hours: r3, minutes: a3, seconds: n3, fractionalSeconds: i3 };
           }
-          if (t2) throw "invalid TM '".concat(e2, "'");
+          if (t3) throw "invalid TM '".concat(e2, "'");
         }
-        function i2(e2, t2, r3) {
-          return !isNaN(r3) && (0 < t2 && t2 <= 12 && 0 < e2 && e2 <= (function(e3, t3) {
+        function i2(e2, t3, r3) {
+          return !isNaN(r3) && (0 < t3 && t3 <= 12 && 0 < e2 && e2 <= (function(e3, t4) {
             switch (e3) {
               case 2:
-                return t3 % 4 == 0 && t3 % 100 || t3 % 400 == 0 ? 29 : 28;
+                return t4 % 4 == 0 && t4 % 100 || t4 % 400 == 0 ? 29 : 28;
               case 9:
               case 4:
               case 6:
@@ -142,358 +142,358 @@ var require_dicomParser_min = __commonJS({
               default:
                 return 31;
             }
-          })(t2, r3));
+          })(t3, r3));
         }
-        function o(e2, t2) {
+        function o(e2, t3) {
           if (e2 && 8 === e2.length) {
             var r3 = parseInt(e2.substring(0, 4), 10), a3 = parseInt(e2.substring(4, 6), 10), n3 = parseInt(e2.substring(6, 8), 10);
-            if (t2 && true !== i2(n3, a3, r3)) throw "invalid DA '".concat(e2, "'");
+            if (t3 && true !== i2(n3, a3, r3)) throw "invalid DA '".concat(e2, "'");
             return { year: r3, month: a3, day: n3 };
           }
-          if (t2) throw "invalid DA '".concat(e2, "'");
+          if (t3) throw "invalid DA '".concat(e2, "'");
         }
         function l(n3, e2) {
           if (void 0 === n3 || void 0 === e2) throw "dicomParser.explicitElementToString: missing required parameters";
           if (void 0 === e2.vr) throw "dicomParser.explicitElementToString: cannot convert implicit element to string";
-          var t2, r3 = e2.vr, i3 = e2.tag;
-          function a3(e3, t3) {
-            for (var r4 = "", a4 = 0; a4 < e3; a4++) 0 !== a4 && (r4 += "/"), r4 += t3.call(n3, i3, a4).toString();
+          var t3, r3 = e2.vr, i3 = e2.tag;
+          function a3(e3, t4) {
+            for (var r4 = "", a4 = 0; a4 < e3; a4++) 0 !== a4 && (r4 += "/"), r4 += t4.call(n3, i3, a4).toString();
             return r4;
           }
-          if (true === d(r3)) t2 = n3.string(i3);
+          if (true === d(r3)) t3 = n3.string(i3);
           else {
             if ("AT" === r3) {
               var o2 = n3.uint32(i3);
               return void 0 === o2 ? void 0 : "x".concat((o2 = o2 < 0 ? 4294967295 + o2 + 1 : o2).toString(16).toUpperCase());
             }
-            "US" === r3 ? t2 = a3(e2.length / 2, n3.uint16) : "SS" === r3 ? t2 = a3(e2.length / 2, n3.int16) : "UL" === r3 ? t2 = a3(e2.length / 4, n3.uint32) : "SL" === r3 ? t2 = a3(e2.length / 4, n3.int32) : "FD" === r3 ? t2 = a3(e2.length / 8, n3.double) : "FL" === r3 && (t2 = a3(e2.length / 4, n3.float));
+            "US" === r3 ? t3 = a3(e2.length / 2, n3.uint16) : "SS" === r3 ? t3 = a3(e2.length / 2, n3.int16) : "UL" === r3 ? t3 = a3(e2.length / 4, n3.uint32) : "SL" === r3 ? t3 = a3(e2.length / 4, n3.int32) : "FD" === r3 ? t3 = a3(e2.length / 8, n3.double) : "FL" === r3 && (t3 = a3(e2.length / 4, n3.float));
           }
-          return t2;
+          return t3;
         }
-        function u(e2, t2) {
+        function u(e2, t3) {
           if (void 0 === e2) throw "dicomParser.explicitDataSetToJS: missing required parameter dataSet";
-          t2 = t2 || { omitPrivateAttibutes: true, maxElementLength: 128 };
+          t3 = t3 || { omitPrivateAttibutes: true, maxElementLength: 128 };
           var r3, a3 = {};
           for (r3 in e2.elements) {
             var n3 = e2.elements[r3];
-            if (true !== t2.omitPrivateAttibutes || !f(r3)) if (n3.items) {
-              for (var i3 = [], o2 = 0; o2 < n3.items.length; o2++) i3.push(u(n3.items[o2].dataSet, t2));
+            if (true !== t3.omitPrivateAttibutes || !f(r3)) if (n3.items) {
+              for (var i3 = [], o2 = 0; o2 < n3.items.length; o2++) i3.push(u(n3.items[o2].dataSet, t3));
               a3[r3] = i3;
             } else {
               var s2 = void 0;
-              n3.length < t2.maxElementLength && (s2 = l(e2, n3)), a3[r3] = void 0 !== s2 ? s2 : { dataOffset: n3.dataOffset, length: n3.length };
+              n3.length < t3.maxElementLength && (s2 = l(e2, n3)), a3[r3] = void 0 !== s2 ? s2 : { dataOffset: n3.dataOffset, length: n3.length };
             }
           }
           return a3;
         }
-        function c(e2, t2) {
-          return 255 === e2.byteArray[t2] && 217 === e2.byteArray[t2 + 1];
+        function c(e2, t3) {
+          return 255 === e2.byteArray[t3] && 217 === e2.byteArray[t3 + 1];
         }
-        function m(e2, t2, r3) {
-          for (var a3, n3, i3 = r3; i3 < t2.fragments.length; i3++) if (a3 = e2, n3 = i3, n3 = t2.fragments[n3], !(!c(a3, n3.position + n3.length - 2) && !c(a3, n3.position + n3.length - 3))) return i3;
+        function m(e2, t3, r3) {
+          for (var a3, n3, i3 = r3; i3 < t3.fragments.length; i3++) if (a3 = e2, n3 = i3, n3 = t3.fragments[n3], !(!c(a3, n3.position + n3.length - 2) && !c(a3, n3.position + n3.length - 3))) return i3;
         }
-        function p(e2, t2, r3) {
+        function p(e2, t3, r3) {
           if (void 0 === e2) throw "dicomParser.createJPEGBasicOffsetTable: missing required parameter dataSet";
-          if (void 0 === t2) throw "dicomParser.createJPEGBasicOffsetTable: missing required parameter pixelDataElement";
-          if ("x7fe00010" !== t2.tag) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to non pixel data tag (expected tag = x7fe00010'";
-          if (true !== t2.encapsulatedPixelData) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (true !== t2.hadUndefinedLength) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (void 0 === t2.basicOffsetTable) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (void 0 === t2.fragments) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (t2.fragments.length <= 0) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (void 0 === t3) throw "dicomParser.createJPEGBasicOffsetTable: missing required parameter pixelDataElement";
+          if ("x7fe00010" !== t3.tag) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to non pixel data tag (expected tag = x7fe00010'";
+          if (true !== t3.encapsulatedPixelData) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (true !== t3.hadUndefinedLength) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (void 0 === t3.basicOffsetTable) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (void 0 === t3.fragments) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (t3.fragments.length <= 0) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
           if (r3 && r3.length <= 0) throw "dicomParser.createJPEGBasicOffsetTable: parameter 'fragments' must not be zero length";
-          r3 = r3 || t2.fragments;
+          r3 = r3 || t3.fragments;
           for (var a3 = [], n3 = 0; ; ) {
-            a3.push(t2.fragments[n3].offset);
-            var i3 = m(e2, t2, n3);
-            if (void 0 === i3 || i3 === t2.fragments.length - 1) return a3;
+            a3.push(t3.fragments[n3].offset);
+            var i3 = m(e2, t3, n3);
+            if (void 0 === i3 || i3 === t3.fragments.length - 1) return a3;
             n3 = i3 + 1;
           }
         }
         function h(e2) {
           if (void 0 === e2) throw "dicomParser.readTag: missing required parameter 'byteStream'";
-          var t2 = 256 * e2.readUint16() * 256, e2 = e2.readUint16();
-          return "x".concat("00000000".concat((t2 + e2).toString(16)).substr(-8));
+          var t3 = 256 * e2.readUint16() * 256, e2 = e2.readUint16();
+          return "x".concat("00000000".concat((t3 + e2).toString(16)).substr(-8));
         }
-        function g(e2, t2, r3) {
+        function g(e2, t3, r3) {
           if (void 0 === e2) throw "dicomParser.findEndOfEncapsulatedElement: missing required parameter 'byteStream'";
-          if (void 0 === t2) throw "dicomParser.findEndOfEncapsulatedElement: missing required parameter 'element'";
-          if (t2.encapsulatedPixelData = true, t2.basicOffsetTable = [], t2.fragments = [], "xfffee000" !== h(e2)) throw "dicomParser.findEndOfEncapsulatedElement: basic offset table not found";
+          if (void 0 === t3) throw "dicomParser.findEndOfEncapsulatedElement: missing required parameter 'element'";
+          if (t3.encapsulatedPixelData = true, t3.basicOffsetTable = [], t3.fragments = [], "xfffee000" !== h(e2)) throw "dicomParser.findEndOfEncapsulatedElement: basic offset table not found";
           for (var a3 = e2.readUint32() / 4, n3 = 0; n3 < a3; n3++) {
             var i3 = e2.readUint32();
-            t2.basicOffsetTable.push(i3);
+            t3.basicOffsetTable.push(i3);
           }
           for (var o2 = e2.position; e2.position < e2.byteArray.length; ) {
             var s2 = h(e2), d2 = e2.readUint32();
-            if ("xfffee0dd" === s2) return e2.seek(d2), void (t2.length = e2.position - t2.dataOffset);
-            if ("xfffee000" !== s2) return r3 && r3.push("unexpected tag ".concat(s2, " while searching for end of pixel data element with undefined length")), d2 > e2.byteArray.length - e2.position && (d2 = e2.byteArray.length - e2.position), t2.fragments.push({ offset: e2.position - o2 - 8, position: e2.position, length: d2 }), e2.seek(d2), void (t2.length = e2.position - t2.dataOffset);
-            t2.fragments.push({ offset: e2.position - o2 - 8, position: e2.position, length: d2 }), e2.seek(d2);
+            if ("xfffee0dd" === s2) return e2.seek(d2), void (t3.length = e2.position - t3.dataOffset);
+            if ("xfffee000" !== s2) return r3 && r3.push("unexpected tag ".concat(s2, " while searching for end of pixel data element with undefined length")), d2 > e2.byteArray.length - e2.position && (d2 = e2.byteArray.length - e2.position), t3.fragments.push({ offset: e2.position - o2 - 8, position: e2.position, length: d2 }), e2.seek(d2), void (t3.length = e2.position - t3.dataOffset);
+            t3.fragments.push({ offset: e2.position - o2 - 8, position: e2.position, length: d2 }), e2.seek(d2);
           }
-          r3 && r3.push("pixel data element ".concat(t2.tag, " missing sequence delimiter tag xfffee0dd"));
+          r3 && r3.push("pixel data element ".concat(t3.tag, " missing sequence delimiter tag xfffee0dd"));
         }
-        function y(e2, t2) {
+        function y(e2, t3) {
           if (void 0 === e2) throw "dicomParser.findAndSetUNElementLength: missing required parameter 'byteStream'";
           for (var r3 = e2.byteArray.length - 8; e2.position <= r3; ) if (65534 === e2.readUint16()) {
             var a3 = e2.readUint16();
-            if (57565 === a3) return 0 !== e2.readUint32() && e2.warnings("encountered non zero length following item delimiter at position ".concat(e2.position - 4, " while reading element of undefined length with tag ").concat(t2.tag)), void (t2.length = e2.position - t2.dataOffset);
+            if (57565 === a3) return 0 !== e2.readUint32() && e2.warnings("encountered non zero length following item delimiter at position ".concat(e2.position - 4, " while reading element of undefined length with tag ").concat(t3.tag)), void (t3.length = e2.position - t3.dataOffset);
           }
-          t2.length = e2.byteArray.length - t2.dataOffset, e2.seek(e2.byteArray.length - e2.position);
+          t3.length = e2.byteArray.length - t3.dataOffset, e2.seek(e2.byteArray.length - e2.position);
         }
-        function b(e2, t2, r3) {
+        function b(e2, t3, r3) {
           if (r3 < 0) throw "dicomParser.readFixedString - length cannot be less than 0";
-          if (t2 + r3 > e2.length) throw "dicomParser.readFixedString: attempt to read past end of buffer";
+          if (t3 + r3 > e2.length) throw "dicomParser.readFixedString: attempt to read past end of buffer";
           for (var a3, n3 = "", i3 = 0; i3 < r3; i3++) {
-            if (0 === (a3 = e2[t2 + i3])) return t2 += r3, n3;
+            if (0 === (a3 = e2[t3 + i3])) return t3 += r3, n3;
             n3 += String.fromCharCode(a3);
           }
           return n3;
         }
-        function v(e2, t2) {
-          for (var r3 = 0; r3 < t2.length; r3++) {
-            var a3 = t2[r3];
+        function v(e2, t3) {
+          for (var r3 = 0; r3 < t3.length; r3++) {
+            var a3 = t3[r3];
             a3.enumerable = a3.enumerable || false, a3.configurable = true, "value" in a3 && (a3.writable = true), Object.defineProperty(e2, a3.key, a3);
           }
         }
-        function P(e2, t2) {
-          return void 0 !== e2.parser ? e2.parser : t2;
+        function P(e2, t3) {
+          return void 0 !== e2.parser ? e2.parser : t3;
         }
         var w = (function() {
-          function a3(e3, t3, r4) {
-            !(function(e4, t4) {
-              if (!(e4 instanceof t4)) throw new TypeError("Cannot call a class as a function");
-            })(this, a3), this.byteArrayParser = e3, this.byteArray = t3, this.elements = r4;
+          function a3(e3, t4, r4) {
+            !(function(e4, t5) {
+              if (!(e4 instanceof t5)) throw new TypeError("Cannot call a class as a function");
+            })(this, a3), this.byteArrayParser = e3, this.byteArray = t4, this.elements = r4;
           }
-          var e2, t2, r3;
-          return e2 = a3, (t2 = [{ key: "uint16", value: function(e3, t3) {
+          var e2, t3, r3;
+          return e2 = a3, (t3 = [{ key: "uint16", value: function(e3, t4) {
             e3 = this.elements[e3];
-            if (t3 = void 0 !== t3 ? t3 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readUint16(this.byteArray, e3.dataOffset + 2 * t3);
-          } }, { key: "int16", value: function(e3, t3) {
+            if (t4 = void 0 !== t4 ? t4 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readUint16(this.byteArray, e3.dataOffset + 2 * t4);
+          } }, { key: "int16", value: function(e3, t4) {
             e3 = this.elements[e3];
-            if (t3 = void 0 !== t3 ? t3 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readInt16(this.byteArray, e3.dataOffset + 2 * t3);
-          } }, { key: "uint32", value: function(e3, t3) {
+            if (t4 = void 0 !== t4 ? t4 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readInt16(this.byteArray, e3.dataOffset + 2 * t4);
+          } }, { key: "uint32", value: function(e3, t4) {
             e3 = this.elements[e3];
-            if (t3 = void 0 !== t3 ? t3 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readUint32(this.byteArray, e3.dataOffset + 4 * t3);
-          } }, { key: "int32", value: function(e3, t3) {
+            if (t4 = void 0 !== t4 ? t4 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readUint32(this.byteArray, e3.dataOffset + 4 * t4);
+          } }, { key: "int32", value: function(e3, t4) {
             e3 = this.elements[e3];
-            if (t3 = void 0 !== t3 ? t3 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readInt32(this.byteArray, e3.dataOffset + 4 * t3);
-          } }, { key: "float", value: function(e3, t3) {
+            if (t4 = void 0 !== t4 ? t4 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readInt32(this.byteArray, e3.dataOffset + 4 * t4);
+          } }, { key: "float", value: function(e3, t4) {
             e3 = this.elements[e3];
-            if (t3 = void 0 !== t3 ? t3 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readFloat(this.byteArray, e3.dataOffset + 4 * t3);
-          } }, { key: "double", value: function(e3, t3) {
+            if (t4 = void 0 !== t4 ? t4 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readFloat(this.byteArray, e3.dataOffset + 4 * t4);
+          } }, { key: "double", value: function(e3, t4) {
             e3 = this.elements[e3];
-            if (t3 = void 0 !== t3 ? t3 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readDouble(this.byteArray, e3.dataOffset + 8 * t3);
+            if (t4 = void 0 !== t4 ? t4 : 0, e3 && 0 !== e3.length) return P(e3, this.byteArrayParser).readDouble(this.byteArray, e3.dataOffset + 8 * t4);
           } }, { key: "numStringValues", value: function(e3) {
             e3 = this.elements[e3];
             if (e3 && 0 < e3.length) {
               e3 = b(this.byteArray, e3.dataOffset, e3.length).match(/\\/g);
               return null === e3 ? 1 : e3.length + 1;
             }
-          } }, { key: "string", value: function(e3, t3) {
+          } }, { key: "string", value: function(e3, t4) {
             e3 = this.elements[e3];
             if (e3 && e3.Value) return e3.Value;
             if (e3 && 0 < e3.length) {
               e3 = b(this.byteArray, e3.dataOffset, e3.length);
-              return 0 <= t3 ? e3.split("\\")[t3].trim() : e3.trim();
+              return 0 <= t4 ? e3.split("\\")[t4].trim() : e3.trim();
             }
-          } }, { key: "text", value: function(e3, t3) {
+          } }, { key: "text", value: function(e3, t4) {
             e3 = this.elements[e3];
             if (e3 && 0 < e3.length) {
               e3 = b(this.byteArray, e3.dataOffset, e3.length);
-              return 0 <= t3 ? e3.split("\\")[t3].replace(/ +$/, "") : e3.replace(/ +$/, "");
+              return 0 <= t4 ? e3.split("\\")[t4].replace(/ +$/, "") : e3.replace(/ +$/, "");
             }
-          } }, { key: "floatString", value: function(e3, t3) {
+          } }, { key: "floatString", value: function(e3, t4) {
             var r4 = this.elements[e3];
             if (r4 && 0 < r4.length) {
-              t3 = this.string(e3, t3 = void 0 !== t3 ? t3 : 0);
-              if (void 0 !== t3) return parseFloat(t3);
+              t4 = this.string(e3, t4 = void 0 !== t4 ? t4 : 0);
+              if (void 0 !== t4) return parseFloat(t4);
             }
-          } }, { key: "intString", value: function(e3, t3) {
+          } }, { key: "intString", value: function(e3, t4) {
             var r4 = this.elements[e3];
             if (r4 && 0 < r4.length) {
-              t3 = this.string(e3, t3 = void 0 !== t3 ? t3 : 0);
-              if (void 0 !== t3) return parseInt(t3);
+              t4 = this.string(e3, t4 = void 0 !== t4 ? t4 : 0);
+              if (void 0 !== t4) return parseInt(t4);
             }
           } }, { key: "attributeTag", value: function(e3) {
-            var t3 = this.elements[e3];
-            if (t3 && 4 === t3.length) {
-              var r4 = P(t3, this.byteArrayParser).readUint16, e3 = this.byteArray, t3 = t3.dataOffset;
-              return "x".concat("00000000".concat((256 * r4(e3, t3) * 256 + r4(e3, t3 + 2)).toString(16)).substr(-8));
+            var t4 = this.elements[e3];
+            if (t4 && 4 === t4.length) {
+              var r4 = P(t4, this.byteArrayParser).readUint16, e3 = this.byteArray, t4 = t4.dataOffset;
+              return "x".concat("00000000".concat((256 * r4(e3, t4) * 256 + r4(e3, t4 + 2)).toString(16)).substr(-8));
             }
-          } }]) && v(e2.prototype, t2), r3 && v(e2, r3), Object.defineProperty(e2, "prototype", { writable: false }), a3;
+          } }]) && v(e2.prototype, t3), r3 && v(e2, r3), Object.defineProperty(e2, "prototype", { writable: false }), a3;
         })();
-        function x(e2, t2) {
+        function x(e2, t3) {
           if (void 0 === e2) throw "dicomParser.readDicomElementImplicit: missing required parameter 'byteStream'";
           for (var r3 = e2.byteArray.length - 8; e2.position <= r3; ) if (65534 === e2.readUint16()) {
             var a3 = e2.readUint16();
-            if (57357 === a3) return 0 !== e2.readUint32() && e2.warnings("encountered non zero length following item delimiter at position ".concat(e2.position - 4, " while reading element of undefined length with tag ").concat(t2.tag)), void (t2.length = e2.position - t2.dataOffset);
+            if (57357 === a3) return 0 !== e2.readUint32() && e2.warnings("encountered non zero length following item delimiter at position ".concat(e2.position - 4, " while reading element of undefined length with tag ").concat(t3.tag)), void (t3.length = e2.position - t3.dataOffset);
           }
-          t2.length = e2.byteArray.length - t2.dataOffset, e2.seek(e2.byteArray.length - e2.position);
+          t3.length = e2.byteArray.length - t3.dataOffset, e2.seek(e2.byteArray.length - e2.position);
         }
-        var E = function(e2, t2) {
+        var E = function(e2, t3) {
           if (void 0 !== e2.vr) return "SQ" === e2.vr;
-          if (t2.position + 4 <= t2.byteArray.length) {
-            e2 = h(t2);
-            return t2.seek(-4), "xfffee000" === e2 || "xfffee0dd" === e2;
+          if (t3.position + 4 <= t3.byteArray.length) {
+            e2 = h(t3);
+            return t3.seek(-4), "xfffee000" === e2 || "xfffee0dd" === e2;
           }
-          return t2.warnings.push("eof encountered before finding sequence item tag or sequence delimiter tag in peeking to determine VR"), false;
+          return t3.warnings.push("eof encountered before finding sequence item tag or sequence delimiter tag in peeking to determine VR"), false;
         };
-        function A(e2, t2, r3) {
+        function A(e2, t3, r3) {
           if (void 0 === e2) throw "dicomParser.readDicomElementImplicit: missing required parameter 'byteStream'";
           var a3 = h(e2), a3 = { tag: a3, vr: void 0 !== r3 ? r3(a3) : void 0, length: e2.readUint32(), dataOffset: e2.position };
-          return 4294967295 === a3.length && (a3.hadUndefinedLength = true), a3.tag === t2 || (!E(a3, e2) || f(a3.tag) && !a3.hadUndefinedLength ? a3.hadUndefinedLength ? x(e2, a3) : e2.seek(a3.length) : (F(e2, a3, r3), f(a3.tag) && (a3.items = void 0))), a3;
+          return 4294967295 === a3.length && (a3.hadUndefinedLength = true), a3.tag === t3 || (!E(a3, e2) || f(a3.tag) && !a3.hadUndefinedLength ? a3.hadUndefinedLength ? x(e2, a3) : e2.seek(a3.length) : (F(e2, a3, r3), f(a3.tag) && (a3.items = void 0))), a3;
         }
         function S(e2) {
           if (void 0 === e2) throw "dicomParser.readSequenceItem: missing required parameter 'byteStream'";
-          var t2 = { tag: h(e2), length: e2.readUint32(), dataOffset: e2.position };
-          if ("xfffee000" !== t2.tag) throw "dicomParser.readSequenceItem: item tag (FFFE,E000) not found at offset ".concat(e2.position);
-          return t2;
+          var t3 = { tag: h(e2), length: e2.readUint32(), dataOffset: e2.position };
+          if ("xfffee000" !== t3.tag) throw "dicomParser.readSequenceItem: item tag (FFFE,E000) not found at offset ".concat(e2.position);
+          return t3;
         }
-        function D(e2, t2) {
+        function D(e2, t3) {
           var r3 = S(e2);
-          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = (function(e3, t3) {
+          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = (function(e3, t4) {
             for (var r4 = {}; e3.position < e3.byteArray.length; ) {
-              var a3 = A(e3, void 0, t3);
+              var a3 = A(e3, void 0, t4);
               if ("xfffee00d" === (r4[a3.tag] = a3).tag) return new w(e3.byteArrayParser, e3.byteArray, r4);
             }
             return e3.warnings.push("eof encountered before finding sequence item delimiter in sequence item of undefined length"), new w(e3.byteArrayParser, e3.byteArray, r4);
-          })(e2, t2), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), T(r3.dataSet, e2, e2.position + r3.length, { vrCallback: t2 })), r3;
+          })(e2, t3), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), T(r3.dataSet, e2, e2.position + r3.length, { vrCallback: t3 })), r3;
         }
-        function F(e2, t2, r3) {
+        function F(e2, t3, r3) {
           if (void 0 === e2) throw "dicomParser.readSequenceItemsImplicit: missing required parameter 'byteStream'";
-          if (void 0 === t2) throw "dicomParser.readSequenceItemsImplicit: missing required parameter 'element'";
-          t2.items = [], (4294967295 === t2.length ? function(e3, t3, r4) {
+          if (void 0 === t3) throw "dicomParser.readSequenceItemsImplicit: missing required parameter 'element'";
+          t3.items = [], (4294967295 === t3.length ? function(e3, t4, r4) {
             for (; e3.position + 4 <= e3.byteArray.length; ) {
               var a3 = h(e3);
-              if (e3.seek(-4), "xfffee0dd" === a3) return t3.length = e3.position - t3.dataOffset, e3.seek(8);
+              if (e3.seek(-4), "xfffee0dd" === a3) return t4.length = e3.position - t4.dataOffset, e3.seek(8);
               a3 = D(e3, r4);
-              t3.items.push(a3);
+              t4.items.push(a3);
             }
-            e3.warnings.push("eof encountered before finding sequence delimiter in sequence of undefined length"), t3.length = e3.byteArray.length - t3.dataOffset;
-          } : function(e3, t3, r4) {
-            for (var a3 = t3.dataOffset + t3.length; e3.position < a3; ) {
+            e3.warnings.push("eof encountered before finding sequence delimiter in sequence of undefined length"), t4.length = e3.byteArray.length - t4.dataOffset;
+          } : function(e3, t4, r4) {
+            for (var a3 = t4.dataOffset + t4.length; e3.position < a3; ) {
               var n3 = D(e3, r4);
-              t3.items.push(n3);
+              t4.items.push(n3);
             }
-          })(e2, t2, r3);
+          })(e2, t3, r3);
         }
-        function O(e2, t2) {
+        function O(e2, t3) {
           var r3 = S(e2);
-          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = (function(e3, t3) {
+          return 4294967295 === r3.length ? (r3.hadUndefinedLength = true, r3.dataSet = (function(e3, t4) {
             for (var r4 = {}; e3.position < e3.byteArray.length; ) {
-              var a3 = B(e3, t3);
+              var a3 = B(e3, t4);
               if ("xfffee00d" === (r4[a3.tag] = a3).tag) return new w(e3.byteArrayParser, e3.byteArray, r4);
             }
-            return t3.push("eof encountered before finding item delimiter tag while reading sequence item of undefined length"), new w(e3.byteArrayParser, e3.byteArray, r4);
-          })(e2, t2), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), q(r3.dataSet, e2, e2.position + r3.length)), r3;
+            return t4.push("eof encountered before finding item delimiter tag while reading sequence item of undefined length"), new w(e3.byteArrayParser, e3.byteArray, r4);
+          })(e2, t3), r3.length = e2.position - r3.dataOffset) : (r3.dataSet = new w(e2.byteArrayParser, e2.byteArray, {}), q(r3.dataSet, e2, e2.position + r3.length)), r3;
         }
-        function I(e2, t2, r3) {
+        function I(e2, t3, r3) {
           if (void 0 === e2) throw "dicomParser.readSequenceItemsExplicit: missing required parameter 'byteStream'";
-          if (void 0 === t2) throw "dicomParser.readSequenceItemsExplicit: missing required parameter 'element'";
-          t2.items = [], (4294967295 === t2.length ? function(e3, t3, r4) {
+          if (void 0 === t3) throw "dicomParser.readSequenceItemsExplicit: missing required parameter 'element'";
+          t3.items = [], (4294967295 === t3.length ? function(e3, t4, r4) {
             for (; e3.position + 4 <= e3.byteArray.length; ) {
               var a3 = h(e3);
-              if (e3.seek(-4), "xfffee0dd" === a3) return t3.length = e3.position - t3.dataOffset, e3.seek(8);
+              if (e3.seek(-4), "xfffee0dd" === a3) return t4.length = e3.position - t4.dataOffset, e3.seek(8);
               a3 = O(e3, r4);
-              t3.items.push(a3);
+              t4.items.push(a3);
             }
-            r4.push("eof encountered before finding sequence delimitation tag while reading sequence of undefined length"), t3.length = e3.position - t3.dataOffset;
-          } : function(e3, t3, r4) {
-            for (var a3 = t3.dataOffset + t3.length; e3.position < a3; ) {
+            r4.push("eof encountered before finding sequence delimitation tag while reading sequence of undefined length"), t4.length = e3.position - t4.dataOffset;
+          } : function(e3, t4, r4) {
+            for (var a3 = t4.dataOffset + t4.length; e3.position < a3; ) {
               var n3 = O(e3, r4);
-              t3.items.push(n3);
+              t4.items.push(n3);
             }
-          })(e2, t2, r3);
+          })(e2, t3, r3);
         }
         var U = function(e2) {
           return "OB" === e2 || "OD" === e2 || "OL" === e2 || "OW" === e2 || "SQ" === e2 || "OF" === e2 || "UC" === e2 || "UR" === e2 || "UT" === e2 || "UN" === e2 ? 4 : 2;
         };
-        function B(e2, t2, r3) {
+        function B(e2, t3, r3) {
           if (void 0 === e2) throw "dicomParser.readDicomElementExplicit: missing required parameter 'byteStream'";
           var a3 = { tag: h(e2), vr: e2.readFixedString(2) };
-          return 2 === U(a3.vr) ? a3.length = e2.readUint16() : (e2.seek(2), a3.length = e2.readUint32()), a3.dataOffset = e2.position, 4294967295 === a3.length && (a3.hadUndefinedLength = true), a3.tag === r3 || ("SQ" === a3.vr ? I(e2, a3, t2) : 4294967295 === a3.length ? "x7fe00010" === a3.tag ? g(e2, a3, t2) : ("UN" === a3.vr ? F : x)(e2, a3) : e2.seek(a3.length)), a3;
+          return 2 === U(a3.vr) ? a3.length = e2.readUint16() : (e2.seek(2), a3.length = e2.readUint32()), a3.dataOffset = e2.position, 4294967295 === a3.length && (a3.hadUndefinedLength = true), a3.tag === r3 || ("SQ" === a3.vr ? I(e2, a3, t3) : 4294967295 === a3.length ? "x7fe00010" === a3.tag ? g(e2, a3, t3) : ("UN" === a3.vr ? F : x)(e2, a3) : e2.seek(a3.length)), a3;
         }
-        function q(e2, t2, r3) {
+        function q(e2, t3, r3) {
           var a3 = 3 < arguments.length && void 0 !== arguments[3] ? arguments[3] : {};
-          if (r3 = void 0 === r3 ? t2.byteArray.length : r3, void 0 === t2) throw "dicomParser.parseDicomDataSetExplicit: missing required parameter 'byteStream'";
-          if (r3 < t2.position || r3 > t2.byteArray.length) throw "dicomParser.parseDicomDataSetExplicit: invalid value for parameter 'maxP osition'";
-          for (var n3 = e2.elements; t2.position < r3; ) {
-            var i3 = B(t2, e2.warnings, a3.untilTag);
+          if (r3 = void 0 === r3 ? t3.byteArray.length : r3, void 0 === t3) throw "dicomParser.parseDicomDataSetExplicit: missing required parameter 'byteStream'";
+          if (r3 < t3.position || r3 > t3.byteArray.length) throw "dicomParser.parseDicomDataSetExplicit: invalid value for parameter 'maxP osition'";
+          for (var n3 = e2.elements; t3.position < r3; ) {
+            var i3 = B(t3, e2.warnings, a3.untilTag);
             if ((n3[i3.tag] = i3).tag === a3.untilTag) return;
           }
-          if (t2.position > r3) throw "dicomParser:parseDicomDataSetExplicit: buffer overrun";
+          if (t3.position > r3) throw "dicomParser:parseDicomDataSetExplicit: buffer overrun";
         }
-        function T(e2, t2, r3) {
+        function T(e2, t3, r3) {
           var a3 = 3 < arguments.length && void 0 !== arguments[3] ? arguments[3] : {};
-          if (r3 = void 0 === r3 ? e2.byteArray.length : r3, void 0 === t2) throw "dicomParser.parseDicomDataSetImplicit: missing required parameter 'byteStream'";
-          if (r3 < t2.position || r3 > t2.byteArray.length) throw "dicomParser.parseDicomDataSetImplicit: invalid value for parameter 'maxPosition'";
-          for (var n3 = e2.elements; t2.position < r3; ) {
-            var i3 = A(t2, a3.untilTag, a3.vrCallback);
+          if (r3 = void 0 === r3 ? e2.byteArray.length : r3, void 0 === t3) throw "dicomParser.parseDicomDataSetImplicit: missing required parameter 'byteStream'";
+          if (r3 < t3.position || r3 > t3.byteArray.length) throw "dicomParser.parseDicomDataSetImplicit: invalid value for parameter 'maxPosition'";
+          for (var n3 = e2.elements; t3.position < r3; ) {
+            var i3 = A(t3, a3.untilTag, a3.vrCallback);
             if ((n3[i3.tag] = i3).tag === a3.untilTag) return;
           }
         }
-        function k(e2, t2) {
-          if ("undefined" != typeof Buffer && e2 instanceof Buffer) return Buffer.alloc(t2);
-          if (e2 instanceof Uint8Array) return new Uint8Array(t2);
+        function k(e2, t3) {
+          if ("undefined" != typeof Buffer && e2 instanceof Buffer) return Buffer.alloc(t3);
+          if (e2 instanceof Uint8Array) return new Uint8Array(t3);
           throw "dicomParser.alloc: unknown type for byteArray";
         }
-        var L = "1.8.12", N = { readUint16: function(e2, t2) {
-          if (t2 < 0) throw "bigEndianByteArrayParser.readUint16: position cannot be less than 0";
-          if (t2 + 2 > e2.length) throw "bigEndianByteArrayParser.readUint16: attempt to read past end of buffer";
-          return (e2[t2] << 8) + e2[t2 + 1];
-        }, readInt16: function(e2, t2) {
-          if (t2 < 0) throw "bigEndianByteArrayParser.readInt16: position cannot be less than 0";
-          if (t2 + 2 > e2.length) throw "bigEndianByteArrayParser.readInt16: attempt to read past end of buffer";
-          t2 = (e2[t2] << 8) + e2[t2 + 1];
-          return t2 = 32768 & t2 ? t2 - 65535 - 1 : t2;
-        }, readUint32: function(e2, t2) {
-          if (t2 < 0) throw "bigEndianByteArrayParser.readUint32: position cannot be less than 0";
-          if (t2 + 4 > e2.length) throw "bigEndianByteArrayParser.readUint32: attempt to read past end of buffer";
-          return 256 * (256 * (256 * e2[t2] + e2[t2 + 1]) + e2[t2 + 2]) + e2[t2 + 3];
-        }, readInt32: function(e2, t2) {
-          if (t2 < 0) throw "bigEndianByteArrayParser.readInt32: position cannot be less than 0";
-          if (t2 + 4 > e2.length) throw "bigEndianByteArrayParser.readInt32: attempt to read past end of buffer";
-          return (e2[t2] << 24) + (e2[t2 + 1] << 16) + (e2[t2 + 2] << 8) + e2[t2 + 3];
-        }, readFloat: function(e2, t2) {
-          if (t2 < 0) throw "bigEndianByteArrayParser.readFloat: position cannot be less than 0";
-          if (t2 + 4 > e2.length) throw "bigEndianByteArrayParser.readFloat: attempt to read past end of buffer";
+        var L = "1.8.12", N = { readUint16: function(e2, t3) {
+          if (t3 < 0) throw "bigEndianByteArrayParser.readUint16: position cannot be less than 0";
+          if (t3 + 2 > e2.length) throw "bigEndianByteArrayParser.readUint16: attempt to read past end of buffer";
+          return (e2[t3] << 8) + e2[t3 + 1];
+        }, readInt16: function(e2, t3) {
+          if (t3 < 0) throw "bigEndianByteArrayParser.readInt16: position cannot be less than 0";
+          if (t3 + 2 > e2.length) throw "bigEndianByteArrayParser.readInt16: attempt to read past end of buffer";
+          t3 = (e2[t3] << 8) + e2[t3 + 1];
+          return t3 = 32768 & t3 ? t3 - 65535 - 1 : t3;
+        }, readUint32: function(e2, t3) {
+          if (t3 < 0) throw "bigEndianByteArrayParser.readUint32: position cannot be less than 0";
+          if (t3 + 4 > e2.length) throw "bigEndianByteArrayParser.readUint32: attempt to read past end of buffer";
+          return 256 * (256 * (256 * e2[t3] + e2[t3 + 1]) + e2[t3 + 2]) + e2[t3 + 3];
+        }, readInt32: function(e2, t3) {
+          if (t3 < 0) throw "bigEndianByteArrayParser.readInt32: position cannot be less than 0";
+          if (t3 + 4 > e2.length) throw "bigEndianByteArrayParser.readInt32: attempt to read past end of buffer";
+          return (e2[t3] << 24) + (e2[t3 + 1] << 16) + (e2[t3 + 2] << 8) + e2[t3 + 3];
+        }, readFloat: function(e2, t3) {
+          if (t3 < 0) throw "bigEndianByteArrayParser.readFloat: position cannot be less than 0";
+          if (t3 + 4 > e2.length) throw "bigEndianByteArrayParser.readFloat: attempt to read past end of buffer";
           var r3 = new Uint8Array(4);
-          return r3[3] = e2[t2], r3[2] = e2[t2 + 1], r3[1] = e2[t2 + 2], r3[0] = e2[t2 + 3], new Float32Array(r3.buffer)[0];
-        }, readDouble: function(e2, t2) {
-          if (t2 < 0) throw "bigEndianByteArrayParser.readDouble: position cannot be less than 0";
-          if (t2 + 8 > e2.length) throw "bigEndianByteArrayParser.readDouble: attempt to read past end of buffer";
+          return r3[3] = e2[t3], r3[2] = e2[t3 + 1], r3[1] = e2[t3 + 2], r3[0] = e2[t3 + 3], new Float32Array(r3.buffer)[0];
+        }, readDouble: function(e2, t3) {
+          if (t3 < 0) throw "bigEndianByteArrayParser.readDouble: position cannot be less than 0";
+          if (t3 + 8 > e2.length) throw "bigEndianByteArrayParser.readDouble: attempt to read past end of buffer";
           var r3 = new Uint8Array(8);
-          return r3[7] = e2[t2], r3[6] = e2[t2 + 1], r3[5] = e2[t2 + 2], r3[4] = e2[t2 + 3], r3[3] = e2[t2 + 4], r3[2] = e2[t2 + 5], r3[1] = e2[t2 + 6], r3[0] = e2[t2 + 7], new Float64Array(r3.buffer)[0];
+          return r3[7] = e2[t3], r3[6] = e2[t3 + 1], r3[5] = e2[t3 + 2], r3[4] = e2[t3 + 3], r3[3] = e2[t3 + 4], r3[2] = e2[t3 + 5], r3[1] = e2[t3 + 6], r3[0] = e2[t3 + 7], new Float64Array(r3.buffer)[0];
         } };
-        function j(e2, t2, r3) {
-          if ("undefined" != typeof Buffer && e2 instanceof Buffer) return e2.slice(t2, t2 + r3);
-          if (e2 instanceof Uint8Array) return new Uint8Array(e2.buffer, e2.byteOffset + t2, r3);
+        function j(e2, t3, r3) {
+          if ("undefined" != typeof Buffer && e2 instanceof Buffer) return e2.slice(t3, t3 + r3);
+          if (e2 instanceof Uint8Array) return new Uint8Array(e2.buffer, e2.byteOffset + t3, r3);
           throw "dicomParser.from: unknown type for byteArray";
         }
-        function C(e2, t2) {
-          for (var r3 = 0; r3 < t2.length; r3++) {
-            var a3 = t2[r3];
+        function C(e2, t3) {
+          for (var r3 = 0; r3 < t3.length; r3++) {
+            var a3 = t3[r3];
             a3.enumerable = a3.enumerable || false, a3.configurable = true, "value" in a3 && (a3.writable = true), Object.defineProperty(e2, a3.key, a3);
           }
         }
         var J = (function() {
-          function a3(e3, t3, r4) {
-            if (!(function(e4, t4) {
-              if (!(e4 instanceof t4)) throw new TypeError("Cannot call a class as a function");
+          function a3(e3, t4, r4) {
+            if (!(function(e4, t5) {
+              if (!(e4 instanceof t5)) throw new TypeError("Cannot call a class as a function");
             })(this, a3), void 0 === e3) throw "dicomParser.ByteStream: missing required parameter 'byteArrayParser'";
-            if (void 0 === t3) throw "dicomParser.ByteStream: missing required parameter 'byteArray'";
-            if (t3 instanceof Uint8Array == false && ("undefined" == typeof Buffer || t3 instanceof Buffer == false)) throw "dicomParser.ByteStream: parameter byteArray is not of type Uint8Array or Buffer";
+            if (void 0 === t4) throw "dicomParser.ByteStream: missing required parameter 'byteArray'";
+            if (t4 instanceof Uint8Array == false && ("undefined" == typeof Buffer || t4 instanceof Buffer == false)) throw "dicomParser.ByteStream: parameter byteArray is not of type Uint8Array or Buffer";
             if (r4 < 0) throw "dicomParser.ByteStream: parameter 'position' cannot be less than 0";
-            if (r4 >= t3.length) throw "dicomParser.ByteStream: parameter 'position' cannot be greater than or equal to 'byteArray' length";
-            this.byteArrayParser = e3, this.byteArray = t3, this.position = r4 || 0, this.warnings = [];
+            if (r4 >= t4.length) throw "dicomParser.ByteStream: parameter 'position' cannot be greater than or equal to 'byteArray' length";
+            this.byteArrayParser = e3, this.byteArray = t4, this.position = r4 || 0, this.warnings = [];
           }
-          var e2, t2, r3;
-          return e2 = a3, (t2 = [{ key: "seek", value: function(e3) {
+          var e2, t3, r3;
+          return e2 = a3, (t3 = [{ key: "seek", value: function(e3) {
             if (this.position + e3 < 0) throw "dicomParser.ByteStream.prototype.seek: cannot seek to position < 0";
             this.position += e3;
           } }, { key: "readByteStream", value: function(e3) {
             if (this.position + e3 > this.byteArray.length) throw "dicomParser.ByteStream.prototype.readByteStream: readByteStream - buffer overread";
-            var t3 = j(this.byteArray, this.position, e3);
-            return this.position += e3, new a3(this.byteArrayParser, t3);
+            var t4 = j(this.byteArray, this.position, e3);
+            return this.position += e3, new a3(this.byteArrayParser, t4);
           } }, { key: "getSize", value: function() {
             return this.byteArray.length;
           } }, { key: "readUint16", value: function() {
@@ -503,36 +503,36 @@ var require_dicomParser_min = __commonJS({
             var e3 = this.byteArrayParser.readUint32(this.byteArray, this.position);
             return this.position += 4, e3;
           } }, { key: "readFixedString", value: function(e3) {
-            var t3 = b(this.byteArray, this.position, e3);
-            return this.position += e3, t3;
-          } }]) && C(e2.prototype, t2), r3 && C(e2, r3), Object.defineProperty(e2, "prototype", { writable: false }), a3;
-        })(), M = { readUint16: function(e2, t2) {
-          if (t2 < 0) throw "littleEndianByteArrayParser.readUint16: position cannot be less than 0";
-          if (t2 + 2 > e2.length) throw "littleEndianByteArrayParser.readUint16: attempt to read past end of buffer";
-          return e2[t2] + 256 * e2[t2 + 1];
-        }, readInt16: function(e2, t2) {
-          if (t2 < 0) throw "littleEndianByteArrayParser.readInt16: position cannot be less than 0";
-          if (t2 + 2 > e2.length) throw "littleEndianByteArrayParser.readInt16: attempt to read past end of buffer";
-          t2 = e2[t2] + (e2[t2 + 1] << 8);
-          return t2 = 32768 & t2 ? t2 - 65535 - 1 : t2;
-        }, readUint32: function(e2, t2) {
-          if (t2 < 0) throw "littleEndianByteArrayParser.readUint32: position cannot be less than 0";
-          if (t2 + 4 > e2.length) throw "littleEndianByteArrayParser.readUint32: attempt to read past end of buffer";
-          return e2[t2] + 256 * e2[t2 + 1] + 256 * e2[t2 + 2] * 256 + 256 * e2[t2 + 3] * 256 * 256;
-        }, readInt32: function(e2, t2) {
-          if (t2 < 0) throw "littleEndianByteArrayParser.readInt32: position cannot be less than 0";
-          if (t2 + 4 > e2.length) throw "littleEndianByteArrayParser.readInt32: attempt to read past end of buffer";
-          return e2[t2] + (e2[t2 + 1] << 8) + (e2[t2 + 2] << 16) + (e2[t2 + 3] << 24);
-        }, readFloat: function(e2, t2) {
-          if (t2 < 0) throw "littleEndianByteArrayParser.readFloat: position cannot be less than 0";
-          if (t2 + 4 > e2.length) throw "littleEndianByteArrayParser.readFloat: attempt to read past end of buffer";
+            var t4 = b(this.byteArray, this.position, e3);
+            return this.position += e3, t4;
+          } }]) && C(e2.prototype, t3), r3 && C(e2, r3), Object.defineProperty(e2, "prototype", { writable: false }), a3;
+        })(), M = { readUint16: function(e2, t3) {
+          if (t3 < 0) throw "littleEndianByteArrayParser.readUint16: position cannot be less than 0";
+          if (t3 + 2 > e2.length) throw "littleEndianByteArrayParser.readUint16: attempt to read past end of buffer";
+          return e2[t3] + 256 * e2[t3 + 1];
+        }, readInt16: function(e2, t3) {
+          if (t3 < 0) throw "littleEndianByteArrayParser.readInt16: position cannot be less than 0";
+          if (t3 + 2 > e2.length) throw "littleEndianByteArrayParser.readInt16: attempt to read past end of buffer";
+          t3 = e2[t3] + (e2[t3 + 1] << 8);
+          return t3 = 32768 & t3 ? t3 - 65535 - 1 : t3;
+        }, readUint32: function(e2, t3) {
+          if (t3 < 0) throw "littleEndianByteArrayParser.readUint32: position cannot be less than 0";
+          if (t3 + 4 > e2.length) throw "littleEndianByteArrayParser.readUint32: attempt to read past end of buffer";
+          return e2[t3] + 256 * e2[t3 + 1] + 256 * e2[t3 + 2] * 256 + 256 * e2[t3 + 3] * 256 * 256;
+        }, readInt32: function(e2, t3) {
+          if (t3 < 0) throw "littleEndianByteArrayParser.readInt32: position cannot be less than 0";
+          if (t3 + 4 > e2.length) throw "littleEndianByteArrayParser.readInt32: attempt to read past end of buffer";
+          return e2[t3] + (e2[t3 + 1] << 8) + (e2[t3 + 2] << 16) + (e2[t3 + 3] << 24);
+        }, readFloat: function(e2, t3) {
+          if (t3 < 0) throw "littleEndianByteArrayParser.readFloat: position cannot be less than 0";
+          if (t3 + 4 > e2.length) throw "littleEndianByteArrayParser.readFloat: attempt to read past end of buffer";
           var r3 = new Uint8Array(4);
-          return r3[0] = e2[t2], r3[1] = e2[t2 + 1], r3[2] = e2[t2 + 2], r3[3] = e2[t2 + 3], new Float32Array(r3.buffer)[0];
-        }, readDouble: function(e2, t2) {
-          if (t2 < 0) throw "littleEndianByteArrayParser.readDouble: position cannot be less than 0";
-          if (t2 + 8 > e2.length) throw "littleEndianByteArrayParser.readDouble: attempt to read past end of buffer";
+          return r3[0] = e2[t3], r3[1] = e2[t3 + 1], r3[2] = e2[t3 + 2], r3[3] = e2[t3 + 3], new Float32Array(r3.buffer)[0];
+        }, readDouble: function(e2, t3) {
+          if (t3 < 0) throw "littleEndianByteArrayParser.readDouble: position cannot be less than 0";
+          if (t3 + 8 > e2.length) throw "littleEndianByteArrayParser.readDouble: attempt to read past end of buffer";
           var r3 = new Uint8Array(8);
-          return r3[0] = e2[t2], r3[1] = e2[t2 + 1], r3[2] = e2[t2 + 2], r3[3] = e2[t2 + 3], r3[4] = e2[t2 + 4], r3[5] = e2[t2 + 5], r3[6] = e2[t2 + 6], r3[7] = e2[t2 + 7], new Float64Array(r3.buffer)[0];
+          return r3[0] = e2[t3], r3[1] = e2[t3 + 1], r3[2] = e2[t3 + 2], r3[3] = e2[t3 + 3], r3[4] = e2[t3 + 4], r3[5] = e2[t3 + 5], r3[6] = e2[t3 + 6], r3[7] = e2[t3 + 7], new Float64Array(r3.buffer)[0];
         } };
         function G(e2) {
           var i3 = 1 < arguments.length && void 0 !== arguments[1] ? arguments[1] : {};
@@ -544,10 +544,10 @@ var require_dicomParser_min = __commonJS({
               if (s2.seek(128), "DICM" === s2.readFixedString(4)) return true;
               if (!(i3 || {}).TransferSyntaxUID) throw "dicomParser.readPart10Header: DICM prefix not found at location 132 - this is not a valid DICOM P10 file.";
               return s2.seek(0), false;
-            })(), t2 = [], r3 = {};
-            if (!e3) return s2.position = 0, { elements: { x00020010: { tag: "x00020010", vr: "UI", Value: o2 } }, warnings: t2 };
+            })(), t3 = [], r3 = {};
+            if (!e3) return s2.position = 0, { elements: { x00020010: { tag: "x00020010", vr: "UI", Value: o2 } }, warnings: t3 };
             for (; s2.position < s2.byteArray.length; ) {
-              var a3 = s2.position, n3 = B(s2, t2);
+              var a3 = s2.position, n3 = B(s2, t3);
               if ("x0002ffff" < n3.tag) {
                 s2.position = a3;
                 break;
@@ -566,124 +566,124 @@ var require_dicomParser_min = __commonJS({
             e3 = e3.elements.x00020010;
             return e3 && e3.Value || b(i3, e3.dataOffset, e3.length);
           };
-          function t2(t3) {
-            var e3 = a3(t3), r3 = "1.2.840.10008.1.2" !== e3, e3 = (function(e4, t4) {
+          function t3(t4) {
+            var e3 = a3(t4), r3 = "1.2.840.10008.1.2" !== e3, e3 = (function(e4, t5) {
               var r4 = "[object process]" === Object.prototype.toString.call("undefined" != typeof process ? process : 0);
-              if ("1.2.840.10008.1.2.1.99" !== e4) return new J(e4 === z ? N : M, i3, t4);
+              if ("1.2.840.10008.1.2.1.99" !== e4) return new J(e4 === z ? N : M, i3, t5);
               if (o2 && o2.inflater) {
-                e4 = o2.inflater(i3, t4);
+                e4 = o2.inflater(i3, t5);
                 return new J(M, e4, 0);
               }
               if (true == r4) {
-                var a4 = s(0), n3 = j(i3, t4, i3.length - t4), a4 = a4.inflateRawSync(n3), n3 = k(i3, a4.length + t4);
-                return i3.copy(n3, 0, 0, t4), a4.copy(n3, t4), new J(M, n3, 0);
+                var a4 = s(0), n3 = j(i3, t5, i3.length - t5), a4 = a4.inflateRawSync(n3), n3 = k(i3, a4.length + t5);
+                return i3.copy(n3, 0, 0, t5), a4.copy(n3, t5), new J(M, n3, 0);
               }
               if ("undefined" == typeof pako) throw "dicomParser.parseDicom: no inflater available to handle deflate transfer syntax";
-              return a4 = i3.slice(t4), n3 = pako.inflateRaw(a4), (a4 = k(i3, n3.length + t4)).set(i3.slice(0, t4), 0), a4.set(n3, t4), new J(M, a4, 0);
-            })(e3, t3.position), t3 = new w(e3.byteArrayParser, e3.byteArray, {});
-            t3.warnings = e3.warnings;
+              return a4 = i3.slice(t5), n3 = pako.inflateRaw(a4), (a4 = k(i3, n3.length + t5)).set(i3.slice(0, t5), 0), a4.set(n3, t5), new J(M, a4, 0);
+            })(e3, t4.position), t4 = new w(e3.byteArrayParser, e3.byteArray, {});
+            t4.warnings = e3.warnings;
             try {
-              (r3 ? q : T)(t3, e3, e3.byteArray.length, o2);
+              (r3 ? q : T)(t4, e3, e3.byteArray.length, o2);
             } catch (e4) {
-              throw { exception: e4, dataSet: t3 };
+              throw { exception: e4, dataSet: t4 };
             }
-            return t3;
+            return t4;
           }
-          return (function(e3, t3) {
-            for (var r3 in e3.elements) e3.elements.hasOwnProperty(r3) && (t3.elements[r3] = e3.elements[r3]);
-            return void 0 !== e3.warnings && (t3.warnings = e3.warnings.concat(t3.warnings)), t3;
-          })(e2 = G(i3, o2), t2(e2));
+          return (function(e3, t4) {
+            for (var r3 in e3.elements) e3.elements.hasOwnProperty(r3) && (t4.elements[r3] = e3.elements[r3]);
+            return void 0 !== e3.warnings && (t4.warnings = e3.warnings.concat(t4.warnings)), t4;
+          })(e2 = G(i3, o2), t3(e2));
         }
-        var R = function(e2, t2, r3) {
-          for (var a3 = 0, n3 = t2; n3 < t2 + r3; n3++) a3 += e2[n3].length;
+        var R = function(e2, t3, r3) {
+          for (var a3 = 0, n3 = t3; n3 < t3 + r3; n3++) a3 += e2[n3].length;
           return a3;
         };
-        function _(e2, t2, r3, a3, n3) {
-          if (n3 = n3 || t2.fragments, void 0 === e2) throw "dicomParser.readEncapsulatedPixelDataFromFragments: missing required parameter 'dataSet'";
-          if (void 0 === t2) throw "dicomParser.readEncapsulatedPixelDataFromFragments: missing required parameter 'pixelDataElement'";
+        function _(e2, t3, r3, a3, n3) {
+          if (n3 = n3 || t3.fragments, void 0 === e2) throw "dicomParser.readEncapsulatedPixelDataFromFragments: missing required parameter 'dataSet'";
+          if (void 0 === t3) throw "dicomParser.readEncapsulatedPixelDataFromFragments: missing required parameter 'pixelDataElement'";
           if (void 0 === r3) throw "dicomParser.readEncapsulatedPixelDataFromFragments: missing required parameter 'startFragmentIndex'";
           if (void 0 === (a3 = a3 || 1)) throw "dicomParser.readEncapsulatedPixelDataFromFragments: missing required parameter 'numFragments'";
-          if ("x7fe00010" !== t2.tag) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to non pixel data tag (expected tag = x7fe00010";
-          if (true !== t2.encapsulatedPixelData) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (true !== t2.hadUndefinedLength) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (void 0 === t2.basicOffsetTable) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (void 0 === t2.fragments) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (t2.fragments.length <= 0) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if ("x7fe00010" !== t3.tag) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to non pixel data tag (expected tag = x7fe00010";
+          if (true !== t3.encapsulatedPixelData) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (true !== t3.hadUndefinedLength) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (void 0 === t3.basicOffsetTable) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (void 0 === t3.fragments) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (t3.fragments.length <= 0) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
           if (r3 < 0) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'startFragmentIndex' must be >= 0";
-          if (r3 >= t2.fragments.length) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'startFragmentIndex' must be < number of fragments";
+          if (r3 >= t3.fragments.length) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'startFragmentIndex' must be < number of fragments";
           if (a3 < 1) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'numFragments' must be > 0";
-          if (r3 + a3 > t2.fragments.length) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'startFragment' + 'numFragments' < number of fragments";
-          var i3 = new J(e2.byteArrayParser, e2.byteArray, t2.dataOffset), t2 = S(i3);
-          if ("xfffee000" !== t2.tag) throw "dicomParser.readEncapsulatedPixelData: missing basic offset table xfffee000";
-          i3.seek(t2.length);
+          if (r3 + a3 > t3.fragments.length) throw "dicomParser.readEncapsulatedPixelDataFromFragments: parameter 'startFragment' + 'numFragments' < number of fragments";
+          var i3 = new J(e2.byteArrayParser, e2.byteArray, t3.dataOffset), t3 = S(i3);
+          if ("xfffee000" !== t3.tag) throw "dicomParser.readEncapsulatedPixelData: missing basic offset table xfffee000";
+          i3.seek(t3.length);
           var o2 = i3.position;
           if (1 === a3) return j(i3.byteArray, o2 + n3[r3].offset + 8, n3[r3].length);
-          for (var t2 = R(n3, r3, a3), s2 = k(i3.byteArray, t2), d2 = 0, f2 = r3; f2 < r3 + a3; f2++) for (var l2 = o2 + n3[f2].offset + 8, u2 = 0; u2 < n3[f2].length; u2++) s2[d2++] = i3.byteArray[l2++];
+          for (var t3 = R(n3, r3, a3), s2 = k(i3.byteArray, t3), d2 = 0, f2 = r3; f2 < r3 + a3; f2++) for (var l2 = o2 + n3[f2].offset + 8, u2 = 0; u2 < n3[f2].length; u2++) s2[d2++] = i3.byteArray[l2++];
           return s2;
         }
-        var H = function(e2, t2) {
-          for (var r3 = 0; r3 < e2.length; r3++) if (e2[r3].offset === t2) return r3;
-        }, Q = function(e2, t2, r3, a3) {
-          if (e2 === t2.length - 1) return r3.length - a3;
-          for (var n3 = t2[e2 + 1], i3 = a3 + 1; i3 < r3.length; i3++) if (r3[i3].offset === n3) return i3 - a3;
+        var H = function(e2, t3) {
+          for (var r3 = 0; r3 < e2.length; r3++) if (e2[r3].offset === t3) return r3;
+        }, Q = function(e2, t3, r3, a3) {
+          if (e2 === t3.length - 1) return r3.length - a3;
+          for (var n3 = t3[e2 + 1], i3 = a3 + 1; i3 < r3.length; i3++) if (r3[i3].offset === n3) return i3 - a3;
           throw "dicomParser.calculateNumberOfFragmentsForFrame: could not find fragment with offset matching basic offset table";
         };
-        function W(e2, t2, r3, a3, n3) {
-          if (a3 = a3 || t2.basicOffsetTable, n3 = n3 || t2.fragments, void 0 === e2) throw "dicomParser.readEncapsulatedImageFrame: missing required parameter 'dataSet'";
-          if (void 0 === t2) throw "dicomParser.readEncapsulatedImageFrame: missing required parameter 'pixelDataElement'";
+        function W(e2, t3, r3, a3, n3) {
+          if (a3 = a3 || t3.basicOffsetTable, n3 = n3 || t3.fragments, void 0 === e2) throw "dicomParser.readEncapsulatedImageFrame: missing required parameter 'dataSet'";
+          if (void 0 === t3) throw "dicomParser.readEncapsulatedImageFrame: missing required parameter 'pixelDataElement'";
           if (void 0 === r3) throw "dicomParser.readEncapsulatedImageFrame: missing required parameter 'frameIndex'";
           if (void 0 === a3) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' does not have basicOffsetTable";
-          if ("x7fe00010" !== t2.tag) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to non pixel data tag (expected tag = x7fe00010)";
-          if (true !== t2.encapsulatedPixelData) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
-          if (true !== t2.hadUndefinedLength) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to pixel data element that does not have undefined length";
-          if (void 0 === t2.fragments) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to pixel data element that does not have fragments";
+          if ("x7fe00010" !== t3.tag) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to non pixel data tag (expected tag = x7fe00010)";
+          if (true !== t3.encapsulatedPixelData) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to pixel data element that does not have encapsulated pixel data";
+          if (true !== t3.hadUndefinedLength) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to pixel data element that does not have undefined length";
+          if (void 0 === t3.fragments) throw "dicomParser.readEncapsulatedImageFrame: parameter 'pixelDataElement' refers to pixel data element that does not have fragments";
           if (0 === a3.length) throw "dicomParser.readEncapsulatedImageFrame: basicOffsetTable has zero entries";
           if (r3 < 0) throw "dicomParser.readEncapsulatedImageFrame: parameter 'frameIndex' must be >= 0";
           if (r3 >= a3.length) throw "dicomParser.readEncapsulatedImageFrame: parameter 'frameIndex' must be < basicOffsetTable.length";
           var i3 = a3[r3], i3 = H(n3, i3);
           if (void 0 === i3) throw "dicomParser.readEncapsulatedImageFrame: unable to find fragment that matches basic offset table entry";
-          return _(e2, t2, i3, Q(r3, a3, n3, i3), n3);
+          return _(e2, t3, i3, Q(r3, a3, n3, i3), n3);
         }
         var $ = false;
-        function K(e2, t2, r3) {
+        function K(e2, t3, r3) {
           if ($ || ($ = true, console && console.log && console.log("WARNING: dicomParser.readEncapsulatedPixelData() has been deprecated")), void 0 === e2) throw "dicomParser.readEncapsulatedPixelData: missing required parameter 'dataSet'";
-          if (void 0 === t2) throw "dicomParser.readEncapsulatedPixelData: missing required parameter 'element'";
+          if (void 0 === t3) throw "dicomParser.readEncapsulatedPixelData: missing required parameter 'element'";
           if (void 0 === r3) throw "dicomParser.readEncapsulatedPixelData: missing required parameter 'frame'";
-          if ("x7fe00010" !== t2.tag) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to non pixel data tag (expected tag = x7fe00010)";
-          if (true !== t2.encapsulatedPixelData) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
-          if (true !== t2.hadUndefinedLength) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
-          if (void 0 === t2.basicOffsetTable) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
-          if (void 0 === t2.fragments) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
+          if ("x7fe00010" !== t3.tag) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to non pixel data tag (expected tag = x7fe00010)";
+          if (true !== t3.encapsulatedPixelData) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
+          if (true !== t3.hadUndefinedLength) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
+          if (void 0 === t3.basicOffsetTable) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
+          if (void 0 === t3.fragments) throw "dicomParser.readEncapsulatedPixelData: parameter 'element' refers to pixel data element that does not have encapsulated pixel data";
           if (r3 < 0) throw "dicomParser.readEncapsulatedPixelData: parameter 'frame' must be >= 0";
-          return 0 !== t2.basicOffsetTable.length ? W(e2, t2, r3) : _(e2, t2, 0, t2.fragments.length);
+          return 0 !== t3.basicOffsetTable.length ? W(e2, t3, r3) : _(e2, t3, 0, t3.fragments.length);
         }
-        t.default = { isStringVr: d, isPrivateTag: f, parsePN: a2, parseTM: n2, parseDA: o, explicitElementToString: l, explicitDataSetToJS: u, createJPEGBasicOffsetTable: p, parseDicomDataSetExplicit: q, parseDicomDataSetImplicit: T, readFixedString: b, alloc: k, version: L, bigEndianByteArrayParser: N, ByteStream: J, sharedCopy: j, DataSet: w, findAndSetUNElementLength: y, findEndOfEncapsulatedElement: g, findItemDelimitationItemAndSetElementLength: x, littleEndianByteArrayParser: M, parseDicom: V, readDicomElementExplicit: B, readDicomElementImplicit: A, readEncapsulatedImageFrame: W, readEncapsulatedPixelData: K, readEncapsulatedPixelDataFromFragments: _, readPart10Header: G, readSequenceItemsExplicit: I, readSequenceItemsImplicit: F, readSequenceItem: S, readTag: h, LEI: "1.2.840.10008.1.2", LEE: "1.2.840.10008.1.2.1" };
-      }], i = {}, n.m = a, n.c = i, n.d = function(e, t, r2) {
-        n.o(e, t) || Object.defineProperty(e, t, { enumerable: true, get: r2 });
+        t2.default = { isStringVr: d, isPrivateTag: f, parsePN: a2, parseTM: n2, parseDA: o, explicitElementToString: l, explicitDataSetToJS: u, createJPEGBasicOffsetTable: p, parseDicomDataSetExplicit: q, parseDicomDataSetImplicit: T, readFixedString: b, alloc: k, version: L, bigEndianByteArrayParser: N, ByteStream: J, sharedCopy: j, DataSet: w, findAndSetUNElementLength: y, findEndOfEncapsulatedElement: g, findItemDelimitationItemAndSetElementLength: x, littleEndianByteArrayParser: M, parseDicom: V, readDicomElementExplicit: B, readDicomElementImplicit: A, readEncapsulatedImageFrame: W, readEncapsulatedPixelData: K, readEncapsulatedPixelDataFromFragments: _, readPart10Header: G, readSequenceItemsExplicit: I, readSequenceItemsImplicit: F, readSequenceItem: S, readTag: h, LEI: "1.2.840.10008.1.2", LEE: "1.2.840.10008.1.2.1" };
+      }], i = {}, n.m = a, n.c = i, n.d = function(e, t2, r2) {
+        n.o(e, t2) || Object.defineProperty(e, t2, { enumerable: true, get: r2 });
       }, n.r = function(e) {
         "undefined" != typeof Symbol && Symbol.toStringTag && Object.defineProperty(e, Symbol.toStringTag, { value: "Module" }), Object.defineProperty(e, "__esModule", { value: true });
-      }, n.t = function(t, e) {
-        if (1 & e && (t = n(t)), 8 & e) return t;
-        if (4 & e && "object" == typeof t && t && t.__esModule) return t;
+      }, n.t = function(t2, e) {
+        if (1 & e && (t2 = n(t2)), 8 & e) return t2;
+        if (4 & e && "object" == typeof t2 && t2 && t2.__esModule) return t2;
         var r2 = /* @__PURE__ */ Object.create(null);
-        if (n.r(r2), Object.defineProperty(r2, "default", { enumerable: true, value: t }), 2 & e && "string" != typeof t) for (var a2 in t) n.d(r2, a2, function(e2) {
-          return t[e2];
+        if (n.r(r2), Object.defineProperty(r2, "default", { enumerable: true, value: t2 }), 2 & e && "string" != typeof t2) for (var a2 in t2) n.d(r2, a2, function(e2) {
+          return t2[e2];
         }.bind(null, a2));
         return r2;
       }, n.n = function(e) {
-        var t = e && e.__esModule ? function() {
+        var t2 = e && e.__esModule ? function() {
           return e.default;
         } : function() {
           return e;
         };
-        return n.d(t, "a", t), t;
-      }, n.o = function(e, t) {
-        return Object.prototype.hasOwnProperty.call(e, t);
+        return n.d(t2, "a", t2), t2;
+      }, n.o = function(e, t2) {
+        return Object.prototype.hasOwnProperty.call(e, t2);
       }, n.p = "", n(n.s = 1);
       function n(e) {
         if (i[e]) return i[e].exports;
-        var t = i[e] = { i: e, l: false, exports: {} };
-        return a[e].call(t.exports, t, t.exports, n), t.l = true, t.exports;
+        var t2 = i[e] = { i: e, l: false, exports: {} };
+        return a[e].call(t2.exports, t2, t2.exports, n), t2.l = true, t2.exports;
       }
       var a, i;
     });
@@ -692,22 +692,22 @@ var require_dicomParser_min = __commonJS({
 
 // plugins/attachment-dicomviewer/web/plugin.tsx
 var import_dicom_parser = __toESM(require_dicomParser_min());
-import { formatNumber, scope as i18nScope } from "@oie/web-ui";
+import { formatNumber, scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
-var { t: translate } = i18nScope("attachment-dicomviewer");
+var { t } = scope("attachment-dicomviewer");
 var React = platform.React;
 function typeOf(att) {
-  const t = att && att.type;
-  return String(typeof t === "string" ? t : t && (t._ || t.$) || "").trim();
+  const t2 = att && att.type;
+  return String(typeof t2 === "string" ? t2 : t2 && (t2._ || t2.$) || "").trim();
 }
 var META = [
-  ["x00100010", translate("Patient Name")],
-  ["x00100020", translate("Patient ID")],
-  ["x00080060", translate("Modality")],
-  ["x00080020", translate("Study Date")],
-  ["x00081030", translate("Study Description")],
-  ["x00280010", translate("Rows")],
-  ["x00280011", translate("Columns")]
+  ["x00100010", t("Patient Name")],
+  ["x00100020", t("Patient ID")],
+  ["x00080060", t("Modality")],
+  ["x00080020", t("Study Date")],
+  ["x00081030", t("Study Description")],
+  ["x00280010", t("Rows")],
+  ["x00280011", t("Columns")]
 ];
 var UNCOMPRESSED = /* @__PURE__ */ new Set(["1.2.840.10008.1.2", "1.2.840.10008.1.2.1", "1.2.840.10008.1.2.2"]);
 var JPEG_BASELINE = /* @__PURE__ */ new Set(["1.2.840.10008.1.2.4.50", "1.2.840.10008.1.2.4.51"]);
@@ -754,9 +754,9 @@ function readFrame(ds, bytes, info, frame) {
   if (bytesPer === 1) return new Uint8Array(slice.buffer);
   if (info.bigEndian) {
     for (let i = 0; i + 1 < slice.length; i += 2) {
-      const t = slice[i];
+      const t2 = slice[i];
       slice[i] = slice[i + 1];
-      slice[i + 1] = t;
+      slice[i + 1] = t2;
     }
   }
   return info.pixelRepresentation ? new Int16Array(slice.buffer) : new Uint16Array(slice.buffer);
@@ -858,8 +858,8 @@ function Filmstrip({ state, frame, win, onPick, expanded }) {
       {
         key: f,
         type: "button",
-        title: translate("Frame {value1}", { value1: String(f + 1) }),
-        "aria-label": translate("Frame {value1}", { value1: String(f + 1) }),
+        title: t("Frame {value1}", { value1: String(f + 1) }),
+        "aria-label": t("Frame {value1}", { value1: String(f + 1) }),
         "aria-pressed": f === frame,
         onClick: () => onPick(f),
         className: f === frame ? "flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-accent bg-black overflow-hidden p-0 grid place-items-center" : "flex-none w-[46px] h-[46px] rounded-[4px] border-2 border-transparent bg-black overflow-hidden p-0 grid place-items-center"
@@ -905,25 +905,25 @@ function register(platform2) {
           const entries = platform3.api.asList(msg?.connectorMessages?.entry ?? msg?.connectorMessages);
           const cms = entries.map((e) => e.connectorMessage ?? e).filter(Boolean);
           const cm = cms.find((c) => String(c.metaDataId) === "0") || cms[0];
-          if (!cm) throw new Error(translate("no connector message found for this message"));
+          if (!cm) throw new Error(t("no connector message found for this message"));
           const b64 = String(await platform3.api.messages.getDicom(channelId, messageId, cm) ?? "").replace(/\s+/g, "");
-          if (!b64) throw new Error(translate("the reassembled DICOM is empty"));
+          if (!b64) throw new Error(t("the reassembled DICOM is empty"));
           let bin;
           try {
             bin = atob(b64);
           } catch {
-            throw new Error(translate("the attachment content is not valid Base64"));
+            throw new Error(t("the attachment content is not valid Base64"));
           }
           const bytes2 = new Uint8Array(bin.length);
           for (let i = 0; i < bin.length; i++) bytes2[i] = bin.charCodeAt(i);
           if (bytes2.length < 132 || String.fromCharCode(bytes2[128], bytes2[129], bytes2[130], bytes2[131]) !== "DICM") {
-            throw new Error(translate("not a valid DICOM object (missing the DICM header) \u2014 the message content may not be raw binary DICOM"));
+            throw new Error(t("not a valid DICOM object (missing the DICM header) \u2014 the message content may not be raw binary DICOM"));
           }
           let ds;
           try {
             ds = import_dicom_parser.default.parseDicom(bytes2);
           } catch (pe) {
-            throw new Error(translate("could not parse the DICOM dataset{value1}", { value1: String(pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : "") }));
+            throw new Error(t("could not parse the DICOM dataset{value1}", { value1: String(pe && (pe.message || pe.exception) ? `: ${pe.message || pe.exception}` : "") }));
           }
           const ts = (ds.string("x00020010") || "").trim();
           const info2 = imageInfo(ds);
@@ -968,7 +968,7 @@ function register(platform2) {
           let current = true;
           cv.getContext("2d").clearRect(0, 0, cv.width, cv.height);
           drawJpegFrame(cv, state.ds, state.info, frame, () => current).catch((e) => {
-            if (current) setDecodeError(e && e.message ? e.message : translate("the browser could not decode this frame"));
+            if (current) setDecodeError(e && e.message ? e.message : t("the browser could not decode this frame"));
           });
           return () => {
             current = false;
@@ -1148,10 +1148,10 @@ function register(platform2) {
       return () => document.removeEventListener("keydown", onDocKey);
     });
     if (state.key !== key || state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px]" }, translate("Loading DICOM\u2026")));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px]" }, t("Loading DICOM\u2026")));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, translate("Could not load DICOM: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, translate("Retry")));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, t("Could not load DICOM: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, t("Retry")));
     }
     const { bytes, meta, kind, tsName } = state;
     const renders = kind === "raw" || kind === "jpeg";
@@ -1167,15 +1167,15 @@ function register(platform2) {
           "application/dicom",
           () => new Blob([bytes], { type: "application/dicom" }),
           () => {
-            if (!current()) throw new Error(translate("The DICOM viewer is no longer active."));
+            if (!current()) throw new Error(t("The DICOM viewer is no longer active."));
           }
         );
       } catch (error) {
-        if (current()) platform3.ui.toast(translate("Failed to save DICOM: {value1}", { value1: String(error.message || error) }), "error");
+        if (current()) platform3.ui.toast(t("Failed to save DICOM: {value1}", { value1: String(error.message || error) }), "error");
       }
     };
     const metaRows = META.filter(([tag]) => meta[tag]).map(([tag, label]) => /* @__PURE__ */ React.createElement("tr", { key: tag }, /* @__PURE__ */ React.createElement("td", { className: "font-semibold pr-4" }, label), /* @__PURE__ */ React.createElement("td", { className: "mono" }, meta[tag])));
-    const title = translate("DICOM object \u2014 {value1}\xD7{value2}{value3} \u2014 {value4} bytes", { value1: String(info.cols), value2: String(info.rows), value3: String(info.numFrames > 1 ? translate(", {count, plural, one {# frame} other {# frames}}", { count: info.numFrames }) : ""), value4: String(formatNumber(bytes.length)) });
+    const title = t("DICOM object \u2014 {value1}\xD7{value2}{value3} \u2014 {value4} bytes", { value1: String(info.cols), value2: String(info.rows), value3: String(info.numFrames > 1 ? t(", {count, plural, one {# frame} other {# frames}}", { count: info.numFrames }) : ""), value4: String(formatNumber(bytes.length)) });
     const rootCls = expanded ? "modal flex flex-col" : "flex flex-col gap-1.5";
     const toolbar = (
       /* NEVER wraps: a second toolbar row steals ~35px from the image in a
@@ -1186,44 +1186,44 @@ function register(platform2) {
         "button",
         {
           className: "btn btn-sm",
-          title: translate("Previous frame (\u2190)"),
+          title: t("Previous frame (\u2190)"),
           disabled: frame <= 0,
           onClick: () => stepFrame(-1)
         },
         "\u2039"
-      ), /* @__PURE__ */ React.createElement("span", { className: "mono" }, translate("Frame {value1} / {value2}", { value1: String(frame + 1), value2: String(info.numFrames) })), /* @__PURE__ */ React.createElement(
+      ), /* @__PURE__ */ React.createElement("span", { className: "mono" }, t("Frame {value1} / {value2}", { value1: String(frame + 1), value2: String(info.numFrames) })), /* @__PURE__ */ React.createElement(
         "button",
         {
           className: "btn btn-sm",
-          title: translate("Next frame (\u2192)"),
+          title: t("Next frame (\u2192)"),
           disabled: frame >= info.numFrames - 1,
           onClick: () => stepFrame(1)
         },
         "\u203A"
-      )), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, translate("Zoom")), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: translate("Zoom out"), onClick: () => zoomStep(1 / 1.25) }, "\u2212"), /* @__PURE__ */ React.createElement("span", { className: "mono w-[42px] text-center" }, Math.round(zoom * 100), "%"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: translate("Zoom in"), onClick: () => zoomStep(1.25) }, "+"), /* @__PURE__ */ React.createElement(
+      )), /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, t("Zoom")), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: t("Zoom out"), onClick: () => zoomStep(1 / 1.25) }, "\u2212"), /* @__PURE__ */ React.createElement("span", { className: "mono w-[42px] text-center" }, Math.round(zoom * 100), "%"), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: t("Zoom in"), onClick: () => zoomStep(1.25) }, "+"), /* @__PURE__ */ React.createElement(
         "button",
         {
           className: fitMode ? "btn btn-sm btn-primary" : "btn btn-sm",
-          title: translate("Fit the image to the pane"),
+          title: t("Fit the image to the pane"),
           onClick: fit
         },
-        translate("Fit")
-      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: translate("Show at actual size"), onClick: actual }, "1:1")), grayscale && win && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, translate("Level")), /* @__PURE__ */ React.createElement(
+        t("Fit")
+      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", title: t("Show at actual size"), onClick: actual }, "1:1")), grayscale && win && /* @__PURE__ */ React.createElement("span", { className: "inline-flex items-center gap-1.5" }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, t("Level")), /* @__PURE__ */ React.createElement(
         "input",
         {
           type: "range",
-          "aria-label": translate("Level"),
+          "aria-label": t("Level"),
           min: info.intercept,
           max: info.intercept + 4096 * info.slope,
           step: "1",
           value: win.c,
           onChange: (e) => setWin((w) => ({ ...w, c: parseFloat(e.target.value) }))
         }
-      ), /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, translate("Window")), /* @__PURE__ */ React.createElement(
+      ), /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, t("Window")), /* @__PURE__ */ React.createElement(
         "input",
         {
           type: "range",
-          "aria-label": translate("Window"),
+          "aria-label": t("Window"),
           min: "1",
           max: Math.max(2, 4096 * info.slope),
           step: "1",
@@ -1234,19 +1234,19 @@ function register(platform2) {
         "button",
         {
           className: "btn btn-sm",
-          title: translate("Window/level from this frame''s own range"),
+          title: t("Window/level from this frame''s own range"),
           onClick: autoWindow
         },
-        translate("Auto")
-      )), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), (expanded || rootWidth >= 1400) && /* @__PURE__ */ React.createElement("span", { className: "text-text-faint whitespace-nowrap" }, grayscaleDrag ? translate("drag = level/window \xB7 shift-drag = pan \xB7 wheel = zoom") : translate("drag = pan \xB7 wheel = zoom")), !expanded && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
+        t("Auto")
+      )), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), (expanded || rootWidth >= 1400) && /* @__PURE__ */ React.createElement("span", { className: "text-text-faint whitespace-nowrap" }, grayscaleDrag ? t("drag = level/window \xB7 shift-drag = pan \xB7 wheel = zoom") : t("drag = pan \xB7 wheel = zoom")), !expanded && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
         "button",
         {
           className: "btn btn-sm",
-          title: translate("Open full screen"),
+          title: t("Open full screen"),
           onClick: () => setExpanded(true)
         },
-        translate("\u2922 Full Screen")
-      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", onClick: saveDicom }, translate("Save DICOM"))))
+        t("\u2922 Full Screen")
+      ), /* @__PURE__ */ React.createElement("button", { className: "btn btn-sm", onClick: saveDicom }, t("Save DICOM"))))
     );
     const stage = /* @__PURE__ */ React.createElement(
       "div",
@@ -1306,8 +1306,8 @@ function register(platform2) {
         "button",
         {
           className: "icon-btn",
-          title: translate("Close (Esc)"),
-          "aria-label": translate("Close"),
+          title: t("Close (Esc)"),
+          "aria-label": t("Close"),
           onClick: () => setExpanded(false)
         },
         "\u2715"
@@ -1325,11 +1325,11 @@ function register(platform2) {
           stage,
           metaPanel
         )
-      ) : /* @__PURE__ */ React.createElement("div", { className: expanded ? "p-3.5 flex-1 overflow-auto" : "" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, translate("This DICOM object uses a compressed transfer syntax ({value1}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.", { value1: String(tsName) })), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt mt-[13px]" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows))),
-      decodeError && /* @__PURE__ */ React.createElement("div", { className: expanded ? "text-text-faint text-[11px] px-3.5 py-1.5 flex-none" : "text-text-faint text-[11px]" }, translate("Could not decode this JPEG frame: {value1}", { value1: String(decodeError) })),
+      ) : /* @__PURE__ */ React.createElement("div", { className: expanded ? "p-3.5 flex-1 overflow-auto" : "" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[11px]" }, t("This DICOM object uses a compressed transfer syntax ({value1}). Inline preview currently supports uncompressed and JPEG DICOM \u2014 click Save DICOM to open it in a full viewer.", { value1: String(tsName) })), metaRows.length > 0 && /* @__PURE__ */ React.createElement("table", { className: "dt mt-[13px]" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows))),
+      decodeError && /* @__PURE__ */ React.createElement("div", { className: expanded ? "text-text-faint text-[11px] px-3.5 py-1.5 flex-none" : "text-text-faint text-[11px]" }, t("Could not decode this JPEG frame: {value1}", { value1: String(decodeError) })),
       renders && info.numFrames > 1 && /* @__PURE__ */ React.createElement(Filmstrip, { state, frame, win, onPick: setFrame, expanded }),
       renders && metaRows.length > 0 && !metaBeside && /* @__PURE__ */ React.createElement("table", { className: "dt self-start" }, /* @__PURE__ */ React.createElement("tbody", null, metaRows)),
-      expanded && /* @__PURE__ */ React.createElement("div", { className: "modal-foot" }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, translate("Save DICOM")), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setExpanded(false) }, translate("Close")))
+      expanded && /* @__PURE__ */ React.createElement("div", { className: "modal-foot" }, /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: saveDicom }, t("Save DICOM")), /* @__PURE__ */ React.createElement("button", { className: "btn btn-primary", onClick: () => setExpanded(false) }, t("Close")))
     );
     return /* @__PURE__ */ React.createElement(
       "div",

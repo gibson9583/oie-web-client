@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * TCP Listener (TcpReceiverProperties) / TCP Sender (TcpDispatcherProperties).
  *
@@ -70,45 +70,45 @@ const tcpListener = {
                     address/port, shown at the top like every other listener
                     (HTTP/WS/DICOM) and the Swing TCP Listener. */}
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: translate("Listener Settings") },
-                    listenerAddressField('listenerConnectorProperties.host', translate("Local Address")),
-                    { key: 'listenerConnectorProperties.port', label: translate("Local Port"), type: 'number', width: '90px', append: () => portsInUseButton() }
+                    { section: t("Listener Settings") },
+                    listenerAddressField('listenerConnectorProperties.host', t("Local Address")),
+                    { key: 'listenerConnectorProperties.port', label: t("Local Port"), type: 'number', width: '90px', append: () => portsInUseButton() }
                 ]} />
                 <TransmissionModePanel properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: translate("TCP Listener Settings") },
-                    { key: 'serverMode', label: translate("Mode"), type: 'radio', refresh: true, options: [
-                        { value: true, label: translate("Server") },
-                        { value: false, label: translate("Client") }
+                    { section: t("TCP Listener Settings") },
+                    { key: 'serverMode', label: t("Mode"), type: 'radio', refresh: true, options: [
+                        { value: true, label: t("Server") },
+                        { value: false, label: t("Client") }
                     ] },
-                    { key: 'remoteAddress', label: translate("Remote Address"), type: 'text', width: '200px', disabled: serverMode },
-                    { key: 'remotePort', label: translate("Remote Port"), type: 'number', width: '90px', disabled: serverMode },
-                    { key: 'overrideLocalBinding', label: translate("Override Local Binding"), type: 'radio', options: YES_NO, disabled: serverMode },
-                    { key: 'reconnectInterval', label: translate("Reconnect Interval (ms)"), type: 'number', width: '90px', disabled: serverMode },
-                    { key: 'maxConnections', label: translate("Max Connections"), type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
-                    { key: 'receiveTimeout', label: translate("Receive Timeout (ms)"), type: 'number', width: '90px', tooltip: translate("0 = never time out") },
-                    { key: 'bufferSize', label: translate("Buffer Size (bytes)"), type: 'number', width: '90px' },
-                    { key: 'keepConnectionOpen', label: translate("Keep Connection Open"), type: 'radio', options: YES_NO },
+                    { key: 'remoteAddress', label: t("Remote Address"), type: 'text', width: '200px', disabled: serverMode },
+                    { key: 'remotePort', label: t("Remote Port"), type: 'number', width: '90px', disabled: serverMode },
+                    { key: 'overrideLocalBinding', label: t("Override Local Binding"), type: 'radio', options: YES_NO, disabled: serverMode },
+                    { key: 'reconnectInterval', label: t("Reconnect Interval (ms)"), type: 'number', width: '90px', disabled: serverMode },
+                    { key: 'maxConnections', label: t("Max Connections"), type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
+                    { key: 'receiveTimeout', label: t("Receive Timeout (ms)"), type: 'number', width: '90px', tooltip: t("0 = never time out") },
+                    { key: 'bufferSize', label: t("Buffer Size (bytes)"), type: 'number', width: '90px' },
+                    { key: 'keepConnectionOpen', label: t("Keep Connection Open"), type: 'radio', options: YES_NO },
                     {
-                        key: 'dataTypeBinary', label: translate("Data Type"), type: 'radio', refresh: true,
+                        key: 'dataTypeBinary', label: t("Data Type"), type: 'radio', refresh: true,
                         // Binary disables Encoding and forces it back to the default (Swing setSelectedIndex(0)).
                         onSet: (p: any) => { if (asBool(p.dataTypeBinary)) p.charsetEncoding = 'DEFAULT_ENCODING'; },
                         options: [
-                            { value: true, label: translate("Binary") },
-                            { value: false, label: translate("Text") }
+                            { value: true, label: t("Binary") },
+                            { value: false, label: t("Text") }
                         ]
                     },
-                    { key: 'charsetEncoding', label: translate("Encoding"), type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.dataTypeBinary) },
+                    { key: 'charsetEncoding', label: t("Encoding"), type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.dataTypeBinary) },
                     {
-                        key: 'respondOnNewConnection', label: translate("Respond on New Connection"), type: 'radio', refresh: true,
+                        key: 'respondOnNewConnection', label: t("Respond on New Connection"), type: 'radio', refresh: true,
                         options: [
-                            { value: 1, label: translate("Yes") },
-                            { value: 0, label: translate("No") },
-                            { value: 2, label: translate("Message Recovery") }
+                            { value: 1, label: t("Yes") },
+                            { value: 0, label: t("No") },
+                            { value: 2, label: t("Message Recovery") }
                         ]
                     },
-                    { key: 'responseAddress', label: translate("Response Address"), type: 'text', width: '200px', disabled: (p: any) => Number(p.respondOnNewConnection) === 0 },
-                    { key: 'responsePort', label: translate("Response Port"), type: 'number', width: '90px', disabled: (p: any) => Number(p.respondOnNewConnection) === 0 }
+                    { key: 'responseAddress', label: t("Response Address"), type: 'text', width: '200px', disabled: (p: any) => Number(p.respondOnNewConnection) === 0 },
+                    { key: 'responsePort', label: t("Response Port"), type: 'number', width: '90px', disabled: (p: any) => Number(p.respondOnNewConnection) === 0 }
                 ]} />
             </div>
         );
@@ -120,16 +120,16 @@ const tcpListener = {
     // New Connection is No (0). Numeric/range checks (e.g. maxConnections > 0) skipped.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'listenerConnectorProperties.host', label: translate("Local Address") },
-            { key: 'listenerConnectorProperties.port', label: translate("Local Port") },
-            { key: 'remoteAddress', label: translate("Remote Address"), when: (p: any) => !asBool(p.serverMode) },
-            { key: 'remotePort', label: translate("Remote Port"), when: (p: any) => !asBool(p.serverMode) },
-            { key: 'reconnectInterval', label: translate("Reconnect Interval (ms)"), when: (p: any) => !asBool(p.serverMode) },
-            { key: 'receiveTimeout', label: translate("Receive Timeout (ms)") },
-            { key: 'bufferSize', label: translate("Buffer Size (bytes)") },
-            { key: 'maxConnections', label: translate("Max Connections") },
-            { key: 'responseAddress', label: translate("Response Address"), when: (p: any) => Number(p.respondOnNewConnection) !== 0 },
-            { key: 'responsePort', label: translate("Response Port"), when: (p: any) => Number(p.respondOnNewConnection) !== 0 }
+            { key: 'listenerConnectorProperties.host', label: t("Local Address") },
+            { key: 'listenerConnectorProperties.port', label: t("Local Port") },
+            { key: 'remoteAddress', label: t("Remote Address"), when: (p: any) => !asBool(p.serverMode) },
+            { key: 'remotePort', label: t("Remote Port"), when: (p: any) => !asBool(p.serverMode) },
+            { key: 'reconnectInterval', label: t("Reconnect Interval (ms)"), when: (p: any) => !asBool(p.serverMode) },
+            { key: 'receiveTimeout', label: t("Receive Timeout (ms)") },
+            { key: 'bufferSize', label: t("Buffer Size (bytes)") },
+            { key: 'maxConnections', label: t("Max Connections") },
+            { key: 'responseAddress', label: t("Response Address"), when: (p: any) => Number(p.respondOnNewConnection) !== 0 },
+            { key: 'responsePort', label: t("Response Port"), when: (p: any) => Number(p.respondOnNewConnection) !== 0 }
         ]);
     }
 };
@@ -173,49 +173,49 @@ const tcpSender = {
             <div>
                 <TransmissionModePanel properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: translate("Connection Settings") },
+                    { section: t("Connection Settings") },
                     // Swing initLayout adds modeClientRadio then modeServerRadio
                     // (TcpSender.java:654-655), so on-screen order is Client, Server.
-                    { key: 'serverMode', label: translate("Mode"), type: 'radio', refresh: true, options: [
-                        { value: false, label: translate("Client") },
-                        { value: true, label: translate("Server") }
+                    { key: 'serverMode', label: t("Mode"), type: 'radio', refresh: true, options: [
+                        { value: false, label: t("Client") },
+                        { value: true, label: t("Server") }
                     ] },
                     {
-                        key: 'remoteAddress', label: translate("Remote Address"), type: 'text', width: '200px', disabled: serverMode,
+                        key: 'remoteAddress', label: t("Remote Address"), type: 'text', width: '200px', disabled: serverMode,
                         // Test Connection greys in Server mode (TcpSender.modeServerRadioActionPerformed).
                         append: (p: any) => connectorTestButton({ path: '/connectors/tcp/_testConnection', channel, properties, disabled: serverMode(p) })
                     },
-                    { key: 'remotePort', label: translate("Remote Port"), type: 'number', width: '90px', disabled: serverMode },
-                    { key: 'overrideLocalBinding', label: translate("Override Local Binding"), type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
-                    { key: 'localAddress', label: translate("Local Address"), type: 'text', width: '200px', disabled: localBindingDisabled },
+                    { key: 'remotePort', label: t("Remote Port"), type: 'number', width: '90px', disabled: serverMode },
+                    { key: 'overrideLocalBinding', label: t("Override Local Binding"), type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
+                    { key: 'localAddress', label: t("Local Address"), type: 'text', width: '200px', disabled: localBindingDisabled },
                     // Ports in Use follows the Local Port field: on in Server mode or Client+Override.
-                    { key: 'localPort', label: translate("Local Port"), type: 'number', width: '90px', append: (p: any) => portsInUseButton({ disabled: localBindingDisabled(p) }), disabled: localBindingDisabled },
-                    { key: 'maxConnections', label: translate("Max Connections"), type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
-                    { key: 'keepConnectionOpen', label: translate("Keep Connection Open"), type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
-                    { key: 'checkRemoteHost', label: translate("Check Remote Host"), type: 'radio', options: YES_NO, disabled: sendDisabled },
-                    { key: 'sendTimeout', label: translate("Send Timeout (ms)"), type: 'number', width: '90px', disabled: sendDisabled },
-                    { key: 'bufferSize', label: translate("Buffer Size (bytes)"), type: 'number', width: '90px' },
+                    { key: 'localPort', label: t("Local Port"), type: 'number', width: '90px', append: (p: any) => portsInUseButton({ disabled: localBindingDisabled(p) }), disabled: localBindingDisabled },
+                    { key: 'maxConnections', label: t("Max Connections"), type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
+                    { key: 'keepConnectionOpen', label: t("Keep Connection Open"), type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
+                    { key: 'checkRemoteHost', label: t("Check Remote Host"), type: 'radio', options: YES_NO, disabled: sendDisabled },
+                    { key: 'sendTimeout', label: t("Send Timeout (ms)"), type: 'number', width: '90px', disabled: sendDisabled },
+                    { key: 'bufferSize', label: t("Buffer Size (bytes)"), type: 'number', width: '90px' },
                     {
-                        key: 'responseTimeout', label: translate("Response Timeout (ms)"), type: 'number', width: '90px',
+                        key: 'responseTimeout', label: t("Response Timeout (ms)"), type: 'number', width: '90px',
                         // Swing pairs the Ignore Response checkbox inline with Response Timeout;
                         // it gates Queue on Response Timeout below.
-                        append: (p: any, ctx: any) => checkbox(translate("Ignore Response"), asBool(p.ignoreResponse), {
+                        append: (p: any, ctx: any) => checkbox(t("Ignore Response"), asBool(p.ignoreResponse), {
                             onChange: (e: any) => { p.ignoreResponse = e.target.checked; ctx.onChange(); }
                         }).el
                     },
-                    { key: 'queueOnResponseTimeout', label: translate("Queue on Response Timeout"), type: 'radio', options: YES_NO, disabled: (p: any) => asBool(p.ignoreResponse) },
+                    { key: 'queueOnResponseTimeout', label: t("Queue on Response Timeout"), type: 'radio', options: YES_NO, disabled: (p: any) => asBool(p.ignoreResponse) },
                     {
-                        key: 'dataTypeBinary', label: translate("Data Type"), type: 'radio', refresh: true,
+                        key: 'dataTypeBinary', label: t("Data Type"), type: 'radio', refresh: true,
                         // Binary disables Encoding and forces it back to the default (Swing setSelectedIndex(0)).
                         onSet: (p: any) => { if (asBool(p.dataTypeBinary)) p.charsetEncoding = 'DEFAULT_ENCODING'; },
                         options: [
-                            { value: true, label: translate("Binary") },
-                            { value: false, label: translate("Text") }
+                            { value: true, label: t("Binary") },
+                            { value: false, label: t("Text") }
                         ]
                     },
-                    { key: 'charsetEncoding', label: translate("Encoding"), type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.dataTypeBinary) },
-                    { section: translate("Template") },
-                    { key: 'template', label: translate("Template"), type: 'code', minHeight: '260px' }
+                    { key: 'charsetEncoding', label: t("Encoding"), type: 'select', options: CHARSETS, width: '160px', disabled: (p: any) => asBool(p.dataTypeBinary) },
+                    { section: t("Template") },
+                    { key: 'template', label: t("Template"), type: 'code', minHeight: '260px' }
                 ]} />
             </div>
         );
@@ -227,15 +227,15 @@ const tcpSender = {
     // always required. Numeric/range checks (e.g. maxConnections > 0) skipped.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'remoteAddress', label: translate("Remote Address"), when: (p: any) => !asBool(p.serverMode) },
-            { key: 'remotePort', label: translate("Remote Port"), when: (p: any) => !asBool(p.serverMode) },
-            { key: 'localAddress', label: translate("Local Address"), when: (p: any) => asBool(p.serverMode) || asBool(p.overrideLocalBinding) },
-            { key: 'localPort', label: translate("Local Port"), when: (p: any) => asBool(p.serverMode) || asBool(p.overrideLocalBinding) },
-            { key: 'maxConnections', label: translate("Max Connections"), when: (p: any) => asBool(p.serverMode) },
-            { key: 'sendTimeout', label: translate("Send Timeout (ms)"), when: (p: any) => !asBool(p.serverMode) && asBool(p.keepConnectionOpen) },
-            { key: 'bufferSize', label: translate("Buffer Size (bytes)") },
-            { key: 'responseTimeout', label: translate("Response Timeout (ms)") },
-            { key: 'template', label: translate("Template") }
+            { key: 'remoteAddress', label: t("Remote Address"), when: (p: any) => !asBool(p.serverMode) },
+            { key: 'remotePort', label: t("Remote Port"), when: (p: any) => !asBool(p.serverMode) },
+            { key: 'localAddress', label: t("Local Address"), when: (p: any) => asBool(p.serverMode) || asBool(p.overrideLocalBinding) },
+            { key: 'localPort', label: t("Local Port"), when: (p: any) => asBool(p.serverMode) || asBool(p.overrideLocalBinding) },
+            { key: 'maxConnections', label: t("Max Connections"), when: (p: any) => asBool(p.serverMode) },
+            { key: 'sendTimeout', label: t("Send Timeout (ms)"), when: (p: any) => !asBool(p.serverMode) && asBool(p.keepConnectionOpen) },
+            { key: 'bufferSize', label: t("Buffer Size (bytes)") },
+            { key: 'responseTimeout', label: t("Response Timeout (ms)") },
+            { key: 'template', label: t("Template") }
         ]);
     }
 };

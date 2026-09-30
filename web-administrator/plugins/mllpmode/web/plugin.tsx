@@ -1,4 +1,4 @@
-const { t: translate } = i18nScope("mllpmode");
+const { t } = scope("mllpmode");
 import type { Platform } from '@oie/web-shell';
 /*
  * MLLP transmission mode — web admin plugin (mllpmode TransmissionModePlugin
@@ -17,11 +17,11 @@ import type { Platform } from '@oie/web-shell';
  * helpers from @oie/web-ui (which re-exports connectors/forms.js) so the file
  * builds as a bundled plugin.
  */
-import { scope as i18nScope, frameModeSampleFrame, frameModeSettingsDialog } from '@oie/web-ui';
+import { scope, frameModeSampleFrame, frameModeSettingsDialog } from '@oie/web-ui';
 
 export function register(platform: Platform) {
     platform.registerTransmissionMode('MLLP', {
-        label: translate("MLLP"),
+        label: t("MLLP"),
         order: 10,
         // Applied when MLLP is selected from the Transmission Mode dropdown. MLLP
         // serializes as MLLPModeProperties (a FrameModeProperties subclass) and

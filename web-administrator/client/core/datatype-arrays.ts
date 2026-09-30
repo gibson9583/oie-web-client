@@ -1,12 +1,12 @@
 /** Java data-type arrays use XStream child elements, not comma-separated text.
  * In particular, an empty widths element is a zero-column fixed-width parser;
  * an absent element is the normal delimited parser. */
-import { t as translate } from './i18n.js';
+import { t } from './i18n.js';
 export type DataTypeListItem = 'int' | 'string';
 type ListResult = { value?: Record<string, any>; error?: string };
 
-const widthError = translate('Enter comma-separated whole numbers from 1 to 2147483647, or leave blank.');
-const nameError = translate('Enter comma-separated XML column names starting with a letter, underscore or colon.');
+const widthError = t('Enter comma-separated whole numbers from 1 to 2147483647, or leave blank.');
+const nameError = t('Enter comma-separated XML column names starting with a letter, underscore or colon.');
 // XML 1.0 NameStartChar/NameChar (also used by the engine's DatabaseReceiver).
 // The Delimited property setter also accepts Java Character.isLetter names
 // outside this range, including ª, µ and º. Keep both accepted wire shapes.
@@ -34,7 +34,7 @@ export function normalizeDataTypeList(value: any, item: DataTypeListItem, xmlNam
     let wire: Record<string, any> | undefined;
     if (typeof value === 'object' && !Array.isArray(value)) {
         if (Object.keys(value).some(key => key !== item && !key.startsWith('@'))) {
-            return { error: translate('Unrecognized {item} array contents. Correct the list before saving.', { item }) };
+            return { error: t('Unrecognized {item} array contents. Correct the list before saving.', { item }) };
         }
         wire = value;
         let entries = value[item];
@@ -57,7 +57,7 @@ export function normalizeDataTypeList(value: any, item: DataTypeListItem, xmlNam
         // of an empty array. Preserve it and ask for correction rather than
         // silently deleting possibly meaningful data during a channel save.
         if (wire && Object.keys(wire).some(key => key !== item && key !== '@class' && key !== '@version')) {
-            return { error: translate('Unrecognized {item} array contents. Correct the list before saving.', { item }) };
+            return { error: t('Unrecognized {item} array contents. Correct the list before saving.', { item }) };
         }
         return {};
     }
@@ -106,10 +106,10 @@ export function normalizeChannelDataTypeArrays(channel: any): void {
             for (const side of ['inbound', 'outbound']) {
                 if (transformer?.[`${side}DataType`] !== 'DELIMITED') continue;
                 for (const error of normalizeDelimitedProperties(transformer[`${side}Properties`])) {
-                    errors.push(`${connector.name || translate('Source')} ${key} ${side}: ${error}`);
+                    errors.push(`${connector.name || t('Source')} ${key} ${side}: ${error}`);
                 }
             }
         }
     }
-    if (errors.length) throw new Error(translate('Invalid Delimited Text properties:\n{errors}', { errors: errors.join('\n') }));
+    if (errors.length) throw new Error(t('Invalid Delimited Text properties:\n{errors}', { errors: errors.join('\n') }));
 }

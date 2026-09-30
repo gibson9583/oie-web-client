@@ -46,6 +46,8 @@ const tsxLanguageOptions = {
     globals: { ...globals.browser },
 };
 
+const jsxNoLiterals = ['error', { noStrings: true, ignoreProps: true, allowedStrings: ['—', '·', ':', '/', '→', '×', '%', '*', '✓', '▸', '▾', '(', ')', '+', '–', '-', '?', '⌘', '↵', '▲', '▼', '✕', '↺', '⠿', '…', '|', '#', '⇄', '‹', '›', '−', '1:1', '[', ']'] }];
+
 export default [
     // These generated twins retain their TypeScript source's hook directives.
     // Hook dependency checks run on the sources; do not report their copied
@@ -94,7 +96,7 @@ export default [
         rules: {
             'no-restricted-imports': ['error', noDeepPackageImports],
             'react/jsx-uses-vars': 'error',
-            'react/jsx-no-literals': ['error', { noStrings: true, ignoreProps: true, allowedStrings: ['—', '·', ':', '/', '→', '×', '%', '*', '✓', '▸', '▾', '(', ')', '+', '–', '-', '?', '⌘', '↵', '▲', '▼', '✕', '↺', '⠿', '…', '|', '#', '⇄', '‹', '›', '−', '1:1', '[', ']'] }],
+            'react/jsx-no-literals': jsxNoLiterals,
             'react/jsx-key': 'warn',
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'warn',
@@ -127,7 +129,7 @@ export default [
             'no-restricted-imports': ['error', noDeepPackageImports],
             'react/jsx-uses-vars': 'error',
             'react/jsx-uses-react': 'error',
-            'react/jsx-no-literals': ['error', { noStrings: true, ignoreProps: true, allowedStrings: ['—', '·', ':', '/', '→', '×', '%', '*', '✓', '▸', '▾', '(', ')', '+', '–', '-', '?', '⌘', '↵', '▲', '▼', '✕', '↺', '⠿', '…', '|', '#', '⇄', '‹', '›', '−', '1:1', '[', ']'] }],
+            'react/jsx-no-literals': jsxNoLiterals,
             'react/jsx-key': 'warn',
             'react-hooks/rules-of-hooks': 'error',
             'react-hooks/exhaustive-deps': 'warn',

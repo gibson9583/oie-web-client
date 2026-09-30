@@ -1,7 +1,7 @@
 // plugins/datapruner/web/plugin.tsx
-import { scope as i18nScope } from "@oie/web-ui";
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
-var { t: translate, tx: richText } = i18nScope("datapruner");
+var { t, tx } = scope("datapruner");
 var React = platform.React;
 var PRUNER_STATUS_ORDER = ["currentState", "currentProcess", "lastProcess", "nextProcess", "isRunning"];
 function childEl(root, name) {
@@ -31,43 +31,43 @@ function msToFreq(ms) {
   return { val: ms || "", unit: "milliseconds" };
 }
 var CONTENT_OPTIONS = [
-  { key: "xml", label: translate("XML serialized message"), contentType: null, dest: false },
-  { key: "src-RAW", label: translate("Source - Raw"), contentType: "RAW", dest: false },
-  { key: "src-PROCESSED_RAW", label: translate("Source - Processed raw"), contentType: "PROCESSED_RAW", dest: false },
-  { key: "src-TRANSFORMED", label: translate("Source - Transformed"), contentType: "TRANSFORMED", dest: false },
-  { key: "src-ENCODED", label: translate("Source - Encoded"), contentType: "ENCODED", dest: false },
-  { key: "src-RESPONSE", label: translate("Source - Response"), contentType: "RESPONSE", dest: false },
-  { key: "dst-RAW", label: translate("Destination - Raw"), contentType: "RAW", dest: true },
-  { key: "dst-TRANSFORMED", label: translate("Destination - Transformed"), contentType: "TRANSFORMED", dest: true },
-  { key: "dst-ENCODED", label: translate("Destination - Encoded"), contentType: "ENCODED", dest: true },
-  { key: "dst-SENT", label: translate("Destination - Sent"), contentType: "SENT", dest: true },
-  { key: "dst-RESPONSE", label: translate("Destination - Response"), contentType: "RESPONSE", dest: true },
-  { key: "dst-PROCESSED_RESPONSE", label: translate("Destination - Processed response"), contentType: "PROCESSED_RESPONSE", dest: true },
-  { key: "map-SOURCE_MAP", label: translate("Source map"), contentType: "SOURCE_MAP", dest: false },
-  { key: "map-CHANNEL_MAP", label: translate("Channel map"), contentType: "CHANNEL_MAP", dest: false },
-  { key: "map-RESPONSE_MAP", label: translate("Response map"), contentType: "RESPONSE_MAP", dest: false }
+  { key: "xml", label: t("XML serialized message"), contentType: null, dest: false },
+  { key: "src-RAW", label: t("Source - Raw"), contentType: "RAW", dest: false },
+  { key: "src-PROCESSED_RAW", label: t("Source - Processed raw"), contentType: "PROCESSED_RAW", dest: false },
+  { key: "src-TRANSFORMED", label: t("Source - Transformed"), contentType: "TRANSFORMED", dest: false },
+  { key: "src-ENCODED", label: t("Source - Encoded"), contentType: "ENCODED", dest: false },
+  { key: "src-RESPONSE", label: t("Source - Response"), contentType: "RESPONSE", dest: false },
+  { key: "dst-RAW", label: t("Destination - Raw"), contentType: "RAW", dest: true },
+  { key: "dst-TRANSFORMED", label: t("Destination - Transformed"), contentType: "TRANSFORMED", dest: true },
+  { key: "dst-ENCODED", label: t("Destination - Encoded"), contentType: "ENCODED", dest: true },
+  { key: "dst-SENT", label: t("Destination - Sent"), contentType: "SENT", dest: true },
+  { key: "dst-RESPONSE", label: t("Destination - Response"), contentType: "RESPONSE", dest: true },
+  { key: "dst-PROCESSED_RESPONSE", label: t("Destination - Processed response"), contentType: "PROCESSED_RESPONSE", dest: true },
+  { key: "map-SOURCE_MAP", label: t("Source map"), contentType: "SOURCE_MAP", dest: false },
+  { key: "map-CHANNEL_MAP", label: t("Channel map"), contentType: "CHANNEL_MAP", dest: false },
+  { key: "map-RESPONSE_MAP", label: t("Response map"), contentType: "RESPONSE_MAP", dest: false }
 ];
 var COMPRESS_OPTIONS = [
-  { key: "none", label: translate("none"), archive: null, compress: null },
-  { key: "zip", label: translate("zip"), archive: "zip", compress: null },
-  { key: "tar.gz", label: translate("tar.gz"), archive: "tar", compress: "gz" },
-  { key: "tar.bz2", label: translate("tar.bz2"), archive: "tar", compress: "bzip2" }
+  { key: "none", label: t("none"), archive: null, compress: null },
+  { key: "zip", label: t("zip"), archive: "zip", compress: null },
+  { key: "tar.gz", label: t("tar.gz"), archive: "tar", compress: "gz" },
+  { key: "tar.bz2", label: t("tar.bz2"), archive: "tar", compress: "bzip2" }
 ];
 var ENCRYPTION_OPTIONS = [
-  { value: "STANDARD", label: translate("Standard") },
-  { value: "AES128", label: translate("AES-128") },
-  { value: "AES256", label: translate("AES-256") }
+  { value: "STANDARD", label: t("Standard") },
+  { value: "AES128", label: t("AES-128") },
+  { value: "AES256", label: t("AES-256") }
 ];
 var ARCHIVE_VARS = [
-  { label: translate("Message ID"), token: "${message.messageId}" },
-  { label: translate("Server ID"), token: "${message.serverId}" },
-  { label: translate("Channel ID"), token: "${message.channelId}" },
-  { label: translate("Original File Name"), token: "${originalFilename}" },
-  { label: translate("Formatted Message Date"), token: "${date.format('yyyy-MM-dd',$message.getConnectorMessages().get(0).getReceivedDate())}" },
-  { label: translate("Formatted Current Date"), token: "${date.get('yyyy-MM-dd')}" },
-  { label: translate("Timestamp"), token: "${SYSTIME}" },
-  { label: translate("Unique ID"), token: "${UUID}" },
-  { label: translate("Count"), token: "${COUNT}" }
+  { label: t("Message ID"), token: "${message.messageId}" },
+  { label: t("Server ID"), token: "${message.serverId}" },
+  { label: t("Channel ID"), token: "${message.channelId}" },
+  { label: t("Original File Name"), token: "${originalFilename}" },
+  { label: t("Formatted Message Date"), token: "${date.format('yyyy-MM-dd',$message.getConnectorMessages().get(0).getReceivedDate())}" },
+  { label: t("Formatted Current Date"), token: "${date.get('yyyy-MM-dd')}" },
+  { label: t("Timestamp"), token: "${SYSTIME}" },
+  { label: t("Unique ID"), token: "${UUID}" },
+  { label: t("Count"), token: "${COUNT}" }
 ];
 var ARCHIVE_VAR_MIME = "application/x-oie-archivevar";
 function register(platform2) {
@@ -131,7 +131,7 @@ function register(platform2) {
   }
   function YesNo({ value, onChange, disabled }) {
     const name = React.useMemo(() => "datapruner-rg-" + Math.random().toString(36).slice(2), []);
-    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", null, richText("{value1} Yes", { value1: /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, /* @__PURE__ */ React.createElement("label", null, tx("{value1} Yes", { value1: /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "radio",
@@ -141,7 +141,7 @@ function register(platform2) {
         disabled,
         onChange: () => onChange(true)
       }
-    ) })), /* @__PURE__ */ React.createElement("label", null, richText("{value1} No", { value1: /* @__PURE__ */ React.createElement(
+    ) })), /* @__PURE__ */ React.createElement("label", null, tx("{value1} No", { value1: /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "radio",
@@ -156,7 +156,7 @@ function register(platform2) {
   function Field({ label, hint, children }) {
     return /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, label), children, hint ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, hint) : null);
   }
-  function Loading({ text = translate("Loading\u2026") }) {
+  function Loading({ text = t("Loading\u2026") }) {
     return /* @__PURE__ */ React.createElement("div", { className: "loading-block" }, /* @__PURE__ */ React.createElement("div", { className: "spinner" }), text);
   }
   function DataPrunerPanel({ platform: platform3, setTasks, setSave, markDirty, markClean }) {
@@ -348,7 +348,7 @@ function register(platform2) {
         const raw = await api.get("/extensions/datapruner/status");
         setStatusState({ phase: "ready", pairs: statusPairs(raw), message: "" });
       } catch (e) {
-        setStatusState({ phase: "error", pairs: [], message: translate("Status unavailable: {value1}", { value1: String(e.message) }) });
+        setStatusState({ phase: "error", pairs: [], message: t("Status unavailable: {value1}", { value1: String(e.message) }) });
       }
     }
     async function load() {
@@ -365,7 +365,7 @@ function register(platform2) {
         refreshStatus();
       } catch (e) {
         if (!mountedRef.current) return;
-        toast(translate("Failed to load Data Pruner properties: {value1}", { value1: String(e.message) }), "error");
+        toast(t("Failed to load Data Pruner properties: {value1}", { value1: String(e.message) }), "error");
         setErrorMessage(String(e.message || e));
         setPhase("error");
       } finally {
@@ -444,14 +444,14 @@ function register(platform2) {
         }
         await api.extensions.setProperties("Data Pruner", listToProps(propListRef.current));
         if (!mountedRef.current) return false;
-        toast(translate("Data Pruner settings saved"));
+        toast(t("Data Pruner settings saved"));
         cleanRef.current = submittedSnapshot;
         dirtyRef.current = latestSnapshotRef.current !== submittedSnapshot;
         if (dirtyRef.current) markDirty();
         else markClean();
         return !dirtyRef.current;
       } catch (e) {
-        if (mountedRef.current) toast(translate("Save failed: {value1}", { value1: String(e.message) }), "error");
+        if (mountedRef.current) toast(t("Save failed: {value1}", { value1: String(e.message) }), "error");
         return false;
       } finally {
         operationRef.current = false;
@@ -459,12 +459,12 @@ function register(platform2) {
       }
     }
     async function pruneNow() {
-      if (await confirmDialog(translate("Prune Now"), translate("Start the Data Pruner now? Pruning may take a long time on large message stores."), { okLabel: translate("Start") })) {
+      if (await confirmDialog(t("Prune Now"), t("Start the Data Pruner now? Pruning may take a long time on large message stores."), { okLabel: t("Start") })) {
         try {
           await api.post("/extensions/datapruner/_start");
-          toast(translate("Data Pruner started"));
+          toast(t("Data Pruner started"));
         } catch (e) {
-          toast(translate("Start failed: {value1}", { value1: String(e.message) }), "error");
+          toast(t("Start failed: {value1}", { value1: String(e.message) }), "error");
         }
         refreshStatus();
       }
@@ -472,9 +472,9 @@ function register(platform2) {
     async function stopPruner() {
       try {
         await api.post("/extensions/datapruner/_stop");
-        toast(translate("Stop requested"));
+        toast(t("Stop requested"));
       } catch (e) {
-        toast(translate("Stop failed: {value1}", { value1: String(e.message) }), "error");
+        toast(t("Stop failed: {value1}", { value1: String(e.message) }), "error");
       }
       refreshStatus();
     }
@@ -487,14 +487,14 @@ function register(platform2) {
     }, []);
     React.useEffect(() => {
       setSave(save);
-      setTasks(translate("Data Pruner Tasks"), [
-        taskButton(translate("Refresh"), "refresh", () => {
+      setTasks(t("Data Pruner Tasks"), [
+        taskButton(t("Refresh"), "refresh", () => {
           load();
         }, { disabled: busy }),
-        taskButton(translate("Save"), "save", save, { primary: true, disabled: busy || phase !== "ready" }),
-        taskButton(translate("View Events"), "events", () => platform3.router.navigate("/events")),
-        taskButton(translate("Prune Now"), "play", pruneNow),
-        taskButton(translate("Stop Pruner"), "stop", stopPruner, { danger: true })
+        taskButton(t("Save"), "save", save, { primary: true, disabled: busy || phase !== "ready" }),
+        taskButton(t("View Events"), "events", () => platform3.router.navigate("/events")),
+        taskButton(t("Prune Now"), "play", pruneNow),
+        taskButton(t("Stop Pruner"), "stop", stopPruner, { danger: true })
       ]);
     }, [
       busy,
@@ -572,7 +572,7 @@ function register(platform2) {
           strokeLinejoin: "round"
         },
         /* @__PURE__ */ React.createElement("path", { d: "M12 3l9 16H3zM12 10v4M12 17.5v.5" })
-      )), /* @__PURE__ */ React.createElement("div", null, translate("Failed to load")), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint mt-[13px]" }, errorMessage));
+      )), /* @__PURE__ */ React.createElement("div", null, t("Failed to load")), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint mt-[13px]" }, errorMessage));
     }
     const attachmentsEnabled = archiveEnabled && contentKey === "xml";
     const passwordSectionEnabled = archiveEnabled && compressKey === "zip";
@@ -580,7 +580,7 @@ function register(platform2) {
       setCronJobs(cronJobs.map((job, i) => i === idx ? { ...job, [key]: value } : job));
       setScheduleDirty(true);
     };
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, translate("Status")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, statusState.phase === "loading" && /* @__PURE__ */ React.createElement(Loading, { text: translate("Loading status\u2026") }), statusState.phase === "error" && /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, statusState.message), statusState.phase === "ready" && (statusState.pairs.length ? /* @__PURE__ */ React.createElement("dl", { className: "kv" }, statusState.pairs.map(([k, v], i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: `${k}-${i}` }, /* @__PURE__ */ React.createElement("dt", null, labelCase(k)), /* @__PURE__ */ React.createElement("dd", null, v)))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, translate("No status reported"))))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, translate("Schedule")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, translate("Enable")), /* @__PURE__ */ React.createElement(YesNo, { value: enabled, onChange: setEnabled })), hasSchedule ? /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: translate("Schedule Type") }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, t("Status")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, statusState.phase === "loading" && /* @__PURE__ */ React.createElement(Loading, { text: t("Loading status\u2026") }), statusState.phase === "error" && /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, statusState.message), statusState.phase === "ready" && (statusState.pairs.length ? /* @__PURE__ */ React.createElement("dl", { className: "kv" }, statusState.pairs.map(([k, v], i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: `${k}-${i}` }, /* @__PURE__ */ React.createElement("dt", null, labelCase(k)), /* @__PURE__ */ React.createElement("dd", null, v)))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, t("No status reported"))))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, t("Schedule")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Enable")), /* @__PURE__ */ React.createElement(YesNo, { value: enabled, onChange: setEnabled })), hasSchedule ? /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: t("Schedule Type") }, /* @__PURE__ */ React.createElement(
       "select",
       {
         value: scheduleType,
@@ -590,10 +590,10 @@ function register(platform2) {
           setScheduleDirty(true);
         }
       },
-      /* @__PURE__ */ React.createElement("option", { value: "INTERVAL" }, translate("Interval")),
-      /* @__PURE__ */ React.createElement("option", { value: "TIME" }, translate("Time")),
-      /* @__PURE__ */ React.createElement("option", { value: "CRON" }, translate("Cron"))
-    )), scheduleType === "INTERVAL" && /* @__PURE__ */ React.createElement(Field, { label: translate("Interval"), hint: translate("Must be between 1 and 24 hours when converted to milliseconds.") }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(
+      /* @__PURE__ */ React.createElement("option", { value: "INTERVAL" }, t("Interval")),
+      /* @__PURE__ */ React.createElement("option", { value: "TIME" }, t("Time")),
+      /* @__PURE__ */ React.createElement("option", { value: "CRON" }, t("Cron"))
+    )), scheduleType === "INTERVAL" && /* @__PURE__ */ React.createElement(Field, { label: t("Interval"), hint: t("Must be between 1 and 24 hours when converted to milliseconds.") }, /* @__PURE__ */ React.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -622,11 +622,11 @@ function register(platform2) {
           setScheduleDirty(true);
         }
       },
-      /* @__PURE__ */ React.createElement("option", { value: "milliseconds" }, translate("milliseconds")),
-      /* @__PURE__ */ React.createElement("option", { value: "seconds" }, translate("seconds")),
-      /* @__PURE__ */ React.createElement("option", { value: "minutes" }, translate("minutes")),
-      /* @__PURE__ */ React.createElement("option", { value: "hours" }, translate("hours"))
-    ))), scheduleType === "TIME" && /* @__PURE__ */ React.createElement(Field, { label: translate("Time"), hint: translate("Prune once a day at this time of day.") }, /* @__PURE__ */ React.createElement(
+      /* @__PURE__ */ React.createElement("option", { value: "milliseconds" }, t("milliseconds")),
+      /* @__PURE__ */ React.createElement("option", { value: "seconds" }, t("seconds")),
+      /* @__PURE__ */ React.createElement("option", { value: "minutes" }, t("minutes")),
+      /* @__PURE__ */ React.createElement("option", { value: "hours" }, t("hours"))
+    ))), scheduleType === "TIME" && /* @__PURE__ */ React.createElement(Field, { label: t("Time"), hint: t("Prune once a day at this time of day.") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "time",
@@ -642,7 +642,7 @@ function register(platform2) {
           setScheduleDirty(true);
         }
       }
-    )), scheduleType === "CRON" && /* @__PURE__ */ React.createElement("div", { className: "field span-2" }, /* @__PURE__ */ React.createElement("label", null, translate("Cron Jobs")), /* @__PURE__ */ React.createElement("div", { className: "dt-wrap" }, /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, translate("Expression")), /* @__PURE__ */ React.createElement("th", null, translate("Description")), /* @__PURE__ */ React.createElement("th", null))), /* @__PURE__ */ React.createElement("tbody", null, cronJobs.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint" }, translate("No cron jobs defined."))), cronJobs.map((job, idx) => /* @__PURE__ */ React.createElement("tr", { key: idx }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(
+    )), scheduleType === "CRON" && /* @__PURE__ */ React.createElement("div", { className: "field span-2" }, /* @__PURE__ */ React.createElement("label", null, t("Cron Jobs")), /* @__PURE__ */ React.createElement("div", { className: "dt-wrap" }, /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, t("Expression")), /* @__PURE__ */ React.createElement("th", null, t("Description")), /* @__PURE__ */ React.createElement("th", null))), /* @__PURE__ */ React.createElement("tbody", null, cronJobs.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint" }, t("No cron jobs defined."))), cronJobs.map((job, idx) => /* @__PURE__ */ React.createElement("tr", { key: idx }, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "text",
@@ -674,7 +674,7 @@ function register(platform2) {
           setScheduleDirty(true);
         }
       },
-      translate("Delete")
+      t("Delete")
     ))))))), /* @__PURE__ */ React.createElement("div", { className: "mt-[7px]" }, /* @__PURE__ */ React.createElement(
       "button",
       {
@@ -686,8 +686,8 @@ function register(platform2) {
           setScheduleDirty(true);
         }
       },
-      translate("Add")
-    )), /* @__PURE__ */ React.createElement("div", { className: "hint mt-[5px]" }, translate("Quartz cron expressions with at least 6 fields (seconds minutes hours day-of-month month day-of-week [year]).")))) : /* @__PURE__ */ React.createElement("div", { className: "hint" }, translate("The polling schedule (pollingProperties) could not be parsed; it will be preserved unchanged.")))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, translate("Prune Settings")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: translate("Block Size") }, /* @__PURE__ */ React.createElement(
+      t("Add")
+    )), /* @__PURE__ */ React.createElement("div", { className: "hint mt-[5px]" }, t("Quartz cron expressions with at least 6 fields (seconds minutes hours day-of-month month day-of-week [year]).")))) : /* @__PURE__ */ React.createElement("div", { className: "hint" }, t("The polling schedule (pollingProperties) could not be parsed; it will be preserved unchanged.")))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, t("Prune Settings")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: t("Block Size") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -696,7 +696,7 @@ function register(platform2) {
         onInput: (e) => setBlockSize(e.target.value),
         onChange: (e) => setBlockSize(e.target.value)
       }
-    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, translate("Prune Events")), /* @__PURE__ */ React.createElement(YesNo, { value: pruneEvents, onChange: setPruneEvents })), /* @__PURE__ */ React.createElement(Field, { label: translate("Prune Event Age (days)") }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Prune Events")), /* @__PURE__ */ React.createElement(YesNo, { value: pruneEvents, onChange: setPruneEvents })), /* @__PURE__ */ React.createElement(Field, { label: t("Prune Event Age (days)") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -706,7 +706,7 @@ function register(platform2) {
         onInput: (e) => setMaxEventAge(e.target.value),
         onChange: (e) => setMaxEventAge(e.target.value)
       }
-    ))))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, translate("Archive Settings")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, translate("Enable Archiving")), /* @__PURE__ */ React.createElement(YesNo, { value: archiveEnabled, onChange: setArchiveEnabled })), /* @__PURE__ */ React.createElement(Field, { label: translate("Archiver Block Size") }, /* @__PURE__ */ React.createElement(
+    ))))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, t("Archive Settings")), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Enable Archiving")), /* @__PURE__ */ React.createElement(YesNo, { value: archiveEnabled, onChange: setArchiveEnabled })), /* @__PURE__ */ React.createElement(Field, { label: t("Archiver Block Size") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "number",
@@ -716,7 +716,7 @@ function register(platform2) {
         onInput: (e) => setArchiverBlockSize(e.target.value),
         onChange: (e) => setArchiverBlockSize(e.target.value)
       }
-    ))), hasArchiver ? /* @__PURE__ */ React.createElement("div", { className: "form-grid mt-[11px]" }, /* @__PURE__ */ React.createElement(Field, { label: translate("Content") }, /* @__PURE__ */ React.createElement(
+    ))), hasArchiver ? /* @__PURE__ */ React.createElement("div", { className: "form-grid mt-[11px]" }, /* @__PURE__ */ React.createElement(Field, { label: t("Content") }, /* @__PURE__ */ React.createElement(
       "select",
       {
         value: contentKey,
@@ -729,7 +729,7 @@ function register(platform2) {
         }
       },
       CONTENT_OPTIONS.map((o) => /* @__PURE__ */ React.createElement("option", { key: o.key, value: o.key }, o.label))
-    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, translate("Encrypt")), /* @__PURE__ */ React.createElement("label", { className: "inline-flex items-center gap-2" }, richText("{value1}Encrypt exported content", { value1: /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Encrypt")), /* @__PURE__ */ React.createElement("label", { className: "inline-flex items-center gap-2" }, tx("{value1}Encrypt exported content", { value1: /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "checkbox",
@@ -740,7 +740,7 @@ function register(platform2) {
           setArchiverDirty(true);
         }
       }
-    ) }))), includeAttachments !== null && /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, translate("Include Attachments")), /* @__PURE__ */ React.createElement(
+    ) }))), includeAttachments !== null && /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Include Attachments")), /* @__PURE__ */ React.createElement(
       YesNo,
       {
         value: includeAttachments,
@@ -750,7 +750,7 @@ function register(platform2) {
           setArchiverDirty(true);
         }
       }
-    )), /* @__PURE__ */ React.createElement(Field, { label: translate("Compression") }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Field, { label: t("Compression") }, /* @__PURE__ */ React.createElement(
       "select",
       {
         value: compressKey,
@@ -761,7 +761,7 @@ function register(platform2) {
         }
       },
       COMPRESS_OPTIONS.map((o) => /* @__PURE__ */ React.createElement("option", { key: o.key, value: o.key }, o.label))
-    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, translate("Password Protect")), /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Password Protect")), /* @__PURE__ */ React.createElement(
       YesNo,
       {
         value: passwordEnabled,
@@ -771,7 +771,7 @@ function register(platform2) {
           setArchiverDirty(true);
         }
       }
-    )), /* @__PURE__ */ React.createElement(Field, { label: translate("Password") }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Field, { label: t("Password") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "password",
@@ -786,7 +786,7 @@ function register(platform2) {
           setArchiverDirty(true);
         }
       }
-    )), /* @__PURE__ */ React.createElement(Field, { label: translate("Encryption") }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Field, { label: t("Encryption") }, /* @__PURE__ */ React.createElement(
       "select",
       {
         value: encryptionType,
@@ -797,7 +797,7 @@ function register(platform2) {
         }
       },
       ENCRYPTION_OPTIONS.map((o) => /* @__PURE__ */ React.createElement("option", { key: o.value, value: o.value }, o.label))
-    )), /* @__PURE__ */ React.createElement("div", { className: "span-2 flex gap-3 items-stretch" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0 flex flex-col gap-2" }, /* @__PURE__ */ React.createElement(Field, { label: translate("Root Path") }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", { className: "span-2 flex gap-3 items-stretch" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-w-0 flex flex-col gap-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Root Path") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         ref: rootInputRef,
@@ -818,7 +818,7 @@ function register(platform2) {
           setArchiverDirty(true);
         }
       }
-    )), /* @__PURE__ */ React.createElement(Field, { label: translate("File Pattern") }, /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement(Field, { label: t("File Pattern") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         ref: patternInputRef,
@@ -844,7 +844,7 @@ function register(platform2) {
       {
         className: "border border-line rounded-[4px] py-1 min-w-[162px] max-w-[207px] bg-bg1 overflow-auto self-stretch",
         style: { opacity: archiveEnabled ? 1 : 0.5 },
-        title: translate("Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one")
+        title: t("Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one")
       },
       ARCHIVE_VARS.map((v) => /* @__PURE__ */ React.createElement(
         "div",
@@ -861,12 +861,12 @@ function register(platform2) {
         },
         v.label
       ))
-    ))) : /* @__PURE__ */ React.createElement("div", { className: "hint mt-[11px]" }, translate("Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged.")))));
+    ))) : /* @__PURE__ */ React.createElement("div", { className: "hint mt-[11px]" }, t("Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged.")))));
   }
   platform2.registerSettingsPanel({
     id: "Data Pruner",
     taskGroup: "settings_Data Pruner",
-    label: translate("Data Pruner"),
+    label: t("Data Pruner"),
     component: DataPrunerPanel
   });
 }

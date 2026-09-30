@@ -1,5 +1,5 @@
-import { isCommitEnter, compareText, scope as i18nScope } from '@oie/web-ui';
-const { t: translate } = i18nScope("server-log");
+import { isCommitEnter, compareText, scope } from '@oie/web-ui';
+const { t } = scope("server-log");
 /*
  * Server Log — web admin plugin (React).
  *
@@ -111,11 +111,11 @@ function copyText(text: any) {
     try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text);
-            toast(translate("Copied to clipboard"));
+            toast(t("Copied to clipboard"));
             return;
         }
     } catch (e: any) { /* fall through */ }
-    toast(translate("Clipboard unavailable"), 'warn');
+    toast(t("Clipboard unavailable"), 'warn');
 }
 
 function showDetail(item: any) {
@@ -123,20 +123,20 @@ function showDetail(item: any) {
     // Theme tokens (not hardcoded colors) so the modal works in dark mode.
     const preClass = 'm-0 whitespace-pre-wrap [word-break:break-word] overflow-x-hidden overflow-y-auto bg-bg0 text-text border border-[var(--bg3)] p-2 rounded-[4px]';
     modal({
-        title: translate("Server Log Entry"),
+        title: t("Server Log Entry"),
         size: 'wide',
         body: h('div', { class: 'flex flex-col gap-2 min-w-[558px]' },
             h('div', { class: 'flex gap-[13px] items-center flex-wrap' },
                 levelTagDom(item.level),
                 h('span.mono.text-text-faint', formatLogDate(item.date)),
                 h('span.mono', scopeLabel(item))),
-            h('div', { class: 'font-semibold' }, translate("Message")),
+            h('div', { class: 'font-semibold' }, t("Message")),
             h('pre', { lang: 'en', class: preClass + ' max-h-[30vh]' }, String(item.message ?? '')),
-            stack ? h('div', { class: 'font-semibold' }, translate("Stack Trace")) : null,
+            stack ? h('div', { class: 'font-semibold' }, t("Stack Trace")) : null,
             stack ? h('pre', { lang: 'en', class: preClass + ' max-h-[60vh] text-[11px]' }, String(item.throwableInformation)) : null),
         buttons: [
-            { label: translate("Copy"), onClick: () => { copyText(fullText(item)); return false; } },
-            { label: translate("Close"), primary: true }
+            { label: t("Copy"), onClick: () => { copyText(fullText(item)); return false; } },
+            { label: t("Close"), primary: true }
         ]
     });
 }
@@ -145,7 +145,7 @@ function showDetail(item: any) {
    line, truncated with an ellipsis). */
 function LogRow({ item }: any) {
     return (
-        <tr className="cursor-pointer" title={translate("Double-click for the full entry")}
+        <tr className="cursor-pointer" title={t("Double-click for the full entry")}
             onDoubleClick={() => showDetail(item)}>
             <td className="mono text-text-faint whitespace-nowrap text-[11px] w-[160px]">{formatLogDate(item.date)}</td>
             <td className="whitespace-nowrap w-[76px]"><LevelTag level={item.level} style={{ verticalAlign: 'middle' }} /></td>
@@ -268,16 +268,16 @@ function ServerLogTab() {
                 <table className="dt server-log w-full">
                     <thead>
                         <tr>
-                            {headerTh('timestamp', translate("Timestamp"), 'w-[160px]')}
-                            {headerTh('level', translate("Level"), 'w-[76px]')}
-                            {headerTh('message', translate("Message"))}
+                            {headerTh('timestamp', t("Timestamp"), 'w-[160px]')}
+                            {headerTh('level', t("Level"), 'w-[76px]')}
+                            {headerTh('message', t("Message"))}
                         </tr>
                     </thead>
                     <tbody>
                         {error && !items.length ? (
-                            <tr><td colSpan={3} className="text-text-faint p-3">{translate("Server Log unavailable: {value1}", { value1: String(error) })}</td></tr>
+                            <tr><td colSpan={3} className="text-text-faint p-3">{t("Server Log unavailable: {value1}", { value1: String(error) })}</td></tr>
                         ) : !items.length ? (
-                            <tr><td colSpan={3} className="text-text-faint p-3">{translate("No server log entries yet.")}</td></tr>
+                            <tr><td colSpan={3} className="text-text-faint p-3">{t("No server log entries yet.")}</td></tr>
                         ) : (
                             sortedItems.map((item: any) => <LogRow key={item.id} item={item} />)
                         )}
@@ -286,20 +286,20 @@ function ServerLogTab() {
             </div>
             {/* thin sticky bottom toolbar: pause | clear | … | Log Size */}
             <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]">
-                <button className={"icon-btn " + btnClass} title={translate("Pause or resume the live log")} onClick={togglePause}>
+                <button className={"icon-btn " + btnClass} title={t("Pause or resume the live log")} onClick={togglePause}>
                     <span className="text-[11.5px] leading-none">{paused ? '⏵' : '⏸'}</span>
                 </button>
-                <button className={"icon-btn " + btnClass} title={translate("Clear the displayed log")} onClick={clearLog}>
+                <button className={"icon-btn " + btnClass} title={t("Clear the displayed log")} onClick={clearLog}>
                     <span className="text-err font-bold">✕</span>
                 </button>
                 <span className="flex-1" />
-                <label className="text-text-faint mr-0.5">{translate("Log Size:")}</label>
+                <label className="text-text-faint mr-0.5">{t("Log Size:")}</label>
                 <input type="number" min="1" max="99999" value={sizeText}
                     className="w-[54px] h-[20px] py-0 px-1 text-[11px]"
                     onChange={(e: any) => setSizeText(e.target.value)}
                     onBlur={applySize}
                     onKeyDown={(e: any) => { if (isCommitEnter(e)) applySize(); }} />
-                <button className={"icon-btn " + btnClass} title={translate("Apply log size")} onClick={applySize}>
+                <button className={"icon-btn " + btnClass} title={t("Apply log size")} onClick={applySize}>
                     <span className="text-ok font-bold">✓</span>
                 </button>
             </div>
@@ -310,7 +310,7 @@ function ServerLogTab() {
 export function register(platform: Platform) {
     platform.registerDashboardTab({
         id: 'server-log',
-        label: translate("Server Log"),
+        label: t("Server Log"),
         order: 10,
         component: ServerLogTab
     });

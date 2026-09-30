@@ -4,7 +4,7 @@
    their type from their contents. Keep the same singleton/repeated-child and
    @attribute/$text shape consumed by the existing message/map viewers. */
 import type { Message } from './wire-types.js';
-import { t as translate } from './i18n.js';
+import { t } from './i18n.js';
 
 type Value = string | number | boolean | ObjectValue;
 interface ObjectValue { [key: string]: Value | Value[] }
@@ -19,7 +19,7 @@ export function protectMessageXml(text: string): { xml: string; restore: (value:
     const xml = text.replaceAll(marker, marker + marker).replace(
         /<!\[CDATA\[[\s\S]*?\]\]>|<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!DOCTYPE\b|&#(?:x[\da-fA-F]+|\d+);/g,
         token => {
-            if (token === '<!DOCTYPE') throw new Error(translate('Engine returned invalid message XML'));
+            if (token === '<!DOCTYPE') throw new Error(t('Engine returned invalid message XML'));
             // Entity references are literal text inside CDATA/comments/PIs.
             if (!token.startsWith('&#')) return token;
             const code = token[2] === 'x' ? parseInt(token.slice(3, -1), 16) : Number(token.slice(2, -1));
@@ -78,7 +78,7 @@ export function parseMessageDocument(text: string): XMLDocument {
     if (doc.doctype || !root || root.tagName === 'parsererror'
         || doc.getElementsByTagNameNS('http://www.mozilla.org/newlayout/xml/parsererror.xml', 'parsererror').length
         || doc.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'parsererror').length) {
-        throw new Error(translate('Engine returned invalid message XML'));
+        throw new Error(t('Engine returned invalid message XML'));
     }
     const walk = (node: Element) => {
         for (const attribute of node.attributes) attribute.value = restore(attribute.value);
@@ -93,7 +93,7 @@ export function parseMessageDocument(text: string): XMLDocument {
 
 export function parseMessageXml(text: string): Message {
     const root = parseMessageDocument(text).documentElement;
-    if (root.tagName !== 'message') throw new Error(translate('Engine returned invalid message XML'));
+    if (root.tagName !== 'message') throw new Error(t('Engine returned invalid message XML'));
     const read = (node: Element): Value => {
         // A null prototype keeps arbitrary engine map/metadata names, including
         // __proto__ and constructor, as data without invoking object setters.
@@ -114,6 +114,6 @@ export function parseMessageXml(text: string): Message {
         return result;
     };
     const result = read(root);
-    if (!result || typeof result !== 'object') throw new Error(translate('Engine returned invalid message XML'));
+    if (!result || typeof result !== 'object') throw new Error(t('Engine returned invalid message XML'));
     return result as Message;
 }

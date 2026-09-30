@@ -1,5 +1,5 @@
-import { scope as i18nScope } from '@oie/web-ui';
-const { t: translate, tx: richText } = i18nScope("datapruner");
+import { scope } from '@oie/web-ui';
+const { t, tx } = scope("datapruner");
 /*
  * Data Pruner — web admin plugin (SettingsPanelPlugin equivalent, React).
  *
@@ -66,36 +66,36 @@ function msToFreq(ms: any) {
 /* MessageWriterOptions "Content" combo: (contentType enum name, destinationContent).
    "XML serialized message" == null contentType. Mirrors MessageExportPanel order. */
 const CONTENT_OPTIONS = [
-    { key: 'xml', label: translate("XML serialized message"), contentType: null, dest: false },
-    { key: 'src-RAW', label: translate("Source - Raw"), contentType: 'RAW', dest: false },
-    { key: 'src-PROCESSED_RAW', label: translate("Source - Processed raw"), contentType: 'PROCESSED_RAW', dest: false },
-    { key: 'src-TRANSFORMED', label: translate("Source - Transformed"), contentType: 'TRANSFORMED', dest: false },
-    { key: 'src-ENCODED', label: translate("Source - Encoded"), contentType: 'ENCODED', dest: false },
-    { key: 'src-RESPONSE', label: translate("Source - Response"), contentType: 'RESPONSE', dest: false },
-    { key: 'dst-RAW', label: translate("Destination - Raw"), contentType: 'RAW', dest: true },
-    { key: 'dst-TRANSFORMED', label: translate("Destination - Transformed"), contentType: 'TRANSFORMED', dest: true },
-    { key: 'dst-ENCODED', label: translate("Destination - Encoded"), contentType: 'ENCODED', dest: true },
-    { key: 'dst-SENT', label: translate("Destination - Sent"), contentType: 'SENT', dest: true },
-    { key: 'dst-RESPONSE', label: translate("Destination - Response"), contentType: 'RESPONSE', dest: true },
-    { key: 'dst-PROCESSED_RESPONSE', label: translate("Destination - Processed response"), contentType: 'PROCESSED_RESPONSE', dest: true },
-    { key: 'map-SOURCE_MAP', label: translate("Source map"), contentType: 'SOURCE_MAP', dest: false },
-    { key: 'map-CHANNEL_MAP', label: translate("Channel map"), contentType: 'CHANNEL_MAP', dest: false },
-    { key: 'map-RESPONSE_MAP', label: translate("Response map"), contentType: 'RESPONSE_MAP', dest: false }
+    { key: 'xml', label: t("XML serialized message"), contentType: null, dest: false },
+    { key: 'src-RAW', label: t("Source - Raw"), contentType: 'RAW', dest: false },
+    { key: 'src-PROCESSED_RAW', label: t("Source - Processed raw"), contentType: 'PROCESSED_RAW', dest: false },
+    { key: 'src-TRANSFORMED', label: t("Source - Transformed"), contentType: 'TRANSFORMED', dest: false },
+    { key: 'src-ENCODED', label: t("Source - Encoded"), contentType: 'ENCODED', dest: false },
+    { key: 'src-RESPONSE', label: t("Source - Response"), contentType: 'RESPONSE', dest: false },
+    { key: 'dst-RAW', label: t("Destination - Raw"), contentType: 'RAW', dest: true },
+    { key: 'dst-TRANSFORMED', label: t("Destination - Transformed"), contentType: 'TRANSFORMED', dest: true },
+    { key: 'dst-ENCODED', label: t("Destination - Encoded"), contentType: 'ENCODED', dest: true },
+    { key: 'dst-SENT', label: t("Destination - Sent"), contentType: 'SENT', dest: true },
+    { key: 'dst-RESPONSE', label: t("Destination - Response"), contentType: 'RESPONSE', dest: true },
+    { key: 'dst-PROCESSED_RESPONSE', label: t("Destination - Processed response"), contentType: 'PROCESSED_RESPONSE', dest: true },
+    { key: 'map-SOURCE_MAP', label: t("Source map"), contentType: 'SOURCE_MAP', dest: false },
+    { key: 'map-CHANNEL_MAP', label: t("Channel map"), contentType: 'CHANNEL_MAP', dest: false },
+    { key: 'map-RESPONSE_MAP', label: t("Response map"), contentType: 'RESPONSE_MAP', dest: false }
 ];
 
 /* MessageWriterOptions archiveFormat/compressFormat pairs (ArchiveFormat enum). */
 const COMPRESS_OPTIONS = [
-    { key: 'none', label: translate("none"), archive: null, compress: null },
-    { key: 'zip', label: translate("zip"), archive: 'zip', compress: null },
-    { key: 'tar.gz', label: translate("tar.gz"), archive: 'tar', compress: 'gz' },
-    { key: 'tar.bz2', label: translate("tar.bz2"), archive: 'tar', compress: 'bzip2' }
+    { key: 'none', label: t("none"), archive: null, compress: null },
+    { key: 'zip', label: t("zip"), archive: 'zip', compress: null },
+    { key: 'tar.gz', label: t("tar.gz"), archive: 'tar', compress: 'gz' },
+    { key: 'tar.bz2', label: t("tar.bz2"), archive: 'tar', compress: 'bzip2' }
 ];
 
 /* EncryptionType enum name -> display label. */
 const ENCRYPTION_OPTIONS = [
-    { value: 'STANDARD', label: translate("Standard") },
-    { value: 'AES128', label: translate("AES-128") },
-    { value: 'AES256', label: translate("AES-256") }
+    { value: 'STANDARD', label: t("Standard") },
+    { value: 'AES128', label: t("AES-128") },
+    { value: 'AES256', label: t("AES-256") }
 ];
 
 /* Template variables for the archiver Root Path / File Pattern — the exact
@@ -103,15 +103,15 @@ const ENCRYPTION_OPTIONS = [
    VariableListHandler inserts on drag. Drag an item into (or click to insert
    it at the cursor of) the Root Path / File Pattern fields. */
 const ARCHIVE_VARS = [
-    { label: translate("Message ID"), token: '${message.messageId}' },
-    { label: translate("Server ID"), token: '${message.serverId}' },
-    { label: translate("Channel ID"), token: '${message.channelId}' },
-    { label: translate("Original File Name"), token: '${originalFilename}' },
-    { label: translate("Formatted Message Date"), token: "${date.format('yyyy-MM-dd',$message.getConnectorMessages().get(0).getReceivedDate())}" },
-    { label: translate("Formatted Current Date"), token: "${date.get('yyyy-MM-dd')}" },
-    { label: translate("Timestamp"), token: '${SYSTIME}' },
-    { label: translate("Unique ID"), token: '${UUID}' },
-    { label: translate("Count"), token: '${COUNT}' }
+    { label: t("Message ID"), token: '${message.messageId}' },
+    { label: t("Server ID"), token: '${message.serverId}' },
+    { label: t("Channel ID"), token: '${message.channelId}' },
+    { label: t("Original File Name"), token: '${originalFilename}' },
+    { label: t("Formatted Message Date"), token: "${date.format('yyyy-MM-dd',$message.getConnectorMessages().get(0).getReceivedDate())}" },
+    { label: t("Formatted Current Date"), token: "${date.get('yyyy-MM-dd')}" },
+    { label: t("Timestamp"), token: '${SYSTIME}' },
+    { label: t("Unique ID"), token: '${UUID}' },
+    { label: t("Count"), token: '${COUNT}' }
 ];
 const ARCHIVE_VAR_MIME = 'application/x-oie-archivevar';
 
@@ -188,9 +188,9 @@ export function register(platform: Platform) {
         const name = React.useMemo(() => 'datapruner-rg-' + Math.random().toString(36).slice(2), []);
         return (
             <div className="radio-group inline-row">
-                <label>{richText("{value1} Yes", { value1: <input type="radio" name={name} value="yes" checked={value === true}
+                <label>{tx("{value1} Yes", { value1: <input type="radio" name={name} value="yes" checked={value === true}
                         disabled={disabled} onChange={() => onChange(true)} /> })}</label>
-                <label>{richText("{value1} No", { value1: <input type="radio" name={name} value="no" checked={value === false}
+                <label>{tx("{value1} No", { value1: <input type="radio" name={name} value="no" checked={value === false}
                         disabled={disabled} onChange={() => onChange(false)} /> })}</label>
             </div>
         );
@@ -206,7 +206,7 @@ export function register(platform: Platform) {
         );
     }
 
-    function Loading({ text = translate("Loading…") }: any) {
+    function Loading({ text = t("Loading…") }: any) {
         return <div className="loading-block"><div className="spinner" />{text}</div>;
     }
 
@@ -428,7 +428,7 @@ export function register(platform: Platform) {
                 const raw = await api.get('/extensions/datapruner/status');
                 setStatusState({ phase: 'ready', pairs: statusPairs(raw), message: '' });
             } catch (e: any) {
-                setStatusState({ phase: 'error', pairs: [], message: translate("Status unavailable: {value1}", { value1: String(e.message) }) });
+                setStatusState({ phase: 'error', pairs: [], message: t("Status unavailable: {value1}", { value1: String(e.message) }) });
             }
         }
 
@@ -446,7 +446,7 @@ export function register(platform: Platform) {
                 refreshStatus();
             } catch (e: any) {
                 if (!mountedRef.current) return;
-                toast(translate("Failed to load Data Pruner properties: {value1}", { value1: String(e.message) }), 'error');
+                toast(t("Failed to load Data Pruner properties: {value1}", { value1: String(e.message) }), 'error');
                 setErrorMessage(String(e.message || e));
                 setPhase('error');
             } finally {
@@ -531,7 +531,7 @@ export function register(platform: Platform) {
                    unchanged. */
                 await api.extensions.setProperties('Data Pruner', listToProps(propListRef.current));
                 if (!mountedRef.current) return false;
-                toast(translate("Data Pruner settings saved"));
+                toast(t("Data Pruner settings saved"));
                 // Only the submitted values became clean. Keep newer edits and
                 // refuse a pending Save-and-leave while they still need saving.
                 cleanRef.current = submittedSnapshot;
@@ -539,7 +539,7 @@ export function register(platform: Platform) {
                 if (dirtyRef.current) markDirty(); else markClean();
                 return !dirtyRef.current;
             } catch (e: any) {
-                if (mountedRef.current) toast(translate("Save failed: {value1}", { value1: String(e.message) }), 'error');
+                if (mountedRef.current) toast(t("Save failed: {value1}", { value1: String(e.message) }), 'error');
                 return false;
             } finally {
                 operationRef.current = false;
@@ -548,12 +548,12 @@ export function register(platform: Platform) {
         }
 
         async function pruneNow() {
-            if (await confirmDialog(translate("Prune Now"), translate("Start the Data Pruner now? Pruning may take a long time on large message stores."), { okLabel: translate("Start") })) {
+            if (await confirmDialog(t("Prune Now"), t("Start the Data Pruner now? Pruning may take a long time on large message stores."), { okLabel: t("Start") })) {
                 try {
                     await api.post('/extensions/datapruner/_start');
-                    toast(translate("Data Pruner started"));
+                    toast(t("Data Pruner started"));
                 } catch (e: any) {
-                    toast(translate("Start failed: {value1}", { value1: String(e.message) }), 'error');
+                    toast(t("Start failed: {value1}", { value1: String(e.message) }), 'error');
                 }
                 refreshStatus();
             }
@@ -562,9 +562,9 @@ export function register(platform: Platform) {
         async function stopPruner() {
             try {
                 await api.post('/extensions/datapruner/_stop');
-                toast(translate("Stop requested"));
+                toast(t("Stop requested"));
             } catch (e: any) {
-                toast(translate("Stop failed: {value1}", { value1: String(e.message) }), 'error');
+                toast(t("Stop failed: {value1}", { value1: String(e.message) }), 'error');
             }
             refreshStatus();
         }
@@ -586,12 +586,12 @@ export function register(platform: Platform) {
             // markDirty engage, and the framework's tab-switch + route-leave prompts
             // can save on the user's behalf.
             setSave(save);
-            setTasks(translate("Data Pruner Tasks"), [
-                taskButton(translate("Refresh"), 'refresh', () => { load(); }, { disabled: busy }),
-                taskButton(translate("Save"), 'save', save, { primary: true, disabled: busy || phase !== 'ready' }),
-                taskButton(translate("View Events"), 'events', () => platform.router.navigate('/events')),
-                taskButton(translate("Prune Now"), 'play', pruneNow),
-                taskButton(translate("Stop Pruner"), 'stop', stopPruner, { danger: true })
+            setTasks(t("Data Pruner Tasks"), [
+                taskButton(t("Refresh"), 'refresh', () => { load(); }, { disabled: busy }),
+                taskButton(t("Save"), 'save', save, { primary: true, disabled: busy || phase !== 'ready' }),
+                taskButton(t("View Events"), 'events', () => platform.router.navigate('/events')),
+                taskButton(t("Prune Now"), 'play', pruneNow),
+                taskButton(t("Stop Pruner"), 'stop', stopPruner, { danger: true })
             ]);
             // eslint-disable-next-line react-hooks/exhaustive-deps
         }, [busy, phase, enabled, blockSize, pruneEvents, maxEventAge, archiveEnabled, archiverBlockSize,
@@ -628,7 +628,7 @@ export function register(platform: Platform) {
                             <path d="M12 3l9 16H3zM12 10v4M12 17.5v.5" />
                         </svg>
                     </div>
-                    <div>{translate("Failed to load")}</div>
+                    <div>{t("Failed to load")}</div>
                     <div className="text-text-faint mt-[13px]">{errorMessage}</div>
                 </div>
             );
@@ -644,9 +644,9 @@ export function register(platform: Platform) {
         return (
             <div>
                 <div className="panel">
-                    <div className="panel-header">{translate("Status")}</div>
+                    <div className="panel-header">{t("Status")}</div>
                     <div className="panel-body">
-                        {statusState.phase === 'loading' && <Loading text={translate("Loading status…")} />}
+                        {statusState.phase === 'loading' && <Loading text={t("Loading status…")} />}
                         {statusState.phase === 'error' && <div className="text-text-faint">{statusState.message}</div>}
                         {statusState.phase === 'ready' && (
                             statusState.pairs.length
@@ -656,30 +656,30 @@ export function register(platform: Platform) {
                                         <dd>{v}</dd>
                                     </React.Fragment>
                                 ))}</dl>
-                                : <div className="text-text-faint">{translate("No status reported")}</div>
+                                : <div className="text-text-faint">{t("No status reported")}</div>
                         )}
                     </div>
                 </div>
 
                 <div className="panel">
-                    <div className="panel-header">{translate("Schedule")}</div>
+                    <div className="panel-header">{t("Schedule")}</div>
                     <div className="panel-body">
                         <div className="field">
-                            <label>{translate("Enable")}</label>
+                            <label>{t("Enable")}</label>
                             <YesNo value={enabled} onChange={setEnabled} />
                         </div>
                         {hasSchedule ? (
                             <div className="form-grid">
-                                <Field label={translate("Schedule Type")}>
+                                <Field label={t("Schedule Type")}>
                                     <select value={scheduleType} disabled={!enabled}
                                         onChange={(e: any) => { setScheduleType(e.target.value); setScheduleDirty(true); }}>
-                                        <option value="INTERVAL">{translate("Interval")}</option>
-                                        <option value="TIME">{translate("Time")}</option>
-                                        <option value="CRON">{translate("Cron")}</option>
+                                        <option value="INTERVAL">{t("Interval")}</option>
+                                        <option value="TIME">{t("Time")}</option>
+                                        <option value="CRON">{t("Cron")}</option>
                                     </select>
                                 </Field>
                                 {scheduleType === 'INTERVAL' && (
-                                    <Field label={translate("Interval")} hint={translate("Must be between 1 and 24 hours when converted to milliseconds.")}>
+                                    <Field label={t("Interval")} hint={t("Must be between 1 and 24 hours when converted to milliseconds.")}>
                                         <div className="flex items-center gap-2">
                                             <input type="number" min="0" step="any" className="max-w-[108px]"
                                                 value={freqValue} disabled={!enabled}
@@ -687,16 +687,16 @@ export function register(platform: Platform) {
                                                 onChange={(e: any) => { setFreqValue(e.target.value); setScheduleDirty(true); }} />
                                             <select className="max-w-[126px]" value={freqUnit} disabled={!enabled}
                                                 onChange={(e: any) => { setFreqUnit(e.target.value); setScheduleDirty(true); }}>
-                                                <option value="milliseconds">{translate("milliseconds")}</option>
-                                                <option value="seconds">{translate("seconds")}</option>
-                                                <option value="minutes">{translate("minutes")}</option>
-                                                <option value="hours">{translate("hours")}</option>
+                                                <option value="milliseconds">{t("milliseconds")}</option>
+                                                <option value="seconds">{t("seconds")}</option>
+                                                <option value="minutes">{t("minutes")}</option>
+                                                <option value="hours">{t("hours")}</option>
                                             </select>
                                         </div>
                                     </Field>
                                 )}
                                 {scheduleType === 'TIME' && (
-                                    <Field label={translate("Time")} hint={translate("Prune once a day at this time of day.")}>
+                                    <Field label={t("Time")} hint={t("Prune once a day at this time of day.")}>
                                         <input type="time" className="max-w-[126px]" value={pollTime} disabled={!enabled}
                                             onInput={(e: any) => { setPollTime(e.target.value); setScheduleDirty(true); }}
                                             onChange={(e: any) => { setPollTime(e.target.value); setScheduleDirty(true); }} />
@@ -704,15 +704,15 @@ export function register(platform: Platform) {
                                 )}
                                 {scheduleType === 'CRON' && (
                                     <div className="field span-2">
-                                        <label>{translate("Cron Jobs")}</label>
+                                        <label>{t("Cron Jobs")}</label>
                                         <div className="dt-wrap">
                                             <table className="dt">
                                                 <thead>
-                                                    <tr><th>{translate("Expression")}</th><th>{translate("Description")}</th><th /></tr>
+                                                    <tr><th>{t("Expression")}</th><th>{t("Description")}</th><th /></tr>
                                                 </thead>
                                                 <tbody>
                                                     {cronJobs.length === 0 && (
-                                                        <tr><td colSpan={3} className="text-text-faint">{translate("No cron jobs defined.")}</td></tr>
+                                                        <tr><td colSpan={3} className="text-text-faint">{t("No cron jobs defined.")}</td></tr>
                                                     )}
                                                     {cronJobs.map((job: any, idx: any) => (
                                                         <tr key={idx}>
@@ -730,7 +730,7 @@ export function register(platform: Platform) {
                                                             </td>
                                                             <td>
                                                                 <button type="button" className="btn btn-sm btn-danger" disabled={!enabled}
-                                                                    onClick={() => { setCronJobs(cronJobs.filter((_: any, i: any) => i !== idx)); setScheduleDirty(true); }}>{translate("Delete")}</button>
+                                                                    onClick={() => { setCronJobs(cronJobs.filter((_: any, i: any) => i !== idx)); setScheduleDirty(true); }}>{t("Delete")}</button>
                                                             </td>
                                                         </tr>
                                                     ))}
@@ -739,32 +739,32 @@ export function register(platform: Platform) {
                                         </div>
                                         <div className="mt-[7px]">
                                             <button type="button" className="btn btn-sm" disabled={!enabled}
-                                                onClick={() => { setCronJobs([...cronJobs, { expression: '', description: '' }]); setScheduleDirty(true); }}>{translate("Add")}</button>
+                                                onClick={() => { setCronJobs([...cronJobs, { expression: '', description: '' }]); setScheduleDirty(true); }}>{t("Add")}</button>
                                         </div>
-                                        <div className="hint mt-[5px]">{translate("Quartz cron expressions with at least 6 fields (seconds minutes hours day-of-month month day-of-week [year]).")}</div>
+                                        <div className="hint mt-[5px]">{t("Quartz cron expressions with at least 6 fields (seconds minutes hours day-of-month month day-of-week [year]).")}</div>
                                     </div>
                                 )}
                             </div>
                         ) : (
-                            <div className="hint">{translate("The polling schedule (pollingProperties) could not be parsed; it will be preserved unchanged.")}</div>
+                            <div className="hint">{t("The polling schedule (pollingProperties) could not be parsed; it will be preserved unchanged.")}</div>
                         )}
                     </div>
                 </div>
 
                 <div className="panel">
-                    <div className="panel-header">{translate("Prune Settings")}</div>
+                    <div className="panel-header">{t("Prune Settings")}</div>
                     <div className="panel-body">
                         <div className="form-grid">
-                            <Field label={translate("Block Size")}>
+                            <Field label={t("Block Size")}>
                                 <input type="number" min="50" value={blockSize}
                                     onInput={(e: any) => setBlockSize(e.target.value)}
                                     onChange={(e: any) => setBlockSize(e.target.value)} />
                             </Field>
                             <div className="field">
-                                <label>{translate("Prune Events")}</label>
+                                <label>{t("Prune Events")}</label>
                                 <YesNo value={pruneEvents} onChange={setPruneEvents} />
                             </div>
-                            <Field label={translate("Prune Event Age (days)")}>
+                            <Field label={t("Prune Event Age (days)")}>
                                 <input type="number" min="1" value={maxEventAge} disabled={!pruneEvents}
                                     onInput={(e: any) => setMaxEventAge(e.target.value)}
                                     onChange={(e: any) => setMaxEventAge(e.target.value)} />
@@ -774,14 +774,14 @@ export function register(platform: Platform) {
                 </div>
 
                 <div className="panel">
-                    <div className="panel-header">{translate("Archive Settings")}</div>
+                    <div className="panel-header">{t("Archive Settings")}</div>
                     <div className="panel-body">
                         <div className="form-grid">
                             <div className="field">
-                                <label>{translate("Enable Archiving")}</label>
+                                <label>{t("Enable Archiving")}</label>
                                 <YesNo value={archiveEnabled} onChange={setArchiveEnabled} />
                             </div>
-                            <Field label={translate("Archiver Block Size")}>
+                            <Field label={t("Archiver Block Size")}>
                                 <input type="number" min="1" value={archiverBlockSize} disabled={!archiveEnabled}
                                     onInput={(e: any) => setArchiverBlockSize(e.target.value)}
                                     onChange={(e: any) => setArchiverBlockSize(e.target.value)} />
@@ -790,7 +790,7 @@ export function register(platform: Platform) {
 
                         {hasArchiver ? (
                             <div className="form-grid mt-[11px]">
-                                <Field label={translate("Content")}>
+                                <Field label={t("Content")}>
                                     <select value={contentKey} disabled={!archiveEnabled}
                                         onChange={(e: any) => {
                                             const key = e.target.value;
@@ -804,18 +804,18 @@ export function register(platform: Platform) {
                                     </select>
                                 </Field>
                                 <div className="field">
-                                    <label>{translate("Encrypt")}</label>
-                                    <label className="inline-flex items-center gap-2">{richText("{value1}Encrypt exported content", { value1: <input type="checkbox" checked={encrypt} disabled={!archiveEnabled}
+                                    <label>{t("Encrypt")}</label>
+                                    <label className="inline-flex items-center gap-2">{tx("{value1}Encrypt exported content", { value1: <input type="checkbox" checked={encrypt} disabled={!archiveEnabled}
                                             onChange={(e: any) => { setEncrypt(e.target.checked); setArchiverDirty(true); }} /> })}</label>
                                 </div>
                                 {includeAttachments !== null && (
                                     <div className="field">
-                                        <label>{translate("Include Attachments")}</label>
+                                        <label>{t("Include Attachments")}</label>
                                         <YesNo value={includeAttachments} disabled={!attachmentsEnabled}
                                             onChange={(v: any) => { setIncludeAttachments(v); setArchiverDirty(true); }} />
                                     </div>
                                 )}
-                                <Field label={translate("Compression")}>
+                                <Field label={t("Compression")}>
                                     <select value={compressKey} disabled={!archiveEnabled}
                                         onChange={(e: any) => { setCompressKey(e.target.value); setArchiverDirty(true); }}>
                                         {COMPRESS_OPTIONS.map(o => (
@@ -824,17 +824,17 @@ export function register(platform: Platform) {
                                     </select>
                                 </Field>
                                 <div className="field">
-                                    <label>{translate("Password Protect")}</label>
+                                    <label>{t("Password Protect")}</label>
                                     <YesNo value={passwordEnabled} disabled={!passwordSectionEnabled}
                                         onChange={(v: any) => { setPasswordEnabled(v); setArchiverDirty(true); }} />
                                 </div>
-                                <Field label={translate("Password")}>
+                                <Field label={t("Password")}>
                                     <input type="password" value={password}
                                         disabled={!passwordSectionEnabled || !passwordEnabled}
                                         onInput={(e: any) => { setPassword(e.target.value); setArchiverDirty(true); }}
                                         onChange={(e: any) => { setPassword(e.target.value); setArchiverDirty(true); }} />
                                 </Field>
-                                <Field label={translate("Encryption")}>
+                                <Field label={t("Encryption")}>
                                     <select value={encryptionType}
                                         disabled={!passwordSectionEnabled || !passwordEnabled}
                                         onChange={(e: any) => { setEncryptionType(e.target.value); setArchiverDirty(true); }}>
@@ -845,14 +845,14 @@ export function register(platform: Platform) {
                                 </Field>
                                 <div className="span-2 flex gap-3 items-stretch">
                                     <div className="flex-1 min-w-0 flex flex-col gap-2">
-                                        <Field label={translate("Root Path")}>
+                                        <Field label={t("Root Path")}>
                                             <input ref={rootInputRef} type="text" value={rootFolder} disabled={!archiveEnabled}
                                                 onFocus={() => { lastVarTargetRef.current = rootInputRef.current; }}
                                                 onDragOver={onArchiveVarDragOver} onDrop={onArchiveVarDrop}
                                                 onInput={(e: any) => { setRootFolder(e.target.value); setArchiverDirty(true); }}
                                                 onChange={(e: any) => { setRootFolder(e.target.value); setArchiverDirty(true); }} />
                                         </Field>
-                                        <Field label={translate("File Pattern")}>
+                                        <Field label={t("File Pattern")}>
                                             <input ref={patternInputRef} type="text" value={filePattern} disabled={!archiveEnabled}
                                                 onFocus={() => { lastVarTargetRef.current = patternInputRef.current; }}
                                                 onDragOver={onArchiveVarDragOver} onDrop={onArchiveVarDrop}
@@ -863,7 +863,7 @@ export function register(platform: Platform) {
                                     {/* Draggable template-variable list (Swing MessageExportPanel). */}
                                     <div className="border border-line rounded-[4px] py-1 min-w-[162px] max-w-[207px] bg-bg1 overflow-auto self-stretch"
                                         style={{ opacity: archiveEnabled ? 1 : 0.5 }}
-                                        title={translate("Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one")}>
+                                        title={t("Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one")}>
                                         {ARCHIVE_VARS.map((v: any) => (
                                             <div key={v.label} draggable={archiveEnabled}
                                                 className="py-[3px] px-3 text-[11px] select-none cursor-grab hover:bg-bg2"
@@ -880,7 +880,7 @@ export function register(platform: Platform) {
                                 </div>
                             </div>
                         ) : (
-                            <div className="hint mt-[11px]">{translate("Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged.")}</div>
+                            <div className="hint mt-[11px]">{t("Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged.")}</div>
                         )}
                     </div>
                 </div>
@@ -890,7 +890,7 @@ export function register(platform: Platform) {
 
     platform.registerSettingsPanel({
         id: 'Data Pruner', taskGroup: 'settings_Data Pruner',
-        label: translate("Data Pruner"),
+        label: t("Data Pruner"),
         component: DataPrunerPanel
     });
 }

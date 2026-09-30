@@ -1,4 +1,4 @@
-import { t as translate } from './i18n.js';
+import { t } from './i18n.js';
 /*
  * Import version guard — a faithful port of Swing's Frame.promptObjectMigration
  * (client/src/.../Frame.java) via MigrationUtil. Three branches on the export's
@@ -64,20 +64,20 @@ export function checkImportVersion(exportVersion: string | null | undefined, obj
         if (comparison > 0) {
             return {
                 action: 'block',
-                message: translate("The {value1} being imported originated from {value2} version {value3}.\nYou are using {value4} version {value5}.\nThe {value6} cannot be imported, because it originated from a newer version of {value7}.", { value1: String(objectName), value2: String(PRODUCT), value3: String(exportVersion), value4: String(PRODUCT), value5: String(server), value6: String(objectName), value7: String(PRODUCT) })
+                message: t("The {value1} being imported originated from {value2} version {value3}.\nYou are using {value4} version {value5}.\nThe {value6} cannot be imported, because it originated from a newer version of {value7}.", { value1: String(objectName), value2: String(PRODUCT), value3: String(exportVersion), value4: String(PRODUCT), value5: String(server), value6: String(objectName), value7: String(PRODUCT) })
             };
         }
         // older
         return {
             action: 'confirm',
-            message: translate("The {value1} being imported originated from {value2} version {value3}.\nYou are using {value4} version {value5}.\nWould you like to automatically convert the {value6} to the {value7} format?", { value1: String(objectName), value2: String(PRODUCT), value3: String(exportVersion), value4: String(PRODUCT), value5: String(server), value6: String(objectName), value7: String(server) })
+            message: t("The {value1} being imported originated from {value2} version {value3}.\nYou are using {value4} version {value5}.\nWould you like to automatically convert the {value6} to the {value7} format?", { value1: String(objectName), value2: String(PRODUCT), value3: String(exportVersion), value4: String(PRODUCT), value5: String(server), value6: String(objectName), value7: String(server) })
         };
     }
 
     // unknown version
     return {
         action: 'confirm',
-        message: translate("The {value1} being imported is from an older or unknown version of {value2}.\nYou are using {value3} version {value4}.\nWould you like to automatically convert the {value5} to the {value6} format?", { value1: String(objectName), value2: String(PRODUCT), value3: String(PRODUCT), value4: String(server), value5: String(objectName), value6: String(server) })
+        message: t("The {value1} being imported is from an older or unknown version of {value2}.\nYou are using {value3} version {value4}.\nWould you like to automatically convert the {value5} to the {value6} format?", { value1: String(objectName), value2: String(PRODUCT), value3: String(PRODUCT), value4: String(server), value5: String(objectName), value6: String(server) })
     };
 }
 

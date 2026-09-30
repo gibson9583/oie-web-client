@@ -1,4 +1,4 @@
-import { t as translate } from './i18n.js';
+import { t } from './i18n.js';
 /* Bind API traffic to the tab's engine/session, including the interval between
    sending a request and receiving its response. Cookies themselves are shared
    across tabs. The proxy checks the same context against the request cookies. */
@@ -33,7 +33,7 @@ export function engineContext(): string { return expected; }
 
 function changed(): never {
     if (typeof window !== 'undefined') window.dispatchEvent(new Event('oie-session-changed'));
-    throw new Error(translate("The browser session changed. Reload to continue."));
+    throw new Error(t("The browser session changed. Reload to continue."));
 }
 
 let responseGeneration = 0;
@@ -48,7 +48,7 @@ export function captureEngineSession(): () => void {
     const capturedGeneration = responseGeneration;
     const assertCurrent = () => {
         if (capturedContext !== expected || capturedGeneration !== responseGeneration) {
-            throw new Error(translate("Discarded an operation from the previous session."));
+            throw new Error(t("Discarded an operation from the previous session."));
         }
         if (capturedContext !== context()) changed();
     };
@@ -59,7 +59,7 @@ export function captureEngineSession(): () => void {
 // fetch resolves at response headers; callers check again after reading a body.
 export function assertEngineResponse(response: Response): void {
     const sent = responseContexts.get(response);
-    if (sent?.context !== expected || sent.generation !== responseGeneration) throw new Error(translate("Discarded a response from the previous session."));
+    if (sent?.context !== expected || sent.generation !== responseGeneration) throw new Error(t("Discarded a response from the previous session."));
     if (expected !== context()) changed();
 }
 

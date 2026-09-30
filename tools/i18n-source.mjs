@@ -1,20 +1,12 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { globSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse } from '@babel/parser';
 
 export const root = path.resolve(import.meta.dirname, '..');
 export function sourceFiles() {
-    const out = [];
-    function walk(dir) {
-        for (const entry of readdirSync(path.join(root, dir), { withFileTypes: true })) {
-            const file = dir + '/' + entry.name;
-            if (entry.isDirectory() && !['vendor', 'dist', 'node_modules', 'locales'].includes(entry.name)) walk(file);
-            else if (entry.isFile() && /\.(ts|tsx)$/.test(file) && !/\.d\.ts$|\.test\./.test(file)) out.push(file);
-        }
-    }
-    walk('web-administrator/client');
-    walk('web-administrator/plugins');
-    return out.sort();
+    return globSync(['web-administrator/client/**/*.{ts,tsx}', 'web-administrator/plugins/**/*.{ts,tsx}'], {
+        cwd: root, exclude: file => /(^|\/)(vendor|dist|node_modules|locales)$/.test(file)
+    }).filter(file => !/\.d\.ts$|\.test\./.test(file)).sort();
 }
 export function astOf(file) {
     return parse(readFileSync(path.join(root, file), 'utf8'), { sourceType: 'module',
@@ -29,7 +21,7 @@ export function visit(node, fn, parent) {
     }
 }
 export const functionName = node => node.callee?.name ?? node.callee?.property?.name;
-export const translationCalls = new Set(['t', 'tc', 'tx', 'translate', 'richText']);
+export const translationCalls = new Set(['t', 'tc', 'tx']);
 export function extract() {
     const messages = {};
     const scopes = new Map();
@@ -44,7 +36,7 @@ export function extract() {
             if (node.type === 'ImportDeclaration' && /i18n\.js$|^@oie\/web-ui$/.test(node.source.value)) {
                 for (const spec of node.specifiers) if (['t', 'tc', 'tx'].includes(spec.imported?.name)) bindings.set(spec.local.name, spec.imported.name);
             }
-            if (node.type === 'VariableDeclarator' && node.id.type === 'ObjectPattern' && node.init?.type === 'CallExpression' && ['scope', 'i18nScope'].includes(functionName(node.init))) {
+            if (node.type === 'VariableDeclarator' && node.id.type === 'ObjectPattern' && node.init?.type === 'CallExpression' && functionName(node.init) === 'scope') {
                 for (const prop of node.id.properties) if (['t', 'tc', 'tx'].includes(prop.key?.name)) bindings.set(prop.value.name, prop.key.name);
             }
         });

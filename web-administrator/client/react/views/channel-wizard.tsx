@@ -1,5 +1,5 @@
 import { wizardStepLabel, connectorTabLabel } from '../../core/labels.js';
-import { t as translate, tx as richText, compareText } from '../../core/i18n.js';
+import { t, tx, compareText } from '../../core/i18n.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelModel, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
@@ -76,9 +76,9 @@ const STEP_KEYS: any = { Filter: 'filter', Transformer: 'transformer', Response:
    a bare card IS the "no logic here" signal. */
 function CountBadge({ icon, n, what }: any) {
     if (!n) return null;
-    const title = what === 'filter rule' ? translate('{count, plural, one {# filter rule} other {# filter rules}}', { count: n })
-        : what === 'transformer step' ? translate('{count, plural, one {# transformer step} other {# transformer steps}}', { count: n })
-            : translate('{count, plural, one {# response transformer step} other {# response transformer steps}}', { count: n });
+    const title = what === 'filter rule' ? t('{count, plural, one {# filter rule} other {# filter rules}}', { count: n })
+        : what === 'transformer step' ? t('{count, plural, one {# transformer step} other {# transformer steps}}', { count: n })
+            : t('{count, plural, one {# response transformer step} other {# response transformer steps}}', { count: n });
     return (
         <span className="dest-badge" title={title}>
             <Icon name={icon} size={9} />{n}
@@ -126,7 +126,7 @@ function defaultDataType(types: any) {
 function applyTransport(connector: any, mode: any, name: any, version: any, onChange: any) {
     if (name === connector.transportName) return;
     const def = platform.connectorPanel(name, mode);
-    if (!def || typeof def.defaults !== 'function') { toast(translate("\"{value1}\" has no web configuration panel.", { value1: String(name) }), 'warn'); return; }
+    if (!def || typeof def.defaults !== 'function') { toast(t("\"{value1}\" has no web configuration panel.", { value1: String(name) }), 'warn'); return; }
     connector.transportName = name;
     connector.properties = def.defaults(version);
     onChange();
@@ -212,19 +212,19 @@ function EmbeddedElementEditor({ channel, metaDataId, kind, onChange, viewportOf
         };
     }, [channel, metaDataId, kind]);
 
-    const t = ctx && ctx.handlers;
+    const handlers = ctx && ctx.handlers;
     const ts = (ctx && ctx.taskState && ctx.taskState()) || { onStep: false, assign: false, remove: false };
-    const noun = kind === 'filter' ? translate('Rule') : translate('Step');
+    const noun = kind === 'filter' ? t('Rule') : t('Step');
     return (
         <div className="flex flex-col gap-2">
             <div className="flex flex-wrap gap-1.5">
-                {t && <button type="button" className="btn btn-sm" onClick={t.addElement}>{richText("{value1}Add {value2}", { value1: <Icon name="plus" size={13} />, value2: noun })}</button>}
-                {t && ts.onStep && <button type="button" className="btn btn-sm btn-danger" onClick={t.deleteElement}>{richText("{value1}Delete", { value1: <Icon name="trash" size={13} /> })}</button>}
-                {t && ts.assign && <button type="button" className="btn btn-sm" onClick={t.assignToIterator}>{richText("{value1}Assign to Iterator", { value1: <Icon name="plus" size={13} /> })}</button>}
-                {t && ts.remove && <button type="button" className="btn btn-sm" onClick={t.removeFromIterator}>{richText("{value1}Remove from Iterator", { value1: <Icon name="minus" size={13} /> })}</button>}
-                {t && <button type="button" className="btn btn-sm" onClick={t.importElements}>{richText("{value1}Import", { value1: <Icon name="import" size={13} /> })}</button>}
-                {t && <button type="button" className="btn btn-sm" onClick={t.exportElements}>{richText("{value1}Export", { value1: <Icon name="export" size={13} /> })}</button>}
-                {t && <button type="button" className="btn btn-sm" onClick={t.validateElements}>{richText("{value1}Validate", { value1: <Icon name="check" size={13} /> })}</button>}
+                {handlers && <button type="button" className="btn btn-sm" onClick={handlers.addElement}>{tx("{value1}Add {value2}", { value1: <Icon name="plus" size={13} />, value2: noun })}</button>}
+                {handlers && ts.onStep && <button type="button" className="btn btn-sm btn-danger" onClick={handlers.deleteElement}>{tx("{value1}Delete", { value1: <Icon name="trash" size={13} /> })}</button>}
+                {handlers && ts.assign && <button type="button" className="btn btn-sm" onClick={handlers.assignToIterator}>{tx("{value1}Assign to Iterator", { value1: <Icon name="plus" size={13} /> })}</button>}
+                {handlers && ts.remove && <button type="button" className="btn btn-sm" onClick={handlers.removeFromIterator}>{tx("{value1}Remove from Iterator", { value1: <Icon name="minus" size={13} /> })}</button>}
+                {handlers && <button type="button" className="btn btn-sm" onClick={handlers.importElements}>{tx("{value1}Import", { value1: <Icon name="import" size={13} /> })}</button>}
+                {handlers && <button type="button" className="btn btn-sm" onClick={handlers.exportElements}>{tx("{value1}Export", { value1: <Icon name="export" size={13} /> })}</button>}
+                {handlers && <button type="button" className="btn btn-sm" onClick={handlers.validateElements}>{tx("{value1}Validate", { value1: <Icon name="check" size={13} /> })}</button>}
             </div>
             {/* Grow with the window instead of a fixed 576px box — the wizard's
                 steps otherwise leave the space under the editor dead. The offset
@@ -338,22 +338,22 @@ function DestinationMappingsRail({ hostRef }: any) {
         // No known target — fall back to the clipboard, like the classic editor.
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(token).then(
-                () => toast(translate("Copied {value1}", { value1: String(token) })),
-                () => toast(translate("Focus a text field first"), 'warn'));
+                () => toast(t("Copied {value1}", { value1: String(token) })),
+                () => toast(t("Focus a text field first"), 'warn'));
         } else {
-            toast(translate("Focus a text field first"), 'warn');
+            toast(t("Focus a text field first"), 'warn');
         }
     };
 
     if (collapsed) {
-        return <CollapsedSideStrip className="panel-strip wiz-mappings-strip" label={translate("Destination Mappings")}
+        return <CollapsedSideStrip className="panel-strip wiz-mappings-strip" label={t("Destination Mappings")}
             onExpand={() => setCollapsed(false)} />;
     }
 
     return (
         <div className="panel !mt-0 w-full lg:w-[216px] flex-none self-stretch">
-            <div className="panel-header">{translate("Destination Mappings")}<div className="panel-tools">
-                    <SideCollapseButton label={translate("Destination Mappings")} onCollapse={() => setCollapsed(true)} />
+            <div className="panel-header">{t("Destination Mappings")}<div className="panel-tools">
+                    <SideCollapseButton label={t("Destination Mappings")} onCollapse={() => setCollapsed(true)} />
                 </div>
             </div>
             <div className="panel-body flex flex-col gap-2">
@@ -373,7 +373,7 @@ function DestinationMappingsRail({ hostRef }: any) {
                         </div>
                     ))}
                 </div>
-                <div className="hint">{translate("Click to insert into the focused field, or drag into a text field.")}</div>
+                <div className="hint">{t("Click to insert into the focused field, or drag into a text field.")}</div>
             </div>
         </div>
     );
@@ -392,7 +392,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
             {/* m-0 drops .tabs' built-in 7x13 margins so the pill left-aligns
                 with the section content below (the Root's gap spaces the rows). */}
             <TabsPrimitive.List className="tabs overflow-x-auto m-0"
-                aria-label={isDest ? translate("Destination sections") : translate("Source sections")}>
+                aria-label={isDest ? t("Destination sections") : t("Source sections")}>
                 {TABS.map((t: any) => (
                     <TabsPrimitive.Trigger key={t} value={t}
                         className={`tab whitespace-nowrap ${tab === t ? 'active' : ''}`}>
@@ -409,7 +409,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
             <TabsPrimitive.Content value="Settings">{tab === 'Settings' && (
                 <div className="flex flex-col gap-4">
                     <div>
-                        <div className="cform-section-title mb-2">{translate("Connector type")}</div>
+                        <div className="cform-section-title mb-2">{t("Connector type")}</div>
                         <TransportPicker mode={mode} current={connector.transportName}
                             onPick={(name: any) => applyTransport(connector, mode, name, version, onChange)} />
                     </div>
@@ -419,7 +419,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                     {/* "Wait for previous" applies to the 2nd destination onward (nothing
                         precedes the first). */}
                     {isDest && destIndex > 0 && (
-                        <label className="flex items-center gap-2">{richText("{value1}Wait for previous destination", { value1: <input type="checkbox" checked={connector.waitForPrevious !== false}
+                        <label className="flex items-center gap-2">{tx("{value1}Wait for previous destination", { value1: <input type="checkbox" checked={connector.waitForPrevious !== false}
                                 onChange={(e: any) => { connector.waitForPrevious = e.target.checked; onChange(); }} /> })}</label>
                     )}
                     {/* Destination Settings (queue) sit above the connector panel, like the classic editor. */}
@@ -430,7 +430,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                         connector settings (styled like the alert wizard's Variables panel). */}
                     <div className="flex flex-col lg:flex-row gap-4 items-stretch">
                         <div ref={settingsHostRef} className="panel !mt-0 flex-1 min-w-0">
-                            <div className="panel-header">{translate("{value1} settings", { value1: connector.transportName })}</div>
+                            <div className="panel-header">{t("{value1} settings", { value1: connector.transportName })}</div>
                             <div className="panel-body">
                                 <ConnectorPanelMount key={connector.transportName} channel={channel} connector={connector} mode={mode} onChange={onChange} />
                             </div>
@@ -464,31 +464,31 @@ function BasicsStep({ channel, types, inbound, outbound, onChange, onNameChange,
         <div className="panel !mt-0 max-w-[648px]">
             <div className="panel-body flex flex-col gap-4">
                 <label className="flex flex-col gap-1">
-                    <span className="text-text-dim">{translate("Channel name")}</span>
+                    <span className="text-text-dim">{t("Channel name")}</span>
                     <input autoFocus className={`w-full ${nameError ? 'cform-invalid' : ''}`} value={channel.name}
-                        placeholder={translate("My Channel")} onChange={(e: any) => { channel.name = e.target.value; onNameChange(); }} />
+                        placeholder={t("My Channel")} onChange={(e: any) => { channel.name = e.target.value; onNameChange(); }} />
                     {nameError ? <span className="text-err text-[10px]">{nameError}</span> : null}
                 </label>
                 <label className="flex flex-col gap-1">
-                    <span className="text-text-dim">{translate("Description")}</span>
+                    <span className="text-text-dim">{t("Description")}</span>
                     <textarea className="w-full" rows={3} value={channel.description || ''}
                         onChange={(e: any) => { channel.description = e.target.value; onChange(); }} />
                 </label>
                 <div className="flex flex-col sm:flex-row gap-4">
                     <label className="flex flex-col gap-1 flex-1">
-                        <span className="text-text-dim">{translate("Inbound data type")}</span>
+                        <span className="text-text-dim">{t("Inbound data type")}</span>
                         <select value={inbound} onChange={(e: any) => onInbound(e.target.value)}>
                             {types.map((t: any) => <option key={t.name} value={t.name}>{t.label}</option>)}
                         </select>
                     </label>
                     <label className="flex flex-col gap-1 flex-1">
-                        <span className="text-text-dim">{translate("Outbound data type")}</span>
+                        <span className="text-text-dim">{t("Outbound data type")}</span>
                         <select value={outbound} onChange={(e: any) => onOutbound(e.target.value)}>
                             {types.map((t: any) => <option key={t.name} value={t.name}>{t.label}</option>)}
                         </select>
                     </label>
                 </div>
-                <div className="hint">{richText("These seed each connector''s data types. Per-connector inbound/outbound types & their properties live on each connector''s <e1>Transformer</e1> tab (Message Templates panel). Channel-level options are in the <e2>Dependencies</e2>, <e3>Channel Options</e3>, and <e4>Scripts</e4> steps.", { e1: (chunks: any) => <b>{chunks}</b>, e2: (chunks: any) => <b>{chunks}</b>, e3: (chunks: any) => <b>{chunks}</b>, e4: (chunks: any) => <b>{chunks}</b> })}</div>
+                <div className="hint">{tx("These seed each connector''s data types. Per-connector inbound/outbound types & their properties live on each connector''s <e1>Transformer</e1> tab (Message Templates panel). Channel-level options are in the <e2>Dependencies</e2>, <e3>Channel Options</e3>, and <e4>Scripts</e4> steps.", { e1: (chunks: any) => <b>{chunks}</b>, e2: (chunks: any) => <b>{chunks}</b>, e3: (chunks: any) => <b>{chunks}</b>, e4: (chunks: any) => <b>{chunks}</b> })}</div>
             </div>
         </div>
     );
@@ -504,7 +504,7 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
                 growing past the viewport. Both only make sense side-by-side, so
                 they gate on the same lg breakpoint that stacks the layout. */}
             <div className="w-full lg:w-[216px] flex-none flex flex-col gap-2 lg:sticky lg:top-0">
-                <div className="cform-section-title">{translate("Destinations")}</div>
+                <div className="cform-section-title">{t("Destinations")}</div>
                 <div className="step-list panel overflow-auto p-1.5 min-h-[126px] lg:max-h-[calc(100dvh_-_290px)]">
                     {dests.map((d: any, i: any) => (
                         /* Two-line card (name / connector type), not the one cramped
@@ -535,15 +535,15 @@ function DestinationsStep({ channel, version, selected, onSelect, onAdd, onRemov
                     ))}
                 </div>
                 <div className="flex gap-2">
-                    <button type="button" className="btn btn-sm" onClick={onAdd}>{richText("{value1}Add", { value1: <Icon name="plus" size={13} /> })}</button>
-                    <button type="button" className="btn btn-sm btn-danger" onClick={() => onRemove(selected)}>{richText("{value1}Remove", { value1: <Icon name="trash" size={13} /> })}</button>
+                    <button type="button" className="btn btn-sm" onClick={onAdd}>{tx("{value1}Add", { value1: <Icon name="plus" size={13} /> })}</button>
+                    <button type="button" className="btn btn-sm btn-danger" onClick={() => onRemove(selected)}>{tx("{value1}Remove", { value1: <Icon name="trash" size={13} /> })}</button>
                 </div>
             </div>
             <div className="flex-1 min-w-0 flex flex-col gap-4">
                 {sel && (
                     <>
                         <label className="flex items-center gap-3">
-                            <span className="w-[108px] text-text-dim">{translate("Destination name")}</span>
+                            <span className="w-[108px] text-text-dim">{t("Destination name")}</span>
                             <input className="flex-1" value={sel.name} onChange={(e: any) => onRename(sel, e.target.value)} />
                         </label>
                         <ConnectorTabs key={sel.metaDataId} channel={channel} connector={sel} mode="DESTINATION" version={version} onChange={onChange} destIndex={selected} />
@@ -571,14 +571,14 @@ function dtSummary(connector: any, label: any) {
 function handlingSummary(connector: any) {
     const tx = oie.elementsToArray(connector.transformer && connector.transformer.elements);
     const fl = oie.elementsToArray(connector.filter && connector.filter.elements);
-    const f = translate('{count, plural, =0 {Filter: accept all} one {Filter: # rule} other {Filter: # rules}}', {count: fl.length});
-    const t = translate('{count, plural, =0 {Transform: passthrough} one {Transform: # step} other {Transform: # steps}}', {count: tx.length});
-    return `${f} · ${t}`;
+    const f = t('{count, plural, =0 {Filter: accept all} one {Filter: # rule} other {Filter: # rules}}', {count: fl.length});
+    const transform = t('{count, plural, =0 {Transform: passthrough} one {Transform: # step} other {Transform: # steps}}', {count: tx.length});
+    return `${f} · ${transform}`;
 }
 
-const STATE_LABELS = { STARTED: translate("Started"), PAUSED: translate("Paused"), STOPPED: translate("Stopped") };
-const STORAGE_LABELS = { DEVELOPMENT: translate("Development"), PRODUCTION: translate("Production"), RAW: translate("Raw"), METADATA: translate("Metadata"), DISABLED: translate("Disabled") };
-const SCRIPT_LABELS = { deployScript: translate("Deploy"), undeployScript: translate("Undeploy"), preprocessingScript: translate("Preprocessor"), postprocessingScript: translate("Postprocessor") };
+const STATE_LABELS = { STARTED: t("Started"), PAUSED: t("Paused"), STOPPED: t("Stopped") };
+const STORAGE_LABELS = { DEVELOPMENT: t("Development"), PRODUCTION: t("Production"), RAW: t("Raw"), METADATA: t("Metadata"), DISABLED: t("Disabled") };
+const SCRIPT_LABELS = { deployScript: t("Deploy"), undeployScript: t("Undeploy"), preprocessingScript: t("Preprocessor"), postprocessingScript: t("Postprocessor") };
 
 function ReviewStep({ channel, inbound, outbound }: any) {
     const dests = oie.destinationsOf(channel);
@@ -588,29 +588,29 @@ function ReviewStep({ channel, inbound, outbound }: any) {
     const scripts = Object.keys(SCRIPT_LABELS).filter((k: any) => String(channel[k] || '').trim());
     const cols = ((p.metaDataColumns && (Array.isArray(p.metaDataColumns.metaDataColumn) ? p.metaDataColumns.metaDataColumn : (p.metaDataColumns.metaDataColumn ? [p.metaDataColumns.metaDataColumn] : []))) || []).filter((c: any) => c && c.name);
     const encFlags = [
-        p.encryptData && translate("content"), p.encryptAttachments && translate("attachments"), p.encryptCustomMetaData && translate("metadata")
+        p.encryptData && t("content"), p.encryptAttachments && t("attachments"), p.encryptCustomMetaData && t("metadata")
     ].filter(Boolean);
     const pruneText = (prune.pruneMetaDataDays == null && prune.pruneContentDays == null)
-        ? translate("Stored indefinitely")
-        : translate("Metadata {metadata} · Content {content}", { metadata: prune.pruneMetaDataDays == null ? translate("kept") : translate("{count, plural, one {# day} other {# days}}", { count: prune.pruneMetaDataDays }), content: prune.pruneContentDays == null ? translate("with metadata") : translate("{count, plural, one {# day} other {# days}}", { count: prune.pruneContentDays }) });
+        ? t("Stored indefinitely")
+        : t("Metadata {metadata} · Content {content}", { metadata: prune.pruneMetaDataDays == null ? t("kept") : t("{count, plural, one {# day} other {# days}}", { count: prune.pruneMetaDataDays }), content: prune.pruneContentDays == null ? t("with metadata") : t("{count, plural, one {# day} other {# days}}", { count: prune.pruneContentDays }) });
     const tags = api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag').map((t: any) => t && t.name).filter(Boolean);
     const attType = channel.properties && channel.properties.attachmentProperties && channel.properties.attachmentProperties.type;
     return (
         <div className="panel !mt-0 max-w-[738px]">
             <div className="panel-body">
-                <ReviewLine label={translate("Name")} value={channel.name || <span className="text-err">{translate("(required)")}</span>} />
-                {channel.description ? <ReviewLine label={translate("Description")} value={channel.description} /> : null}
-                <ReviewLine label={translate("Data types")} value={`${label(inbound)} → ${label(outbound)}`} />
-                <ReviewLine label={translate("Initial state")} value={(STATE_LABELS as any)[p.initialState] || translate("Started")} />
-                <ReviewLine label={translate("Message storage")} value={
-                    <span>{(STORAGE_LABELS as any)[p.messageStorageMode] || translate("Development")}{encFlags.length ? <span className="hint">{translate(" · encrypting {value1}", { value1: encFlags.join(', ') })}</span> : null}</span>} />
-                <ReviewLine label={translate("Pruning")} value={pruneText} />
-                {attType && attType !== 'None' ? <ReviewLine label={translate("Attachments")} value={attType} /> : null}
-                {tags.length ? <ReviewLine label={translate("Tags")} value={tags.join(', ')} /> : null}
-                {cols.length ? <ReviewLine label={translate("Metadata columns")} value={cols.map((c: any) => c.name).join(', ')} /> : null}
-                <ReviewLine label={translate("Scripts")} value={scripts.length ? scripts.map((k: any) => (SCRIPT_LABELS as any)[k]).join(', ') : translate("None")} />
-                <ReviewLine label={translate("Source")} value={<div><div>{channel.sourceConnector.transportName}</div><div className="hint">{dtSummary(channel.sourceConnector, label)} · {handlingSummary(channel.sourceConnector)}</div></div>} />
-                <ReviewLine label={translate("Destinations ({value1})", { value1: String(dests.length) })} value={
+                <ReviewLine label={t("Name")} value={channel.name || <span className="text-err">{t("(required)")}</span>} />
+                {channel.description ? <ReviewLine label={t("Description")} value={channel.description} /> : null}
+                <ReviewLine label={t("Data types")} value={`${label(inbound)} → ${label(outbound)}`} />
+                <ReviewLine label={t("Initial state")} value={(STATE_LABELS as any)[p.initialState] || t("Started")} />
+                <ReviewLine label={t("Message storage")} value={
+                    <span>{(STORAGE_LABELS as any)[p.messageStorageMode] || t("Development")}{encFlags.length ? <span className="hint">{t(" · encrypting {value1}", { value1: encFlags.join(', ') })}</span> : null}</span>} />
+                <ReviewLine label={t("Pruning")} value={pruneText} />
+                {attType && attType !== 'None' ? <ReviewLine label={t("Attachments")} value={attType} /> : null}
+                {tags.length ? <ReviewLine label={t("Tags")} value={tags.join(', ')} /> : null}
+                {cols.length ? <ReviewLine label={t("Metadata columns")} value={cols.map((c: any) => c.name).join(', ')} /> : null}
+                <ReviewLine label={t("Scripts")} value={scripts.length ? scripts.map((k: any) => (SCRIPT_LABELS as any)[k]).join(', ') : t("None")} />
+                <ReviewLine label={t("Source")} value={<div><div>{channel.sourceConnector.transportName}</div><div className="hint">{dtSummary(channel.sourceConnector, label)} · {handlingSummary(channel.sourceConnector)}</div></div>} />
+                <ReviewLine label={t("Destinations ({value1})", { value1: String(dests.length) })} value={
                     <div className="flex flex-col gap-2">
                         {dests.map((d: any) => <div key={d.metaDataId}><div>{d.name} — {d.transportName}</div><div className="hint">{dtSummary(d, label)} · {handlingSummary(d)}</div></div>)}
                     </div>} />
@@ -639,7 +639,7 @@ function ChannelWizardView({ params }: any) {
         fetch: (id: any) => loadChannelForEdit(id),
         backPath: '/channels'
     });
-    if (!ready || !model) return <div className="view"><div className="view-body"><div className="dt-empty">{translate("Loading channel…")}</div></div></div>;
+    if (!ready || !model) return <div className="view"><div className="view-body"><div className="dt-empty">{t("Loading channel…")}</div></div></div>;
     return <ChannelWizardInner key={model.id} channel={model} isNew={isNew} version={version} />;
 }
 
@@ -706,10 +706,10 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     /* ---- validation ---- */
     function nameError() {
         const name = String(channel.name || '').trim();
-        if (!name) return translate("A channel name is required.");
-        if (name.length > 40) return translate("Channel name cannot be longer than 40 characters.");
-        if (!/^[A-Za-z0-9_\s-]*$/.test(name)) return translate("Only letters, numbers, spaces, hyphens and underscores are allowed.");
-        if (existingNames && existingNames.includes(name.toLowerCase())) return translate("A channel named “{value1}” already exists.", { value1: String(name) });
+        if (!name) return t("A channel name is required.");
+        if (name.length > 40) return t("Channel name cannot be longer than 40 characters.");
+        if (!/^[A-Za-z0-9_\s-]*$/.test(name)) return t("Only letters, numbers, spaces, hyphens and underscores are allowed.");
+        if (existingNames && existingNames.includes(name.toLowerCase())) return t("A channel named “{value1}” already exists.", { value1: String(name) });
         return null;
     }
     // Connector validation, mirroring the classic editor's "Validate Connector":
@@ -721,7 +721,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
         try { return def.validate(connector.properties) || []; } catch { return []; }
     }
     function connectorProblems(connector: any, mode: any, label: any) {
-        return connectorErrors(connector, mode).map((e: any) => translate("{value1}: {value2} is required", { value1: String(label), value2: String(e.label) }));
+        return connectorErrors(connector, mode).map((e: any) => t("{value1}: {value2} is required", { value1: String(label), value2: String(e.label) }));
     }
     const cssEsc = (s: any) => (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/["\\]/g, '\\$&');
     function clearHighlights() {
@@ -786,7 +786,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     };
     const removeDestination = (i: any) => {
         const dests = oie.destinationsOf(channel);
-        if (dests.length <= 1) { toast(translate("A channel needs at least one destination."), 'warn'); return; }
+        if (dests.length <= 1) { toast(t("A channel needs at least one destination."), 'warn'); return; }
         oie.setDestinations(channel, dests.filter((_, idx) => idx !== i));
         setSelectedDest(Math.max(0, i - 1));
         bump();
@@ -822,10 +822,10 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
         try {
             const saved = await persistChannelModel(channel);
             if (!isCurrent() || !saved) return false;
-            stage = translate("code template libraries");
+            stage = t("code template libraries");
             const librariesSaved = await persistLibraryAssociations(channel, libStateRef, version, confirmLibraryOverwrite);
             if (!isCurrent() || !librariesSaved) return false;
-            stage = translate("deploy/start dependencies");
+            stage = t("deploy/start dependencies");
             await persistChannelDependencies(depStateRef);
             if (!isCurrent()) return false;
             // Only all persisted stages make the edit session clean. Deployment
@@ -841,12 +841,12 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             return true;
         } catch (e: any) {
             if (!isCurrent()) return false;
-            const detail = e?.message || translate("The engine did not confirm this operation.");
-            const message = stage === 'deployment' ? translate("Channel saved. Deployment failed: {value1}", { value1: String(detail) })
-                : stage === 'channel' ? translate("Channel save failed: {value1}", { value1: String(detail) })
-                    : translate("Channel saved; {value1} are still pending: {value2}", { value1: String(stage), value2: String(detail) });
+            const detail = e?.message || t("The engine did not confirm this operation.");
+            const message = stage === 'deployment' ? t("Channel saved. Deployment failed: {value1}", { value1: String(detail) })
+                : stage === 'channel' ? t("Channel save failed: {value1}", { value1: String(detail) })
+                    : t("Channel saved; {value1} are still pending: {value2}", { value1: String(stage), value2: String(detail) });
             setStageFailure({ stage, message });
-            if (stage === 'deployment') errorModal(translate("Channel Deployment Failed"), e, channel.name);
+            if (stage === 'deployment') errorModal(t("Channel Deployment Failed"), e, channel.name);
             else toast(message, 'error');
             return false;
         } finally {
@@ -857,7 +857,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     }
 
     const busy = saving || deploying;
-    const deployLabel = stageFailure?.stage === 'deployment' ? translate("Retry Deploy") : translate("Deploy");
+    const deployLabel = stageFailure?.stage === 'deployment' ? t("Retry Deploy") : t("Deploy");
     async function finish(deploy: any) {
         const isCurrent = channelSessionActive();
         if (!isCurrent()) return;
@@ -870,7 +870,7 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             if (!isCurrent() || !saved) return;
             store.setState('navGuard', null);
             const verb = wasNew ? 'created' : 'saved';
-            toast(deploy ? translate("Channel “{value1}” saved; deployment requested.", { value1: String(channel.name) }) : translate("Channel “{value1}” {value2}.", { value1: String(channel.name), value2: String(verb) }), 'info');
+            toast(deploy ? t("Channel “{value1}” saved; deployment requested.", { value1: String(channel.name) }) : t("Channel “{value1}” {value2}.", { value1: String(channel.name), value2: String(verb) }), 'info');
             router.navigate(deploy ? '/dashboard' : '/channels');
         } finally {
             actionRef.current = false;
@@ -889,16 +889,16 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
             const ok = await withEditorSave(async () => {
                 await api.engine.deploy(channel.id);
                 return isCurrent();
-            }, translate("Deploying channel…"));
+            }, t("Deploying channel…"));
             if (!isCurrent() || !ok) return;
             setStageFailure(null);
             store.setState('navGuard', null);
-            toast(translate("Deployment requested for “{value1}”.", { value1: String(channel.name) }), 'info');
+            toast(t("Deployment requested for “{value1}”.", { value1: String(channel.name) }), 'info');
             router.navigate('/dashboard');
         } catch (e: any) {
             if (!isCurrent()) return;
-            setStageFailure({ stage: 'deployment', message: translate("Deployment failed: {value1}", { value1: String(e?.message || e) }) });
-            errorModal(translate("Channel Deployment Failed"), e, channel.name);
+            setStageFailure({ stage: 'deployment', message: t("Deployment failed: {value1}", { value1: String(e?.message || e) }) });
+            errorModal(t("Channel Deployment Failed"), e, channel.name);
         } finally {
             actionRef.current = false;
             if (isCurrent()) setDeploying(false);
@@ -918,16 +918,16 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                 and an exit. An EXISTING channel adds Save (when dirty) and Deploy, so
                 they're reachable from any step. */}
             <ViewTasks>
-                <RailPane title={translate("Channel Tasks")} paneKey="tasks:Channel Tasks" group="channelEdit">
+                <RailPane title={t("Channel Tasks")} paneKey="tasks:Channel Tasks" group="channelEdit">
                     <div className="taskbar" data-pane-title="Channel Tasks">
-                        {getPref('showViewSwitch') !== false && <TaskButton label={translate("Classic editor")} icon="edit" onClick={switchToClassic} />}
-                        {!isNew && dirtyRef.current && <TaskButton label={translate("Save Changes")} icon="save" primary task="doSaveChannel" onClick={() => finish(false)} />}
-                        {!isNew && <TaskButton label={dirtyRef.current ? translate("Save & Deploy") : deployLabel} icon="deploy" task="doDeployFromChannelView" onClick={() => (dirtyRef.current ? finish(true) : deployOnly())} />}
-                        <TaskButton label={translate("Back to Channels")} icon="channels" onClick={() => router.navigate('/channels')} />
+                        {getPref('showViewSwitch') !== false && <TaskButton label={t("Classic editor")} icon="edit" onClick={switchToClassic} />}
+                        {!isNew && dirtyRef.current && <TaskButton label={t("Save Changes")} icon="save" primary task="doSaveChannel" onClick={() => finish(false)} />}
+                        {!isNew && <TaskButton label={dirtyRef.current ? t("Save & Deploy") : deployLabel} icon="deploy" task="doDeployFromChannelView" onClick={() => (dirtyRef.current ? finish(true) : deployOnly())} />}
+                        <TaskButton label={t("Back to Channels")} icon="channels" onClick={() => router.navigate('/channels')} />
                     </div>
                 </RailPane>
             </ViewTasks>
-            <WizardHeader icon="channels" title={isNew ? translate("New Channel — Wizard") : translate("{value1} — Wizard", { value1: String(channel.name || translate("Channel")) })} />
+            <WizardHeader icon="channels" title={isNew ? t("New Channel — Wizard") : t("{value1} — Wizard", { value1: String(channel.name || t("Channel")) })} />
             {stageFailure && <div role="status" className="px-4 py-3 border-b border-line text-warning">{stageFailure.message}</div>}
             <WizardStepper steps={STEPS.map(wizardStepLabel)} step={step} maxStep={maxStep} onStep={setStep} />
 
@@ -956,28 +956,28 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
 
             {/* Footer */}
             <div className="flex items-center gap-2 px-4 py-3 border-t border-line">
-                <button className="btn" disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>{translate("Back")}</button>
+                <button className="btn" disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>{t("Back")}</button>
                 <div className="ml-auto flex items-center gap-2">
                     {!isLast ? (
-                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>{translate("Next")}</button>
+                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>{t("Next")}</button>
                     ) : (
                         <>
                             {/* RBAC: save/deploy affordances hide without the matching
                                 channelEdit task (same gating as the classic editor). */}
                             {(isNew || dirtyRef.current) && canSave ? (
                                 <button className="btn" disabled={busy || !!nameError()} onClick={() => finish(false)}>
-                                    <Icon name="save" size={14} />{saving ? (isNew ? translate("Creating…") : translate("Saving…")) : (isNew ? translate("Create Channel") : translate("Save Changes"))}
+                                    <Icon name="save" size={14} />{saving ? (isNew ? t("Creating…") : t("Saving…")) : (isNew ? t("Create Channel") : t("Save Changes"))}
                                 </button>
                             ) : (
-                                <button className="btn" disabled={busy} onClick={() => router.navigate('/channels')}>{richText("{value1}Exit", { value1: <Icon name="x" size={14} /> })}</button>
+                                <button className="btn" disabled={busy} onClick={() => router.navigate('/channels')}>{tx("{value1}Exit", { value1: <Icon name="x" size={14} /> })}</button>
                             )}
                             {isNew || dirtyRef.current ? (
                                 canSave && canDeploy && <button className="btn btn-primary" disabled={busy || !!nameError()} onClick={() => finish(true)}>
-                                    <Icon name="deploy" size={14} />{deploying ? translate("Deploying…") : (isNew ? translate("Create & Deploy") : translate("Save & Deploy"))}
+                                    <Icon name="deploy" size={14} />{deploying ? t("Deploying…") : (isNew ? t("Create & Deploy") : t("Save & Deploy"))}
                                 </button>
                             ) : (
                                 canDeploy && <button className="btn btn-primary" disabled={busy} onClick={deployOnly}>
-                                    <Icon name="deploy" size={14} />{deploying ? translate("Deploying…") : deployLabel}
+                                    <Icon name="deploy" size={14} />{deploying ? t("Deploying…") : deployLabel}
                                 </button>
                             )}
                         </>

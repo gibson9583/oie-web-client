@@ -1,5 +1,5 @@
 import { referenceTabLabel } from '../../core/labels.js';
-import { t as translate, tx as richText } from '../../core/i18n.js';
+import { t, tx } from '../../core/i18n.js';
 import { loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
@@ -62,9 +62,9 @@ import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapse
 import { Icon } from '../bridges.jsx';
 
 const KINDS = {
-    filter: { title: translate("Filter"), noun: 'Rule', targetKey: 'filter' },
-    transformer: { title: translate("Transformer"), noun: 'Step', targetKey: 'transformer' },
-    response: { title: translate("Response Transformer"), noun: 'Step', targetKey: 'responseTransformer' }
+    filter: { title: t("Filter"), noun: 'Rule', targetKey: 'filter' },
+    transformer: { title: t("Transformer"), noun: 'Step', targetKey: 'transformer' },
+    response: { title: t("Response Transformer"), noun: 'Step', targetKey: 'responseTransformer' }
 };
 
 
@@ -367,7 +367,7 @@ function xmlElementNode(element: any, accessor: any, descriptions: any) {
 
 function xmlTree(text: any, varName: any, meta?: any) {
     const doc = new DOMParser().parseFromString(text, 'text/xml');
-    if (doc.getElementsByTagName('parsererror').length) throw new Error(translate("not XML"));
+    if (doc.getElementsByTagName('parsererror').length) throw new Error(t("not XML"));
     // The E4X root element is the msg/tmp variable itself.
     const descriptions = (meta && meta.descriptions) || null;
     const root = xmlElementNode(doc.documentElement, varName, descriptions);
@@ -439,8 +439,8 @@ function GridRow({ el, path, depth, isFilter, selected, typeOptions, onSelect, o
                         <select className="w-[63px]" value={el.operator === 'OR' ? 'OR' : 'AND'}
                             onClick={stop} onMouseDown={stop}
                             onChange={(e: any) => { el.operator = e.target.value; onCommit(); }}>
-                            <option value="AND">{translate("AND")}</option>
-                            <option value="OR">{translate("OR")}</option>
+                            <option value="AND">{t("AND")}</option>
+                            <option value="OR">{t("OR")}</option>
                         </select>
                     )}
                 </td>
@@ -471,14 +471,14 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
         return (
             <div className="dt-empty">
                 <div className="empty-icon"><Icon name={isFilter ? 'filter' : 'transform'} size={30} /></div>
-                <div>{(kind.targetKey === 'filter' ? translate("No Rules Configured") : kind.targetKey === 'responseTransformer' ? translate("No Steps Configured") : translate("No Steps Configured"))}</div>
+                <div>{(kind.targetKey === 'filter' ? t("No Rules Configured") : kind.targetKey === 'responseTransformer' ? t("No Steps Configured") : t("No Steps Configured"))}</div>
                 {canEdit && (
                     <div className="mt-[14px] flex items-center justify-center gap-2">
                         <button className="btn btn-primary" type="button" onClick={onAdd}>
-                            <Icon name="plus" size={14} />{(kind.targetKey === 'filter' ? translate("Add New Rule") : kind.targetKey === 'responseTransformer' ? translate("Add New Step") : translate("Add New Step"))}
+                            <Icon name="plus" size={14} />{(kind.targetKey === 'filter' ? t("Add New Rule") : kind.targetKey === 'responseTransformer' ? t("Add New Step") : t("Add New Step"))}
                         </button>
                         <button className="btn" type="button" onClick={onImport}>
-                            <Icon name="import" size={14} />{(kind.targetKey === 'filter' ? translate("Import Filter") : kind.targetKey === 'responseTransformer' ? translate("Import Response Transformer") : translate("Import Transformer"))}
+                            <Icon name="import" size={14} />{(kind.targetKey === 'filter' ? t("Import Filter") : kind.targetKey === 'responseTransformer' ? t("Import Response Transformer") : t("Import Transformer"))}
                         </button>
                     </div>
                 )}
@@ -489,11 +489,11 @@ function ElementsGrid({ kind, isFilter, elements, selectedPath, typeOptions, can
         <table className="dt">
             <thead>
                 <tr>
-                    <th className="w-[58px]">{translate("Enabled")}</th>
+                    <th className="w-[58px]">{t("Enabled")}</th>
                     <th className="w-[32px]">#</th>
-                    {isFilter && <th className="w-[81px]">{translate("Operator")}</th>}
-                    <th>{translate("Name")}</th>
-                    <th className="w-[162px]">{translate("Type")}</th>
+                    {isFilter && <th className="w-[81px]">{t("Operator")}</th>}
+                    <th>{t("Name")}</th>
+                    <th className="w-[162px]">{t("Type")}</th>
                 </tr>
             </thead>
             <tbody>
@@ -556,13 +556,13 @@ function StepEditorPanel({ kind, isFilter, element, headerIndex, settlingRef, on
     if (!element) {
         return (
             <div className="dt-empty panel overflow-visible min-h-full">
-                <div>{(kind.targetKey === 'filter' ? translate("Select a rule to edit") : kind.targetKey === 'responseTransformer' ? translate("Select a step to edit") : translate("Select a step to edit"))}</div>
+                <div>{(kind.targetKey === 'filter' ? t("Select a rule to edit") : kind.targetKey === 'responseTransformer' ? t("Select a step to edit") : t("Select a step to edit"))}</div>
             </div>
         );
     }
     return (
         <div className="panel">
-            <div className="panel-header">{(kind.targetKey === 'filter' ? translate("Rule {index} — {type}", { index: headerIndex, type: oie.elementTypeLabel(element.__type) }) : kind.targetKey === 'responseTransformer' ? translate("Step {index} — {type}", { index: headerIndex, type: oie.elementTypeLabel(element.__type) }) : translate("Step {index} — {type}", { index: headerIndex, type: oie.elementTypeLabel(element.__type) }))}</div>
+            <div className="panel-header">{(kind.targetKey === 'filter' ? t("Rule {index} — {type}", { index: headerIndex, type: oie.elementTypeLabel(element.__type) }) : kind.targetKey === 'responseTransformer' ? t("Step {index} — {type}", { index: headerIndex, type: oie.elementTypeLabel(element.__type) }) : t("Step {index} — {type}", { index: headerIndex, type: oie.elementTypeLabel(element.__type) }))}</div>
             {hasComponent
                 ? <div className="panel-body" ref={hostRef} />
                 : <div className="panel-body">
@@ -589,7 +589,7 @@ function RawElementFallback({ element, onReplace }: any) {
     useEffect(() => { setText(JSON.stringify(element, null, 2)); }, [element]);
     return (
         <div className="field">
-            <label>{translate("Raw element (JSON)")}</label>
+            <label>{t("Raw element (JSON)")}</label>
             <textarea rows={14} spellCheck={false} value={text}
                 onChange={(e: any) => setText(e.target.value)}
                 onBlur={() => {
@@ -598,10 +598,10 @@ function RawElementFallback({ element, onReplace }: any) {
                         parsed.__type = element.__type;
                         onReplace(parsed);
                     } catch (e: any) {
-                        toast(translate("Invalid JSON: {value1}", { value1: String(e.message) }), 'error');
+                        toast(t("Invalid JSON: {value1}", { value1: String(e.message) }), 'error');
                     }
                 }} />
-            <div className="hint">{translate("No editor registered for {value1}", { value1: String(element.__type) })}</div>
+            <div className="hint">{t("No editor registered for {value1}", { value1: String(element.__type) })}</div>
         </div>
     );
 }
@@ -615,7 +615,7 @@ function BottomTabs({ tabs, active, onActive }: any) {
     return (
         <TabsPrimitive.Root value={String(active)} onValueChange={(v: any) => onActive(Number(v))}
             className="flex flex-col flex-1 overflow-hidden min-h-0">
-            <TabsPrimitive.List className="tabs" aria-label={translate("Step editor sections")}>
+            <TabsPrimitive.List className="tabs" aria-label={t("Step editor sections")}>
                 {tabs.map((t: any, i: any) => (
                     <TabsPrimitive.Trigger key={t.label} value={String(i)}
                         className={'tab' + (i === active ? ' active' : '')}>{t.label}</TabsPrimitive.Trigger>
@@ -673,7 +673,7 @@ function ReferenceRow({ dragRef, name, subtitle, dropText, title }: any) {
         <div className="step-item cursor-grab" title={title || undefined}
             {...accessorDragProps(dragRef, dropText)}>
             <div className="flex-1 min-w-0">
-                <div className="truncate">{name || translate("(unnamed)")}</div>
+                <div className="truncate">{name || t("(unnamed)")}</div>
                 {subtitle ? <div className="step-type">{subtitle}</div> : null}
             </div>
         </div>
@@ -712,7 +712,7 @@ function ReferenceTab({ dragRef, channelId, getElements }: any) {
                 const entries: any[] = [];
                 const categories: any[] = [];
                 for (const library of allLibraries.filter(libraryInScope)) {
-                    const name = library.name || translate("(unnamed library)");
+                    const name = library.name || t("(unnamed library)");
                     if (!categories.includes(name)) categories.push(name);
                     for (const t of api.asList(library.codeTemplates, 'codeTemplate')) {
                         if (t && typeof t === 'object') {
@@ -729,7 +729,7 @@ function ReferenceTab({ dragRef, channelId, getElements }: any) {
                 }
                 setUserEntries({ entries, categories });
             })
-            .catch(() => { toast(translate("Could not load user code-template libraries; showing built-ins only"), 'warn'); });
+            .catch(() => { toast(t("Could not load user code-template libraries; showing built-ins only"), 'warn'); });
         return () => { stale = true; };
     }, [channelId]);
 
@@ -745,14 +745,14 @@ function ReferenceTab({ dragRef, channelId, getElements }: any) {
     return (
         <div className="p-3 flex flex-col h-full min-h-0">
             <div className="field">
-                <label>{translate("Category")}</label>
+                <label>{t("Category")}</label>
                 <select value={category} onChange={(e: any) => setCategory(e.target.value)}>
-                    <option value="">{translate("All")}</option>
+                    <option value="">{t("All")}</option>
                     {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
             </div>
             <div className="field">
-                <input type="text" placeholder={translate("Filter…")} value={query} onChange={(e: any) => setQuery(e.target.value)} />
+                <input type="text" placeholder={t("Filter…")} value={query} onChange={(e: any) => setQuery(e.target.value)} />
             </div>
             <div className="border border-line rounded overflow-auto flex-1 min-h-[108px]">
                 {visible.length
@@ -761,13 +761,13 @@ function ReferenceTab({ dragRef, channelId, getElements }: any) {
                             name={en.name} subtitle={en.category} dropText={dropTextFor(en)}
                             title={en.description ? cleanDesc(en.description) : undefined} />
                     ))
-                    : <div className="text-text-faint p-2.5 text-center">{translate("No matches")}</div>}
+                    : <div className="text-text-faint p-2.5 text-center">{t("No matches")}</div>}
             </div>
-            <div className="font-semibold text-[10px] uppercase tracking-[0.04em] mt-3 mx-0 mb-1">{translate("Available Variables")}</div>
+            <div className="font-semibold text-[10px] uppercase tracking-[0.04em] mt-3 mx-0 mb-1">{t("Available Variables")}</div>
             <div className="border border-line rounded overflow-auto max-h-[126px]">
                 {availableVars.length
                     ? availableVars.map(v => <ReferenceRow key={v} dragRef={dragRef} name={v} dropText={v} />)
-                    : <div className="text-text-faint py-2 px-2.5 text-[10px]">{translate("(no variables defined by steps yet)")}</div>}
+                    : <div className="text-text-faint py-2 px-2.5 text-[10px]">{t("(no variables defined by steps yet)")}</div>}
             </div>
         </div>
     );
@@ -812,14 +812,14 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
             onChange={() => { validationErrors.textContent = ''; }}
             onReplace={(obj: any) => { draft = obj; }} />);
         modal({
-            title: translate("{value1} Data Type Properties — {value2}", { value1: String(title), value2: String(dtLabel(typeName)) }),
+            title: t("{value1} Data Type Properties — {value2}", { value1: String(title), value2: String(dtLabel(typeName)) }),
             size: 'wide',
             body: h('div', validationErrors, editorHost),
             onClose: () => { try { root(); } catch { /* ignore */ } },
             buttons: [
-                { label: translate("Cancel") },
+                { label: t("Cancel") },
                 {
-                    label: translate("OK"), primary: true,
+                    label: t("OK"), primary: true,
                     onClick: () => {
                         const errors = normalizeDataTypeProperties(typeName, draft);
                         validationErrors.textContent = errors.join('\n');
@@ -844,9 +844,9 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
                 dest.transformer.inboundDataType = value;
                 dest.transformer.inboundProperties = makeDefaultProps(value);
             }
-            toast(translate("Destination inbound data types set to {value1}", { value1: String(dtLabel(value)) }));
+            toast(t("Destination inbound data types set to {value1}", { value1: String(dtLabel(value)) }));
         } else {
-            toast(translate("{value1} data type properties reset to defaults", { value1: String(title) }), 'warn');
+            toast(t("{value1} data type properties reset to defaults", { value1: String(title) }), 'warn');
         }
         commit();
         bump();
@@ -865,7 +865,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
             // the template, not raw bytes).
             const ser = await serializeTemplate('DICOM', target[`${side}Properties`], text).catch(() => null);
             if (ser && ser.text) { text = ser.text; }
-            else { toast(translate("Could not serialize the DICOM file — the serialize endpoint may be unavailable."), 'warn'); return; }
+            else { toast(t("Could not serialize the DICOM file — the serialize endpoint may be unavailable."), 'warn'); return; }
         }
         target[templateKey] = text === '' ? null : text;
         commit();
@@ -875,20 +875,20 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     return (
         <div>
             <div className="field">
-                <label>{translate("{value1} Data Type", { value1: String(title) })}</label>
+                <label>{t("{value1} Data Type", { value1: String(title) })}</label>
                 <div className="flex gap-2 items-center">
                     <select value={typeName} onChange={(e: any) => onTypeChange(e.target.value)}>
                         {dtOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                     <button className="btn btn-sm" onClick={openPropsModal}
-                        title={translate("Edit this data type’s serialization properties")}>{translate("Properties…")}</button>
-                    <button className="btn btn-sm" title={translate("Load a message file into this template")}
-                        onClick={openFile}>{translate("Open File…")}</button>
+                        title={t("Edit this data type’s serialization properties")}>{t("Properties…")}</button>
+                    <button className="btn btn-sm" title={t("Load a message file into this template")}
+                        onClick={openFile}>{t("Open File…")}</button>
                 </div>
             </div>
             <div className="field">
-                <label>{translate("{value1} Template", { value1: String(title) })}</label>
-                <textarea rows={6} spellCheck={false} placeholder={translate("(none)")}
+                <label>{t("{value1} Template", { value1: String(title) })}</label>
+                <textarea rows={6} spellCheck={false} placeholder={t("(none)")}
                     value={target[templateKey] == null ? '' : String(target[templateKey])}
                     onChange={(e: any) => { target[templateKey] = e.target.value === '' ? null : e.target.value; commit(); bump(); }} />
             </div>
@@ -899,10 +899,10 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
 function TemplatesTab({ target, version, connectorType, channel, commit }: any) {
     return (
         <div className="p-3">
-            <TemplatesSide side="inbound" title={translate("Inbound")} templateKey="inboundTemplate"
+            <TemplatesSide side="inbound" title={t("Inbound")} templateKey="inboundTemplate"
                 target={target} version={version} connectorType={connectorType} channel={channel} commit={commit} />
             <div className="h-3.5" />
-            <TemplatesSide side="outbound" title={translate("Outbound")} templateKey="outboundTemplate"
+            <TemplatesSide side="outbound" title={t("Outbound")} templateKey="outboundTemplate"
                 target={target} version={version} connectorType={connectorType} channel={channel} commit={commit} />
         </div>
     );
@@ -931,8 +931,8 @@ function TreeNode({ node, depth, side, isFilter, dragRef, force, onAddStep }: an
     const menu = (e: any) => {
         const items: any[] = [];
         if (hasKids) {
-            items.push({ label: translate("Expand All"), onClick: () => { setOpen(true); setLocalForce({ version: ++treeForceSeq, open: true }); } });
-            items.push({ label: translate("Collapse All"), onClick: () => { setOpen(false); setLocalForce({ version: ++treeForceSeq, open: false }); } });
+            items.push({ label: t("Expand All"), onClick: () => { setOpen(true); setLocalForce({ version: ++treeForceSeq, open: true }); } });
+            items.push({ label: t("Collapse All"), onClick: () => { setOpen(false); setLocalForce({ version: ++treeForceSeq, open: false }); } });
         }
         // Map actions are transformer-only (filter editors have no message tree).
         if (!isFilter) {
@@ -940,14 +940,14 @@ function TreeNode({ node, depth, side, isFilter, dragRef, force, onAddStep }: an
             if (side === 'inbound') {
                 if (items.length) items.push('-');
                 items.push({
-                    label: translate("Map to Variable"), icon: 'transform',
+                    label: t("Map to Variable"), icon: 'transform',
                     onClick: () => onAddStep(MAPPER_TYPE, 'Mapper', name, (el: any) => { el.mapping = node.accessor; el.variable = name; })
                 });
             } else if (side === 'outbound') {
                 if (items.length) items.push('-');
                 const lval = node.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
                 items.push({
-                    label: translate("Map to Message"), icon: 'transform',
+                    label: t("Map to Message"), icon: 'transform',
                     onClick: () => onAddStep(MSGBUILDER_TYPE, 'Message Builder', name, (el: any) => { el.messageSegment = lval; })
                 });
             }
@@ -964,7 +964,7 @@ function TreeNode({ node, depth, side, isFilter, dragRef, force, onAddStep }: an
 
     return (
         <div>
-            <div className="tree-node cursor-grab" title={translate("Drag into a script editor: {value1}", { value1: String(node.accessor) })}
+            <div className="tree-node cursor-grab" title={t("Drag into a script editor: {value1}", { value1: String(node.accessor) })}
                 {...accessorDragProps(dragRef, node.accessor)}
                 onContextMenu={menu}>
                 <span className={'twisty' + (hasKids && open ? ' open' : '')}
@@ -1038,14 +1038,14 @@ function TreeSection({ title, side, varName, openByDefault, target, isFilter, dr
             </div>
             <div className="tree py-1 px-0" style={{ display: open ? undefined : 'none' }}>
                 {parse.status === 'empty' && (
-                    <div className="text-text-faint py-1 px-3 text-[11px]">{translate("(no template — set one on the Message Templates tab)")}</div>
+                    <div className="text-text-faint py-1 px-3 text-[11px]">{t("(no template — set one on the Message Templates tab)")}</div>
                 )}
                 {parse.status === 'parsing' && (
-                    <div className="text-text-faint py-1 px-3 text-[11px]">{translate("Parsing…")}</div>
+                    <div className="text-text-faint py-1 px-3 text-[11px]">{t("Parsing…")}</div>
                 )}
                 {parse.status === 'failed' && (
                     <div className="text-text-faint py-1 px-3 text-[11px]">
-                        {translate("Could not build the message tree — the engine could not serialize this {value1} template.", { value1: String(dtLabel) })}
+                        {t("Could not build the message tree — the engine could not serialize this {value1} template.", { value1: String(dtLabel) })}
                     </div>
                 )}
                 {parse.status === 'ready' && (parse as any).nodes.map((node: any, i: any) => (
@@ -1060,11 +1060,11 @@ function TreeSection({ title, side, varName, openByDefault, target, isFilter, dr
 function TreesTab({ target, isFilter, dragRef, onAddStep }: any) {
     return (
         <div className="py-2 px-1 overflow-auto">
-            <TreeSection title={translate("Inbound Message Template")} side="inbound" varName="msg" openByDefault
+            <TreeSection title={t("Inbound Message Template")} side="inbound" varName="msg" openByDefault
                 target={target} isFilter={isFilter} dragRef={dragRef} onAddStep={onAddStep} />
-            <TreeSection title={translate("Outbound Message Template")} side="outbound" varName="tmp" openByDefault={false}
+            <TreeSection title={t("Outbound Message Template")} side="outbound" varName="tmp" openByDefault={false}
                 target={target} isFilter={isFilter} dragRef={dragRef} onAddStep={onAddStep} />
-            <div className="text-text-faint py-2 px-3 text-[10px]">{translate("Drag a node into a script editor or template field to insert its accessor at the drop point.")}</div>
+            <div className="text-text-faint py-2 px-3 text-[10px]">{t("Drag a node into a script editor or template field to insert its accessor at the drop point.")}</div>
         </div>
     );
 }
@@ -1111,13 +1111,13 @@ function SidePanel({ ctx }: any) {
             {/* The collapse chevron sits OUTSIDE the pill: the tab list hugs and
                 scrolls its content, so a button inside it would scroll away. */}
             <div className="flex items-center min-w-0 pr-2">
-                <TabsPrimitive.List className="tabs" aria-label={translate("Reference panel sections")}>
+                <TabsPrimitive.List className="tabs" aria-label={t("Reference panel sections")}>
                     {labels.map((l: any, i: any) => (
                         <TabsPrimitive.Trigger key={l} value={String(i)}
                             className={'tab' + (i === active ? ' active' : '')}>{referenceTabLabel(l)}</TabsPrimitive.Trigger>
                     ))}
                 </TabsPrimitive.List>
-                <SideCollapseButton label={translate("the reference panel")} onCollapse={() => setCollapsed(true)} />
+                <SideCollapseButton label={t("the reference panel")} onCollapse={() => setCollapsed(true)} />
             </div>
             <TabsPrimitive.Content value={String(Math.min(active, labels.length - 1))} className="tab-body">
                 {body}
@@ -1240,11 +1240,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const problems = oie.validateChannel(channel);
         if (problems.length) {
             modal({
-                title: translate("Cannot Save Channel"),
+                title: t("Cannot Save Channel"),
                 body: h('div',
-                    h('p', translate("Fix the following before saving — the engine would reject this channel:")),
+                    h('p', t("Fix the following before saving — the engine would reject this channel:")),
                     h('ul', { class: 'mt-2 mx-0 mb-0 pl-[16px]' }, problems.map(p => h('li', p)))),
-                buttons: [{ label: translate("OK") }]
+                buttons: [{ label: t("OK") }]
             });
             return;
         }
@@ -1253,7 +1253,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
             onTasksChange();
-            toast(translate("Saved {value1}", { value1: String(channel.name) }));
+            toast(t("Saved {value1}", { value1: String(channel.name) }));
         } catch (e: any) {
             if (isCurrent()) toast(e.message, 'error');
         }
@@ -1268,21 +1268,21 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             // No save permission -> OK-only notice (channel editor parity).
             if (!platform.checkTask('channelEdit', 'doSaveChannel')) {
                 modal({
-                    title: translate("Unsaved Changes"),
-                    body: h('div', translate("You don''t have permission to save changes to \"{value1}\". Your changes will be discarded.", { value1: String(channel.name || translate("this channel")) })),
+                    title: t("Unsaved Changes"),
+                    body: h('div', t("You don''t have permission to save changes to \"{value1}\". Your changes will be discarded.", { value1: String(channel.name || t("this channel")) })),
                     onClose: () => resolve('cancel'),
-                    buttons: [{ label: translate("OK"), primary: true, onClick: () => resolve('discard') }]
+                    buttons: [{ label: t("OK"), primary: true, onClick: () => resolve('discard') }]
                 });
                 return;
             }
             modal({
-                title: translate("Unsaved Changes"),
-                body: h('div', translate("Would you like to save the changes made to \"{value1}\"?", { value1: String(channel.name || translate("this channel")) })),
+                title: t("Unsaved Changes"),
+                body: h('div', t("Would you like to save the changes made to \"{value1}\"?", { value1: String(channel.name || t("this channel")) })),
                 onClose: () => resolve('cancel'),
                 buttons: [
-                    { label: translate("Cancel"), onClick: () => { resolve('cancel'); } },
-                    { label: translate("Don''t Save"), danger: true, onClick: () => { resolve('discard'); } },
-                    { label: translate("Save Changes"), primary: true, onClick: () => { resolve('save'); } }
+                    { label: t("Cancel"), onClick: () => { resolve('cancel'); } },
+                    { label: t("Don''t Save"), danger: true, onClick: () => { resolve('discard'); } },
+                    { label: t("Save Changes"), primary: true, onClick: () => { resolve('save'); } }
                 ]
             });
         });
@@ -1326,10 +1326,10 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             // (Swing parity). Deferred past the route:changed title reset (see
             // channel-editor) with rAF so it sticks without a flash. Embedded
             // mounts skip this — the wizard owns its banner.
-            const connectorLabel = String(params.metaDataId) === '0' ? translate("Source") : (connector.name || translate("Destination {id}", { id: String(params.metaDataId) }));
+            const connectorLabel = String(params.metaDataId) === '0' ? t("Source") : (connector.name || t("Destination {id}", { id: String(params.metaDataId) }));
             const bannerTitle = channel.name
-                ? translate("Edit Channel - {channel} - {connector} {kind}", { channel: String(channel.name), connector: connectorLabel, kind: kind.title })
-                : translate("{connector} {kind}", { connector: connectorLabel, kind: kind.title });
+                ? t("Edit Channel - {channel} - {connector} {kind}", { channel: String(channel.name), connector: connectorLabel, kind: kind.title })
+                : t("{connector} {kind}", { connector: connectorLabel, kind: kind.title });
             window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('webadmin:set-title', {
                 detail: { title: bannerTitle }
             })));
@@ -1346,7 +1346,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // Missing connector (stale deep link): bail back to the channel editor.
     useEffect(() => {
         if (!missingConnector) return;
-        toast(translate("Connector {value1} not found", { value1: String(params.metaDataId) }), 'error');
+        toast(t("Connector {value1} not found", { value1: String(params.metaDataId) }), 'error');
         router.navigate(`/channels/${params.channelId}/edit`);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [missingConnector]);
@@ -1375,9 +1375,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const entries = availableTypeEntries();
         const items = h('div.step-list');
         const m = modal({
-            title: (kind.targetKey === 'filter' ? translate("Add Rule") : kind.targetKey === 'responseTransformer' ? translate("Add Step") : translate("Add Step")),
-            body: entries.length ? items : h('div.text-text-faint', translate("No element types registered")),
-            buttons: [{ label: translate("Cancel") }]
+            title: (kind.targetKey === 'filter' ? t("Add Rule") : kind.targetKey === 'responseTransformer' ? t("Add Step") : t("Add Step")),
+            body: entries.length ? items : h('div.text-text-faint', t("No element types registered")),
+            buttons: [{ label: t("Cancel") }]
         });
         for (const [type, def] of entries) {
             const item = h('div.step-item',
@@ -1435,7 +1435,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     function deleteElement() {
         const elements = elementsRef.current;
         const selPath = selectedPathRef.current;
-        if (!elementAtPath(elements, selPath)) { toast((kind.targetKey === 'filter' ? translate("Select a rule first") : kind.targetKey === 'responseTransformer' ? translate("Select a step first") : translate("Select a step first")), 'warn'); return; }
+        if (!elementAtPath(elements, selPath)) { toast((kind.targetKey === 'filter' ? t("Select a rule first") : kind.targetKey === 'responseTransformer' ? t("Select a step first") : t("Select a step first")), 'warn'); return; }
         const list = listAtPath(elements, selPath);
         const idx = selPath![selPath!.length! - 1];
         const parent = selPath!.slice!(0, -1);
@@ -1448,7 +1448,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     function move(delta: any) {
         const elements = elementsRef.current;
         const selPath = selectedPathRef.current;
-        if (!elementAtPath(elements, selPath)) { toast((kind.targetKey === 'filter' ? translate("Select a rule first") : kind.targetKey === 'responseTransformer' ? translate("Select a step first") : translate("Select a step first")), 'warn'); return; }
+        if (!elementAtPath(elements, selPath)) { toast((kind.targetKey === 'filter' ? t("Select a rule first") : kind.targetKey === 'responseTransformer' ? t("Select a step first") : t("Select a step first")), 'warn'); return; }
         const list = listAtPath(elements, selPath);
         const idx = selPath![selPath!.length! - 1];
         const next = idx + delta;
@@ -1476,13 +1476,13 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             let choice: 'append' | 'replace' | null = 'replace';
             if (elementsRef.current.length) {
                 choice = await new Promise<'append' | 'replace' | null>(resolve => modal({
-                    title: (kind.targetKey === 'filter' ? translate("Import Filter") : kind.targetKey === 'responseTransformer' ? translate("Import Response Transformer") : translate("Import Transformer")),
-                    body: h('p', (kind.targetKey === 'filter' ? translate("Append the imported rules to the existing filter, or replace the entire filter?") : kind.targetKey === 'responseTransformer' ? translate("Append the imported steps to the existing response transformer, or replace the entire response transformer?") : translate("Append the imported steps to the existing transformer, or replace the entire transformer?"))),
+                    title: (kind.targetKey === 'filter' ? t("Import Filter") : kind.targetKey === 'responseTransformer' ? t("Import Response Transformer") : t("Import Transformer")),
+                    body: h('p', (kind.targetKey === 'filter' ? t("Append the imported rules to the existing filter, or replace the entire filter?") : kind.targetKey === 'responseTransformer' ? t("Append the imported steps to the existing response transformer, or replace the entire response transformer?") : t("Append the imported steps to the existing transformer, or replace the entire transformer?"))),
                     onClose: () => resolve(null),
                     buttons: [
-                        { label: translate("Cancel"), onClick: () => resolve(null) },
-                        { label: translate("Replace"), onClick: () => resolve('replace') },
-                        { label: translate("Append"), primary: true, onClick: () => resolve('append') }
+                        { label: t("Cancel"), onClick: () => resolve(null) },
+                        { label: t("Replace"), onClick: () => resolve('replace') },
+                        { label: t("Append"), primary: true, onClick: () => resolve('append') }
                     ]
                 }));
             }
@@ -1507,9 +1507,9 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             }
             setSelected(elementsRef.current.length ? [0] : null);
             commitRef.current();
-            toast((kind.targetKey === 'filter' ? translate("{value3, plural, one {Imported {value1} rule} other {Imported {value1} rules}}", { value1: String(cleaned.length), value3: cleaned.length }) : kind.targetKey === 'responseTransformer' ? translate("{value3, plural, one {Imported {value1} step} other {Imported {value1} steps}}", { value1: String(cleaned.length), value3: cleaned.length }) : translate("{value3, plural, one {Imported {value1} step} other {Imported {value1} steps}}", { value1: String(cleaned.length), value3: cleaned.length })));
+            toast((kind.targetKey === 'filter' ? t("{value3, plural, one {Imported {value1} rule} other {Imported {value1} rules}}", { value1: String(cleaned.length), value3: cleaned.length }) : kind.targetKey === 'responseTransformer' ? t("{value3, plural, one {Imported {value1} step} other {Imported {value1} steps}}", { value1: String(cleaned.length), value3: cleaned.length }) : t("{value3, plural, one {Imported {value1} step} other {Imported {value1} steps}}", { value1: String(cleaned.length), value3: cleaned.length })));
         } catch (error: any) {
-            if (active()) toast(translate("Import failed: {value1}", { value1: String(error.message) }), 'error');
+            if (active()) toast(t("Import failed: {value1}", { value1: String(error.message) }), 'error');
         } finally {
             importingRef.current = false;
         }
@@ -1526,7 +1526,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 () => JSON.stringify({ ...target, elements: serializeList(elementsRef.current) }, null, 2), assertSession);
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(translate("Export failed: {value1}", { value1: String(e.message) }), 'error');
+            toast(t("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -1539,7 +1539,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const containerWord = isFilter ? 'filter' : 'transformer';
         const responsePrefix = kindName === 'response' ? 'response ' : '';
         const seq = el.sequenceNumber != null ? el.sequenceNumber : '';
-        return translate("Error in connector \"{value1}\" at {value2}{value3} {value4} {value5} (\"{value6}\"):\n{value7}", { value1: String(connector.name), value2: String(responsePrefix), value3: String(containerWord), value4: String(kind.noun.toLowerCase()), value5: String(seq), value6: String(elementName(el)), value7: String(message) });
+        return t("Error in connector \"{value1}\" at {value2}{value3} {value4} {value5} (\"{value6}\"):\n{value7}", { value1: String(connector.name), value2: String(responsePrefix), value3: String(containerWord), value4: String(kind.noun.toLowerCase()), value5: String(seq), value6: String(elementName(el)), value7: String(message) });
     }
 
     // Per-element field validation — the web-admin port of Swing's
@@ -1558,7 +1558,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                 if (isIteratorType(el.__type)) {
                     const iv = (el.properties && el.properties.indexVariable) || '';
                     if (iv && idxStack.includes(iv)) {
-                        out.push(elementError(el, translate("Duplicate Iterator index variable {value1} found.", { value1: String(iv) })));
+                        out.push(elementError(el, t("Duplicate Iterator index variable {value1} found.", { value1: String(iv) })));
                     }
                     idxStack.push(iv);
                     walk(childrenOf(el));
@@ -1573,8 +1573,8 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // lists every validation error, matching alertCustomError.
     function showValidationErrors(errors: any) {
         detailModal({
-            title: (kind.targetKey === 'filter' ? translate("Error validating filter rules") : kind.targetKey === 'responseTransformer' ? translate("Error validating response transformer steps") : translate("Error validating transformer steps")),
-            badge: { text: translate("Error"), tone: 'err' },
+            title: (kind.targetKey === 'filter' ? t("Error validating filter rules") : kind.targetKey === 'responseTransformer' ? t("Error validating response transformer steps") : t("Error validating transformer steps")),
+            badge: { text: t("Error"), tone: 'err' },
             sections: [{ text: errors.join('\n\n') }]
         });
     }
@@ -1587,7 +1587,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // announces; Back to Channel runs it silently and only surfaces the error).
     async function runValidation(announce: any) {
         if (!elementsRef.current.length) {
-            if (announce) toast((kind.targetKey === 'filter' ? translate("Filter is empty — nothing to validate") : kind.targetKey === 'responseTransformer' ? translate("Response Transformer is empty — nothing to validate") : translate("Transformer is empty — nothing to validate")), 'warn');
+            if (announce) toast((kind.targetKey === 'filter' ? t("Filter is empty — nothing to validate") : kind.targetKey === 'responseTransformer' ? t("Response Transformer is empty — nothing to validate") : t("Transformer is empty — nothing to validate")), 'warn');
             return 'ok';
         }
         // (a) Field checks (blank required fields, duplicate iterator index).
@@ -1602,7 +1602,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             if (result.ok === null) { toast(result.message, 'warn'); return 'unavailable'; }
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return 'fail'; }
         }
-        if (announce) toast((kind.targetKey === 'filter' ? translate("All rules validated successfully") : kind.targetKey === 'responseTransformer' ? translate("All steps validated successfully") : translate("All steps validated successfully")));
+        if (announce) toast((kind.targetKey === 'filter' ? t("All rules validated successfully") : kind.targetKey === 'responseTransformer' ? t("All steps validated successfully") : t("All steps validated successfully")));
         return 'ok';
     }
 
@@ -1610,7 +1610,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     async function validateElement() {
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
-        if (!el) { toast((kind.targetKey === 'filter' ? translate("Select a rule first") : kind.targetKey === 'responseTransformer' ? translate("Select a step first") : translate("Select a step first")), 'warn'); return; }
+        if (!el) { toast((kind.targetKey === 'filter' ? t("Select a rule first") : kind.targetKey === 'responseTransformer' ? t("Select a step first") : t("Select a step first")), 'warn'); return; }
         // (a) Field check for this element (Swing plugin.checkProperties).
         const def = typeDef(el.__type);
         const fieldMsg = def && typeof def.validate === 'function' ? String(def.validate(el) || '').trim() : '';
@@ -1622,7 +1622,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             if (result.ok === false) { showValidationErrors([elementError(el, result.message)]); return; }
             if (result.ok === null) { toast(result.message, 'warn'); return; }
         }
-        toast((kind.targetKey === 'filter' ? translate("Rule \"{value2}\" validated successfully", { value2: String(elementName(el)) }) : kind.targetKey === 'responseTransformer' ? translate("Step \"{value2}\" validated successfully", { value2: String(elementName(el)) }) : translate("Step \"{value2}\" validated successfully", { value2: String(elementName(el)) })));
+        toast((kind.targetKey === 'filter' ? t("Rule \"{value2}\" validated successfully", { value2: String(elementName(el)) }) : kind.targetKey === 'responseTransformer' ? t("Step \"{value2}\" validated successfully", { value2: String(elementName(el)) }) : t("Step \"{value2}\" validated successfully", { value2: String(elementName(el)) })));
     }
 
     /* ---- iterator membership (matches the Swing tree-table) ---- */
@@ -1646,15 +1646,15 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
     function assignToIterator() {
         const el = elementAtPath(elementsRef.current, selectedPathRef.current);
-        if (!el) { toast((kind.targetKey === 'filter' ? translate("Select a rule first") : kind.targetKey === 'responseTransformer' ? translate("Select a step first") : translate("Select a step first")), 'warn'); return; }
+        if (!el) { toast((kind.targetKey === 'filter' ? t("Select a rule first") : kind.targetKey === 'responseTransformer' ? t("Select a step first") : t("Select a step first")), 'warn'); return; }
         const targets = iteratorTargets(selectedPathRef.current);
-        if (!targets.length) { toast((kind.targetKey === 'filter' ? translate("No Iterator available — add an Iterator rule first") : kind.targetKey === 'responseTransformer' ? translate("No Iterator available — add an Iterator step first") : translate("No Iterator available — add an Iterator step first")), 'warn'); return; }
+        if (!targets.length) { toast((kind.targetKey === 'filter' ? t("No Iterator available — add an Iterator rule first") : kind.targetKey === 'responseTransformer' ? t("No Iterator available — add an Iterator step first") : t("No Iterator available — add an Iterator step first")), 'warn'); return; }
         if (targets.length === 1) { moveIntoIterator(el, targets[0]); return; }
         // Multiple iterators: let the user pick one.
         const list = h('div.step-list');
-        const m = modal({ title: translate("Assign To Iterator"), body: list, buttons: [{ label: translate("Cancel") }] });
+        const m = modal({ title: t("Assign To Iterator"), body: list, buttons: [{ label: t("Cancel") }] });
         targets.forEach((it: any, i: any) => {
-            const row = h('div.step-item', h('div', { class: 'flex-1' }, it.name || translate("Iterator {value1}", { value1: String(i + 1) })));
+            const row = h('div.step-item', h('div', { class: 'flex-1' }, it.name || t("Iterator {value1}", { value1: String(i + 1) })));
             row.addEventListener('click', () => { m.close(); moveIntoIterator(el, it); });
             list.appendChild(row);
         });
@@ -1665,7 +1665,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         const selPath = selectedPathRef.current;
         const el = elementAtPath(elements, selPath);
         if (!el || !selPath || selPath.length < 2) {
-            toast((kind.targetKey === 'filter' ? translate("This rule is not inside an Iterator") : kind.targetKey === 'responseTransformer' ? translate("This step is not inside an Iterator") : translate("This step is not inside an Iterator")), 'warn'); return;
+            toast((kind.targetKey === 'filter' ? t("This rule is not inside an Iterator") : kind.targetKey === 'responseTransformer' ? t("This step is not inside an Iterator") : t("This step is not inside an Iterator")), 'warn'); return;
         }
         const iterator = elementAtPath(elements, selPath.slice(0, -1));
         listAtPath(elements, selPath).splice(selPath[selPath.length - 1], 1);
@@ -1678,7 +1678,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     // Steps created from a message-tree node (Map to Variable / Map to Message).
     function addTreeStep(typeId: any, label: any, baseName: any, setup: any) {
         const def = platform.stepTypes().get(typeId);
-        if (!def) { toast(translate("{value1} is not available", { value1: String(label) }), 'warn'); return; }
+        if (!def) { toast(t("{value1} is not available", { value1: String(label) }), 'warn'); return; }
         const el = def.create ? def.create() : { __type: typeId };
         el.__type = typeId;
         el.name = baseName || label;
@@ -1687,7 +1687,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         elementsRef.current.push(el);
         setSelected([elementsRef.current.length - 1]);
         commitRef.current();
-        toast(translate("Added {value1} \"{value2}\"", { value1: String(label), value2: String(el.name) }));
+        toast(t("Added {value1} \"{value2}\"", { value1: String(label), value2: String(el.name) }));
     }
     const addTreeStepRef = useRef(addTreeStep);
     addTreeStepRef.current = addTreeStep;
@@ -1715,25 +1715,25 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
 
         // Mutations ride channelEdit/doSaveChannel (same tagging as the task pane).
         const gate = { task: 'doSaveChannel', group: 'channelEdit' };
-        const items: any[] = [{ label: (kind.targetKey === 'filter' ? translate("Add New Rule") : kind.targetKey === 'responseTransformer' ? translate("Add New Step") : translate("Add New Step")), icon: 'plus', ...gate, onClick: addElement }];
+        const items: any[] = [{ label: (kind.targetKey === 'filter' ? t("Add New Rule") : kind.targetKey === 'responseTransformer' ? t("Add New Step") : t("Add New Step")), icon: 'plus', ...gate, onClick: addElement }];
         if (onStep) {
-            items.push({ label: (kind.targetKey === 'filter' ? translate("Delete Rule") : kind.targetKey === 'responseTransformer' ? translate("Delete Step") : translate("Delete Step")), icon: 'trash', danger: true, ...gate, onClick: deleteElement });
+            items.push({ label: (kind.targetKey === 'filter' ? t("Delete Rule") : kind.targetKey === 'responseTransformer' ? t("Delete Step") : t("Delete Step")), icon: 'trash', danger: true, ...gate, onClick: deleteElement });
             if (!isIteratorType(el.__type) && iteratorTargets(selectedPathRef.current).length) {
-                items.push({ label: translate("Assign To Iterator"), ...gate, onClick: assignToIterator });
+                items.push({ label: t("Assign To Iterator"), ...gate, onClick: assignToIterator });
             }
             if (selectedPathRef.current!.length! > 1) {
-                items.push({ label: translate("Remove From Iterator"), ...gate, onClick: removeFromIterator });
+                items.push({ label: t("Remove From Iterator"), ...gate, onClick: removeFromIterator });
             }
             items.push('-',
-                { label: (kind.targetKey === 'filter' ? translate("Move Rule Up") : kind.targetKey === 'responseTransformer' ? translate("Move Step Up") : translate("Move Step Up")), icon: 'arrowUp', ...gate, onClick: () => move(-1) },
-                { label: (kind.targetKey === 'filter' ? translate("Move Rule Down") : kind.targetKey === 'responseTransformer' ? translate("Move Step Down") : translate("Move Step Down")), icon: 'arrowDown', ...gate, onClick: () => move(1) });
+                { label: (kind.targetKey === 'filter' ? t("Move Rule Up") : kind.targetKey === 'responseTransformer' ? t("Move Step Up") : t("Move Step Up")), icon: 'arrowUp', ...gate, onClick: () => move(-1) },
+                { label: (kind.targetKey === 'filter' ? t("Move Rule Down") : kind.targetKey === 'responseTransformer' ? t("Move Step Down") : t("Move Step Down")), icon: 'arrowDown', ...gate, onClick: () => move(1) });
         }
         items.push('-',
-            { label: (kind.targetKey === 'filter' ? translate("Import Filter") : kind.targetKey === 'responseTransformer' ? translate("Import Response Transformer") : translate("Import Transformer")), icon: 'import', ...gate, onClick: importElements },
-            { label: (kind.targetKey === 'filter' ? translate("Export Filter") : kind.targetKey === 'responseTransformer' ? translate("Export Response Transformer") : translate("Export Transformer")), icon: 'export', onClick: exportElements },
+            { label: (kind.targetKey === 'filter' ? t("Import Filter") : kind.targetKey === 'responseTransformer' ? t("Import Response Transformer") : t("Import Transformer")), icon: 'import', ...gate, onClick: importElements },
+            { label: (kind.targetKey === 'filter' ? t("Export Filter") : kind.targetKey === 'responseTransformer' ? t("Export Response Transformer") : t("Export Transformer")), icon: 'export', onClick: exportElements },
             '-',
-            { label: (kind.targetKey === 'filter' ? translate("Validate Filter") : kind.targetKey === 'responseTransformer' ? translate("Validate Response Transformer") : translate("Validate Transformer")), icon: 'check', onClick: validateElements });
-        if (onStep) items.push({ label: (kind.targetKey === 'filter' ? translate("Validate Rule") : kind.targetKey === 'responseTransformer' ? translate("Validate Step") : translate("Validate Step")), icon: 'check', onClick: validateElement });
+            { label: (kind.targetKey === 'filter' ? t("Validate Filter") : kind.targetKey === 'responseTransformer' ? t("Validate Response Transformer") : t("Validate Transformer")), icon: 'check', onClick: validateElements });
+        if (onStep) items.push({ label: (kind.targetKey === 'filter' ? t("Validate Rule") : kind.targetKey === 'responseTransformer' ? t("Validate Step") : t("Validate Step")), icon: 'check', onClick: validateElement });
         contextMenu(e.clientX, e.clientY, items);
     }
 
@@ -1852,7 +1852,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
     /* ---- render ---- */
 
     if (missingConnector) {
-        return <div className="loading-block">{richText("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
+        return <div className="loading-block">{tx("{value1}Loading…", { value1: <div className="spinner" /> })}</div>;
     }
 
     const elements = elementsRef.current;
@@ -1889,7 +1889,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                     <div className="split-b flex flex-col min-h-0">
                         <BottomTabs active={bottomTab} onActive={setBottomTab} tabs={[
                             {
-                                label: kind.targetKey === "filter" ? translate("Rule") : translate("Step"),
+                                label: kind.targetKey === "filter" ? t("Rule") : t("Step"),
                                 className: 'step-editor-fill py-3 px-3.5',
                                 node: <StepEditorPanel kind={kind} isFilter={isFilter}
                                     element={selectedElement}
@@ -1904,7 +1904,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                                     destinations={stepDestinations} />
                             },
                             {
-                                label: translate("Generated Script"),
+                                label: t("Generated Script"),
                                 className: 'py-3 px-3.5',
                                 node: <GeneratedScriptPane kind={kind} element={selectedElement} rev={rev} />
                             }
@@ -1950,7 +1950,7 @@ function FilterTransformerView({ params, kindName }: any) {
             // Same as the channel editor: an unknown id resolves with an empty body
             // rather than rejecting, so an unchecked load builds on nothing.
             if (!loaded || !loaded.id) {
-                toast(translate("Channel {value1} was not found.", { value1: String(params.channelId) }), 'error');
+                toast(t("Channel {value1} was not found.", { value1: String(params.channelId) }), 'error');
                 setReady(false);
                 return;
             }
@@ -1965,7 +1965,7 @@ function FilterTransformerView({ params, kindName }: any) {
     const ctx = apiRef.current;
     const kind = (KINDS as any)[kindName];
     const ts = (ctx && ctx.taskState()) || { onStep: false, assign: false, remove: false, dirty: false };
-    const t = ctx && ctx.handlers;
+    const handlers = ctx && ctx.handlers;
 
     return (
         <div className="view flex flex-col flex-1 min-h-0">
@@ -1974,25 +1974,25 @@ function FilterTransformerView({ params, kindName }: any) {
                     constants for the individual step actions, and editing steps is
                     meaningless without channel-save rights (RBAC.md §4). Export /
                     Validate / Back stay untagged — view affordances. */}
-                <RailPane title={(kind.targetKey === 'filter' ? translate("Filter Tasks") : kind.targetKey === 'responseTransformer' ? translate("Response Transformer Tasks") : translate("Transformer Tasks"))} paneKey={`tasks:${kind.targetKey}`} group="channelEdit">
+                <RailPane title={(kind.targetKey === 'filter' ? t("Filter Tasks") : kind.targetKey === 'responseTransformer' ? t("Response Transformer Tasks") : t("Transformer Tasks"))} paneKey={`tasks:${kind.targetKey}`} group="channelEdit">
                     <div className="taskbar" data-pane-title={`${kind.title} Tasks`}>
-                        {t && <TaskButton label={(kind.targetKey === 'filter' ? translate("Add New Rule") : kind.targetKey === 'responseTransformer' ? translate("Add New Step") : translate("Add New Step"))} icon="plus" task="doSaveChannel" onClick={t.addElement} />}
-                        {t && ts.onStep && <TaskButton label={(kind.targetKey === 'filter' ? translate("Delete Rule") : kind.targetKey === 'responseTransformer' ? translate("Delete Step") : translate("Delete Step"))} icon="trash" danger task="doSaveChannel" onClick={t.deleteElement} />}
-                        {t && ts.assign && <TaskButton label={translate("Assign To Iterator")} icon="plus" task="doSaveChannel" onClick={t.assignToIterator} />}
-                        {t && ts.remove && <TaskButton label={translate("Remove From Iterator")} icon="minus" task="doSaveChannel" onClick={t.removeFromIterator} />}
-                        {t && <TaskButton label={(kind.targetKey === 'filter' ? translate("Import Filter") : kind.targetKey === 'responseTransformer' ? translate("Import Response Transformer") : translate("Import Transformer"))} icon="import" task="doSaveChannel" onClick={t.importElements} />}
-                        {t && <TaskButton label={(kind.targetKey === 'filter' ? translate("Export Filter") : kind.targetKey === 'responseTransformer' ? translate("Export Response Transformer") : translate("Export Transformer"))} icon="export" onClick={t.exportElements} />}
-                        {t && <TaskButton label={(kind.targetKey === 'filter' ? translate("Validate Filter") : kind.targetKey === 'responseTransformer' ? translate("Validate Response Transformer") : translate("Validate Transformer"))} icon="check" onClick={t.validateElements} />}
-                        {t && ts.onStep && <TaskButton label={(kind.targetKey === 'filter' ? translate("Validate Rule") : kind.targetKey === 'responseTransformer' ? translate("Validate Step") : translate("Validate Step"))} icon="check" onClick={t.validateElement} />}
-                        {t && ts.dirty && <TaskButton label={translate("Save Channel")} icon="save" primary task="doSaveChannel" onClick={t.saveChannel} />}
-                        {t && <TaskButton label={translate("Back to Channel")} icon="chevR" onClick={t.backToChannel} />}
+                        {handlers && <TaskButton label={(kind.targetKey === 'filter' ? t("Add New Rule") : kind.targetKey === 'responseTransformer' ? t("Add New Step") : t("Add New Step"))} icon="plus" task="doSaveChannel" onClick={handlers.addElement} />}
+                        {handlers && ts.onStep && <TaskButton label={(kind.targetKey === 'filter' ? t("Delete Rule") : kind.targetKey === 'responseTransformer' ? t("Delete Step") : t("Delete Step"))} icon="trash" danger task="doSaveChannel" onClick={handlers.deleteElement} />}
+                        {handlers && ts.assign && <TaskButton label={t("Assign To Iterator")} icon="plus" task="doSaveChannel" onClick={handlers.assignToIterator} />}
+                        {handlers && ts.remove && <TaskButton label={t("Remove From Iterator")} icon="minus" task="doSaveChannel" onClick={handlers.removeFromIterator} />}
+                        {handlers && <TaskButton label={(kind.targetKey === 'filter' ? t("Import Filter") : kind.targetKey === 'responseTransformer' ? t("Import Response Transformer") : t("Import Transformer"))} icon="import" task="doSaveChannel" onClick={handlers.importElements} />}
+                        {handlers && <TaskButton label={(kind.targetKey === 'filter' ? t("Export Filter") : kind.targetKey === 'responseTransformer' ? t("Export Response Transformer") : t("Export Transformer"))} icon="export" onClick={handlers.exportElements} />}
+                        {handlers && <TaskButton label={(kind.targetKey === 'filter' ? t("Validate Filter") : kind.targetKey === 'responseTransformer' ? t("Validate Response Transformer") : t("Validate Transformer"))} icon="check" onClick={handlers.validateElements} />}
+                        {handlers && ts.onStep && <TaskButton label={(kind.targetKey === 'filter' ? t("Validate Rule") : kind.targetKey === 'responseTransformer' ? t("Validate Step") : t("Validate Step"))} icon="check" onClick={handlers.validateElement} />}
+                        {handlers && ts.dirty && <TaskButton label={t("Save Channel")} icon="save" primary task="doSaveChannel" onClick={handlers.saveChannel} />}
+                        {handlers && <TaskButton label={t("Back to Channel")} icon="chevR" onClick={handlers.backToChannel} />}
                     </div>
                 </RailPane>
             </ViewTasks>
             {ready === null
-                ? <div className="view-body"><div className="dt-empty">{translate("Loading channel…")}</div></div>
+                ? <div className="view-body"><div className="dt-empty">{t("Loading channel…")}</div></div>
                 : ready === false
-                    ? <div className="view-body"><div className="dt-empty">{translate("Channel not loaded")}</div></div>
+                    ? <div className="view-body"><div className="dt-empty">{t("Channel not loaded")}</div></div>
                     : (
                         // Drop accessors anywhere they land on an editor/field within the view.
                         <div className="flex flex-col flex-1 min-h-0"
@@ -2024,7 +2024,7 @@ export function createEmbeddedEditor(params: any, kindName: any, onTasksChange: 
         ? channel && channel.sourceConnector
         : channel && oie.destinationsOf(channel).find(d => Number(d.metaDataId) === Number(params.metaDataId));
     if (!connector) {
-        toast(translate("Connector {value1} not found", { value1: String(params.metaDataId) }), 'error');
+        toast(t("Connector {value1} not found", { value1: String(params.metaDataId) }), 'error');
         router.navigate(`/channels/${params.channelId}/edit`);
         return { el: loading() };
     }

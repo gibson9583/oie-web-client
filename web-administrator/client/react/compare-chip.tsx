@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * The "selected for compare" chip — a floating marker, bottom-right of the
  * message browser, for as long as an anchor exists.
@@ -26,12 +26,12 @@ export function CompareChip() {
         <div className="compare-chip" role="status" aria-live="polite">
             <Icon name="compare" size={15} />
             <div className="compare-chip-body">
-                <div className="compare-chip-title">{translate("Selected for compare")}</div>
+                <div className="compare-chip-title">{t("Selected for compare")}</div>
                 <div className="compare-chip-ref mono">{describeRef(anchor)}</div>
             </div>
-            <button type="button" className="icon-btn" title={translate("Clear compare selection")}
-                aria-label={translate("Clear compare selection")}
-                onClick={() => { clearCompare(); toast(translate("Compare selection cleared")); }}>
+            <button type="button" className="icon-btn" title={t("Clear compare selection")}
+                aria-label={t("Clear compare selection")}
+                onClick={() => { clearCompare(); toast(t("Compare selection cleared")); }}>
                 <Icon name="x" size={13} />
             </button>
         </div>

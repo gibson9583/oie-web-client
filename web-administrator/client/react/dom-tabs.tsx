@@ -1,4 +1,4 @@
-import { t as translate } from '../core/i18n.js';
+import { t } from '../core/i18n.js';
 /*
  * Radix Tabs over panels that are still built with h().
  *
@@ -31,7 +31,7 @@ function DomPanel({ render }: any) {
     return <div ref={ref} className="contents" />;
 }
 
-export function DomTabs({ defs, label = translate("Tabs"), bodyStyle }: any) {
+export function DomTabs({ defs, label = t("Tabs"), bodyStyle }: any) {
     const [active, setActive] = useState(0);
     return (
         <TabsPrimitive.Root value={String(active)} onValueChange={(v: any) => setActive(Number(v))}

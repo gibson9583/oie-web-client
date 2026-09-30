@@ -1,4 +1,4 @@
-import { t as translate, locale } from '../core/i18n.js';
+import { t, locale } from '../core/i18n.js';
 import { isCommitEnter, isComposing } from '../core/keyboard.js';
 /*
  * Date + time field, replacing <input type="datetime-local">.
@@ -74,7 +74,7 @@ function TimePart({ label, value, max, onChange }: any) {
     return (
         <span className="dtf-part">
             <button type="button" className="dtf-step" tabIndex={-1}
-                aria-label={translate("{value1} up", { value1: String(label) })} onClick={() => step(1)}>▲</button>
+                aria-label={t("{value1} up", { value1: String(label) })} onClick={() => step(1)}>▲</button>
             <input className="dtf-num" inputMode="numeric" aria-label={label}
                 value={draft ?? pad(value)}
                 onChange={(e: any) => setDraft(e.target.value.replace(/\D/g, '').slice(0, 2))}
@@ -86,12 +86,12 @@ function TimePart({ label, value, max, onChange }: any) {
                     else if (isCommitEnter(e)) { e.preventDefault(); commit(e.currentTarget.value); }
                 }} />
             <button type="button" className="dtf-step" tabIndex={-1}
-                aria-label={translate("{value1} down", { value1: String(label) })} onClick={() => step(-1)}>▼</button>
+                aria-label={t("{value1} down", { value1: String(label) })} onClick={() => step(-1)}>▼</button>
         </span>
     );
 }
 
-export function DateTimeField({ value, onChange, label, placeholder = translate("yyyy-mm-dd hh:mm") }: any) {
+export function DateTimeField({ value, onChange, label, placeholder = t("yyyy-mm-dd hh:mm") }: any) {
     const [open, setOpen] = useState(false);
     const { date, hour, minute } = parseValue(value);
     const shown = displayValue(value);
@@ -120,26 +120,26 @@ export function DateTimeField({ value, onChange, label, placeholder = translate(
                             onSelect={(picked: any) => { if (picked) commit(picked, hour, minute); }}
                             showOutsideDays />
                         <div className="dtf-time">
-                            <div className="dtf-time-head">{translate("Time")}</div>
+                            <div className="dtf-time-head">{t("Time")}</div>
                             <div className="dtf-clock">
-                                <TimePart label={translate("Hour")} value={hour} max={23}
+                                <TimePart label={t("Hour")} value={hour} max={23}
                                     onChange={(h: any) => commit(date, h, minute)} />
                                 <span className="dtf-colon" aria-hidden="true">:</span>
-                                <TimePart label={translate("Minute")} value={minute} max={59}
+                                <TimePart label={t("Minute")} value={minute} max={59}
                                     onChange={(m: any) => commit(date, hour, m)} />
                             </div>
                         </div>
                     </div>
                     <div className="dtf-foot">
-                        <span className="dtf-zone">{translate("Entered in {value1}", { value1: localZoneAbbr() })}</span>
+                        <span className="dtf-zone">{t("Entered in {value1}", { value1: localZoneAbbr() })}</span>
                         <span className="dtf-actions">
                             <button type="button" className="dtf-link"
-                                onClick={() => { onChange(''); setOpen(false); }}>{translate("Clear")}</button>
+                                onClick={() => { onChange(''); setOpen(false); }}>{t("Clear")}</button>
                             <button type="button" className="dtf-link" onClick={() => {
                                 const now = new Date();
                                 onChange(formatValue(now, now.getHours(), now.getMinutes()));
                                 setOpen(false);
-                            }}>{translate("Now")}</button>
+                            }}>{t("Now")}</button>
                         </span>
                     </div>
                 </Popover.Content>
