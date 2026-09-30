@@ -1,3 +1,4 @@
+import { t } from '../core/i18n.js';
 /*
  * JavaScript Reader (JavaScriptReceiverProperties) / JavaScript Writer (JavaScriptDispatcherProperties).
  *
@@ -27,10 +28,10 @@ const javascriptReader = {
             <div>
                 <PollSection properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
-                    { section: 'JavaScript Reader Settings' },
+                    { section: t("JavaScript Reader Settings") },
                     {
-                        key: 'script', label: 'JavaScript', type: 'code', language: 'javascript', minHeight: '260px',
-                        placeholder: '// Return one or more messages to be processed'
+                        key: 'script', label: t("JavaScript"), type: 'code', language: 'javascript', minHeight: '260px',
+                        placeholder: t("// Return one or more messages to be processed")
                     }
                 ]} />
             </div>
@@ -39,7 +40,7 @@ const javascriptReader = {
     // Swing JavaScriptReader.checkProperties: script must not be empty.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'script', label: 'JavaScript' }
+            { key: 'script', label: t("JavaScript") }
         ]);
     }
 };
@@ -57,10 +58,10 @@ const javascriptWriter = {
     component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
-                { section: 'JavaScript Writer Settings' },
+                { section: t("JavaScript Writer Settings") },
                 {
-                    key: 'script', label: 'JavaScript', type: 'code', language: 'javascript', minHeight: '300px',
-                    placeholder: '// Write your script here. Return a Response or a status to set the message status.'
+                    key: 'script', label: t("JavaScript"), type: 'code', language: 'javascript', minHeight: '300px',
+                    placeholder: t("// Write your script here. Return a Response or a status to set the message status.")
                 }
             ]} />
         );
@@ -68,7 +69,7 @@ const javascriptWriter = {
     // Swing JavaScriptWriter.checkProperties: script must not be empty.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'script', label: 'JavaScript' }
+            { key: 'script', label: t("JavaScript") }
         ]);
     }
 };

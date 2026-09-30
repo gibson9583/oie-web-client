@@ -1,3 +1,4 @@
+import { t } from '../../core/i18n.js';
 /*
  * Shared scaffolding for the guided builders (channel wizard, alert wizard).
  * These are the entity-agnostic, mechanically-duplicated parts — the model
@@ -53,7 +54,7 @@ export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, nor
             store.setState(storeKey, ref.current);
             setReady(true);
         }).catch((e: any) => {
-            if (alive) { toast(e && e.message ? e.message : 'Could not load.', 'error'); router.navigate(backPath); }
+            if (alive) { toast(e && e.message ? e.message : t("Could not load."), 'error'); router.navigate(backPath); }
         });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,22 +79,22 @@ function confirmLeave(entityLabel: any, isNew: any, canSave: any) {
         // would reject — OK-only notice instead (channel editor parity).
         if (canSave === false) {
             modal({
-                title: `Unsaved ${entityLabel}`,
-                body: h('div', `You don't have permission to save this ${entityLabel}. Your changes will be discarded.`),
-                buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }],
+                title: t("Unsaved {value1}", { value1: String(entityLabel) }),
+                body: h('div', t("You don''t have permission to save this {value1}. Your changes will be discarded.", { value1: String(entityLabel) })),
+                buttons: [{ label: t("OK"), primary: true, onClick: () => resolve('discard') }],
                 onClose: () => resolve('cancel')
             });
             return;
         }
         modal({
-            title: `Unsaved ${entityLabel}`,
+            title: t("Unsaved {value1}", { value1: String(entityLabel) }),
             body: h('div', isNew
-                ? `This ${entityLabel} hasn’t been created yet. Save it before leaving?`
-                : 'You have unsaved changes. Save before leaving?'),
+                ? t("This {value1} hasn’t been created yet. Save it before leaving?", { value1: String(entityLabel) })
+                : t("You have unsaved changes. Save before leaving?")),
             buttons: [
-                { label: 'Discard', danger: true, onClick: () => resolve('discard') },
-                { label: 'Cancel', onClick: () => resolve('cancel') },
-                { label: 'Save', primary: true, onClick: () => resolve('save') }
+                { label: t("Discard"), danger: true, onClick: () => resolve('discard') },
+                { label: t("Cancel"), onClick: () => resolve('cancel') },
+                { label: t("Save"), primary: true, onClick: () => resolve('save') }
             ],
             onClose: () => resolve('cancel')
         });

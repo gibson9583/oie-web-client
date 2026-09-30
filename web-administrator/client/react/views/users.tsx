@@ -1,3 +1,4 @@
+import { t } from '../../core/i18n.js';
 /*
  * Users view (React port of views/users.js). The grid wraps core/ui.js
  * DataTable via <DataTableHost>; the create/edit/password modals reuse the
@@ -20,14 +21,14 @@ import { isSsoSelf } from '../sso-session.js';
 
 
 const COLUMNS = [
-    { key: 'username', label: 'Username', render: (u: any) => u.username || '' },
-    { key: 'firstName', label: 'First Name', render: (u: any) => u.firstName || '' },
-    { key: 'lastName', label: 'Last Name', render: (u: any) => u.lastName || '' },
-    { key: 'organization', label: 'Organization', render: (u: any) => u.organization || '' },
-    { key: 'email', label: 'Email', render: (u: any) => u.email || '' },
-    { key: 'phoneNumber', label: 'Phone', render: (u: any) => u.phoneNumber || '' },
+    { key: 'username', label: t("Username"), render: (u: any) => u.username || '' },
+    { key: 'firstName', label: t("First Name"), render: (u: any) => u.firstName || '' },
+    { key: 'lastName', label: t("Last Name"), render: (u: any) => u.lastName || '' },
+    { key: 'organization', label: t("Organization"), render: (u: any) => u.organization || '' },
+    { key: 'email', label: t("Email"), render: (u: any) => u.email || '' },
+    { key: 'phoneNumber', label: t("Phone"), render: (u: any) => u.phoneNumber || '' },
     {
-        key: 'lastLogin', label: 'Last Login', className: 'mono',
+        key: 'lastLogin', label: t("Last Login"), className: 'mono',
         sortValue: (u: any) => {
             const v = u.lastLogin;
             return typeof v === 'object' ? Number(v?.time ?? v?.timestamp ?? 0) : Number(v) || 0;
@@ -64,17 +65,17 @@ export function UsersView() {
         let createdId: string | number | undefined;
         let createdUsername = '';
         const dialog = modal({
-            title: 'New User',
+            title: t("New User"),
             size: 'wide',
             body: h('div', notice, form.grid, pw.grid),
             buttons: [
-                { label: 'Cancel' },
+                { label: t("Cancel") },
                 {
-                    label: 'Create', primary: true,
+                    label: t("Create"), primary: true,
                     onClick: async () => {
                         if (busy || (phase !== 'draft' && phase !== 'created')) return false;
                         const username = createdUsername || form.inputs.username.value.trim();
-                        if (!username) { toast('Username is required', 'warn'); return false; }
+                        if (!username) { toast(t("Username is required"), 'warn'); return false; }
                         if (!pw.validate()) return false;
                         const password = (pw.password as HTMLInputElement).value;
                         const user: any = {};
@@ -83,14 +84,14 @@ export function UsersView() {
                         busy = true;
                         form.grid.inert = pw.grid.inert = true;
                         const submit = dialog.el.querySelector<HTMLButtonElement>('.modal-foot .btn-primary');
-                        if (submit) { submit.disabled = true; submit.textContent = 'Saving…'; }
+                        if (submit) { submit.disabled = true; submit.textContent = t("Saving…"); }
                         try {
                             // Enforce the password policy BEFORE creating the user
                             // (Swing checks first) — otherwise a rejected password
                             // leaves a passwordless user behind and the requirement
                             // is effectively ignored.
                             const violations = passwordViolations(await api.users.checkPassword(password));
-                            if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
+                            if (violations.length) { toast(t("Password rejected: {value1}", { value1: String(violations.join('; ')) }), 'warn'); return false; }
 
                             if (phase === 'draft') {
                                 createdUsername = username;
@@ -103,13 +104,13 @@ export function UsersView() {
                             if (createdId === undefined) {
                                 const list = await api.users.list();
                                 const created = list.find(u => u.username === username);
-                                if (created?.id == null) throw new Error('The created account could not be found to set its password');
+                                if (created?.id == null) throw new Error(t("The created account could not be found to set its password"));
                                 createdId = created.id;
                                 phase = 'created';
                             }
                             const rejected = passwordViolations(await api.users.updatePassword(createdId, password));
-                            if (rejected.length) throw new Error(`Password rejected: ${rejected.join('; ')}`);
-                            toast(`User "${username}" created`);
+                            if (rejected.length) throw new Error(t("Password rejected: {value1}", { value1: String(rejected.join('; ')) }));
+                            toast(t("User \"{value1}\" created", { value1: String(username) }));
                             return true;
                         } catch (e: any) {
                             toast(e.message, 'error');
@@ -121,15 +122,15 @@ export function UsersView() {
                             if (phase !== 'draft') {
                                 notice.hidden = false;
                                 notice.textContent = phase === 'created'
-                                    ? `Account "${createdUsername}" was created. Password setup is incomplete; retry below to finish.`
+                                    ? t("Account \"{value1}\" was created. Password setup is incomplete; retry below to finish.", { value1: String(createdUsername) })
                                     : phase === 'unverified'
-                                    ? `Account "${createdUsername}" was created, but its identity could not be verified. Close this dialog, refresh Users, and select the account before changing its password.`
-                                    : `Creation of "${createdUsername}" could not be confirmed. Close this dialog, refresh Users, and verify the account before creating it again or changing its password.`;
+                                    ? t("Account \"{value1}\" was created, but its identity could not be verified. Close this dialog, refresh Users, and select the account before changing its password.", { value1: String(createdUsername) })
+                                    : t("Creation of \"{value1}\" could not be confirmed. Close this dialog, refresh Users, and verify the account before creating it again or changing its password.", { value1: String(createdUsername) });
                                 refresh();
                             }
                             if (submit) {
                                 submit.disabled = phase === 'unknown' || phase === 'unverified';
-                                submit.textContent = phase === 'created' ? 'Retry Password Setup' : phase === 'unverified' ? 'Verify Account' : phase === 'unknown' ? 'Outcome Unknown' : 'Create';
+                                submit.textContent = phase === 'created' ? t("Retry Password Setup") : phase === 'unverified' ? t("Verify Account") : phase === 'unknown' ? t("Outcome Unknown") : t("Create");
                             }
                         }
                     }
@@ -140,28 +141,28 @@ export function UsersView() {
 
     function editTask(selected?: any) {
         const user = selected || single();
-        if (!user) { toast('Select a user first', 'warn'); return; }
+        if (!user) { toast(t("Select a user first"), 'warn'); return; }
         openEditUserModal(user, { onSaved: refresh });
     }
 
     function passwordTask(selected: any) {
         const user = selected || single();
-        if (!user) { toast('Select a user first', 'warn'); return; }
+        if (!user) { toast(t("Select a user first"), 'warn'); return; }
         openChangePasswordModal(user);
     }
 
     async function deleteTask(selected?: any) {
         const user = selected || single();
-        if (!user) { toast('Select a user first', 'warn'); return; }
+        if (!user) { toast(t("Select a user first"), 'warn'); return; }
         const me = store.getState('user');
         if (me && String(me.id) === String(user.id)) {
-            toast('You cannot delete the user you are signed in as', 'warn');
+            toast(t("You cannot delete the user you are signed in as"), 'warn');
             return;
         }
-        if (!await confirmDialog('Delete user', `Permanently delete user "${user.username}"? This cannot be undone.`, { danger: true, okLabel: 'Delete' })) return;
+        if (!await confirmDialog(t("Delete user"), t("Permanently delete user \"{value1}\"? This cannot be undone.", { value1: String(user.username) }), { danger: true, okLabel: t("Delete") })) return;
         try {
             await api.users.remove(user.id);
-            toast(`User "${user.username}" deleted`);
+            toast(t("User \"{value1}\" deleted", { value1: String(user.username) }));
         } catch (e: any) {
             toast(e.message, 'error');
         }
@@ -177,23 +178,23 @@ export function UsersView() {
         // bug report.
         const ssoSelf = isSsoSelf(u, store.getState('user'));
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshUser', group: 'user', onClick: () => refresh() },
-            { label: 'New User', icon: 'plus', task: 'doNewUser', group: 'user', onClick: () => newTask() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshUser', group: 'user', onClick: () => refresh() },
+            { label: t("New User"), icon: 'plus', task: 'doNewUser', group: 'user', onClick: () => newTask() },
             '-',
-            { label: 'Edit User', icon: 'edit', task: 'doEditUser', group: 'user', onClick: () => editTask(u) },
+            { label: t("Edit User"), icon: 'edit', task: 'doEditUser', group: 'user', onClick: () => editTask(u) },
             {
-                label: ssoSelf ? 'Change Password — managed by SSO' : 'Change Password',
+                label: ssoSelf ? t("Change Password — managed by SSO") : t("Change Password"),
                 icon: 'key', disabled: ssoSelf, onClick: () => passwordTask(u)
             },
             '-',
-            { label: 'Delete User', icon: 'trash', danger: true, task: 'doDeleteUser', group: 'user', onClick: () => deleteTask(u) }
+            { label: t("Delete User"), icon: 'trash', danger: true, task: 'doDeleteUser', group: 'user', onClick: () => deleteTask(u) }
         ]);
     };
 
     const options = useRef({
         selectable: 'single',
         rowKey: (u: any) => String(u.id),
-        emptyText: 'No users',
+        emptyText: t("No users"),
         columnsMenu: true,
         columnsMenuKey: 'webadmin-cols-users',
         onActivate: (u: any) => editTask(u),
@@ -206,12 +207,12 @@ export function UsersView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="User Tasks" paneKey="tasks:User Tasks" group="user">
+                <RailPane title={t("User Tasks")} paneKey="tasks:User Tasks" group="user">
                     <div className="taskbar" data-pane-title="User Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshUser" onClick={refresh} />
-                        <TaskButton label="New User" icon="plus" primary task="doNewUser" onClick={() => newTask()} />
-                        {hasSel && <TaskButton label="Edit User" icon="edit" task="doEditUser" onClick={() => editTask()} />}
-                        {hasSel && <TaskButton label="Delete User" icon="trash" danger task="doDeleteUser" onClick={() => deleteTask()} />}
+                        <TaskButton label={t("Refresh")} icon="refresh" task="doRefreshUser" onClick={refresh} />
+                        <TaskButton label={t("New User")} icon="plus" primary task="doNewUser" onClick={() => newTask()} />
+                        {hasSel && <TaskButton label={t("Edit User")} icon="edit" task="doEditUser" onClick={() => editTask()} />}
+                        {hasSel && <TaskButton label={t("Delete User")} icon="trash" danger task="doDeleteUser" onClick={() => deleteTask()} />}
                     </div>
                 </RailPane>
             </ViewTasks>

@@ -65,7 +65,7 @@ test('New User dialog shows the configured password requirements', async ({ page
         'GET /server/passwordRequirements': { minLength: 8, minUpper: 1, minLower: 0, minNumeric: 1, minSpecial: 0 },
     });
     await openNewUser(page);
-    await expect(page.getByText(/at least 8 characters, 1 uppercase letter, 1 number/i)).toBeVisible();
+    await expect(page.getByText(/at least 8 characters, 1 uppercase letter, and 1 number/i)).toBeVisible();
 });
 
 test('New User dialog marks the mandatory fields (Username, Password, Confirm) like Swing', async ({ page }) => {

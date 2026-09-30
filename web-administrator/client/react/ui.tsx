@@ -1,3 +1,4 @@
+import { t } from '../core/i18n.js';
 /*
  * React UI primitives for ported views. Declarative bits (task panes, buttons,
  * fields) are native React with VERBATIM class names; the data grid wraps the
@@ -43,7 +44,7 @@ export function RailPane({
     headerTitle, headerExtra, onHeaderClick, headerDraggable,
     onHeaderDragStart, onHeaderDragEnd, onHeaderContextMenu, onPaneDragOver, onPaneDrop
 }: any) {
-    const k = paneKey || title;
+    const k = paneKey || group || title;   // callers supply stable ids for localized panes
     const [collapsed, setCollapsed] = useState(() => paneCollapsed.get(k) || false);
     const disclosure = !onHeaderClick && !flat;
 
@@ -57,7 +58,7 @@ export function RailPane({
     const HeaderEl: any = flat ? 'div' : 'button';
     const header = (
         <HeaderEl {...(flat ? {} : { type: 'button' })} className="rail-pane-header"
-            aria-label={disclosure || flat ? undefined : `Rename group ${title}`}
+            aria-label={disclosure || flat ? undefined : t("Rename group {value1}", { value1: String(title) })}
             onClick={disclosure || flat ? undefined : onHeaderClick}
             draggable={headerDraggable || undefined}
             onDragStart={onHeaderDragStart}
@@ -157,7 +158,7 @@ export function useSideCollapse(key: any): [boolean, (v: any) => void] {
 export function CollapsedSideStrip({ label, onExpand, className, icon = 'chevL' }: any) {
     return (
         <button type="button" className={'side-strip' + (className ? ' ' + className : '')}
-            title={`Show ${label}`} aria-label={`Show ${label}`} aria-expanded="false"
+            title={t("Show {value1}", { value1: String(label) })} aria-label={t("Show {value1}", { value1: String(label) })} aria-expanded="false"
             onClick={onExpand}>
             <Icon name={icon} size={13} />
             <span className="side-strip-label">{label}</span>
@@ -169,7 +170,7 @@ export function CollapsedSideStrip({ label, onExpand, className, icon = 'chevL' 
 export function SideCollapseButton({ label, onCollapse, icon = 'chevR' }: any) {
     return (
         <button type="button" className="icon-btn side-collapse-btn"
-            title={`Hide ${label}`} aria-label={`Hide ${label}`} aria-expanded="true"
+            title={t("Hide {value1}", { value1: String(label) })} aria-label={t("Hide {value1}", { value1: String(label) })} aria-expanded="true"
             onClick={onCollapse}>
             <Icon name={icon} size={14} />
         </button>

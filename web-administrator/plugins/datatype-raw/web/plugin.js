@@ -1,27 +1,29 @@
 // plugins/datatype-raw/web/plugin.tsx
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t } = scope("datatype-raw");
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.raw";
 var opt = (key, label, options, def, hint) => ({ key, label, type: "select", options, default: def, hint });
 var code = (key, label, def, hint) => ({ key, label, type: "code", default: def, hint });
-var BATCH_SCRIPT_HINT = "JavaScript that splits the batch and returns the next message. Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.";
+var BATCH_SCRIPT_HINT = t("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 var DEF = {
   name: "RAW",
-  label: "Raw",
+  label: t("Raw"),
   order: 50,
   propertiesClass: `${PKG}.RawDataTypeProperties`,
   groups: [
     {
       key: "batchProperties",
-      label: "Batch",
+      label: t("Batch"),
       class: `${PKG}.RawBatchProperties`,
       fields: [
         opt(
           "splitType",
-          "Split Batch By",
-          [{ value: "JavaScript", label: "JavaScript" }],
+          t("Split Batch By"),
+          [{ value: "JavaScript", label: t("JavaScript") }],
           "JavaScript",
-          "Method for splitting the batch message. Only used when Process Batch is enabled in the connector."
+          t("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")
         ),
         code("batchScript", "JavaScript", null, BATCH_SCRIPT_HINT)
       ]

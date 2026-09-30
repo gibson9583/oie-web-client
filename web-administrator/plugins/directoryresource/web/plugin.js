@@ -1,5 +1,7 @@
 // plugins/directoryresource/web/plugin.tsx
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t, tx } = scope("directoryresource");
 var React = platform.React;
 var DIRECTORY_RESOURCE_CLASS = "com.mirth.connect.plugins.directoryresource.DirectoryResourceProperties";
 function register(platform2) {
@@ -25,13 +27,13 @@ function register(platform2) {
       };
     }, [id, api]);
     if (state.phase === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "loading-block" }, /* @__PURE__ */ React.createElement("div", { className: "spinner" }), "Loading libraries\u2026");
+      return /* @__PURE__ */ React.createElement("div", { className: "loading-block" }, tx("{value1}Loading libraries\u2026", { value1: /* @__PURE__ */ React.createElement("div", { className: "spinner" }) }));
     }
     if (state.phase === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "Library list unavailable");
+      return /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, t("Library list unavailable"));
     }
     if (!state.libs.length) {
-      return /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "No libraries loaded");
+      return /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, t("No libraries loaded"));
     }
     return /* @__PURE__ */ React.createElement("ul", { className: "m-0 pl-[16px] max-h-[162px] overflow-auto font-mono text-[11px]" }, state.libs.map((l, i) => /* @__PURE__ */ React.createElement("li", { key: `${i}-${l}` }, l)));
   }
@@ -41,7 +43,7 @@ function register(platform2) {
     const [directory, setDirectory] = React.useState(obj.directory || "");
     const [recursion, setRecursion] = React.useState(obj.directoryRecursion !== false);
     const [description, setDescription] = React.useState(obj.description || "");
-    return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Name"), /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Name")), /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "text",
@@ -59,7 +61,7 @@ function register(platform2) {
           if (refreshTable) refreshTable();
         }
       }
-    ), locked ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, "The Default Resource cannot be renamed") : null), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Directory"), /* @__PURE__ */ React.createElement(
+    ), locked ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, t("The Default Resource cannot be renamed")) : null), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Directory")), /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "text",
@@ -74,7 +76,7 @@ function register(platform2) {
           setDirectory(e.target.value);
         }
       }
-    ), locked ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, "The Default Resource directory cannot be changed") : null), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Subdirectories"), /* @__PURE__ */ React.createElement("label", { className: "check" }, /* @__PURE__ */ React.createElement(
+    ), locked ? /* @__PURE__ */ React.createElement("div", { className: "hint" }, t("The Default Resource directory cannot be changed")) : null), /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, t("Subdirectories")), /* @__PURE__ */ React.createElement("label", { className: "check" }, tx("{value1}Include All Subdirectories", { value1: /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "checkbox",
@@ -84,7 +86,7 @@ function register(platform2) {
           setRecursion(e.target.checked);
         }
       }
-    ), "Include All Subdirectories")), /* @__PURE__ */ React.createElement("div", { className: "field span-2" }, /* @__PURE__ */ React.createElement("label", null, "Description"), /* @__PURE__ */ React.createElement(
+    ) }))), /* @__PURE__ */ React.createElement("div", { className: "field span-2" }, /* @__PURE__ */ React.createElement("label", null, t("Description")), /* @__PURE__ */ React.createElement(
       "textarea",
       {
         value: description,
@@ -97,13 +99,13 @@ function register(platform2) {
           setDescription(e.target.value);
         }
       }
-    )), /* @__PURE__ */ React.createElement("div", { className: "field span-2" }, /* @__PURE__ */ React.createElement("label", null, "Loaded Libraries"), /* @__PURE__ */ React.createElement(LoadedLibraries, { entry, api: platform3.api })));
+    )), /* @__PURE__ */ React.createElement("div", { className: "field span-2" }, /* @__PURE__ */ React.createElement("label", null, t("Loaded Libraries")), /* @__PURE__ */ React.createElement(LoadedLibraries, { entry, api: platform3.api })));
   }
   platform2.registerResourceType("Directory", {
     type: "Directory",
-    label: "Directory",
+    label: t("Directory"),
     propertiesClass: DIRECTORY_RESOURCE_CLASS,
-    detailHeader: "Directory Settings",
+    detailHeader: t("Directory Settings"),
     /* New directory resource. ctx: { version, containerIsArray } — version
        mirrors an existing entry so the engine doesn't migrate from scratch;
        the @class is only needed for the array-shaped container. */

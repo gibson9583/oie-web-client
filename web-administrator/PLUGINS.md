@@ -211,12 +211,12 @@ export function register() {
 ### API version compatibility
 
 The framework surface — the `platform` registries plus the `@oie/web-*` exports —
-is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
-1.0 implements **4.7.0** against OIE **4.6.0**. The API minor can advance independently
-when exports are added; it is not the application or engine version. It follows
-major.minor (the patch is ignored for compatibility): the **minor** bumps when the
-surface *grows* (new registry, new export), the **major** bumps on any *breaking*
-change (a removed/renamed export or a changed signature).
+is versioned by an **API contract version**, `platform.apiVersion`. This web
+administrator implements **4.8.0** against OIE **4.6.0**. The API minor can advance
+independently when exports are added; it is not the application or engine version.
+It follows major.minor (the patch is ignored for compatibility): the **minor** bumps
+when the surface *grows* (new registry, new export), the **major** bumps on any
+*breaking* change (a removed/renamed export or a changed signature).
 
 Your plugin declares the minimum it was built against in `plugin.json`:
 
@@ -237,11 +237,15 @@ Guidance:
 - Omit `oie.apiMin` and your plugin always loads (no gate) — fine for plugins built
   and shipped in lockstep with a known web administrator (e.g. the bundled ones).
 - Set it to the version that introduced the newest capability you use, so an older
-  host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
-  for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
+  host degrades gracefully instead of throwing on a missing API. `registerMessageAction`
+  arrived in API `4.7`, and localization (`platform.i18n` and the `@oie/web-ui`
+  translation exports) arrived in API `4.8`.
+- To keep loading on an older host, keep the lower `apiMin` and detect the
+  capability on the supplied `platform` instead, for example `platform.i18n`. Do
+  not statically import an export the older host lacks. See [Localization](#localization).
 - Settings panel save declarations accept `Promise<boolean>` as well as `boolean`,
-  matching the host's existing await behavior. This is a type correction; the
-  runtime API remains `4.7`.
+  matching the host's existing await behavior. This is a type correction, not an
+  API change.
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
@@ -578,7 +582,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.7.0"` in Web Administrator 1.0, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — `"4.8.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
@@ -926,3 +930,46 @@ An engine plugin that registers its own REST servlet (via `apiProviders` in its
 exactly how the bundled `server-log` plugin reads
 `GET /api/extensions/serverlog`. Ship the engine half as a normal engine
 extension and the UI half as a web admin plugin with the same name.
+
+## Localization
+
+Localization arrived in API 4.8. A plugin that uses it unconditionally declares
+`"oie": { "apiMin": "4.8" }` and may import the shared `@oie/web-ui` exports.
+A plugin that must also load on API 4.7 keeps its lower minimum and detects
+`platform.i18n`, as below. Declare a
+plugin-scoped catalog in `plugin.json`; the host loads it before importing your
+module. Keep IDs, enum values, routes and RBAC groups stable, and translate only
+display labels. See the [i18n authoring and migration guide](../docs/i18n.md)
+for ICU messages, catalog manifests, fallback, `sectionLabel`, and validation.
+
+For a plugin that must also load on API 4.7, obtain the optional API inside
+`register` and use a small English fallback. Keep its messages to simple
+`{name}` placeholders; this shim is not an ICU implementation.
+
+```js
+export function register(platform) {
+    const t = platform.i18n?.scope('example').t ?? ((message, values = {}) =>
+        message.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g,
+            (token, name) => Object.hasOwn(values, name) ? String(values[name]) : token));
+    platform.registerNavItem({
+        id: 'example', path: '/example',
+        label: t('Example tools'),
+        section: 'example-tools', sectionLabel: t('Example tools')
+    });
+    // t('Connected to {name}', { name: server.name })
+}
+```
+
+Do not statically import `scope` on a 4.7-compatible plugin: an older import map
+cannot provide that export. Declare
+`"i18n": { "zh-CN": "i18n/zh-CN.json" }` at the manifest root and ship:
+
+```json
+{
+  "Example tools": "示例工具",
+  "Connected to {name}": "已连接到 {name}"
+}
+```
+
+The host loads this catalog before `register` runs. The same IDs and section
+keys continue to work on both hosts.

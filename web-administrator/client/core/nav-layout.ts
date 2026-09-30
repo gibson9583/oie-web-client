@@ -1,3 +1,5 @@
+import { compareText } from './i18n.js';
+import { builtinSectionLabel } from './labels.js';
 /*
  * User-configurable navigation rail: the merge and the edits, as pure functions.
  *
@@ -51,6 +53,7 @@ export interface NavItemLike {
     id: string;
     label: string;
     section?: string;
+    sectionLabel?: string;
     order?: number;
     [extra: string]: any;
 }
@@ -65,6 +68,7 @@ export interface MergedNavItem extends NavItemLike {
 export interface MergedNavGroup {
     id: string;
     label: string;
+    declaredLabel?: string;
     custom: boolean;
     renamed: boolean;
     items: MergedNavItem[];
@@ -142,7 +146,7 @@ export function mergeNav(
         const i = sectionOrder.indexOf(s);
         return i >= 0 ? i : (Number.isFinite(sectionRank[s]) ? sectionRank[s] : 500);
     };
-    declared.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    declared.sort((a, b) => rank(a) - rank(b) || compareText(a, b));
 
     // Stored order first, then anything new appended in declared order.
     const ids = l.groups.map((g) => g.id);
@@ -150,9 +154,11 @@ export function mergeNav(
 
     const groups: MergedNavGroup[] = ids.map((id) => {
         const stored: Partial<NavLayoutGroupPref> = l.groups.find((g) => g.id === id) || {};
+        const declaredLabel = stored.custom ? undefined : sectionLabel(id, list);
         return {
             id,
-            label: stored.label || id,
+            label: stored.label || declaredLabel || id,
+            declaredLabel,
             custom: !!stored.custom,
             renamed: !!stored.label,
             items: []
@@ -178,7 +184,7 @@ export function mergeNav(
             order: Number.isFinite(pref.order) ? pref.order! : 1000 + (Number.isFinite(it.order) ? it.order! : 0)
         });
     }
-    for (const g of groups) g.items.sort((a, b) => a.order - b.order || String(a.label).localeCompare(String(b.label)));
+    for (const g of groups) g.items.sort((a, b) => a.order - b.order || compareText(String(a.label), String(b.label)));
     return groups;
 }
 
@@ -258,11 +264,11 @@ export function withHidden(layout: NavLayout | null | undefined, itemId: string,
 }
 
 /** Rename a group. An empty name (or the declared id) clears the override. */
-export function withGroupLabel(layout: NavLayout | null | undefined, groupId: string, label: string | null | undefined): NavLayout {
+export function withGroupLabel(layout: NavLayout | null | undefined, groupId: string, label: string | null | undefined, declaredLabel?: string | null): NavLayout {
     const l = clone(layout);
     const e = groupEntry(l, groupId);
     const clean = String(label || '').trim();
-    if (!clean || clean === groupId) delete e.label; else e.label = clean;
+    if (!clean || clean === groupId || clean === declaredLabel) delete e.label; else e.label = clean;
     return dropEmpty(l);
 }
 
@@ -304,4 +310,8 @@ export function withoutGroup(layout: NavLayout | null | undefined, groupId: stri
         }
     }
     return dropEmpty(l);
+}
+
+function sectionLabel(id: string, items: NavItemLike[]): string {
+    return builtinSectionLabel(id) ?? items.find(item => item.section === id && item.sectionLabel)?.sectionLabel ?? id;
 }

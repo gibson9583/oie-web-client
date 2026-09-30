@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 /*
  * Resizable + reorderable columns for the hand-built `table.dt` grids
  * (Dashboard, Channels). The views render their header/body rows in a fixed
@@ -114,7 +115,7 @@ export function attachColumnMenu(headerEl: HTMLElement, { manager, columns, onCh
                 }
             };
         });
-        items.push('-', { label: 'Restore Default', onClick: () => { manager.reset(); onChange && onChange(); } });
+        items.push('-', { label: t("Restore Default"), onClick: () => { manager.reset(); onChange && onChange(); } });
         contextMenu(e.clientX, e.clientY, items);
     });
 }

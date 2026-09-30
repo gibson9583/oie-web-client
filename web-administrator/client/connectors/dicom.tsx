@@ -1,3 +1,4 @@
+import { t } from '../core/i18n.js';
 /*
  * DICOM Listener (DICOMReceiverProperties) / DICOM Sender (DICOMDispatcherProperties).
  * Field names and defaults mirror server/src/com/mirth/connect/connectors/dimse.
@@ -18,10 +19,10 @@ import {
 } from './react-forms.js';
 
 const TLS_OPTIONS = [
-    { value: 'notls', label: 'No TLS' },
-    { value: '3des', label: '3DES' },
-    { value: 'aes', label: 'AES' },
-    { value: 'without', label: 'Without' }
+    { value: 'notls', label: t("No TLS") },
+    { value: '3des', label: t("3DES") },
+    { value: 'aes', label: t("AES") },
+    { value: 'without', label: t("Without") }
 ];
 
 // Swing tlsNoRadioActionPerformed greys (setEnabled(false)) the whole keystore /
@@ -32,21 +33,21 @@ const tlsDisabled = (p: any) => p.tls === 'notls';
 /* TLS / keystore fields shared by listener and sender (same Java fields). */
 function tlsFields() {
     return [
-        { section: 'TLS Settings' },
-        { key: 'tls', label: 'TLS', type: 'select', options: TLS_OPTIONS, width: '120px', refresh: true },
-        { key: 'noClientAuth', label: 'Client Authentication TLS', type: 'radio', options: [
-            { value: false, label: 'Yes' },
-            { value: true, label: 'No' }
+        { section: t("TLS Settings") },
+        { key: 'tls', label: t("TLS"), type: 'select', options: TLS_OPTIONS, width: '120px', refresh: true },
+        { key: 'noClientAuth', label: t("Client Authentication TLS"), type: 'radio', options: [
+            { value: false, label: t("Yes") },
+            { value: true, label: t("No") }
         ], disabled: tlsDisabled },
-        { key: 'nossl2', label: 'Accept ssl v2 TLS handshake', type: 'radio', options: [
-            { value: false, label: 'Yes' },
-            { value: true, label: 'No' }
+        { key: 'nossl2', label: t("Accept ssl v2 TLS handshake"), type: 'radio', options: [
+            { value: false, label: t("Yes") },
+            { value: true, label: t("No") }
         ], disabled: tlsDisabled },
-        { key: 'keyStore', label: 'Keystore', type: 'text', width: '320px', disabled: tlsDisabled },
-        { key: 'keyStorePW', label: 'Keystore Password', type: 'password', width: '220px', disabled: tlsDisabled },
-        { key: 'trustStore', label: 'Trust Store', type: 'text', width: '320px', disabled: tlsDisabled },
-        { key: 'trustStorePW', label: 'Trust Store Password', type: 'password', width: '220px', disabled: tlsDisabled },
-        { key: 'keyPW', label: 'Key Password', type: 'password', width: '220px', disabled: tlsDisabled }
+        { key: 'keyStore', label: t("Keystore"), type: 'text', width: '320px', disabled: tlsDisabled },
+        { key: 'keyStorePW', label: t("Keystore Password"), type: 'password', width: '220px', disabled: tlsDisabled },
+        { key: 'trustStore', label: t("Trust Store"), type: 'text', width: '320px', disabled: tlsDisabled },
+        { key: 'trustStorePW', label: t("Trust Store Password"), type: 'password', width: '220px', disabled: tlsDisabled },
+        { key: 'keyPW', label: t("Key Password"), type: 'password', width: '220px', disabled: tlsDisabled }
     ];
 }
 
@@ -102,40 +103,40 @@ const dicomListener = {
     component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
-                { section: 'Connection Settings' },
-                listenerAddressField('listenerConnectorProperties.host', 'Listener Address'),
-                { key: 'listenerConnectorProperties.port', label: 'Listener Port', type: 'number', width: '90px', append: () => portsInUseButton() },
-                { key: 'applicationEntity', label: 'Application Entity', type: 'text', width: '220px' },
-                { key: 'async', label: 'Max Async operations', type: 'number', width: '110px' },
-                { key: 'pdv1', label: 'Pack PDV', type: 'radio', options: YES_NO },
-                { key: 'reaper', label: 'DIMSE-RSP interval period (s)', type: 'number', width: '110px' },
-                { key: 'releaseTo', label: 'A-RELEASE-RP timeout (s)', type: 'number', width: '110px' },
-                { key: 'soCloseDelay', label: 'Socket Close Delay After A-ABORT (ms)', type: 'number', width: '110px' },
-                { key: 'requestTo', label: 'ASSOCIATE-RQ timeout (ms)', type: 'number', width: '110px' },
-                { key: 'idleTo', label: 'DIMSE-RQ timeout (ms)', type: 'number', width: '110px' },
-                { key: 'rspDelay', label: 'DIMSE-RSP delay (ms)', type: 'number', width: '110px' },
-                { key: 'sndpdulen', label: 'P-DATA-TF PDUs max length sent (KB)', type: 'number', width: '110px' },
-                { key: 'rcvpdulen', label: 'P-DATA-TF PDUs max length received (KB)', type: 'number', width: '110px' },
-                { key: 'sosndbuf', label: 'Send Socket Buffer Size (KB)', type: 'number', width: '110px' },
-                { key: 'sorcvbuf', label: 'Receive Socket Buffer Size (KB)', type: 'number', width: '110px' },
-                { key: 'bufSize', label: 'Transcoder Buffer Size (KB)', type: 'number', width: '110px' },
+                { section: t("Connection Settings") },
+                listenerAddressField('listenerConnectorProperties.host', t("Listener Address")),
+                { key: 'listenerConnectorProperties.port', label: t("Listener Port"), type: 'number', width: '90px', append: () => portsInUseButton() },
+                { key: 'applicationEntity', label: t("Application Entity"), type: 'text', width: '220px' },
+                { key: 'async', label: t("Max Async operations"), type: 'number', width: '110px' },
+                { key: 'pdv1', label: t("Pack PDV"), type: 'radio', options: YES_NO },
+                { key: 'reaper', label: t("DIMSE-RSP interval period (s)"), type: 'number', width: '110px' },
+                { key: 'releaseTo', label: t("A-RELEASE-RP timeout (s)"), type: 'number', width: '110px' },
+                { key: 'soCloseDelay', label: t("Socket Close Delay After A-ABORT (ms)"), type: 'number', width: '110px' },
+                { key: 'requestTo', label: t("ASSOCIATE-RQ timeout (ms)"), type: 'number', width: '110px' },
+                { key: 'idleTo', label: t("DIMSE-RQ timeout (ms)"), type: 'number', width: '110px' },
+                { key: 'rspDelay', label: t("DIMSE-RSP delay (ms)"), type: 'number', width: '110px' },
+                { key: 'sndpdulen', label: t("P-DATA-TF PDUs max length sent (KB)"), type: 'number', width: '110px' },
+                { key: 'rcvpdulen', label: t("P-DATA-TF PDUs max length received (KB)"), type: 'number', width: '110px' },
+                { key: 'sosndbuf', label: t("Send Socket Buffer Size (KB)"), type: 'number', width: '110px' },
+                { key: 'sorcvbuf', label: t("Receive Socket Buffer Size (KB)"), type: 'number', width: '110px' },
+                { key: 'bufSize', label: t("Transcoder Buffer Size (KB)"), type: 'number', width: '110px' },
                 {
-                    key: 'bigEndian', label: 'Accept Explict VR Big Endian', type: 'radio', options: YES_NO, refresh: true,
+                    key: 'bigEndian', label: t("Accept Explict VR Big Endian"), type: 'radio', options: YES_NO, refresh: true,
                     disabled: transferSyntaxLocked,
                     onSet: (p: any) => { if (asBool(p.bigEndian)) p.defts = false; }
                 },
                 {
-                    key: 'defts', label: 'Only Accept Default Transfer Syntax', type: 'radio', options: YES_NO, refresh: true,
+                    key: 'defts', label: t("Only Accept Default Transfer Syntax"), type: 'radio', options: YES_NO, refresh: true,
                     disabled: deftsLocked,
                     onSet: (p: any) => { if (asBool(p.defts)) { p.bigEndian = false; p.nativeData = false; } }
                 },
                 {
-                    key: 'nativeData', label: 'Only Uncompressed Pixel Data', type: 'radio', options: YES_NO, refresh: true,
+                    key: 'nativeData', label: t("Only Uncompressed Pixel Data"), type: 'radio', options: YES_NO, refresh: true,
                     disabled: transferSyntaxLocked,
                     onSet: (p: any) => { if (asBool(p.nativeData)) p.defts = false; }
                 },
-                { key: 'tcpDelay', label: 'TCP Delay', type: 'radio', options: YES_NO },
-                { key: 'dest', label: 'Store Received Objects in Directory', type: 'text', width: '320px' },
+                { key: 'tcpDelay', label: t("TCP Delay"), type: 'radio', options: YES_NO },
+                { key: 'dest', label: t("Store Received Objects in Directory"), type: 'text', width: '320px' },
                 ...tlsFields()
             ]} />
         );
@@ -144,8 +145,8 @@ const dicomListener = {
     // ListenerSettingsPanel.checkProperties requires Listener Address + Listener Port.
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'listenerConnectorProperties.host', label: 'Listener Address' },
-            { key: 'listenerConnectorProperties.port', label: 'Listener Port' }
+            { key: 'listenerConnectorProperties.host', label: t("Listener Address") },
+            { key: 'listenerConnectorProperties.port', label: t("Listener Port") }
         ]);
     }
 };
@@ -198,42 +199,42 @@ const dicomSender = {
     component({ properties, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
-                { section: 'Connection Settings' },
-                { key: 'host', label: 'Remote Host', type: 'text', width: '200px' },
-                { key: 'localHost', label: 'Local Host', type: 'text', width: '200px' },
-                { key: 'port', label: 'Remote Port', type: 'number', width: '90px' },
-                { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', append: () => portsInUseButton() },
-                { key: 'applicationEntity', label: 'Remote Application Entity', type: 'text', width: '220px' },
-                { key: 'localApplicationEntity', label: 'Local Application Entity', type: 'text', width: '220px' },
-                { key: 'async', label: 'Max Async operations', type: 'number', width: '110px' },
-                { key: 'priority', label: 'Priority', type: 'radio', options: [
-                    { value: 'high', label: 'High' },
-                    { value: 'med', label: 'Medium' },
-                    { value: 'low', label: 'Low' }
+                { section: t("Connection Settings") },
+                { key: 'host', label: t("Remote Host"), type: 'text', width: '200px' },
+                { key: 'localHost', label: t("Local Host"), type: 'text', width: '200px' },
+                { key: 'port', label: t("Remote Port"), type: 'number', width: '90px' },
+                { key: 'localPort', label: t("Local Port"), type: 'number', width: '90px', append: () => portsInUseButton() },
+                { key: 'applicationEntity', label: t("Remote Application Entity"), type: 'text', width: '220px' },
+                { key: 'localApplicationEntity', label: t("Local Application Entity"), type: 'text', width: '220px' },
+                { key: 'async', label: t("Max Async operations"), type: 'number', width: '110px' },
+                { key: 'priority', label: t("Priority"), type: 'radio', options: [
+                    { value: 'high', label: t("High") },
+                    { value: 'med', label: t("Medium") },
+                    { value: 'low', label: t("Low") }
                 ] },
-                { key: 'stgcmt', label: 'Request Storage Commitment', type: 'radio', options: YES_NO },
-                { key: 'username', label: 'User Name', type: 'text', width: '220px' },
-                { key: 'passcode', label: 'Pass Code', type: 'password', width: '220px' },
-                { section: 'Settings' },
-                { key: 'uidnegrsp', label: 'Request Positive User Identity Response', type: 'radio', options: YES_NO },
-                { key: 'pdv1', label: 'Pack PDV', type: 'radio', options: YES_NO },
-                { key: 'reaper', label: 'DIMSE-RSP interval period (s)', type: 'number', width: '110px' },
-                { key: 'sndpdulen', label: 'P-DATA-TF PDUs max length sent (KB)', type: 'number', width: '110px' },
-                { key: 'releaseTo', label: 'A-RELEASE-RP timeout (s)', type: 'number', width: '110px' },
-                { key: 'rcvpdulen', label: 'P-DATA-TF PDUs  max length received (KB)', type: 'number', width: '110px' },
-                { key: 'rspTo', label: 'DIMSE-RSP timeout (s)', type: 'number', width: '110px' },
-                { key: 'sosndbuf', label: 'Send Socket Buffer Size (KB)', type: 'number', width: '110px' },
-                { key: 'shutdownDelay', label: 'Shutdown delay (ms)', type: 'number', width: '110px' },
-                { key: 'sorcvbuf', label: 'Receive Socket Buffer Size (KB)', type: 'number', width: '110px' },
-                { key: 'soCloseDelay', label: 'Socket Close Delay After A-ABORT (ms)', type: 'number', width: '110px' },
-                { key: 'bufSize', label: 'Transcoder Buffer Size (KB)', type: 'number', width: '110px' },
-                { key: 'acceptTo', label: 'Timeout A-ASSOCIATE-AC (ms)', type: 'number', width: '110px' },
-                { key: 'connectTo', label: 'TCP Connection Timeout (ms)', type: 'number', width: '110px' },
-                { key: 'tcpDelay', label: 'TCP Delay', type: 'radio', options: YES_NO },
-                { key: 'ts1', label: 'Default Presentation Syntax', type: 'radio', options: YES_NO },
+                { key: 'stgcmt', label: t("Request Storage Commitment"), type: 'radio', options: YES_NO },
+                { key: 'username', label: t("User Name"), type: 'text', width: '220px' },
+                { key: 'passcode', label: t("Pass Code"), type: 'password', width: '220px' },
+                { section: t("Settings") },
+                { key: 'uidnegrsp', label: t("Request Positive User Identity Response"), type: 'radio', options: YES_NO },
+                { key: 'pdv1', label: t("Pack PDV"), type: 'radio', options: YES_NO },
+                { key: 'reaper', label: t("DIMSE-RSP interval period (s)"), type: 'number', width: '110px' },
+                { key: 'sndpdulen', label: t("P-DATA-TF PDUs max length sent (KB)"), type: 'number', width: '110px' },
+                { key: 'releaseTo', label: t("A-RELEASE-RP timeout (s)"), type: 'number', width: '110px' },
+                { key: 'rcvpdulen', label: t("P-DATA-TF PDUs  max length received (KB)"), type: 'number', width: '110px' },
+                { key: 'rspTo', label: t("DIMSE-RSP timeout (s)"), type: 'number', width: '110px' },
+                { key: 'sosndbuf', label: t("Send Socket Buffer Size (KB)"), type: 'number', width: '110px' },
+                { key: 'shutdownDelay', label: t("Shutdown delay (ms)"), type: 'number', width: '110px' },
+                { key: 'sorcvbuf', label: t("Receive Socket Buffer Size (KB)"), type: 'number', width: '110px' },
+                { key: 'soCloseDelay', label: t("Socket Close Delay After A-ABORT (ms)"), type: 'number', width: '110px' },
+                { key: 'bufSize', label: t("Transcoder Buffer Size (KB)"), type: 'number', width: '110px' },
+                { key: 'acceptTo', label: t("Timeout A-ASSOCIATE-AC (ms)"), type: 'number', width: '110px' },
+                { key: 'connectTo', label: t("TCP Connection Timeout (ms)"), type: 'number', width: '110px' },
+                { key: 'tcpDelay', label: t("TCP Delay"), type: 'radio', options: YES_NO },
+                { key: 'ts1', label: t("Default Presentation Syntax"), type: 'radio', options: YES_NO },
                 ...tlsFields(),
-                { section: 'Template' },
-                { key: 'template', label: 'Template', type: 'code', minHeight: '260px' }
+                { section: t("Template") },
+                { key: 'template', label: t("Template"), type: 'code', minHeight: '260px' }
             ]} />
         );
     },
@@ -241,9 +242,9 @@ const dicomSender = {
     // (host also enforces a minimum length, skipped here as a numeric/format check).
     validate(properties: any) {
         return requireFields(properties, [
-            { key: 'host', label: 'Remote Host' },
-            { key: 'port', label: 'Remote Port' },
-            { key: 'template', label: 'Template' }
+            { key: 'host', label: t("Remote Host") },
+            { key: 'port', label: t("Remote Port") },
+            { key: 'template', label: t("Template") }
         ]);
     }
 };

@@ -1,3 +1,4 @@
+import { t } from '../../core/i18n.js';
 import { h, modal, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
 
@@ -75,15 +76,15 @@ function promptForRelated(action: LifecycleAction, ids: string[], statuses: any[
     const names = new Map(channels.map(channel => [String(channel.id), channel.name || channel.id]));
     for (const status of statuses) names.set(String(status.channelId), status.name || status.channelId);
     return new Promise(resolve => modal({
-        title: 'Channel dependencies',
+        title: t("Channel dependencies"),
         body: h('div',
-            h('div.mb-2', `There ${ids.length === 1 ? 'is' : 'are'} ${ids.length} additional channel${ids.length === 1 ? '' : 's'} in the dependency chain:`),
+            h('div.mb-2', t('{count, plural, one {There is {count} additional channel in the dependency chain:} other {There are {count} additional channels in the dependency chain:}}', { count: ids.length })),
             h('ul.pl-5', ids.map(id => h('li', names.get(id) || id)))),
         onClose: () => resolve(null),
         buttons: [
-            { label: 'Cancel', onClick: () => resolve(null) },
-            { label: 'Selected only', onClick: () => resolve('selected') },
-            { label: `Include and ${action}`, primary: true, onClick: () => resolve('include') }
+            { label: t("Cancel"), onClick: () => resolve(null) },
+            { label: t("Selected only"), onClick: () => resolve('selected') },
+            { label: t('Include and {action, select, deploy {deploy} start {start} stop {stop} pause {pause} halt {halt} undeploy {undeploy} other {{action}}}', { action }), primary: true, onClick: () => resolve('include') }
         ]
     }));
 }
@@ -105,7 +106,7 @@ export async function runLifecycle(action: LifecycleAction, selectedIds: string[
     if (action === 'deploy') {
         const enabled = new Map(channels.map(channel => [String(channel.id), channel?.exportData?.metadata?.enabled !== false]));
         const disabled = actionableIds.filter(id => enabled.get(id) === false);
-        if (disabled.length) toast('Disabled channels will not be deployed.', 'warn');
+        if (disabled.length) toast(t("Disabled channels will not be deployed."), 'warn');
         actionableIds = actionableIds.filter(id => enabled.get(id) !== false);
         if (!actionableIds.length) return false;
     }

@@ -1,0 +1,14 @@
+{
+  "Description": "描述",
+  "Directory": "目录",
+  "Directory Settings": "目录设置",
+  "Library list unavailable": "模板库列表不可用",
+  "Loaded Libraries": "已加载的库",
+  "Name": "名称",
+  "No libraries loaded": "未加载模板库",
+  "Subdirectories": "子目录",
+  "The Default Resource cannot be renamed": "无法重命名默认资源",
+  "The Default Resource directory cannot be changed": "无法更改默认资源目录",
+  "{value1}Include All Subdirectories": "{value1}包含所有子目录",
+  "{value1}Loading libraries…": "{value1}正在加载模板库…"
+}

@@ -1,3 +1,6 @@
+import { t } from '../../core/i18n.js';
+import { LanguageSelect } from '../language-select.jsx';
+import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Login form (React port of views/login.js). Authenticates against
  * POST /users/_login and reports the LoginStatus. onSuccess(user) is called
@@ -10,9 +13,8 @@
  * later /api call) routes to that engine (server/proxy.js).
  */
 import { getLoginAuthenticator } from '../../core/login-auth.js';
-import { appUrl } from '../../core/deployment.js';
 import { markSsoSession, markSsoPending, hasSsoPending, takeSsoPending, takeAutoRedirectHold } from '../sso-session.js';
-import { currentRoutePath, routeUrl } from '../../core/deployment.js';
+import { appUrl, currentRoutePath, routeUrl } from '../../core/deployment.js';
 
 import { useState, useRef, useEffect } from 'react';
 import { useStoreKey } from '../bridges.jsx';
@@ -22,10 +24,10 @@ import { adoptEngineContext, beginLogin } from '../../core/engine-fetch.js';
 import { setIdleLocked } from '../../core/idle-logout.js';
 
 const STATUS_MESSAGES = {
-    FAIL: 'Invalid username or password.',
-    FAIL_EXPIRED: 'Your password has expired. Contact an administrator.',
-    FAIL_LOCKED_OUT: 'Account locked out. Try again later.',
-    FAIL_VERSION_MISMATCH: 'Client/server version mismatch.'
+    FAIL: t("Invalid username or password."),
+    FAIL_EXPIRED: t("Your password has expired. Contact an administrator."),
+    FAIL_LOCKED_OUT: t("Account locked out. Try again later."),
+    FAIL_VERSION_MISMATCH: t("Client/server version mismatch.")
 };
 
 // Session cookie (path=/ so it reaches /api), cleared by Switch Engine / sign-out.
@@ -72,7 +74,7 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
         adoptEngineContext();
         return null;
     }
-    if (sel === '') return 'Choose an engine.';   // stale remembered engine (see initialSelection) — don't guess
+    if (sel === '') return t("Choose an engine.");   // stale remembered engine (see initialSelection) — don't guess
     if (sel === 'custom') {
         const url = customUrl.trim();
         // Validate HERE, where the message can say what is wrong: an unroutable
@@ -81,7 +83,7 @@ function commitEngineSelection(showPicker: boolean, sel: string, customUrl: stri
         let parsed: URL | null = null;
         try { parsed = new URL(url); } catch { /* handled below */ }
         if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
-            return url ? 'Enter a full engine URL, e.g. https://host:8443.' : 'Enter an engine URL.';
+            return url ? t("Enter a full engine URL, e.g. https://host:8443.") : t("Enter an engine URL.");
         }
         setCookie('oie-engine', 'custom');
         setCookie('oie-engine-url', url);
@@ -232,14 +234,14 @@ export function LoginForm({ onSuccess }: any) {
         try {
             const started = await flowCall('/extensions/oidcauth/start', { return: returnPath, prompt: ssoReauth ? 'login' : '' });
             if (!started.ok || !started.authorizeUrl) {
-                setError(started.message || 'SSO is unavailable. Use local sign-in.');
+                setError(started.message || t("SSO is unavailable. Use local sign-in."));
                 chooseLocal(true);
                 return;
             }
             markSsoPending();
             location.assign(started.authorizeUrl);
         } catch (err: any) {
-            setError(err.message || 'Could not reach the engine.');
+            setError(err.message || t("Could not reach the engine."));
             chooseLocal(true);
         }
     }
@@ -273,7 +275,7 @@ export function LoginForm({ onSuccess }: any) {
         (async () => {
             try {
                 if (callback.error) {
-                    setError('The identity provider declined sign-in.');
+                    setError(t("The identity provider declined sign-in."));
                     chooseLocal(true);
                     setSsoReauth(true);
                     return;
@@ -282,12 +284,12 @@ export function LoginForm({ onSuccess }: any) {
                 try {
                     done = await flowCall('/extensions/oidcauth/callback', { code: callback.code, state: callback.state });
                 } catch (err: any) {
-                    setError(err.message || 'Could not reach the engine.');
+                    setError(err.message || t("Could not reach the engine."));
                     chooseLocal(true);
                     return;
                 }
                 if (!done.ok || !done.ticket) {
-                    setError(done.message || 'SSO sign-in failed.');
+                    setError(done.message || t("SSO sign-in failed."));
                     chooseLocal(true);
                     setSsoReauth(true);
                     return;
@@ -386,8 +388,7 @@ export function LoginForm({ onSuccess }: any) {
                     // It matters more for SSO, not less: an SSO account has no local
                     // password to fall back on, so "not available" without a next
                     // step is a dead end.
-                    setError('This engine requires a multi-factor login method that is not available in the web administrator. '
-                        + 'Use the desktop Administrator, or install the matching web login plugin.');
+                    setError(t("This engine requires a multi-factor login method that is not available in the web administrator. Use the desktop Administrator, or install the matching web login plugin."));
                     return;
                 }
                 const ctx = {
@@ -414,7 +415,7 @@ export function LoginForm({ onSuccess }: any) {
             // The engine's own message, then the status it named, then the generic
             // line. A status carrying no message — FAIL_LOCKED_OUT, FAIL_EXPIRED —
             // must still be explained, whichever credential was used.
-            setError(result?.message || (STATUS_MESSAGES as any)[status] || (opts.sso ? 'SSO sign-in failed.' : 'Login failed.'));
+            setError(result?.message || (STATUS_MESSAGES as any)[status] || (opts.sso ? t("SSO sign-in failed.") : t("Login failed.")));
             if (opts.sso) { chooseLocal(true); setSsoReauth(true); }
         } catch (err: any) {
             if (opts.sso && err && err.status === 403) {
@@ -422,12 +423,12 @@ export function LoginForm({ onSuccess }: any) {
                 // RBAC install with no role assigned — e.g. a JIT user and no
                 // default role). Say so; the generic line sends people debugging
                 // cookies when the fix is a role assignment.
-                setError('Signed in via SSO, but this account has no permissions on this engine. Assign it an RBAC role (or set a default role in the OIDC policy) and sign in again.');
+                setError(t("Signed in via SSO, but this account has no permissions on this engine. Assign it an RBAC role (or set a default role in the OIDC policy) and sign in again."));
                 return;
             }
             // A 401 from the login endpoint means bad credentials, not an expired
             // session (which the global handler would otherwise claim).
-            setError(err.status === 401 ? (opts.sso ? 'SSO sign-in was rejected.' : 'Invalid username or password.') : (err.message || 'Could not reach the engine.'));
+            setError(err.status === 401 ? (opts.sso ? t("SSO sign-in was rejected.") : t("Invalid username or password.")) : (err.message || t("Could not reach the engine.")));
             if (opts.sso) { chooseLocal(true); setSsoReauth(true); }
         }
     }
@@ -441,63 +442,62 @@ export function LoginForm({ onSuccess }: any) {
                 onKeyDown={(e: any) => {
                     // Explicit Enter-to-submit so pressing Enter in a field logs in
                     // regardless of native implicit-submission quirks.
-                    if (e.key === 'Enter' && !e.isComposing && e.target.tagName === 'INPUT') {
+                    if (isCommitEnter(e) && e.target.tagName === 'INPUT') {
                         e.preventDefault();
                         submit(e);
                     }
                 }}>
                 <div className="login-brand">
                     <span>
-                        <img className="logo-on-light block w-[108px]" src={appUrl('/assets/oie_logo_bottom_text.svg')} alt="Open Integration Engine" />
-                        <img className="logo-on-dark block w-[169px]" src={appUrl('/assets/oie_white_logo_banner_text_215x30.png')} alt="Open Integration Engine" />
+                        <img className="logo-on-light block w-[108px]" src={appUrl('/assets/oie_logo_bottom_text.svg')} alt={t("Open Integration Engine")} />
+                        <img className="logo-on-dark block w-[169px]" src={appUrl('/assets/oie_white_logo_banner_text_215x30.png')} alt={t("Open Integration Engine")} />
                     </span>
-                    <div className="brand-sub">WEB ADMINISTRATOR</div>
+                    <div className="brand-sub">{t("WEB ADMINISTRATOR")}</div>
                 </div>
                 {error ? <div className="login-error">{error}</div> : null}
                 {showPicker ? (
                     <div className="field">
-                        <label>Engine</label>
-                        <select value={sel} onChange={(e: any) => setSel(e.target.value)}>
+                        <label>{t("Engine")}</label>
+                        <select aria-label={t("Engine")} value={sel} onChange={(e: any) => setSel(e.target.value)}>
                             {/* Only when the remembered engine is gone: a real pick
                                 replaces it, and it can't be re-selected. */}
-                            {sel === '' ? <option value="" disabled>Select an engine…</option> : null}
+                            {sel === '' ? <option value="" disabled>{t("Select an engine…")}</option> : null}
                             {engines.map((eng: any) => (
                                 <option key={eng.key} value={eng.key}>{eng.name}</option>
                             ))}
-                            {devMode ? <option value="custom">Custom URL…</option> : null}
+                            {devMode ? <option value="custom">{t("Custom URL…")}</option> : null}
                         </select>
                     </div>
                 ) : null}
                 {showPicker && sel === 'custom' ? (
                     <div className="field">
-                        <label>Engine URL</label>
+                        <label>{t("Engine URL")}</label>
                         <input type="text" autoComplete="off" placeholder="https://host:8443"
                             value={customUrl} onChange={(e: any) => setCustomUrl(e.target.value)} />
                     </div>
                 ) : null}
                 {sso && !localMode ? (
                     <>
-                        <button className="btn btn-primary w-full justify-center p-[8px]" type="button" onClick={startSso}>
-                            Sign in with {sso.providerLabel || 'SSO'}
-                        </button>
-                        <button className="btn w-full justify-center mt-2" type="button" onClick={() => chooseLocal(true)}>Use local sign-in</button>
+                        <button className="btn btn-primary w-full justify-center p-[8px]" type="button" onClick={startSso}>{t("Sign in with {value1}", { value1: sso.providerLabel || 'SSO' })}</button>
+                        <button className="btn w-full justify-center mt-2" type="button" onClick={() => chooseLocal(true)}>{t("Use local sign-in")}</button>
                     </>
                 ) : <>
                 <div className="field">
-                    <label>Username</label>
-                    <input ref={userRef} type="text" autoComplete="username" placeholder="admin" required
+                    <label>{t("Username")}</label>
+                    <input ref={userRef} type="text" autoComplete="username" placeholder={t("admin")} required
                         value={username} onChange={(e: any) => setUsername(e.target.value)} />
                 </div>
                 <div className="field">
-                    <label>Password</label>
+                    <label>{t("Password")}</label>
                     <input type="password" autoComplete="current-password" placeholder="••••••••" required
                         value={password} onChange={(e: any) => setPassword(e.target.value)} />
                 </div>
                 <button className="btn btn-primary w-full justify-center p-[8px]" type="submit" disabled={submitting}>
-                    {submitting ? 'Signing in…' : 'Sign in'}
+                    {submitting ? t("Signing in…") : t("Sign in")}
                 </button>
-                {sso ? <button className="btn w-full justify-center mt-2" type="button" onClick={() => chooseLocal(false)}>Sign in with SSO</button> : null}
+                {sso ? <button className="btn w-full justify-center mt-2" type="button" onClick={() => chooseLocal(false)}>{t("Sign in with SSO")}</button> : null}
                 </>}
+                <div className="language-picker"><span>{t("Language")}</span><LanguageSelect /></div>
             </form>
             {/* Why you are back here (an expired session, a signed-out tab) — below the
                 card, quiet, and never a dialog: there is nothing to acknowledge. */}

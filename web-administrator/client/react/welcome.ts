@@ -1,3 +1,5 @@
+import { COUNTRIES } from '../core/country-regions.js';
+import { formatList, t, locale, compareText } from '../core/i18n.js';
 /*
  * First-login "Welcome" dialog — the web port of Swing's FirstLoginDialog /
  * UserEditPanel (com.mirth.connect.client.ui.FirstLoginDialog). On a user's
@@ -13,7 +15,7 @@ import { h, modal, field, textInput, select, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { passwordRequirementHints } from '../core/passwords.js';
 
-export const DEFAULT_OPTION = '--Select an option--';
+export const DEFAULT_OPTION = t('--Select an option--');
 
 /* US state/territory codes (Swing UserEditPanel.STATE_TERRITORY_CODES). The
    State/Territory field is US-only — disabled for any other country. */
@@ -33,254 +35,6 @@ export const INDUSTRIES = ['ACO', 'CHC/FQHC', 'Clinic', 'HIE', 'HIT Consulting',
     'Network', 'Other', 'Payer', 'Physicians Group', 'Private Practice', 'Public Health Agency',
     'Radiology Center', 'University'];
 
-/* Country display names. Swing derives these at runtime from libphonenumber's
-   supported regions (alphabetically sorted); mirrored here as a static list. */
-export const COUNTRIES = `Åland Islands
-Afghanistan
-Albania
-Algeria
-American Samoa
-Andorra
-Angola
-Anguilla
-Antarctica
-Antigua and Barbuda
-Argentina
-Armenia
-Aruba
-Australia
-Austria
-Azerbaijan
-Bahamas
-Bahrain
-Bangladesh
-Barbados
-Belarus
-Belgium
-Belize
-Benin
-Bermuda
-Bhutan
-Bolivia
-Bosnia and Herzegovina
-Botswana
-Bouvet Island
-Brazil
-British Indian Ocean Territory
-Brunei
-Bulgaria
-Burkina Faso
-Burundi
-Cambodia
-Cameroon
-Canada
-Cape Verde
-Cayman Islands
-Central African Republic
-Chad
-Chile
-China
-Christmas Island
-Cocos (Keeling) Islands
-Colombia
-Comoros
-Congo
-Congo (Democratic Republic)
-Cook Islands
-Costa Rica
-Croatia
-Cuba
-Cyprus
-Czech Republic
-Côte d'Ivoire
-Denmark
-Djibouti
-Dominica
-Dominican Republic
-East Timor
-Ecuador
-Egypt
-El Salvador
-Equatorial Guinea
-Eritrea
-Estonia
-Eswatini
-Ethiopia
-Falkland Islands
-Faroe Islands
-Fiji
-Finland
-France
-French Guiana
-French Polynesia
-French Southern Territories
-Gabon
-Gambia
-Georgia
-Germany
-Ghana
-Gibraltar
-Greece
-Greenland
-Grenada
-Guadeloupe
-Guam
-Guatemala
-Guernsey
-Guinea
-Guinea-Bissau
-Guyana
-Haiti
-Heard Island and McDonald Islands
-Honduras
-Hong Kong
-Hungary
-Iceland
-India
-Indonesia
-Iran
-Iraq
-Ireland
-Isle of Man
-Israel
-Italy
-Jamaica
-Japan
-Jersey
-Jordan
-Kazakhstan
-Kenya
-Kiribati
-Kosovo
-Kuwait
-Kyrgyzstan
-Laos
-Latvia
-Lebanon
-Lesotho
-Liberia
-Libya
-Liechtenstein
-Lithuania
-Luxembourg
-Macao
-Madagascar
-Malawi
-Malaysia
-Maldives
-Mali
-Malta
-Marshall Islands
-Martinique
-Mauritania
-Mauritius
-Mayotte
-Mexico
-Micronesia
-Moldova
-Monaco
-Mongolia
-Montenegro
-Montserrat
-Morocco
-Mozambique
-Myanmar
-Namibia
-Nauru
-Nepal
-Netherlands
-New Caledonia
-New Zealand
-Nicaragua
-Niger
-Nigeria
-Niue
-Norfolk Island
-North Korea
-North Macedonia
-Northern Mariana Islands
-Norway
-Oman
-Pakistan
-Palau
-Palestine
-Panama
-Papua New Guinea
-Paraguay
-Peru
-Philippines
-Poland
-Portugal
-Puerto Rico
-Qatar
-Réunion
-Romania
-Russia
-Rwanda
-Saint Barthélemy
-Saint Helena
-Saint Kitts and Nevis
-Saint Lucia
-Saint Martin
-Saint Pierre and Miquelon
-Saint Vincent and the Grenadines
-Samoa
-San Marino
-Sao Tome and Principe
-Saudi Arabia
-Senegal
-Serbia
-Seychelles
-Sierra Leone
-Singapore
-Sint Maarten
-Slovakia
-Slovenia
-Solomon Islands
-Somalia
-South Africa
-South Georgia and the South Sandwich Islands
-South Korea
-South Sudan
-Spain
-Sri Lanka
-Sudan
-Suriname
-Svalbard and Jan Mayen
-Sweden
-Switzerland
-Syria
-Taiwan
-Tajikistan
-Tanzania
-Thailand
-Togo
-Tokelau
-Tonga
-Trinidad and Tobago
-Tunisia
-Turkey
-Turkmenistan
-Turks and Caicos Islands
-Tuvalu
-Uganda
-Ukraine
-United Arab Emirates
-United Kingdom
-United States
-United States Virgin Islands
-Uruguay
-Uzbekistan
-Vanuatu
-Vatican City
-Venezuela
-Vietnam
-Wallis and Futuna
-Western Sahara
-Yemen
-Zambia
-Zimbabwe`.split('\n').map(s => s.trim()).filter(Boolean);
-
 /* The engine returns password-policy violations as a list of strings. */
 function passwordViolations(result: any) {
     return api.asList(result, 'string').map(String).filter(s => s.trim());
@@ -291,9 +45,44 @@ function req(label: any) {
     return h('span', label + ' ', h('span', { style: { color: 'var(--danger, #d9534f)' } }, '*'));
 }
 
+const profileLabels: Record<string, string> = {
+    "C-Suite": t("C-Suite"),
+    "Consultant - Advisor": t("Consultant - Advisor"),
+    "Consultant - Engineer": t("Consultant - Engineer"),
+    "Consultant - Implementer": t("Consultant - Implementer"),
+    "Employee - Engineer": t("Employee - Engineer"),
+    "Employee - Manager": t("Employee - Manager"),
+    "Employee - Director": t("Employee - Director"),
+    "Employee - VP": t("Employee - VP"),
+    "Independent Contractor": t("Independent Contractor"),
+    "Other": t("Other"),
+    "ACO": t("ACO"),
+    "CHC/FQHC": t("CHC/FQHC"),
+    "Clinic": t("Clinic"),
+    "HIE": t("HIE"),
+    "HIT Consulting": t("HIT Consulting"),
+    "HIT Software": t("HIT Software"),
+    "Hospital": t("Hospital"),
+    "Lab": t("Lab"),
+    "Network": t("Network"),
+    "Payer": t("Payer"),
+    "Physicians Group": t("Physicians Group"),
+    "Private Practice": t("Private Practice"),
+    "Public Health Agency": t("Public Health Agency"),
+    "Radiology Center": t("Radiology Center"),
+    "University": t("University"),
+};
+
+export function countryOptions() {
+    if (locale() === 'en' || locale() === 'en-XA') return COUNTRIES.map(([, name]) => ({ value: name, label: name }));
+    const names = new Intl.DisplayNames(locale(), { type: 'region' });
+    return COUNTRIES.map(([code, name]) => ({ value: name, label: names.of(code) || name }))
+        .sort((a, b) => compareText(a.label, b.label));
+}
+
 /* Prepend the "--Select an option--" placeholder to a value list. */
 export function placeholderOpts(list: any) {
-    return [{ value: '', label: DEFAULT_OPTION }, ...list.map((v: any) => ({ value: v, label: v }))];
+    return [{ value: '', label: DEFAULT_OPTION }, ...list.map((v: any) => ({ value: v, label: profileLabels[v] || v }))];
 }
 
 function showWelcomeDialog(user: any) {
@@ -303,14 +92,14 @@ function showWelcomeDialog(user: any) {
         const confirmInput = h('input', { type: 'password', autocomplete: 'new-password' });
         const pwHint = h('div.hint.span-2');
         api.server.passwordRequirements()
-            .then((req: any) => { const hs = passwordRequirementHints(req); if (hs.length) pwHint.textContent = `Password must include ${hs.join(', ')}.`; })
+            .then((req: any) => { const hs = passwordRequirementHints(req); if (hs.length) pwHint.textContent = t("Password must include {value1}.", { value1: String(formatList(hs)) }); })
             .catch(() => { /* requirements unavailable */ });
         const firstName = textInput(user.firstName || '');
         const lastName = textInput(user.lastName || '');
         const email = textInput(user.email || '');
         const phone = textInput(user.phoneNumber || '');
         const organization = textInput(user.organization || '');
-        const country = select(COUNTRIES, user.country || 'United States');
+        const country = select(countryOptions(), user.country || 'United States');
         const state = select(placeholderOpts(US_STATES), user.stateTerritory || '');
         const role = select(placeholderOpts(ROLES), user.role || '');
         const industry = select(placeholderOpts(INDUSTRIES), user.industry || '');
@@ -328,35 +117,35 @@ function showWelcomeDialog(user: any) {
 
         const body = h('div',
             h('div.hint', { style: { marginBottom: '12px' } },
-                'You may now customize your account information. You also have the option of changing your account password.'),
+                t("You may now customize your account information. You also have the option of changing your account password.")),
             h('div.form-grid',
-                field('Username', usernameInput),
-                field(req('New Password'), pwInput),
-                field(req('Confirm New Password'), confirmInput),
+                field(t("Username"), usernameInput),
+                field(req(t("New Password")), pwInput),
+                field(req(t("Confirm New Password")), confirmInput),
                 pwHint,
-                field('First Name', firstName),
-                field('Last Name', lastName),
-                field('Email', email),
-                field('Country', country),
-                field('State/Territory', state),
-                field('Phone', phone),
-                field('Organization', organization),
-                field('Role', role),
-                field('Business', industry),
-                field('Description', description)));
+                field(t("First Name"), firstName),
+                field(t("Last Name"), lastName),
+                field(t("Email"), email),
+                field(t("Country"), country),
+                field(t("State/Territory"), state),
+                field(t("Phone"), phone),
+                field(t("Organization"), organization),
+                field(t("Role"), role),
+                field(t("Business"), industry),
+                field(t("Description"), description)));
 
         modal({
-            title: 'Welcome to Open Integration Engine',
+            title: t("Welcome to Open Integration Engine"),
             size: 'wide',
             body,
             onClose: () => resolve(),
             buttons: [
                 {
-                    label: 'Finish', primary: true,
+                    label: t("Finish"), primary: true,
                     onClick: async () => {
                         const pw = (pwInput as any).value;
-                        if (!pw) { toast('New Password is required', 'warn'); return false; }
-                        if (pw !== (confirmInput as any).value) { toast('Passwords do not match', 'warn'); return false; }
+                        if (!pw) { toast(t("New Password is required"), 'warn'); return false; }
+                        if (pw !== (confirmInput as any).value) { toast(t("Passwords do not match"), 'warn'); return false; }
                         try {
                             // Set the password first (Swing order); the engine answers
                             // with a list of policy violations if it's rejected.
@@ -376,10 +165,10 @@ function showWelcomeDialog(user: any) {
                             user.description = (description as any).value;
                             await api.users.update(user.id, user);
                             await api.users.setPreference(user.id, 'firstlogin', 'false');
-                            toast('Welcome — your account is ready');
+                            toast(t("Welcome — your account is ready"));
                             return true;   // closes the modal → onClose resolves
                         } catch (e: any) {
-                            toast(e.message || 'Could not complete setup', 'error');
+                            toast(e.message || t("Could not complete setup"), 'error');
                             return false;
                         }
                     }

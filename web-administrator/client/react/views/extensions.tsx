@@ -1,3 +1,4 @@
+import { t } from '../../core/i18n.js';
 /*
  * Extensions view — two metadata grids (Connectors / Plugins, mutually-
  * exclusive single selection) drive the selection-gated Extension Tasks pane
@@ -51,15 +52,15 @@ function metaRows(raw: any, typeKey: any) {
 
 function metaColumns() {
     return [
-        { key: 'name', label: 'Name', sortValue: (r: any) => r.name, render: (r: any) => r.name || r.meta.name || '' },
-        { key: 'author', label: 'Author', sortValue: (r: any) => r.meta.author, render: (r: any) => r.meta.author || '' },
-        { key: 'version', label: 'Version', width: '110px', className: 'mono', sortValue: (r: any) => r.meta.pluginVersion, render: (r: any) => r.meta.pluginVersion || '' },
+        { key: 'name', label: t("Name"), sortValue: (r: any) => r.name, render: (r: any) => r.name || r.meta.name || '' },
+        { key: 'author', label: t("Author"), sortValue: (r: any) => r.meta.author, render: (r: any) => r.meta.author || '' },
+        { key: 'version', label: t("Version"), width: '110px', className: 'mono', sortValue: (r: any) => r.meta.pluginVersion, render: (r: any) => r.meta.pluginVersion || '' },
         {
-            key: 'enabled', label: 'Enabled', width: '110px',
+            key: 'enabled', label: t("Enabled"), width: '110px',
             sortValue: (r: any) => r.enabled ? 0 : 1,
             render: (r: any) => r.enabled
-                ? h('span.status-cell', h('span.pip.ok'), 'Enabled')
-                : h('span.status-cell', h('span.pip'), h('span.text-text-dim', 'Disabled'))
+                ? h('span.status-cell', h('span.pip.ok'), t("Enabled"))
+                : h('span.status-cell', h('span.pip'), h('span.text-text-dim', t("Disabled")))
         }
     ];
 }
@@ -67,26 +68,26 @@ function metaColumns() {
 /* ---- web administrator plugins (client-side, from the plugin loader) ---- */
 
 function statusTag(p: any) {
-    if (p.status === 'loaded') return h('span.tag.accent', 'Loaded');
+    if (p.status === 'loaded') return h('span.tag.accent', t("Loaded"));
     if (p.status === 'error' || p.status === 'incompatible') {
-        const label = p.status === 'incompatible' ? 'Incompatible' : 'Error';
+        const label = p.status === 'incompatible' ? t("Incompatible") : t("Error");
         return h('span', h('span.tag.red', label),
             p.error ? h('span.text-err', { style: { marginLeft: '8px', fontSize: '11px' } }, String(p.error)) : null);
     }
-    return h('span.tag', 'No client');
+    return h('span.tag', t("No client"));
 }
 
 const WEB_COLUMNS = [
-    { key: 'status', label: 'Status', width: '200px', sortValue: (p: any) => p.status, render: statusTag },
-    { key: 'name', label: 'Name', render: (p: any) => p.name || p.id || '' },
-    { key: 'version', label: 'Version', width: '100px', className: 'mono', render: (p: any) => p.version || '' },
-    { key: 'author', label: 'Author', render: (p: any) => p.author || '' },
-    { key: 'description', label: 'Description', render: (p: any) => p.description || '' }
+    { key: 'status', label: t("Status"), width: '200px', sortValue: (p: any) => p.status, render: statusTag },
+    { key: 'name', label: t("Name"), render: (p: any) => p.name || p.id || '' },
+    { key: 'version', label: t("Version"), width: '100px', className: 'mono', render: (p: any) => p.version || '' },
+    { key: 'author', label: t("Author"), render: (p: any) => p.author || '' },
+    { key: 'description', label: t("Description"), render: (p: any) => p.description || '' }
 ];
 
 const WEB_OPTIONS = {
     rowKey: (p: any) => p.id || p.name,
-    emptyText: 'No web administrator plugins installed',
+    emptyText: t("No web administrator plugins installed"),
     columnsMenu: true,
     columnsMenuKey: 'webadmin-cols-webplugins'
 };
@@ -145,7 +146,7 @@ export function ExtensionsView() {
     }
 
     const requireRow = (s: any) => {
-        if (!s) { toast('Select an extension first', 'warn'); return false; }
+        if (!s) { toast(t("Select an extension first"), 'warn'); return false; }
         return true;
     };
 
@@ -159,9 +160,9 @@ export function ExtensionsView() {
             setConnectors(update);
             setPlugins(update);
             setSel((prev: any) => (prev && prev.name === s.name ? { ...prev, enabled } : prev));
-            toast(`${s.name} ${enabled ? 'enabled' : 'disabled'}. Restart the engine to apply.`);
+            toast(t("{value2, select, yes {{value1} enabled. Restart the engine to apply.} other {{value1} disabled. Restart the engine to apply.}}", { value1: String(s.name), value2: (enabled) ? "yes" : "no" }));
         } catch (e: any) {
-            toast(`${enabled ? 'Enable' : 'Disable'} failed: ${e.message}`, 'error');
+            toast(t("{value1, select, yes {Enable failed: {value2}} other {Disable failed: {value2}}}", { value1: (enabled) ? "yes" : "no", value2: String(e.message) }), 'error');
         }
     }
 
@@ -171,16 +172,16 @@ export function ExtensionsView() {
             const raw = await api.extensions.properties(s.name);
             const pairs = propertyPairs(raw);
             modal({
-                title: `${s.name} — Properties`,
+                title: t("{value1} — Properties", { value1: String(s.name) }),
                 size: 'wide',
                 body: pairs.length
                     ? h('dl.kv', pairs.map(([k, v]) => [h('dt', k), h('dd', v)]))
-                    : h('div.text-text-faint', 'No properties'),
-                buttons: [{ label: 'Close', primary: true }]
+                    : h('div.text-text-faint', t("No properties")),
+                buttons: [{ label: t("Close"), primary: true }]
             });
         } catch (e: any) {
-            if (e.status === 404) toast('No properties', 'warn');
-            else toast(`Failed to load properties: ${e.message}`, 'error');
+            if (e.status === 404) toast(t("No properties"), 'warn');
+            else toast(t("Failed to load properties: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -202,10 +203,10 @@ export function ExtensionsView() {
                 // The engine installs the extension and serves any web UI it carries
                 // (via /api/webplugins); both load after the engine restarts.
                 await api.post(directEngineApi ? '/extensions/_install' : '/_webadmin/plugins/_install', form);
-                toast(`"${file.name}" installed — restart the engine to load it.`);
+                toast(t("\"{value1}\" installed — restart the engine to load it.", { value1: String(file.name) }));
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e: any) {
-                toast(`Install failed: ${e.message}`, 'error');
+                toast(t("Install failed: {value1}", { value1: String(e.message) }), 'error');
             }
         });
         document.body.appendChild(input);
@@ -222,22 +223,22 @@ export function ExtensionsView() {
         // as "@path" (plain "path" kept as a fallback for safety).
         const path = s.meta && (s.meta['@path'] ?? s.meta.path);
         if (!path) {
-            toast('The selected extension reports no install path, so it cannot be uninstalled here', 'warn');
+            toast(t("The selected extension reports no install path, so it cannot be uninstalled here"), 'warn');
             return;
         }
-        if (await confirmDialog('Uninstall Extension',
-            `Uninstall "${s.name}"? Its server-side files will be removed on the next engine restart. This cannot be undone.`,
-            { danger: true, okLabel: 'Uninstall' })) {
+        if (await confirmDialog(t("Uninstall Extension"),
+            t("Uninstall \"{value1}\"? Its server-side files will be removed on the next engine restart. This cannot be undone.", { value1: String(s.name) }),
+            { danger: true, okLabel: t("Uninstall") })) {
             try {
                 await api.post(
                     directEngineApi ? '/extensions/_uninstall' : '/_webadmin/plugins/_uninstall',
                     directEngineApi ? String(path) : JSON.stringify({ path: String(path) }),
                     { contentType: 'application/json' }
                 );
-                toast(`${s.name} uninstalled — restart the engine to apply.`);
+                toast(t("{value1} uninstalled — restart the engine to apply.", { value1: String(s.name) }));
                 window.dispatchEvent(new CustomEvent('webadmin:restart-pending'));
             } catch (e: any) {
-                toast(`Uninstall failed: ${e.message}`, 'error');
+                toast(t("Uninstall failed: {value1}", { value1: String(e.message) }), 'error');
             }
         }
     }
@@ -270,7 +271,7 @@ export function ExtensionsView() {
             setSel((prev: any) => (prev ? [...conns, ...plugs].find(r => r.name === prev.name) ?? null : null));
         } catch (e: any) {
             if (!aliveRef.current) return;
-            toast(`Failed to load extensions: ${e.message}`, 'error');
+            toast(t("Failed to load extensions: {value1}", { value1: String(e.message) }), 'error');
             setLoadError(String(e.message || e));
         }
     }
@@ -283,23 +284,23 @@ export function ExtensionsView() {
         chooseFrom(rows, otherRef);
         const row = rows[0];
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshExtensions', group: 'extensions', onClick: () => load() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshExtensions', group: 'extensions', onClick: () => load() },
             '-',
             // Swing shows only the applicable action for the row's current state.
             // Each action targets THIS row explicitly (no selection-state read).
-            { label: 'Enable Extension', icon: 'check', task: 'doEnableExtension', group: 'extensions', hidden: !!row.enabled, onClick: () => setEnabled(true, row) },
-            { label: 'Disable Extension', icon: 'x', task: 'doDisableExtension', group: 'extensions', hidden: !row.enabled, onClick: () => setEnabled(false, row) },
+            { label: t("Enable Extension"), icon: 'check', task: 'doEnableExtension', group: 'extensions', hidden: !!row.enabled, onClick: () => setEnabled(true, row) },
+            { label: t("Disable Extension"), icon: 'x', task: 'doDisableExtension', group: 'extensions', hidden: !row.enabled, onClick: () => setEnabled(false, row) },
             '-',
-            { label: 'Show Properties', icon: 'eye', task: 'doShowExtensionProperties', group: 'extensions', onClick: () => showProperties(row) },
+            { label: t("Show Properties"), icon: 'eye', task: 'doShowExtensionProperties', group: 'extensions', onClick: () => showProperties(row) },
             '-',
-            { label: 'Uninstall Extension', icon: 'trash', task: 'doUninstallExtension', group: 'extensions', danger: true, onClick: () => uninstallExtension(row) }
+            { label: t("Uninstall Extension"), icon: 'trash', task: 'doUninstallExtension', group: 'extensions', danger: true, onClick: () => uninstallExtension(row) }
         ]);
     }
 
     const connOptions = useRef({
         selectable: 'single',
         rowKey: (r: any) => r.name,
-        emptyText: 'No connectors installed',
+        emptyText: t("No connectors installed"),
         columnsMenu: true,
         columnsMenuKey: 'webadmin-cols-extensions',
         onSelect: (rows: any) => chooseFrom(rows, plugRef),
@@ -309,7 +310,7 @@ export function ExtensionsView() {
     const plugOptions = useRef({
         selectable: 'single',
         rowKey: (r: any) => r.name,
-        emptyText: 'No plugins installed',
+        emptyText: t("No plugins installed"),
         columnsMenu: true,
         columnsMenuKey: 'webadmin-cols-extensions',
         onSelect: (rows: any) => chooseFrom(rows, connRef),
@@ -322,27 +323,27 @@ export function ExtensionsView() {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Extension Tasks" paneKey="tasks:Extension Tasks" group="extensions">
+                <RailPane title={t("Extension Tasks")} paneKey="tasks:Extension Tasks" group="extensions">
                     <div className="taskbar" data-pane-title="Extension Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshExtensions" onClick={load} />
+                        <TaskButton label={t("Refresh")} icon="refresh" task="doRefreshExtensions" onClick={load} />
                         {/* No Swing constant for Install — rides doRefreshExtensions
                             (every extensions task maps to manageExtensions anyway). */}
-                        <TaskButton label="Install Extension" icon="import" task="doRefreshExtensions" onClick={installExtension} />
-                        {sel && !sel.enabled && <TaskButton label="Enable" icon="check" task="doEnableExtension" onClick={() => setEnabled(true, sel)} />}
-                        {sel && sel.enabled && <TaskButton label="Disable" icon="x" task="doDisableExtension" onClick={() => setEnabled(false, sel)} />}
-                        {sel && <TaskButton label="Properties" icon="eye" task="doShowExtensionProperties" onClick={() => showProperties(sel)} />}
-                        {sel && <TaskButton label="Uninstall" icon="trash" danger task="doUninstallExtension" onClick={() => uninstallExtension(sel)} />}
+                        <TaskButton label={t("Install Extension")} icon="import" task="doRefreshExtensions" onClick={installExtension} />
+                        {sel && !sel.enabled && <TaskButton label={t("Enable")} icon="check" task="doEnableExtension" onClick={() => setEnabled(true, sel)} />}
+                        {sel && sel.enabled && <TaskButton label={t("Disable")} icon="x" task="doDisableExtension" onClick={() => setEnabled(false, sel)} />}
+                        {sel && <TaskButton label={t("Properties")} icon="eye" task="doShowExtensionProperties" onClick={() => showProperties(sel)} />}
+                        {sel && <TaskButton label={t("Uninstall")} icon="trash" danger task="doUninstallExtension" onClick={() => uninstallExtension(sel)} />}
                     </div>
                 </RailPane>
             </ViewTasks>
             <div className="view-body">
                 <div className="panel">
-                    <div className="panel-header">Connectors</div>
+                    <div className="panel-header">{t("Connectors")}</div>
                     <div className="panel-body flush">
                         {loadError ? (
                             <div className="dt-empty">
                                 <div className="empty-icon"><Icon name="warning" size={30} /></div>
-                                <div>Failed to load</div>
+                                <div>{t("Failed to load")}</div>
                                 <div className="text-text-faint mt-[13px]">{loadError}</div>
                             </div>
                         ) : (
@@ -352,7 +353,7 @@ export function ExtensionsView() {
                     </div>
                 </div>
                 <div className="panel">
-                    <div className="panel-header">Plugins</div>
+                    <div className="panel-header">{t("Plugins")}</div>
                     <div className="panel-body flush">
                         {loadError ? null : (
                             <DataTableHost columns={plugColumns} options={plugOptions} rows={plugins}
@@ -361,7 +362,7 @@ export function ExtensionsView() {
                     </div>
                 </div>
                 <div className="panel">
-                    <div className="panel-header">Web Administrator Plugins</div>
+                    <div className="panel-header">{t("Web Administrator Plugins")}</div>
                     <div className="panel-body flush">
                         <DataTableHost columns={WEB_COLUMNS} options={WEB_OPTIONS} rows={webPlugins} />
                     </div>

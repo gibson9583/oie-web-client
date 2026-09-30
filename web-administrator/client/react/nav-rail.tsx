@@ -1,3 +1,5 @@
+import { t } from '../core/i18n.js';
+import { isCommitEnter } from '../core/keyboard.js';
 /*
  * The navigation rail, and its per-user customization.
  *
@@ -105,7 +107,7 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
     /* ---- edits ---- */
     const move = (itemId: any, toGroup: any, index: any) => apply(withMovedItem(layout, groups, itemId, toGroup, index));
     const toggleHidden = (item: any) => apply(withHidden(layout, item.id, !item.hidden));
-    const renameGroup = (id: any, name: any) => { setRenamingGroup(null); apply(withGroupLabel(layout, id, name)); };
+    const renameGroup = (group: any, name: any) => { setRenamingGroup(null); apply(withGroupLabel(layout, group.id, name, group.declaredLabel)); };
     const renameItem = (item: any, name: any) => { setRenamingItem(null); apply(withItemLabel(layout, item.id, name, item.declaredLabel)); };
     const addGroup = () => {
         const made = withNewGroup(layout, groups, 'New group');
@@ -203,32 +205,32 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
         const entries: any[] = [];
         if (item) {
             entries.push({
-                label: item.hidden ? `Show “${item.label}”` : `Hide “${item.label}”`,
+                label: item.hidden ? t("Show “{value1}”", { value1: String(item.label) }) : t("Hide “{value1}”", { value1: String(item.label) }),
                 icon: item.hidden ? 'check' : 'x',
                 onClick: () => toggleHidden(item)
             });
             entries.push({
-                label: `Rename “${item.label}”…`,
+                label: t("Rename “{value1}”…", { value1: String(item.label) }),
                 icon: 'edit',
                 onClick: () => { setEditing(true); setRenamingItem(item.id); }
             });
         }
         if (group && !item) {
             entries.push({
-                label: 'Rename this group…',
+                label: t("Rename this group…"),
                 icon: 'edit',
                 onClick: () => { setEditing(true); setRenamingGroup(group.id); }
             });
         }
         if (entries.length) entries.push('-');
         entries.push({
-            label: editing ? 'Done customizing' : 'Customize navigation…',
+            label: editing ? t("Done customizing") : t("Customize navigation…"),
             icon: 'settings',
             onClick: () => setEditing((v: any) => !v)
         });
         entries.push('-');
         entries.push({
-            label: 'Reset navigation to default',
+            label: t("Reset navigation to default"),
             icon: 'undo',
             onClick: reset
         });
@@ -266,27 +268,27 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
                         headerExtra={editing ? (
                             <span className="rail-pane-tools">
                                 {group.custom ? (
-                                    <button type="button" className="rail-tool" title="Delete group"
-                                        aria-label={`Delete group ${group.label}`}
+                                    <button type="button" className="rail-tool" title={t("Delete group")}
+                                        aria-label={t("Delete group {value1}", { value1: String(group.label) })}
                                         onClick={(e: any) => { e.stopPropagation(); apply(withoutGroup(layout, group.id)); }}>✕</button>
                                 ) : null}
                                 {group.renamed ? (
-                                    <button type="button" className="rail-tool" title="Reset name"
-                                        aria-label={`Reset name of ${group.label}`}
+                                    <button type="button" className="rail-tool" title={t("Reset name")}
+                                        aria-label={t("Reset name of {value1}", { value1: String(group.label) })}
                                         onClick={(e: any) => { e.stopPropagation(); apply(withGroupLabel(layout, group.id, '')); }}>↺</button>
                                 ) : null}
                             </span>
                         ) : null}
                         headerTitle={renamingGroup === group.id ? (
                             <input className="rail-name-input" autoFocus defaultValue={group.label}
-                                aria-label="Group name"
+                                aria-label={t("Group name")}
                                 onClick={(e: any) => e.stopPropagation()}
                                 onKeyDown={(e: any) => {
                                     e.stopPropagation();
-                                    if (e.key === 'Enter') renameGroup(group.id, e.currentTarget.value);
+                                    if (isCommitEnter(e)) renameGroup(group, e.currentTarget.value);
                                     else if (e.key === 'Escape') setRenamingGroup(null);
                                 }}
-                                onBlur={(e: any) => renameGroup(group.id, e.currentTarget.value)} />
+                                onBlur={(e: any) => renameGroup(group, e.currentTarget.value)} />
                         ) : undefined}
                         onHeaderClick={editing ? () => setRenamingGroup(group.id) : undefined}
                         headerDraggable={editing}
@@ -304,10 +306,10 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
                                     <span key={item.id} className="rail-item">
                                         <Icon name={item.icon || 'puzzle'} size={15} />
                                         <input className="rail-name-input" autoFocus defaultValue={item.label}
-                                            aria-label="Item name"
+                                            aria-label={t("Item name")}
                                             onKeyDown={(e: any) => {
                                                 e.stopPropagation();
-                                                if (e.key === 'Enter') renameItem(item, e.currentTarget.value);
+                                                if (isCommitEnter(e)) renameItem(item, e.currentTarget.value);
                                                 else if (e.key === 'Escape') setRenamingItem(null);
                                             }}
                                             onBlur={(e: any) => renameItem(item, e.currentTarget.value)} />
@@ -338,8 +340,8 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
                                     </button>
                                     {editing ? (
                                         <button type="button" className="rail-eye"
-                                            title={`${item.hidden ? 'Show' : 'Hide'} ${item.label}`}
-                                            aria-label={`${item.hidden ? 'Show' : 'Hide'} ${item.label}`}
+                                            title={`${item.hidden ? t("Show") : t("Hide")} ${item.label}`}
+                                            aria-label={`${item.hidden ? t("Show") : t("Hide")} ${item.label}`}
                                             aria-pressed={String(!item.hidden) as any}
                                             onClick={(e: any) => { e.stopPropagation(); toggleHidden(item); }}>
                                             <Icon name={item.hidden ? 'eyeOff' : 'eye'} size={14} />
@@ -348,7 +350,7 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
                                 </span>
                             );
                         })}
-                        {editing && !shown.length ? <div className="rail-empty-slot">drop items here</div> : null}
+                        {editing && !shown.length ? <div className="rail-empty-slot">{t("drop items here")}</div> : null}
                     </RailPane>
                 );
             })}
@@ -359,30 +361,30 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
                 {editing ? (
                     <>
                         <button type="button" className="rail-item rail-chrome" id="rail-add-group"
-                            onClick={addGroup} {...peek('New group')}>
-                            <Icon name="plus" size={15} /><span className="rail-label">New group</span>
+                            onClick={addGroup} {...peek(t("New group"))}>
+                            <Icon name="plus" size={15} /><span className="rail-label">{t("New group")}</span>
                         </button>
                         <button type="button" className="rail-item rail-chrome" id="rail-reset-nav"
-                            onClick={reset} {...peek('Reset to default')}>
-                            <Icon name="undo" size={15} /><span className="rail-label">Reset to default</span>
+                            onClick={reset} {...peek(t("Reset to default"))}>
+                            <Icon name="undo" size={15} /><span className="rail-label">{t("Reset to default")}</span>
                         </button>
                     </>
                 ) : null}
                 <button type="button" className={'rail-item rail-chrome' + (editing ? ' on' : '')}
                     id="rail-customize" aria-pressed={String(editing) as any}
                     onClick={() => setEditing((v: any) => !v)}
-                    {...peek(editing ? 'Done' : 'Customize')}>
+                    {...peek(editing ? t("Done") : t("Customize"))}>
                     <Icon name={editing ? 'check' : 'sliders'} size={15} />
-                    <span className="rail-label">{editing ? 'Done' : 'Customize'}</span>
+                    <span className="rail-label">{editing ? t("Done") : t("Customize")}</span>
                 </button>
                 {/* Sign-out is chrome too, and last: it must be in the same place
                     every time, which is exactly what a configurable entry cannot
                     promise. Still RBAC-gated like every other "other" task. */}
                 {platform.checkTask('other', 'doLogout') && (
                     <button type="button" className="rail-item rail-chrome" id="rail-logout"
-                        onClick={() => onLogout && onLogout()} {...peek('Logout')}>
+                        onClick={() => onLogout && onLogout()} {...peek(t("Logout"))}>
                         <Icon name="logout" size={15} />
-                        <span className="rail-label">Logout</span>
+                        <span className="rail-label">{t("Logout")}</span>
                     </button>
                 )}
             </div>

@@ -4,5 +4,10 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "XML data type properties — web equivalent of the XML DataTypeClientPlugin.",
-    "client": { "entry": "web/plugin.js" }
+    "client": {
+        "entry": "web/plugin.js"
+    },
+    "i18n": {
+        "zh-CN": "i18n/zh-CN.json"
+    }
 }

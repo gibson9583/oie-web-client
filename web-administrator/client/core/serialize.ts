@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 /*
  * Message-tree serialization + JavaScript validate/format.
  *
@@ -84,7 +85,7 @@ export async function validateScript(script: string | null | undefined): Promise
         const assertSession = captureEngineSession();
         const base = await webSupportBase();
         assertSession();
-        if (base === null) return { ok: null, message: 'Validation unavailable — the Web Support plugin is not installed on this engine.' };
+        if (base === null) return { ok: null, message: t("Validation unavailable — the Web Support plugin is not installed on this engine.") };
         const text = await post(`${base}/javascript/_validate`, String(script ?? ''), {
             contentType: 'text/plain', raw: true, noAuthHandler: true
         });
@@ -97,7 +98,7 @@ export async function validateScript(script: string | null | undefined): Promise
         const err = (result.error ?? '').trim();
         return err ? { ok: false, message: err } : { ok: true };
     } catch (e) {
-        return { ok: null, message: (e as { message?: string })?.message || 'Validation unavailable.' };
+        return { ok: null, message: (e as { message?: string })?.message || t("Validation unavailable.") };
     }
 }
 

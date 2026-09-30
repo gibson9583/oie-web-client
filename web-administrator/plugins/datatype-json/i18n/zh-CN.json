@@ -1,0 +1,8 @@
+{
+  "Batch": "批处理",
+  "JSON": "JSON",
+  "JavaScript": "JavaScript",
+  "JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.": "用于拆分批次并返回下一条消息的 JavaScript。可访问 reader（Java BufferedReader）；返回 null／空值表示输入结束。仅在连接器启用“处理批次”时使用。",
+  "Method for splitting the batch message. Only used when Process Batch is enabled in the connector.": "拆分批次消息的方法。仅在连接器启用“处理批次”时使用。",
+  "Split Batch By": "批次拆分方式"
+}

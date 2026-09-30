@@ -1,3 +1,4 @@
+import { t, formatNumber } from '../../core/i18n.js';
 /*
  * Card view — a modern, card-based alternative to the classic Dashboard table.
  * Highlights aggregate statistics + channel state, groups by channel group / tag /
@@ -30,10 +31,10 @@ const SECTION_CAP = 60; // grouped view: max cards rendered per section before "
 
 const STATE_ORDER = ['STARTED', 'PAUSED', 'STOPPED'];   // undeployed channels are excluded
 const STATE_META = {
-    STARTED: { label: 'Started', pip: 'ok', color: 'var(--ok, #3ecf8e)' },
-    PAUSED: { label: 'Paused', pip: 'warn', color: 'var(--warn)' },
-    STOPPED: { label: 'Stopped', pip: 'err', color: 'var(--err)' },
-    UNDEPLOYED: { label: 'Undeployed', pip: '', color: 'var(--text-faint)' }
+    STARTED: { label: t("Started"), pip: 'ok', color: 'var(--ok, #3ecf8e)' },
+    PAUSED: { label: t("Paused"), pip: 'warn', color: 'var(--warn)' },
+    STOPPED: { label: t("Stopped"), pip: 'err', color: 'var(--err)' },
+    UNDEPLOYED: { label: t("Undeployed"), pip: '', color: 'var(--text-faint)' }
 };
 
 function tagRgb(tag: any, alpha: any) {
@@ -43,7 +44,7 @@ function tagRgb(tag: any, alpha: any) {
     }
     return 'var(--bg2)';
 }
-const fmt = (n: any) => (Number(n) || 0).toLocaleString();
+const fmt = (n: any) => formatNumber(Number(n) || 0);
 
 /* ---- summary stat card ---- */
 
@@ -74,7 +75,7 @@ function ChannelCard({ status, tags, selected, onSelect, onOpen, onMenu, lifetim
     return (
         <div className={`panel !mt-0 flex flex-col justify-between overflow-hidden cursor-pointer select-none ${selected ? 'border-accent bg-[var(--accent-glow)]' : ''}`}
             style={{ height: CARD_H }}
-            title="Click to select (⌘/Ctrl for multiple) · double-click to open messages · right-click for actions"
+            title={t("Click to select (⌘/Ctrl for multiple) · double-click to open messages · right-click for actions")}
             onClick={handleClick} onContextMenu={(e: any) => onMenu(status, e)}>
             <div className="px-3 pt-2.5 flex items-start gap-2">
                 <span className={`pip ${statePip(status.state)} mt-1.5 flex-none`} />
@@ -87,7 +88,7 @@ function ChannelCard({ status, tags, selected, onSelect, onOpen, onMenu, lifetim
                 {tags.map((t: any, i: any) => <span key={i} className="tag !py-0 !text-[9px]" style={{ background: tagRgb(t, 0.26) }}>{t.name}</span>)}
             </div>
             <div className="grid grid-cols-4 border-t border-line divide-x divide-line text-center">
-                {[['Received', s.RECEIVED, ''], ['Sent', s.SENT, ''], ['Queued', s.QUEUED, s.QUEUED ? 'text-warn' : ''], ['Errored', s.ERROR, s.ERROR ? 'text-err' : '']].map(([label, val, cls]) => (
+                {[[t("Received"), s.RECEIVED, ''], [t("Sent"), s.SENT, ''], [t("Queued"), s.QUEUED, s.QUEUED ? 'text-warn' : ''], [t("Errored"), s.ERROR, s.ERROR ? 'text-err' : '']].map(([label, val, cls]) => (
                     <div key={label} className="py-1.5">
                         <div className={`text-[11.5px] font-semibold tabular-nums ${cls}`}>{fmt(val)}</div>
                         <div className="text-[9px] text-text-faint uppercase tracking-wide">{label}</div>
@@ -216,16 +217,16 @@ function CardsView({ onToggleView }: any) {
     async function bulkControl(kind: any, targets: any) {
         const ids = targets.map((s: any) => s.channelId);
         if (!ids.length) return;
-        if (kind === 'halt' && !await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) return;
+        if (kind === 'halt' && !await confirmDialog(t("Halt channels"), t("Halting forcibly kills processing threads. Halt the selected channels?"), { danger: true, okLabel: t("Halt") })) return;
         try {
             if (await runLifecycle(kind, ids)) refresh();
-        } catch (e: any) { toast(e && e.message ? e.message : 'Action failed', 'error'); refresh(); }
+        } catch (e: any) { toast(e && e.message ? e.message : t("Action failed"), 'error'); refresh(); }
     }
     async function clearStats(targets: any) {
         if (!targets.length) return;
-        if (!await confirmDialog('Clear Statistics', `Clear statistics for ${targets.length} channel${targets.length > 1 ? 's' : ''}?`)) return;
+        if (!await confirmDialog(t("Clear Statistics"), t("{value2, select, yes {Clear statistics for {value1} channels?} other {Clear statistics for {value1} channel?}}", { value1: String(targets.length), value2: (targets.length > 1) ? "yes" : "no" }))) return;
         try { await api.statistics.clear(Object.fromEntries(targets.map((s: any) => [s.channelId, null]))); refresh(); }
-        catch (e: any) { toast(e && e.message ? e.message : 'Clear statistics failed', 'error'); }
+        catch (e: any) { toast(e && e.message ? e.message : t("Clear statistics failed"), 'error'); }
     }
 
     // Right-click a card → the same gated actions as the Dashboard Tasks rail.
@@ -237,16 +238,16 @@ function CardsView({ onToggleView }: any) {
         else { setSelected(new Set([status.channelId])); targets = [status]; }
         const has = (pred: any) => targets.some((s: any) => pred(s.state));
         const items: any[] = [
-            { header: true, label: targets.length > 1 ? `${targets.length} channels selected` : status.name },
-            { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => openMessages(targets[0]) },
-            { label: 'Clear Statistics', icon: 'clear', task: 'doClearStats', onClick: () => clearStats(targets) },
+            { header: true, label: targets.length > 1 ? t("{value1} channels selected", { value1: String(targets.length) }) : status.name },
+            { label: t("View Messages"), icon: 'messages', task: 'doShowMessages', onClick: () => openMessages(targets[0]) },
+            { label: t("Clear Statistics"), icon: 'clear', task: 'doClearStats', onClick: () => clearStats(targets) },
             '-'
         ];
-        if (has((st: any) => st === 'STOPPED' || st === 'PAUSED')) items.push({ label: 'Start', icon: 'play', task: 'doStart', onClick: () => bulkControl('start', targets.filter((s: any) => ['STOPPED', 'PAUSED'].includes(s.state))) });
-        if (has((st: any) => st === 'STARTED')) items.push({ label: 'Pause', icon: 'pause', task: 'doPause', onClick: () => bulkControl('pause', targets.filter((s: any) => s.state === 'STARTED')) });
-        if (has((st: any) => st === 'STARTED' || st === 'PAUSED')) items.push({ label: 'Stop', icon: 'stop', danger: true, task: 'doStop', onClick: () => bulkControl('stop', targets.filter((s: any) => ['STARTED', 'PAUSED'].includes(s.state))) });
-        if (targets.length === 1 && !['STARTED', 'STOPPED', 'PAUSED', 'UNDEPLOYED'].includes(targets[0].state)) items.push({ label: 'Halt', icon: 'halt', danger: true, task: 'doHalt', onClick: () => bulkControl('halt', targets) });
-        if (has((st: any) => st !== 'UNDEPLOYED')) items.push({ label: 'Undeploy Channel', icon: 'undeploy', task: 'doUndeployChannel', onClick: () => bulkControl('undeploy', targets.filter((s: any) => s.state !== 'UNDEPLOYED')) });
+        if (has((st: any) => st === 'STOPPED' || st === 'PAUSED')) items.push({ label: t("Start"), icon: 'play', task: 'doStart', onClick: () => bulkControl('start', targets.filter((s: any) => ['STOPPED', 'PAUSED'].includes(s.state))) });
+        if (has((st: any) => st === 'STARTED')) items.push({ label: t("Pause"), icon: 'pause', task: 'doPause', onClick: () => bulkControl('pause', targets.filter((s: any) => s.state === 'STARTED')) });
+        if (has((st: any) => st === 'STARTED' || st === 'PAUSED')) items.push({ label: t("Stop"), icon: 'stop', danger: true, task: 'doStop', onClick: () => bulkControl('stop', targets.filter((s: any) => ['STARTED', 'PAUSED'].includes(s.state))) });
+        if (targets.length === 1 && !['STARTED', 'STOPPED', 'PAUSED', 'UNDEPLOYED'].includes(targets[0].state)) items.push({ label: t("Halt"), icon: 'halt', danger: true, task: 'doHalt', onClick: () => bulkControl('halt', targets) });
+        if (has((st: any) => st !== 'UNDEPLOYED')) items.push({ label: t("Undeploy Channel"), icon: 'undeploy', task: 'doUndeployChannel', onClick: () => bulkControl('undeploy', targets.filter((s: any) => s.state !== 'UNDEPLOYED')) });
         contextMenu(e.clientX, e.clientY, items as any, 'dashboard');
     };
 
@@ -263,7 +264,7 @@ function CardsView({ onToggleView }: any) {
                 if (members.length) out.push({ key: g.id, label: g.name, members });
             }
             const rest = filtered.filter((s: any) => !used.has(s.channelId));
-            if (rest.length) out.unshift({ key: '__default__', label: 'Default Group', members: rest });
+            if (rest.length) out.unshift({ key: '__default__', label: t("Default Group"), members: rest });
         } else if (groupBy === 'tag') {
             const seen = new Set();
             for (const tag of tags) {
@@ -272,7 +273,7 @@ function CardsView({ onToggleView }: any) {
                 if (members.length) out.push({ key: `tag:${tag.name}`, label: tag.name, members });
             }
             const untagged = filtered.filter((s: any) => !seen.has(s.channelId));
-            if (untagged.length) out.push({ key: '__untagged__', label: 'Untagged', members: untagged });
+            if (untagged.length) out.push({ key: '__untagged__', label: t("Untagged"), members: untagged });
         } else if (groupBy === 'state') {
             const order = [...STATE_ORDER, ...Object.keys(agg.states).filter((s: any) => !STATE_ORDER.includes(s))];
             for (const state of order) {
@@ -299,33 +300,33 @@ function CardsView({ onToggleView }: any) {
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Dashboard Tasks" paneKey="tasks:Dashboard Tasks" group="dashboard">
+                <RailPane title={t("Dashboard Tasks")} paneKey="tasks:Dashboard Tasks" group="dashboard">
                     <div className="taskbar" data-pane-title="Dashboard Tasks">
-                        {onToggleView && <TaskButton label="Table view" icon="menu" onClick={onToggleView} />}
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshStatuses" onClick={refresh} />
-                        {hasSel && <TaskButton label={sel.length > 1 ? `View Messages (${sel.length})` : 'View Messages'} icon="messages" task="doShowMessages" onClick={() => openMessages(sel[0])} />}
-                        {hasSel && <TaskButton label="Clear Statistics" icon="clear" task="doClearStats" onClick={() => clearStats(sel)} />}
-                        {showStart && <TaskButton label="Start" icon="play" task="doStart" onClick={() => bulkControl('start', sel.filter((s: any) => ['STOPPED', 'PAUSED'].includes(s.state)))} />}
-                        {showPause && <TaskButton label="Pause" icon="pause" task="doPause" onClick={() => bulkControl('pause', sel.filter((s: any) => s.state === 'STARTED'))} />}
-                        {showStop && <TaskButton label="Stop" icon="stop" danger task="doStop" onClick={() => bulkControl('stop', sel.filter((s: any) => ['STARTED', 'PAUSED'].includes(s.state)))} />}
-                        {showHalt && <TaskButton label="Halt" icon="halt" danger task="doHalt" onClick={() => bulkControl('halt', sel)} />}
-                        {showUndeploy && <TaskButton label="Undeploy Channel" icon="undeploy" task="doUndeployChannel" onClick={() => bulkControl('undeploy', sel.filter((s: any) => s.state !== 'UNDEPLOYED'))} />}
+                        {onToggleView && <TaskButton label={t("Table view")} icon="menu" onClick={onToggleView} />}
+                        <TaskButton label={t("Refresh")} icon="refresh" task="doRefreshStatuses" onClick={refresh} />
+                        {hasSel && <TaskButton label={sel.length > 1 ? t("View Messages ({value1})", { value1: String(sel.length) }) : t("View Messages")} icon="messages" task="doShowMessages" onClick={() => openMessages(sel[0])} />}
+                        {hasSel && <TaskButton label={t("Clear Statistics")} icon="clear" task="doClearStats" onClick={() => clearStats(sel)} />}
+                        {showStart && <TaskButton label={t("Start")} icon="play" task="doStart" onClick={() => bulkControl('start', sel.filter((s: any) => ['STOPPED', 'PAUSED'].includes(s.state)))} />}
+                        {showPause && <TaskButton label={t("Pause")} icon="pause" task="doPause" onClick={() => bulkControl('pause', sel.filter((s: any) => s.state === 'STARTED'))} />}
+                        {showStop && <TaskButton label={t("Stop")} icon="stop" danger task="doStop" onClick={() => bulkControl('stop', sel.filter((s: any) => ['STARTED', 'PAUSED'].includes(s.state)))} />}
+                        {showHalt && <TaskButton label={t("Halt")} icon="halt" danger task="doHalt" onClick={() => bulkControl('halt', sel)} />}
+                        {showUndeploy && <TaskButton label={t("Undeploy Channel")} icon="undeploy" task="doUndeployChannel" onClick={() => bulkControl('undeploy', sel.filter((s: any) => s.state !== 'UNDEPLOYED'))} />}
                     </div>
                 </RailPane>
             </ViewTasks>
             {/* Summary. No divider rule: these are cards on the dotted ground, and a
                 full-bleed border-b drew a hairline straight across it. */}
             <div className="flex flex-wrap gap-2.5 px-[13px] pt-3 pb-2">
-                <StatCard label="Channels" value={fmt(all.length)} />
+                <StatCard label={t("Channels")} value={fmt(all.length)} />
                 {STATE_ORDER.map((s: any) => ((agg.states as any)[s] ? (
                     <StatCard key={s} label={(STATE_META as any)[s].label} value={fmt((agg.states as any)[s])} color={(STATE_META as any)[s].color}
                         active={stateFilter === s} onClick={() => toggleState(s)} small />
                 ) : null))}
                 <div className="flex-1 min-w-[7px]" />
-                <StatCard label="Received" value={fmt(agg.totals.RECEIVED)} small />
-                <StatCard label="Sent" value={fmt(agg.totals.SENT)} small />
-                <StatCard label="Queued" value={fmt(agg.totals.QUEUED)} color={agg.totals.QUEUED ? 'var(--warn)' : undefined} small />
-                <StatCard label="Errored" value={fmt(agg.totals.ERROR)} color={agg.totals.ERROR ? 'var(--err)' : undefined} small />
+                <StatCard label={t("Received")} value={fmt(agg.totals.RECEIVED)} small />
+                <StatCard label={t("Sent")} value={fmt(agg.totals.SENT)} small />
+                <StatCard label={t("Queued")} value={fmt(agg.totals.QUEUED)} color={agg.totals.QUEUED ? 'var(--warn)' : undefined} small />
+                <StatCard label={t("Errored")} value={fmt(agg.totals.ERROR)} color={agg.totals.ERROR ? 'var(--err)' : undefined} small />
             </div>
 
             {/* Controls — two groups: filters (left) and display controls (right).
@@ -335,14 +336,13 @@ function CardsView({ onToggleView }: any) {
                 <div className="flex flex-wrap items-center gap-2 min-w-0">
                     <div className="relative">
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-text-faint"><Icon name="search" size={14} /></span>
-                        <input type="text" className="w-[198px] max-w-full !pl-7" placeholder="Filter channels & tags…" value={query} onChange={(e: any) => setQuery(e.target.value)} />
+                        <input type="text" className="w-[198px] max-w-full !pl-7" placeholder={t("Filter channels & tags…")} value={query} onChange={(e: any) => setQuery(e.target.value)} />
                     </div>
-                    <label className="flex items-center gap-2 text-[11px] text-text-dim whitespace-nowrap">Group by
-                        <select value={groupBy} onChange={(e: any) => setGroupBy(e.target.value)}>
-                            <option value="none">None</option>
-                            <option value="group">Channel group</option>
-                            <option value="tag">Tag</option>
-                            <option value="state">State</option>
+                    <label className="flex items-center gap-2 text-[11px] text-text-dim whitespace-nowrap">{t("Group by")}<select value={groupBy} onChange={(e: any) => setGroupBy(e.target.value)}>
+                            <option value="none">{t("None")}</option>
+                            <option value="group">{t("Channel group")}</option>
+                            <option value="tag">{t("Tag")}</option>
+                            <option value="state">{t("State")}</option>
                         </select>
                     </label>
                     {stateFilter && <button className="btn btn-sm btn-ghost" onClick={() => setStateFilter(null)}><Icon name="x" size={12} />{(STATE_META as any)[stateFilter] ? (STATE_META as any)[stateFilter].label : stateFilter}</button>}
@@ -351,28 +351,28 @@ function CardsView({ onToggleView }: any) {
                     {/* Current vs. Lifetime statistics */}
                     {/* Radix RadioGroup, same as the dashboard's SegPill. */}
                     <RadioGroup.Root value={lifetime ? 'lifetime' : 'current'}
-                        aria-label="Statistics range" orientation="horizontal"
+                        aria-label={t("Statistics range")} orientation="horizontal"
                         onValueChange={(v: any) => { if (v) setLifetime(v === 'lifetime'); }}
                         className="segpill flex-none">
-                        {[['Current', 'current'], ['Lifetime', 'lifetime']].map(([label, val]) => (
+                        {[[t("Current"), 'current'], [t("Lifetime"), 'lifetime']].map(([label, val]) => (
                             <RadioGroup.Item key={val} value={val}
                                 className={(lifetime ? 'lifetime' : 'current') === val ? 'on' : ''}>
                                 {label}
                             </RadioGroup.Item>
                         ))}
                     </RadioGroup.Root>
-                    <button className={`btn btn-ghost btn-sm ${live ? 'text-accent' : ''}`} onClick={() => setLive((v: any) => !v)} title="Toggle auto-refresh">
-                        <span className={`pip ${live ? 'ok' : ''} mr-1`} />{live ? 'Live' : 'Paused'}
+                    <button className={`btn btn-ghost btn-sm ${live ? 'text-accent' : ''}`} onClick={() => setLive((v: any) => !v)} title={t("Toggle auto-refresh")}>
+                        <span className={`pip ${live ? 'ok' : ''} mr-1`} />{live ? t("Live") : t("Paused")}
                     </button>
-                    <span className="text-[11px] text-text-faint whitespace-nowrap">{filtered.length} of {all.length}</span>
+                    <span className="text-[11px] text-text-faint whitespace-nowrap">{t("{value1} of {value2}", { value1: filtered.length, value2: all.length })}</span>
                 </div>
             </div>
 
             {/* Body */}
             {statuses === null ? (
-                <div className="view-body"><div className="dt-empty">Loading channels…</div></div>
+                <div className="view-body"><div className="dt-empty">{t("Loading channels…")}</div></div>
             ) : filtered.length === 0 ? (
-                <div className="view-body"><div className="dt-empty"><div className="empty-icon"><Icon name="dashboard" size={30} /></div>No channels match.</div></div>
+                <div className="view-body"><div className="dt-empty"><div className="empty-icon"><Icon name="dashboard" size={30} /></div>{t("No channels match.")}</div></div>
             ) : sections ? (
                 <div className="view-body" onClick={clearSelection}>
                     {sections.map((sec: any) => {
@@ -397,9 +397,7 @@ function CardsView({ onToggleView }: any) {
                                         </div>
                                         {more > 0 && (
                                             <button type="button" className="btn btn-sm btn-ghost mt-2"
-                                                onClick={(e: any) => { e.stopPropagation(); setSectionLimits((l: any) => ({ ...l, [sec.key]: (l[sec.key] || SECTION_CAP) + SECTION_CAP })); }}>
-                                                Show {Math.min(more, SECTION_CAP)} more ({more} hidden)
-                                            </button>
+                                                onClick={(e: any) => { e.stopPropagation(); setSectionLimits((l: any) => ({ ...l, [sec.key]: (l[sec.key] || SECTION_CAP) + SECTION_CAP })); }}>{t("Show {value1} more ({value2} hidden)", { value1: Math.min(more, SECTION_CAP), value2: more })}</button>
                                         )}
                                     </>
                                 )}

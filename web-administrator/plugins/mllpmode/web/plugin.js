@@ -1,8 +1,9 @@
 // plugins/mllpmode/web/plugin.tsx
-import { frameModeSampleFrame, frameModeSettingsDialog } from "@oie/web-ui";
+import { scope, frameModeSampleFrame, frameModeSettingsDialog } from "@oie/web-ui";
+var { t } = scope("mllpmode");
 function register(platform) {
   platform.registerTransmissionMode("MLLP", {
-    label: "MLLP",
+    label: t("MLLP"),
     order: 10,
     // Applied when MLLP is selected from the Transmission Mode dropdown. MLLP
     // serializes as MLLPModeProperties (a FrameModeProperties subclass) and

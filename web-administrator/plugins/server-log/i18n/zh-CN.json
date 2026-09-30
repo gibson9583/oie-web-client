@@ -1,0 +1,19 @@
+{
+  "Apply log size": "应用日志大小",
+  "Clear the displayed log": "清除显示的日志",
+  "Clipboard unavailable": "剪贴板不可用",
+  "Close": "关闭",
+  "Copied to clipboard": "已复制到剪贴板",
+  "Copy": "复制",
+  "Double-click for the full entry": "双击查看完整条目",
+  "Level": "级别",
+  "Log Size:": "日志大小：",
+  "Message": "消息",
+  "No server log entries yet.": "尚无服务器日志条目。",
+  "Pause or resume the live log": "暂停或恢复实时日志",
+  "Server Log": "服务器日志",
+  "Server Log Entry": "服务器日志条目",
+  "Server Log unavailable: {value1}": "服务器日志不可用：{value1}",
+  "Stack Trace": "堆栈跟踪",
+  "Timestamp": "时间戳"
+}

@@ -1,3 +1,5 @@
+import { t, tx, compareText, formatNumber } from '../../core/i18n.js';
+import { isCommitEnter, isComposing } from '../../core/keyboard.js';
 /*
  * Dashboard — live channel status board with the classic Administrator layout,
  * fully declarative React. Server state (statuses, groups, tags, connector
@@ -203,7 +205,7 @@ function DashFilterBar({
         };
         for (const st of statuses) if (st.name) add(String(st.name), 'channel');
         for (const tag of tags) if (tag.name) add(String(tag.name), 'tag');
-        out.sort((a: any, b: any) => a.value.localeCompare(b.value));
+        out.sort((a: any, b: any) => compareText(a.value, b.value));
         return out.slice(0, TYPEAHEAD_MAX);
     }, [taOpen, filterText, chips, statuses, tags]);
 
@@ -247,6 +249,7 @@ function DashFilterBar({
     };
 
     const onKeyDown = (e: any) => {
+        if (isComposing(e)) return;
         const open = taOpen && taItems.length > 0;
         if (e.key === 'Backspace' && !filterText && chips.length) {
             // Backspace on an empty input removes the last pill.
@@ -257,7 +260,7 @@ function DashFilterBar({
             if (!open) { setTaOpen(true); return; }
             const delta = e.key === 'ArrowDown' ? 1 : -1;
             setTaIndex((i: any) => (i + delta + taItems.length) % taItems.length);
-        } else if (e.key === 'Enter' && open) {
+        } else if (isCommitEnter(e) && open) {
             e.preventDefault();
             pickSuggestion(taItems[taIndex >= 0 ? taIndex : 0]);
         } else if (e.key === 'Escape' && open) {
@@ -270,23 +273,23 @@ function DashFilterBar({
        and the inline bar are two homes for the same controls, not two copies. */
     const controls = (
         <>
-            <SegPill value={viewMode} onChange={onViewMode} label="Row grouping" options={VIEW_MODE_OPTIONS} />
+            <SegPill value={viewMode} onChange={onViewMode} label={t("Row grouping")} options={VIEW_MODE_OPTIONS} />
             <span className="inline-flex items-center gap-[4px]">
-                <span className="text-text-faint text-[10px]">Tags:</span>
-                <SegPill value={tagMode} onChange={onTagMode} label="Tag display" options={TAG_MODE_OPTIONS} />
+                <span className="text-text-faint text-[10px]">{t("Tags:")}</span>
+                <SegPill value={tagMode} onChange={onTagMode} label={t("Tag display")} options={TAG_MODE_OPTIONS} />
             </span>
             <span className="inline-flex items-center gap-[4px]">
-                <span className="text-text-faint text-[10px]">Stats:</span>
-                <SegPill value={showStats ? 'on' : 'off'} onChange={(v: any) => onShowStats(v === 'on')} label="Statistics strip" options={[
-                    { value: 'on', label: 'On', title: 'Show stat cards' },
-                    { value: 'off', label: 'Off', title: 'Hide stat cards' }
+                <span className="text-text-faint text-[10px]">{t("Stats:")}</span>
+                <SegPill value={showStats ? 'on' : 'off'} onChange={(v: any) => onShowStats(v === 'on')} label={t("Statistics strip")} options={[
+                    { value: 'on', label: t("On"), title: t("Show stat cards") },
+                    { value: 'off', label: t("Off"), title: t("Hide stat cards") }
                 ]} />
             </span>
             <span className="inline-flex items-center gap-[4px]">
-                <span className="text-text-faint text-[10px]">Range:</span>
-                <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v: any) => onLifetime(v === 'lifetime')} label="Statistics range" options={[
-                    { value: 'current', label: 'Current' },
-                    { value: 'lifetime', label: 'Lifetime' }
+                <span className="text-text-faint text-[10px]">{t("Range:")}</span>
+                <SegPill value={lifetime ? 'lifetime' : 'current'} onChange={(v: any) => onLifetime(v === 'lifetime')} label={t("Statistics range")} options={[
+                    { value: 'current', label: t("Current") },
+                    { value: 'lifetime', label: t("Lifetime") }
                 ]} />
             </span>
         </>
@@ -295,7 +298,7 @@ function DashFilterBar({
     return (
         <div className="filterbar" ref={barRef}>
             <span className="flex items-center gap-2.5 flex-1 min-w-[198px]">
-                <label>Filter:</label>
+                <label>{t("Filter:")}</label>
                 {chips.length > 0 && (
                     <span className="filter-chip-host gap-1 flex-wrap" style={{ display: 'inline-flex' }}>
                         {chips.map((chip: any) => {
@@ -307,7 +310,7 @@ function DashFilterBar({
                                     style={{ background: isTag ? (tagRgb(tag, 0.25) || 'var(--bg3)') : 'var(--bg3)' }}>
                                     <Icon name={isTag ? 'tag' : 'server'} size={12} />
                                     <span>{chip.value}</span>
-                                    <button title="Remove"
+                                    <button title={t("Remove")}
                                         className="appearance-none border-none cursor-pointer text-inherit text-[12.5px] leading-none py-0 px-px"
                                         style={{ background: 'none', fontFamily: 'inherit' }}
                                         onClick={() => removeChip(chip)}>×</button>
@@ -318,7 +321,7 @@ function DashFilterBar({
                 )}
                 {/* combobox over the suggestion list: the arrow-key cursor was
                     visual only, so a screen reader never heard the active item. */}
-                <input ref={inputRef} type="text" placeholder="Enter channel tag or name" autoComplete="off"
+                <input ref={inputRef} type="text" placeholder={t("Enter channel tag or name")} autoComplete="off"
                     className="flex-1 min-w-0" value={filterText}
                     role="combobox"
                     aria-expanded={String(taOpen && taItems.length > 0) as any}
@@ -339,7 +342,7 @@ function DashFilterBar({
                 <Popover.Root>
                     <Popover.Trigger asChild>
                         <button type="button" className="btn dash-options-btn">
-                            <Icon name="eye" /><span>View</span><Icon name="chevD" />
+                            <Icon name="eye" /><span>{t("View")}</span><Icon name="chevD" />
                         </button>
                     </Popover.Trigger>
                     <Popover.Portal>
@@ -355,7 +358,7 @@ function DashFilterBar({
                 </div>
             )}
             {createPortal(
-                <div ref={taRef} id="dash-typeahead" role="listbox" aria-label="Filter suggestions"
+                <div ref={taRef} id="dash-typeahead" role="listbox" aria-label={t("Filter suggestions")}
                     className={'typeahead' + (taOpen && taItems.length ? '' : ' hidden')}>
                     {taItems.map((item: any, i: any) => (
                         <div key={item.kind + ':' + item.value}
@@ -452,11 +455,11 @@ function DashboardView({ onToggleView }: any) {
        pane closure or context-menu builder) — no reads of selection state from
        long-lived closures, so a menu can never act on a stale selection. */
     async function controlChannels(action: any, label: any, ids: any) {
-        if (!ids.length) { toast('Select a channel first', 'warn'); return; }
+        if (!ids.length) { toast(t("Select a channel first"), 'warn'); return; }
         try {
             if (await runLifecycle(action, ids)) refresh();
         } catch (e: any) {
-            toast(`${label} failed: ${e.message}`, 'error');
+            toast(t("{value1} failed: {value2}", { value1: String(label), value2: String(e.message) }), 'error');
             refresh();
         }
     }
@@ -468,32 +471,32 @@ function DashboardView({ onToggleView }: any) {
        api.statistics.clear. Queued is a live queue depth, not a counter, so
        it cannot be cleared. */
     function openClearStatisticsDialog(ids: any) {
-        const received = checkbox('Received', true);
-        const filtered = checkbox('Filtered', true);
-        const sent = checkbox('Sent', true);
-        const errored = checkbox('Errored', true);
+        const received = checkbox(t("Received"), true);
+        const filtered = checkbox(t("Filtered"), true);
+        const sent = checkbox(t("Sent"), true);
+        const errored = checkbox(t("Errored"), true);
         modal({
-            title: 'Clear Statistics',
+            title: t("Clear Statistics"),
             body: h('div',
-                h('div.mb-[13px]', `Clear the selected statistics for ${ids.length} channel(s)? This cannot be undone.`),
+                h('div.mb-[13px]', t("Clear the selected statistics for {value1} channel(s)? This cannot be undone.", { value1: String(ids.length) })),
                 h('div', { class: 'flex flex-col gap-1.5' },
                     received.el, filtered.el, sent.el, errored.el),
-                h('div.hint.mt-[13px]', 'Queued statistics cannot be cleared.')),
+                h('div.hint.mt-[13px]', t("Queued statistics cannot be cleared."))),
             buttons: [
-                { label: 'Cancel' },
+                { label: t("Cancel") },
                 {
-                    label: 'Clear', primary: true,
+                    label: t("Clear"), primary: true,
                     onClick: async () => {
                         const flags = [received, filtered, sent, errored].map(c => c.input.checked);
                         if (!flags.some(Boolean)) {
-                            toast('Select at least one statistic to clear', 'warn');
+                            toast(t("Select at least one statistic to clear"), 'warn');
                             return false;
                         }
                         try {
                             await api.statistics.clear(Object.fromEntries(ids.map((id: any) => [id, null])), ...flags);
-                            toast('Statistics cleared');
+                            toast(t("Statistics cleared"));
                         } catch (e: any) {
-                            toast(`Clear statistics failed: ${e.message}`, 'error');
+                            toast(t("Clear statistics failed: {value1}", { value1: String(e.message) }), 'error');
                             return false;
                         }
                         refresh();
@@ -506,16 +509,16 @@ function DashboardView({ onToggleView }: any) {
     // Task handlers, mirroring the Swing context group (Send/View/Remove
     // All/Clear Statistics/Start/Pause/Stop/Halt/Undeploy). All take explicit ids.
     const needIds = (ids: any) => {
-        if (!ids.length) { toast('Select a channel first', 'warn'); return false; }
+        if (!ids.length) { toast(t("Select a channel first"), 'warn'); return false; }
         return true;
     };
-    const startTask = (ids: any) => controlChannels('start', 'Start', ids);
-    const pauseTask = (ids: any) => controlChannels('pause', 'Pause', ids);
-    const stopTask = (ids: any) => controlChannels('stop', 'Stop', ids);
+    const startTask = (ids: any) => controlChannels('start', t("Start"), ids);
+    const pauseTask = (ids: any) => controlChannels('pause', t("Pause"), ids);
+    const stopTask = (ids: any) => controlChannels('stop', t("Stop"), ids);
     async function haltTask(ids: any) {
         if (!needIds(ids)) return;
-        if (await confirmDialog('Halt channels', 'Halting forcibly kills processing threads. Halt the selected channels?', { danger: true, okLabel: 'Halt' })) {
-            controlChannels('halt', 'Halt', ids);
+        if (await confirmDialog(t("Halt channels"), t("Halting forcibly kills processing threads. Halt the selected channels?"), { danger: true, okLabel: t("Halt") })) {
+            controlChannels('halt', t("Halt"), ids);
         }
     }
     function clearStatsTask(ids: any) {
@@ -524,12 +527,12 @@ function DashboardView({ onToggleView }: any) {
     async function undeployTask(ids: any) {
         if (!needIds(ids)) return;
         try { if (await runLifecycle('undeploy', ids)) refresh(); }
-        catch (e: any) { toast(`Undeploy failed: ${e.message}`, 'error'); refresh(); }
+        catch (e: any) { toast(t("Undeploy failed: {value1}", { value1: String(e.message) }), 'error'); refresh(); }
     }
     function sendMessageTask(ids: any) {
         if (!needIds(ids)) return;
         if (ids.length !== 1) {
-            toast('This operation can only be performed on a single channel.', 'warn');
+            toast(t("This operation can only be performed on a single channel."), 'warn');
             return;
         }
         openSendMessageDialog(platform, ids[0], () => refresh());
@@ -564,7 +567,7 @@ function DashboardView({ onToggleView }: any) {
         const defaults = statuses.filter(s => !used.has(s.channelId));
         if (defaults.length || !rows.length) {
             rows.unshift({
-                group: { id: '__default__', name: 'Default Group', description: 'Channels not part of a group will appear here.' },
+                group: { id: '__default__', name: 'Default Group', description: t("Channels not part of a group will appear here.") },
                 members: defaults
             });
         }
@@ -640,7 +643,7 @@ function DashboardView({ onToggleView }: any) {
        Statistics read the `lifetime` state flag. */
     const COLUMNS = [
         {
-            key: 'state', label: 'Status',
+            key: 'state', label: t("Status"),
             sortValue: (st: any) => stateLabel(st.state) || String(st.state || ''),
             renderChannel: (st: any) => <span className="status-cell"><span className={`pip ${statePip(st.state)}`} />{stateLabel(st.state)}</span>,
             renderGroupAggregate: (totals: any, ctx: any) => {
@@ -652,48 +655,48 @@ function DashboardView({ onToggleView }: any) {
                     const state = ctx.members[0].state;
                     return <span className="status-cell"><span className={`pip ${statePip(state)}`} />{stateLabel(state)}</span>;
                 }
-                return <span className="status-cell"><span className="pip warn" />Mixed</span>;
+                return <span className="status-cell">{tx("{value1}Mixed", { value1: <span className="pip warn" /> })}</span>;
             },
             renderConnector: (child: any) => <span className="status-cell"><span className={`pip ${statePip(child.state)}`} />{stateLabel(child.state)}</span>
         },
         {
-            key: 'name', label: 'Name', tree: true,
+            key: 'name', label: t("Name"), tree: true,
             sortValue: (st: any) => String(st.name || '').toLowerCase(),
             renderChannel: (st: any) => nameCell(st),
-            renderGroupAggregate: (totals: any, ctx: any) => `[${ctx.group.name}]`,
+            renderGroupAggregate: (totals: any, ctx: any) => ctx.group.id === '__default__' ? t("[Default Group]") : `[${ctx.group.name}]`,
             renderConnector: (child: any) => <span className="text-text-dim">{String(child.name ?? '')}</span>
         },
         {
-            key: 'type', label: 'Type',
+            key: 'type', label: t("Type"),
             sortValue: (st: any) => String(connectorTypes.get(st.channelId)?.get(0) || ''),
             renderChannel: (st: any) => connectorTypes.get(st.channelId)?.get(0) || '',
             renderGroupAggregate: () => '',
             renderConnector: (child: any) => <span className="text-text-dim">{connectorTypes.get(child.channelId)?.get(Number(child.metaDataId)) || ''}</span>
         },
         {
-            key: 'port', label: 'Port', mono: true,
+            key: 'port', label: t("Port"), mono: true,
             sortValue: (st: any) => Number(sourcePorts.get(st.channelId)) || 0,
             renderChannel: (st: any) => sourcePorts.get(st.channelId) || '',
             renderGroupAggregate: () => '',
             renderConnector: (child: any) => <span className="text-text-dim">{Number(child.metaDataId) === 0 ? (sourcePorts.get(child.channelId) || '') : ''}</span>
         },
         {
-            key: 'rev', label: 'Rev Δ', align: 'right', mono: true,
+            key: 'rev', label: t("Rev Δ"), align: 'right', mono: true,
             sortValue: (st: any) => Number(st.deployedRevisionDelta) || 0,
             renderChannel: (st: any) => {
                 const d = Number(st.deployedRevisionDelta) || 0;
                 // Out of sync on revision delta OR code-template changes (see channels.js).
                 const ct = st.codeTemplatesChanged === true || st.codeTemplatesChanged === 'true';
-                const title = d > 0 && ct ? 'Channel and code templates changed since last deployment'
-                    : d > 0 ? 'Channel changed since last deployment'
-                        : ct ? 'Code templates changed since last deployment' : undefined;
+                const title = d > 0 && ct ? t("Channel and code templates changed since last deployment")
+                    : d > 0 ? t("Channel changed since last deployment")
+                        : ct ? t("Code templates changed since last deployment") : undefined;
                 return (d > 0 || ct) ? <span className="cell-flag" title={title}>{String(d)}</span> : '0';
             },
             renderGroupAggregate: () => '--',
             renderConnector: () => ''
         },
         {
-            key: 'deployed', label: 'Last Deployed', mono: true,
+            key: 'deployed', label: t("Last Deployed"), mono: true,
             sortValue: (st: any) => st.deployedDate?.time ?? 0,
             renderChannel: (st: any) => isJustDeployed(st)
                 ? <span className="cell-flag">{fmtDate(st.deployedDate)}</span>
@@ -701,11 +704,11 @@ function DashboardView({ onToggleView }: any) {
             renderGroupAggregate: () => '--',
             renderConnector: () => ''
         },
-        statColumn('received', 'Received', 'RECEIVED'),
-        statColumn('filtered', 'Filtered', 'FILTERED'),
-        statColumn('queued', 'Queued', 'QUEUED', 'warn'),
-        statColumn('sent', 'Sent', 'SENT'),
-        statColumn('errored', 'Errored', 'ERROR', 'err')
+        statColumn('received', t("Received"), 'RECEIVED'),
+        statColumn('filtered', t("Filtered"), 'FILTERED'),
+        statColumn('queued', t("Queued"), 'QUEUED', 'warn'),
+        statColumn('sent', t("Sent"), 'SENT'),
+        statColumn('errored', t("Errored"), 'ERROR', 'err')
     ];
 
     // The built-in columns plus any plugin dashboard columns (rendered last). A
@@ -743,7 +746,7 @@ function DashboardView({ onToggleView }: any) {
     }
 
     function sortChannels(list: any) {
-        const byName = (a: any, b: any) => String(a.name).localeCompare(String(b.name));
+        const byName = (a: any, b: any) => compareText(String(a.name), String(b.name));
         const col = COLUMNS.find(c => c.key === sort.key && c.sortValue);
         if (!col) return list.slice().sort(byName);
         const sortDir = sort.dir;
@@ -751,7 +754,7 @@ function DashboardView({ onToggleView }: any) {
             const va = col.sortValue(a), vb = col.sortValue(b);
             let cmp: any;
             if (typeof va === 'number' && typeof vb === 'number') cmp = va - vb;
-            else cmp = String(va ?? '').localeCompare(String(vb ?? ''));
+            else cmp = compareText(String(va ?? ''), String(vb ?? ''));
             return cmp ? cmp * sortDir : byName(a, b);
         });
     }
@@ -787,8 +790,8 @@ function DashboardView({ onToggleView }: any) {
                 if (va === null) return 1;
                 if (vb === null) return -1;
                 const cmp = (typeof va === 'number' && typeof vb === 'number')
-                    ? va - vb : String(va).localeCompare(String(vb));
-                return cmp ? cmp * sortDir : String(a.group.name || '').localeCompare(String(b.group.name || ''));
+                    ? va - vb : compareText(String(va), String(vb));
+                return cmp ? cmp * sortDir : compareText(String(a.group.name || ''), String(b.group.name || ''));
             });
         }
         return rows;
@@ -941,18 +944,18 @@ function DashboardView({ onToggleView }: any) {
         const first = members[0];
         const anyState = (fn: any) => members.some(fn);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => sendMessageTask(ids) },
-            { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${first.channelId}`) },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
-            { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
+            { label: t("Send Message"), icon: 'send', task: 'doSendMessage', onClick: () => sendMessageTask(ids) },
+            { label: t("View Messages"), icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${first.channelId}`) },
+            { label: t("Remove All Messages"), icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
+            { label: t("Clear Statistics"), icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
             '-',
-            { label: 'Start', icon: 'play', hidden: !anyState((x: any) => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlChannels('start', 'Start', ids) },
-            { label: 'Pause', icon: 'pause', hidden: !anyState((x: any) => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', 'Pause', ids) },
-            { label: 'Stop', icon: 'stop', hidden: !anyState((x: any) => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', 'Stop', ids) },
-            { label: 'Halt', icon: 'halt', hidden: !(members.length === 1 && isHaltable(members[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
-            { label: 'Undeploy Channels', icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) }
+            { label: t("Start"), icon: 'play', hidden: !anyState((x: any) => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlChannels('start', t("Start"), ids) },
+            { label: t("Pause"), icon: 'pause', hidden: !anyState((x: any) => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', t("Pause"), ids) },
+            { label: t("Stop"), icon: 'stop', hidden: !anyState((x: any) => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', t("Stop"), ids) },
+            { label: t("Halt"), icon: 'halt', hidden: !(members.length === 1 && isHaltable(members[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
+            { label: t("Undeploy Channels"), icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) }
         ], 'dashboard');
     }
 
@@ -988,24 +991,24 @@ function DashboardView({ onToggleView }: any) {
         const sel = statuses.filter(x => ids.includes(x.channelId));
         const anyState = (fn: any) => sel.some(fn);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Send Message', icon: 'send', task: 'doSendMessage', onClick: () => sendMessageTask(ids) },
-            { label: 'View Messages', icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${st.channelId}`) },
-            { label: 'Remove All Messages', icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
-            { label: 'Clear Statistics', icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
+            { label: t("Send Message"), icon: 'send', task: 'doSendMessage', onClick: () => sendMessageTask(ids) },
+            { label: t("View Messages"), icon: 'messages', task: 'doShowMessages', onClick: () => router.navigate(`/messages/${st.channelId}`) },
+            { label: t("Remove All Messages"), icon: 'trash', danger: true, task: 'doRemoveAllMessages', onClick: () => removeAllTask(ids) },
+            { label: t("Clear Statistics"), icon: 'clear', hidden: lifetime, task: 'doClearStats', onClick: () => clearStatsTask(ids) },
             '-',
-            { label: 'Start', icon: 'play', hidden: !anyState((x: any) => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlChannels('start', 'Start', ids) },
-            { label: 'Pause', icon: 'pause', hidden: !anyState((x: any) => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', 'Pause', ids) },
-            { label: 'Stop', icon: 'stop', hidden: !anyState((x: any) => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', 'Stop', ids) },
-            { label: 'Halt', icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
-            { label: 'Undeploy Channel', icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) },
+            { label: t("Start"), icon: 'play', hidden: !anyState((x: any) => x.state === 'STOPPED' || x.state === 'PAUSED'), task: 'doStart', onClick: () => controlChannels('start', t("Start"), ids) },
+            { label: t("Pause"), icon: 'pause', hidden: !anyState((x: any) => x.state === 'STARTED'), task: 'doPause', onClick: () => controlChannels('pause', t("Pause"), ids) },
+            { label: t("Stop"), icon: 'stop', hidden: !anyState((x: any) => x.state === 'STARTED' || x.state === 'PAUSED'), task: 'doStop', onClick: () => controlChannels('stop', t("Stop"), ids) },
+            { label: t("Halt"), icon: 'halt', hidden: !(sel.length === 1 && isHaltable(sel[0].state)), task: 'doHalt', onClick: () => haltTask(ids) },
+            { label: t("Undeploy Channel"), icon: 'undeploy', hidden: anyState((x: any) => isHaltableNonSyncing(x.state)), task: 'doUndeployChannel', onClick: () => undeployTask(ids) },
             '-',
-            { label: 'Edit Channel', icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
+            { label: t("Edit Channel"), icon: 'edit', task: 'doEditChannel', group: 'channel', onClick: () => router.navigate(`/channels/${st.channelId}/edit`) },
             // Tagged with Swing's channelEdit constants (CHANNEL_EDIT_FILTER/_TRANSFORMER)
             // so an RBAC policy that hides filter/transformer editing applies here too.
-            { label: 'Edit Filter', icon: 'filter', task: 'doEditFilter', group: 'channelEdit', onClick: () => router.navigate(`/channels/${st.channelId}/filter/0`) },
-            { label: 'Edit Transformer', icon: 'transform', task: 'doEditTransformer', group: 'channelEdit', onClick: () => router.navigate(`/channels/${st.channelId}/transformer/0`) }
+            { label: t("Edit Filter"), icon: 'filter', task: 'doEditFilter', group: 'channelEdit', onClick: () => router.navigate(`/channels/${st.channelId}/filter/0`) },
+            { label: t("Edit Transformer"), icon: 'transform', task: 'doEditTransformer', group: 'channelEdit', onClick: () => router.navigate(`/channels/${st.channelId}/transformer/0`) }
         ], 'dashboard');
     }
 
@@ -1027,22 +1030,22 @@ function DashboardView({ onToggleView }: any) {
         const stopConnector = async () => {
             if (Number(child.metaDataId) !== 0 && !queueEnabled) {
                 modal({
-                    title: 'Connector not stopped',
+                    title: t("Connector not stopped"),
                     body: h('div',
-                        'This destination connector was not stopped because queueing is not enabled.',
+                        t("This destination connector was not stopped because queueing is not enabled."),
                         h('br'), h('br'),
-                        'Queueing must be enabled for a destination connector to be stopped individually.'),
-                    buttons: [{ label: 'OK', primary: true }]
+                        t("Queueing must be enabled for a destination connector to be stopped individually.")),
+                    buttons: [{ label: t("OK"), primary: true }]
                 });
                 return;
             }
             await runConnector('stopConnector')();
         };
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() },
             '-',
-            { label: 'Start Connector', icon: 'play', hidden: !(child.state === 'STOPPED' || child.state === 'PAUSED'), task: 'doStartConnector', onClick: runConnector('startConnector') },
-            { label: 'Stop Connector', icon: 'stop', hidden: !(child.state === 'STARTED' || child.state === 'PAUSED'), task: 'doStopConnector', onClick: stopConnector }
+            { label: t("Start Connector"), icon: 'play', hidden: !(child.state === 'STOPPED' || child.state === 'PAUSED'), task: 'doStartConnector', onClick: runConnector('startConnector') },
+            { label: t("Stop Connector"), icon: 'stop', hidden: !(child.state === 'STARTED' || child.state === 'PAUSED'), task: 'doStopConnector', onClick: stopConnector }
         ], 'dashboard');
     }
 
@@ -1060,7 +1063,7 @@ function DashboardView({ onToggleView }: any) {
         const jobs: any[] = [statusesQ.refetch(), groupsQ.refetch(), tagsQ.refetch()];
         if (manual) jobs.push(typesQ.refetch(), portsQ.refetch());
         const [st] = await Promise.all(jobs);
-        if (manual && st.error) toast(`Refresh failed: ${st.error.message}`, 'error');
+        if (manual && st.error) toast(t("Refresh failed: {value1}", { value1: String(st.error.message) }), 'error');
     }
 
     // Click on empty space (not a row) clears the channel selection, so the
@@ -1080,7 +1083,7 @@ function DashboardView({ onToggleView }: any) {
             lastClickedRef.current = null;
             applySelection(new Set(), null);
         }
-        contextMenu(e.clientX, e.clientY, [{ label: 'Refresh', icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() }], 'dashboard');
+        contextMenu(e.clientX, e.clientY, [{ label: t("Refresh"), icon: 'refresh', task: 'doRefreshStatuses', onClick: () => refresh() }], 'dashboard');
     }
 
     /* Leaving the dashboard ends the one-time "just deployed" cue, so it won't
@@ -1125,43 +1128,43 @@ function DashboardView({ onToggleView }: any) {
     const treeData = buildTreeData();
     const collapsedKeys = buildCollapsedKeys();
     const selectedKeys = buildSelectedKeys();
-    const channelsText = `${statuses.length} Deployed Channel${statuses.length === 1 ? '' : 's'}`;
+    const channelsText = t('{count, plural, one {{count} Deployed Channel} other {{count} Deployed Channels}}', { count: statuses.length });
     const countsText = viewMode === 'channel'
         ? channelsText
-        : (() => { const rows = groupedStatuses(); return `${rows.length} Group${rows.length === 1 ? '' : 's'}, ${channelsText}`; })();
+        : (() => { const rows = groupedStatuses(); return t('{count, plural, one {{count} Group, {channels}} other {{count} Groups, {channels}}}', { count: rows.length, channels: channelsText }); })();
     const emptyText = loaded
         ? (
             <div className="dt-empty">
                 <div className="empty-icon"><Icon name="dashboard" size={30} /></div>
-                <div>No deployed channels</div>
-                <div className="text-text-faint mt-[13px]">Deploy a channel from the Channels view to see it here.</div>
+                <div>{t("No deployed channels")}</div>
+                <div className="text-text-faint mt-[13px]">{t("Deploy a channel from the Channels view to see it here.")}</div>
             </div>
         )
-        : 'Contacting engine…';
+        : t("Contacting engine…");
 
     return (
         <div className="view dash-shadcn">
             <ViewTasks>
-                <RailPane title="Dashboard Tasks" paneKey="tasks:Dashboard Tasks" group="dashboard">
+                <RailPane title={t("Dashboard Tasks")} paneKey="tasks:Dashboard Tasks" group="dashboard">
                     <div className="taskbar" data-pane-title="Dashboard Tasks">
-                        {onToggleView && <TaskButton label="Card view" icon="dashboard" onClick={onToggleView} />}
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshStatuses" onClick={() => refresh(true)} />
-                        {hasSel && <TaskButton label="Send Message" icon="send" task="doSendMessage" onClick={() => sendMessageTask([...selected])} />}
-                        {hasSel && <TaskButton label="View Messages" icon="messages" task="doShowMessages" onClick={() => viewMessagesTask([...selected])} />}
-                        {hasSel && <TaskButton label="Remove All Messages" icon="trash" danger task="doRemoveAllMessages" onClick={() => removeAllTask([...selected])} />}
-                        {showClearStats && <TaskButton label="Clear Statistics" icon="clear" task="doClearStats" onClick={() => clearStatsTask([...selected])} />}
-                        {showStart && <TaskButton label="Start" icon="play" task="doStart" onClick={() => startTask([...selected])} />}
-                        {showPause && <TaskButton label="Pause" icon="pause" task="doPause" onClick={() => pauseTask([...selected])} />}
-                        {showStop && <TaskButton label="Stop" icon="stop" task="doStop" onClick={() => stopTask([...selected])} />}
-                        {showHalt && <TaskButton label="Halt" icon="halt" task="doHalt" onClick={() => haltTask([...selected])} />}
-                        {showUndeploy && <TaskButton label="Undeploy Channel" icon="undeploy" task="doUndeployChannel" onClick={() => undeployTask([...selected])} />}
+                        {onToggleView && <TaskButton label={t("Card view")} icon="dashboard" onClick={onToggleView} />}
+                        <TaskButton label={t("Refresh")} icon="refresh" task="doRefreshStatuses" onClick={() => refresh(true)} />
+                        {hasSel && <TaskButton label={t("Send Message")} icon="send" task="doSendMessage" onClick={() => sendMessageTask([...selected])} />}
+                        {hasSel && <TaskButton label={t("View Messages")} icon="messages" task="doShowMessages" onClick={() => viewMessagesTask([...selected])} />}
+                        {hasSel && <TaskButton label={t("Remove All Messages")} icon="trash" danger task="doRemoveAllMessages" onClick={() => removeAllTask([...selected])} />}
+                        {showClearStats && <TaskButton label={t("Clear Statistics")} icon="clear" task="doClearStats" onClick={() => clearStatsTask([...selected])} />}
+                        {showStart && <TaskButton label={t("Start")} icon="play" task="doStart" onClick={() => startTask([...selected])} />}
+                        {showPause && <TaskButton label={t("Pause")} icon="pause" task="doPause" onClick={() => pauseTask([...selected])} />}
+                        {showStop && <TaskButton label={t("Stop")} icon="stop" task="doStop" onClick={() => stopTask([...selected])} />}
+                        {showHalt && <TaskButton label={t("Halt")} icon="halt" task="doHalt" onClick={() => haltTask([...selected])} />}
+                        {showUndeploy && <TaskButton label={t("Undeploy Channel")} icon="undeploy" task="doUndeployChannel" onClick={() => undeployTask([...selected])} />}
                     </div>
                 </RailPane>
             </ViewTasks>
             <div className="view-body flush flex flex-col">
                 {statuses.length > 0 && (() => {
                     const k = engineTotals(statuses, lifetime);
-                    const fmt = (n: any) => n.toLocaleString();
+                    const fmt = (n: any) => formatNumber(n);
                     const pct = (n: any, d: any) => (d > 0 ? Math.round((n / d) * 1000) / 10 : 0);
                     return (
                         // Stays mounted when Stats is Off — the strip slides shut instead of
@@ -1170,24 +1173,24 @@ function DashboardView({ onToggleView }: any) {
                           <div className="dash-kpis-slide">
                             <div className="dash-kpis">
                                 <div className="dash-kpi">
-                                    <div className="k-lbl">Received</div><div className="k-val">{fmt(k.RECEIVED)}</div>
-                                    <div className="k-sub">{lifetime ? 'lifetime stats' : 'current stats'}</div>
+                                    <div className="k-lbl">{t("Received")}</div><div className="k-val">{fmt(k.RECEIVED)}</div>
+                                    <div className="k-sub">{lifetime ? t("lifetime stats") : t("current stats")}</div>
                                 </div>
                                 <div className="dash-kpi">
-                                    <div className="k-lbl">Filtered</div><div className="k-val">{fmt(k.FILTERED)}</div>
-                                    <div className="k-sub">{pct(k.FILTERED, k.RECEIVED)}% of received</div>
+                                    <div className="k-lbl">{t("Filtered")}</div><div className="k-val">{fmt(k.FILTERED)}</div>
+                                    <div className="k-sub">{t("{value1}% of received", { value1: pct(k.FILTERED, k.RECEIVED) })}</div>
                                 </div>
                                 <div className="dash-kpi warn">
-                                    <div className="k-lbl">Queued</div><div className="k-val">{fmt(k.QUEUED)}</div>
-                                    <div className="k-sub">across {k.queuedChannels} channel{k.queuedChannels === 1 ? '' : 's'}</div>
+                                    <div className="k-lbl">{t("Queued")}</div><div className="k-val">{fmt(k.QUEUED)}</div>
+                                    <div className="k-sub">{t("{value2, plural, one {across {value1} channel} other {across {value1} channels}}", { value1: k.queuedChannels, value2: k.queuedChannels })}</div>
                                 </div>
                                 <div className="dash-kpi good">
-                                    <div className="k-lbl">Sent</div><div className="k-val">{fmt(k.SENT)}</div>
-                                    <div className="k-sub">{pct(k.SENT, k.RECEIVED)}% delivered</div>
+                                    <div className="k-lbl">{t("Sent")}</div><div className="k-val">{fmt(k.SENT)}</div>
+                                    <div className="k-sub">{t("{value1}% delivered", { value1: pct(k.SENT, k.RECEIVED) })}</div>
                                 </div>
                                 <div className="dash-kpi bad">
-                                    <div className="k-lbl">Errored</div><div className="k-val">{fmt(k.ERROR)}</div>
-                                    <div className="k-sub">{pct(k.ERROR, k.RECEIVED)}% error rate</div>
+                                    <div className="k-lbl">{t("Errored")}</div><div className="k-val">{fmt(k.ERROR)}</div>
+                                    <div className="k-sub">{t("{value1}% error rate", { value1: pct(k.ERROR, k.RECEIVED) })}</div>
                                 </div>
                             </div>
                           </div>

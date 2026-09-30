@@ -1,3 +1,4 @@
+import { t } from '../core/i18n.js';
 /*
  * Radix-backed renderer for core/ui.js's corner toasts, registered the same way
  * as the dialog one (see dialog-host.jsx for why core/ui.js can't import React).
@@ -57,7 +58,7 @@ function OneToast({ entry }: any) {
 export function ToastHost() {
     const live = useSyncExternalStore(subscribe, snapshot, snapshot);
     return (
-        <Toast.Provider swipeDirection="right" label="Notification">
+        <Toast.Provider swipeDirection="right" label={t("Notification")}>
             {live.map((entry: any) => <OneToast key={entry.id} entry={entry} />)}
             <Toast.Viewport className="toasts" />
         </Toast.Provider>

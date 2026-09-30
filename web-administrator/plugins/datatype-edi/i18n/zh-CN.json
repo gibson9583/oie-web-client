@@ -1,0 +1,17 @@
+{
+  "Batch": "批处理",
+  "Character(s) that delimit the elements in the message.": "分隔消息中元素的字符。",
+  "Character(s) that delimit the segments in the message.": "分隔消息中段的字符。",
+  "Character(s) that delimit the subelements in the message.": "分隔消息中子元素的字符。",
+  "EDI / X12": "EDI / X12",
+  "Element Delimiter": "元素分隔符",
+  "Infer X12 Delimiters": "推断 X12 分隔符",
+  "JavaScript": "JavaScript",
+  "JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.": "用于拆分批次并返回下一条消息的 JavaScript。可访问 reader（Java BufferedReader）；返回 null／空值表示输入结束。仅在连接器启用“处理批次”时使用。",
+  "Method for splitting the batch message. Only used when Process Batch is enabled in the connector.": "拆分批次消息的方法。仅在连接器启用“处理批次”时使用。",
+  "Segment Delimiter": "段分隔符",
+  "Serialization": "序列化",
+  "Split Batch By": "批次拆分方式",
+  "Subelement Delimiter": "子元素分隔符",
+  "X12 only: infer delimiters from the incoming message instead of the properties above.": "仅 X12：从传入消息推断分隔符，而不使用上方属性。"
+}

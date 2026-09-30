@@ -4,5 +4,10 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "MLLP (Minimal Lower Layer Protocol) framing transmission mode for TCP connectors — web equivalent of the mllpmode TransmissionModePlugin.",
-    "client": { "entry": "web/plugin.js" }
+    "client": {
+        "entry": "web/plugin.js"
+    },
+    "i18n": {
+        "zh-CN": "i18n/zh-CN.json"
+    }
 }

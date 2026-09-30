@@ -1,3 +1,5 @@
+import { t, locale } from '../core/i18n.js';
+import { isCommitEnter, isComposing } from '../core/keyboard.js';
 /*
  * Date + time field, replacing <input type="datetime-local">.
  *
@@ -20,6 +22,7 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { DayPicker } from 'react-day-picker';
+import { zhCN } from 'react-day-picker/locale';
 import { Icon } from './bridges.jsx';
 
 const pad = (n: any) => String(n).padStart(2, '0');
@@ -71,23 +74,24 @@ function TimePart({ label, value, max, onChange }: any) {
     return (
         <span className="dtf-part">
             <button type="button" className="dtf-step" tabIndex={-1}
-                aria-label={`${label} up`} onClick={() => step(1)}>▲</button>
+                aria-label={t("{value1} up", { value1: String(label) })} onClick={() => step(1)}>▲</button>
             <input className="dtf-num" inputMode="numeric" aria-label={label}
                 value={draft ?? pad(value)}
                 onChange={(e: any) => setDraft(e.target.value.replace(/\D/g, '').slice(0, 2))}
                 onBlur={(e: any) => commit(e.target.value)}
                 onKeyDown={(e: any) => {
+                    if (isComposing(e)) return;
                     if (e.key === 'ArrowUp') { e.preventDefault(); setDraft(null); step(1); }
                     else if (e.key === 'ArrowDown') { e.preventDefault(); setDraft(null); step(-1); }
-                    else if (e.key === 'Enter') { e.preventDefault(); commit(e.currentTarget.value); }
+                    else if (isCommitEnter(e)) { e.preventDefault(); commit(e.currentTarget.value); }
                 }} />
             <button type="button" className="dtf-step" tabIndex={-1}
-                aria-label={`${label} down`} onClick={() => step(-1)}>▼</button>
+                aria-label={t("{value1} down", { value1: String(label) })} onClick={() => step(-1)}>▼</button>
         </span>
     );
 }
 
-export function DateTimeField({ value, onChange, label, placeholder = 'yyyy-mm-dd hh:mm' }: any) {
+export function DateTimeField({ value, onChange, label, placeholder = t("yyyy-mm-dd hh:mm") }: any) {
     const [open, setOpen] = useState(false);
     const { date, hour, minute } = parseValue(value);
     const shown = displayValue(value);
@@ -109,32 +113,33 @@ export function DateTimeField({ value, onChange, label, placeholder = 'yyyy-mm-d
                 <Popover.Content className="dtf-pop" align="start" sideOffset={4} collisionPadding={8}>
                     <div className="dtf-body">
                         <DayPicker
+                            locale={locale() === 'zh-CN' ? zhCN : undefined}
                             mode="single"
                             selected={date || undefined}
                             defaultMonth={date || undefined}
                             onSelect={(picked: any) => { if (picked) commit(picked, hour, minute); }}
                             showOutsideDays />
                         <div className="dtf-time">
-                            <div className="dtf-time-head">Time</div>
+                            <div className="dtf-time-head">{t("Time")}</div>
                             <div className="dtf-clock">
-                                <TimePart label="Hour" value={hour} max={23}
+                                <TimePart label={t("Hour")} value={hour} max={23}
                                     onChange={(h: any) => commit(date, h, minute)} />
                                 <span className="dtf-colon" aria-hidden="true">:</span>
-                                <TimePart label="Minute" value={minute} max={59}
+                                <TimePart label={t("Minute")} value={minute} max={59}
                                     onChange={(m: any) => commit(date, hour, m)} />
                             </div>
                         </div>
                     </div>
                     <div className="dtf-foot">
-                        <span className="dtf-zone">Entered in {localZoneAbbr()}</span>
+                        <span className="dtf-zone">{t("Entered in {value1}", { value1: localZoneAbbr() })}</span>
                         <span className="dtf-actions">
                             <button type="button" className="dtf-link"
-                                onClick={() => { onChange(''); setOpen(false); }}>Clear</button>
+                                onClick={() => { onChange(''); setOpen(false); }}>{t("Clear")}</button>
                             <button type="button" className="dtf-link" onClick={() => {
                                 const now = new Date();
                                 onChange(formatValue(now, now.getHours(), now.getMinutes()));
                                 setOpen(false);
-                            }}>Now</button>
+                            }}>{t("Now")}</button>
                         </span>
                     </div>
                 </Popover.Content>

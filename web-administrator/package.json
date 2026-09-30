@@ -40,6 +40,7 @@
     "dicom-parser": "^1.8.21",
     "dompurify": "3.4.15",
     "express": "^5.2.1",
+    "intl-messageformat": "12.1.2",
     "js-beautify": "^2.0.3",
     "monaco-editor": "^0.56.0",
     "qrcode-generator": "2.0.4",

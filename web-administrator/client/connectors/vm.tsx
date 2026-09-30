@@ -1,3 +1,4 @@
+import { t, compareText } from '../core/i18n.js';
 /*
  * Channel Reader (VmReceiverProperties) / Channel Writer (VmDispatcherProperties).
  *
@@ -41,10 +42,8 @@ const channelReader = {
     component() {
         return (
             <div className="cform-section">
-                <div className="cform-section-title">Channel Reader Settings</div>
-                <div className="hint py-0.5 px-0">
-                    Channel Reader listens for messages routed from other channels on this server. It has no connector-specific settings.
-                </div>
+                <div className="cform-section-title">{t("Channel Reader Settings")}</div>
+                <div className="hint py-0.5 px-0">{t("Channel Reader listens for messages routed from other channels on this server. It has no connector-specific settings.")}</div>
             </div>
         );
     },
@@ -79,11 +78,11 @@ function channelControlNode(properties: any, platform: any, onChange: any) {
     let channelList: any[] = [];
 
     const field = textInput(properties.channelId === 'none' ? '' : (properties.channelId ?? ''), {
-        placeholder: '<None>', title: "The destination channel's unique global id.",
+        placeholder: t("<None>"), title: t("The destination channel''s unique global id."),
         class: 'w-[225px]'
     });
-    const combo = select([{ value: NONE_LABEL, label: NONE_LABEL }], NONE_LABEL, {
-        title: 'Select the channel to which messages accepted by this destination\'s filter should be written, or none to not write the message at all.',
+    const combo = select([{ value: NONE_LABEL, label: t("<None>") }], NONE_LABEL, {
+        title: t("Select the channel to which messages accepted by this destination''s filter should be written, or none to not write the message at all."),
         class: 'w-[225px]'
     });
 
@@ -111,7 +110,7 @@ function channelControlNode(properties: any, platform: any, onChange: any) {
             if (opt.value === MAP_VARIABLE_LABEL || opt.value === NOT_FOUND_LABEL) opt.remove();
         }
         if (selection === MAP_VARIABLE_LABEL || selection === NOT_FOUND_LABEL) {
-            const opt = h('option', { value: selection }, selection);
+            const opt = h('option', { value: selection }, selection === MAP_VARIABLE_LABEL ? t('<Map Variable>') : t('<Channel Not Found>'));
             opt.hidden = true;
             combo.appendChild(opt);
         }
@@ -147,7 +146,7 @@ function channelControlNode(properties: any, platform: any, onChange: any) {
     wrap.appendChild(field);
     wrap.appendChild(combo);
     const status = h('span', { role: 'status', class: 'text-text-dim' });
-    const refresh = h('button.btn', { type: 'button', onClick: () => { void load(); } }, 'Refresh channels') as HTMLButtonElement;
+    const refresh = h('button.btn', { type: 'button', onClick: () => { void load(); } }, t("Refresh channels")) as HTMLButtonElement;
     wrap.appendChild(refresh);
     wrap.appendChild(status);
 
@@ -156,13 +155,13 @@ function channelControlNode(properties: any, platform: any, onChange: any) {
     async function load() {
         refresh.disabled = true;
         combo.disabled = true;
-        status.textContent = 'Loading channels…';
+        status.textContent = t("Loading channels…");
         try {
             const map = await platform.api.channels.idsAndNames();
             // mapEntries yields [channelId, channelName]; sort the picker by name.
             channelList = mapEntries(map)
                 .map(([id, name]) => [name, id])
-                .sort((a: any, b: any) => a[0].localeCompare(b[0]));
+                .sort((a: any, b: any) => compareText(a[0], b[0]));
             clear(combo);
             // Synthetic labels describe the stored value, never selectable options.
             combo.appendChild(h('option', { value: NONE_LABEL }, NONE_LABEL));
@@ -171,7 +170,7 @@ function channelControlNode(properties: any, platform: any, onChange: any) {
             status.textContent = '';
             combo.disabled = false;
         } catch {
-            status.textContent = 'Could not load channels. Refresh to retry; the stored channel ID is unchanged.';
+            status.textContent = t("Could not load channels. Refresh to retry; the stored channel ID is unchanged.");
         } finally {
             refresh.disabled = false;
         }
@@ -204,14 +203,14 @@ function mapVariablesTable(properties: any, onChange: any) {
     function paint() {
         clear(wrap);
         const table = h('div', { class: 'flex flex-col gap-1' });
-        table.appendChild(h('div', { className: 'cform-label', class: 'font-semibold text-[11px]' }, 'Map Variable'));
+        table.appendChild(h('div', { className: 'cform-label', class: 'font-semibold text-[11px]' }, t("Map Variable")));
         rows.forEach((value: any, i: number) => {
             const input = textInput(value, {
-                placeholder: 'Map Variable', class: 'flex-1',
+                placeholder: t("Map Variable"), class: 'flex-1',
                 onInput: (e: any) => { rows[i] = e.target.value; commit(); }
             });
             const delBtn = h('button.icon-btn', {
-                type: 'button', title: 'Delete',
+                type: 'button', title: t("Delete"),
                 onClick: () => { rows.splice(i, 1); commit(); paint(); }
             }, icon('x'));
             table.appendChild(h('div', { class: 'flex gap-1.5 mb-1 items-center' }, input, delBtn));
@@ -219,7 +218,7 @@ function mapVariablesTable(properties: any, onChange: any) {
         const newBtn = h('button.btn', {
             type: 'button',
             onClick: () => { rows.push(uniqueName()); commit(); paint(); }
-        }, 'New');
+        }, t("New"));
         wrap.appendChild(table);
         wrap.appendChild(h('div', { class: 'mt-1.5' }, newBtn));
     }
@@ -242,18 +241,18 @@ const channelWriter = {
     component({ properties, platform, onChange }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
-                { section: 'Channel Writer Settings' },
+                { section: t("Channel Writer Settings") },
                 {
-                    type: 'custom', label: 'Channel Id', span: true,
-                    tooltip: "The destination channel's unique global id. Type a raw channel id or a ${mapVariable}, or pick a channel from the dropdown to fill it.",
+                    type: 'custom', label: t("Channel Id"), span: true,
+                    tooltip: t("The destination channel''s unique global id. Type a raw channel id or a {example1}, or pick a channel from the dropdown to fill it.", { example1: "${mapVariable}" }),
                     render: () => channelControlNode(properties, platform, onChange)
                 },
                 {
-                    type: 'custom', label: 'Message Metadata', span: true,
-                    tooltip: 'The following map variables will be included in the source map of the destination channel\'s message. Only use the map key itself, without the "${}" syntax.',
+                    type: 'custom', label: t("Message Metadata"), span: true,
+                    tooltip: t("The following map variables will be included in the source map of the destination channel''s message. Only use the map key itself, without the \"{example1}\" syntax.", { example1: "${}" }),
                     render: () => mapVariablesTable(properties, onChange)
                 },
-                { key: 'channelTemplate', label: 'Template', type: 'code', minHeight: '340px' }
+                { key: 'channelTemplate', label: t("Template"), type: 'code', minHeight: '340px' }
             ]} />
         );
     },

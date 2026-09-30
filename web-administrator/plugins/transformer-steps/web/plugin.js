@@ -1,25 +1,27 @@
 // plugins/transformer-steps/web/plugin.tsx
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t } = scope("transformer-steps");
 var React = platform.React;
 var SCOPES = [
-  { value: "CHANNEL", label: "Channel Map" },
-  { value: "CONNECTOR", label: "Connector Map" },
-  { value: "GLOBAL_CHANNEL", label: "Global Channel Map" },
-  { value: "GLOBAL", label: "Global Map" },
-  { value: "RESPONSE", label: "Response Map" }
+  { value: "CHANNEL", label: t("Channel Map") },
+  { value: "CONNECTOR", label: t("Connector Map") },
+  { value: "GLOBAL_CHANNEL", label: t("Global Channel Map") },
+  { value: "GLOBAL", label: t("Global Map") },
+  { value: "RESPONSE", label: t("Response Map") }
 ];
 var CONDITIONS = [
-  { value: "EXISTS", label: "Exists" },
-  { value: "NOT_EXIST", label: "Not Exist" },
-  { value: "EQUALS", label: "Equals" },
-  { value: "NOT_EQUAL", label: "Not Equal" },
-  { value: "CONTAINS", label: "Contains" },
-  { value: "NOT_CONTAIN", label: "Not Contain" }
+  { value: "EXISTS", label: t("Exists") },
+  { value: "NOT_EXIST", label: t("Not Exist") },
+  { value: "EQUALS", label: t("Equals") },
+  { value: "NOT_EQUAL", label: t("Not Equal") },
+  { value: "CONTAINS", label: t("Contains") },
+  { value: "NOT_CONTAIN", label: t("Not Contain") }
 ];
 var BEHAVIORS = [
-  { value: "REMOVE", label: "Remove the following" },
-  { value: "REMOVE_ALL_EXCEPT", label: "Remove all except the following" },
-  { value: "REMOVE_ALL", label: "Remove all" }
+  { value: "REMOVE", label: t("Remove the following") },
+  { value: "REMOVE_ALL_EXCEPT", label: t("Remove all except the following") },
+  { value: "REMOVE_ALL", label: t("Remove all") }
 ];
 var CONDITION_USES_VALUES = /* @__PURE__ */ new Set(["EQUALS", "NOT_EQUAL", "CONTAINS", "NOT_CONTAIN"]);
 var isBlank = (v) => v == null || String(v).trim() === "";
@@ -87,7 +89,7 @@ function CodeEditorIsland({ value, minHeight, fill, onChange }) {
   return /* @__PURE__ */ React.createElement("div", { ref: hostRef, style: fill ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : void 0 });
 }
 function ScriptEditor({ element, onChange }) {
-  return /* @__PURE__ */ React.createElement(Field, { label: "Script" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(Field, { label: t("Script") }, /* @__PURE__ */ React.createElement(
     CodeEditorIsland,
     {
       value: element.script ?? "",
@@ -105,14 +107,14 @@ function ScriptPathEditor({ element, onChange }) {
   return /* @__PURE__ */ React.createElement(
     Field,
     {
-      label: "Script Path",
-      hint: "Path to a JavaScript file on the server \u2014 its contents are loaded when the channel is deployed"
+      label: t("Script Path"),
+      hint: t("Path to a JavaScript file on the server \u2014 its contents are loaded when the channel is deployed")
     },
     /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "text",
-        placeholder: "/opt/scripts/example.js",
+        placeholder: t("/opt/scripts/example.js"),
         value: element.scriptPath ?? "",
         onChange: (e) => {
           element.scriptPath = e.target.value;
@@ -128,7 +130,6 @@ function emptyIteratorProperties() {
 }
 function makeIteratorEditor(isRule) {
   const type = isRule ? "com.mirth.connect.model.IteratorRule" : "com.mirth.connect.model.IteratorStep";
-  const childNoun = isRule ? "rule" : "step";
   function IteratorEditor({ element, onChange }) {
     const force = useRerender();
     if (!element.properties || typeof element.properties !== "object") {
@@ -138,14 +139,14 @@ function makeIteratorEditor(isRule) {
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(
       Field,
       {
-        label: "Iterate On (target)",
-        hint: "E4X XML node list or JavaScript array to iterate over"
+        label: t("Iterate On (target)"),
+        hint: t("E4X XML node list or JavaScript array to iterate over")
       },
       /* @__PURE__ */ React.createElement(
         "input",
         {
           type: "text",
-          placeholder: "msg['OBX']",
+          placeholder: t("msg[''OBX'']"),
           value: props.target ?? "",
           onChange: (e) => {
             props.target = e.target.value;
@@ -154,7 +155,7 @@ function makeIteratorEditor(isRule) {
           }
         }
       )
-    ), /* @__PURE__ */ React.createElement(Field, { label: "Index Variable" }, /* @__PURE__ */ React.createElement(
+    ), /* @__PURE__ */ React.createElement(Field, { label: t("Index Variable") }, /* @__PURE__ */ React.createElement(
       "input",
       {
         type: "text",
@@ -168,14 +169,14 @@ function makeIteratorEditor(isRule) {
     )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(
       Field,
       {
-        label: "Prefix Substitutions",
-        hint: "One prefix per line \u2014 when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes"
+        label: t("Prefix Substitutions"),
+        hint: t("One prefix per line \u2014 when dragging values into children, the index variable (e.g. [i]) is injected after these prefixes")
       },
       /* @__PURE__ */ React.createElement(
         "textarea",
         {
           rows: 3,
-          placeholder: "msg['OBX']",
+          placeholder: t("msg[''OBX'']"),
           value: stringListToLines(props.prefixSubstitutions).join("\n"),
           onChange: (e) => {
             props.prefixSubstitutions = linesToStringList(e.target.value);
@@ -184,10 +185,10 @@ function makeIteratorEditor(isRule) {
           }
         }
       )
-    ))), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint pt-2.5 px-0 pb-0 text-[10px]" }, `Child ${childNoun}s appear nested under this Iterator in the ${childNoun} list. Add a ${childNoun} while a child is selected, or right-click a ${childNoun} and choose "Assign To Iterator".`));
+    ))), /* @__PURE__ */ React.createElement("div", { className: "text-text-faint pt-2.5 px-0 pb-0 text-[10px]" }, isRule ? t('Child rules appear nested under this Iterator in the rule list. Add a rule while a child is selected, or right-click a rule and choose "Assign To Iterator".') : t('Child steps appear nested under this Iterator in the step list. Add a step while a child is selected, or right-click a step and choose "Assign To Iterator".')));
   }
   return {
-    label: "Iterator",
+    label: t("Iterator"),
     create: () => ({
       __type: type,
       name: "",
@@ -198,8 +199,8 @@ function makeIteratorEditor(isRule) {
     validate: (el) => {
       const p = el.properties || {};
       let m = "";
-      if (isBlank(p.target)) m += "The iteration target expression cannot be blank.\n";
-      if (isBlank(p.indexVariable)) m += "The iteration index variable cannot be blank.\n";
+      if (isBlank(p.target)) m += t("The iteration target expression cannot be blank.") + "\n";
+      if (isBlank(p.indexVariable)) m += t("The iteration index variable cannot be blank.") + "\n";
       return m.trim();
     },
     component: IteratorEditor
@@ -207,7 +208,7 @@ function makeIteratorEditor(isRule) {
 }
 function MapperEditor({ element, onChange }) {
   const force = useRerender();
-  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Variable" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: t("Variable") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -218,7 +219,7 @@ function MapperEditor({ element, onChange }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement(Field, { label: "Add to" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(Field, { label: t("Add to") }, /* @__PURE__ */ React.createElement(
     Select,
     {
       options: SCOPES,
@@ -229,7 +230,7 @@ function MapperEditor({ element, onChange }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Mapping" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Mapping") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -240,7 +241,7 @@ function MapperEditor({ element, onChange }) {
         force();
       }
     }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Default Value" }, /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Default Value") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -255,11 +256,11 @@ function MapperEditor({ element, onChange }) {
 }
 function MessageBuilderEditor({ element, onChange }) {
   const force = useRerender();
-  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Message Segment" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Message Segment") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
-      placeholder: "tmp['MSH']['MSH.3']['MSH.3.1']",
+      placeholder: t("tmp[''MSH''][''MSH.3''][''MSH.3.1'']"),
       value: element.messageSegment ?? "",
       onChange: (e) => {
         element.messageSegment = e.target.value;
@@ -267,7 +268,7 @@ function MessageBuilderEditor({ element, onChange }) {
         force();
       }
     }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Mapping" }, /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Mapping") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -278,7 +279,7 @@ function MessageBuilderEditor({ element, onChange }) {
         force();
       }
     }
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Default Value" }, /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Default Value") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -293,11 +294,11 @@ function MessageBuilderEditor({ element, onChange }) {
 }
 function XsltEditor({ element, onChange }) {
   const force = useRerender();
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Source XML String" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: t("Source XML String") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
-      placeholder: "msg",
+      placeholder: t("msg"),
       value: element.sourceXml ?? "",
       onChange: (e) => {
         element.sourceXml = e.target.value;
@@ -305,7 +306,7 @@ function XsltEditor({ element, onChange }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement(Field, { label: "Result Variable" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(Field, { label: t("Result Variable") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -316,7 +317,7 @@ function XsltEditor({ element, onChange }) {
         force();
       }
     }
-  ))), /* @__PURE__ */ React.createElement(Field, { label: "XSLT Template" }, /* @__PURE__ */ React.createElement(
+  ))), /* @__PURE__ */ React.createElement(Field, { label: t("XSLT Template") }, /* @__PURE__ */ React.createElement(
     CodeEditorIsland,
     {
       value: element.template ?? "",
@@ -374,7 +375,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
     setValues(next);
     setSelValue(next.length ? Math.min(selValue, next.length - 1) : -1);
   };
-  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Behavior" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: t("Behavior") }, /* @__PURE__ */ React.createElement(
     Select,
     {
       options: BEHAVIORS,
@@ -385,11 +386,11 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement(Field, { label: "Field" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(Field, { label: t("Field") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
-      placeholder: "msg['PID']['PID.3']['PID.3.1'].toString()",
+      placeholder: t("msg[''PID''][''PID.3''][''PID.3.1''].toString()"),
       value: element.field ?? "",
       onChange: (e) => {
         element.field = e.target.value;
@@ -397,13 +398,13 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Destinations" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: selectAll }, "Select All"), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: deselectAll }, "Deselect All")), /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Destinations") }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: selectAll }, t("Select All")), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: listDisabled, onClick: deselectAll }, t("Deselect All"))), /* @__PURE__ */ React.createElement(
     "div",
     {
       className: "dt-wrap border border-line rounded max-h-[162px]",
       style: listDisabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
     },
-    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "w-[38px]" }), /* @__PURE__ */ React.createElement("th", null, "Name"), /* @__PURE__ */ React.createElement("th", { className: "w-[63px]" }, "Id"))), /* @__PURE__ */ React.createElement("tbody", null, dests.length ? dests.map((d) => {
+    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { className: "w-[38px]" }), /* @__PURE__ */ React.createElement("th", null, t("Name")), /* @__PURE__ */ React.createElement("th", { className: "w-[63px]" }, t("Id")))), /* @__PURE__ */ React.createElement("tbody", null, dests.length ? dests.map((d) => {
       const id = String(d.metaDataId);
       return /* @__PURE__ */ React.createElement("tr", { key: id }, /* @__PURE__ */ React.createElement("td", { className: "text-center" }, /* @__PURE__ */ React.createElement(
         "input",
@@ -413,9 +414,9 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
           disabled: listDisabled,
           onChange: (e) => toggleId(id, e.target.checked)
         }
-      )), /* @__PURE__ */ React.createElement("td", null, d.name || `Destination ${id}`), /* @__PURE__ */ React.createElement("td", { className: "num" }, id));
-    }) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3 }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No destinations on this channel")))))
-  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Condition" }, /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, CONDITIONS.map((opt) => /* @__PURE__ */ React.createElement("label", { className: "check", key: opt.value }, /* @__PURE__ */ React.createElement(
+      )), /* @__PURE__ */ React.createElement("td", null, d.name || t("Destination {value1}", { value1: String(id) })), /* @__PURE__ */ React.createElement("td", { className: "num" }, id));
+    }) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3 }, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, t("No destinations on this channel"))))))
+  ))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Condition") }, /* @__PURE__ */ React.createElement("div", { className: "radio-group inline-row" }, CONDITIONS.map((opt) => /* @__PURE__ */ React.createElement("label", { className: "check", key: opt.value }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "radio",
@@ -427,7 +428,7 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
         force();
       }
     }
-  ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: !valuesEnabled, onClick: newValue }, "New"), /* @__PURE__ */ React.createElement(
+  ), opt.label))))), /* @__PURE__ */ React.createElement("div", { className: "span-2 mt-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Values") }, /* @__PURE__ */ React.createElement("div", { className: "flex gap-2 mb-1.5" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn btn-sm", disabled: !valuesEnabled, onClick: newValue }, t("New")), /* @__PURE__ */ React.createElement(
     "button",
     {
       type: "button",
@@ -435,14 +436,14 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
       disabled: !valuesEnabled || selValue < 0 || selValue >= values.length,
       onClick: deleteSelected
     },
-    "Delete"
+    t("Delete")
   )), /* @__PURE__ */ React.createElement(
     "div",
     {
       className: "dt-wrap border border-line rounded max-h-[162px]",
       style: !valuesEnabled ? { opacity: 0.5, pointerEvents: "none" } : void 0
     },
-    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, "Value"))), /* @__PURE__ */ React.createElement("tbody", null, values.length ? values.map((v, i) => /* @__PURE__ */ React.createElement(
+    /* @__PURE__ */ React.createElement("table", { className: "dt" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", null, t("Value")))), /* @__PURE__ */ React.createElement("tbody", null, values.length ? values.map((v, i) => /* @__PURE__ */ React.createElement(
       "tr",
       {
         key: i,
@@ -459,16 +460,16 @@ function DestinationSetFilterEditor({ element, onChange, destinations }) {
           onChange: (e) => editValue(i, e.target.value)
         }
       ))
-    )) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, "No values \u2014 use New")))))
+    )) : /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("span", { className: "text-text-faint" }, t("No values \u2014 use New"))))))
   ))));
 }
 function RuleBuilderEditor({ element, onChange }) {
   const force = useRerender();
-  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Field" }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: t("Field") }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
-      placeholder: "msg['MSH']['MSH.9']['MSH.9.1'].toString()",
+      placeholder: t("msg[''MSH''][''MSH.9''][''MSH.9.1''].toString()"),
       value: element.field ?? "",
       onChange: (e) => {
         element.field = e.target.value;
@@ -476,7 +477,7 @@ function RuleBuilderEditor({ element, onChange }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement(Field, { label: "Condition" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement(Field, { label: t("Condition") }, /* @__PURE__ */ React.createElement(
     Select,
     {
       options: CONDITIONS,
@@ -487,12 +488,12 @@ function RuleBuilderEditor({ element, onChange }) {
         force();
       }
     }
-  )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: "Values" }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { className: "span-2" }, /* @__PURE__ */ React.createElement(Field, { label: t("Values") }, /* @__PURE__ */ React.createElement(
     "textarea",
     {
       rows: 4,
-      placeholder: "One value per line",
-      title: "Only used by Equals / Not Equal / Contains / Not Contain",
+      placeholder: t("One value per line"),
+      title: t("Only used by Equals / Not Equal / Contains / Not Contain"),
       value: stringListToLines(element.values).join("\n"),
       onChange: (e) => {
         element.values = linesToStringList(e.target.value);
@@ -504,7 +505,7 @@ function RuleBuilderEditor({ element, onChange }) {
 }
 function register(platform2) {
   platform2.registerStepType("com.mirth.connect.plugins.javascriptstep.JavaScriptStep", {
-    label: "JavaScript",
+    label: t("JavaScript"),
     create: () => ({
       __type: "com.mirth.connect.plugins.javascriptstep.JavaScriptStep",
       name: "",
@@ -514,7 +515,7 @@ function register(platform2) {
     component: ScriptEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.mapper.MapperStep", {
-    label: "Mapper",
+    label: t("Mapper"),
     create: () => ({
       __type: "com.mirth.connect.plugins.mapper.MapperStep",
       name: "",
@@ -525,11 +526,11 @@ function register(platform2) {
       replacements: "",
       scope: "CHANNEL"
     }),
-    validate: (el) => isBlank(el.variable) ? "The variable name cannot be blank." : "",
+    validate: (el) => isBlank(el.variable) ? t("The variable name cannot be blank.") : "",
     component: MapperEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.messagebuilder.MessageBuilderStep", {
-    label: "Message Builder",
+    label: t("Message Builder"),
     create: () => ({
       __type: "com.mirth.connect.plugins.messagebuilder.MessageBuilderStep",
       name: "",
@@ -539,11 +540,11 @@ function register(platform2) {
       defaultValue: "",
       replacements: ""
     }),
-    validate: (el) => isBlank(el.messageSegment) ? "The message segment value cannot be blank." : "",
+    validate: (el) => isBlank(el.messageSegment) ? t("The message segment value cannot be blank.") : "",
     component: MessageBuilderEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.xsltstep.XsltStep", {
-    label: "XSLT Step",
+    label: t("XSLT Step"),
     create: () => ({
       __type: "com.mirth.connect.plugins.xsltstep.XsltStep",
       name: "",
@@ -563,7 +564,7 @@ function register(platform2) {
     component: XsltEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep", {
-    label: "Destination Set Filter",
+    label: t("Destination Set Filter"),
     // Only available on the source transformer (DestinationSetFilterPlugin
     // .onlySourceConnector()); destinations/response transformers exclude it.
     onlySource: true,
@@ -577,23 +578,23 @@ function register(platform2) {
       condition: "EXISTS",
       values: ""
     }),
-    validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
+    validate: (el) => isBlank(el.field) ? t("The field cannot be blank.") : "",
     component: DestinationSetFilterEditor
   });
   platform2.registerStepType("com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep", {
-    label: "External Script",
+    label: t("External Script"),
     create: () => ({
       __type: "com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep",
       name: "",
       enabled: true,
       scriptPath: ""
     }),
-    validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
+    validate: (el) => isBlank(el.scriptPath) ? t("The script path cannot be blank.") : "",
     component: ScriptPathEditor
   });
   platform2.registerStepType("com.mirth.connect.model.IteratorStep", makeIteratorEditor(false));
   platform2.registerRuleType("com.mirth.connect.plugins.javascriptrule.JavaScriptRule", {
-    label: "JavaScript",
+    label: t("JavaScript"),
     create: () => ({
       __type: "com.mirth.connect.plugins.javascriptrule.JavaScriptRule",
       name: "",
@@ -604,7 +605,7 @@ function register(platform2) {
     component: ScriptEditor
   });
   platform2.registerRuleType("com.mirth.connect.plugins.rulebuilder.RuleBuilderRule", {
-    label: "Rule Builder",
+    label: t("Rule Builder"),
     create: () => ({
       __type: "com.mirth.connect.plugins.rulebuilder.RuleBuilderRule",
       name: "",
@@ -614,11 +615,11 @@ function register(platform2) {
       condition: "EXISTS",
       values: ""
     }),
-    validate: (el) => isBlank(el.field) ? "The field cannot be blank." : "",
+    validate: (el) => isBlank(el.field) ? t("The field cannot be blank.") : "",
     component: RuleBuilderEditor
   });
   platform2.registerRuleType("com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule", {
-    label: "External Script",
+    label: t("External Script"),
     create: () => ({
       __type: "com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule",
       name: "",
@@ -626,7 +627,7 @@ function register(platform2) {
       operator: "AND",
       scriptPath: ""
     }),
-    validate: (el) => isBlank(el.scriptPath) ? "The script path cannot be blank." : "",
+    validate: (el) => isBlank(el.scriptPath) ? t("The script path cannot be blank.") : "",
     component: ScriptPathEditor
   });
   platform2.registerRuleType("com.mirth.connect.model.IteratorRule", makeIteratorEditor(true));

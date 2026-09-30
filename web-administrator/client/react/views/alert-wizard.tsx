@@ -1,3 +1,5 @@
+import { wizardStepLabel } from '../../core/labels.js';
+import { t, tx, compareText } from '../../core/i18n.js';
 import { withEditorSave } from '../save-lock.js';
 /*
  * Guided Alert builder — a step-by-step alternative to the classic alert editor,
@@ -53,7 +55,7 @@ function AlertWizardView({ params }: any) {
         normalize: normalizeActionGroups,
         backPath: '/alerts'
     });
-    if (!ready || !model) return <div className="view"><div className="view-body"><div className="dt-empty">Loading alert…</div></div></div>;
+    if (!ready || !model) return <div className="view"><div className="view-body"><div className="dt-empty">{t("Loading alert…")}</div></div></div>;
     return <AlertWizardInner key={model.id || 'new'} alert={model} isNew={isNew} />;
 }
 
@@ -91,14 +93,14 @@ function AlertWizardInner({ alert, isNew }: any) {
                 const p = api.asList(en && en.string);
                 if (p.length >= 2) channels.push({ id: String(p[0]), name: String(p[1]) });
             }
-            channels.sort((a: any, b: any) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+            channels.sort((a: any, b: any) => compareText(a.name.toLowerCase(), b.name.toLowerCase()));
             setData({ channels, protocols: protocolsOf(opts), recipients: recipientOptionsOf(opts) });
             const failures = [channelResult, optionResult]
                 .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
                 .map(result => String(result.reason?.message || result.reason));
             const message = failures.join('; ');
             setDataError(message || null);
-            if (message) toast(`Failed to load alert choices: ${message}`, 'error');
+            if (message) toast(t("Failed to load alert choices: {value1}", { value1: String(message) }), 'error');
         });
         return () => { alive = false; };
     }, []);
@@ -151,7 +153,7 @@ function AlertWizardInner({ alert, isNew }: any) {
     /* ---- validation ---- */
     // Alert filters use java.util.regex.Pattern in the engine. Browser RegExp
     // rejects valid Java syntax (e.g. inline flags); match the classic/Swing path.
-    function nameError() { return String(alert.name || '').trim() ? null : 'An alert name is required.'; }
+    function nameError() { return String(alert.name || '').trim() ? null : t("An alert name is required."); }
     function stepProblems(i: any) {
         if (STEPS[i] === 'Basics') return nameError() ? [nameError()] : [];
         return [];
@@ -166,9 +168,9 @@ function AlertWizardInner({ alert, isNew }: any) {
     // Non-blocking heads-ups (an inert alert is still a valid draft, like the classic editor).
     function warnings() {
         const out: any[] = [];
-        if (!enabledChannels.size && !ac.newChannelSource && !ac.newChannelDestination) out.push('No channels selected — this alert will never fire.');
-        if (!actionList().length) out.push('No actions — this alert won’t notify anyone.');
-        else if (actionList().some((a: any) => !String(a.recipient || '').trim())) out.push('An action has no recipient.');
+        if (!enabledChannels.size && !ac.newChannelSource && !ac.newChannelDestination) out.push(t("No channels selected — this alert will never fire."));
+        if (!actionList().length) out.push(t("No actions — this alert won’t notify anyone."));
+        else if (actionList().some((a: any) => !String(a.recipient || '').trim())) out.push(t("An action has no recipient."));
         return out;
     }
 
@@ -199,7 +201,7 @@ function AlertWizardInner({ alert, isNew }: any) {
             dirtyRef.current = false;
             return true;
         } catch (e: any) {
-            toast(e && e.message ? e.message : 'Could not save the alert.', 'error');
+            toast(e && e.message ? e.message : t("Could not save the alert."), 'error');
             return false;
         }
     }
@@ -209,7 +211,7 @@ function AlertWizardInner({ alert, isNew }: any) {
         const ok = await saveAlert(enable);
         if (!ok) { setSaving(false); return; }
         store.setState('navGuard', null);
-        toast(`Alert “${alert.name}” ${isNew ? 'created' : 'saved'}${enable ? ' and enabled' : ''}.`, 'info');
+        toast(t("{value2, select, yes {{value3, select, yes {Alert “{value1}” created and enabled.} other {Alert “{value1}” created.}}} other {{value3, select, yes {Alert “{value1}” saved and enabled.} other {Alert “{value1}” saved.}}}}", { value1: String(alert.name), value2: (isNew) ? "yes" : "no", value3: (enable) ? "yes" : "no" }), 'info');
         router.navigate('/alerts');
     }
     function switchToClassic() {
@@ -222,17 +224,17 @@ function AlertWizardInner({ alert, isNew }: any) {
     async function exportAlert() {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
-        if (isNew) { toast('Save the alert first, then export it', 'warn'); return; }
+        if (isNew) { toast(t("Save the alert first, then export it"), 'warn'); return; }
         try {
             await saveFile(`${alert.name || alert.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/alerts/${alert.id}`);
-                if (!xml || !String(xml).trim()) throw new Error('Alert not found on the server — save it first');
+                if (!xml || !String(xml).trim()) throw new Error(t("Alert not found on the server — save it first"));
                 return xml;
             }, assertSession);
             assertSession();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Export failed: ${e.message}`, 'error');
+            toast(t("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -246,40 +248,35 @@ function AlertWizardInner({ alert, isNew }: any) {
             {/* Alert Tasks rail — mirrors the classic alert editor's tasks, plus the
                 view switch (like the Dashboard's Card/Table toggle). */}
             <ViewTasks>
-                <RailPane title="Alert Tasks" paneKey="tasks:Alert Tasks" group="alertEdit">
+                <RailPane title={t("Alert Tasks")} paneKey="tasks:Alert Tasks" group="alertEdit">
                     <div className="taskbar" data-pane-title="Alert Tasks">
-                        {getPref('showViewSwitch') !== false && <TaskButton label="Classic editor" icon="edit" onClick={switchToClassic} />}
+                        {getPref('showViewSwitch') !== false && <TaskButton label={t("Classic editor")} icon="edit" onClick={switchToClassic} />}
                         {/* A NEW alert is still being built (create lives in the footer); an
                             EXISTING alert adds Save (when dirty). */}
-                        {!isNew && dirtyRef.current && <TaskButton label="Save Alert" icon="save" primary task="doSaveAlerts" onClick={() => finish(false)} />}
-                        {!isNew && <TaskButton label="Export Alert" icon="export" task="doExportAlert" onClick={exportAlert} />}
-                        <TaskButton label="Back to Alerts" icon="logout" onClick={() => router.navigate('/alerts')} />
+                        {!isNew && dirtyRef.current && <TaskButton label={t("Save Alert")} icon="save" primary task="doSaveAlerts" onClick={() => finish(false)} />}
+                        {!isNew && <TaskButton label={t("Export Alert")} icon="export" task="doExportAlert" onClick={exportAlert} />}
+                        <TaskButton label={t("Back to Alerts")} icon="logout" onClick={() => router.navigate('/alerts')} />
                     </div>
                 </RailPane>
             </ViewTasks>
-            <WizardHeader icon="alerts" title={isNew ? 'New Alert — Wizard' : `${alert.name || 'Alert'} — Wizard`} />
-            <WizardStepper steps={STEPS} step={step} maxStep={maxStep} onStep={setStep} />
+            <WizardHeader icon="alerts" title={isNew ? t("New Alert — Wizard") : t("{value1} — Wizard", { value1: String(alert.name || t("Alert")) })} />
+            <WizardStepper steps={STEPS.map(wizardStepLabel)} step={step} maxStep={maxStep} onStep={setStep} />
 
             <div className="view-body overflow-x-hidden">
-                {dataError && <div className="panel border-danger text-danger max-w-[738px]" role="alert">
-                    Failed to load channel and recipient choices: {dataError}
-                </div>}
+                {dataError && <div className="panel border-danger text-danger max-w-[738px]" role="alert">{t("Failed to load channel and recipient choices: {value1}", { value1: dataError })}</div>}
                 <div className="wiz-pane" key={step}>
                     {/* ---- Basics ---- */}
                     {stepName === 'Basics' && (
                         <div className="panel !mt-0 max-w-[576px]">
                             <div className="panel-body flex flex-col gap-4">
                                 <label className="flex flex-col gap-1">
-                                    <span className="text-text-dim">Alert name</span>
+                                    <span className="text-text-dim">{t("Alert name")}</span>
                                     <input autoFocus type="text" className={`w-full ${nErr ? 'cform-invalid' : ''}`} value={alert.name}
-                                        placeholder="My Alert" onChange={(e: any) => { alert.name = e.target.value; setNameTouched(true); bump(); }} />
+                                        placeholder={t("My Alert")} onChange={(e: any) => { alert.name = e.target.value; setNameTouched(true); bump(); }} />
                                     {nErr ? <span className="text-err text-[10px]">{nErr}</span> : null}
                                 </label>
-                                <label className="flex items-center gap-2">
-                                    <input type="checkbox" checked={alert.enabled === true} onChange={(e: any) => { alert.enabled = e.target.checked; bump(); }} />
-                                    Enabled
-                                </label>
-                                <div className="hint">An alert watches for errors on the channels you pick, and notifies via the actions you configure.</div>
+                                <label className="flex items-center gap-2">{tx("{value1}Enabled", { value1: <input type="checkbox" checked={alert.enabled === true} onChange={(e: any) => { alert.enabled = e.target.checked; bump(); }} /> })}</label>
+                                <div className="hint">{t("An alert watches for errors on the channels you pick, and notifies via the actions you configure.")}</div>
                             </div>
                         </div>
                     )}
@@ -288,7 +285,7 @@ function AlertWizardInner({ alert, isNew }: any) {
                     {stepName === 'Trigger' && (
                         <div className="flex flex-col gap-4 max-w-[648px]">
                             <div className="panel !mt-0">
-                                <div className="panel-header">Error types</div>
+                                <div className="panel-header">{t("Error types")}</div>
                                 <div className="panel-body grid sm:grid-cols-2 gap-x-6 gap-y-2">
                                     {ERROR_EVENT_TYPES.map((t: any) => (
                                         <label key={t} className="flex items-center gap-2">
@@ -299,12 +296,12 @@ function AlertWizardInner({ alert, isNew }: any) {
                                 </div>
                             </div>
                             <div className="panel !mt-0">
-                                <div className="panel-header">Error message filter</div>
+                                <div className="panel-header">{t("Error message filter")}</div>
                                 <div className="panel-body flex flex-col gap-1">
                                     <textarea className="w-full" rows={3} value={trigger.regex || ''}
-                                        placeholder="Only trigger when the error matches this regular expression (leave blank to match any error)"
+                                        placeholder={t("Only trigger when the error matches this regular expression (leave blank to match any error)")}
                                         onChange={(e: any) => { trigger.regex = e.target.value; bump(); }} />
-                                    <span className="text-text-dim text-[10px]">Uses Java regular-expression syntax, as in the desktop administrator.</span>
+                                    <span className="text-text-dim text-[10px]">{t("Uses Java regular-expression syntax, as in the desktop administrator.")}</span>
                                 </div>
                             </div>
                         </div>
@@ -313,11 +310,11 @@ function AlertWizardInner({ alert, isNew }: any) {
                     {/* ---- Channels ---- */}
                     {stepName === 'Channels' && (
                         <div className="panel !mt-0 max-w-[648px]">
-                            <div className="panel-header">Channels to watch</div>
+                            <div className="panel-header">{t("Channels to watch")}</div>
                             <div className="panel-body flex flex-col gap-2">
-                                {data.channels.length > 6 && <input type="text" placeholder="Filter channels…" value={chFilter} onChange={(e: any) => setChFilter(e.target.value)} />}
+                                {data.channels.length > 6 && <input type="text" placeholder={t("Filter channels…")} value={chFilter} onChange={(e: any) => setChFilter(e.target.value)} />}
                                 <div className="flex flex-col border border-line rounded-md max-h-[288px] overflow-auto divide-y divide-line">
-                                    {channels.length === 0 && <div className="p-2 text-text-faint text-[11px]">No channels.</div>}
+                                    {channels.length === 0 && <div className="p-2 text-text-faint text-[11px]">{t("No channels.")}</div>}
                                     {channels.map((c: any) => (
                                         <label key={c.id} className="flex items-center gap-2 px-2.5 py-2 hover:bg-bg1 cursor-pointer" title={c.name}>
                                             <input type="checkbox" checked={enabledChannels.has(c.id)} onChange={(e: any) => setChannel(c.id, e.target.checked)} />
@@ -326,10 +323,10 @@ function AlertWizardInner({ alert, isNew }: any) {
                                     ))}
                                 </div>
                                 <div className="grid sm:grid-cols-2 gap-2 pt-1">
-                                    <label className="flex items-center gap-2"><input type="checkbox" checked={ac.newChannelSource === true} onChange={(e: any) => { ac.newChannelSource = e.target.checked; bump(); }} />Apply to sources of new channels</label>
-                                    <label className="flex items-center gap-2"><input type="checkbox" checked={ac.newChannelDestination === true} onChange={(e: any) => { ac.newChannelDestination = e.target.checked; bump(); }} />Apply to destinations of new channels</label>
+                                    <label className="flex items-center gap-2">{tx("{value1}Apply to sources of new channels", { value1: <input type="checkbox" checked={ac.newChannelSource === true} onChange={(e: any) => { ac.newChannelSource = e.target.checked; bump(); }} /> })}</label>
+                                    <label className="flex items-center gap-2">{tx("{value1}Apply to destinations of new channels", { value1: <input type="checkbox" checked={ac.newChannelDestination === true} onChange={(e: any) => { ac.newChannelDestination = e.target.checked; bump(); }} /> })}</label>
                                 </div>
-                                <div className="hint">Pick which channels this alert watches. Per-connector granularity is available in the classic editor.</div>
+                                <div className="hint">{t("Pick which channels this alert watches. Per-connector granularity is available in the classic editor.")}</div>
                             </div>
                         </div>
                     )}
@@ -338,12 +335,12 @@ function AlertWizardInner({ alert, isNew }: any) {
                     {stepName === 'Actions' && (
                         <div className="flex flex-col gap-4 max-w-[738px]">
                             <div className="panel !mt-0">
-                                <div className="panel-header">Notifications</div>
+                                <div className="panel-header">{t("Notifications")}</div>
                                 <div className="panel-body flex flex-col gap-2">
-                                    {actionList().length === 0 && <div className="hint">No actions yet — add one to send a notification when the alert fires.</div>}
+                                    {actionList().length === 0 && <div className="hint">{t("No actions yet — add one to send a notification when the alert fires.")}</div>}
                                     {actionList().length > 0 && (
                                         <div className="flex items-center gap-2 px-0.5 text-[10px] uppercase tracking-wide text-text-faint">
-                                            <span className="w-[144px] flex-none">Protocol</span><span className="flex-1">Recipient</span><span className="w-[27px] flex-none" />
+                                            <span className="w-[144px] flex-none">{t("Protocol")}</span><span className="flex-1">{t("Recipient")}</span><span className="w-[27px] flex-none" />
                                         </div>
                                     )}
                                     {actionList().map((a: any, i: any) => {
@@ -355,48 +352,48 @@ function AlertWizardInner({ alert, isNew }: any) {
                                                 </select>
                                                 {Array.isArray(opts) ? (
                                                     <select className="flex-1 min-w-0" value={a.recipient || ''} onChange={(e: any) => patchAction(i, { recipient: e.target.value })}>
-                                                        <option value="">Select…</option>
+                                                        <option value="">{t("Select…")}</option>
                                                         {opts.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}
                                                     </select>
                                                 ) : (
-                                                    <input type="text" className="flex-1 min-w-0" placeholder="Recipient (e.g. name@example.com)" value={a.recipient || ''} onChange={(e: any) => patchAction(i, { recipient: e.target.value })} />
+                                                    <input type="text" className="flex-1 min-w-0" placeholder={t("Recipient (e.g. name@example.com)")} value={a.recipient || ''} onChange={(e: any) => patchAction(i, { recipient: e.target.value })} />
                                                 )}
                                                 <button type="button" className="btn btn-sm btn-danger w-[27px] flex-none justify-center" onClick={() => removeAction(i)}><Icon name="trash" size={13} /></button>
                                             </div>
                                         );
                                     })}
-                                    <div><button type="button" className="btn btn-sm" onClick={addAction}><Icon name="plus" size={13} />Add action</button></div>
+                                    <div><button type="button" className="btn btn-sm" onClick={addAction}>{tx("{value1}Add action", { value1: <Icon name="plus" size={13} /> })}</button></div>
                                 </div>
                             </div>
 
                             <div className="flex flex-col lg:flex-row gap-4">
                                 <div className="panel !mt-0 flex-1 min-w-0">
-                                    <div className="panel-header">Message</div>
+                                    <div className="panel-header">{t("Message")}</div>
                                     <div className="panel-body flex flex-col gap-3">
                                         <label className="flex flex-col gap-1">
-                                            <span className="text-text-dim text-[11px]">Subject</span>
+                                            <span className="text-text-dim text-[11px]">{t("Subject")}</span>
                                             <input type="text" className="w-full" value={grp.subject || ''} onFocus={() => { focusedRef.current = 'subject'; }} onChange={(e: any) => { grp.subject = e.target.value; bump(); }} />
                                         </label>
                                         <label className="flex flex-col gap-1">
-                                            <span className="text-text-dim text-[11px]">Template</span>
+                                            <span className="text-text-dim text-[11px]">{t("Template")}</span>
                                             <textarea className="w-full" rows={8} value={grp.template || ''} onFocus={() => { focusedRef.current = 'template'; }} onChange={(e: any) => { grp.template = e.target.value; bump(); }} />
                                         </label>
                                     </div>
                                 </div>
                                 <div className="panel !mt-0 w-full lg:w-[216px] flex-none">
-                                    <div className="panel-header">Variables</div>
+                                    <div className="panel-header">{t("Variables")}</div>
                                     <div className="panel-body flex flex-col gap-2">
                                         <div className="border border-line rounded overflow-auto max-h-[324px] min-h-[108px]">
                                             {ALERT_VARIABLES.map((v: any) => (
                                                 <div key={v} role="button" draggable
                                                     onDragStart={(e: any) => { e.dataTransfer.setData('text/plain', `\${${v}}`); e.dataTransfer.effectAllowed = 'copy'; }}
                                                     onClick={() => insertVar(v)}
-                                                    className="step-item cursor-grab" title={`Click or drag to insert \${${v}}`}>
+                                                    className="step-item cursor-grab" title={t("Click or drag to insert ${example1}{value2}{example3}", { example1: "{", value2: String(v), example3: "}" })}>
                                                     <div className="flex-1 min-w-0"><div className="truncate">{v}</div></div>
                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="hint">Click to insert into the focused field, or drag onto the subject/template.</div>
+                                        <div className="hint">{t("Click to insert into the focused field, or drag onto the subject/template.")}</div>
                                     </div>
                                 </div>
                             </div>
@@ -415,14 +412,14 @@ function AlertWizardInner({ alert, isNew }: any) {
                             )}
                             <div className="panel-body">
                                 {[
-                                    ['Name', alert.name || <span className="text-err">(required)</span>],
-                                    ['Enabled', alert.enabled ? 'Yes' : 'No'],
-                                    ['Error types', errTypes.size ? [...errTypes].map(eventTypeLabel).join(', ') : 'None'],
-                                    ['Error filter', trigger.regex ? trigger.regex : '(any error)'],
-                                    ['Channels', enabledNames.length ? enabledNames.join(', ') : (ac.newChannelSource || ac.newChannelDestination ? 'New channels only' : 'None')],
-                                    ['Actions', actionList().length ? actionList().map((a: any) => `${a.protocol} → ${recipientLabel(a.protocol, a.recipient) || '(none)'}`).join(', ') : 'None'],
-                                    ['Subject', grp.subject ? grp.subject : '(none)'],
-                                    ['Template', grp.template ? <pre className="whitespace-pre-wrap font-mono text-[11px] max-h-[144px] overflow-auto m-0">{grp.template}</pre> : '(none)']
+                                    [t("Name"), alert.name || <span className="text-err">{t("(required)")}</span>],
+                                    [t("Enabled"), alert.enabled ? t("Yes") : 'No'],
+                                    [t("Error types"), errTypes.size ? [...errTypes].map(eventTypeLabel).join(', ') : t("None")],
+                                    [t("Error filter"), trigger.regex ? trigger.regex : t("(any error)")],
+                                    [t("Channels"), enabledNames.length ? enabledNames.join(', ') : (ac.newChannelSource || ac.newChannelDestination ? t("New channels only") : t("None"))],
+                                    [t("Actions"), actionList().length ? actionList().map((a: any) => `${a.protocol} → ${recipientLabel(a.protocol, a.recipient) || '(none)'}`).join(', ') : t("None")],
+                                    [t("Subject"), grp.subject ? grp.subject : '(none)'],
+                                    [t("Template"), grp.template ? <pre className="whitespace-pre-wrap font-mono text-[11px] max-h-[144px] overflow-auto m-0">{grp.template}</pre> : '(none)']
                                 ].map(([label, value]) => (
                                     <div key={label} className="flex gap-4 py-2 border-b border-line">
                                         <div className="w-[144px] flex-none text-text-dim">{label}</div>
@@ -437,20 +434,20 @@ function AlertWizardInner({ alert, isNew }: any) {
 
             {/* Footer */}
             <div className="flex items-center gap-2 px-4 py-3 border-t border-line">
-                <button className="btn" disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>Back</button>
+                <button className="btn" disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>{t("Back")}</button>
                 <div className="ml-auto flex items-center gap-2">
                     {/* RBAC: save/create affordances hide without alertEdit/doSaveAlerts. */}
                     {!isLast ? (
-                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>Next</button>
+                        <button className="btn btn-primary" disabled={stepName === 'Basics' && !!nameError()} onClick={tryNext}>{t("Next")}</button>
                     ) : isNew && canSave ? (
                         <>
-                            <button className="btn" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Creating…' : 'Create Alert'}</button>
-                            <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(true)}><Icon name="check" size={14} />Create &amp; Enable</button>
+                            <button className="btn" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? t("Creating…") : t("Create Alert")}</button>
+                            <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(true)}>{tx("{value1}Create & Enable", { value1: <Icon name="check" size={14} /> })}</button>
                         </>
                     ) : !isNew && dirtyRef.current && canSave ? (
-                        <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? 'Saving…' : 'Save Alert'}</button>
+                        <button className="btn btn-primary" disabled={saving || !!nameError()} onClick={() => finish(false)}><Icon name="save" size={14} />{saving ? t("Saving…") : t("Save Alert")}</button>
                     ) : (
-                        <button className="btn" onClick={() => router.navigate('/alerts')}><Icon name="x" size={14} />Exit</button>
+                        <button className="btn" onClick={() => router.navigate('/alerts')}>{tx("{value1}Exit", { value1: <Icon name="x" size={14} /> })}</button>
                     )}
                 </div>
             </div>

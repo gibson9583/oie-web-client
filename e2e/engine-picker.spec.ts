@@ -31,7 +31,7 @@ test.describe('engine picker', () => {
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
 
-        const select = page.locator('.login-card select');
+        const select = page.getByRole('combobox', { name: 'Engine', exact: true });
         await expect(select).toBeVisible();
         await expect(select.locator('option')).toHaveText(['Production', 'Staging']);
         // No devMode → no manual URL escape hatch.
@@ -48,7 +48,7 @@ test.describe('engine picker', () => {
 
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-        await expect(page.locator('.login-card select')).toHaveValue('k:staging');
+        await expect(page.getByRole('combobox', { name: 'Engine', exact: true })).toHaveValue('k:staging');
     });
 
     test('a remembered engine that was removed forces an explicit choice (issue #53)', async ({ page, baseURL }) => {
@@ -65,7 +65,7 @@ test.describe('engine picker', () => {
 
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-        const select = page.locator('.login-card select');
+        const select = page.getByRole('combobox', { name: 'Engine', exact: true });
         await expect(select).toHaveValue('');
         await expect(select.locator('option').first()).toHaveText('Select an engine…');
 
@@ -85,7 +85,7 @@ test.describe('engine picker', () => {
 
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-        await expect(page.locator('.login-card select')).toHaveCount(0);
+        await expect(page.getByRole('combobox', { name: 'Engine', exact: true })).toHaveCount(0);
     });
 
     test('devMode offers a Custom URL option that reveals a URL field', async ({ page }) => {
@@ -95,7 +95,7 @@ test.describe('engine picker', () => {
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
 
-        const select = page.locator('.login-card select');
+        const select = page.getByRole('combobox', { name: 'Engine', exact: true });
         await expect(select).toBeVisible();
         await expect(page.getByPlaceholder('https://host:8443')).toHaveCount(0);
         await select.selectOption('custom');
@@ -176,7 +176,7 @@ test.describe('engine picker', () => {
         expect(await page.evaluate(() => (window as any).__survivedReload)).toBe(true);
 
         // Pick the OTHER engine and sign in → the engine changed, so a hard reload runs.
-        await page.locator('.login-card select').selectOption('k:staging');
+        await page.getByRole('combobox', { name: 'Engine', exact: true }).selectOption('k:staging');
         await login(page, 'admin', 'admin');
 
         await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
@@ -194,7 +194,7 @@ test.describe('engine picker', () => {
 
         await page.goto('/');
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-        await page.locator('.login-card select').selectOption('k:staging');
+        await page.getByRole('combobox', { name: 'Engine', exact: true }).selectOption('k:staging');
         await login(page, 'admin', 'admin');
 
         await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });

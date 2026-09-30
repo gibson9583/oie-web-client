@@ -1,3 +1,5 @@
+import { scope } from '@oie/web-ui';
+const { t } = scope("datatype-dicom");
 /*
  * DICOM data type — web admin plugin (React, DataTypeClientPlugin equivalent).
  * DICOMDataTypeProperties defines no property groups, so the editor shows none.
@@ -14,7 +16,7 @@ const React = platform.React;
 const PKG = 'com.mirth.connect.plugins.datatypes.dicom';
 
 const DEF: any = {
-    name: 'DICOM', label: 'DICOM', order: 90,
+    name: 'DICOM', label: t("DICOM"), order: 90,
     propertiesClass: `${PKG}.DICOMDataTypeProperties`,
     groups: []
 };

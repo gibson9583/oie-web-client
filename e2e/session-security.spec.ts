@@ -42,7 +42,7 @@ for (const selection of ['first', 'second', 'custom']) {
             await reload;
             await expect(page.locator('input[type=password]')).toBeVisible();
             expect(received).toEqual([{ engine: selection === 'first' ? 'first' : 'second', cookie: 'JSESSIONID=synthetic-session' }]);
-            await expect(page.locator('.login-card select')).toHaveValue('k:first');
+            await expect(page.getByRole('combobox', { name: 'Engine', exact: true })).toHaveValue('k:first');
             expect((await page.context().cookies()).some(c => c.name === 'oie-engine-url')).toBe(false);
         } finally {
             app.stop();

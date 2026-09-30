@@ -1,3 +1,4 @@
+import { t } from '../core/i18n.js';
 /*
  * Alerts have NO engine-side conflict detection (no revision field, no override
  * check in AlertController — unlike channels and code templates). This web
@@ -15,7 +16,7 @@ import { confirmDialog } from '@oie/web-ui';
 const baselines = new WeakMap<object, string>();
 export async function loadAlertForEdit(alertId: string) {
     const model = await api.alerts.get(alertId);
-    if (!model || model.id !== alertId) throw new Error('Alert not found');
+    if (!model || model.id !== alertId) throw new Error(t("Alert not found"));
     baselines.set(model, JSON.stringify(model));
     return model;
 }
@@ -30,12 +31,12 @@ export function alertBaseline(model: object): string | null {
  * not silently disable conflict checking.
  */
 export async function confirmIfAlertChanged(alertId: any, baseline: any) {
-    if (!baseline) throw new Error('Cannot verify the original alert. Reopen it before saving.');
+    if (!baseline) throw new Error(t("Cannot verify the original alert. Reopen it before saving."));
     const model = await api.alerts.get(alertId);
-    if (!model || model.id !== alertId) throw new Error('The alert was removed. Reopen the alert list before saving.');
+    if (!model || model.id !== alertId) throw new Error(t("The alert was removed. Reopen the alert list before saving."));
     const current = JSON.stringify(model);
     if (current === baseline) return true;
-    return confirmDialog('Alert Modified',
-        'This alert has been modified since you first opened it. Are you sure you want to overwrite it?',
-        { danger: true, okLabel: 'Overwrite' });
+    return confirmDialog(t("Alert Modified"),
+        t("This alert has been modified since you first opened it. Are you sure you want to overwrite it?"),
+        { danger: true, okLabel: t("Overwrite") });
 }

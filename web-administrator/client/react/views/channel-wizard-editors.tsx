@@ -1,3 +1,5 @@
+import { t, tx, compareText } from '../../core/i18n.js';
+import { isCommitEnter } from '../../core/keyboard.js';
 /*
  * Channel-level sub-editors for the guided wizard — kept out of channel-wizard.jsx so
  * the orchestrator stays readable. (The Filter/Transformer/Response editing is the
@@ -46,21 +48,19 @@ export function DataTypeBar({ holder, version, connectorType, onChange }: any) {
     return (
         <div className="panel !mt-0">
             <div className="panel-header flex items-center gap-3">
-                <span>Data Types</span>
-                <button type="button" className="btn btn-sm btn-ghost ml-auto" onClick={() => setOpen(!open)}>
-                    <Icon name={open ? 'chevD' : 'chevR'} size={13} />{open ? 'Hide' : 'Edit'} properties
-                </button>
+                <span>{t("Data Types")}</span>
+                <button type="button" className="btn btn-sm btn-ghost ml-auto" onClick={() => setOpen(!open)}>{tx("{value2, select, yes {{value1}Hide properties} other {{value1}Edit properties}}", { value1: <Icon name={open ? 'chevD' : 'chevR'} size={13} />, value2: (open) ? "yes" : "no" })}</button>
             </div>
             <div className="panel-body flex flex-col gap-3">
                 <div className="flex flex-wrap gap-4">
                     <label className="flex flex-col gap-1">
-                        <span className="text-text-dim text-[11px]">Inbound</span>
+                        <span className="text-text-dim text-[11px]">{t("Inbound")}</span>
                         <select value={holder.inboundDataType} onChange={(e: any) => setType('inbound', e.target.value)}>
                             {types.map((t: any) => <option key={t.name} value={t.name}>{t.label}</option>)}
                         </select>
                     </label>
                     <label className="flex flex-col gap-1">
-                        <span className="text-text-dim text-[11px]">Outbound</span>
+                        <span className="text-text-dim text-[11px]">{t("Outbound")}</span>
                         <select value={holder.outboundDataType} onChange={(e: any) => setType('outbound', e.target.value)}>
                             {types.map((t: any) => <option key={t.name} value={t.name}>{t.label}</option>)}
                         </select>
@@ -69,13 +69,13 @@ export function DataTypeBar({ holder, version, connectorType, onChange }: any) {
                 {open && (
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 min-w-0">
-                            <div className="cform-section-title mb-1">Inbound properties</div>
+                            <div className="cform-section-title mb-1">{t("Inbound properties")}</div>
                             <DataTypePropertiesEditor typeName={holder.inboundDataType} props={holder.inboundProperties}
                                 version={version} direction="inbound" connectorType={connectorType}
                                 onChange={changed} onReplace={(p: any) => { holder.inboundProperties = p; changed(); }} />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <div className="cform-section-title mb-1">Outbound properties</div>
+                            <div className="cform-section-title mb-1">{t("Outbound properties")}</div>
                             <DataTypePropertiesEditor typeName={holder.outboundDataType} props={holder.outboundProperties}
                                 version={version} direction="outbound" connectorType={connectorType}
                                 onChange={changed} onReplace={(p: any) => { holder.outboundProperties = p; changed(); }} />
@@ -129,9 +129,9 @@ function PickerChoices({ items, onAdd, onClose }: any) {
     return (
         <>
                 <div className="flex flex-col gap-2">
-                    <input type="text" aria-label="Filter channels" placeholder="Filter…" value={q} onChange={(e: any) => setQ(e.target.value)} />
+                    <input type="text" aria-label={t("Filter channels")} placeholder={t("Filter…")} value={q} onChange={(e: any) => setQ(e.target.value)} />
                     <div className="border border-line rounded-md overflow-auto max-h-[288px]">
-                        {filtered.length === 0 && <div className="p-2 text-text-faint text-[11px]">No matches.</div>}
+                        {filtered.length === 0 && <div className="p-2 text-text-faint text-[11px]">{t("No matches.")}</div>}
                         {filtered.map((it: any) => (
                             <label key={it.id} className="flex items-center gap-2 py-1.5 px-2 hover:bg-bg1 cursor-pointer">
                                 <input type="checkbox" checked={sel.has(it.id)} onChange={() => toggle(it.id)} />
@@ -141,8 +141,8 @@ function PickerChoices({ items, onAdd, onClose }: any) {
                     </div>
                 </div>
                 <div className="modal-foot">
-                    <button type="button" className="btn" onClick={onClose}>Cancel</button>
-                    <button type="button" className="btn btn-primary" disabled={sel.size === 0} onClick={() => { onAdd([...sel]); onClose(); }}>Add{sel.size ? ` (${sel.size})` : ''}</button>
+                    <button type="button" className="btn" onClick={onClose}>{t("Cancel")}</button>
+                    <button type="button" className="btn btn-primary" disabled={sel.size === 0} onClick={() => { onAdd([...sel]); onClose(); }}>{t("Add{value1}", { value1: sel.size ? ` (${sel.size})` : '' })}</button>
                 </div>
         </>
     );
@@ -159,9 +159,9 @@ function openPicker({ title, items, onAdd }: any) {
 // they survive step changes and can be persisted after Create; resource toggles are
 // written straight onto the channel's resourceIds (saved with the channel).
 const DEP_TABS = [
-    ['libraries', 'Code Template Libraries'],
-    ['resources', 'Library Resources'],
-    ['deploy', 'Deploy/Start Dependencies']
+    ['libraries', t("Code Template Libraries")],
+    ['resources', t("Library Resources")],
+    ['deploy', t("Deploy/Start Dependencies")]
 ];
 
 export function DependenciesStep({ channel, libState, depState, onChange }: any) {
@@ -225,7 +225,7 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
                     }
                 }
             }
-            resources.sort((a: any, b: any) => a.name.localeCompare(b.name));
+            resources.sort((a: any, b: any) => compareText(a.name, b.name));
             dataRef.current = { libraries: libState.current?.libraries || libs, resources, names };
             const results = [libraryResult, resourceResult, dependencyResult, nameResult];
             const keys = ['libraries', 'resources', 'dependencies', 'names'];
@@ -237,7 +237,7 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
             setFailedLoads(failed);
             setLoadError(message || null);
             setLoaded(true);
-            if (message) toast(`Failed to load dependencies: ${message}`, 'error');
+            if (message) toast(t("Failed to load dependencies: {value1}", { value1: String(message) }), 'error');
         });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,7 +282,7 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
             <div className="flex flex-col gap-2">
                 <div className="cform-section-title">{title}</div>
                 <div className="step-list min-h-[63px] max-h-[198px] overflow-auto">
-                    {ids.length === 0 && <div className="p-2 text-text-faint text-[11px]">None</div>}
+                    {ids.length === 0 && <div className="p-2 text-text-faint text-[11px]">{t("None")}</div>}
                     {ids.map((id: any) => (
                         <div key={id} className="step-item flex items-center gap-2 min-w-0" title={nameOf(id)}>
                             <span className="flex-1 min-w-0 truncate">{nameOf(id)}</span>
@@ -292,12 +292,10 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
                 </div>
                 <div>
                     <button type="button" className="btn btn-sm" disabled={!available.length} onClick={() => openPicker({
-                        title: 'Add channels',
+                        title: t("Add channels"),
                         items: available.map((id: any) => ({ id, name: nameOf(id) })),
                         onAdd: (chosen: any) => chosen.forEach((id: any) => addDep(kind, id)),
-                    })}>
-                        <Icon name="plus" size={12} />Add channel
-                    </button>
+                    })}>{tx("{value1}Add channel", { value1: <Icon name="plus" size={12} /> })}</button>
                 </div>
             </div>
         );
@@ -305,35 +303,33 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
 
     return (
         <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-4 max-w-[738px]">
-            <TabsPrimitive.List className="tabs overflow-x-auto" aria-label="Dependency sections">
+            <TabsPrimitive.List className="tabs overflow-x-auto" aria-label={t("Dependency sections")}>
                 {DEP_TABS.map(([key, text]) => (
                     <TabsPrimitive.Trigger key={key} value={key}
                         className={`tab whitespace-nowrap ${tab === key ? 'active' : ''}`}>{text}</TabsPrimitive.Trigger>
                 ))}
             </TabsPrimitive.List>
 
-            {!loaded && <div className="hint">Loading…</div>}
-            {loadError && <div className="panel border-danger text-danger" role="alert">
-                Failed to load dependency choices: {loadError}
-            </div>}
+            {!loaded && <div className="hint">{t("Loading…")}</div>}
+            {loadError && <div className="panel border-danger text-danger" role="alert">{t("Failed to load dependency choices: {value1}", { value1: loadError })}</div>}
 
             <TabsPrimitive.Content value="libraries">
             {loaded && !failedLoads.has('libraries') && tab === 'libraries' && (
                 <div className="panel !mt-0">
                     <div className="panel-header flex flex-wrap items-center gap-2">
-                        <span>Code Template Libraries</span>
+                        <span>{t("Code Template Libraries")}</span>
                         {libraries.length > 0 && (
                             <span className="ml-auto flex flex-wrap gap-1">
-                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { libraries.forEach((l: any) => st.checked.set(l.id, true)); tick(); }}>Select all</button>
-                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { libraries.forEach((l: any) => st.checked.set(l.id, false)); tick(); }}>Deselect all</button>
-                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(new Set(libraries.map((l: any) => l.id)))}>Expand all</button>
-                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(new Set())}>Collapse all</button>
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { libraries.forEach((l: any) => st.checked.set(l.id, true)); tick(); }}>{t("Select all")}</button>
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { libraries.forEach((l: any) => st.checked.set(l.id, false)); tick(); }}>{t("Deselect all")}</button>
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(new Set(libraries.map((l: any) => l.id)))}>{t("Expand all")}</button>
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(new Set())}>{t("Collapse all")}</button>
                             </span>
                         )}
                     </div>
                     <div className="panel-body flex flex-col gap-1.5">
-                        {libraries.length === 0 && <div className="hint">No code template libraries on this engine.</div>}
-                        {libraries.length > 6 && <input type="text" placeholder="Filter libraries…" value={libQuery} onChange={(e: any) => setLibQuery(e.target.value)} />}
+                        {libraries.length === 0 && <div className="hint">{t("No code template libraries on this engine.")}</div>}
+                        {libraries.length > 6 && <input type="text" placeholder={t("Filter libraries…")} value={libQuery} onChange={(e: any) => setLibQuery(e.target.value)} />}
                         <div className="flex flex-col border border-line rounded-md max-h-[306px] overflow-auto divide-y divide-line">
                         {libraries.filter((lib: any) => !libQuery.trim() || String(lib.name || '').toLowerCase().includes(libQuery.trim().toLowerCase())).map((lib: any) => {
                             const templates = api.asList(lib.codeTemplates, 'codeTemplate').filter((t: any) => t && typeof t === 'object');
@@ -348,16 +344,16 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
                                         </button>
                                         <input type="checkbox" checked={!!st.checked.get(lib.id)} onChange={(e: any) => toggleLib(lib.id, e.target.checked)} />
                                         <span className="min-w-0 flex-1">
-                                            <span className="font-medium">{lib.name || '(unnamed library)'}</span>
-                                            <span className="text-text-faint text-[10.5px]"> · {templates.length} template{templates.length === 1 ? '' : 's'}</span>
+                                            <span className="font-medium">{lib.name || t("(unnamed library)")}</span>
+                                            <span className="text-text-faint text-[10.5px]">{t("{value2, plural, one { · {value1} template} other { · {value1} templates}}", { value1: templates.length, value2: templates.length })}</span>
                                             {lib.description ? <span className="block hint">{lib.description}</span> : null}
                                         </span>
                                     </label>
                                     {open && templates.length > 0 && (
                                         <div className="flex flex-col pl-[41px] pr-2.5 pb-2 gap-0.5">
-                                            {templates.map((t: any, i: any) => (
-                                                <div key={t.id || i} className="flex items-center gap-2 text-[11px] text-text-dim">
-                                                    <Icon name="code" size={12} /><span className="truncate">{t.name || '(unnamed template)'}</span>
+                                            {templates.map((template: any, i: any) => (
+                                                <div key={template.id || i} className="flex items-center gap-2 text-[11px] text-text-dim">
+                                                    <Icon name="code" size={12} /><span className="truncate">{template.name || t("(unnamed template)")}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -374,10 +370,10 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
             <TabsPrimitive.Content value="resources">
             {loaded && !failedLoads.has('resources') && tab === 'resources' && (
                 <div className="panel !mt-0">
-                    <div className="panel-header">Library Resources</div>
+                    <div className="panel-header">{t("Library Resources")}</div>
                     <div className="panel-body flex flex-col gap-1.5">
-                        {resources.length === 0 && <div className="hint">No library resources on this engine (besides the Default Resource, which always applies).</div>}
-                        {resources.length > 6 && <input type="text" placeholder="Filter resources…" value={resQuery} onChange={(e: any) => setResQuery(e.target.value)} />}
+                        {resources.length === 0 && <div className="hint">{t("No library resources on this engine (besides the Default Resource, which always applies).")}</div>}
+                        {resources.length > 6 && <input type="text" placeholder={t("Filter resources…")} value={resQuery} onChange={(e: any) => setResQuery(e.target.value)} />}
                         <div className="flex flex-col border border-line rounded-md max-h-[306px] overflow-auto divide-y divide-line">
                         {resources.filter((r: any) => !resQuery.trim() || r.name.toLowerCase().includes(resQuery.trim().toLowerCase())).map((r: any) => (
                             <label key={r.id} className="flex items-center gap-2 px-2.5 py-2 hover:bg-bg1 cursor-pointer">
@@ -387,7 +383,7 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
                             </label>
                         ))}
                         </div>
-                        {resources.length > 0 && <div className="hint">Selected resources are applied to the channel scripts, source, and all destinations.</div>}
+                        {resources.length > 0 && <div className="hint">{t("Selected resources are applied to the channel scripts, source, and all destinations.")}</div>}
                     </div>
                 </div>
             )}
@@ -396,12 +392,12 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
             <TabsPrimitive.Content value="deploy">
             {loaded && !failedLoads.has('dependencies') && tab === 'deploy' && (
                 <div className="panel !mt-0">
-                    <div className="panel-header">Deploy / Start Dependencies</div>
+                    <div className="panel-header">{t("Deploy / Start Dependencies")}</div>
                     <div className="panel-body grid sm:grid-cols-2 gap-6">
-                        {depSection('upstream', 'This channel depends upon', dependsUpon)}
-                        {depSection('downstream', 'This channel is depended upon by', dependedBy)}
+                        {depSection(t("upstream"), t("This channel depends upon"), dependsUpon)}
+                        {depSection(t("downstream"), t("This channel is depended upon by"), dependedBy)}
                     </div>
-                    <div className="panel-body pt-0"><div className="hint">Dependencies control deploy/start order and are saved to the engine when you create the channel.</div></div>
+                    <div className="panel-body pt-0"><div className="hint">{t("Dependencies control deploy/start order and are saved to the engine when you create the channel.")}</div></div>
                 </div>
             )}
             </TabsPrimitive.Content>
@@ -435,14 +431,14 @@ export function ConnectorPropertiesPanels({ channel, connector, mode, onChange }
             wrap.className = 'panel !mt-0';
             const header = document.createElement('div');
             header.className = 'panel-header';
-            header.textContent = ppDef.title || 'Connector Properties';
+            header.textContent = ppDef.title || t("Connector Properties");
             const body = document.createElement('div');
             body.className = 'panel-body';
             wrap.append(header, body);
             host.appendChild(wrap);
             teardowns.push(mountReact(body, <PluginSlot def={ppDef} ctx={{ getEntry, setEntry, propertiesClass: fqcn, connector, channel, platform, onChange: onChange || (() => {}) }} />));
         }
-        return () => { teardowns.forEach((t: any) => { try { t(); } catch { /* ignore */ } }); host.replaceChildren(); };
+        return () => { teardowns.forEach((teardown: any) => { try { teardown(); } catch { /* ignore */ } }); host.replaceChildren(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [connector, connector.transportName, mode, tick]);
     return <div ref={hostRef} className="flex flex-col gap-4 empty:hidden" />;
@@ -483,31 +479,31 @@ export function QueueSettings({ connector, onChange }: any) {
             ))}
         </div>
     );
-    const YN = [[true, 'Yes'], [false, 'No']];
+    const YN = [[true, t("Yes")], [false, 'No']];
 
     return (
         <div className="panel !mt-0">
-            <div className="panel-header">Destination Settings</div>
+            <div className="panel-header">{t("Destination Settings")}</div>
             <div className="panel-body flex flex-col gap-4">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
-                    {col('Queue Messages', radios(`${nm}-mode`, [['never', 'Never'], ['failure', 'On Failure'], ['always', 'Always']], mode, setMode))}
-                    {col('Advanced Queue Settings', (
+                    {col(t("Queue Messages"), radios(`${nm}-mode`, [['never', t("Never")], ['failure', t("On Failure")], ['always', t("Always")]], mode, setMode))}
+                    {col(t("Advanced Queue Settings"), (
                         <div className="flex items-center gap-2.5 flex-wrap">
-                            <button type="button" className="btn btn-sm" onClick={() => setOpen(!open)}>Advanced Queue Settings</button>
-                            <span className="text-text-faint text-[11px]">{retries} {retries === 1 ? 'retry' : 'retries'}</span>
+                            <button type="button" className="btn btn-sm" onClick={() => setOpen(!open)}>{t("Advanced Queue Settings")}</button>
+                            <span className="text-text-faint text-[11px]">{retries} {retries === 1 ? t("retry") : t("retries")}</span>
                         </div>
                     ))}
-                    {col('Validate Response', radios(`${nm}-vr`, YN, YESNO(dcp.validateResponse), (v: any) => set('validateResponse', v)))}
-                    {col('Reattach Attachments', radios(`${nm}-ra`, YN, dcp.reattachAttachments !== false, (v: any) => set('reattachAttachments', v)))}
+                    {col(t("Validate Response"), radios(`${nm}-vr`, YN, YESNO(dcp.validateResponse), (v: any) => set('validateResponse', v)))}
+                    {col(t("Reattach Attachments"), radios(`${nm}-ra`, YN, dcp.reattachAttachments !== false, (v: any) => set('reattachAttachments', v)))}
                 </div>
                 {open && (
                     <div className="border-t border-line pt-3 grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Retry count</span><input type="number" className="w-[81px]" value={dcp.retryCount ?? '0'} onChange={(e: any) => num('retryCount', e.target.value)} /></label>
-                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Retry interval (ms)</span><input type="number" className="w-[99px]" value={dcp.retryIntervalMillis ?? '10000'} onChange={(e: any) => num('retryIntervalMillis', e.target.value)} /></label>
-                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Queue threads</span><input type="number" className="w-[81px]" value={dcp.threadCount ?? '1'} onChange={(e: any) => num('threadCount', e.target.value)} /></label>
-                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">Queue buffer size</span><input type="number" className="w-[99px]" value={dcp.queueBufferSize ?? '1000'} onChange={(e: any) => num('queueBufferSize', e.target.value)} /></label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={YESNO(dcp.rotate)} disabled={mode === 'never'} onChange={(e: any) => set('rotate', e.target.checked)} />Rotate queue on failure</label>
-                        <label className="flex items-center gap-2"><input type="checkbox" checked={YESNO(dcp.regenerateTemplate)} onChange={(e: any) => set('regenerateTemplate', e.target.checked)} />Regenerate template on retry</label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">{t("Retry count")}</span><input type="number" className="w-[81px]" value={dcp.retryCount ?? '0'} onChange={(e: any) => num('retryCount', e.target.value)} /></label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">{t("Retry interval (ms)")}</span><input type="number" className="w-[99px]" value={dcp.retryIntervalMillis ?? '10000'} onChange={(e: any) => num('retryIntervalMillis', e.target.value)} /></label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">{t("Queue threads")}</span><input type="number" className="w-[81px]" value={dcp.threadCount ?? '1'} onChange={(e: any) => num('threadCount', e.target.value)} /></label>
+                        <label className="flex items-center gap-3"><span className="w-[135px] text-text-dim text-[11px]">{t("Queue buffer size")}</span><input type="number" className="w-[99px]" value={dcp.queueBufferSize ?? '1000'} onChange={(e: any) => num('queueBufferSize', e.target.value)} /></label>
+                        <label className="flex items-center gap-2">{tx("{value1}Rotate queue on failure", { value1: <input type="checkbox" checked={YESNO(dcp.rotate)} disabled={mode === 'never'} onChange={(e: any) => set('rotate', e.target.checked)} /> })}</label>
+                        <label className="flex items-center gap-2">{tx("{value1}Regenerate template on retry", { value1: <input type="checkbox" checked={YESNO(dcp.regenerateTemplate)} onChange={(e: any) => set('regenerateTemplate', e.target.checked)} /> })}</label>
                     </div>
                 )}
             </div>
@@ -518,10 +514,10 @@ export function QueueSettings({ connector, onChange }: any) {
 /* ---- channel scripts ---------------------------------------------------------- */
 
 const SCRIPTS = [
-    { key: 'deployScript', label: 'Deploy', hint: 'Runs once when the channel is deployed.', context: 'CHANNEL_DEPLOY' },
-    { key: 'undeployScript', label: 'Undeploy', hint: 'Runs once when the channel is undeployed.', context: 'CHANNEL_UNDEPLOY' },
-    { key: 'preprocessingScript', label: 'Preprocessor', hint: 'Runs before every message is processed.', context: 'CHANNEL_PREPROCESSOR' },
-    { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed.', context: 'CHANNEL_POSTPROCESSOR' }
+    { key: 'deployScript', label: t("Deploy"), hint: t("Runs once when the channel is deployed."), context: 'CHANNEL_DEPLOY' },
+    { key: 'undeployScript', label: t("Undeploy"), hint: t("Runs once when the channel is undeployed."), context: 'CHANNEL_UNDEPLOY' },
+    { key: 'preprocessingScript', label: t("Preprocessor"), hint: t("Runs before every message is processed."), context: 'CHANNEL_PREPROCESSOR' },
+    { key: 'postprocessingScript', label: t("Postprocessor"), hint: t("Runs after every message is processed."), context: 'CHANNEL_POSTPROCESSOR' }
 ];
 
 export function ChannelScripts({ channel, onChange }: any) {
@@ -537,7 +533,7 @@ export function ChannelScripts({ channel, onChange }: any) {
     return (
         <div className="panel !mt-0">
             <div className="panel-header flex items-center gap-3">
-                <span>Scripts</span>
+                <span>{t("Scripts")}</span>
                 <select className="ml-auto" value={which} onChange={(e: any) => setWhich(e.target.value)}>
                     {SCRIPTS.map((s: any) => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
@@ -554,11 +550,11 @@ export function ChannelScripts({ channel, onChange }: any) {
 /* ---- channel settings (Summary-tab options) ----------------------------------- */
 
 const STORAGE_MODES = [
-    { value: 'DEVELOPMENT', label: 'Development', desc: 'Everything stored — full reprocessing & debugging. Highest storage, lowest performance.' },
-    { value: 'PRODUCTION', label: 'Production', desc: 'Content + metadata; no debugging maps.' },
-    { value: 'RAW', label: 'Raw', desc: 'Raw content + metadata only.' },
-    { value: 'METADATA', label: 'Metadata', desc: 'Metadata only — no message content.' },
-    { value: 'DISABLED', label: 'Disabled', desc: 'Nothing stored — highest performance, no message browsing.' }
+    { value: 'DEVELOPMENT', label: t("Development"), desc: t("Everything stored — full reprocessing & debugging. Highest storage, lowest performance.") },
+    { value: 'PRODUCTION', label: t("Production"), desc: t("Content + metadata; no debugging maps.") },
+    { value: 'RAW', label: t("Raw"), desc: t("Raw content + metadata only.") },
+    { value: 'METADATA', label: t("Metadata"), desc: t("Metadata only — no message content.") },
+    { value: 'DISABLED', label: t("Disabled"), desc: t("Nothing stored — highest performance, no message browsing.") }
 ];
 
 // Modern segmented slider. Displayed least → most storage (Disabled … Development)
@@ -581,11 +577,11 @@ function StorageSlider({ value, onChange }: any) {
                 ))}
             </div>
             <div className="flex items-center gap-3">
-                <span className="text-[10px] text-text-faint w-[90px]">Higher performance</span>
+                <span className="text-[10px] text-text-faint w-[90px]">{t("Higher performance")}</span>
                 <div className="relative flex-1 h-1.5 rounded-full bg-bg1 overflow-hidden">
                     <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${fill}%` }} />
                 </div>
-                <span className="text-[10px] text-text-faint w-[67px] text-right">More storage</span>
+                <span className="text-[10px] text-text-faint w-[67px] text-right">{t("More storage")}</span>
             </div>
             <div className="text-[11px] text-text-dim">{display[di].desc}</div>
         </div>
@@ -596,11 +592,11 @@ const META_TYPES = ['STRING', 'NUMBER', 'BOOLEAN', 'TIMESTAMP'];
 /* ---- attachment handler (channel.properties.attachmentProperties) ------------- */
 
 const ATTACHMENT_TYPES = [
-    { value: 'None', label: 'None', className: null },
-    { value: 'Entire Message', label: 'Entire Message', className: 'com.mirth.connect.server.attachments.identity.IdentityAttachmentHandlerProvider' },
-    { value: 'Regex', label: 'Regex', className: 'com.mirth.connect.server.attachments.regex.RegexAttachmentHandlerProvider' },
-    { value: 'DICOM', label: 'DICOM', className: 'com.mirth.connect.server.attachments.dicom.DICOMAttachmentHandlerProvider' },
-    { value: 'JavaScript', label: 'JavaScript', className: 'com.mirth.connect.server.attachments.javascript.JavaScriptAttachmentHandlerProvider' }
+    { value: 'None', label: t("None"), className: null },
+    { value: 'Entire Message', label: t("Entire Message"), className: 'com.mirth.connect.server.attachments.identity.IdentityAttachmentHandlerProvider' },
+    { value: 'Regex', label: t("Regex"), className: 'com.mirth.connect.server.attachments.regex.RegexAttachmentHandlerProvider' },
+    { value: 'DICOM', label: t("DICOM"), className: 'com.mirth.connect.server.attachments.dicom.DICOMAttachmentHandlerProvider' },
+    { value: 'JavaScript', label: t("JavaScript"), className: 'com.mirth.connect.server.attachments.javascript.JavaScriptAttachmentHandlerProvider' }
 ];
 const DEFAULT_ATTACHMENT_SCRIPT = '// Modify the message variable below to create attachments\nreturn message;';
 
@@ -638,23 +634,21 @@ function AttachmentHandler({ channel, version }: any) {
     return (
         <div className="panel !mt-0">
             <div className="panel-header flex items-center gap-3">
-                <span>Attachments</span>
-                <label className="ml-auto normal-case font-normal flex items-center gap-2 text-[11px]">
-                    <input type="checkbox" checked={p.storeAttachments === true} onChange={(e: any) => { p.storeAttachments = e.target.checked; tick(); }} />Store attachments
-                </label>
+                <span>{t("Attachments")}</span>
+                <label className="ml-auto normal-case font-normal flex items-center gap-2 text-[11px]">{tx("{value1}Store attachments", { value1: <input type="checkbox" checked={p.storeAttachments === true} onChange={(e: any) => { p.storeAttachments = e.target.checked; tick(); }} /> })}</label>
             </div>
             <div className="panel-body flex flex-col gap-3">
                 <label className="flex flex-wrap items-center gap-3">
-                    <span className="w-[126px] text-text-dim text-[11px]">Attachment handler</span>
+                    <span className="w-[126px] text-text-dim text-[11px]">{t("Attachment handler")}</span>
                     <select className="w-[180px]" value={ap.type || 'None'} onChange={(e: any) => setType(e.target.value)}>
                         {ATTACHMENT_TYPES.map((t: any) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                        {!known && ap.type ? <option value={ap.type}>{ap.type} (custom)</option> : null}
+                        {!known && ap.type ? <option value={ap.type}>{t("{value1} (custom)", { value1: ap.type })}</option> : null}
                     </select>
                 </label>
                 {ap.type === 'Entire Message' && (
                     <label className="flex flex-wrap items-center gap-3">
-                        <span className="w-[126px] text-text-dim text-[11px]">MIME type</span>
-                        <input type="text" className="flex-1 min-w-[144px]" placeholder="e.g. text/plain"
+                        <span className="w-[126px] text-text-dim text-[11px]">{t("MIME type")}</span>
+                        <input type="text" className="flex-1 min-w-[144px]" placeholder={t("e.g. text/plain")}
                             value={map['identity.mimetype'] || ''} onChange={(e: any) => setMap({ ...map, 'identity.mimetype': e.target.value })} />
                     </label>
                 )}
@@ -665,7 +659,7 @@ function AttachmentHandler({ channel, version }: any) {
                 {ap.type === 'Regex' && (
                     <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-text-faint">
-                            <span className="flex-1">Regex pattern</span><span className="flex-1">MIME type</span><span className="w-[27px] flex-none" />
+                            <span className="flex-1">{t("Regex pattern")}</span><span className="flex-1">{t("MIME type")}</span><span className="w-[27px] flex-none" />
                         </div>
                         {regexRows().map((r: any, i: any, arr: any) => (
                             <div key={i} className="flex items-center gap-2">
@@ -674,12 +668,12 @@ function AttachmentHandler({ channel, version }: any) {
                                 <button type="button" className="btn btn-sm btn-danger w-[27px] flex-none justify-center" onClick={() => setRegexRows(arr.length > 1 ? arr.filter((_: any, idx: any) => idx !== i) : [{ pattern: '', mimetype: '' }])}><Icon name="trash" size={12} /></button>
                             </div>
                         ))}
-                        <div><button type="button" className="btn btn-sm" onClick={() => setRegexRows([...regexRows(), { pattern: '', mimetype: '' }])}><Icon name="plus" size={12} />Add pattern</button></div>
+                        <div><button type="button" className="btn btn-sm" onClick={() => setRegexRows([...regexRows(), { pattern: '', mimetype: '' }])}>{tx("{value1}Add pattern", { value1: <Icon name="plus" size={12} /> })}</button></div>
                     </div>
                 )}
-                {(ap.type === 'None' || ap.type === 'DICOM') && <div className="hint">{ap.type === 'DICOM' ? 'DICOM attachments are handled automatically.' : 'Choose a handler to extract attachments from incoming messages.'}</div>}
+                {(ap.type === 'None' || ap.type === 'DICOM') && <div className="hint">{ap.type === 'DICOM' ? t("DICOM attachments are handled automatically.") : t("Choose a handler to extract attachments from incoming messages.")}</div>}
                 {ap.type && ap.type !== 'None' && !p.storeAttachments
-                    && <div className="hint">Attachments will be extracted but not stored or reattached.</div>}
+                    && <div className="hint">{t("Attachments will be extracted but not stored or reattached.")}</div>}
             </div>
         </div>
     );
@@ -748,27 +742,27 @@ function ChannelTags({ channel, version }: any) {
     };
     const removeTag = (name: any) => { s.assigned.delete(name); apply(); tick(); };
 
-    const assigned = [...s.assigned].sort((a: any, b: any) => a.localeCompare(b));
+    const assigned = [...s.assigned].sort((a: any, b: any) => compareText(a, b));
     const suggestions = s.all.filter((t: any) => !s.assigned.has(t.name)).map((t: any) => t.name);
     return (
         <div className="panel !mt-0">
-            <div className="panel-header">Tags</div>
+            <div className="panel-header">{t("Tags")}</div>
             <div className="panel-body">
-                {!s.loaded && <div className="hint">Loading tags…</div>}
+                {!s.loaded && <div className="hint">{t("Loading tags…")}</div>}
                 {s.loaded && (
                     <div className="flex flex-wrap items-center gap-1.5">
-                        {assigned.length === 0 && <span className="text-text-faint text-[11px]">No tags.</span>}
+                        {assigned.length === 0 && <span className="text-text-faint text-[11px]">{t("No tags.")}</span>}
                         {assigned.map((name: any) => {
                             const tag = s.all.find((t: any) => t.name === name);
                             return (
                                 <span key={name} className="tag" style={{ background: tagChipBg(tag && (tag as any).backgroundColor) }}>
                                     {name}
-                                    <button type="button" className="appearance-none border-0 bg-transparent p-0 text-text-dim hover:text-[var(--text)] leading-none cursor-pointer" style={{ font: 'inherit' }} title="Remove tag" onClick={() => removeTag(name)}>✕</button>
+                                    <button type="button" className="appearance-none border-0 bg-transparent p-0 text-text-dim hover:text-[var(--text)] leading-none cursor-pointer" style={{ font: 'inherit' }} title={t("Remove tag")} onClick={() => removeTag(name)}>✕</button>
                                 </span>
                             );
                         })}
-                        <input type="text" list="wiz-tag-list" placeholder="Add tag…" className="w-[126px]"
-                            onKeyDown={(e: any) => { if (e.key === 'Enter') { e.preventDefault(); addTag(e.target.value); e.target.value = ''; } }}
+                        <input type="text" list="wiz-tag-list" placeholder={t("Add tag…")} className="w-[126px]"
+                            onKeyDown={(e: any) => { if (isCommitEnter(e)) { e.preventDefault(); addTag(e.target.value); e.target.value = ''; } }}
                             onChange={(e: any) => { if (e.target.value && suggestions.includes(e.target.value)) { addTag(e.target.value); e.target.value = ''; } }} />
                         <datalist id="wiz-tag-list">{suggestions.map((n: any) => <option key={n} value={n} />)}</datalist>
                     </div>
@@ -807,15 +801,15 @@ export function ChannelSettings({ channel, version, onChange }: any) {
     return (
         <div className="flex flex-col gap-4">
             <div className="panel !mt-0">
-                <div className="panel-header">General</div>
+                <div className="panel-header">{t("General")}</div>
                 <div className="panel-body grid sm:grid-cols-2 gap-x-6 gap-y-3">
-                    <label className="flex items-center gap-3"><span className="w-[126px] text-text-dim text-[11px]">Initial state</span>
+                    <label className="flex items-center gap-3"><span className="w-[126px] text-text-dim text-[11px]">{t("Initial state")}</span>
                         <select value={p.initialState || 'STARTED'} onChange={(e: any) => { p.initialState = e.target.value; tick(); }}>
-                            <option value="STARTED">Started</option><option value="PAUSED">Paused</option><option value="STOPPED">Stopped</option>
+                            <option value="STARTED">{t("Started")}</option><option value="PAUSED">{t("Paused")}</option><option value="STOPPED">{t("Stopped")}</option>
                         </select>
                     </label>
-                    {chk(meta.metadata, 'enabled', 'Channel enabled')}
-                    {chk(p, 'clearGlobalChannelMap', 'Clear global channel map on deploy')}
+                    {chk(meta.metadata, 'enabled', t("Channel enabled"))}
+                    {chk(p, 'clearGlobalChannelMap', t("Clear global channel map on deploy"))}
                 </div>
             </div>
 
@@ -823,89 +817,75 @@ export function ChannelSettings({ channel, version, onChange }: any) {
             <ChannelTags channel={channel} version={version} />
 
             <div className="panel !mt-0">
-                <div className="panel-header">Message Storage</div>
+                <div className="panel-header">{t("Message Storage")}</div>
                 <div className="panel-body flex flex-col gap-3">
                     <StorageSlider value={p.messageStorageMode || 'DEVELOPMENT'} onChange={(v: any) => { p.messageStorageMode = v; tick(); }} />
                     <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 pt-1">
-                        {chk(p, 'encryptData', 'Encrypt message content')}
-                        {chk(p, 'encryptAttachments', 'Encrypt attachments')}
-                        {chk(p, 'encryptCustomMetaData', 'Encrypt custom metadata', { disabled: storageDisabled })}
-                        {chk(p, 'removeContentOnCompletion', 'Remove content on completion', { disabled: storageDisabled })}
-                        {chk(p, 'removeOnlyFilteredOnCompletion', 'Remove only filtered content', { disabled: storageDisabled || p.removeContentOnCompletion !== true })}
-                        {chk(p, 'removeAttachmentsOnCompletion', 'Remove attachments on completion', { disabled: storageDisabled })}
+                        {chk(p, 'encryptData', t("Encrypt message content"))}
+                        {chk(p, 'encryptAttachments', t("Encrypt attachments"))}
+                        {chk(p, 'encryptCustomMetaData', t("Encrypt custom metadata"), { disabled: storageDisabled })}
+                        {chk(p, 'removeContentOnCompletion', t("Remove content on completion"), { disabled: storageDisabled })}
+                        {chk(p, 'removeOnlyFilteredOnCompletion', t("Remove only filtered content"), { disabled: storageDisabled || p.removeContentOnCompletion !== true })}
+                        {chk(p, 'removeAttachmentsOnCompletion', t("Remove attachments on completion"), { disabled: storageDisabled })}
                     </div>
                 </div>
             </div>
 
             <div className="panel !mt-0">
-                <div className="panel-header">Message Pruning</div>
+                <div className="panel-header">{t("Message Pruning")}</div>
                 <div className="panel-body flex flex-col gap-4">
                     <div className="grid sm:grid-cols-2 gap-6">
                         <div className="flex flex-col gap-2">
-                            <div className="cform-section-title">Metadata</div>
-                            <label className="flex items-center gap-2">
-                                <input type="radio" name="prune-meta" checked={prune.pruneMetaDataDays == null}
-                                    onChange={() => { delete prune.pruneMetaDataDays; tick(); }} />Store indefinitely
-                            </label>
-                            <label className="flex items-center gap-2">
-                                <input type="radio" name="prune-meta" checked={prune.pruneMetaDataDays != null}
-                                    onChange={() => { prune.pruneMetaDataDays = Number(prune.pruneMetaDataDays) || 30; tick(); }} />Prune older than
-                                <input type="number" min="1" className="w-[72px]" disabled={prune.pruneMetaDataDays == null}
-                                    value={prune.pruneMetaDataDays ?? ''} onChange={(e: any) => { prune.pruneMetaDataDays = Math.max(1, Number(e.target.value) || 1); tick(); }} />
-                                <span className="text-text-dim text-[11px]">days</span>
-                            </label>
+                            <div className="cform-section-title">{t("Metadata")}</div>
+                            <label className="flex items-center gap-2">{tx("{value1}Store indefinitely", { value1: <input type="radio" name="prune-meta" checked={prune.pruneMetaDataDays == null}
+                                    onChange={() => { delete prune.pruneMetaDataDays; tick(); }} /> })}</label>
+                            <label className="flex items-center gap-2">{tx("{value1}Prune older than{value2}<e3>days</e3>", { value1: <input type="radio" name="prune-meta" checked={prune.pruneMetaDataDays != null}
+                                    onChange={() => { prune.pruneMetaDataDays = Number(prune.pruneMetaDataDays) || 30; tick(); }} />, value2: <input type="number" min="1" className="w-[72px]" disabled={prune.pruneMetaDataDays == null}
+                                    value={prune.pruneMetaDataDays ?? ''} onChange={(e: any) => { prune.pruneMetaDataDays = Math.max(1, Number(e.target.value) || 1); tick(); }} />, e3: (chunks: any) => <span className="text-text-dim text-[11px]">{chunks}</span> })}</label>
                         </div>
                         <div className="flex flex-col gap-2">
-                            <div className="cform-section-title">Content</div>
-                            <label className="flex items-center gap-2">
-                                <input type="radio" name="prune-content" checked={prune.pruneContentDays == null}
-                                    onChange={() => { delete prune.pruneContentDays; tick(); }} />Prune when metadata is removed
-                            </label>
-                            <label className="flex items-center gap-2">
-                                <input type="radio" name="prune-content" checked={prune.pruneContentDays != null}
-                                    onChange={() => { prune.pruneContentDays = Number(prune.pruneContentDays) || 30; tick(); }} />Prune older than
-                                <input type="number" min="1" className="w-[72px]" disabled={prune.pruneContentDays == null}
-                                    value={prune.pruneContentDays ?? ''} onChange={(e: any) => { prune.pruneContentDays = Math.max(1, Number(e.target.value) || 1); tick(); }} />
-                                <span className="text-text-dim text-[11px]">days</span>
-                            </label>
+                            <div className="cform-section-title">{t("Content")}</div>
+                            <label className="flex items-center gap-2">{tx("{value1}Prune when metadata is removed", { value1: <input type="radio" name="prune-content" checked={prune.pruneContentDays == null}
+                                    onChange={() => { delete prune.pruneContentDays; tick(); }} /> })}</label>
+                            <label className="flex items-center gap-2">{tx("{value1}Prune older than{value2}<e3>days</e3>", { value1: <input type="radio" name="prune-content" checked={prune.pruneContentDays != null}
+                                    onChange={() => { prune.pruneContentDays = Number(prune.pruneContentDays) || 30; tick(); }} />, value2: <input type="number" min="1" className="w-[72px]" disabled={prune.pruneContentDays == null}
+                                    value={prune.pruneContentDays ?? ''} onChange={(e: any) => { prune.pruneContentDays = Math.max(1, Number(e.target.value) || 1); tick(); }} />, e3: (chunks: any) => <span className="text-text-dim text-[11px]">{chunks}</span> })}</label>
                         </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                        <label className={`flex items-center gap-2 ${nothingPruned ? 'opacity-50' : ''}`}>
-                            <input type="checkbox" disabled={nothingPruned} checked={prune.archiveEnabled !== false}
-                                onChange={(e: any) => { prune.archiveEnabled = e.target.checked; tick(); }} />Allow message archiving
-                        </label>
-                        {chk(prune, 'pruneErroredMessages', 'Prune errored messages', { disabled: nothingPruned })}
-                        <div className="hint">{prune.pruneErroredMessages ? 'Incomplete and queued messages will not be pruned.' : 'Incomplete, errored, and queued messages will not be pruned.'}</div>
+                        <label className={`flex items-center gap-2 ${nothingPruned ? 'opacity-50' : ''}`}>{tx("{value1}Allow message archiving", { value1: <input type="checkbox" disabled={nothingPruned} checked={prune.archiveEnabled !== false}
+                                onChange={(e: any) => { prune.archiveEnabled = e.target.checked; tick(); }} /> })}</label>
+                        {chk(prune, 'pruneErroredMessages', t("Prune errored messages"), { disabled: nothingPruned })}
+                        <div className="hint">{prune.pruneErroredMessages ? t("Incomplete and queued messages will not be pruned.") : t("Incomplete, errored, and queued messages will not be pruned.")}</div>
                     </div>
                 </div>
             </div>
 
             <div className="panel !mt-0">
-                <div className="panel-header">Custom Metadata Columns</div>
+                <div className="panel-header">{t("Custom Metadata Columns")}</div>
                 <div className="panel-body flex flex-col gap-2">
-                    {columns.length === 0 && <div className="hint">No custom columns. Add one to capture a value into the message metadata.</div>}
+                    {columns.length === 0 && <div className="hint">{t("No custom columns. Add one to capture a value into the message metadata.")}</div>}
                     {columns.length > 0 && (
                         <div className="flex items-center gap-2 px-0.5 text-[10px] uppercase tracking-wide text-text-faint">
-                            <span className="flex-1">Column name</span>
-                            <span className="w-[117px] flex-none">Type</span>
-                            <span className="flex-1">Mapping variable</span>
+                            <span className="flex-1">{t("Column name")}</span>
+                            <span className="w-[117px] flex-none">{t("Type")}</span>
+                            <span className="flex-1">{t("Mapping variable")}</span>
                             <span className="w-[27px] flex-none" />
                         </div>
                     )}
                     {columns.map((c: any, i: any) => (
                         <div key={i} className="flex items-center gap-2">
-                            <input type="text" className="flex-1 min-w-0" placeholder="e.g. patientId" value={c.name || ''}
+                            <input type="text" className="flex-1 min-w-0" placeholder={t("e.g. patientId")} value={c.name || ''}
                                 onChange={(e: any) => { columns[i] = { ...c, name: e.target.value }; setCols([...columns]); }} />
                             <select className="w-[117px] flex-none" value={c.type || 'STRING'} onChange={(e: any) => { columns[i] = { ...c, type: e.target.value }; setCols([...columns]); }}>
                                 {META_TYPES.map((t: any) => <option key={t} value={t}>{t}</option>)}
                             </select>
-                            <input type="text" className="flex-1 min-w-0" placeholder="e.g. mirth_patientId" value={c.mappingName || ''}
+                            <input type="text" className="flex-1 min-w-0" placeholder={t("e.g. mirth_patientId")} value={c.mappingName || ''}
                                 onChange={(e: any) => { columns[i] = { ...c, mappingName: e.target.value }; setCols([...columns]); }} />
                             <button type="button" className="btn btn-sm btn-danger w-[27px] flex-none justify-center" onClick={() => setCols(columns.filter((_: any, idx: any) => idx !== i))}><Icon name="trash" size={13} /></button>
                         </div>
                     ))}
-                    <div><button type="button" className="btn btn-sm" onClick={() => setCols([...columns, { name: '', type: 'STRING', mappingName: '' }])}><Icon name="plus" size={13} />Add column</button></div>
+                    <div><button type="button" className="btn btn-sm" onClick={() => setCols([...columns, { name: '', type: 'STRING', mappingName: '' }])}>{tx("{value1}Add column", { value1: <Icon name="plus" size={13} /> })}</button></div>
                 </div>
             </div>
         </div>

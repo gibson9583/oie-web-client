@@ -1,3 +1,4 @@
+import { t, tx } from '../core/i18n.js';
 /*
  * Compare Messages — the side-by-side diff overlay.
  *
@@ -100,7 +101,7 @@ function useSideContent(ref: any, gen: number) {
                     .filter(Boolean);
                 const cm = cms.find((c: any) => Number(c.metaDataId) === Number(ref.metaDataId));
                 if (!cm) {
-                    setState({ ...LOADING, status: 'missing', error: `Connector ${ref.metaDataId} is no longer part of message ${ref.messageId}.` });
+                    setState({ ...LOADING, status: 'missing', error: t("Connector {value1} is no longer part of message {value2}.", { value1: String(ref.metaDataId), value2: String(ref.messageId) }) });
                     return;
                 }
                 const storedTypes = storedContentTypes(cm);
@@ -109,7 +110,7 @@ function useSideContent(ref: any, gen: number) {
                     // Pruned between selection and open, or never stored.
                     setState({
                         ...LOADING, status: 'missing', storedTypes,
-                        error: `${stageLabel(ref.contentType)} content is not stored for this message.`
+                        error: t("{value1} content is not stored for this message.", { value1: String(stageLabel(ref.contentType)) })
                     });
                     return;
                 }
@@ -135,10 +136,10 @@ function SideHeader({ side, compareRef, state, onStage }: any) {
     const stored: string[] = state.storedTypes || compareRef.storedTypes || [];
     return (
         <div className="compare-side-head">
-            <span className={'tag ' + (side === 'left' ? 'accent' : 'amber')}>{side === 'left' ? 'Left' : 'Right'}</span>
+            <span className={'tag ' + (side === 'left' ? 'accent' : 'amber')}>{side === 'left' ? t("Left") : t("Right")}</span>
             <span className="compare-side-ref mono">{describeRef(compareRef)}</span>
             <label className="compare-side-stage">
-                <select aria-label={`${side === 'left' ? 'Left' : 'Right'} stage`}
+                <select aria-label={t("{value1, select, yes {Left stage} other {Right stage}}", { value1: (side === 'left') ? "yes" : "no" })}
                     value={compareRef.contentType}
                     onChange={(e: any) => onStage(e.target.value)}>
                     {COMPARE_STAGES
@@ -147,7 +148,7 @@ function SideHeader({ side, compareRef, state, onStage }: any) {
                         .map(s => (
                             <option key={s.type} value={s.type}
                                 disabled={!stored.includes(s.type) && s.type !== compareRef.contentType}>
-                                {s.label}{stored.includes(s.type) ? '' : ' (not stored)'}
+                                {stored.includes(s.type) ? s.label : t("{label} (not stored)", { label: s.label })}
                             </option>
                         ))}
                 </select>
@@ -230,13 +231,13 @@ export function CompareOverlay({ pair, onClose }: any) {
         return (
             <div className={'compare-pane-overlay ' + side}>
                 {state.status === 'loading'
-                    ? <div className="loading-block"><div className="spinner" />Loading content…</div>
+                    ? <div className="loading-block">{tx("{value1}Loading content…", { value1: <div className="spinner" /> })}</div>
                     : (
                         <div className="compare-pane-error">
                             <Icon name="warning" size={16} />
                             <span>{state.error}</span>
                             {state.status === 'error' &&
-                                <button className="btn btn-sm" onClick={onRetry}><Icon name="refresh" />Retry</button>}
+                                <button className="btn btn-sm" onClick={onRetry}>{tx("{value1}Retry", { value1: <Icon name="refresh" /> })}</button>}
                         </div>
                     )}
             </div>
@@ -257,16 +258,14 @@ export function CompareOverlay({ pair, onClose }: any) {
                         }}>
                         <div className="compare-head">
                             <Dialog.Title asChild>
-                                <h2 className="compare-title">Compare Content</h2>
+                                <h2 className="compare-title">{t("Compare Content")}</h2>
                             </Dialog.Title>
                             {/* No channel chip in the header: the two sides need not
                                 be from the same channel, so naming one here would be
                                 wrong for the other. Each side's reference carries its
                                 own channel instead. */}
                             <span className="flex-1" />
-                            <button className="btn" onClick={swap} title="Swap the two sides">
-                                <Icon name="transform" />Swap
-                            </button>
+                            <button className="btn" onClick={swap} title={t("Swap the two sides")}>{tx("{value1}Swap", { value1: <Icon name="transform" /> })}</button>
                             {/* Two exits, because closing a comparison means two
                                 different things: one more thing to compare against
                                 the same reference, or done with that reference. */}
@@ -274,15 +273,11 @@ export function CompareOverlay({ pair, onClose }: any) {
                                 read as the same action twice, which is the one thing
                                 these buttons exist to distinguish. */}
                             <button className="btn" onClick={() => { clearCompare(); onClose({ cleared: true }); }}
-                                title="Close and drop the compare selection">
-                                <Icon name="clear" />Clear and Close
-                            </button>
+                                title={t("Close and drop the compare selection")}>{tx("{value1}Clear and Close", { value1: <Icon name="clear" /> })}</button>
                             {/* Esc and a click outside land here too — the exit that
                                 changes the least. */}
                             <Dialog.Close asChild>
-                                <button className="btn compare-close" title="Close, keeping the selection for another comparison">
-                                    <Icon name="x" />Close
-                                </button>
+                                <button className="btn compare-close" title={t("Close, keeping the selection for another comparison")}>{tx("{value1}Close", { value1: <Icon name="x" /> })}</button>
                             </Dialog.Close>
                         </div>
 
@@ -304,8 +299,8 @@ export function CompareOverlay({ pair, onClose }: any) {
                         </div>
 
                         <div className="compare-foot">
-                            <span className="compare-legend"><i className="swatch left" />Left only</span>
-                            <span className="compare-legend"><i className="swatch right" />Right only</span>
+                            <span className="compare-legend">{tx("{value1}Left only", { value1: <i className="swatch left" /> })}</span>
+                            <span className="compare-legend">{tx("{value1}Right only", { value1: <i className="swatch right" /> })}</span>
                         </div>
                     </Dialog.Content>
                 </Dialog.Overlay>

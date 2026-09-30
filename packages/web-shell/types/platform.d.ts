@@ -1,3 +1,4 @@
+import { t, tc, tx, scope, locale, locales, setLocale, formatNumber, formatList, compareText } from './i18n.js';
 import { registerLoginAuthenticator } from './login-auth.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
@@ -44,6 +45,8 @@ export interface NavItem extends Pick<TaskRef, 'task'> {
     icon?: string;
     path: string;
     section?: string;
+    /** Translated display label for a custom section; section remains its stable id. */
+    sectionLabel?: string;
     order?: number;
     /** RBAC: checked as checkTask('view', task) — the nav entry hides when denied. Omit = always visible. */
     task?: string;
@@ -102,6 +105,8 @@ export interface ChannelTab {
     [key: string]: any;
 }
 export interface SettingsPanel {
+    /** Stable RBAC task group; defaults to settings_<label> for legacy plugins. */
+    taskGroup?: string;
     id?: string;
     label: string;
     order?: number;
@@ -267,7 +272,19 @@ export interface PluginManifest {
     apiMin?: string | null;
     [key: string]: any;
 }
-export declare const OIE_API_VERSION = "4.7.0";
+export declare const OIE_API_VERSION = "4.8.0";
+declare const i18n: Readonly<{
+    t: typeof t;
+    tc: typeof tc;
+    tx: typeof tx;
+    scope: typeof scope;
+    locale: typeof locale;
+    locales: typeof locales;
+    setLocale: typeof setLocale;
+    formatNumber: typeof formatNumber;
+    formatList: typeof formatList;
+    compareText: typeof compareText;
+}>;
 export declare function apiCompatible(provided: string, requiredMin?: string | null): boolean;
 /** The platform handed to every plugin's `register(platform)`. */
 export interface Platform {
@@ -295,6 +312,8 @@ export interface Platform {
     checkTask: typeof checkTask;
     /** Add a glyph to the shared icon set: SVG path data on a 24x24 grid, rendered stroke-only in currentColor. Referenced by name anywhere an `icon` is accepted (nav items, actions, `ui.icon()`). Built-in names cannot be overridden. */
     registerIcon(name: string, pathData: string): void;
+    /** Shared localization runtime. Feature-detect when supporting older web clients. */
+    i18n: typeof i18n;
     registerNavItem(item: NavItem): void;
     /** Command-palette entry — same shape as a nav item. Returns an unregister fn. */
     registerCommand(command: Command): () => void;

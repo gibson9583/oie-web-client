@@ -1,0 +1,12 @@
+{
+  "Channel<e1>{value2}</e1>": "通道<e1>{value2}</e1>",
+  "Connection": "连接",
+  "Connection Log": "连接日志",
+  "Connection log unavailable: {value1}": "连接日志不可用：{value1}",
+  "Connector<e1>{value2}</e1>": "连接器<e1>{value2}</e1>",
+  "Event<e1>{value2}</e1>": "事件<e1>{value2}</e1>",
+  "Id<e1>{value2}</e1>": "ID<e1>{value2}</e1>",
+  "Information<e1>{value2}</e1>": "信息<e1>{value2}</e1>",
+  "No connection events yet.": "尚无连接事件。",
+  "Timestamp<e1>{value2}</e1>": "时间戳<e1>{value2}</e1>"
+}

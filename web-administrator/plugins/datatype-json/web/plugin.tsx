@@ -1,3 +1,5 @@
+import { scope } from '@oie/web-ui';
+const { t } = scope("datatype-json");
 /*
  * JSON data type — web admin plugin (React, DataTypeClientPlugin equivalent).
  * Transcribed from server/.../plugins/datatypes/json/*Properties.java.
@@ -17,19 +19,17 @@ const PKG = 'com.mirth.connect.plugins.datatypes.json';
 const opt = (key: any, label: any, options: any, def: any, hint?: any) => ({ key, label, type: 'select', options, default: def, hint });
 const code = (key: any, label: any, def: any, hint?: any) => ({ key, label, type: 'code', default: def, hint });
 
-const BATCH_SCRIPT_HINT = 'JavaScript that splits the batch and returns the next message. ' +
-    "Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. " +
-    'Only used when Process Batch is enabled in the connector.';
+const BATCH_SCRIPT_HINT = t("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 
 const DEF: any = {
-    name: 'JSON', label: 'JSON', order: 40,
+    name: 'JSON', label: t("JSON"), order: 40,
     propertiesClass: `${PKG}.JSONDataTypeProperties`,
     groups: [
         {
-            key: 'batchProperties', label: 'Batch', class: `${PKG}.JSONBatchProperties`,
+            key: 'batchProperties', label: t("Batch"), class: `${PKG}.JSONBatchProperties`,
             fields: [
-                opt('splitType', 'Split Batch By', [{ value: 'JavaScript', label: 'JavaScript' }], 'JavaScript',
-                    'Method for splitting the batch message. Only used when Process Batch is enabled in the connector.'),
+                opt('splitType', t("Split Batch By"), [{ value: 'JavaScript', label: t("JavaScript") }], 'JavaScript',
+                    t("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")),
                 code('batchScript', 'JavaScript', null, BATCH_SCRIPT_HINT)
             ]
         }

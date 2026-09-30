@@ -148,3 +148,4 @@ vite.config.ts.timestamp-*
 /blob-report/
 /playwright/.cache/
 /release-artifacts/
+/web-administrator/client/locales/messages.json

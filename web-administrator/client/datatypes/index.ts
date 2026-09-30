@@ -1,3 +1,4 @@
+import { compareText } from '../core/i18n.js';
 /*
  * Data type registry access.
  *
@@ -54,6 +55,6 @@ export function normalizeDataTypeProperties(name: any, props: any): string[] {
  *  (then label) so the list is stable regardless of plugin load order. */
 export function dataTypeList() {
     return [...platform.dataTypes().values()]
-        .sort((a: any, b: any) => (a.order ?? 100) - (b.order ?? 100) || String(a.label).localeCompare(String(b.label)))
+        .sort((a: any, b: any) => (a.order ?? 100) - (b.order ?? 100) || compareText(String(a.label), String(b.label)))
         .map(d => ({ name: d.name, label: d.label }));
 }

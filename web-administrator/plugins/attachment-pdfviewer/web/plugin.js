@@ -1,9 +1,11 @@
 // plugins/attachment-pdfviewer/web/plugin.tsx
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t } = scope("attachment-pdfviewer");
 var React = platform.React;
 function typeOf(att) {
-  const t = att && att.type;
-  return String(typeof t === "string" ? t : t && (t._ || t.$) || "").trim();
+  const t2 = att && att.type;
+  return String(typeof t2 === "string" ? t2 : t2 && (t2._ || t2.$) || "").trim();
 }
 function register(platform2) {
   function PdfViewer({ attachment, channelId, messageId, platform: platform3 }) {
@@ -29,15 +31,15 @@ function register(platform2) {
       };
     }, [channelId, messageId, attachment.id, key, platform3.api.messages, attempt]);
     if (state.key !== key || state.status === "loading") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, "Loading PDF\u2026"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint text-[10px] mb-1" }, t("Loading PDF\u2026")));
     }
     if (state.status === "error") {
-      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, `Could not load PDF: ${state.message}`), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, "Retry"));
+      return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, t("Could not load PDF: {value1}", { value1: String(state.message) })), /* @__PURE__ */ React.createElement("button", { type: "button", className: "btn", onClick: () => retry() }, t("Retry")));
     }
     return /* @__PURE__ */ React.createElement("div", { className: "mt-[13px]" }, /* @__PURE__ */ React.createElement(
       "iframe",
       {
-        title: "PDF attachment",
+        title: t("PDF attachment"),
         sandbox: "allow-same-origin",
         src: state.src,
         className: "w-full h-[576px] border border-[var(--bg3)] rounded-[4px]"

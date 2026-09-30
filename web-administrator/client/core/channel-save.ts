@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 import api from './api.js';
 import { encodeChannelTemplates } from './oie.js';
 import { captureEngineSession } from './engine-fetch.js';
@@ -50,7 +51,7 @@ function fingerprint(channel: any): string {
 
 export async function loadChannelForEdit(id: string): Promise<any> {
     const channel = await api.channels.get(id);
-    if (!channel || channel.id !== id) throw new Error(`Channel ${id} was not found.`);
+    if (!channel || channel.id !== id) throw new Error(t("Channel {value1} was not found.", { value1: String(id) }));
     sessions.set(channel, { isNew: false, baseline: fingerprint(channel), workingBaseline: fingerprint(channel), saving: false });
     return channel;
 }
@@ -90,7 +91,7 @@ export async function updateChannelWithConflict(channelId: string, update: (over
     if (String(accepted) === 'false') {
         const latest = await api.channels.get(channelId);
         assertSession();
-        if (!latest || latest.id !== channelId) throw new Error('The channel was removed. Reopen the channel list before saving.');
+        if (!latest || latest.id !== channelId) throw new Error(t("The channel was removed. Reopen the channel list before saving."));
         if (!savedByUser(latest, options.userId)) {
             const confirmed = await options.confirmConflict();
             assertSession();
@@ -99,7 +100,7 @@ export async function updateChannelWithConflict(channelId: string, update: (over
         accepted = await update(true);
         assertSession();
     }
-    if (String(accepted) !== 'true') throw new Error('The engine did not confirm the channel save. Your changes are still unsaved.');
+    if (String(accepted) !== 'true') throw new Error(t("The engine did not confirm the channel save. Your changes are still unsaved."));
     return true;
 }
 
@@ -183,7 +184,7 @@ export async function saveChannelModel(channel: any, options: {
             if (current) {
                 const attempt = state.creationAttempts.find(candidate => current.id === channel.id
                     && modifiedTime(current) === modifiedTime(candidate) && channelContent(current) === channelContent(candidate));
-                if (!attempt) throw new Error('A channel with this ID exists, but the interrupted creation could not be verified. Open it from Channels before saving again.');
+                if (!attempt) throw new Error(t("A channel with this ID exists, but the interrupted creation could not be verified. Open it from Channels before saving again."));
                 // The lost response belonged to our UUID and submitted model.
                 // Keep any edits made since then, but never POST another create.
                 state.isNew = false;
@@ -200,10 +201,10 @@ export async function saveChannelModel(channel: any, options: {
         }
         let conflict = false;
         if (!state.isNew) {
-            if (!state.baseline) throw new Error('Cannot verify the original channel. Reopen it before saving.');
+            if (!state.baseline) throw new Error(t("Cannot verify the original channel. Reopen it before saving."));
             current = current || await api.channels.get(channel.id);
             assertSession();
-            if (!current || current.id !== channel.id) throw new Error('The channel was removed. Reopen the channel list before saving.');
+            if (!current || current.id !== channel.id) throw new Error(t("The channel was removed. Reopen the channel list before saving."));
             conflict = fingerprint(current) !== state.baseline;
             if (conflict && !savedByUser(current, options.userId) && !await confirm(options.confirmConflict())) return false;
         }
@@ -240,7 +241,7 @@ export async function saveChannelModel(channel: any, options: {
                 { ...options, assertSession });
             if (!accepted) return false;
         }
-        if (String(accepted) !== 'true') throw new Error('The engine did not confirm the channel save. Your changes are still unsaved.');
+        if (String(accepted) !== 'true') throw new Error(t("The engine did not confirm the channel save. Your changes are still unsaved."));
         const unchangedDuringWrite = fingerprint(channel) === workingAtSubmit;
         // Creation is accepted independently of later dependency/deploy stages.
         state.isNew = false;

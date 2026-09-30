@@ -42,3 +42,13 @@ sources (`index.d.ts` re-exports `types/`, emitted by
 ## License
 
 MPL-2.0
+
+## Localization
+
+Localization arrived in API 4.8. Declare `"oie": { "apiMin": "4.8" }` to use
+the shared `@oie/web-ui` exports directly, or detect `platform.i18n` and retain
+English rendering to keep loading on API 4.7. Declare a
+plugin-scoped catalog in `plugin.json`; the host loads it before importing your
+module. Keep IDs, enum values, routes and RBAC groups stable, and translate only
+display labels. See the [i18n authoring and migration guide](../../docs/i18n.md)
+for ICU messages, catalog manifests, fallback, `sectionLabel`, and validation.

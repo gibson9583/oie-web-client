@@ -1,50 +1,52 @@
 // plugins/datatype-ncpdp/web/plugin.tsx
+import { scope } from "@oie/web-ui";
 import { platform } from "@oie/web-shell";
+var { t } = scope("datatype-ncpdp");
 var React = platform.React;
 var PKG = "com.mirth.connect.plugins.datatypes.ncpdp";
 var text = (key, label, def, hint) => ({ key, label, type: "text", default: def, hint });
 var bool = (key, label, def, hint) => ({ key, label, type: "checkbox", default: def, hint });
 var opt = (key, label, options, def, hint) => ({ key, label, type: "select", options, default: def, hint });
 var code = (key, label, def, hint) => ({ key, label, type: "code", default: def, hint });
-var BATCH_SCRIPT_HINT = "JavaScript that splits the batch and returns the next message. Has access to 'reader' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.";
+var BATCH_SCRIPT_HINT = t("JavaScript that splits the batch and returns the next message. Has access to ''reader'' (a Java BufferedReader); return null/empty to signal end of input. Only used when Process Batch is enabled in the connector.");
 var DEF = {
   name: "NCPDP",
-  label: "NCPDP",
+  label: t("NCPDP"),
   order: 80,
   propertiesClass: `${PKG}.NCPDPDataTypeProperties`,
   groups: [
     {
       key: "serializationProperties",
-      label: "Serialization",
+      label: t("Serialization"),
       class: `${PKG}.NCPDPSerializationProperties`,
       fields: [
-        text("fieldDelimiter", "Field Delimiter", "0x1C", "Character(s) that delimit the fields in the message."),
-        text("groupDelimiter", "Group Delimiter", "0x1D", "Character(s) that delimit the groups in the message."),
-        text("segmentDelimiter", "Segment Delimiter", "0x1E", "Character(s) that delimit the segments in the message.")
+        text("fieldDelimiter", t("Field Delimiter"), "0x1C", t("Character(s) that delimit the fields in the message.")),
+        text("groupDelimiter", t("Group Delimiter"), "0x1D", t("Character(s) that delimit the groups in the message.")),
+        text("segmentDelimiter", t("Segment Delimiter"), "0x1E", t("Character(s) that delimit the segments in the message."))
       ]
     },
     {
       key: "deserializationProperties",
-      label: "Deserialization",
+      label: t("Deserialization"),
       class: `${PKG}.NCPDPDeserializationProperties`,
       fields: [
-        text("fieldDelimiter", "Field Delimiter", "0x1C", "Character(s) that delimit the fields in the message."),
-        text("groupDelimiter", "Group Delimiter", "0x1D", "Character(s) that delimit the groups in the message."),
-        text("segmentDelimiter", "Segment Delimiter", "0x1E", "Character(s) that delimit the segments in the message."),
-        bool("useStrictValidation", "Use Strict Validation", false, "Validate the NCPDP message against a schema.")
+        text("fieldDelimiter", t("Field Delimiter"), "0x1C", t("Character(s) that delimit the fields in the message.")),
+        text("groupDelimiter", t("Group Delimiter"), "0x1D", t("Character(s) that delimit the groups in the message.")),
+        text("segmentDelimiter", t("Segment Delimiter"), "0x1E", t("Character(s) that delimit the segments in the message.")),
+        bool("useStrictValidation", t("Use Strict Validation"), false, t("Validate the NCPDP message against a schema."))
       ]
     },
     {
       key: "batchProperties",
-      label: "Batch",
+      label: t("Batch"),
       class: `${PKG}.NCPDPBatchProperties`,
       fields: [
         opt(
           "splitType",
-          "Split Batch By",
-          [{ value: "JavaScript", label: "JavaScript" }],
+          t("Split Batch By"),
+          [{ value: "JavaScript", label: t("JavaScript") }],
           "JavaScript",
-          "Method for splitting the batch message. Only used when Process Batch is enabled in the connector."
+          t("Method for splitting the batch message. Only used when Process Batch is enabled in the connector.")
         ),
         code("batchScript", "JavaScript", null, BATCH_SCRIPT_HINT)
       ]

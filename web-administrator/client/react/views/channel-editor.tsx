@@ -1,3 +1,5 @@
+import { channelTabLabel, wireTransportLabel } from '../../core/labels.js';
+import { t, tx, compareText } from '../../core/i18n.js';
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { channelDependencyState, copyLibrarySelection, copyDependencySelection, dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices, hasDependencyChanges, hasLibraryChanges, persistChannelDependencies, persistLibraryAssociations } from '../../core/channel-dependencies.js';
@@ -35,10 +37,9 @@ import { channelDependencyState, copyLibrarySelection, copyDependencySelection, 
 import { withEditorSave } from '../save-lock.js';
 import { parseConnectorImport, normalizeImportTypes, appendImportedDestination, alignDestinationTypes, updateImportedAttachmentHandler, remapImportedResources, hasImportedResources, normalizeImportedElementTypes } from './editor-import.js';
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu } from '@oie/web-ui';
 import api from '@oie/web-api';
 import * as oie from '@oie/web-api';
-import { createCodeEditor } from '@oie/web-ui';
+import { h, clear, field, textInput, numberInput, select, checkbox, taskButton, toast, confirmDialog, promptDialog, modal, errorModal, DataTable, saveFile, pickFile, fmtDate, contextMenu, createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
@@ -79,11 +80,11 @@ function tagChipBg(color: any) {
 
 /* AttachmentHandlerType strings/classes from com.mirth.connect.model.attachments */
 const ATTACHMENT_TYPES = [
-    { value: 'None', label: 'None', className: null },
-    { value: 'Entire Message', label: 'Entire Message', className: 'com.mirth.connect.server.attachments.identity.IdentityAttachmentHandlerProvider' },
-    { value: 'Regex', label: 'Regex', className: 'com.mirth.connect.server.attachments.regex.RegexAttachmentHandlerProvider' },
-    { value: 'DICOM', label: 'DICOM', className: 'com.mirth.connect.server.attachments.dicom.DICOMAttachmentHandlerProvider' },
-    { value: 'JavaScript', label: 'JavaScript', className: 'com.mirth.connect.server.attachments.javascript.JavaScriptAttachmentHandlerProvider' }
+    { value: 'None', label: t("None"), className: null },
+    { value: 'Entire Message', label: t("Entire Message"), className: 'com.mirth.connect.server.attachments.identity.IdentityAttachmentHandlerProvider' },
+    { value: 'Regex', label: t("Regex"), className: 'com.mirth.connect.server.attachments.regex.RegexAttachmentHandlerProvider' },
+    { value: 'DICOM', label: t("DICOM"), className: 'com.mirth.connect.server.attachments.dicom.DICOMAttachmentHandlerProvider' },
+    { value: 'JavaScript', label: t("JavaScript"), className: 'com.mirth.connect.server.attachments.javascript.JavaScriptAttachmentHandlerProvider' }
 ];
 
 const META_COLUMN_TYPES = ['STRING', 'NUMBER', 'BOOLEAN', 'TIMESTAMP'];
@@ -104,19 +105,19 @@ function advancedQueueSummary(dcp: any) {
     const retryCount = Number(dcp.retryCount) || 0;
     const interval = Number(dcp.retryIntervalMillis) || 0;
     const threads = Number(dcp.threadCount) || 1;
-    const retries = `${retryCount} ${retryCount === 1 ? 'Retry' : 'Retries'}`;
+    const retries = t('{count, plural, one {# Retry} other {# Retries}}', {count: retryCount});
     if (!queueEnabled) {
         parts.push(retries);
-        if (retryCount > 0) parts.push(`Interval ${interval} ms`);
+        if (retryCount > 0) parts.push(t('Interval {interval} ms', {interval}));
     } else {
-        if (dcp.regenerateTemplate) parts.push('Regenerate');
-        if (dcp.rotate) parts.push('Rotate');
-        if (dcp.includeFilterTransformer) parts.push('Including Transformer');
+        if (dcp.regenerateTemplate) parts.push(t("Regenerate"));
+        if (dcp.rotate) parts.push(t("Rotate"));
+        if (dcp.includeFilterTransformer) parts.push(t("Including Transformer"));
         if (sendFirst) parts.push(retries);
-        parts.push(`Interval ${interval} ms`);
+        parts.push(t('Interval {interval} ms', {interval}));
         if (threads > 1) {
-            parts.push(`${threads} Threads`);
-            if (dcp.threadAssignmentVariable) parts.push(`Group By ${dcp.threadAssignmentVariable}`);
+            parts.push(t('{count, plural, one {# Thread} other {# Threads}}', {count: threads}));
+            if (dcp.threadAssignmentVariable) parts.push(t("Group By {value1}", { value1: String(dcp.threadAssignmentVariable) }));
         }
     }
     return parts.join(' / ');
@@ -159,21 +160,21 @@ function promptSaveChanges(channel: any) {
     return new Promise((resolve: any) => {
         if (!platform.checkTask('channelEdit', 'doSaveChannel')) {
             modal({
-                title: 'Unsaved Changes',
-                body: h('div', `You don't have permission to save changes to "${channel.name || 'this channel'}". Your changes will be discarded.`),
+                title: t("Unsaved Changes"),
+                body: h('div', t("You don''t have permission to save changes to \"{value1}\". Your changes will be discarded.", { value1: String(channel.name || t("this channel")) })),
                 onClose: () => resolve('cancel'),
-                buttons: [{ label: 'OK', primary: true, onClick: () => { resolve('discard'); } }]
+                buttons: [{ label: t("OK"), primary: true, onClick: () => { resolve('discard'); } }]
             });
             return;
         }
         modal({
-            title: 'Unsaved Changes',
-            body: h('div', `Would you like to save the changes made to "${channel.name || 'this channel'}"?`),
+            title: t("Unsaved Changes"),
+            body: h('div', t("Would you like to save the changes made to \"{value1}\"?", { value1: String(channel.name || t("this channel")) })),
             onClose: () => resolve('cancel'),
             buttons: [
-                { label: 'Cancel', onClick: () => { resolve('cancel'); } },
-                { label: "Don't Save", danger: true, onClick: () => { resolve('discard'); } },
-                { label: 'Save Changes', primary: true, onClick: () => { resolve('save'); } }
+                { label: t("Cancel"), onClick: () => { resolve('cancel'); } },
+                { label: t("Don''t Save"), danger: true, onClick: () => { resolve('discard'); } },
+                { label: t("Save Changes"), primary: true, onClick: () => { resolve('save'); } }
             ]
         });
     });
@@ -201,17 +202,17 @@ function openAttachmentPropsModal(ap: any, markDirty: any) {
                     onInput: (e: any) => { row.b = e.target.value; commit(); }
                 }));
                 grid.appendChild(h('button.btn.btn-sm', {
-                    title: 'Remove row',
+                    title: t("Remove row"),
                     onClick: () => { rows.splice(rows.indexOf(row), 1); commit(); renderRows(); }
-                }, 'Delete'));
+                }, t("Delete")));
             }
-            if (!rows.length) grid.appendChild(h('div.text-text-faint', { class: 'col-[1/-1]' }, 'No entries'));
+            if (!rows.length) grid.appendChild(h('div.text-text-faint', { class: 'col-[1/-1]' }, t("No entries")));
             host.appendChild(grid);
         }
         renderRows();
         const addBtn = h('button.btn.btn-sm', {
             onClick: () => { rows.push({ a: '', b: '' }); commit(); renderRows(); }
-        }, 'New');
+        }, t("New"));
         return h('div.field',
             h('div', { class: 'flex items-center justify-between gap-2.5' },
                 h('label', { class: 'm-0' }, title), addBtn),
@@ -257,26 +258,26 @@ function openAttachmentPropsModal(ap: any, markDirty: any) {
         }
 
         return h('div',
-            pairTable('Regular Expressions', patterns, 'Regular Expression', 'MIME Type', commit,
-                'Capturing group 1 of each expression is extracted as an attachment; a blank MIME type defaults to text/plain.'),
-            pairTable('Inbound Replacements', inbound, 'Replace All', 'Replace With', commit,
-                'Applied to attachment content as it is extracted. Java string escape sequences (\\n, \\t, …) are unescaped by the server.'),
-            pairTable('Outbound Replacements', outbound, 'Replace All', 'Replace With', commit,
-                'Applied when attachments are re-attached to outbound messages.'));
+            pairTable(t("Regular Expressions"), patterns, t("Regular Expression"), t("MIME Type"), commit,
+                t("Capturing group 1 of each expression is extracted as an attachment; a blank MIME type defaults to text/plain.")),
+            pairTable(t("Inbound Replacements"), inbound, t("Replace All"), t("Replace With"), commit,
+                t("Applied to attachment content as it is extracted. Java string escape sequences (\\n, \\t, …) are unescaped by the server.")),
+            pairTable(t("Outbound Replacements"), outbound, t("Replace All"), t("Replace With"), commit,
+                t("Applied when attachments are re-attached to outbound messages.")));
     }
 
     /* IdentityAttachmentHandlerProvider reads a single identity.mimetype key. */
     function renderIdentityEditor() {
         const map = entriesToObj(ap.properties);
-        return field('Attachment MIME Type', textInput(String(map['identity.mimetype'] ?? ''), {
+        return field(t("Attachment MIME Type"), textInput(String(map['identity.mimetype'] ?? ''), {
             class: 'max-w-[234px]',
-            placeholder: 'text/plain',
+            placeholder: t("text/plain"),
             onInput: (e: any) => {
                 map['identity.mimetype'] = e.target.value;
                 ap.properties = objToEntries(map);
                 markDirty();
             }
-        }), 'The entire message is stored as a single attachment with this MIME type.');
+        }), t("The entire message is stored as a single attachment with this MIME type."));
     }
 
     /* Unknown plugin handler types: raw key/value map editor (classic
@@ -290,8 +291,8 @@ function openAttachmentPropsModal(ap: any, markDirty: any) {
             ap.properties = objToEntries(next);
             markDirty();
         }
-        return pairTable('Attachment Handler Properties', rows, 'Property', 'Value', commit,
-            `Raw property map for the "${ap.type}" attachment handler.`);
+        return pairTable(t("Attachment Handler Properties"), rows, t("Property"), t("Value"), commit,
+            t("Raw property map for the \"{value1}\" attachment handler.", { value1: String(ap.type) }));
     }
 
     // Editor body per handler type. Returns { body, editor } so the modal can
@@ -309,20 +310,20 @@ function openAttachmentPropsModal(ap: any, markDirty: any) {
                     markDirty();
                 }
             });
-            return { body: field('Attachment Script', editor.el), editor };
+            return { body: field(t("Attachment Script"), editor.el), editor };
         }
         if (ap.type === 'Regex') return { body: renderRegexEditor() };
         if (ap.type === 'Entire Message') return { body: renderIdentityEditor() };
         if (ap.type && ap.type !== 'None' && ap.type !== 'DICOM' &&
             !ATTACHMENT_TYPES.some(t => t.value === ap.type)) return { body: renderCustomEditor() };
-        return { body: h('div.text-text-faint', 'This attachment handler has no configurable properties.') };
+        return { body: h('div.text-text-faint', t("This attachment handler has no configurable properties.")) };
     }
 
     const { body, editor } = attachmentEditor();
     modal({
-        title: 'Set Attachment Handler',
+        title: t("Set Attachment Handler"),
         body,
-        buttons: [{ label: 'Close', primary: true }],
+        buttons: [{ label: t("Close"), primary: true }],
         // Dispose the code editor (when present) on any close path; guarded
         // because the plain-textarea baseline has no dispose().
         onClose: () => { try { editor && editor.dispose && editor.dispose(); } catch { /* baseline no-op */ } }
@@ -347,11 +348,11 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
     const rowFor = (owner: any, key: string, label: string, connectorType: string) => ({
         owner, key, label, connectorType, transformer: owner[key] || oie.emptyTransformer(version)
     });
-    const rows = [rowFor(channel.sourceConnector, 'transformer', 'Source Connector', 'SOURCE')];
+    const rows = [rowFor(channel.sourceConnector, 'transformer', t("Source Connector"), 'SOURCE')];
     for (const dest of oie.destinationsOf(channel)) {
-        const label = dest.name || `Destination ${dest.metaDataId}`;
+        const label = dest.name || t("Destination {value1}", { value1: String(dest.metaDataId) });
         rows.push(rowFor(dest, 'transformer', label, 'DESTINATION'));
-        rows.push(rowFor(dest, 'responseTransformer', `${label} — Response`, 'RESPONSE'));
+        rows.push(rowFor(dest, 'responseTransformer', t("{value1} — Response", { value1: String(label) }), 'RESPONSE'));
     }
     for (const row of rows) {
         (row as any).draft = {
@@ -373,7 +374,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
     const bulkSel = new Set<any>();
     const applySides = { inbound: true, outbound: true };
     const bulkRow = {
-        label: 'Selected connectors',
+        label: t("Selected connectors"),
         draft: {
             inboundDataType: (rows[0] as any).draft.inboundDataType,
             outboundDataType: (rows[0] as any).draft.outboundDataType,
@@ -398,7 +399,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
     // Teardowns for the mounted <DataTypePropertiesEditor> React roots;
     // unmounted on each rebuild (renderPanels) and on dialog close.
     const dtEditorRoots: any[] = [];
-    const clearDtEditors = () => { dtEditorRoots.forEach(t => { try { t(); } catch { /* ignore */ } }); dtEditorRoots.length = 0; };
+    const clearDtEditors = () => { dtEditorRoots.forEach(teardown => { try { teardown(); } catch { /* ignore */ } }); dtEditorRoots.length = 0; };
 
     function setType(row: any, side: any, name: any) {
         if (row.draft[`${side}DataType`] === name) return;
@@ -446,7 +447,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             if (bulkMode) {
                 // Checkbox to include this connector; type columns are read-only here.
                 const cb = checkbox('', bulkSel.has(row), {
-                    'aria-label': `Include ${row.label}`,
+                    'aria-label': t('Include {value1}', { value1: String(row.label) }),
                     onChange: (e: any) => {
                         e.target.checked ? bulkSel.add(row) : bulkSel.delete(row);
                         renderPanels();
@@ -469,8 +470,8 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             }
         }
         const headCells = [
-            h('th', { class: 'w-[40%]' }, 'Connector'),
-            h('th', 'Inbound'), h('th', 'Outbound')
+            h('th', { class: 'w-[40%]' }, t("Connector")),
+            h('th', t("Inbound")), h('th', t("Outbound"))
         ];
         if (bulkMode) headCells.unshift(h('th', ''));
         tableHost.appendChild(h('table.dt', h('thead', h('tr', headCells)), tbody));
@@ -485,15 +486,15 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
 
         const restoreBtn = h('button.btn.btn-sm', {
             disabled: !def,
-            title: 'Reset every property of this data type to its default value',
+            title: t("Reset every property of this data type to its default value"),
             onClick: () => {
                 (row as any).draft[`${side}Properties`] = def!.defaults!(version);
                 renderAll();
             }
-        }, 'Restore Defaults');
+        }, t("Restore Defaults"));
 
         const head = h('div', { class: 'flex items-end gap-2.5 mb-1' },
-            field('Data Type', select(dtOptions, typeName, {
+            field(t("Data Type"), select(dtOptions, typeName, {
                 onChange: (e: any) => setType(row, side, e.target.value)
             })),
             h('div', { class: 'pb-3' }, restoreBtn));
@@ -525,8 +526,8 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             const applyBtn = h('button.btn.btn-primary', {
                 onClick: () => {
                     const targets = rows.filter(r => bulkSel.has(r));
-                    if (!targets.length) { toast('Select at least one connector', 'warn'); return; }
-                    if (!applySides.inbound && !applySides.outbound) { toast('Choose Inbound and/or Outbound to apply', 'warn'); return; }
+                    if (!targets.length) { toast(t("Select at least one connector"), 'warn'); return; }
+                    if (!applySides.inbound && !applySides.outbound) { toast(t("Choose Inbound and/or Outbound to apply"), 'warn'); return; }
                     if (!validDrafts([bulkRow], ['inbound', 'outbound'].filter(side => (applySides as any)[side]))) return;
                     for (const r of targets) {
                         if (applySides.inbound) {
@@ -538,18 +539,18 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
                             (r as any).draft.outboundProperties = clone(bulkRow.draft.outboundProperties);
                         }
                     }
-                    toast(`Applied to ${targets.length} connector${targets.length === 1 ? '' : 's'}`);
+                    toast(t("{value2, plural, one {Applied to {value1} connector} other {Applied to {value1} connectors}}", { value1: String(targets.length), value2: targets.length }));
                     renderAll();
                 }
-            }, 'Apply to Selected Connectors');
+            }, t("Apply to Selected Connectors"));
             panelsHost.appendChild(h('div', { class: 'col-[1/-1] flex gap-4 items-center' },
-                h('span.text-text-faint', { class: 'text-[10px] uppercase tracking-[0.08em]' }, 'Apply:'),
-                sideToggle('inbound', 'Inbound'), sideToggle('outbound', 'Outbound'), applyBtn));
-            panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties', bulkRow as any));
-            panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties', bulkRow as any));
+                h('span.text-text-faint', { class: 'text-[10px] uppercase tracking-[0.08em]' }, t("Apply:")),
+                sideToggle('inbound', t("Inbound")), sideToggle('outbound', t("Outbound")), applyBtn));
+            panelsHost.appendChild(buildPanel('inbound', t("Inbound Properties"), bulkRow as any));
+            panelsHost.appendChild(buildPanel('outbound', t("Outbound Properties"), bulkRow as any));
         } else {
-            panelsHost.appendChild(buildPanel('inbound', 'Inbound Properties'));
-            panelsHost.appendChild(buildPanel('outbound', 'Outbound Properties'));
+            panelsHost.appendChild(buildPanel('inbound', t("Inbound Properties")));
+            panelsHost.appendChild(buildPanel('outbound', t("Outbound Properties")));
         }
     }
 
@@ -565,15 +566,15 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
         return h('label.check', input, label);
     }
     const modeBar = h('div', { class: 'flex gap-[16px] items-center mb-2.5' },
-        h('span.text-text-faint', { class: 'text-[10px] uppercase tracking-[0.08em]' }, 'Editing:'),
-        modeRadio('Single Edit', false),
-        modeRadio('Bulk Edit', true));
+        h('span.text-text-faint', { class: 'text-[10px] uppercase tracking-[0.08em]' }, t("Editing:")),
+        modeRadio(t("Single Edit"), false),
+        modeRadio(t("Bulk Edit"), true));
 
     function renderAll() { renderTable(); renderPanels(); }
     renderAll();
 
     modal({
-        title: 'Set Data Types',
+        title: t("Set Data Types"),
         size: 'xwide',
         onClose: clearDtEditors,
         body: h('div',
@@ -582,11 +583,11 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
             h('div.panel', { class: 'mt-0' }, h('div.panel-body.flush', tableHost)),
             panelsHost,
             h('div.hint', { class: 'mt-2.5' },
-                'All property groups are shown for each data type; the engine ignores groups that do not apply to a side (e.g. response generation on an outbound type).')),
+                t("All property groups are shown for each data type; the engine ignores groups that do not apply to a side (e.g. response generation on an outbound type)."))),
         buttons: [
-            { label: 'Cancel' },
+            { label: t("Cancel") },
             {
-                label: 'OK', primary: true,
+                label: t("OK"), primary: true,
                 onClick: () => {
                     if (!validDrafts(rows)) return false;
                     // Unchecked sides and a bulk draft with no targets are not
@@ -634,7 +635,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         ]);
         if (!isCurrent()) return;
     } catch (e: any) {
-        if (isCurrent()) toast(`Could not load dependencies: ${e.message}`, 'error');
+        if (isCurrent()) toast(t("Could not load dependencies: {value1}", { value1: String(e.message) }), 'error');
         return;
     }
 
@@ -662,11 +663,11 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
     function renderLibrariesTab() {
         const tree = treeBox();
         const desc = h('div', { class: 'h-[79px] overflow-auto border border-line rounded-[4px] py-1.5 px-2 text-[10.5px] text-text-dim bg-bg1' });
-        const setDesc = (t: any) => { clear(desc); desc.appendChild(h('span', { class: 'italic' }, t && String(t).trim() ? String(t) : 'No description.')); };
+        const setDesc = (text: any) => { clear(desc); desc.appendChild(h('span', { class: 'italic' }, text && String(text).trim() ? String(text) : t("No description."))); };
         setDesc('');
         function draw() {
             clear(tree);
-            if (!libraries.length) { tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'No code template libraries')); return; }
+            if (!libraries.length) { tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, t("No code template libraries"))); return; }
             for (const lib of libraries) {
                 const templates = api.asList(lib.codeTemplates, 'codeTemplate').filter(t => t && typeof t === 'object');
                 const open = libExpanded.has(lib.id);
@@ -675,12 +676,12 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                 const box = h('input', { type: 'checkbox' });
                 (box as any).checked = !!libChecked.get(lib.id);
                 box.addEventListener('change', () => libChecked.set(lib.id, (box as any).checked));
-                const name = h('span', { class: 'cursor-pointer' }, lib.name || '(unnamed library)');
+                const name = h('span', { class: 'cursor-pointer' }, lib.name || t("(unnamed library)"));
                 name.addEventListener('click', () => setDesc(lib.description));
                 tree.appendChild(h('div', { class: 'flex items-center gap-1 py-0.5 px-2' }, tw, box, name));
-                if (open) for (const t of templates) {
-                    const row = h('div', { class: 'pt-0.5 pr-2 pb-0.5 pl-[40px] cursor-pointer text-[11px]' }, t.name || '(unnamed)');
-                    row.addEventListener('click', () => setDesc((t.properties && t.properties.description) || t.description));
+                if (open) for (const template of templates) {
+                    const row = h('div', { class: 'pt-0.5 pr-2 pb-0.5 pl-[40px] cursor-pointer text-[11px]' }, template.name || t("(unnamed)"));
+                    row.addEventListener('click', () => setDesc((template.properties && template.properties.description) || template.description));
                     tree.appendChild(row);
                 }
             }
@@ -688,11 +689,11 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         draw();
         const bar = h('div', { class: 'flex justify-between mb-1.5' },
             h('div', { class: 'flex gap-1.5 items-center' },
-                link('Select All', () => { libraries.forEach((l: any) => libChecked.set(l.id, true)); draw(); }), linkSep(),
-                link('Deselect All', () => { libraries.forEach((l: any) => libChecked.set(l.id, false)); draw(); })),
+                link(t("Select All"), () => { libraries.forEach((l: any) => libChecked.set(l.id, true)); draw(); }), linkSep(),
+                link(t("Deselect All"), () => { libraries.forEach((l: any) => libChecked.set(l.id, false)); draw(); })),
             h('div', { class: 'flex gap-1.5 items-center' },
-                link('Expand All', () => { libraries.forEach((l: any) => libExpanded.add(l.id)); draw(); }), linkSep(),
-                link('Collapse All', () => { libExpanded.clear(); draw(); })));
+                link(t("Expand All"), () => { libraries.forEach((l: any) => libExpanded.add(l.id)); draw(); }), linkSep(),
+                link(t("Collapse All"), () => { libExpanded.clear(); draw(); })));
         return h('div', { class: 'flex flex-col h-full' }, bar, tree, h('div', { class: 'h-1.5' }), desc);
     }
 
@@ -713,19 +714,19 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                 }
             }
         }
-        resources.sort((a: any, b: any) => a.name.localeCompare(b.name));
+        resources.sort((a: any, b: any) => compareText(a.name, b.name));
     }
 
     // Contexts: Channel Scripts (channel props), Source (0), each destination.
     const src = channel.sourceConnector || {};
     const srcProps = (src.properties && src.properties.sourceConnectorProperties) || null;
     const resourceTargets = [
-        { key: 'null', label: 'Channel Scripts', leaves: ['Deploy Script', 'Undeploy Script', 'Preprocessor Script', 'Postprocessor Script', 'Attachment Script', 'Batch Script'], holder: () => props },
-        { key: '0', label: 'Source Connector' + (src.transportName ? ` (${src.transportName})` : ''), leaves: ['Receiver', 'Filter / Transformer Script'], holder: () => srcProps }
+        { key: 'null', label: t("Channel Scripts"), leaves: [t("Deploy Script"), t("Undeploy Script"), t("Preprocessor Script"), t("Postprocessor Script"), t("Attachment Script"), t("Batch Script")], holder: () => props },
+        { key: '0', label: t("Source Connector{value1}", { value1: String(src.transportName ? ` (${src.transportName})` : '') }), leaves: [t("Receiver"), t("Filter / Transformer Script")], holder: () => srcProps }
     ];
     for (const d of oie.destinationsOf(channel)) {
         const dp = (d.properties && (d.properties as any).destinationConnectorProperties) || null;
-        resourceTargets.push({ key: String(d.metaDataId), label: (d.name || `Destination ${d.metaDataId}`) + (d.transportName ? ` (${d.transportName})` : ''), leaves: ['Filter / Transformer Script', 'Dispatcher', 'Response Transformer Script'], holder: () => dp });
+        resourceTargets.push({ key: String(d.metaDataId), label: (d.name || `Destination ${d.metaDataId}`) + (d.transportName ? ` (${d.transportName})` : ''), leaves: [t("Filter / Transformer Script"), t("Dispatcher"), t("Response Transformer Script")], holder: () => dp });
     }
     const ctxMaps = new Map();   // key -> { resourceId: resourceName } (full map, incl. Default Resource)
     for (const t of resourceTargets) { const hd = t.holder(); ctxMaps.set(t.key, entriesToObj(hd && hd.resourceIds)); }
@@ -745,8 +746,8 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
             clear(resTable);
             const isRoot = selectedKey === 'channel';
             const enabled = isCtxKey(selectedKey);
-            resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-1 px-2 font-semibold text-[10px] border-b border-line sticky top-0 bg-bg1' }, h('span'), h('span', 'Name'), h('span', 'Type')));
-            if (!resources.length) { resTable.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'No library resources')); return; }
+            resTable.appendChild(h('div', { class: 'grid grid-cols-[24px_1fr_120px] gap-1 py-1 px-2 font-semibold text-[10px] border-b border-line sticky top-0 bg-bg1' }, h('span'), h('span', t("Name")), h('span', t("Type"))));
+            if (!resources.length) { resTable.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, t("No library resources"))); return; }
             for (const r of resources) {
                 const box = h('input', { type: 'checkbox', disabled: !enabled });
                 if (isRoot) { const st = aggState(r.id); (box as any).checked = st === true; (box as any).indeterminate = st === null; }
@@ -766,7 +767,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                 row.addEventListener('click', () => { selectedKey = key; drawTree(); drawTable(); });
                 ctxTree.appendChild(row);
             };
-            node('Channel', 'channel', 0);
+            node(t("Channel"), 'channel', 0);
             for (const t of resourceTargets) {
                 const open = ctxExpanded.has(t.key);
                 const tw = h('span', { class: 'w-[11px] cursor-pointer text-text-dim select-none' }, t.leaves.length ? (open ? '▾' : '▸') : '');
@@ -792,7 +793,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
     channelNames.set(channel.id, channel.name || channel.id);
     const channelNameOf = (id: any) => channelNames.get(id) || id;
     const otherChannelsAll = [...channelNames.entries()].filter(([id]) => id !== channel.id)
-        .map(([id, name]) => ({ id, name })).sort((a: any, b: any) => a.name.localeCompare(b.name));
+        .map(([id, name]) => ({ id, name })).sort((a: any, b: any) => compareText(a.name, b.name));
 
     let dependencies = deps.map((d: any) => ({ dependentId: String(d.dependentId), dependencyId: String(d.dependencyId) }));
     const depState = { current: copyDependencySelection(pending.dependencies.current || dependencySelection(dependencies)) };
@@ -810,7 +811,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         const listEl = h('div', { class: 'max-h-[198px] overflow-auto border border-line rounded-[4px] py-1.5 px-2' });
         function drawList() {
             clear(listEl);
-            if (!allowed.length) { listEl.appendChild(h('div.text-text-faint', 'No channels available')); return; }
+            if (!allowed.length) { listEl.appendChild(h('div.text-text-faint', t("No channels available"))); return; }
             for (const c of allowed) {
                 const box = h('input', { type: 'checkbox' }); (box as any).checked = !!checks.get(c.id);
                 box.addEventListener('change', () => checks.set(c.id, (box as any).checked));
@@ -819,18 +820,18 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         }
         drawList();
         modal({
-            title: kind === 'dependency' ? 'Add Dependency' : 'Add Dependent',
+            title: kind === 'dependency' ? t("Add Dependency") : t("Add Dependent"),
             body: h('div',
-                h('div', { class: 'mb-1.5' }, kind === 'dependency' ? 'Select the dependency channel(s) to add.' : 'Select the dependent channel(s) to add.'),
+                h('div', { class: 'mb-1.5' }, kind === 'dependency' ? t("Select the dependency channel(s) to add.") : t("Select the dependent channel(s) to add.")),
                 h('div', { class: 'flex gap-1.5 justify-end mb-1' },
-                    link('Select All', () => { allowed.forEach((c: any) => checks.set(c.id, true)); drawList(); }), linkSep(),
-                    link('Deselect All', () => { checks.clear(); drawList(); })),
+                    link(t("Select All"), () => { allowed.forEach((c: any) => checks.set(c.id, true)); drawList(); }), linkSep(),
+                    link(t("Deselect All"), () => { checks.clear(); drawList(); })),
                 listEl),
             buttons: [
-                { label: 'Cancel' },
-                { label: 'OK', primary: true, onClick: () => {
+                { label: t("Cancel") },
+                { label: t("OK"), primary: true, onClick: () => {
                     const sel = allowed.filter((c: any) => checks.get(c.id)).map((c: any) => c.id);
-                    if (!sel.length) { toast(kind === 'dependency' ? 'You must select at least one dependency channel.' : 'You must select at least one dependent channel.', 'warn'); return false; }
+                    if (!sel.length) { toast(kind === 'dependency' ? t("You must select at least one dependency channel.") : t("You must select at least one dependent channel."), 'warn'); return false; }
                     onAdd(sel);
                 } }
             ]
@@ -845,8 +846,8 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         const allowed = () => otherChannelsAll.filter(c => kind === 'dependency'
             ? !directDeps(channel.id).includes(c.id) && !dependsOn(c.id, channel.id)
             : !directDependents(channel.id).includes(c.id) && !dependsOn(channel.id, c.id));
-        const removeBtn = taskButton('Remove', 'trash', doRemove, { danger: true });
-        const addBtn = taskButton('Add', 'plus', () => openAddDialog(kind, allowed(), (ids: any) => {
+        const removeBtn = taskButton(t("Remove"), 'trash', doRemove, { danger: true });
+        const addBtn = taskButton(t("Add"), 'plus', () => openAddDialog(kind, allowed(), (ids: any) => {
             for (const id of ids) dependencies.push(kind === 'dependency'
                 ? { dependentId: channel.id, dependencyId: id }
                 : { dependentId: id, dependencyId: channel.id });
@@ -866,8 +867,8 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         }
         function draw() {
             clear(tree);
-            const top = childrenOf(channel.id).slice().sort((a: any, b: any) => channelNameOf(a).localeCompare(channelNameOf(b)));
-            if (!top.length) tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, 'None'));
+            const top = childrenOf(channel.id).slice().sort((a: any, b: any) => compareText(channelNameOf(a), channelNameOf(b)));
+            if (!top.length) tree.appendChild(h('div.text-text-faint', { class: 'p-2.5' }, t("None")));
             else for (const id of top) drawNode(id, 0, '>');
             if (!top.includes(selected)) selected = null;
             (removeBtn as any).disabled = !selected;
@@ -891,32 +892,32 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
             h('div', { class: 'flex justify-between items-center mb-1' },
                 h('label', { class: 'font-semibold text-[11px]' }, title),
                 h('div', { class: 'flex gap-1.5 items-center' },
-                    link('Expand All', () => { collectPaths().forEach(p => expanded.add(p)); draw(); }), linkSep(),
-                    link('Collapse All', () => { expanded.clear(); draw(); }))),
+                    link(t("Expand All"), () => { collectPaths().forEach(p => expanded.add(p)); draw(); }), linkSep(),
+                    link(t("Collapse All"), () => { expanded.clear(); draw(); }))),
             h('div', { class: 'flex gap-1.5 min-h-0 flex-1' },
                 tree, h('div', { class: 'flex flex-col gap-1' }, addBtn, removeBtn)));
     }
 
     function renderDependenciesTab() {
         return h('div', { class: 'flex flex-col gap-3 h-full' },
-            depSection('This channel depends upon:', 'dependency'),
-            depSection('This channel is depended upon by:', 'dependent'));
+            depSection(t("This channel depends upon:"), t("dependency")),
+            depSection(t("This channel is depended upon by:"), t("dependent")));
     }
 
     /* The three panels are still built with h(); DomTabs takes the strip from
        Radix while keeping tabs()' render-on-activation, which they rely on. */
     const tabHost = h('div', { class: 'flex flex-col flex-1 overflow-hidden min-h-0' });
     tabHost.style.height = '380px';
-    const unmountTabs = mountReact(tabHost, <DomTabs label="Channel dependency sections"
+    const unmountTabs = mountReact(tabHost, <DomTabs label={t("Channel dependency sections")}
         bodyStyle={{ padding: '12px 4px' }}
         defs={[
-            { label: 'Code Template Libraries', render: renderLibrariesTab },
-            { label: 'Library Resources', render: renderResourcesTab },
-            { label: 'Deploy/Start Dependencies', render: renderDependenciesTab }
+            { label: t("Code Template Libraries"), render: renderLibrariesTab },
+            { label: t("Library Resources"), render: renderResourcesTab },
+            { label: t("Deploy/Start Dependencies"), render: renderDependenciesTab }
         ]} />);
 
     modal({
-        title: 'Channel Dependencies',
+        title: t("Channel Dependencies"),
         body: tabHost,
         // Wide enough for the three tab labels on one row, and no second
         // scrollbar — the tabs manage their own inner scrolling (.modal-deps).
@@ -925,9 +926,9 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
         // inside one.
         onClose: () => setTimeout(unmountTabs, 0),
         buttons: [
-            { label: 'Cancel' },
+            { label: t("Cancel") },
             {
-                label: 'OK', primary: true,
+                label: t("OK"), primary: true,
                 onClick: async () => {
                     if (!isCurrent()) return false;
                     try {
@@ -935,26 +936,26 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                         //    immediately, with a confirmation (matches Swing).
                         depState.current.all = dependencies;
                         if (hasDependencyChanges(depState.current)) {
-                            const ok = await confirmDialog('Save Dependencies',
-                                "You've made changes to deploy/start dependencies, which will be saved now. Are you sure you wish to continue?");
+                            const ok = await confirmDialog(t("Save Dependencies"),
+                                t("You''ve made changes to deploy/start dependencies, which will be saved now. Are you sure you wish to continue?"));
                             if (!isCurrent() || !ok) return false;
                             await persistChannelDependencies(depState);
                             if (!isCurrent()) return false;
                             dependencies = depState.current.all;
                             pending.dependencies.current = copyDependencySelection(depState.current);
-                            toast('Channel dependencies saved');
+                            toast(t("Channel dependencies saved"));
                         }
 
                         // 2. Confirm and merge library membership intents using
                         //    the same guarded bulk API as Swing's dialog.
                         if (hasLibraryChanges(libState.current)) {
-                            const ok = await confirmDialog('Save Code Template Libraries',
-                                "You've made changes to code template libraries, which will be saved now. Are you sure you wish to continue?");
+                            const ok = await confirmDialog(t("Save Code Template Libraries"),
+                                t("You''ve made changes to code template libraries, which will be saved now. Are you sure you wish to continue?"));
                             if (!isCurrent() || !ok) return false;
                             const saved = await persistLibraryAssociations(channel, libState, version, confirmLibraryOverwrite);
                             if (!isCurrent() || !saved) return false;
                             pending.libraries.current = copyLibrarySelection(libState.current);
-                            toast('Code template libraries saved');
+                            toast(t("Code template libraries saved"));
                         }
 
                         // 3. Library resources — write each context's resourceIds
@@ -1059,20 +1060,20 @@ function openAdvancedQueueSettings(dcp: any, markDirty: any, onDone: any) {
     sync();
 
     modal({
-        title: 'Settings',
+        title: t("Settings"),
         body: h('div.form-grid',
-            field('Retry Count Before Queue/Error', retryCountInput),
-            field('Retry Interval (ms)', retryIntervalInput),
-            field('Regenerate Template', regenerate.el),
-            field('Include Filter/Transformer', includeFT.el),
-            field('Rotate Queue', rotate.el),
-            field('Queue Threads', threadCountInput),
-            field('Thread Assignment Variable', threadVarInput),
-            field('Queue Buffer Size', bufferInput)),
+            field(t("Retry Count Before Queue/Error"), retryCountInput),
+            field(t("Retry Interval (ms)"), retryIntervalInput),
+            field(t("Regenerate Template"), regenerate.el),
+            field(t("Include Filter/Transformer"), includeFT.el),
+            field(t("Rotate Queue"), rotate.el),
+            field(t("Queue Threads"), threadCountInput),
+            field(t("Thread Assignment Variable"), threadVarInput),
+            field(t("Queue Buffer Size"), bufferInput)),
         buttons: [
-            { label: 'Cancel' },
+            { label: t("Cancel") },
             {
-                label: 'OK', primary: true,
+                label: t("OK"), primary: true,
                 onClick: () => {
                     dcp.retryCount = draft.retryCount;
                     dcp.retryIntervalMillis = draft.retryIntervalMillis;
@@ -1101,28 +1102,28 @@ function openDebugDeployModal(channel: any, save: any) {
     const isCurrent = channelSessionActive();
     if (!isCurrent()) return;
     const options = [
-        { label: 'Deploy/Undeploy/Preprocessor/Postprocessor scripts' },
-        { label: 'Attachment/Batch scripts' },
-        { label: 'Source connector scripts' },
-        { label: 'Source filter/transformer' },
-        { label: 'Destination filter/transformer' },
-        { label: 'Destination connector scripts' },
-        { label: 'Destination response transformer' }
+        { label: t("Deploy/Undeploy/Preprocessor/Postprocessor scripts") },
+        { label: t("Attachment/Batch scripts") },
+        { label: t("Source connector scripts") },
+        { label: t("Source filter/transformer") },
+        { label: t("Destination filter/transformer") },
+        { label: t("Destination connector scripts") },
+        { label: t("Destination response transformer") }
     ];
     const state = options.map(() => false);
     modal({
-        title: 'Debug Channel Deploy Options',
+        title: t("Debug Channel Deploy Options"),
         body: h('div',
             h('div.hint', { class: 'mb-2.5' },
-                'Select the scripts to debug. The channel is saved, then deployed in debug mode with these options.'),
+                t("Select the scripts to debug. The channel is saved, then deployed in debug mode with these options.")),
             h('div', { class: 'flex flex-col gap-1.5' },
                 options.map((opt: any, i: any) => checkbox(opt.label, false, {
                     onChange: (e: any) => { state[i] = e.target.checked; }
                 }).el))),
         buttons: [
-            { label: 'Cancel' },
+            { label: t("Cancel") },
             {
-                label: 'Debug Deploy', primary: true,
+                label: t("Debug Deploy"), primary: true,
                 onClick: async () => {
                     if (!isCurrent()) return false;
                     const saved = await save();
@@ -1132,7 +1133,7 @@ function openDebugDeployModal(channel: any, save: any) {
                         await api.post(`/channels/${channel.id}/_deploy`, null,
                             { params: { returnErrors: true, debugOptions } });
                         if (!isCurrent()) return false;
-                        toast(`Deployed ${channel.name} in debug mode`);
+                        toast(t("Deployed {value1} in debug mode", { value1: String(channel.name) }));
                     } catch (e: any) {
                         if (isCurrent()) toast(e.message, 'error');
                         return false;
@@ -1217,7 +1218,7 @@ function TagsField({ tagState, channel, version, markDirty }: any) {
         return () => { stale = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    if (!loaded) return <span className="text-text-faint text-[10.5px]">Loading tags…</span>;
+    if (!loaded) return <span className="text-text-faint text-[10.5px]">{t("Loading tags…")}</span>;
 
     const dlId = 'channel-tags-list';
     // Commit on the NATIVE 'change' event only (Enter / blur / datalist pick) —
@@ -1241,19 +1242,19 @@ function TagsField({ tagState, channel, version, markDirty }: any) {
     };
     return (
         <div className="flex flex-wrap gap-[4px] items-center">
-            {[...tagState.assigned].sort((a: any, b: any) => a.localeCompare(b)).map(name => {
+            {[...tagState.assigned].sort((a: any, b: any) => compareText(a, b)).map(name => {
                 const tag = tagState.all.find((t: any) => t.name === name);
                 return (
                     <span key={name}
                         className="inline-flex items-center gap-1 py-px px-1.5 rounded-[9px] border border-line text-[10.5px]"
                         style={{ background: tagChipBg(tag && tag.backgroundColor) }}>
                         {name}
-                        <span className="cursor-pointer text-text-dim" title="Remove tag"
+                        <span className="cursor-pointer text-text-dim" title={t("Remove tag")}
                             onClick={() => { tagState.assigned.delete(name); applyTagsToChannel(tagState, channel, version); markDirty(); bump(); }}>✕</span>
                     </span>
                 );
             })}
-            <input ref={addRef} list={dlId} placeholder="Add tag…" className="w-[117px]" />
+            <input ref={addRef} list={dlId} placeholder={t("Add tag…")} className="w-[117px]" />
             <datalist id={dlId}>
                 {tagState.all.filter((t: any) => !tagState.assigned.has(t.name)).map((t: any) => <option key={t.name} value={t.name} />)}
             </datalist>
@@ -1284,32 +1285,32 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
     // A plugin-contributed type already on the channel stays selectable.
     const typeOptions = ATTACHMENT_TYPES.slice();
     if (ap.type && !typeOptions.some(t => t.value === ap.type)) {
-        typeOptions.unshift({ value: ap.type, label: `${ap.type} (custom)`, className: ap.className });
+        typeOptions.unshift({ value: ap.type, label: t("{value1} (custom)", { value1: String(ap.type) }), className: ap.className });
     }
     const attachWarn = (ap.type !== 'None' && !props.storeAttachments)
-        ? 'Attachments will be extracted but not stored or reattached.' : '';
+        ? t("Attachments will be extracted but not stored or reattached.") : '';
 
     return (
         <div className="panel" style={{ marginTop: 0 }}>
-            <div className="panel-header">Channel Properties</div>
+            <div className="panel-header">{t("Channel Properties")}</div>
             <div className="panel-body">
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-y-0 gap-x-7 items-start">
                     <div>
                         <div className="field">
-                            <label>Name</label>
+                            <label>{t("Name")}</label>
                             <input ref={nameRef} type="text" className="max-w-[324px]" value={channel.name ?? ''}
                                 onChange={(e: any) => { channel.name = e.target.value; markDirty(); }} />
                         </div>
                         <div className="form-row mb-3">
                             <div className="field">
-                                <label>Initial State</label>
+                                <label>{t("Initial State")}</label>
                                 <select className="w-[153px]" value={props.initialState || 'STARTED'}
                                     onChange={(e: any) => { props.initialState = e.target.value; markDirty(); }}>
-                                    {INITIAL_STATES.map(s => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+                                    {INITIAL_STATES.map(s => <option key={s} value={s}>{oie.stateLabel(s)}</option>)}
                                 </select>
                             </div>
                             <div className="field">
-                                <label>Attachment</label>
+                                <label>{t("Attachment")}</label>
                                 <div className="flex gap-1.5 items-center">
                                     <select className="w-[162px]" value={ap.type || 'None'}
                                         onChange={(e: any) => {
@@ -1333,46 +1334,33 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                                     {/* "Properties" opens the handler editor modal (enabled only
                                         when a handler other than None/DICOM is selected). */}
                                     <button className="btn btn-sm" disabled={ap.type === 'None' || ap.type === 'DICOM'}
-                                        onClick={() => openAttachmentPropsModal(ap, markDirty)}>Properties</button>
+                                        onClick={() => openAttachmentPropsModal(ap, markDirty)}>{t("Properties")}</button>
                                 </div>
                             </div>
                         </div>
                         <div className="field">
-                            <label>Tags</label>
+                            <label>{t("Tags")}</label>
                             <TagsField tagState={tagState} channel={channel} version={version} markDirty={markDirty} />
                         </div>
                         <div className="flex flex-wrap gap-y-1.5 gap-x-[16px] mt-0 mx-0 mb-1">
-                            <label className="check">
-                                <input type="checkbox" checked={metadata.enabled !== false}
-                                    onChange={(e: any) => { metadata.enabled = e.target.checked; markDirty(); }} />
-                                Enabled
-                            </label>
-                            <label className="check">
-                                <input type="checkbox" checked={!!props.clearGlobalChannelMap}
-                                    onChange={(e: any) => { props.clearGlobalChannelMap = e.target.checked; markDirty(); }} />
-                                Clear global channel map on deploy
-                            </label>
-                            <label className="check">
-                                <input type="checkbox" checked={!!props.storeAttachments}
-                                    onChange={(e: any) => { props.storeAttachments = e.target.checked; markDirty(); bump(); }} />
-                                Store Attachments
-                            </label>
+                            <label className="check">{tx("{value1}Enabled", { value1: <input type="checkbox" checked={metadata.enabled !== false}
+                                    onChange={(e: any) => { metadata.enabled = e.target.checked; markDirty(); }} /> })}</label>
+                            <label className="check">{tx("{value1}Clear global channel map on deploy", { value1: <input type="checkbox" checked={!!props.clearGlobalChannelMap}
+                                    onChange={(e: any) => { props.clearGlobalChannelMap = e.target.checked; markDirty(); }} /> })}</label>
+                            <label className="check">{tx("{value1}Store Attachments", { value1: <input type="checkbox" checked={!!props.storeAttachments}
+                                    onChange={(e: any) => { props.storeAttachments = e.target.checked; markDirty(); bump(); }} /> })}</label>
                         </div>
                         <div className="text-[#d00] text-[10px] mt-0.5 mx-0 mb-0">{attachWarn}</div>
                         <div className="flex flex-wrap gap-2 mt-3">
-                            <button className="btn" onClick={() => openDataTypesModal(channel, version, markDirty)}>
-                                <Icon name="transform" />Set Data Types
-                            </button>
-                            <button className="btn" onClick={() => openDependenciesModal(channel, version, markDirty)}>
-                                <Icon name="link" />Set Dependencies
-                            </button>
+                            <button className="btn" onClick={() => openDataTypesModal(channel, version, markDirty)}>{tx("{value1}Set Data Types", { value1: <Icon name="transform" /> })}</button>
+                            <button className="btn" onClick={() => openDependenciesModal(channel, version, markDirty)}>{tx("{value1}Set Dependencies", { value1: <Icon name="link" /> })}</button>
                         </div>
                     </div>
                     <div>
                         <dl className="kv">
-                            <dt>Id</dt><dd>{channel.id ?? ''}</dd>
-                            <dt>Revision</dt><dd>{String(channel.revision ?? 0)}</dd>
-                            <dt>Last Modified</dt><dd>{fmtDate(metadata.lastModified) || '—'}</dd>
+                            <dt>{t("Id")}</dt><dd>{channel.id ?? ''}</dd>
+                            <dt>{t("Revision")}</dt><dd>{String(channel.revision ?? 0)}</dd>
+                            <dt>{t("Last Modified")}</dt><dd>{fmtDate(metadata.lastModified) || '—'}</dd>
                         </dl>
                     </div>
                 </div>
@@ -1386,19 +1374,19 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
 // Slider value 1..5 → storage mode (MessageStorageMode.fromInt); top = 5.
 const STORAGE_SLIDER = ['DISABLED', 'METADATA', 'RAW', 'PRODUCTION', 'DEVELOPMENT'];
 const STORAGE_INFO = {
-    DEVELOPMENT: { label: 'Development', content: 'Content: All', meta: 'Metadata: All', durable: 'On', dc: '#008200', perf: 20 },
-    PRODUCTION:  { label: 'Production', content: 'Content: Raw, Encoded, Sent, Response, Maps', meta: 'Metadata: All', durable: 'On', dc: '#008200', perf: 25 },
-    RAW:         { label: 'Raw', content: 'Content: Raw', meta: 'Metadata: All', durable: 'Reprocess only', dc: '#ff6600', perf: 60 },
-    METADATA:    { label: 'Metadata', content: 'Content: None', meta: 'Metadata: All', durable: 'Off', dc: '#820000', perf: 65 },
-    DISABLED:    { label: 'Disabled', content: 'Content: None', meta: 'Metadata: None', durable: 'Off', dc: '#820000', perf: 100 }
+    DEVELOPMENT: { label: t("Development"), content: t("Content: All"), meta: t("Metadata: All"), durable: t("On"), dc: '#008200', perf: 20 },
+    PRODUCTION:  { label: t("Production"), content: t("Content: Raw, Encoded, Sent, Response, Maps"), meta: t("Metadata: All"), durable: t("On"), dc: '#008200', perf: 25 },
+    RAW:         { label: t("Raw"), content: t("Content: Raw"), meta: t("Metadata: All"), durable: t("Reprocess only"), dc: '#ff6600', perf: 60 },
+    METADATA:    { label: t("Metadata"), content: t("Content: None"), meta: t("Metadata: All"), durable: t("Off"), dc: '#820000', perf: 65 },
+    DISABLED:    { label: t("Disabled"), content: t("Content: None"), meta: t("Metadata: None"), durable: t("Off"), dc: '#820000', perf: 100 }
 };
 const STORAGE_CHECKS = [
-    { key: 'encryptData', label: 'Encrypt message content' },
-    { key: 'encryptAttachments', label: 'Attachments' },
-    { key: 'encryptCustomMetaData', label: 'Custom metadata' },
-    { key: 'removeContentOnCompletion', label: 'Remove content on completion' },
-    { key: 'removeOnlyFilteredOnCompletion', label: 'Filtered only' },
-    { key: 'removeAttachmentsOnCompletion', label: 'Remove attachments on completion' }
+    { key: 'encryptData', label: t("Encrypt message content") },
+    { key: 'encryptAttachments', label: t("Attachments") },
+    { key: 'encryptCustomMetaData', label: t("Custom metadata") },
+    { key: 'removeContentOnCompletion', label: t("Remove content on completion") },
+    { key: 'removeOnlyFilteredOnCompletion', label: t("Filtered only") },
+    { key: 'removeAttachmentsOnCompletion', label: t("Remove attachments on completion") }
 ];
 
 function MessageStoragePanel({ channel, markDirty }: any) {
@@ -1432,7 +1420,7 @@ function MessageStoragePanel({ channel, markDirty }: any) {
 
     return (
         <div className="panel" style={{ marginTop: 0 }}>
-            <div className="panel-header">Message Storage</div>
+            <div className="panel-header">{t("Message Storage")}</div>
             <div className="panel-body">
                 <div className="flex gap-4">
                     <div className="flex gap-1.5">
@@ -1444,16 +1432,16 @@ function MessageStoragePanel({ channel, markDirty }: any) {
                                 markDirty(); bump();
                             }} />
                         <div className="flex flex-col justify-between h-[135px] text-[10px] text-text-dim">
-                            <div>Development</div><div>Production</div><div>Raw</div><div>Metadata</div><div>Disabled</div>
+                            <div>{t("Development")}</div><div>{t("Production")}</div><div>{t("Raw")}</div><div>{t("Metadata")}</div><div>{t("Disabled")}</div>
                         </div>
                     </div>
                     <div className="flex flex-col gap-[4px] flex-1 min-w-0">
                         <div className="font-bold text-[12.5px]">{info.label}</div>
                         <div className="text-[11px]">{info.content}</div>
                         <div className="text-[11px]">{info.meta}</div>
-                        <div className="text-[11px]">Durable Message Delivery: <span className="font-semibold" style={{ color: info.dc }}>{info.durable}</span></div>
+                        <div className="text-[11px]">{tx("Durable Message Delivery: <e1>{value2}</e1>", { e1: (chunks: any) => <span className="font-semibold" style={{ color: info.dc }}>{chunks}</span>, value2: info.durable })}</div>
                         <div className="flex items-center gap-2 text-[11px]">
-                            <span>Performance:</span>
+                            <span>{t("Performance:")}</span>
                             <div className="h-2 w-[162px] bg-bg3 border border-line rounded-[3px] overflow-hidden">
                                 <div className="h-full bg-accent opacity-75 [transition:width_0.2s_ease]"
                                     style={{ width: Math.max(0, Math.min(100, perf)) + '%' }} />
@@ -1462,7 +1450,7 @@ function MessageStoragePanel({ channel, markDirty }: any) {
                         <div className="flex flex-wrap gap-y-1 gap-x-3.5 mt-1">{[box(STORAGE_CHECKS[0]), box(STORAGE_CHECKS[1]), box(STORAGE_CHECKS[2])]}</div>
                         <div className="flex flex-wrap gap-y-1 gap-x-3.5">{[box(STORAGE_CHECKS[3]), box(STORAGE_CHECKS[4])]}</div>
                         {box(STORAGE_CHECKS[5])}
-                        <div className="text-[#d00] text-[10px] min-h-3.5">{queued ? 'Disable destination queueing before using this mode' : ''}</div>
+                        <div className="text-[#d00] text-[10px] min-h-3.5">{queued ? t("Disable destination queueing before using this mode") : ''}</div>
                     </div>
                 </div>
             </div>
@@ -1495,56 +1483,50 @@ function PruningPanel({ channel, markDirty }: any) {
 
     return (
         <div className="panel" style={{ marginTop: 0 }}>
-            <div className="panel-header">Message Pruning</div>
+            <div className="panel-header">{t("Message Pruning")}</div>
             <div className="panel-body">
                 <div className="form-grid">
                     <div className="field">
-                        <label>Metadata</label>
+                        <label>{t("Metadata")}</label>
                         <div className="radio-group">
                             {radio('prune-metadata', pruning.pruneMetaDataDays == null, () => {
                                 delete pruning.pruneMetaDataDays; markDirty(); bump();
-                            }, 'Store indefinitely')}
+                            }, t("Store indefinitely"))}
                             <div className="flex items-center gap-2">
                                 {radio('prune-metadata', pruning.pruneMetaDataDays != null, () => {
                                     pruning.pruneMetaDataDays = pruning.pruneMetaDataDays || 30; markDirty(); bump();
-                                }, 'Prune metadata older than')}
+                                }, t("Prune metadata older than"))}
                                 {daysInput('pruneMetaDataDays')}
-                                <span className="text-text-dim">days</span>
+                                <span className="text-text-dim">{t("days")}</span>
                             </div>
                         </div>
                     </div>
                     <div className="field">
-                        <label>Content</label>
+                        <label>{t("Content")}</label>
                         <div className="radio-group">
                             {radio('prune-content', pruning.pruneContentDays == null, () => {
                                 delete pruning.pruneContentDays; markDirty(); bump();
-                            }, 'Prune when message metadata is removed')}
+                            }, t("Prune when message metadata is removed"))}
                             <div className="flex items-center gap-2">
                                 {radio('prune-content', pruning.pruneContentDays != null, () => {
                                     pruning.pruneContentDays = pruning.pruneContentDays || 30; markDirty(); bump();
-                                }, 'Prune content older than')}
+                                }, t("Prune content older than"))}
                                 {daysInput('pruneContentDays')}
-                                <span className="text-text-dim">days</span>
+                                <span className="text-text-dim">{t("days")}</span>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div className="flex flex-col gap-1 mt-1.5">
-                    <label className="check">
-                        <input type="checkbox" checked={pruning.archiveEnabled !== false} disabled={nothingPruned}
-                            onChange={(e: any) => { pruning.archiveEnabled = e.target.checked; markDirty(); }} />
-                        Allow message archiving
-                    </label>
-                    <label className="check">
-                        <input type="checkbox" checked={!!pruning.pruneErroredMessages} disabled={nothingPruned}
-                            onChange={(e: any) => { pruning.pruneErroredMessages = e.target.checked; markDirty(); bump(); }} />
-                        Prune Errored Messages
-                    </label>
+                    <label className="check">{tx("{value1}Allow message archiving", { value1: <input type="checkbox" checked={pruning.archiveEnabled !== false} disabled={nothingPruned}
+                            onChange={(e: any) => { pruning.archiveEnabled = e.target.checked; markDirty(); }} /> })}</label>
+                    <label className="check">{tx("{value1}Prune Errored Messages", { value1: <input type="checkbox" checked={!!pruning.pruneErroredMessages} disabled={nothingPruned}
+                            onChange={(e: any) => { pruning.pruneErroredMessages = e.target.checked; markDirty(); bump(); }} /> })}</label>
                 </div>
                 <div className="hint mt-2">
                     {pruning.pruneErroredMessages
-                        ? '(incomplete and queued messages will not be pruned)'
-                        : '(incomplete, errored, and queued messages will not be pruned)'}
+                        ? t("(incomplete and queued messages will not be pruned)")
+                        : t("(incomplete, errored, and queued messages will not be pruned)")}
                 </div>
             </div>
         </div>
@@ -1574,26 +1556,22 @@ function MetaDataColumnsPanel({ channel, markDirty }: any) {
 
     return (
         <div className="panel" style={{ marginTop: 0 }}>
-            <div className="panel-header">
-                Custom Metadata
-                <div className="panel-tools">
-                    <button className="btn btn-sm" onClick={() => { columns.push({ name: '', type: 'STRING', mappingName: '' }); commit(); }}>
-                        <Icon name="plus" />Add
-                    </button>
-                    <button className="btn btn-sm" title="Revert the custom metadata settings to the last save."
+            <div className="panel-header">{t("Custom Metadata")}<div className="panel-tools">
+                    <button className="btn btn-sm" onClick={() => { columns.push({ name: '', type: 'STRING', mappingName: '' }); commit(); }}>{tx("{value1}Add", { value1: <Icon name="plus" /> })}</button>
+                    <button className="btn btn-sm" title={t("Revert the custom metadata settings to the last save.")}
                         onClick={() => {
                             columns.length = 0;
                             for (const c of JSON.parse(JSON.stringify(snapshotRef.current))) columns.push(c);
                             commit();
-                        }}>Revert</button>
+                        }}>{t("Revert")}</button>
                 </div>
             </div>
             <div className="panel-body">
                 {!columns.length
-                    ? <div className="text-text-faint">No custom metadata columns</div>
+                    ? <div className="text-text-faint">{t("No custom metadata columns")}</div>
                     : (
                         <div className="grid grid-cols-[minmax(160px,1fr)_130px_minmax(160px,1fr)_70px] gap-y-1 gap-x-1.5 items-center max-w-[684px]">
-                            <label>Column Name</label><label>Type</label><label>Variable Mapping</label><span />
+                            <label>{t("Column Name")}</label><label>{t("Type")}</label><label>{t("Variable Mapping")}</label><span />
                             {columns.map((col: any, i: any) => (
                                 <FragmentRow key={i} col={col} commit={commit}
                                     onDelete={() => { columns.splice(columns.indexOf(col), 1); commit(); }} />
@@ -1614,7 +1592,7 @@ function FragmentRow({ col, commit, onDelete }: any) {
                 {META_COLUMN_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <input type="text" value={col.mappingName ?? ''} onChange={(e: any) => { col.mappingName = e.target.value; commit(); }} />
-            <button className="btn w-full justify-center self-stretch" title="Remove column" onClick={onDelete}>Delete</button>
+            <button className="btn w-full justify-center self-stretch" title={t("Remove column")} onClick={onDelete}>{t("Delete")}</button>
         </>
     );
 }
@@ -1630,9 +1608,9 @@ function SummaryTab({ channel, version, isNewRef, tagState, markDirty }: any) {
             </div>
             <MetaDataColumnsPanel channel={channel} markDirty={markDirty} />
             <div className="panel" style={{ marginTop: 0 }}>
-                <div className="panel-header">Channel Description</div>
+                <div className="panel-header">{t("Channel Description")}</div>
                 <div className="panel-body">
-                    <textarea rows={4} placeholder="Describe what this channel does…"
+                    <textarea rows={4} placeholder={t("Describe what this channel does…")}
                         value={channel.description ?? ''}
                         onChange={(e: any) => { channel.description = e.target.value; markDirty(); }} />
                 </div>
@@ -1706,19 +1684,19 @@ function ConnectorTypeSelect({ connector, mode, engineTypes, version, markDirty,
                     // channels already using such a type still render via the
                     // generic JSON fallback panel.)
                     bump();   // snap the select back to the model value
-                    toast(`"${name}" cannot be configured in the web administrator — install a web admin plugin that registers a connector panel for it.`, 'warn');
+                    toast(t("\"{value1}\" cannot be configured in the web administrator — install a web admin plugin that registers a connector panel for it.", { value1: String(name) }), 'warn');
                     return;
                 }
-                const ok = await confirmDialog('Change Connector Type',
-                    `Switch this connector to ${name}? Connector settings will reset to defaults (the filter and transformer are kept).`);
+                const ok = await confirmDialog(t("Change Connector Type"),
+                    t("Switch this connector to {value1}? Connector settings will reset to defaults (the filter and transformer are kept).", { value1: String(name) }));
                 if (!ok) { bump(); return; }
                 connector.transportName = name;
                 connector.properties = def.defaults(version);
                 markDirty();
                 onChanged();
             }}>
-            {names.map(n => <option key={n} value={n}>{n}</option>)}
-            {extra.map(n => <option key={n} value={n}>{`${n} (no web editor)`}</option>)}
+            {names.map(n => <option key={n} value={n}>{wireTransportLabel(n)}</option>)}
+            {extra.map(n => <option key={n} value={n}>{t("{value1} (no web editor)", { value1: String(n) })}</option>)}
         </select>
     );
 }
@@ -1790,7 +1768,7 @@ function ConnectorPanelHost({ connector, mode, channel, markDirty, panelRev }: a
             host.appendChild(h('div.panel', h('div.panel-body', inner)));
         }
         return () => {
-            roots.forEach(t => { try { t(); } catch { /* ignore */ } });
+            roots.forEach(teardown => { try { teardown(); } catch { /* ignore */ } });
             host.replaceChildren();
         };
         // Remount per connector identity / transport change (panelRev bumps on
@@ -1805,7 +1783,7 @@ function ConnectorPanelHost({ connector, mode, channel, markDirty, panelRev }: a
             <div ref={hostRef} />
             {!hasPanel && (
                 <div className="panel">
-                    <div className="panel-header">{`${connector.transportName} Settings`}</div>
+                    <div className="panel-header">{t("{value1} Settings", { value1: String(connector.transportName) })}</div>
                     <div className="panel-body">
                         <RawConnectorProps connector={connector} markDirty={markDirty} />
                     </div>
@@ -1824,7 +1802,7 @@ function RawConnectorProps({ connector, markDirty }: any) {
     useEffect(() => { setText(JSON.stringify(connector.properties, null, 2)); }, [connector, connector.properties]);
     return (
         <div className="field">
-            <label>Connector Properties (JSON)</label>
+            <label>{t("Connector Properties (JSON)")}</label>
             <textarea rows={16} spellCheck={false} value={text}
                 onChange={(e: any) => setText(e.target.value)}
                 onBlur={() => {
@@ -1832,18 +1810,18 @@ function RawConnectorProps({ connector, markDirty }: any) {
                     try {
                         parsed = JSON.parse(text);
                     } catch (e: any) {
-                        toast(`Invalid JSON: ${e.message}`, 'error');
+                        toast(t("Invalid JSON: {value1}", { value1: String(e.message) }), 'error');
                         return;
                     }
                     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !parsed['@class']) {
-                        toast('Connector properties must be an object with an "@class" field', 'error');
+                        toast(t("Connector properties must be an object with an \"@class\" field"), 'error');
                         setText(JSON.stringify(connector.properties, null, 2));
                         return;
                     }
                     connector.properties = parsed;
                     markDirty();
                 }} />
-            <div className="hint">{`No settings panel registered for "${connector.transportName}" — edit the raw properties`}</div>
+            <div className="hint">{t("No settings panel registered for \"{value1}\" — edit the raw properties", { value1: String(connector.transportName) })}</div>
         </div>
     );
 }
@@ -1857,12 +1835,17 @@ function SourceSettings({ channel, scp, markDirty }: any) {
 
     // Response: static auto-generate options (fewer when queued), plus
     // "respond from" each destination (stored as the "d<id>" response key).
-    const respOpts = (respondAfter
-        ? ['None', 'Auto-generate (Before processing)', 'Auto-generate (After source transformer)', 'Auto-generate (Destinations completed)', 'Postprocessor']
-        : ['None', 'Auto-generate (Before processing)']).map(v => ({ value: v, label: v }));
+    const responseOptions = [
+        { value: 'None', label: t("None") },
+        { value: 'Auto-generate (Before processing)', label: t("Auto-generate (Before processing)") },
+        { value: 'Auto-generate (After source transformer)', label: t("Auto-generate (After source transformer)") },
+        { value: 'Auto-generate (Destinations completed)', label: t("Auto-generate (Destinations completed)") },
+        { value: 'Postprocessor', label: t("Postprocessor") }
+    ];
+    const respOpts = respondAfter ? responseOptions : responseOptions.slice(0, 2);
     if (respondAfter) {
         for (const d of oie.destinationsOf(channel)) {
-            respOpts.push({ value: 'd' + d.metaDataId, label: d.name || `Destination ${d.metaDataId}` });
+            respOpts.push({ value: 'd' + d.metaDataId, label: d.name || t("Destination {value1}", { value1: String(d.metaDataId) }) });
         }
     }
     const currentResp = scp.responseVariable ?? 'None';
@@ -1871,7 +1854,7 @@ function SourceSettings({ channel, scp, markDirty }: any) {
     return (
         <div className="form-grid">
             <div className="field">
-                <label>Source Queue</label>
+                <label>{t("Source Queue")}</label>
                 {/* OFF = respond after processing (can use destination responses);
                     ON = queue + respond before processing. */}
                 <select value={respondAfter ? 'off' : 'on'}
@@ -1884,12 +1867,12 @@ function SourceSettings({ channel, scp, markDirty }: any) {
                         }
                         markDirty(); bump();
                     }}>
-                    <option value="off">OFF (Respond after processing)</option>
-                    <option value="on">ON (Respond before processing)</option>
+                    <option value="off">{t("OFF (Respond after processing)")}</option>
+                    <option value="on">{t("ON (Respond before processing)")}</option>
                 </select>
             </div>
             <div className="field">
-                <label>Queue Buffer Size</label>
+                <label>{t("Queue Buffer Size")}</label>
                 {/* Only meaningful (editable) when queue is ON. Uncontrolled: the
                     clamped model must never overwrite the text mid-edit. */}
                 <input key={respondAfter ? 'q-off' : 'q-on'} type="number" min={0} disabled={respondAfter}
@@ -1897,31 +1880,31 @@ function SourceSettings({ channel, scp, markDirty }: any) {
                     onChange={(e: any) => { scp.queueBufferSize = Number(e.target.value) || 0; markDirty(); }} />
             </div>
             <div className="field">
-                <label>Response</label>
+                <label>{t("Response")}</label>
                 <select value={currentResp}
                     onChange={(e: any) => { scp.responseVariable = e.target.value; markDirty(); bump(); }}>
                     {respOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
             </div>
             <div className="field">
-                <label>Process Batch</label>
+                <label>{t("Process Batch")}</label>
                 <select value={scp.processBatch ? 'yes' : 'no'}
                     onChange={(e: any) => { scp.processBatch = e.target.value === 'yes'; markDirty(); bump(); }}>
-                    <option value="yes">Yes</option>
-                    <option value="no">No</option>
+                    <option value="yes">{t("Yes")}</option>
+                    <option value="no">{t("No")}</option>
                 </select>
             </div>
             <div className="field">
-                <label>Batch Response</label>
+                <label>{t("Batch Response")}</label>
                 {/* Only applies when batching is on. */}
                 <select disabled={!scp.processBatch} value={scp.firstResponse ? 'first' : 'last'}
                     onChange={(e: any) => { scp.firstResponse = e.target.value === 'first'; markDirty(); bump(); }}>
-                    <option value="first">First</option>
-                    <option value="last">Last</option>
+                    <option value="first">{t("First")}</option>
+                    <option value="last">{t("Last")}</option>
                 </select>
             </div>
             <div className="field">
-                <label>Max Processing Threads</label>
+                <label>{t("Max Processing Threads")}</label>
                 <input type="number" min={1} defaultValue={scp.processingThreads ?? 1}
                     onChange={(e: any) => { scp.processingThreads = Number(e.target.value) || 1; markDirty(); }} />
             </div>
@@ -1937,10 +1920,10 @@ function SourceTab({ channel, version, engineTypes, markDirty }: any) {
     return (
         <div>
             <div className="panel" style={{ marginTop: 0 }}>
-                <div className="panel-header">Connector Type</div>
+                <div className="panel-header">{t("Connector Type")}</div>
                 <div className="panel-body">
                     <div className="field">
-                        <label>Source Connector</label>
+                        <label>{t("Source Connector")}</label>
                         <ConnectorTypeSelect connector={connector} mode="SOURCE" engineTypes={engineTypes}
                             version={version} markDirty={markDirty} onChanged={() => setPanelRev(r => r + 1)} />
                     </div>
@@ -1948,7 +1931,7 @@ function SourceTab({ channel, version, engineTypes, markDirty }: any) {
             </div>
             {scp && (
                 <div className="panel">
-                    <div className="panel-header">Source Settings</div>
+                    <div className="panel-header">{t("Source Settings")}</div>
                     <div className="panel-body">
                         <SourceSettings key={panelRev} channel={channel} scp={scp} markDirty={markDirty} />
                     </div>
@@ -2013,39 +1996,37 @@ function DestinationSettings({ dcp, markDirty }: any) {
     );
     const ynRadios = (name: any, checked: any, onChange: any) => (
         <div className="radio-group inline-row">
-            <label className="check"><input type="radio" name={name} checked={checked === true} onChange={() => onChange(true)} />Yes</label>
-            <label className="check"><input type="radio" name={name} checked={checked === false} onChange={() => onChange(false)} />No</label>
+            <label className="check">{tx("{value1}Yes", { value1: <input type="radio" name={name} checked={checked === true} onChange={() => onChange(true)} /> })}</label>
+            <label className="check">{tx("{value1}No", { value1: <input type="radio" name={name} checked={checked === false} onChange={() => onChange(false)} /> })}</label>
         </div>
     );
     return (
         <div className="panel">
-            <div className="panel-header">Destination Settings</div>
+            <div className="panel-header">{t("Destination Settings")}</div>
             <div className="panel-body">
                 <div className="form-grid">
                     <div className="field">
-                        <label>Queue Messages</label>
+                        <label>{t("Queue Messages")}</label>
                         <div className="radio-group inline-row">
-                            {queueRadio('never', 'Never')}
-                            {queueRadio('failure', 'On Failure')}
-                            {queueRadio('always', 'Always')}
+                            {queueRadio('never', t("Never"))}
+                            {queueRadio('failure', t("On Failure"))}
+                            {queueRadio('always', t("Always"))}
                         </div>
                     </div>
                     <div className="field">
-                        <label>Advanced Queue Settings</label>
+                        <label>{t("Advanced Queue Settings")}</label>
                         <div className="flex items-center gap-2.5 flex-wrap">
-                            <button className="btn" onClick={() => openAdvancedQueueSettings(dcp, markDirty, () => bump())}>
-                                Advanced Queue Settings
-                            </button>
+                            <button className="btn" onClick={() => openAdvancedQueueSettings(dcp, markDirty, () => bump())}>{t("Advanced Queue Settings")}</button>
                             <span className="text-text-faint">{advancedQueueSummary(dcp)}</span>
                         </div>
                     </div>
                     <div className="field">
-                        <label>Validate Response</label>
+                        <label>{t("Validate Response")}</label>
                         {ynRadios('dest-validate-response', !!dcp.validateResponse,
                             (v: any) => { dcp.validateResponse = v; markDirty(); bump(); })}
                     </div>
                     <div className="field">
-                        <label>Reattach Attachments</label>
+                        <label>{t("Reattach Attachments")}</label>
                         {ynRadios('dest-reattach-attachments', dcp.reattachAttachments !== false,
                             (v: any) => { dcp.reattachAttachments = v; markDirty(); bump(); })}
                     </div>
@@ -2060,7 +2041,7 @@ function DestinationSettings({ dcp, markDirty }: any) {
 function DestEditor({ dest, channel, version, engineTypes, markDirty, syncRows }: any) {
     const [panelRev, setPanelRev] = useState(0);
     if (!dest) {
-        return <div className="text-text-faint py-2.5 px-0.5">Select a destination to edit its settings</div>;
+        return <div className="text-text-faint py-2.5 px-0.5">{t("Select a destination to edit its settings")}</div>;
     }
     const dcp = dest.properties && dest.properties.destinationConnectorProperties;
     return (
@@ -2068,20 +2049,17 @@ function DestEditor({ dest, channel, version, engineTypes, markDirty, syncRows }
             {/* Static header: connector type + wait-for on ONE compact line (Swing
                 parity) — always visible above the scrollable connector panel below. */}
             <div className="panel m-0 sticky top-0 z-[1]">
-                <div className="panel-header">{`Destination ${dest.metaDataId} — ${dest.name}`}</div>
+                <div className="panel-header">{t("Destination {value1} — {value2}", { value1: String(dest.metaDataId), value2: String(dest.name) })}</div>
                 <div className="panel-body py-1.5 px-3">
                     <div className="dest-type-row flex items-center gap-2 flex-wrap">
-                        <label className="font-semibold whitespace-nowrap">Connector Type:</label>
+                        <label className="font-semibold whitespace-nowrap">{t("Connector Type:")}</label>
                         <ConnectorTypeSelect connector={dest} mode="DESTINATION" engineTypes={engineTypes}
                             version={version} markDirty={markDirty} onChanged={() => setPanelRev(r => r + 1)}
                             width="200px" />
                         {/* Pushed right on a wide row; a container query on .dest-type-row
                             drops the auto margin when narrow (see app.css). */}
-                        <label className="check dest-wait-push">
-                            <input type="checkbox" checked={dest.waitForPrevious !== false}
-                                onChange={(e: any) => { dest.waitForPrevious = e.target.checked; markDirty(); syncRows(); }} />
-                            Wait for previous destination
-                        </label>
+                        <label className="check dest-wait-push">{tx("{value1}Wait for previous destination", { value1: <input type="checkbox" checked={dest.waitForPrevious !== false}
+                                onChange={(e: any) => { dest.waitForPrevious = e.target.checked; markDirty(); syncRows(); }} /> })}</label>
                     </div>
                 </div>
             </div>
@@ -2096,15 +2074,13 @@ function MappingsRail({ onInsert, dragRef }: any) {
     // Shares its collapse flag with the wizard's rail — same rail, same choice.
     const [collapsed, setCollapsed] = useSideCollapse('dest-mappings');
     if (collapsed) {
-        return <CollapsedSideStrip className="panel-strip" label="Destination Mappings"
+        return <CollapsedSideStrip className="panel-strip" label={t("Destination Mappings")}
             onExpand={() => setCollapsed(false)} />;
     }
     return (
         <div className="panel dest-mappings w-[216px] flex-[0_0_240px] flex flex-col self-stretch mt-0">
-            <div className="panel-header">
-                Destination Mappings
-                <div className="panel-tools">
-                    <SideCollapseButton label="Destination Mappings" onCollapse={() => setCollapsed(true)} />
+            <div className="panel-header">{t("Destination Mappings")}<div className="panel-tools">
+                    <SideCollapseButton label={t("Destination Mappings")} onCollapse={() => setCollapsed(true)} />
                 </div>
             </div>
             <div className="overflow-auto flex-1 py-1 px-0">
@@ -2164,12 +2140,12 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
 
     function needSelection() {
         const dest = selectedDest();
-        if (!dest) toast('Select a destination first', 'warn');
+        if (!dest) toast(t("Select a destination first"), 'warn');
         return dest;
     }
 
     async function newDestination() {
-        const name = await promptDialog('New Destination', 'Destination name', `Destination ${dests().length + 1}`);
+        const name = await promptDialog(t("New Destination"), t("Destination name"), `Destination ${dests().length + 1}`);
         if (name === null || !name.trim()) return;
         const metaDataId = Number(channel.nextMetaDataId) || (dests().length + 1);
         const dest = oie.defaultDestinationConnector(version, metaDataId, name.trim());
@@ -2191,9 +2167,9 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
     async function deleteDestination() {
         const dest = needSelection();
         if (!dest) return;
-        if (dests().length <= 1) { toast('A channel must have at least one destination', 'warn'); return; }
-        if (!keepsEnabledDestination(dest)) { toast('At least one destination must be enabled', 'warn'); return; }
-        if (!await confirmDialog('Delete Destination', `Delete destination "${dest.name}"?`, { danger: true, okLabel: 'Delete' })) return;
+        if (dests().length <= 1) { toast(t("A channel must have at least one destination"), 'warn'); return; }
+        if (!keepsEnabledDestination(dest)) { toast(t("At least one destination must be enabled"), 'warn'); return; }
+        if (!await confirmDialog(t("Delete Destination"), t("Delete destination \"{value1}\"?", { value1: String(dest.name) }), { danger: true, okLabel: t("Delete") })) return;
         oie.setDestinations(channel, dests().filter(d => d !== dest));
         setSelectedId(null);
         markDirty();
@@ -2230,7 +2206,7 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
             markDirty();
             refresh();
         } catch (error: any) {
-            if (active()) toast(`Import failed: ${error.message}`, 'error');
+            if (active()) toast(t("Import failed: {value1}", { value1: String(error.message) }), 'error');
         } finally {
             importingRef.current = false;
         }
@@ -2245,7 +2221,7 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
             await saveFile(`${dest.name || 'destination'}.json`, 'application/json', () => JSON.stringify({ connector: dest }, null, 2), assertSession);
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Export failed: ${e.message}`, 'error');
+            toast(t("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -2267,7 +2243,7 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
     function setEnabled(value: any) {
         const dest = needSelection();
         if (!dest) return;
-        if (!value && !keepsEnabledDestination(dest)) { toast('At least one destination must be enabled', 'warn'); return; }
+        if (!value && !keepsEnabledDestination(dest)) { toast(t("At least one destination must be enabled"), 'warn'); return; }
         dest.enabled = value;
         markDirty();
         refresh();
@@ -2290,16 +2266,16 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         const host = tableHostRef.current;
         if (!host) return undefined;
         const table = new DataTable([
-            { key: 'metaDataId', label: 'Id', width: '46px', className: 'num' },
+            { key: 'metaDataId', label: t("Id"), width: '46px', className: 'num' },
             {
-                key: 'enabled', label: 'Status', width: '100px',
+                key: 'enabled', label: t("Status"), width: '100px',
                 sortValue: (d: any) => d.enabled !== false ? 0 : 1,
                 render: (d: any) => d.enabled !== false
-                    ? h('span.status-cell', h('span.pip.ok'), 'Enabled')
-                    : h('span.status-cell', h('span.pip'), h('span.text-text-dim', 'Disabled'))
+                    ? h('span.status-cell', h('span.pip.ok'), t("Enabled"))
+                    : h('span.status-cell', h('span.pip'), h('span.text-text-dim', t("Disabled")))
             },
             {
-                key: 'name', label: 'Name',
+                key: 'name', label: t("Name"),
                 // Inline-editable name cell (matches the Swing Destinations grid).
                 // Clicks are kept off the row handler so the table never re-renders
                 // mid-edit and steals focus. markDirty repaints the React header.
@@ -2312,15 +2288,15 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
                     return input;
                 }
             },
-            { key: 'transportName', label: 'Type' },
+            { key: 'transportName', label: t("Type") },
             {
-                key: 'waitForPrevious', label: 'Chain', sortable: false,
-                render: (d: any) => d.waitForPrevious !== false ? 'Wait for previous' : 'Don\'t wait'
+                key: 'waitForPrevious', label: t("Chain"), sortable: false,
+                render: (d: any) => d.waitForPrevious !== false ? t("Wait for previous") : t("Don''t wait")
             }
         ], {
             selectable: 'single',
             rowKey: (d: any) => String(d.metaDataId),
-            emptyText: 'No destinations',
+            emptyText: t("No destinations"),
             columnsMenu: true,
             columnsMenuKey: 'webadmin-cols-destinations',
             onSelect: (rows: any) => {
@@ -2335,30 +2311,30 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
                 const a = actionsRef.current;
                 const dt = destTasksRef.current;
                 contextMenu(e.clientX, e.clientY, [
-                    { label: 'Save Changes', icon: 'save', task: 'doSaveChannel', group: 'channelEdit', onClick: () => a.save() },
-                    { label: 'Validate Connector', icon: 'check', task: 'doValidate', group: 'channelEdit', onClick: () => a.validateConnector() },
+                    { label: t("Save Changes"), icon: 'save', task: 'doSaveChannel', group: 'channelEdit', onClick: () => a.save() },
+                    { label: t("Validate Connector"), icon: 'check', task: 'doValidate', group: 'channelEdit', onClick: () => a.validateConnector() },
                     '-',
-                    { label: 'New Destination', icon: 'plus', task: 'doNewDestination', group: 'channelEdit', onClick: () => dt.newDestination() },
-                    { label: 'Delete Destination', icon: 'trash', danger: true, task: 'doDeleteDestination', group: 'channelEdit', onClick: () => dt.deleteDestination() },
-                    { label: 'Clone Destination', icon: 'copy', task: 'doCloneDestination', group: 'channelEdit', onClick: () => dt.cloneDestination() },
+                    { label: t("New Destination"), icon: 'plus', task: 'doNewDestination', group: 'channelEdit', onClick: () => dt.newDestination() },
+                    { label: t("Delete Destination"), icon: 'trash', danger: true, task: 'doDeleteDestination', group: 'channelEdit', onClick: () => dt.deleteDestination() },
+                    { label: t("Clone Destination"), icon: 'copy', task: 'doCloneDestination', group: 'channelEdit', onClick: () => dt.cloneDestination() },
                     d.enabled !== false
-                        ? { label: 'Disable Destination', icon: 'x', task: 'doDisableDestination', group: 'channelEdit', onClick: () => dt.setEnabled(false) }
-                        : { label: 'Enable Destination', icon: 'check', task: 'doEnableDestination', group: 'channelEdit', onClick: () => dt.setEnabled(true) },
+                        ? { label: t("Disable Destination"), icon: 'x', task: 'doDisableDestination', group: 'channelEdit', onClick: () => dt.setEnabled(false) }
+                        : { label: t("Enable Destination"), icon: 'check', task: 'doEnableDestination', group: 'channelEdit', onClick: () => dt.setEnabled(true) },
                     '-',
-                    { label: 'Move Dest. Up', icon: 'arrowUp', task: 'doMoveDestinationUp', group: 'channelEdit', onClick: () => dt.move(-1) },
-                    { label: 'Move Dest. Down', icon: 'arrowDown', task: 'doMoveDestinationDown', group: 'channelEdit', onClick: () => dt.move(1) },
+                    { label: t("Move Dest. Up"), icon: 'arrowUp', task: 'doMoveDestinationUp', group: 'channelEdit', onClick: () => dt.move(-1) },
+                    { label: t("Move Dest. Down"), icon: 'arrowDown', task: 'doMoveDestinationDown', group: 'channelEdit', onClick: () => dt.move(1) },
                     '-',
-                    { label: 'Edit Filter', icon: 'filter', task: 'doEditFilter', group: 'channelEdit', onClick: () => dt.editElements('filter') },
-                    { label: 'Edit Transformer', icon: 'transform', task: 'doEditTransformer', group: 'channelEdit', onClick: () => dt.editElements('transformer') },
-                    { label: 'Edit Response', icon: 'transform', task: 'doEditResponseTransformer', group: 'channelEdit', onClick: () => dt.editElements('response') },
+                    { label: t("Edit Filter"), icon: 'filter', task: 'doEditFilter', group: 'channelEdit', onClick: () => dt.editElements('filter') },
+                    { label: t("Edit Transformer"), icon: 'transform', task: 'doEditTransformer', group: 'channelEdit', onClick: () => dt.editElements('transformer') },
+                    { label: t("Edit Response"), icon: 'transform', task: 'doEditResponseTransformer', group: 'channelEdit', onClick: () => dt.editElements('response') },
                     '-',
-                    { label: 'Import Connector', icon: 'import', task: 'doImportConnector', group: 'channelEdit', onClick: () => dt.importConnector() },
-                    { label: 'Export Connector', icon: 'export', task: 'doExportConnector', group: 'channelEdit', onClick: () => dt.exportConnector() },
-                    { label: 'Export Channel', icon: 'export', task: 'doExportChannel', group: 'channelEdit', onClick: () => a.exportChannel() },
-                    { label: 'Validate Script', icon: 'check', task: 'doValidateChannelScripts', group: 'channelEdit', onClick: () => a.validateChannelScripts() },
+                    { label: t("Import Connector"), icon: 'import', task: 'doImportConnector', group: 'channelEdit', onClick: () => dt.importConnector() },
+                    { label: t("Export Connector"), icon: 'export', task: 'doExportConnector', group: 'channelEdit', onClick: () => dt.exportConnector() },
+                    { label: t("Export Channel"), icon: 'export', task: 'doExportChannel', group: 'channelEdit', onClick: () => a.exportChannel() },
+                    { label: t("Validate Script"), icon: 'check', task: 'doValidateChannelScripts', group: 'channelEdit', onClick: () => a.validateChannelScripts() },
                     '-',
-                    { label: 'Debug Channel', icon: 'deploy', task: 'doDebugDeployFromChannelView', group: 'channelEdit', onClick: () => a.openDebugDeployModal() },
-                    { label: 'Deploy Channel', icon: 'deploy', task: 'doDeployFromChannelView', group: 'channelEdit', onClick: () => a.deploy() }
+                    { label: t("Debug Channel"), icon: 'deploy', task: 'doDebugDeployFromChannelView', group: 'channelEdit', onClick: () => a.openDebugDeployModal() },
+                    { label: t("Deploy Channel"), icon: 'deploy', task: 'doDeployFromChannelView', group: 'channelEdit', onClick: () => a.deploy() }
                 ]);
             }
         });
@@ -2394,10 +2370,10 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         // No known target — fall back to the clipboard.
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(token).then(
-                () => toast(`Copied ${token}`),
-                () => toast('Focus a text field first', 'warn'));
+                () => toast(t("Copied {value1}", { value1: String(token) })),
+                () => toast(t("Focus a text field first"), 'warn'));
         } else {
-            toast('Focus a text field first', 'warn');
+            toast(t("Focus a text field first"), 'warn');
         }
     }
 
@@ -2474,10 +2450,10 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
 /* ---- Scripts tab -------------------------------------------------------------- */
 
 const CHANNEL_SCRIPTS = [
-    { key: 'deployScript', label: 'Deploy', hint: 'Runs once when the channel is deployed', context: 'CHANNEL_DEPLOY' },
-    { key: 'undeployScript', label: 'Undeploy', hint: 'Runs once when the channel is undeployed', context: 'CHANNEL_UNDEPLOY' },
-    { key: 'preprocessingScript', label: 'Preprocessor', hint: 'Runs before every message is processed', context: 'CHANNEL_PREPROCESSOR' },
-    { key: 'postprocessingScript', label: 'Postprocessor', hint: 'Runs after every message is processed', context: 'CHANNEL_POSTPROCESSOR' }
+    { key: 'deployScript', label: t("Deploy"), hint: t("Runs once when the channel is deployed"), context: 'CHANNEL_DEPLOY' },
+    { key: 'undeployScript', label: t("Undeploy"), hint: t("Runs once when the channel is undeployed"), context: 'CHANNEL_UNDEPLOY' },
+    { key: 'preprocessingScript', label: t("Preprocessor"), hint: t("Runs before every message is processed"), context: 'CHANNEL_PREPROCESSOR' },
+    { key: 'postprocessingScript', label: t("Postprocessor"), hint: t("Runs after every message is processed"), context: 'CHANNEL_POSTPROCESSOR' }
 ];
 
 function ScriptsTab({ channel, markDirty }: any) {
@@ -2497,7 +2473,7 @@ function ScriptsTab({ channel, markDirty }: any) {
             language: 'javascript',
             minHeight: '260px',
             maximizable: true,   // channel scripts (Deploy/Undeploy/Pre/Postprocessor) can go full-screen
-            popoutTitle: `${currentRef.current.label} script`,
+            popoutTitle: t("{label} script", { label: currentRef.current.label }),
             popoutVars: SCRIPT_REFERENCE,
             onChange: (value: any) => {
                 if (switchingRef.current) return;
@@ -2519,7 +2495,7 @@ function ScriptsTab({ channel, markDirty }: any) {
     return (
         <div className="flex flex-col flex-1 min-h-0 gap-2.5">
             <div className="form-row items-center">
-                <label className="m-0">Script:</label>
+                <label className="m-0">{t("Script:")}</label>
                 <select className="w-[162px]" value={current.key}
                     onChange={(e: any) => {
                         const editor = editorRef.current;
@@ -2644,7 +2620,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             bumpSourceImportRevision();
             markDirty();
         } catch (error: any) {
-            if (active()) toast(`Import failed: ${error.message}`, 'error');
+            if (active()) toast(t("Import failed: {value1}", { value1: String(error.message) }), 'error');
         } finally {
             sourceImportingRef.current = false;
         }
@@ -2657,9 +2633,9 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     // against every OTHER channel. Returns a warning string, or null when valid.
     async function checkChannelName() {
         const name = String(channel.name ?? '');
-        if (name.length > 40) return 'Channel name cannot be longer than 40 characters.';
+        if (name.length > 40) return t("Channel name cannot be longer than 40 characters.");
         if (!/^[A-Za-z0-9_\s-]*$/.test(name)) {
-            return 'Channel name cannot have special characters besides hyphen, underscore, and space.';
+            return t("Channel name cannot have special characters besides hyphen, underscore, and space.");
         }
         try {
             const res = await api.channels.idsAndNames();
@@ -2667,7 +2643,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
                 const pair = api.asList(en && en.string);   // [id, name]
                 if (pair.length >= 2 && String(pair[0]) !== channel.id
                     && String(pair[1]).toLowerCase() === name.toLowerCase()) {
-                    return `Channel "${name}" already exists.`;
+                    return t("Channel \"{value1}\" already exists.", { value1: String(name) });
                 }
             }
         } catch { /* names unavailable — don't block the save on a lookup failure */ }
@@ -2681,12 +2657,12 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             if (!connector || !connector.transportName) return;
             const def = platform.connectorPanel(connector.transportName as string, mode as any);
             if (!def || typeof def.validate !== 'function') return;
-            for (const err of (def.validate(connector.properties) || [])) out.push(`${label}: ${err.label} is required.`);
+            for (const err of (def.validate(connector.properties) || [])) out.push(t("{value1}: {value2} is required.", { value1: String(label), value2: String(err.label) }));
         };
-        run(channel.sourceConnector, 'SOURCE', `Source (${channel.sourceConnector?.transportName || 'Source'})`);
+        run(channel.sourceConnector, 'SOURCE', t("Source ({transport})", { transport: channel.sourceConnector?.transportName || t("Source") }));
         for (const d of oie.destinationsOf(channel)) {
             if (d && (d.enabled === false || (d.enabled as any) === 'false')) continue;
-            const label = d.name ? `${d.name} (${d.transportName})` : (d.transportName || 'Destination');
+            const label = d.name ? `${d.name} (${d.transportName})` : (d.transportName || t("Destination"));
             run(d, 'DESTINATION', label);
         }
         return out;
@@ -2726,11 +2702,11 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         if (problems.length) {
             highlightInvalidFields();
             modal({
-                title: 'Cannot Save Channel',
+                title: t("Cannot Save Channel"),
                 body: h('div',
-                    h('p', 'Please fix the following before saving:'),
+                    h('p', t("Please fix the following before saving:")),
                     h('ul', { class: 'mt-2 mx-0 mb-0 pl-[16px]' }, problems.map(p => h('li', p)))),
-                buttons: [{ label: 'OK' }]
+                buttons: [{ label: t("OK") }]
             });
             return false;
         }
@@ -2740,7 +2716,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         const nameError = await checkChannelName();
         if (!isCurrent()) return false;
         if (nameError) {
-            modal({ title: 'Cannot Save Channel', body: h('div', nameError), buttons: [{ label: 'OK' }] });
+            modal({ title: t("Cannot Save Channel"), body: h('div', nameError), buttons: [{ label: t("OK") }] });
             return false;
         }
         try {
@@ -2754,7 +2730,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             store.setState('editingChannelDirty', false);
             onTasksChange();
             bumpRev();
-            toast(`Saved ${channel.name}`);
+            toast(t("Saved {value1}", { value1: String(channel.name) }));
             return true;
         } catch (e: any) {
             if (isCurrent()) toast(e.message, 'error');
@@ -2768,26 +2744,26 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         // Match the Swing channel-view deploy (Frame.doDeployFromChannelView):
         // unsaved changes prompt to save-and-deploy; otherwise a plain confirm.
         if (isDirty()) {
-            const confirmed = await confirmDialog('Deploy Channel',
-                'This channel will be saved before it is deployed. Are you sure you want to save and deploy this channel?',
-                { okLabel: 'Save and Deploy' });
+            const confirmed = await confirmDialog(t("Deploy Channel"),
+                t("This channel will be saved before it is deployed. Are you sure you want to save and deploy this channel?"),
+                { okLabel: t("Save and Deploy") });
             if (!isCurrent() || !confirmed) return;
             const saved = await save();
             if (!isCurrent() || !saved) return;
         } else {
-            const confirmed = await confirmDialog('Deploy Channel', 'Are you sure you want to deploy this channel?', { okLabel: 'Deploy' });
+            const confirmed = await confirmDialog(t("Deploy Channel"), t("Are you sure you want to deploy this channel?"), { okLabel: t("Deploy") });
             if (!isCurrent() || !confirmed) return;
         }
         try {
             await api.engine.deploy(channel.id);
             if (!isCurrent()) return;
             // Switch to the Dashboard to watch deployment (matches Swing).
-            toast(`Deploying ${channel.name}`);
+            toast(t("Deploying {value1}", { value1: String(channel.name) }));
             router.navigate('/dashboard');
         } catch (e: any) {
             // A deploy failure returns the engine's full exception — far too
             // long for a corner toast; show the detail modal and stay here.
-            if (isCurrent()) errorModal('Channel Deployment Failed', e, channel.name);
+            if (isCurrent()) errorModal(t("Channel Deployment Failed"), e, channel.name);
         }
     }
 
@@ -2795,14 +2771,14 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     // each connector's required-field checks (same checks applied on save).
     function validateConnector() {
         const problems = [...oie.validateChannel(channel), ...validateConnectors()];
-        if (!problems.length) { clearFieldHighlights(); toast('Connector configuration is valid'); return; }
+        if (!problems.length) { clearFieldHighlights(); toast(t("Connector configuration is valid")); return; }
         highlightInvalidFields();
         modal({
-            title: 'Validation Errors',
+            title: t("Validation Errors"),
             body: h('div',
-                h('p', 'Please fix the following:'),
+                h('p', t("Please fix the following:")),
                 h('ul', { class: 'mt-2 mx-0 mb-0 pl-[16px]' }, problems.map(p => h('li', p)))),
-            buttons: [{ label: 'OK' }]
+            buttons: [{ label: t("OK") }]
         });
     }
 
@@ -2810,18 +2786,18 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     // scripts via the engine bridge.
     async function validateChannelScripts() {
         const list = [
-            ['Deploy', channel.deployScript],
-            ['Undeploy', channel.undeployScript],
-            ['Preprocessor', channel.preprocessingScript],
-            ['Postprocessor', channel.postprocessingScript]
+            [t("Deploy"), channel.deployScript],
+            [t("Undeploy"), channel.undeployScript],
+            [t("Preprocessor"), channel.preprocessingScript],
+            [t("Postprocessor"), channel.postprocessingScript]
         ];
         for (const [label, code] of list) {
             if (typeof code !== 'string' || !code.trim()) continue;
             const result = await validateScript(code);
             if (result.ok === null) { toast(result.message, 'warn'); return; }
-            if (result.ok === false) { toast(`${label} script — ${result.message}`, 'error'); return; }
+            if (result.ok === false) { toast(t("{value1} script — {value2}", { value1: String(label), value2: String(result.message) }), 'error'); return; }
         }
-        toast('Channel scripts validated successfully');
+        toast(t("Channel scripts validated successfully"));
     }
 
     async function exportChannel() {
@@ -2831,7 +2807,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             await saveFile(`${channel.name || channel.id}.json`, 'application/json', () => JSON.stringify({ channel }, null, 2), assertSession);
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Export failed: ${e.message}`, 'error');
+            toast(t("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -2871,7 +2847,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         // route:changed resets the banner to the static route title ("Edit
         // Channel") after the route handler returns; defer past it with rAF so
         // the channel name sticks without a flash.
-        const bannerTitle = channel.name ? `Edit Channel - ${channel.name}` : 'Edit Channel';
+        const bannerTitle = channel.name ? t("Edit Channel - {value1}", { value1: String(channel.name) }) : t("Edit Channel");
         window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('webadmin:set-title', {
             detail: { title: bannerTitle }
         })));
@@ -2948,10 +2924,10 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
                     views (Settings), but THIS view-body is padded (16px) and the
                     section cards below sit flush against that padding — the strip
                     must too, or it floats 13px right of every card edge. */}
-                <TabsPrimitive.List className="tabs mx-0 max-w-full" aria-label="Channel sections">
+                <TabsPrimitive.List className="tabs mx-0 max-w-full" aria-label={t("Channel sections")}>
                     {tabLabels.map((label: any) => (
                         <TabsPrimitive.Trigger key={label} value={label}
-                            className={'tab' + (label === activeTab ? ' active' : '')}>{label}</TabsPrimitive.Trigger>
+                            className={'tab' + (label === activeTab ? ' active' : '')}>{pluginTabs.some(d => d.label === label) ? label : channelTabLabel(label)}</TabsPrimitive.Trigger>
                     ))}
                 </TabsPrimitive.List>
                 <TabsPrimitive.Content value={activeTab} className="tab-body">
@@ -2993,7 +2969,7 @@ export function ChannelEditorView({ params, query }: any) {
                first field read — a stale bookmark or a deleted channel took out the
                whole view instead of reporting it. */
             if (!loaded || !loaded.id) {
-                toast(`Channel ${params.channelId} was not found.`, 'error');
+                toast(t("Channel {value1} was not found.", { value1: String(params.channelId) }), 'error');
                 setReady(false);
                 return;
             }
@@ -3006,42 +2982,42 @@ export function ChannelEditorView({ params, query }: any) {
 
     const ctx = apiRef.current;
     const ts = (ctx && ctx.taskState()) || { dirty: false, tab: 'Summary', destSelected: false };
-    const t = ctx && ctx.handlers;
+    const handlers = ctx && ctx.handlers;
 
     return (
         <div className="view flex flex-col flex-1 min-h-0">
             <ViewTasks>
-                <RailPane title="Channel Tasks" paneKey="tasks:Channel Tasks" group="channelEdit">
+                <RailPane title={t("Channel Tasks")} paneKey="tasks:Channel Tasks" group="channelEdit">
                     <div className="taskbar" data-pane-title="Channel Tasks">
-                        {t && ts.dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveChannel" onClick={t.save} />}
+                        {handlers && ts.dirty && <TaskButton label={t("Save Changes")} icon="save" primary task="doSaveChannel" onClick={handlers.save} />}
                         {/* Validate Connector (Swing CHANNEL_EDIT_VALIDATE) — shown
                             whenever a connector is visible, not gated on changes. */}
-                        {t && (ts.tab === 'Source' || ts.tab === 'Destinations') && <TaskButton label="Validate Connector" icon="check" task="doValidate" onClick={t.validateConnector} />}
-                        {t && <TaskButton label="Deploy Channel" icon="deploy" task="doDeployFromChannelView" onClick={t.deploy} />}
-                        {t && <TaskButton label="Debug Channel" icon="deploy" task="doDebugDeployFromChannelView" onClick={t.openDebugDeployModal} />}
-                        {t && <TaskButton label="Export Channel" icon="export" task="doExportChannel" onClick={t.exportChannel} />}
-                        {t && <TaskButton label="Back to Channels" icon="channels" onClick={t.backToChannels} />}
+                        {handlers && (ts.tab === 'Source' || ts.tab === 'Destinations') && <TaskButton label={t("Validate Connector")} icon="check" task="doValidate" onClick={handlers.validateConnector} />}
+                        {handlers && <TaskButton label={t("Deploy Channel")} icon="deploy" task="doDeployFromChannelView" onClick={handlers.deploy} />}
+                        {handlers && <TaskButton label={t("Debug Channel")} icon="deploy" task="doDebugDeployFromChannelView" onClick={handlers.openDebugDeployModal} />}
+                        {handlers && <TaskButton label={t("Export Channel")} icon="export" task="doExportChannel" onClick={handlers.exportChannel} />}
+                        {handlers && <TaskButton label={t("Back to Channels")} icon="channels" onClick={handlers.backToChannels} />}
 
                         {/* Contextual connector tasks (Swing ctx-tasks), gated by active tab. */}
-                        {t && ts.tab === 'Source' && <TaskButton label="Import Connector" icon="import" task="doImportConnector" onClick={t.sourceImport} />}
-                        {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Filter', t.sourceStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => t.gotoElements('filter', 0)} />}
-                        {t && ts.tab === 'Source' && <TaskButton label={t.withCount('Edit Transformer', t.sourceStepCount('transformer'))} icon="transform" task="doEditTransformer" onClick={() => t.gotoElements('transformer', 0)} />}
+                        {handlers && ts.tab === 'Source' && <TaskButton label={t("Import Connector")} icon="import" task="doImportConnector" onClick={handlers.sourceImport} />}
+                        {handlers && ts.tab === 'Source' && <TaskButton label={handlers.withCount(t("Edit Filter"), handlers.sourceStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => handlers.gotoElements('filter', 0)} />}
+                        {handlers && ts.tab === 'Source' && <TaskButton label={handlers.withCount(t("Edit Transformer"), handlers.sourceStepCount('transformer'))} icon="transform" task="doEditTransformer" onClick={() => handlers.gotoElements('transformer', 0)} />}
 
-                        {t && ts.tab === 'Destinations' && <TaskButton label="New Destination" icon="plus" task="doNewDestination" onClick={t.destNew} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Delete Destination" icon="trash" danger task="doDeleteDestination" onClick={t.destDelete} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Up" icon="arrowUp" task="doMoveDestinationUp" onClick={() => t.destMove(-1)} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Move Dest. Down" icon="arrowDown" task="doMoveDestinationDown" onClick={() => t.destMove(1)} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Filter', t.destStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => t.destEdit('filter')} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Transformer', t.destStepCount('transformer'))} icon="transform" task="doEditTransformer" onClick={() => t.destEdit('transformer')} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label={t.withCount('Edit Response', t.destStepCount('responseTransformer'))} icon="transform" task="doEditResponseTransformer" onClick={() => t.destEdit('response')} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Import Connector" icon="import" task="doImportConnector" onClick={t.destImport} />}
-                        {t && ts.tab === 'Destinations' && <TaskButton label="Export Connector" icon="export" task="doExportConnector" onClick={t.destExport} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={t("New Destination")} icon="plus" task="doNewDestination" onClick={handlers.destNew} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={t("Delete Destination")} icon="trash" danger task="doDeleteDestination" onClick={handlers.destDelete} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={t("Move Dest. Up")} icon="arrowUp" task="doMoveDestinationUp" onClick={() => handlers.destMove(-1)} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={t("Move Dest. Down")} icon="arrowDown" task="doMoveDestinationDown" onClick={() => handlers.destMove(1)} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={handlers.withCount(t("Edit Filter"), handlers.destStepCount('filter'))} icon="filter" task="doEditFilter" onClick={() => handlers.destEdit('filter')} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={handlers.withCount(t("Edit Transformer"), handlers.destStepCount('transformer'))} icon="transform" task="doEditTransformer" onClick={() => handlers.destEdit('transformer')} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={handlers.withCount(t("Edit Response"), handlers.destStepCount('responseTransformer'))} icon="transform" task="doEditResponseTransformer" onClick={() => handlers.destEdit('response')} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={t("Import Connector")} icon="import" task="doImportConnector" onClick={handlers.destImport} />}
+                        {handlers && ts.tab === 'Destinations' && <TaskButton label={t("Export Connector")} icon="export" task="doExportConnector" onClick={handlers.destExport} />}
 
                         {/* Open in Wizard — always pinned to the bottom of the task list.
                             Switches to the wizard carrying the (possibly unsaved) channel
                             (read from the store); clear the nav guard first so it neither
                             prompts nor drops the working copy on the way out. */}
-                        {t && getPref('showViewSwitch') !== false && <TaskButton label="Open in Wizard" icon="wand" onClick={() => {
+                        {handlers && getPref('showViewSwitch') !== false && <TaskButton label={t("Open in Wizard")} icon="wand" onClick={() => {
                             const ch = store.getState('editingChannel');
                             const wasNew = store.getState('editingChannelNew') === true;
                             store.setState('navGuard', null);
@@ -3051,9 +3027,9 @@ export function ChannelEditorView({ params, query }: any) {
                 </RailPane>
             </ViewTasks>
             {ready === null
-                ? <div className="view-body"><div className="dt-empty">Loading channel…</div></div>
+                ? <div className="view-body"><div className="dt-empty">{t("Loading channel…")}</div></div>
                 : ready === false
-                    ? <div className="view-body"><div className="dt-empty">Channel not loaded</div></div>
+                    ? <div className="view-body"><div className="dt-empty">{t("Channel not loaded")}</div></div>
                     : <EditorBody params={params} query={query} onTasksChange={forceRender}
                         apiRef={apiRef} returning={returningRef.current} />}
         </div>

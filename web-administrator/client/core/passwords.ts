@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 /*
  * Human-readable password-policy hints from the engine's PasswordRequirements
  * (GET /server/passwordRequirements). Field semantics mirror the engine's
@@ -14,18 +15,12 @@ export function passwordRequirementHints(req: OieObject | null | undefined): str
     const hints: string[] = [];
 
     const minLength = num('minLength');
-    if (minLength > 0) hints.push(`at least ${minLength} character${minLength === 1 ? '' : 's'}`);
-
-    const rule = (key: string, noun: string) => {
-        const v = num(key);
-        if (v === -1) hints.push(`no ${noun}s`);
-        else if (v === 1) hints.push(`1 ${noun}`);
-        else if (v > 1) hints.push(`${v} ${noun}s`);
-    };
-    rule('minUpper', 'uppercase letter');
-    rule('minLower', 'lowercase letter');
-    rule('minNumeric', 'number');
-    rule('minSpecial', 'special character');
+    if (minLength > 0) hints.push(t('{count, plural, one {at least {count} character} other {at least {count} characters}}', { count: minLength }));
+    const upper = num('minUpper'), lower = num('minLower'), numeric = num('minNumeric'), special = num('minSpecial');
+    if (upper) hints.push(upper === -1 ? t('no uppercase letters') : t('{count, plural, one {{count} uppercase letter} other {{count} uppercase letters}}', { count: upper }));
+    if (lower) hints.push(lower === -1 ? t('no lowercase letters') : t('{count, plural, one {{count} lowercase letter} other {{count} lowercase letters}}', { count: lower }));
+    if (numeric) hints.push(numeric === -1 ? t('no numbers') : t('{count, plural, one {{count} number} other {{count} numbers}}', { count: numeric }));
+    if (special) hints.push(special === -1 ? t('no special characters') : t('{count, plural, one {{count} special character} other {{count} special characters}}', { count: special }));
 
     return hints;
 }

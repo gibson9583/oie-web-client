@@ -1,3 +1,4 @@
+import { t, tx, compareText } from '../../core/i18n.js';
 /*
  * Code Templates view — fully declarative React. The library/template tree is
  * the controlled <TreeTable>; the editor pane branches on the selection into
@@ -37,11 +38,11 @@ import { libraryImportCallbacks } from './code-template-import-dialogs.js';
 
 
 const CT_COLUMNS = [
-    { key: 'name', label: 'Name' },
-    { key: 'id', label: 'Id' },
-    { key: 'description', label: 'Description' },
-    { key: 'revision', label: 'Revision', align: 'right' },
-    { key: 'lastModified', label: 'Last Modified' }
+    { key: 'name', label: t("Name") },
+    { key: 'id', label: t("Id") },
+    { key: 'description', label: t("Description") },
+    { key: 'revision', label: t("Revision"), align: 'right' },
+    { key: 'lastModified', label: t("Last Modified") }
 ];
 const CT_COL_WIDTHS = { name: 300, id: 280, description: 260, revision: 80, lastModified: 150 };
 
@@ -49,35 +50,35 @@ const PROPERTIES_CLASS = 'com.mirth.connect.model.codetemplates.BasicCodeTemplat
 
 /* CodeTemplateProperties.CodeTemplateType (XStream serializes enum names) */
 const TEMPLATE_TYPES = [
-    { value: 'FUNCTION', label: 'Function' },
-    { value: 'DRAG_AND_DROP_CODE', label: 'Drag-and-Drop Code Block' },
-    { value: 'COMPILED_CODE', label: 'Compiled Code Block' }
+    { value: 'FUNCTION', label: t("Function") },
+    { value: 'DRAG_AND_DROP_CODE', label: t("Drag-and-Drop Code Block") },
+    { value: 'COMPILED_CODE', label: t("Compiled Code Block") }
 ];
 
 /* ContextType enum, grouped the way the Swing context tree presents it */
 const CONTEXT_GROUPS = [
-    { label: 'Global Scripts', types: [
-        ['GLOBAL_DEPLOY', 'Deploy Script'],
-        ['GLOBAL_UNDEPLOY', 'Undeploy Script'],
-        ['GLOBAL_PREPROCESSOR', 'Preprocessor Script'],
-        ['GLOBAL_POSTPROCESSOR', 'Postprocessor Script']
+    { label: t("Global Scripts"), types: [
+        ['GLOBAL_DEPLOY', t("Deploy Script")],
+        ['GLOBAL_UNDEPLOY', t("Undeploy Script")],
+        ['GLOBAL_PREPROCESSOR', t("Preprocessor Script")],
+        ['GLOBAL_POSTPROCESSOR', t("Postprocessor Script")]
     ] },
-    { label: 'Channel Scripts', types: [
-        ['CHANNEL_DEPLOY', 'Deploy Script'],
-        ['CHANNEL_UNDEPLOY', 'Undeploy Script'],
-        ['CHANNEL_PREPROCESSOR', 'Preprocessor Script'],
-        ['CHANNEL_POSTPROCESSOR', 'Postprocessor Script'],
-        ['CHANNEL_ATTACHMENT', 'Attachment Script'],
-        ['CHANNEL_BATCH', 'Batch Script']
+    { label: t("Channel Scripts"), types: [
+        ['CHANNEL_DEPLOY', t("Deploy Script")],
+        ['CHANNEL_UNDEPLOY', t("Undeploy Script")],
+        ['CHANNEL_PREPROCESSOR', t("Preprocessor Script")],
+        ['CHANNEL_POSTPROCESSOR', t("Postprocessor Script")],
+        ['CHANNEL_ATTACHMENT', t("Attachment Script")],
+        ['CHANNEL_BATCH', t("Batch Script")]
     ] },
-    { label: 'Source Connector', types: [
-        ['SOURCE_RECEIVER', 'Receiver Script(s)'],
-        ['SOURCE_FILTER_TRANSFORMER', 'Filter / Transformer Script']
+    { id: "source", label: t("Source Connector"), types: [
+        ['SOURCE_RECEIVER', t("Receiver Script(s)")],
+        ['SOURCE_FILTER_TRANSFORMER', t("Filter / Transformer Script")]
     ] },
-    { label: 'Destination Connector', types: [
-        ['DESTINATION_FILTER_TRANSFORMER', 'Filter / Transformer Script'],
-        ['DESTINATION_DISPATCHER', 'Dispatcher Script'],
-        ['DESTINATION_RESPONSE_TRANSFORMER', 'Response Transformer Script']
+    { id: "destination", label: t("Destination Connector"), types: [
+        ['DESTINATION_FILTER_TRANSFORMER', t("Filter / Transformer Script")],
+        ['DESTINATION_DISPATCHER', t("Dispatcher Script")],
+        ['DESTINATION_RESPONSE_TRANSFORMER', t("Response Transformer Script")]
     ] }
 ];
 
@@ -86,7 +87,7 @@ const ALL_CONTEXTS = CONTEXT_GROUPS.flatMap(g => g.types.map(t => t[0]));
 // Swing's default for a NEW template is CodeTemplateContextSet.getConnectorContextSet()
 // — only the Source/Destination Connector contexts, not global/channel scripts.
 const CONNECTOR_CONTEXTS = CONTEXT_GROUPS
-    .filter(g => g.label === 'Source Connector' || g.label === 'Destination Connector')
+    .filter(g => g.id === 'source' || g.id === 'destination')
     .flatMap(g => g.types.map(t => t[0]));
 
 /* CodeTemplate.DEFAULT_CODE */
@@ -136,14 +137,14 @@ function templateDescription(template: any) {
 
 function bulkSaveError(result: any): string {
     if (String(result?.librariesSuccess) !== 'true') {
-        return result?.librariesCause?.detailMessage || 'The library set could not be saved';
+        return result?.librariesCause?.detailMessage || t("The library set could not be saved");
     }
     let failure = '';
     const scan = (value: any) => {
         if (!value || failure) return;
         if (Array.isArray(value)) return value.forEach(scan);
         if (typeof value !== 'object') return;
-        if (String(value.success) === 'false') failure = value.cause?.detailMessage || 'A code template could not be saved';
+        if (String(value.success) === 'false') failure = value.cause?.detailMessage || t("A code template could not be saved");
         else Object.values(value).forEach(scan);
     };
     scan(result.codeTemplateResults);
@@ -233,7 +234,7 @@ export function CodeTemplatesView() {
             markClean();
             setSelected((prev: any) => (prev && resolve(prev, next) ? prev : null));
         } catch (e: any) {
-            toast(`Load failed: ${e.message}`, 'error');
+            toast(t("Load failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -253,8 +254,8 @@ export function CodeTemplatesView() {
             render: (n: any) => {
                 switch (c.key) {
                     case 'name': return n.kind === 'library'
-                        ? <TreeLabel icon="folder" label={n.lib.name || '(unnamed library)'} />
-                        : <TreeLabel icon="file" label={n.tpl.name || '(unnamed template)'} />;
+                        ? <TreeLabel icon="folder" label={n.lib.name || t("(unnamed library)")} />
+                        : <TreeLabel icon="file" label={n.tpl.name || t("(unnamed template)")} />;
                     case 'id': return n.kind === 'library' ? (n.lib.id || '') : (n.tpl.id || '');
                     case 'description': return n.kind === 'library' ? (n.lib.description || '') : templateDescription(n.tpl);
                     case 'revision': return String((n.kind === 'library' ? n.lib.revision : n.tpl.revision) ?? '');
@@ -284,14 +285,14 @@ export function CodeTemplatesView() {
         e.preventDefault();
         const found = resolve(selected);
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate(found && found.entry) },
-            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
+            { label: t("New Code Template"), icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate(found && found.entry) },
+            { label: t("New Library"), icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates(found && found.entry) },
-            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
-            { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() }
+            { label: t("Import Code Templates"), icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates(found && found.entry) },
+            { label: t("Import Libraries"), icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
+            { label: t("Export All Libraries"), icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() }
         ]);
     }
 
@@ -315,22 +316,22 @@ export function CodeTemplatesView() {
                 onClick: () => a.onInvoke((resolved as any).template, actionCtx)
             }));
         contextMenu(e.clientX, e.clientY, [
-            { label: 'Refresh', icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
+            { label: t("Refresh"), icon: 'refresh', task: 'doRefreshCodeTemplates', group: 'codeTemplate', onClick: () => load() },
             '-',
-            { label: 'New Code Template', icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate((resolved as any).entry) },
-            { label: 'New Library', icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
+            { label: t("New Code Template"), icon: 'plus', task: 'doNewCodeTemplate', group: 'codeTemplate', onClick: () => newTemplate((resolved as any).entry) },
+            { label: t("New Library"), icon: 'folder', task: 'doNewLibrary', group: 'codeTemplate', onClick: () => newLibrary() },
             '-',
-            { label: 'Import Code Templates', icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates((resolved as any).entry) },
-            { label: 'Import Libraries', icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
-            { label: 'Export Code Template', icon: 'export', hidden: !isTpl, task: 'doExportCodeTemplate', group: 'codeTemplate', onClick: () => exportTemplate(resolved) },
-            { label: 'Export Library', icon: 'export', hidden: !isLib, task: 'doExportLibrary', group: 'codeTemplate', onClick: () => exportLibrary(resolved) },
-            { label: 'Export All Libraries', icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() },
+            { label: t("Import Code Templates"), icon: 'import', task: 'doImportCodeTemplates', group: 'codeTemplate', onClick: () => importCodeTemplates((resolved as any).entry) },
+            { label: t("Import Libraries"), icon: 'import', task: 'doImportLibraries', group: 'codeTemplate', onClick: () => importLibraries() },
+            { label: t("Export Code Template"), icon: 'export', hidden: !isTpl, task: 'doExportCodeTemplate', group: 'codeTemplate', onClick: () => exportTemplate(resolved) },
+            { label: t("Export Library"), icon: 'export', hidden: !isLib, task: 'doExportLibrary', group: 'codeTemplate', onClick: () => exportLibrary(resolved) },
+            { label: t("Export All Libraries"), icon: 'export', task: 'doExportAllLibraries', group: 'codeTemplate', onClick: () => exportLibraries() },
             '-',
-            { label: 'Validate Script', icon: 'check', hidden: !isTpl, task: 'doValidateCodeTemplate', group: 'codeTemplate', onClick: () => validateScriptTask(resolved) },
+            { label: t("Validate Script"), icon: 'check', hidden: !isTpl, task: 'doValidateCodeTemplate', group: 'codeTemplate', onClick: () => validateScriptTask(resolved) },
             ...(pluginItems.length ? ['-', ...pluginItems] : []),
-            { label: 'Delete', icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', onClick: () => deleteSelected(sel) },
+            { label: t("Delete"), icon: 'trash', danger: true, task: isTpl ? 'doDeleteCodeTemplate' : 'doDeleteLibrary', group: 'codeTemplate', onClick: () => deleteSelected(sel) },
             '-',
-            { label: 'Save All', icon: 'save', task: 'doSaveCodeTemplates', group: 'codeTemplate', onClick: () => saveAll() }
+            { label: t("Save All"), icon: 'save', task: 'doSaveCodeTemplates', group: 'codeTemplate', onClick: () => saveAll() }
         ]);
     }
 
@@ -367,7 +368,7 @@ export function CodeTemplatesView() {
         // list (pushing onto it would silently never reach saveAll).
         const entry = entryArg && entriesNowRef.current.find(en => en.library.id === entryArg.library.id);
         if (!entry) {
-            toast('Select a library first', 'warn');
+            toast(t("Select a library first"), 'warn');
             return;
         }
         const v = store.getState('serverVersion') || '4.5.2';
@@ -393,28 +394,28 @@ export function CodeTemplatesView() {
        no-ops, letting a later Save All resurrect the engine-deleted templates. */
     async function deleteSelected(sel: any) {
         let found = resolve(sel, entriesNowRef.current);
-        if (!sel || !found) { toast('Select a library or code template first', 'warn'); return; }
+        if (!sel || !found) { toast(t("Select a library or code template first"), 'warn'); return; }
 
         if (sel.kind === 'library') {
             const count = found.entry.templates.length;
             const message = count
-                ? `Delete library "${found.entry.library.name}" and its ${count} code template(s)? Save All commits the removal.`
-                : `Delete library "${found.entry.library.name}"? Save All commits the removal.`;
-            if (!await confirmDialog('Delete Library', message, { danger: true, okLabel: 'Delete' })) return;
+                ? t("Delete library \"{value1}\" and its {value2} code template(s)? Save All commits the removal.", { value1: String(found.entry.library.name), value2: String(count) })
+                : t("Delete library \"{value1}\"? Save All commits the removal.", { value1: String(found.entry.library.name) });
+            if (!await confirmDialog(t("Delete Library"), message, { danger: true, okLabel: t("Delete") })) return;
             found = resolve(sel, entriesNowRef.current);
-            if (!found) { toast('The library no longer exists (the list was reloaded)', 'warn'); return; }
+            if (!found) { toast(t("The library no longer exists (the list was reloaded)"), 'warn'); return; }
             const entry = found.entry;
             setEntries(prev => prev.filter(en => en !== entry));
         } else {
-            if (!await confirmDialog('Delete Code Template', `Delete code template "${found.template.name}"?`, { danger: true, okLabel: 'Delete' })) return;
+            if (!await confirmDialog(t("Delete Code Template"), t("Delete code template \"{value1}\"?", { value1: String(found.template.name) }), { danger: true, okLabel: t("Delete") })) return;
             found = resolve(sel, entriesNowRef.current);
-            if (!found) { toast('The code template no longer exists (the list was reloaded)', 'warn'); return; }
+            if (!found) { toast(t("The code template no longer exists (the list was reloaded)"), 'warn'); return; }
             found.entry.templates = found.entry.templates.filter((t: any) => t !== found!.template!);
         }
         invalidateCompletions();   // deleted templates no longer autocomplete
         setSelected(null);
         markDirty();
-        toast('Deleted — use Save All to commit library changes');
+        toast(t("Deleted — use Save All to commit library changes"));
     }
 
     function saveAll() { return withEditorSave(() => saveAllUnlocked()); }
@@ -427,12 +428,12 @@ export function CodeTemplatesView() {
         // as a conflict on every save). A "false" response means someone else saved since
         // this view loaded — prompt once, then retry everything with override=true.
         const conflict = async (): Promise<any> => {
-            const overwrite = await confirmDialog('Code Templates Modified',
-                'One or more code templates or libraries have been modified since you opened them. Are you sure you want to overwrite them with your changes?',
-                { danger: true, okLabel: 'Overwrite' });
+            const overwrite = await confirmDialog(t("Code Templates Modified"),
+                t("One or more code templates or libraries have been modified since you opened them. Are you sure you want to overwrite them with your changes?"),
+                { danger: true, okLabel: t("Overwrite") });
             assertSession();
             if (overwrite) return saveAllUnlocked(true, assertSession);
-            toast('Save cancelled — Refresh to load the latest code templates', 'warn');
+            toast(t("Save cancelled — Refresh to load the latest code templates"), 'warn');
         };
         try {
             const v = store.getState('serverVersion') || '4.5.2';
@@ -510,17 +511,17 @@ export function CodeTemplatesView() {
                     persistedTemplatesRef.current = persistedTemplates;
                     invalidateCompletions();
                     setEntries(prev => prev.slice());
-                    toast(`Save partially failed: ${failure}`, 'error');
+                    toast(t("Save partially failed: {value1}", { value1: String(failure) }), 'error');
                     return;
                 }
                 throw new Error(failure);
             }
             invalidateCompletions();   // script editors refetch the new scope on next focus
-            toast('Code templates saved');
+            toast(t("Code templates saved"));
             await load();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Save failed: ${e.message}`, 'error');
+            toast(t("Save failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -535,7 +536,7 @@ export function CodeTemplatesView() {
             assertSession();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Export failed: ${e.message}`, 'error');
+            toast(t("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -543,20 +544,20 @@ export function CodeTemplatesView() {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         if (!found || !found.entry || found.template) {
-            toast('Select a library first', 'warn');
+            toast(t("Select a library first"), 'warn');
             return;
         }
         const { library } = found.entry;
         try {
             await saveFile(`${library.name || library.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/codeTemplateLibraries/${encodeURIComponent(library.id)}`, { includeCodeTemplates: true });
-                if (!xml || !String(xml).trim()) throw new Error('Library not found on the server — save it first');
+                if (!xml || !String(xml).trim()) throw new Error(t("Library not found on the server — save it first"));
                 return xml;
             }, assertSession);
             assertSession();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Export failed: ${e.message}`, 'error');
+            toast(t("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -564,19 +565,19 @@ export function CodeTemplatesView() {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         if (!found || !found.template) {
-            toast('Select a code template first', 'warn');
+            toast(t("Select a code template first"), 'warn');
             return;
         }
         try {
             await saveFile(`${found.template.name || found.template.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/codeTemplates/${found.template.id}`);
-                if (!xml || !String(xml).trim()) throw new Error('Template not found on the server — save it first');
+                if (!xml || !String(xml).trim()) throw new Error(t("Template not found on the server — save it first"));
                 return xml;
             }, assertSession);
             assertSession();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
-            toast(`Export failed: ${e.message}`, 'error');
+            toast(t("Export failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
@@ -584,7 +585,7 @@ export function CodeTemplatesView() {
        replaces that collection, so always obtain a fresh, complete baseline,
        send no removals, and never force a stale import over concurrent edits. */
     function importLibraries() {
-        return withEditorSave(importLibrariesUnlocked, 'Importing libraries…');
+        return withEditorSave(importLibrariesUnlocked, t("Importing libraries…"));
     }
 
     async function importLibrariesUnlocked() {
@@ -594,11 +595,11 @@ export function CodeTemplatesView() {
         try {
             if (dirtyRef.current) {
                 if (!platform.checkTask('codeTemplate', 'doSaveCodeTemplates')) {
-                    toast('You do not have permission to save these changes. Refresh to discard them before importing libraries.', 'warn');
+                    toast(t("You do not have permission to save these changes. Refresh to discard them before importing libraries."), 'warn');
                     return;
                 }
-                const save = await confirmDialog('Unsaved Changes',
-                    'Save your code template changes before importing libraries?', { okLabel: 'Save and Import' });
+                const save = await confirmDialog(t("Unsaved Changes"),
+                    t("Save your code template changes before importing libraries?"), { okLabel: t("Save and Import") });
                 assertSession();
                 if (!save) return;
                 await saveAllUnlocked();
@@ -614,9 +615,9 @@ export function CodeTemplatesView() {
                 libraryImportRef.current = { xml, libraries: parseLibraryImport(xml, v), ids: new Map() };
             }
             const pending = libraryImportRef.current;
-            const confirmed = await confirmDialog('Import Libraries',
-                `Import libraries from "${file.name}"? Existing libraries and templates will be kept. Any conflicts will be reviewed before saving.`,
-                { okLabel: 'Import' });
+            const confirmed = await confirmDialog(t("Import Libraries"),
+                t("Import libraries from \"{value1}\"? Existing libraries and templates will be kept. Any conflicts will be reviewed before saving.", { value1: String(file.name) }),
+                { okLabel: t("Import") });
             assertSession();
             if (!confirmed) return;
             const current = await api.codeTemplates.libraries(true);
@@ -630,13 +631,13 @@ export function CodeTemplatesView() {
             assertSession();
             if (String(result?.overrideNeeded) === 'true') {
                 writeAttempted = false; // the engine checks conflicts before writing
-                throw new Error('Libraries or code templates changed during import. Import again to merge with the latest server versions.');
+                throw new Error(t("Libraries or code templates changed during import. Import again to merge with the latest server versions."));
             }
             const failure = bulkSaveError(result);
             if (failure) throw new Error(failure);
             libraryImportRef.current = null;
             invalidateCompletions();   // script editors refetch the new scope on next focus
-            toast(`Imported ${file.name}`);
+            toast(t("Imported {value1}", { value1: String(file.name) }));
             setSelected(null);
             await load();
         } catch (e: any) {
@@ -649,12 +650,12 @@ export function CodeTemplatesView() {
                 await load();
                 try { assertSession(); } catch { return; }
             }
-            toast(`Import failed: ${e.message}`, 'error');
+            toast(t("Import failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
     function importCodeTemplates(entryArg: any) {
-        return withEditorSave(() => importCodeTemplatesUnlocked(entryArg), 'Importing code templates…');
+        return withEditorSave(() => importCodeTemplatesUnlocked(entryArg), t("Importing code templates…"));
     }
 
     async function importCodeTemplatesUnlocked(entryArg: any) {
@@ -664,15 +665,15 @@ export function CodeTemplatesView() {
         try {
             const target = entriesNowRef.current.find(en => en.library.id === entryArg?.library.id)
                 || (entriesNowRef.current.length === 1 ? entriesNowRef.current[0] : null);
-            if (!target) { toast('Select a library to import into first', 'warn'); return; }
+            if (!target) { toast(t("Select a library to import into first"), 'warn'); return; }
             const targetId = target.library.id;
             if (dirtyRef.current) {
                 if (!platform.checkTask('codeTemplate', 'doSaveCodeTemplates')) {
-                    toast('You do not have permission to save these changes. Refresh to discard them before importing code templates.', 'warn');
+                    toast(t("You do not have permission to save these changes. Refresh to discard them before importing code templates."), 'warn');
                     return;
                 }
-                const save = await confirmDialog('Unsaved Changes',
-                    'Save your code template changes before importing code templates?', { okLabel: 'Save and Import' });
+                const save = await confirmDialog(t("Unsaved Changes"),
+                    t("Save your code template changes before importing code templates?"), { okLabel: t("Save and Import") });
                 assertSession();
                 if (!save) return;
                 await saveAllUnlocked(false, assertSession);
@@ -699,13 +700,13 @@ export function CodeTemplatesView() {
             assertSession();
             if (String(result?.overrideNeeded) === 'true') {
                 writeAttempted = false;
-                throw new Error('Libraries or code templates changed during import. Import again to merge with the latest server versions.');
+                throw new Error(t("Libraries or code templates changed during import. Import again to merge with the latest server versions."));
             }
             const failure = bulkSaveError(result);
             if (failure) throw new Error(failure);
             templateImportRef.current = null;
             invalidateCompletions();
-            toast(`Imported ${payload.templates.length} code template(s) into "${target.library.name || 'library'}"`);
+            toast(t("Imported {value1} code template(s) into \"{value2}\"", { value1: String(payload.templates.length), value2: String(target.library.name || 'library') }));
             await load();
         } catch (e: any) {
             try { assertSession(); } catch { return; }
@@ -714,24 +715,24 @@ export function CodeTemplatesView() {
                 await load();
                 try { assertSession(); } catch { return; }
             }
-            toast(`Import failed: ${e.message}`, 'error');
+            toast(t("Import failed: {value1}", { value1: String(e.message) }), 'error');
         }
     }
 
     /* Validate Script (Swing) — real Rhino compile check of the selected
        template's code via the engine bridge. */
     async function validateScriptTask(found: any) {
-        if (!found || !found.template) { toast('Select a code template first', 'warn'); return; }
+        if (!found || !found.template) { toast(t("Select a code template first"), 'warn'); return; }
         const code = found.template.properties && found.template.properties.code;
-        if (typeof code !== 'string' || !code.trim()) { toast('Template has no code to validate', 'warn'); return; }
+        if (typeof code !== 'string' || !code.trim()) { toast(t("Template has no code to validate"), 'warn'); return; }
         const result = await validateScript(code);
         if (result.ok === null) { toast(result.message, 'warn'); return; }
-        if (result.ok === false) { toast(`Validation error — ${result.message}`, 'error'); return; }
-        toast('Code template validated successfully');
+        if (result.ok === false) { toast(t("Validation error — {value1}", { value1: String(result.message) }), 'error'); return; }
+        toast(t("Code template validated successfully"));
     }
 
     async function refreshTask() {
-        if (dirtyRef.current && !await confirmDialog('Refresh', 'Discard unsaved changes and refresh?', { okLabel: 'Refresh' })) return;
+        if (dirtyRef.current && !await confirmDialog(t("Refresh"), t("Discard unsaved changes and refresh?"), { okLabel: t("Refresh") })) return;
         load();
     }
 
@@ -758,12 +759,12 @@ export function CodeTemplatesView() {
             if (!dirtyRef.current) return;
             // No save permission -> say the edits can't be kept (channel editor parity).
             const ok = platform.checkTask('codeTemplate', 'doSaveCodeTemplates')
-                ? await confirmDialog('Unsaved Changes',
-                    'You have unsaved code template changes. Leave without saving?',
-                    { danger: true, okLabel: 'Leave' })
-                : await confirmDialog('Unsaved Changes',
-                    "You don't have permission to save code template changes. Leaving will discard them.",
-                    { okLabel: 'OK' });
+                ? await confirmDialog(t("Unsaved Changes"),
+                    t("You have unsaved code template changes. Leave without saving?"),
+                    { danger: true, okLabel: t("Leave") })
+                : await confirmDialog(t("Unsaved Changes"),
+                    t("You don''t have permission to save code template changes. Leaving will discard them."),
+                    { okLabel: t("OK") });
             return ok ? undefined : false;
         });
         // Tab-close guard: same dirty state, synchronous (see core/unsaved.js).
@@ -817,24 +818,24 @@ export function CodeTemplatesView() {
         ? (n: any) => (n.kind === 'library' ? (n.lib.name || '').toLowerCase().includes(term) : templateMatches(n.tpl, term))
         : undefined;
     const totalTemplates = entries.reduce((sum: any, en: any) => sum + en.templates.length, 0);
-    const countsText = `${entries.length} Librar${entries.length === 1 ? 'y' : 'ies'}, ${totalTemplates} Code Template${totalTemplates === 1 ? '' : 's'}`;
+    const countsText = t('{libraries, plural, one {{libraries} Library} other {{libraries} Libraries}}, {templates, plural, one {{templates} Code Template} other {{templates} Code Templates}}', { libraries: entries.length, templates: totalTemplates });
 
     return (
         <div className="view">
             <ViewTasks>
-                <RailPane title="Code Template Tasks" paneKey="tasks:Code Template Tasks" group="codeTemplate">
+                <RailPane title={t("Code Template Tasks")} paneKey="tasks:Code Template Tasks" group="codeTemplate">
                     <div className="taskbar" data-pane-title="Code Template Tasks">
-                        <TaskButton label="Refresh" icon="refresh" task="doRefreshCodeTemplates" onClick={refreshTask} />
-                        {dirty && <TaskButton label="Save Changes" icon="save" primary task="doSaveCodeTemplates" onClick={() => saveAll()} />}
-                        {found && <TaskButton label="New Code Template" icon="plus" task="doNewCodeTemplate" onClick={() => newTemplate(found.entry)} />}
-                        <TaskButton label="New Library" icon="folder" task="doNewLibrary" onClick={newLibrary} />
-                        <TaskButton label="Import Code Templates" icon="import" task="doImportCodeTemplates" onClick={() => importCodeTemplates(found && found.entry)} />
-                        <TaskButton label="Import Libraries" icon="import" task="doImportLibraries" onClick={importLibraries} />
-                        {isTemplate && <TaskButton label="Export Code Template" icon="export" task="doExportCodeTemplate" onClick={() => exportTemplate(found)} />}
-                        {isLibrary && <TaskButton label="Export Library" icon="export" task="doExportLibrary" onClick={() => exportLibrary(found)} />}
-                        {isTemplate && <TaskButton label="Delete Code Template" icon="trash" danger task="doDeleteCodeTemplate" onClick={() => deleteSelected(selected)} />}
-                        {isLibrary && <TaskButton label="Delete Library" icon="trash" danger task="doDeleteLibrary" onClick={() => deleteSelected(selected)} />}
-                        {isTemplate && <TaskButton label="Validate Script" icon="check" task="doValidateCodeTemplate" onClick={() => validateScriptTask(found)} />}
+                        <TaskButton label={t("Refresh")} icon="refresh" task="doRefreshCodeTemplates" onClick={refreshTask} />
+                        {dirty && <TaskButton label={t("Save Changes")} icon="save" primary task="doSaveCodeTemplates" onClick={() => saveAll()} />}
+                        {found && <TaskButton label={t("New Code Template")} icon="plus" task="doNewCodeTemplate" onClick={() => newTemplate(found.entry)} />}
+                        <TaskButton label={t("New Library")} icon="folder" task="doNewLibrary" onClick={newLibrary} />
+                        <TaskButton label={t("Import Code Templates")} icon="import" task="doImportCodeTemplates" onClick={() => importCodeTemplates(found && found.entry)} />
+                        <TaskButton label={t("Import Libraries")} icon="import" task="doImportLibraries" onClick={importLibraries} />
+                        {isTemplate && <TaskButton label={t("Export Code Template")} icon="export" task="doExportCodeTemplate" onClick={() => exportTemplate(found)} />}
+                        {isLibrary && <TaskButton label={t("Export Library")} icon="export" task="doExportLibrary" onClick={() => exportLibrary(found)} />}
+                        {isTemplate && <TaskButton label={t("Delete Code Template")} icon="trash" danger task="doDeleteCodeTemplate" onClick={() => deleteSelected(selected)} />}
+                        {isLibrary && <TaskButton label={t("Delete Library")} icon="trash" danger task="doDeleteLibrary" onClick={() => deleteSelected(selected)} />}
+                        {isTemplate && <TaskButton label={t("Validate Script")} icon="check" task="doValidateCodeTemplate" onClick={() => validateScriptTask(found)} />}
                         {isTemplate && platform.codeTemplateActions()
                             .filter((a: any) => (a.isEnabled ? a.isEnabled({ platform, template: found!.template, library: found!.entry.library }) : true))
                             .map((a: any) => <TaskButton key={a.id || a.label} label={a.label} icon={a.icon} task={a.task}
@@ -870,13 +871,13 @@ export function CodeTemplatesView() {
                                 columnWidths={CT_COL_WIDTHS}
                                 defaultHidden={['id']}
                                 pinnedKeys={['name']}
-                                emptyText="No code template libraries" />
+                                emptyText={t("No code template libraries")} />
                         </div>
                         <div className="filterbar flex-none panel overflow-visible mx-[13px] my-2">
                             <span className="counts">{countsText}</span>
                             <span className="ml-auto inline-flex items-center gap-1.5">
-                                <label>Filter:</label>
-                                <input type="text" placeholder="Filter…" className="max-w-[234px]" value={filterText}
+                                <label>{t("Filter:")}</label>
+                                <input type="text" placeholder={t("Filter…")} className="max-w-[234px]" value={filterText}
                                     onChange={(e: any) => setFilterText(e.target.value)} />
                             </span>
                         </div>
@@ -895,7 +896,7 @@ export function CodeTemplatesView() {
                                     onToggleMax={() => setEditorMax((m: any) => !m)} />
                             </div>
                         </div>
-                    </> : <div className="split-b flex-none text-text-faint py-[8px] px-3.5">Select a library or code template to edit it.</div>}
+                    </> : <div className="split-b flex-none text-text-faint py-[8px] px-3.5">{t("Select a library or code template to edit it.")}</div>}
                 </div>
             </div>
         </div>
@@ -946,7 +947,7 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
             const rows = api.asList(map && map.entry).map((en: any) => {
                 const pair = api.asList(en.string);
                 return { id: String(pair[0] ?? ''), name: String(pair[1] ?? pair[0] ?? '') };
-            }).sort((a: any, b: any) => a.name.localeCompare(b.name));
+            }).sort((a: any, b: any) => compareText(a.name, b.name));
             setChannels(rows);
         }).catch((e: any) => { if (alive) setChError(e.message); });
         return () => { alive = false; };
@@ -959,9 +960,7 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
         if ((counts as any)[type] === undefined) (counts as any)[type] = 0;
         (counts as any)[type]++;
     }
-    const summaryText = `${counts.FUNCTION} Function${counts.FUNCTION === 1 ? '' : 's'}, `
-        + `${counts.DRAG_AND_DROP_CODE} Drag-and-Drop Code Block${counts.DRAG_AND_DROP_CODE === 1 ? '' : 's'}, `
-        + `${counts.COMPILED_CODE} Compiled Code Block${counts.COMPILED_CODE === 1 ? '' : 's'}`;
+    const summaryText = t('{functions, plural, one {{functions} Function} other {{functions} Functions}}, {blocks, plural, one {{blocks} Drag-and-Drop Code Block} other {{blocks} Drag-and-Drop Code Blocks}}, {compiled, plural, one {{compiled} Compiled Code Block} other {{compiled} Compiled Code Blocks}}', { functions: counts.FUNCTION, blocks: counts.DRAG_AND_DROP_CODE, compiled: counts.COMPILED_CODE });
 
     const enabled = new Set(idSetOf(library.enabledChannelIds));
     function setChannel(id: any, on: any) {
@@ -986,42 +985,39 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
         <div className="flex flex-col flex-1 min-h-0">
             <div className="form-grid mb-3">
                 <div className="field">
-                    <label>Name</label>
+                    <label>{t("Name")}</label>
                     <input ref={nameRef} type="text" value={library.name || ''}
                         onChange={(e: any) => { library.name = e.target.value; markDirty(); }} />
                 </div>
                 <div className="field justify-end">
-                    <label className="check">
-                        <input type="checkbox" checked={!!library.includeNewChannels}
-                            onChange={(e: any) => { library.includeNewChannels = e.target.checked; markDirty(); }} />
-                        Include New Channels
-                    </label>
+                    <label className="check">{tx("{value1}Include New Channels", { value1: <input type="checkbox" checked={!!library.includeNewChannels}
+                            onChange={(e: any) => { library.includeNewChannels = e.target.checked; markDirty(); }} /> })}</label>
                 </div>
             </div>
             <div className="flex flex-1 min-h-0">
                 <div className="flex flex-col flex-1 min-h-0 mr-3.5">
                     <div className="mb-2.5 text-[11px] text-text-dim">
-                        <span className="font-[650]">Summary: </span>{summaryText}
+                        <span className="font-[650]">{t("Summary: ")}</span>{summaryText}
                     </div>
-                    <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5">Description</label>
+                    <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim mb-1.5">{t("Description")}</label>
                     <textarea className="flex-1 min-h-[108px] resize-none" value={library.description || ''}
                         onChange={(e: any) => { library.description = e.target.value; markDirty(); }} />
                 </div>
                 <div className="w-[270px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
                     <div className="flex items-baseline justify-between mb-2">
-                        <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Channels</label>
+                        <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">{t("Channels")}</label>
                         <span className="text-[10px]">
-                            <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAllChannels(true); }}>Select All</a>
+                            <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAllChannels(true); }}>{t("Select All")}</a>
                             <span className="text-text-faint my-0 mx-1.5">|</span>
-                            <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAllChannels(false); }}>Deselect All</a>
+                            <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAllChannels(false); }}>{t("Deselect All")}</a>
                         </span>
                     </div>
-                    <input type="text" placeholder="Filter…" className="w-full mb-1.5" value={chFilter}
+                    <input type="text" placeholder={t("Filter…")} className="w-full mb-1.5" value={chFilter}
                         onChange={(e: any) => setChFilter(e.target.value)} />
                     <div className="overflow-auto flex-1">
-                        {chError ? <div className="text-text-faint">{`Channels unavailable: ${chError}`}</div>
-                            : channels === null ? <div className="loading-block"><div className="spinner" />Loading channels…</div>
-                                : visible.length === 0 ? <div className="text-text-faint">{channels.length ? 'No matches' : 'No channels'}</div>
+                        {chError ? <div className="text-text-faint">{t("Channels unavailable: {value1}", { value1: String(chError) })}</div>
+                            : channels === null ? <div className="loading-block">{tx("{value1}Loading channels…", { value1: <div className="spinner" /> })}</div>
+                                : visible.length === 0 ? <div className="text-text-faint">{channels.length ? t("No matches") : t("No channels")}</div>
                                     : visible.map((row: any) => (
                                         <div key={row.id}>
                                             <label className="check">
@@ -1051,22 +1047,22 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
             <div data-editor-overtake style={{ flex: 'none' }}>
                 <div className="form-grid mb-3">
                     <div className="field">
-                        <label>Name</label>
+                        <label>{t("Name")}</label>
                         <input ref={nameRef} type="text" value={template.name || ''}
                             onChange={(e: any) => { template.name = e.target.value; markDirty(); }} />
                     </div>
                     <div className="field">
-                        <label>Library</label>
+                        <label>{t("Library")}</label>
                         {/* Swing lets you move a template between libraries here. */}
                         <select value={entry.library.id}
                             onChange={(e: any) => onMoveTemplate(entry, template, e.target.value)}>
                             {entries.map((en: any) => (
-                                <option key={en.library.id} value={en.library.id}>{en.library.name || '(unnamed library)'}</option>
+                                <option key={en.library.id} value={en.library.id}>{en.library.name || t("(unnamed library)")}</option>
                             ))}
                         </select>
                     </div>
                     <div className="field">
-                        <label>Type</label>
+                        <label>{t("Type")}</label>
                         <select value={template.properties.type || 'FUNCTION'}
                             onChange={(e: any) => { template.properties.type = e.target.value; markDirty(); }}>
                             {TEMPLATE_TYPES.map((t: any) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -1077,9 +1073,9 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
             <div className="flex flex-1 min-h-0">
                 <div className="flex flex-col flex-1 min-h-0 mr-3.5">
                     <div className="flex items-center mb-1.5">
-                        <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Code</label>
+                        <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">{t("Code")}</label>
                         <button type="button" className="icon-btn ml-auto"
-                            title={maximized ? 'Restore editor (Esc)' : 'Maximize editor'}
+                            title={maximized ? t("Restore editor (Esc)") : t("Maximize editor")}
                             onClick={onToggleMax}>
                             <Icon name={maximized ? 'minimize' : 'maximize'} size={15} />
                         </button>
@@ -1131,11 +1127,11 @@ function ContextPanel({ template, markDirty }: any) {
     return (
         <div className="w-[234px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
             <div className="flex items-baseline justify-between mb-2">
-                <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Context</label>
+                <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">{t("Context")}</label>
                 <span className="text-[10px]">
-                    <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAll(true); }}>Select All</a>
+                    <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAll(true); }}>{t("Select All")}</a>
                     <span className="text-text-faint my-0 mx-1.5">|</span>
-                    <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAll(false); }}>Deselect All</a>
+                    <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAll(false); }}>{t("Deselect All")}</a>
                 </span>
             </div>
             <div className="overflow-auto flex-1">
