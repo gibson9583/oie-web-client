@@ -644,6 +644,8 @@ function GeneratedScriptPane({ kind, element, rev }: any) {
     const editorRef = useRef<any>(null);
     useEffect(() => {
         const editor = createCodeEditor({ value: '', readOnly: true, minHeight: '200px', popoutable: true, popoutTitle: 'Generated Script' });
+        editor.el.style.flex = '1';
+        editor.el.style.minHeight = '0';
         editorRef.current = editor;
         hostRef.current.appendChild(editor.el);
         return () => {
@@ -664,7 +666,7 @@ function GeneratedScriptPane({ kind, element, rev }: any) {
         }
         if (editorRef.current) editorRef.current.setValue(script);
     }, [kind, element, rev]);
-    return <div ref={hostRef} />;
+    return <div ref={hostRef} className="flex flex-col flex-1 min-w-0 min-h-0" />;
 }
 
 /* ---- right panel: Reference --------------------------------------------------- */
