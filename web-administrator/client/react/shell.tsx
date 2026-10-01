@@ -37,7 +37,7 @@ import { disposeDetachedMonaco } from '../core/monaco.js';
 import { invalidate as invalidateCompletions, clearActiveScope } from '../core/script-completions.js';
 import { apiUrl, appUrl, routeUrl } from '../core/deployment.js';
 import { platform, loadPlugins } from '@oie/web-shell';
-import { LoginForm, isOidcCallback, isExpectedOidcCallback, takeOidcCallback } from './views/login.jsx';
+import { LoginForm, isOidcCallback, isExpectedOidcCallback, takeOidcCallback, takePendingLoginFinish } from './views/login.jsx';
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
 import { clearSsoSession, holdAutoRedirect, isSsoSession, takeSsoPending } from './sso-session.js';
@@ -806,8 +806,8 @@ export function App() {
                     // ?error= — must not evict a working session: scrub it and
                     // carry on. Anyone can craft such a link.
                     if (isOidcCallback()) takeOidcCallback();
-                    await establishPrefScope(u);   // scope prefs/theme to server+user before views render
-                    if (alive) store.setState('user', u);
+                    const pendingLogin = takePendingLoginFinish();
+                    await onLoginSuccess(u, pendingLogin ? { graceMessage: pendingLogin.graceMessage } : { notify: false });
                 }
             } catch { /* not signed in */ }
             finally { if (alive) setAuthChecked(true); }
@@ -936,11 +936,11 @@ export function App() {
         return true;
     };
 
-    const onLoginSuccess = async (u: any, { graceMessage = null } = {}) => {
+    const onLoginSuccess = async (u: any, { graceMessage = null, notify = true }: { graceMessage?: string | null; notify?: boolean } = {}) => {
         // Login notification + consent (Swing LoginPanel.handleSuccess): when the
         // server requires it, the user must accept the message before entering;
         // declining logs them back out.
-        try {
+        if (notify) try {
             const pub = await api.server.publicSettings();
             const enabled = pub && (pub.loginNotificationEnabled === true || pub.loginNotificationEnabled === 'true');
             if (enabled && String(pub.loginNotificationMessage ?? '').trim()) {
@@ -958,7 +958,13 @@ export function App() {
         // First-login wizard (Swing FirstLoginDialog): prompt for a password +
         // profile when the engine's "firstlogin" user preference is set. Fails
         // open internally, but guard here too so it can never block sign-in.
-        try { await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
+        let welcomed = true;
+        try { welcomed = await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
+        if (!welcomed && !isSsoSession()) {
+            await api.auth.logout().catch(() => {});
+            store.setState('loginNotice', 'Sign-in canceled — set a new password to continue.');
+            return;
+        }
         await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
         // AFTER the awaits above, not before: they make engine calls, and a 401
         // among them fires the expiry listeners while `user` is still null — so

@@ -296,8 +296,9 @@ export function placeholderOpts(list: any) {
     return [{ value: '', label: DEFAULT_OPTION }, ...list.map((v: any) => ({ value: v, label: v }))];
 }
 
-function showWelcomeDialog(user: any) {
+function showWelcomeDialog(user: any): Promise<boolean> {
     return new Promise((resolve: any) => {
+        let completed = false;
         const usernameInput = textInput(user.username || '', { disabled: true });
         const pwInput = h('input', { type: 'password', autocomplete: 'new-password' });
         const confirmInput = h('input', { type: 'password', autocomplete: 'new-password' });
@@ -349,7 +350,7 @@ function showWelcomeDialog(user: any) {
             title: 'Welcome to Open Integration Engine',
             size: 'wide',
             body,
-            onClose: () => resolve(),
+            onClose: () => resolve(completed),
             buttons: [
                 {
                     label: 'Finish', primary: true,
@@ -377,6 +378,7 @@ function showWelcomeDialog(user: any) {
                             await api.users.update(user.id, user);
                             await api.users.setPreference(user.id, 'firstlogin', 'false');
                             toast('Welcome — your account is ready');
+                            completed = true;
                             return true;   // closes the modal → onClose resolves
                         } catch (e: any) {
                             toast(e.message || 'Could not complete setup', 'error');
@@ -404,11 +406,11 @@ function showWelcomeDialog(user: any) {
  * "firstlogin" would lose the key. The single-key read returns the raw value
  * (empty when unset). Fail-closed on error: a transient read failure skips the
  * wizard rather than forcing it on every login. */
-export async function maybeShowWelcome(user: any) {
-    if (!user || user.id == null) return;
+export async function maybeShowWelcome(user: any): Promise<boolean> {
+    if (!user || user.id == null) return true;
     let fl: any;
     try { fl = await api.users.getPreference(user.id, 'firstlogin'); }
-    catch { return; }
+    catch { return true; }
     const show = !fl || /^(true|yes|on|1)$/i.test(String(fl).trim());
-    if (show) await showWelcomeDialog(user);
+    return show ? showWelcomeDialog(user) : true;
 }

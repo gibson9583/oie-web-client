@@ -50,12 +50,32 @@ function getCookie(name: any) {
 // (see finishLogin): once plugins have loaded in this page, any new session
 // gets a fresh page. The first sign-in of a page session has no marker and
 // takes the soft path; shell.tsx records the marker once the plugins load.
-function reloadForFreshPermissions(): boolean {
+function reloadForFreshPermissions(graceMessage: string | null): boolean {
     let loaded: string | null = null;
     try { loaded = sessionStorage.getItem('oie-loaded-user'); } catch { /* private mode */ }
     if (loaded == null) return false;
-    location.reload();
+    reloadToFinishLogin(graceMessage);
     return true;
+}
+
+const LOGIN_FINISH_KEY = 'oie-login-finish';
+function reloadToFinishLogin(graceMessage: string | null): void {
+    try { sessionStorage.setItem(LOGIN_FINISH_KEY, JSON.stringify({ graceMessage })); } catch { /* private mode */ }
+    location.reload();
+}
+let pendingLoginFinish: { graceMessage: string | null } | null = (() => {
+    let raw: string | null = null;
+    try { raw = sessionStorage.getItem(LOGIN_FINISH_KEY); sessionStorage.removeItem(LOGIN_FINISH_KEY); } catch { /* private mode */ }
+    if (raw == null) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        return { graceMessage: typeof parsed?.graceMessage === 'string' ? parsed.graceMessage : null };
+    } catch { return { graceMessage: null }; }
+})();
+export function takePendingLoginFinish(): { graceMessage: string | null } | null {
+    const pending = pendingLoginFinish;
+    pendingLoginFinish = null;
+    return pending;
 }
 
 // Point this session at the chosen engine. Shared by the password submit and the
@@ -366,10 +386,10 @@ export function LoginForm({ onSuccess }: any) {
             // offers an SSO user a Change Password that SSO never consults. Marked
             // only once the session is proven, and before any reload — the mark
             // lives in sessionStorage and survives one.
-            if (loaded != null && loaded !== newKey) { if (opts.sso) markSsoSession(); location.reload(); return; }
+            if (loaded != null && loaded !== newKey) { if (opts.sso) markSsoSession(); reloadToFinishLogin(graceMessage); return; }
             const user = await api.auth.current();
             if (opts.sso) markSsoSession();
-            if (reloadForFreshPermissions()) return;
+            if (reloadForFreshPermissions(graceMessage)) return;
             await onSuccess(user, { graceMessage });
         };
         try {
