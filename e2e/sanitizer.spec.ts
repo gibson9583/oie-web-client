@@ -5,7 +5,7 @@ import { mockEngine } from './mock.js';
 test('A: the served Monaco bundle matches its patched sanitizer provenance and sanitizes hover markup', async ({ page, request }) => {
     const provenance = await (await request.get('/vendor/monaco/provenance.json')).json();
     expect(provenance.monacoVersion).toBe('0.56.0');
-    expect(provenance.sanitizer.version).toBe('3.4.15');
+    expect(provenance.sanitizer.version).toBe('3.4.16');
     expect(provenance.embeddedSanitizerExcluded).toBe(true);
     const bundle = await (await request.get('/vendor/monaco/editor.main.js')).body();
     expect(createHash('sha256').update(bundle).digest('hex')).toBe(provenance.editorSha256);
