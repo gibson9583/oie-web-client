@@ -7,7 +7,7 @@
 
 import { h, toast, modal, field, textInput, select } from '@oie/web-ui';
 import api from '@oie/web-api';
-import { passwordRequirementHints } from '../../core/passwords.js';
+import { passwordRequirementHints, passwordRejectedMessage } from '../../core/passwords.js';
 import * as store from '../../core/store.js';
 import { COUNTRIES, US_STATES, ROLES, INDUSTRIES, placeholderOpts } from '../welcome.js';
 import { isSsoSelf, SSO_MANAGED_NOTE } from '../sso-session.js';
@@ -34,6 +34,15 @@ export const USER_FIELDS = [
 
 export function passwordViolations(result: any) {
     return api.asList(result, 'string').map(String).filter(s => s.trim());
+}
+
+export function gateSubmit(dialog: any, ready: () => boolean): () => void {
+    const button = dialog?.el?.querySelector('.modal-foot .btn-primary') as HTMLButtonElement | null;
+    const sync = () => { if (button) button.disabled = !ready(); };
+    dialog?.el?.addEventListener('input', sync);
+    dialog?.el?.addEventListener('change', sync);
+    sync();
+    return sync;
 }
 
 /* A label with a red required-asterisk — Swing's mandatory-field marker
@@ -104,8 +113,9 @@ export function passwordFields({ optional = false, label = 'Password', managedNo
     if (optional && !managedNote) children.push(h('div.hint', { class: 'mt-1.5' }, 'Leave blank to keep the current password.'));
     // True once either field has input — the caller only pushes a password change then.
     const hasValue = () => Boolean((password as any).value || (confirm as any).value);
+    const filled = () => optional || Boolean((password as any).value && (confirm as any).value);
     return {
-        password, confirm, hasValue,
+        password, confirm, hasValue, filled,
         grid: h('div', ...children),
         validate() {
             // Optional + untouched → no password change, nothing to validate.
@@ -131,8 +141,10 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
         managedNote: isSsoSelf(user, store.getState('user')) ? SSO_MANAGED_NOTE : ''
     });
     const progress = h('div.hint', { role: 'status' });
+    const isSelf = String(user.id) === String(store.getState('user')?.id);
     let acceptedProfile: string | null = null;
-    modal({
+    let acceptedPassword: string | null = null;
+    const dialog = modal({
         title: `Edit User — ${user.username}`,
         size: 'wide',
         body: h('div', form.grid, pw.grid, progress),
@@ -144,12 +156,16 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
                     const username = form.inputs.username.value.trim();
                     if (!username) { toast('Username is required', 'warn'); return false; }
                     if (!pw.validate()) return false;
+                    const password = (pw.password as any).value;
+                    if (isSelf && !(pw.password as any).disabled && username !== user.username && !password) {
+                        toast('If you are changing your username, you must also update your password.', 'warn');
+                        return false;
+                    }
                     try {
-                        // Preflight policy can change before the password write;
-                        // its final receipt must still be checked below.
-                        if (pw.hasValue()) {
-                            const violations = passwordViolations(await api.users.checkPassword((pw.password as any).value));
-                            if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
+                        if (password && acceptedPassword !== password) {
+                            const violations = passwordViolations(await api.users.updatePassword(user.id, password));
+                            if (violations.length) { toast(passwordRejectedMessage(violations), 'error'); return false; }
+                            acceptedPassword = password;
                         }
                         const submitted = { ...user };
                         for (const def of USER_FIELDS) submitted[def.key] = form.inputs[def.key].value.trim();
@@ -159,20 +175,11 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
                             acceptedProfile = signature;
                             Object.assign(user, submitted);
                         }
-                        if (pw.hasValue()) {
-                            progress.textContent = 'Profile saved. Setting the password…';
-                            const violations = passwordViolations(await api.users.updatePassword(user.id, (pw.password as any).value));
-                            if (violations.length) {
-                                progress.textContent = 'Profile saved. Password was rejected; correct it and save again.';
-                                toast(`Password rejected: ${violations.join('; ')}`, 'warn');
-                                return false;
-                            }
-                        }
                         toast(`User "${username}" saved`);
                         if (onSaved) onSaved(user);
                         return true;
                     } catch (e: any) {
-                        if (acceptedProfile) progress.textContent = 'Profile saved. The remaining changes are not confirmed; review the error before retrying.';
+                        if (acceptedPassword) progress.textContent = 'Password saved. The profile was not saved; review the error before retrying.';
                         toast(e.message, 'error');
                         return false;
                     }
@@ -180,14 +187,16 @@ export function openEditUserModal(user: any, { onSaved }: any = {}) {
             }
         ]
     });
+    gateSubmit(dialog, () => Boolean(form.inputs.username.value.trim()));
 }
 
 /* Change an existing user's password (enforces the server policy up front). */
-export function openChangePasswordModal(user: any, { onSaved }: any = {}) {
+export function openChangePasswordModal(user: any, { onSaved, message }: any = {}) {
     const pw = passwordFields();
-    modal({
+    const notice = message ? h('p', { role: 'alert', class: 'mb-3', style: { color: 'var(--err, #d9534f)' } }, String(message)) : null;
+    const dialog = modal({
         title: `Change Password — ${user.username}`,
-        body: pw.grid,
+        body: h('div', notice, pw.grid),
         buttons: [
             { label: 'Cancel' },
             {
@@ -196,7 +205,7 @@ export function openChangePasswordModal(user: any, { onSaved }: any = {}) {
                     if (!pw.validate()) return false;
                     try {
                         const violations = passwordViolations(await api.users.updatePassword(user.id, (pw.password as any).value));
-                        if (violations.length) { toast(violations.join('; '), 'warn'); return false; }
+                        if (violations.length) { toast(passwordRejectedMessage(violations), 'error'); return false; }
                         toast(`Password updated for "${user.username}"`);
                         if (onSaved) onSaved(user);
                         return true;
@@ -208,4 +217,5 @@ export function openChangePasswordModal(user: any, { onSaved }: any = {}) {
             }
         ]
     });
+    gateSubmit(dialog, pw.filled);
 }

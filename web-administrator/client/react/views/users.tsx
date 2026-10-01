@@ -13,9 +13,10 @@ import { ViewTasks } from '../mount.jsx';
 import { useUsers, useInvalidate } from '../queries.js';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import {
-    USER_FIELDS, userForm, passwordFields, passwordViolations,
+    USER_FIELDS, userForm, passwordFields, passwordViolations, gateSubmit,
     openEditUserModal, openChangePasswordModal
 } from './user-modals.js';
+import { passwordRejectedMessage } from '../../core/passwords.js';
 import { isSsoSelf } from '../sso-session.js';
 
 
@@ -63,6 +64,8 @@ export function UsersView() {
         let busy = false;
         let createdId: string | number | undefined;
         let createdUsername = '';
+        const ready = () => phase !== 'unknown' && phase !== 'unverified'
+            && Boolean(createdUsername || form.inputs.username.value.trim()) && pw.filled();
         const dialog = modal({
             title: 'New User',
             size: 'wide',
@@ -90,7 +93,7 @@ export function UsersView() {
                             // leaves a passwordless user behind and the requirement
                             // is effectively ignored.
                             const violations = passwordViolations(await api.users.checkPassword(password));
-                            if (violations.length) { toast(`Password rejected: ${violations.join('; ')}`, 'warn'); return false; }
+                            if (violations.length) { toast(passwordRejectedMessage(violations), 'error'); return false; }
 
                             if (phase === 'draft') {
                                 createdUsername = username;
@@ -108,7 +111,7 @@ export function UsersView() {
                                 phase = 'created';
                             }
                             const rejected = passwordViolations(await api.users.updatePassword(createdId, password));
-                            if (rejected.length) throw new Error(`Password rejected: ${rejected.join('; ')}`);
+                            if (rejected.length) throw new Error(passwordRejectedMessage(rejected));
                             toast(`User "${username}" created`);
                             return true;
                         } catch (e: any) {
@@ -128,7 +131,7 @@ export function UsersView() {
                                 refresh();
                             }
                             if (submit) {
-                                submit.disabled = phase === 'unknown' || phase === 'unverified';
+                                submit.disabled = !ready();
                                 submit.textContent = phase === 'created' ? 'Retry Password Setup' : phase === 'unverified' ? 'Verify Account' : phase === 'unknown' ? 'Outcome Unknown' : 'Create';
                             }
                         }
@@ -136,6 +139,7 @@ export function UsersView() {
                 }
             ]
         });
+        gateSubmit(dialog, ready);
     }
 
     function editTask(selected?: any) {

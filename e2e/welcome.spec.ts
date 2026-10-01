@@ -26,6 +26,7 @@ test.describe('first-login welcome wizard', () => {
         const dialog = page.locator('.modal');
         await expect(dialog.getByText('Welcome to Open Integration Engine')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('.shell')).toHaveCount(0);
+        await expect(dialog.getByRole('button', { name: 'Finish' })).toBeDisabled();
 
         const pw = dialog.locator('input[type=password]');
         await pw.nth(0).fill('S3cretPass!');
@@ -60,6 +61,31 @@ test.describe('first-login welcome wizard', () => {
 
         await expect(page.getByText('Passwords do not match')).toBeVisible({ timeout: 15_000 });
         await expect(dialog.getByText('Welcome to Open Integration Engine')).toBeVisible();
+    });
+
+    test('a password the engine policy rejects keeps the wizard open', async ({ page }) => {
+        let authed = false;
+        let firstloginCleared = false;
+        await mockEngine(page, {
+            'GET /users/current': () => (authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 }),
+            'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+            'GET /users/*/preferences/firstlogin': 'true',
+            'PUT /users/*/password': { list: { string: ['Password is too short. Minimum length is 15 characters'] } },
+            'PUT /users/*/preferences/firstlogin': () => { firstloginCleared = true; return ''; },
+        });
+
+        await page.goto('/');
+        await login(page, 'admin', 'admin');
+        const dialog = page.locator('.modal');
+        await expect(dialog.getByText('Welcome to Open Integration Engine')).toBeVisible({ timeout: 15_000 });
+        const pw = dialog.locator('input[type=password]');
+        await pw.nth(0).fill('123');
+        await pw.nth(1).fill('123');
+        await dialog.getByRole('button', { name: 'Finish' }).click();
+
+        await expect(page.getByText('Password is too short. Minimum length is 15 characters')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('Welcome to Open Integration Engine')).toBeVisible();
+        expect(firstloginCleared).toBe(false);
     });
 
     test('no wizard once first-login is complete', async ({ page }) => {

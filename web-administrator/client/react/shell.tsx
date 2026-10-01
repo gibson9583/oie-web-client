@@ -19,7 +19,7 @@ import { setReactTasksHost, reactView } from './mount.jsx';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
 import { initSplitters } from '../core/resize.js';
-import { h, icon, modal, toast, confirmDialog, initTruncationTitles } from '@oie/web-ui';
+import { h, icon, modal, toast, initTruncationTitles } from '@oie/web-ui';
 import { CommandPalette } from './command-palette.jsx';
 import { getPref } from '../core/prefs.js';
 import api, { onEngineUnknown, onSessionExpired, resetSessionExpired } from '@oie/web-api';
@@ -979,10 +979,7 @@ export function App() {
         // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
         // accepted but the password is expiring — the engine's message says when.
         if (graceMessage != null) {
-            const change = await confirmDialog('Password Expiring',
-                graceMessage || 'Your password is expiring soon. Do you want to change it now?',
-                { okLabel: 'Change Password' });
-            if (change) openChangePasswordModal(u);
+            openChangePasswordModal(u, { message: graceMessage || 'Your password is expiring soon.' });
         }
 
     };

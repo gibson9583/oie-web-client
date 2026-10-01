@@ -11,7 +11,7 @@
  */
 import { h, modal, field, textInput, select, toast } from '@oie/web-ui';
 import api from '@oie/web-api';
-import { passwordRequirementHints } from '../core/passwords.js';
+import { passwordRequirementHints, passwordRejectedMessage } from '../core/passwords.js';
 
 export const DEFAULT_OPTION = '--Select an option--';
 
@@ -346,7 +346,7 @@ function showWelcomeDialog(user: any): Promise<boolean> {
                 field('Business', industry),
                 field('Description', description)));
 
-        modal({
+        const dialog = modal({
             title: 'Welcome to Open Integration Engine',
             size: 'wide',
             body,
@@ -362,7 +362,7 @@ function showWelcomeDialog(user: any): Promise<boolean> {
                             // Set the password first (Swing order); the engine answers
                             // with a list of policy violations if it's rejected.
                             const violations = passwordViolations(await api.users.updatePassword(user.id, pw));
-                            if (violations.length) { toast(violations.join('; '), 'warn'); return false; }
+                            if (violations.length) { toast(passwordRejectedMessage(violations), 'error'); return false; }
                             // Round-trip the user object: mutate the editable fields,
                             // preserve everything else the engine sent.
                             user.firstName = firstName.value.trim();
@@ -393,6 +393,10 @@ function showWelcomeDialog(user: any): Promise<boolean> {
         // steals it back mid-input (e.g. a fast typist, or a test filling the
         // confirm field, within 30ms of the modal opening), landing their next
         // keystrokes in the wrong field.
+        const finish = dialog.el.querySelector('.modal-foot .btn-primary') as HTMLButtonElement | null;
+        const syncFinish = () => { if (finish) finish.disabled = !((pwInput as any).value && (confirmInput as any).value); };
+        body.addEventListener('input', syncFinish);
+        syncFinish();
         setTimeout(() => { if (!body.contains(document.activeElement)) pwInput.focus(); }, 30);
     });
 }

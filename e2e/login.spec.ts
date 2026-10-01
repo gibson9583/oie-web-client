@@ -2,7 +2,7 @@ import { test, expect } from './base.js';
 import { mockEngine, login } from './mock.js';
 
 test.describe('login', () => {
-    test('a grace-period login offers the change-password dialog', async ({ page }) => {
+    test('a grace-period login opens the change-password dialog with the engine message, like Swing', async ({ page }) => {
         let authed = false;
         await mockEngine(page, {
             'GET /users/current': () => (authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 }),
@@ -12,14 +12,11 @@ test.describe('login', () => {
         await page.goto('/');
         await login(page, 'admin', 'admin');
 
-        // Login succeeded (grace = success) AND the engine's message is surfaced
-        // with the offer to change the password now.
-        await expect(page.getByText('Your password expires in 3 days.')).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByRole('button', { name: 'Change Password' })).toBeVisible();
-
-        // Accepting opens the change-password modal for the signed-in user.
-        await page.getByRole('button', { name: 'Change Password' }).click();
-        await expect(page.getByText('Change Password — admin')).toBeVisible();
+        const dialog = page.getByRole('dialog', { name: 'Change Password — admin' });
+        await expect(dialog).toBeVisible({ timeout: 15_000 });
+        await expect(dialog.getByRole('alert')).toHaveText('Your password expires in 3 days.');
+        await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(page.locator('.shell')).toBeVisible();
     });
 
     test('an MFA login with no matching web authenticator shows a clear message', async ({ page }) => {

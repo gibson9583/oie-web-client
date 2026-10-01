@@ -49,14 +49,14 @@ test('New User is blocked (and not created) when the password violates the polic
     await page.getByRole('button', { name: 'Create', exact: true }).click();
 
     // Blocked: the violation is surfaced, the user is NOT created, modal stays open.
-    await expect(page.getByText(/Password rejected/i)).toBeVisible();
+    await expect(page.getByText(/Your password is not valid\. Please fix the following:/)).toBeVisible();
     expect(createPosted).toBe(false);
     /* Dismiss the rejection first: while it is up it is a modal OVER the New User
        modal, so the dialog beneath is aria-hidden and genuinely not in the role
        tree. Acknowledging it is also the real flow — then Create is still there
        to try again with. */
     await page.keyboard.press('Escape');
-    await expect(page.getByText(/Password rejected/i)).toHaveCount(0);
+    await expect(page.getByText(/Your password is not valid/)).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create', exact: true })).toBeVisible();
 });
 
@@ -117,7 +117,7 @@ test('Edit User leaves the password untouched when the fields are blank', async 
     expect(pwPut).toBe(false);    // password NOT reset
 });
 
-test('Edit User resets the password: policy-checked, then written', async ({ page }) => {
+test('Edit User resets the password through the engine policy, like Swing', async ({ page }) => {
     await mockEngine(page);
     let checked = false, pwPut = false;
     page.on('request', (r) => {
@@ -133,18 +133,15 @@ test('Edit User resets the password: policy-checked, then written', async ({ pag
     await page.getByRole('button', { name: 'Save', exact: true }).click();
 
     await expect(page.locator('.modal')).toHaveCount(0);
-    expect(checked).toBe(true);   // policy enforced up front
-    expect(pwPut).toBe(true);     // then the new password is written
+    expect(checked).toBe(false);  // Swing has no preflight for an existing user
+    expect(pwPut).toBe(true);     // updateUserPassword applies the policy itself
 });
 
-test('Edit User blocks a policy-violating password reset (nothing written)', async ({ page }) => {
+test('Edit User blocks a policy-violating password reset (profile not saved)', async ({ page }) => {
+    let profiles = 0;
     await mockEngine(page, {
-        'POST /users/_checkPassword': { string: ['Password is too short. Minimum length is 8 characters'] },
-    });
-    let pwPut = false;
-    page.on('request', (r) => {
-        const p = new URL(r.url()).pathname;
-        if (r.method() === 'PUT' && /^\/api\/users\/\d+\/password$/.test(p)) pwPut = true;
+        'PUT /users/2': () => { profiles++; return ''; },
+        'PUT /users/2/password': { list: { string: ['Password is too short. Minimum length is 8 characters'] } },
     });
 
     await openEditUser(page);
@@ -156,12 +153,14 @@ test('Edit User blocks a policy-violating password reset (nothing written)', asy
     // Blocked: violation surfaced in an error dialog, password never written, and
     // the Edit User modal stays open (its two password fields remain) so the user
     // can correct and retry.
-    await expect(page.getByText(/Password rejected/i)).toBeVisible();
-    expect(pwPut).toBe(false);
+    await expect(page.getByText(/Your password is not valid\. Please fix the following:/)).toBeVisible();
+    await expect(page.getByText(/- Password is too short\. Minimum length is 8 characters/)).toBeVisible();
+    expect(profiles).toBe(0);
+    await page.keyboard.press('Escape');
     await expect(page.locator('.modal input[type=password]')).toHaveCount(2);
 });
 
-test('Edit User keeps a rejected password write open and retries without saving the profile twice', async ({ page }) => {
+test('Edit User saves the password before the profile and retries cleanly', async ({ page }) => {
     let profiles = 0;
     let passwords = 0;
     await mockEngine(page, {
@@ -174,16 +173,45 @@ test('Edit User keeps a rejected password write open and retries without saving 
     await fields.nth(0).fill('AcceptedByPreflight!');
     await fields.nth(1).fill('AcceptedByPreflight!');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(page.getByText('Password rejected: Password was already used', { exact: true })).toBeVisible();
-    await page.getByRole('dialog', { name: 'Warning' }).getByRole('button', { name: 'Close', exact: true }).last().click();
-    await expect(dialog.getByRole('status')).toContainText('Profile saved. Password was rejected');
-    expect(profiles).toBe(1);
+    await expect(page.getByText(/ - Password was already used/)).toBeVisible();
+    await page.getByRole('dialog', { name: 'Error' }).getByRole('button', { name: 'Close', exact: true }).last().click();
+    expect(profiles).toBe(0);
     await fields.nth(0).fill('CorrectedPassword!');
     await fields.nth(1).fill('CorrectedPassword!');
     await dialog.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(profiles).toBe(1);
     expect(passwords).toBe(2);
+});
+
+test('Save and Create stay disabled until the required fields are filled, like Swing', async ({ page }) => {
+    await mockEngine(page);
+    await openNewUser(page);
+    const create = page.getByRole('button', { name: 'Create', exact: true });
+    await expect(create).toBeDisabled();
+    await page.locator('.modal input[type=text]').first().fill('newguy');
+    await expect(create).toBeDisabled();
+    const pw = page.locator('.modal input[type=password]');
+    await pw.nth(0).fill('Passw0rd!');
+    await expect(create).toBeDisabled();
+    await pw.nth(1).fill('Passw0rd!');
+    await expect(create).toBeEnabled();
+    await page.locator('.modal input[type=text]').first().fill('');
+    await expect(create).toBeDisabled();
+});
+
+test('renaming your own account requires a new password, like Swing', async ({ page }) => {
+    let profiles = 0;
+    await mockEngine(page, { 'PUT /users/1': () => { profiles++; return ''; } });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Users', exact: true }).click();
+    await page.locator('tr', { hasText: 'admin' }).first().click();
+    await page.getByRole('button', { name: 'Edit User' }).click();
+    const dialog = page.getByRole('dialog', { name: /Edit User/ });
+    await dialog.locator('input[type=text]').first().fill('renamed-admin');
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('If you are changing your username, you must also update your password.')).toBeVisible();
+    expect(profiles).toBe(0);
 });
 
 test('New User dialog includes the extended profile fields (country/role/business/description)', async ({ page }) => {

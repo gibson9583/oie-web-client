@@ -21,3 +21,7 @@ export function passwordRequirementHints(req) {
     rule('minSpecial', 'special character');
     return hints;
 }
+/** Swing Frame.checkOrUpdateUserPassword's rejection text, one line per violation. */
+export function passwordRejectedMessage(violations) {
+    return 'Your password is not valid. Please fix the following:\n' + violations.map(v => ` - ${v}`).join('\n');
+}
