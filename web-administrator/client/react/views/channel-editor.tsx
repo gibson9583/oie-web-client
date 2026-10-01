@@ -42,6 +42,8 @@ import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
+import { routeUrl } from '../../core/deployment.js';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { validateScript } from '../../core/serialize.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { getPref } from '../../core/prefs.js';
@@ -2876,11 +2878,13 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             detail: { title: bannerTitle }
         })));
         onTasksChange();
+        const unregister = registerUnsavedCheck(isDirty);
         return () => {
             // In-flow hops (filter/transformer) re-register on return; anything
             // else must not inherit a stale guard. Drop the channel's completion
             // scope so it can't leak into the next channel's editors.
             store.setState('navGuard', null);
+            unregister();
             clearActiveScope();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2999,7 +3003,13 @@ export function ChannelEditorView({ params, query }: any) {
             }
             store.setState('editingChannel', loaded);
             setReady(true);
-        }).catch((e: any) => { if (alive) { toast(e.message, 'error'); setReady(false); } });
+        }).catch((e: any) => {
+            if (!alive) return;
+            if (query.new === '1') toast('The unsaved new channel was discarded.');
+            else toast(e.message, 'error');
+            history.replaceState(null, '', routeUrl('/channels'));
+            router.navigate('/channels');
+        });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

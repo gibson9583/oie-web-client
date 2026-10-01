@@ -227,18 +227,14 @@ test.describe('Channel editor', () => {
         const errors: any[] = [];
         page.on('pageerror', (e) => errors.push(e.message));
 
-        await page.goto('/channels/no-such-channel/edit');
-        await expect(page.locator('.dt-empty')).toHaveText('Channel not loaded');
-        await expect(page.getByText('This view failed to load.')).toHaveCount(0);
-        expect(errors).toEqual([]);
-
-        // The rest of the app is still usable — the rail is intact.
-        await expect(page.locator('.rail-nav [data-nav-item="channels"]')).toBeVisible();
-
-        // The sub-editors deep-link the same way and shared the same flaw.
-        for (const route of ['filter/0', 'transformer/0', 'response/1']) {
+        for (const route of ['edit', 'filter/0', 'transformer/0', 'response/1']) {
             await page.goto(`/channels/no-such-channel/${route}`);
-            await expect(page.locator('.dt-empty')).toHaveText('Channel not loaded');
+            await expect(page).toHaveURL(/\/channels$/);
+            const dialog = page.getByRole('dialog');
+            await expect(dialog.getByText('Channel no-such-channel was not found.')).toBeVisible();
+            await expect(page.getByText('This view failed to load.')).toHaveCount(0);
+            await dialog.locator('.btn-primary', { hasText: 'Close' }).click();
+            await expect(page.locator('.rail-nav [data-nav-item="channels"]')).toBeVisible();
         }
         expect(errors).toEqual([]);
     });

@@ -48,6 +48,8 @@ import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
 import * as router from '../../core/router.js';
+import { routeUrl } from '../../core/deployment.js';
+import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../../core/serialize.js';
 import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../datatypes/index.js';
@@ -1322,6 +1324,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         setActiveScope(params.channelId, [connectorType === 'RESPONSE' ? 'DESTINATION_RESPONSE_TRANSFORMER'
             : connectorType === 'SOURCE' ? 'SOURCE_FILTER_TRANSFORMER' : 'DESTINATION_FILTER_TRANSFORMER']);
         if (!embedded) store.setState('navGuard', (info: any) => guardImplRef.current(info));
+        const unregister = embedded ? () => {} : registerUnsavedCheck(channelDirty);
         if (!embedded) {
             // Banner: "Edit Channel - <name> - <connector> <Filter/Transformer>"
             // (Swing parity). Deferred past the route:changed title reset (see
@@ -1337,6 +1340,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         return () => {
             persistRef.current();
             if (!embedded) store.setState('navGuard', null);
+            unregister();
             clearActiveScope();
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1958,7 +1962,12 @@ function FilterTransformerView({ params, kindName }: any) {
             store.setState('editingChannel', loaded);
             store.setState('editingChannelNew', false);
             setReady(true);
-        }).catch((e: any) => { if (alive) { toast(e.message, 'error'); setReady(false); } });
+        }).catch((e: any) => {
+            if (!alive) return;
+            toast(e.message, 'error');
+            history.replaceState(null, '', routeUrl('/channels'));
+            router.navigate('/channels');
+        });
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

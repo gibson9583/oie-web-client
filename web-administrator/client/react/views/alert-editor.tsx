@@ -38,6 +38,7 @@ import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import * as router from '../../core/router.js';
+import { routeUrl } from '../../core/deployment.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { getPref } from '../../core/prefs.js';
@@ -332,6 +333,16 @@ export function AlertEditor({ params, query = {} }: any) {
             let model: any;
             if (stored && stored.id === alertId) {
                 model = stored;
+            } else if (isNew) {
+                model = await loadAlertForEdit(alertId).catch(() => null);
+                if (!model) {
+                    toast('The unsaved new alert was discarded.');
+                    store.setState('navGuard', null);
+                    history.replaceState(null, '', routeUrl('/alerts'));
+                    router.navigate('/alerts');
+                    return;
+                }
+                store.setState('editingAlertDirty', false);
             } else {
                 model = await loadAlertForEdit(alertId);
                 store.setState('editingAlertDirty', false);
