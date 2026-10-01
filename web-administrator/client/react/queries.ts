@@ -54,6 +54,7 @@ export function useDeployedStatuses(live = true) {
     return useQuery({
         queryKey: ['statuses', 'deployed'],
         queryFn: async () => (await api.status.list(undefined, undefined, false)).filter((s: any) => s.state !== 'UNDEPLOYED'),
+        refetchOnMount: 'always',
         refetchInterval: () => (live ? dashIntervalMs(2) : false)
     });
 }
@@ -65,6 +66,7 @@ export function useDashboardStatuses() {
     return useQuery({
         queryKey: ['statuses', 'dashboard'],
         queryFn: () => api.status.list(),
+        refetchOnMount: 'always',
         refetchInterval: () => dashIntervalMs(1)
     });
 }

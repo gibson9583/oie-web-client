@@ -1,6 +1,7 @@
 import { test, expect } from './base.js';
 import { readFile } from 'node:fs/promises';
 import { mockEngine } from './mock.js';
+import { SAMPLE_STATUSES } from './fixtures.js';
 import * as zipjs from '../web-administrator/client/vendor/zipjs.min.js';
 
 zipjs.configure({ useWebWorkers: false });
@@ -603,6 +604,21 @@ test.describe('Channels React view', () => {
         await page.getByText('Demo Stopped', { exact: true }).click();
         await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
         await expect(page).toHaveURL(/\/dashboard/);
+    });
+
+    test('Deploy Channel shows the new state on the dashboard without waiting for a poll (#77)', async ({ page }) => {
+        let deployed = false;
+        await mockEngine(page, {
+            ...GROUPS_FIXTURE,
+            'POST /channels/_deploy?returnErrors=true': () => { deployed = true; return ''; },
+            'GET /channels/statuses': () => ({ list: { dashboardStatus: SAMPLE_STATUSES.map((s: any) =>
+                (deployed && s.channelId === 'c-stopped' ? { ...s, state: 'STARTED' } : s)) } }),
+        });
+        await gotoChannels(page);
+        await page.getByText('Demo Stopped', { exact: true }).click();
+        await page.getByRole('button', { name: 'Deploy Channel', exact: true }).click();
+        await expect(page).toHaveURL(/\/dashboard/);
+        await expect(page.getByRole('row').filter({ hasText: 'Demo Stopped' }).first()).toContainText('Started', { timeout: 3000 });
     });
 
     test('Deploy Channel warns and skips the disabled part of a mixed selection like Swing', async ({ page }) => {
