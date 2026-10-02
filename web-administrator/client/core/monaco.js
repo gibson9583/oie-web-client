@@ -563,9 +563,11 @@ export function mountMonaco(monaco, editor, opts = {}) {
     const scope = opts.completionScope;
     const holder = { token: -1, previous: null, disposed: false };
     const focusSub = scope ? instance.onDidFocusEditorText(() => {
-        if (ownsScope(holder))
-            return;
-        holder.previous = { owner: ownsScope(scopeOwner) ? scopeOwner : null, scope: activeScope() };
+        // Refocus retries a failed template load, but must not replace the
+        // saved parent scope with this editor's own scope.
+        if (!ownsScope(holder)) {
+            holder.previous = { owner: ownsScope(scopeOwner) ? scopeOwner : null, scope: activeScope() };
+        }
         setActiveScope(scope.channelId, [scope.context]);
         holder.token = currentScope();
         scopeOwner = holder;

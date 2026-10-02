@@ -293,6 +293,78 @@ test('the batch script dialog completes in CHANNEL_BATCH and gives the Reader it
     await expectScope(page, ['Alpha Reader Only', 'readerOnly'], ['Alpha Batch Only', 'batchOnly']);
 });
 
+// Code template libraries that answer 503 until `state.down` is cleared.
+// `failed()` resolves when the completion scope reports the next failed load.
+const flakyLibraries = (page: any) => {
+    const state = { down: true, requests: 0 };
+    return {
+        state,
+        fixtures: {
+            ...FIXTURES,
+            'GET /codeTemplateLibraries': () => {
+                state.requests++;
+                return state.down ? { __status: 503 } : FIXTURES['GET /codeTemplateLibraries'];
+            }
+        },
+        failed: () => page.waitForEvent('console', (m: any) => m.text().includes('could not load code templates'))
+    };
+};
+const refocus = async (page: any, editor: any) => {
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await editor.click();
+};
+
+test('refocusing the JavaScript Reader retries a failed code-template load', async ({ page }) => {
+    await installPlugin(page);
+    const libraries = flakyLibraries(page);
+    await mockEngine(page, libraries.fixtures);
+    await page.goto(`/channels/${JS_CHANNEL_ID}/edit`);
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
+    const reader = page.locator('.ce .monaco-editor').first();
+
+    const failed = libraries.failed();
+    await reader.click();
+    await failed;
+    expect((await activeScope(page)).templates).toEqual([]);
+
+    // The engine recovers; focusing the editor again loads the templates.
+    libraries.state.down = false;
+    const requests = libraries.state.requests;
+    await refocus(page, reader);
+    await expectScope(page, ['Alpha Reader Only', 'readerOnly'], POST);
+    expect(libraries.state.requests).toBeGreaterThan(requests);
+});
+
+test('refocusing the batch script dialog retries the load and still gives the Reader its scope back', async ({ page }) => {
+    await installPlugin(page);
+    const libraries = flakyLibraries(page);
+    await mockEngine(page, libraries.fixtures);
+    await page.goto(`/channels/${JS_CHANNEL_ID}/guided`);
+    await page.locator('.wiz-step', { hasText: 'Source' }).click();
+
+    let failed = libraries.failed();
+    await page.locator('.ce .monaco-editor').first().click();
+    await failed;
+
+    await page.getByRole('button', { name: /Edit properties/ }).click();
+    await page.locator('div:has(> .cform-section-title:text-is("Inbound properties"))')
+        .getByRole('button', { name: /^Edit/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Script', exact: true });
+    const editor = dialog.locator('.monaco-editor');
+    failed = libraries.failed();
+    await editor.click();
+    await failed;
+
+    libraries.state.down = false;
+    await refocus(page, editor);
+    await expectScope(page, ['Alpha Batch Only', 'batchOnly'], ['Alpha Reader Only', 'readerOnly']);
+
+    // The refocus kept the scope the dialog displaced: closing returns it to the Reader.
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expectScope(page, ['Alpha Reader Only', 'readerOnly'], ['Alpha Batch Only', 'batchOnly']);
+});
+
 test('a template load that finishes after the scope is cleared does not restore it', async ({ page }) => {
     await installPlugin(page);
     await mockEngine(page, FIXTURES);
