@@ -19,7 +19,7 @@
 import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
-import { getActiveCompletions, getActiveLibs, onActiveLibsChange, getActiveReferences, referenceSignature, dropTextFor, cleanDesc } from './script-completions.js';
+import { getActiveCompletions, getActiveLibs, onActiveLibsChange, getActiveReferences, referenceSignature, dropTextFor, cleanDesc, setActiveScope, clearActiveScope, currentScope } from './script-completions.js';
 import { appUrl } from './deployment.js';
 // Where the server serves the vendored Monaco worker bundles. The editor bundle
 // itself is imported via the 'monaco-editor' specifier (import map / Vite).
@@ -534,6 +534,14 @@ export function mountMonaco(monaco, editor, opts = {}) {
         scheduleHighlight(e.changes);
     });
     highlightReservedVars(monaco, instance); // initial paint (whole document)
+    // An editor with its own context takes the completion scope on focus and
+    // releases it on dispose, unless another editor or view has taken it since.
+    const scope = opts.completionScope;
+    let scopeToken = -1;
+    const focusSub = scope ? instance.onDidFocusEditorText(() => {
+        setActiveScope(scope.channelId, [scope.context]);
+        scopeToken = currentScope();
+    }) : null;
     // The JS Monarch tokenizer resolves ASYNCHRONOUSLY, so the initial paint above
     // can run against typeless tokens — the string/comment skip then never matches
     // and reserved vars get colored inside comments, staying wrong on lines that
@@ -562,6 +570,10 @@ export function mountMonaco(monaco, editor, opts = {}) {
         changeSub.dispose();
         if (tokenSub)
             tokenSub.dispose();
+        if (focusSub) {
+            focusSub.dispose();
+            clearActiveScope(scopeToken);
+        }
         const model = instance.getModel();
         instance.dispose();
         if (model)

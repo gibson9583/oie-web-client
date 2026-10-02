@@ -19,7 +19,10 @@ export declare function templateSourcesInScope(channelId: string | number, conte
 export declare function onActiveLibsChange(cb: (libs: TemplateLib[]) => void): () => void;
 export declare function getActiveLibs(): TemplateLib[];
 export declare function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void>;
-export declare function clearActiveScope(): void;
+/** The current scope's token, for clearActiveScope(token). */
+export declare function currentScope(): number;
+/** Clear the scope; with a token, only while that scope is still the active one. */
+export declare function clearActiveScope(token?: number): void;
 export declare function getActiveCompletions(): TemplateCompletion[];
 /** A Reference list entry: a categorized engine catalog entry or a plugin one. */
 export interface ReferenceEntry {

@@ -190,7 +190,12 @@ function setActiveLibs(next: TemplateLib[]): void {
     for (const cb of [...libListeners]) { try { cb(activeLibs); } catch { /* listener error */ } }
 }
 
+/* Bumped by every scope change and clear, so a slow template load cannot
+   restore a scope that was replaced or cleared while it ran. */
+let scopeGeneration = 0;
+
 export async function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void> {
+    const generation = ++scopeGeneration;
     activeContexts = contexts || [];
     if (!catalog.length && activeContexts.length) {
         import('./reference-catalog.js').then((m) => { catalog = m.REFERENCE_CATALOG; }, () => { /* plugin references only */ });
@@ -201,12 +206,20 @@ export async function setActiveScope(channelId: string | number | null | undefin
             templatesInScope(String(channelId), contexts),
             templateSourcesInScope(String(channelId), contexts)
         ]);
+        if (generation !== scopeGeneration) return;
         active = fns;
         setActiveLibs(libs);
-    } catch { active = []; setActiveLibs([]); }
+    } catch { if (generation === scopeGeneration) { active = []; setActiveLibs([]); } }
 }
 
-export function clearActiveScope(): void { active = []; activeContexts = []; setActiveLibs([]); }
+/** The current scope's token, for clearActiveScope(token). */
+export function currentScope(): number { return scopeGeneration; }
+
+/** Clear the scope; with a token, only while that scope is still the active one. */
+export function clearActiveScope(token?: number): void {
+    if (token !== undefined && token !== scopeGeneration) return;
+    scopeGeneration++; active = []; activeContexts = []; setActiveLibs([]);
+}
 
 export function getActiveCompletions(): TemplateCompletion[] { return active; }
 

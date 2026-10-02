@@ -2491,7 +2491,10 @@ function ScriptsTab({ channel, markDirty }: any) {
 
     // One editor switches between the four channel scripts, so scope the
     // code-template completions to whichever script is showing.
-    useEffect(() => { setActiveScope(channel.id, [current.context]); }, [channel.id, current]);
+    useEffect(() => {
+        setActiveScope(channel.id, [current.context]);
+        return () => clearActiveScope();
+    }, [channel.id, current]);
 
     useEffect(() => {
         const editor = createCodeEditor({

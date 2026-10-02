@@ -22,6 +22,9 @@ export interface CodeEditorOptions {
     popoutTitle?: string;
     /** [[label, insertText]] variables rail in the code view. */
     popoutVars?: Array<[string, string]>;
+    /** This editor's own completion context (Swing's per-editor ContextType): it
+        takes the code-template and Reference completion scope while focused. */
+    completionScope?: { channelId?: string; context: string };
     [extra: string]: any;
 }
 

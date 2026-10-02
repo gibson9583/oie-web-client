@@ -1,6 +1,6 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
-import { makeChannel } from './connector-fixtures.js';
+import { makeChannel, CASES } from './connector-fixtures.js';
 
 /*
  * The filter/transformer Reference list (ReferenceTab): engine catalog entries,
@@ -12,21 +12,36 @@ import { makeChannel } from './connector-fixtures.js';
 
 const CHANNEL_ID = 'reference-channel';
 
-const template = (id: string, name: string, contexts: string[]) => ({
+const template = (id: string, name: string, contexts: string[], type = 'DRAG_AND_DROP_CODE') => ({
     '@version': '4.6.0', id, name, revision: 1,
     contextSet: { delegate: { contextType: contexts } },
-    properties: { '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties', type: 'DRAG_AND_DROP_CODE', code: `${id}();` }
+    properties: {
+        '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties', type,
+        code: type === 'FUNCTION' ? `function ${id}() {}` : `${id}();`
+    }
 });
+
+const connector = (name: string) => {
+    const c = CASES.find((k: any) => k.name === name)!;
+    return { transportName: c.name, properties: (c.properties as any)() };
+};
+const JS_CHANNEL_ID = 'reference-js-channel';
 
 const FIXTURES = {
     [`GET /channels/${CHANNEL_ID}`]: { channel: makeChannel(CHANNEL_ID) },
+    [`GET /channels/${JS_CHANNEL_ID}`]: { channel: makeChannel(JS_CHANNEL_ID, {
+        source: connector('JavaScript Reader'), destination: connector('JavaScript Writer')
+    }) },
     'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [{
         '@version': '4.6.0', id: 'lib-ref', name: 'Demo Lib', revision: 1, description: '',
         includeNewChannels: true, enabledChannelIds: '', disabledChannelIds: '',
         codeTemplates: { codeTemplate: [
             template('srcHelper', 'Src Helper', ['SOURCE_FILTER_TRANSFORMER']),
             template('deployOnly', 'Deploy Only', ['CHANNEL_DEPLOY']),
-            template('respHelper', 'Resp Helper', ['DESTINATION_RESPONSE_TRANSFORMER'])
+            template('respHelper', 'Resp Helper', ['DESTINATION_RESPONSE_TRANSFORMER']),
+            template('postOnly', 'Post Only', ['CHANNEL_POSTPROCESSOR'], 'FUNCTION'),
+            template('readerOnly', 'Reader Only', ['SOURCE_RECEIVER'], 'FUNCTION'),
+            template('writerOnly', 'Writer Only', ['DESTINATION_DISPATCHER'], 'FUNCTION')
         ] }
     }] } }
 };
@@ -39,7 +54,9 @@ const PLUGIN = `
         ]);
         p.registerReferences('Alpha Functions', [
             { name: 'Alpha Source Only', code: 'alpha()', contexts: ['SOURCE_FILTER_TRANSFORMER'] },
-            { name: 'Alpha Postprocessor Only', code: 'alphaPost()', contexts: ['CHANNEL_POSTPROCESSOR'] }
+            { name: 'Alpha Postprocessor Only', code: 'alphaPost()', contexts: ['CHANNEL_POSTPROCESSOR'] },
+            { name: 'Alpha Reader Only', code: 'alphaReader()', contexts: ['SOURCE_RECEIVER'] },
+            { name: 'Alpha Writer Only', code: 'alphaWriter()', contexts: ['DESTINATION_DISPATCHER'] }
         ]);
         p.registerReferences('Conversion Functions', [{ name: 'Convert Demo to XML', code: 'demo()' }]);
         // Malformed entries are dropped, not rendered.
@@ -155,4 +172,96 @@ test('script autocomplete offers the editor context\'s Reference entries', async
     // Postprocessor script: its own entries join.
     await page.locator('select:has(option[value="postprocessingScript"])').selectOption('postprocessingScript');
     await expect.poll(() => activeReferences(page)).toEqual(expect.arrayContaining(['Get Merged Connector Message', 'Alpha Postprocessor Only']));
+});
+
+// The completion provider's inputs: the active Reference entries and code-template functions.
+const activeScope = (page: any) => page.evaluate(async () => {
+    const path = '/core/script-completions.js';
+    const m = await import(path);
+    return {
+        references: m.getActiveReferences().map((r: any) => r.name),
+        templates: m.getActiveCompletions().map((t: any) => t.name)
+    };
+});
+const scriptSelect = (page: any) => page.locator('select:has(option[value="postprocessingScript"])');
+const openPostprocessor = async (page: any) => {
+    await page.getByRole('tab', { name: 'Scripts', exact: true }).click();
+    await scriptSelect(page).selectOption('postprocessingScript');
+    await expect.poll(async () => {
+        const scope = await activeScope(page);
+        return scope.references.includes('Alpha Postprocessor Only') && scope.templates.includes('postOnly');
+    }).toBe(true);
+};
+const EMPTY = { references: [], templates: [] };
+
+// The scope a connector editor takes on focus: its own context's entries only.
+const expectScope = async (page: any, own: [string, string], others: string[]) => {
+    await expect.poll(async () => {
+        const scope = await activeScope(page);
+        return scope.references.includes(own[0]) && scope.templates.includes(own[1]);
+    }).toBe(true);
+    const scope = await activeScope(page);
+    for (const name of others) {
+        expect(scope.references).not.toContain(name);
+        expect(scope.templates).not.toContain(name);
+    }
+};
+const POST = ['Alpha Postprocessor Only', 'postOnly'];
+
+test('the JavaScript Reader and Writer editors complete in their own contexts, not the Scripts tab\'s', async ({ page }) => {
+    await installPlugin(page);
+    await mockEngine(page, FIXTURES);
+    await page.goto(`/channels/${JS_CHANNEL_ID}/edit`);
+
+    // Postprocessor -> Source: the Scripts scope is gone; the JavaScript Reader
+    // takes SOURCE_RECEIVER when focused.
+    await openPostprocessor(page);
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
+    await expect.poll(() => activeScope(page)).toEqual(EMPTY);
+    await page.locator('.ce .monaco-editor').first().click();
+    await expectScope(page, ['Alpha Reader Only', 'readerOnly'], [...POST, 'Alpha Writer Only', 'writerOnly']);
+    await page.keyboard.type('readerOnl');
+    await expect(async () => {
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Control+Space');
+        await expect(page.locator('.suggest-widget .monaco-list-row', { hasText: 'readerOnly()' }).first()).toBeVisible({ timeout: 2000 });
+    }).toPass();
+    await page.keyboard.press('Escape');
+
+    // Postprocessor -> Destinations: the JavaScript Writer takes DESTINATION_DISPATCHER.
+    await openPostprocessor(page);
+    await page.getByRole('tab', { name: 'Destinations', exact: true }).click();
+    await expect.poll(() => activeScope(page)).toEqual(EMPTY);
+    await page.locator('.ce .monaco-editor').first().click();
+    await expectScope(page, ['Alpha Writer Only', 'writerOnly'], [...POST, 'Alpha Reader Only', 'readerOnly']);
+
+    // Back to Scripts: the scope follows the script that shows.
+    await page.getByRole('tab', { name: 'Scripts', exact: true }).click();
+    await expect(scriptSelect(page)).toHaveValue('deployScript');
+    await expect.poll(async () => (await activeScope(page)).references).toContain('Zeta Call');
+    const deploy = await activeScope(page);
+    for (const name of [...POST, 'Alpha Writer Only', 'writerOnly']) {
+        expect(deploy.references).not.toContain(name);
+        expect(deploy.templates).not.toContain(name);
+    }
+    await openPostprocessor(page);
+});
+
+test('a template load that finishes after the scope is cleared does not restore it', async ({ page }) => {
+    await installPlugin(page);
+    await mockEngine(page, FIXTURES);
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route('**/api/codeTemplateLibraries*', async (route: any) => { await gate; await route.fallback(); });
+    await page.goto(`/channels/${JS_CHANNEL_ID}/edit`);
+
+    await page.getByRole('tab', { name: 'Scripts', exact: true }).click();
+    await scriptSelect(page).selectOption('postprocessingScript');
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
+
+    const loaded = page.waitForResponse('**/api/codeTemplateLibraries*');
+    release();
+    await loaded;
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(await activeScope(page)).toEqual(EMPTY);
 });
