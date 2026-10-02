@@ -255,6 +255,17 @@ export interface MessageActionContext {
     connectorMessage: OieObject | null;
     [key: string]: any;
 }
+/** A Reference list entry for the script editors (Swing's
+    CodeTemplatePlugin.getReferenceItems). */
+export interface ReferenceItem {
+    name: string;
+    description?: string;
+    code: string;
+    /** FUNCTION drops the call, COMPILED_CODE is not draggable. Default: DRAG_AND_DROP_CODE (drops the code). */
+    type?: 'FUNCTION' | 'DRAG_AND_DROP_CODE' | 'COMPILED_CODE';
+    /** ContextType names the entry applies to, e.g. 'SOURCE_FILTER_TRANSFORMER'. Default: every context. */
+    contexts?: string[];
+}
 /** A loaded plugin's manifest plus its load status. */
 export interface PluginManifest {
     id: string;
@@ -267,7 +278,7 @@ export interface PluginManifest {
     apiMin?: string | null;
     [key: string]: any;
 }
-export declare const OIE_API_VERSION = "4.7.0";
+export declare const OIE_API_VERSION = "4.8.0";
 export declare function apiCompatible(provided: string, requiredMin?: string | null): boolean;
 /** The platform handed to every plugin's `register(platform)`. */
 export interface Platform {
@@ -305,6 +316,8 @@ export interface Platform {
     registerChannelAction(action: ChannelAction): void;
     registerCodeTemplateAction(action: CodeTemplateAction): void;
     registerMessageAction(action: MessageAction): void;
+    /** Add Reference list and autocomplete entries under `category` — a new category or an existing one such as 'Conversion Functions'. */
+    registerReferences(category: string, items: ReferenceItem[]): void;
     registerSettingsPanel(panel: SettingsPanel): void;
     registerAttachmentViewer(viewer: AttachmentViewer): void;
     registerStepType(type: string, def: StepRuleType): void;
@@ -321,6 +334,9 @@ export interface Platform {
     channelActions(): ChannelAction[];
     codeTemplateActions(): CodeTemplateAction[];
     messageActions(): MessageAction[];
+    references(): Array<ReferenceItem & {
+        category: string;
+    }>;
     settingsPanels(): SettingsPanel[];
     attachmentViewers(): AttachmentViewer[];
     stepType(type: string): StepRuleType | undefined;

@@ -19,5 +19,41 @@ export declare function templateSourcesInScope(channelId: string | number, conte
 export declare function onActiveLibsChange(cb: (libs: TemplateLib[]) => void): () => void;
 export declare function getActiveLibs(): TemplateLib[];
 export declare function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void>;
-export declare function clearActiveScope(): void;
+/** The current scope's token, for clearActiveScope(token). */
+export declare function currentScope(): number;
+/** The active scope's channel and contexts, to restore it later. */
+export declare function activeScope(): {
+    channelId: string | number | null | undefined;
+    contexts: string[];
+};
+/** Clear the scope; with a token, only while that scope is still the active one. */
+export declare function clearActiveScope(token?: number): void;
 export declare function getActiveCompletions(): TemplateCompletion[];
+/** A Reference list entry: a categorized engine catalog entry or a plugin one. */
+export interface ReferenceEntry {
+    name: string;
+    category: string;
+    description?: string;
+    code: string;
+    type?: string;
+    contexts?: string[];
+}
+type CatalogEntry = Omit<ReferenceEntry, 'category'> & {
+    category: string | null;
+};
+/** Add plugin Reference entries (platform.registerReferences). Entries without
+    a name or category string, or with non-array contexts, are dropped: they
+    would break every view. */
+export declare function addReferences(entries: ReferenceEntry[]): void;
+export declare function registeredReferences(): ReferenceEntry[];
+export declare function referencesFor(catalogEntries: CatalogEntry[], contexts: string[]): ReferenceEntry[];
+/** The active editor's Reference entries, offered as completions like Swing's. */
+export declare function getActiveReferences(): ReferenceEntry[];
+/** A FUNCTION reference's signature, or null when its code has none. */
+export declare function referenceSignature(entry: ReferenceEntry): {
+    name: string;
+    params: string[];
+} | null;
+export declare function dropTextFor(entry: any): string;
+export declare const cleanDesc: (d: any) => string;
+export {};

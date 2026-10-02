@@ -19,9 +19,12 @@ import { dataTypeListText, normalizeDataTypeList } from '../core/datatype-arrays
 
 /* Script editor in a modal (the Swing data-type properties "Edit" → Script
    dialog): code editor + Open File / Validate Script / OK / Cancel. */
-function openScriptModal(value: any, onSave: any) {
+function openScriptModal(value: any, onSave: any, channelId: any) {
     let draft = String(value ?? '');
-    const editor = createCodeEditor({ value: draft, language: 'javascript', minHeight: '360px', onChange: (v: any) => { draft = v; } });
+    const editor = createCodeEditor({
+        value: draft, language: 'javascript', minHeight: '360px', onChange: (v: any) => { draft = v; },
+        completionScope: { channelId, context: 'CHANNEL_BATCH' }
+    });
     modal({
         title: 'Script',
         size: 'wide',
@@ -84,7 +87,7 @@ function Field({ label, hint, children }: any) {
 // One grouped field; mutates groupObj[f.key] in place, then notifies (which
 // re-renders so the controlled input reflects + fires the host onChange). The
 // null/number/boolean coercions match the imperative editor verbatim.
-function FieldControl({ groupObj, f, notify }: any) {
+function FieldControl({ groupObj, f, notify, channelId }: any) {
     const value = groupObj[f.key];
     switch (f.type) {
         case 'list': {
@@ -142,7 +145,7 @@ function FieldControl({ groupObj, f, notify }: any) {
             return (
                 <Field label={f.label} hint={f.hint}>
                     <button type="button" className="btn btn-sm"
-                        onClick={() => openScriptModal(groupObj[f.key], (v: any) => { groupObj[f.key] = v; notify(); })}>
+                        onClick={() => openScriptModal(groupObj[f.key], (v: any) => { groupObj[f.key] = v; notify(); }, channelId)}>
                         {value && String(value).trim() ? 'Edit' : 'Edit…'}
                     </button>
                 </Field>
@@ -180,7 +183,7 @@ function RawProperties({ typeName, props, onReplace }: any) {
  *   onChange       called after each grouped-field edit
  *   onReplace      called with a new object when an unknown type's raw JSON is edited
  */
-export function DataTypePropertiesEditor({ typeName, props, version, direction = 'inbound', connectorType = 'SOURCE', onChange, onReplace }: any) {
+export function DataTypePropertiesEditor({ typeName, props, version, direction = 'inbound', connectorType = 'SOURCE', onChange, onReplace, channelId }: any) {
     const [, tick] = useReducer((x: any) => x + 1, 0);
     const notify = () => { if (onChange) onChange(); tick(); };
 
@@ -205,7 +208,7 @@ export function DataTypePropertiesEditor({ typeName, props, version, direction =
                     <div key={spec.key}>
                         <div className={GROUP_LABEL_CLASS}>{spec.label}</div>
                         <div className="flex flex-col gap-1.5">
-                            {(group as any).fields.map((f: any) => <FieldControl key={f.key} groupObj={groupObj} f={f} notify={notify} />)}
+                            {(group as any).fields.map((f: any) => <FieldControl key={f.key} groupObj={groupObj} f={f} notify={notify} channelId={channelId} />)}
                         </div>
                     </div>
                 );

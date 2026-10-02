@@ -140,6 +140,7 @@ ones are built.
 | `ClientPlugin` adding a task to the Channels panel | `simple-channel-history` ("View History") | `registerChannelAction` — adds a right-click item + Channel Tasks button for a single-channel selection |
 | `ClientPlugin` adding a task to the Code Templates panel | `simple-channel-history` ("View History") | `registerCodeTemplateAction` — adds a right-click item for a selected code template |
 | *(none — Swing's `MessageBrowser` takes no plugin tasks)* | | `registerMessageAction` — adds a right-click item on a message row + a Message Tasks button for the selected row, with the row's connector in context. Web-only; API `4.7`+ |
+| `CodeTemplatePlugin` (`getReferenceItems`) | `http` (HTTP Listener/Sender Functions), `file` (File Reader Functions) | `registerReferences(category, items)`: adds entries to the filter/transformer Reference list, in a new category or in an existing one such as `Conversion Functions`, and to script autocomplete. Each entry shows only in its `contexts`. API `4.8`+ |
 | `TransformerStepPlugin` / `FilterRulePlugin` | mapper, messagebuilder, javascriptstep, xsltstep, destinationsetfilter, scriptfilestep, iterator; rulebuilder, javascriptrule, scriptfilerule | bundled as the `transformer-steps` web plugin calling `registerStepType` / `registerRuleType` |
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
@@ -212,7 +213,7 @@ export function register() {
 
 The framework surface — the `platform` registries plus the `@oie/web-*` exports —
 is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
-1.0 implements **4.7.0** against OIE **4.6.0**. The API minor can advance independently
+implements **4.8.0** against OIE **4.6.0**. The API minor can advance independently
 when exports are added; it is not the application or engine version. It follows
 major.minor (the patch is ignored for compatibility): the **minor** bumps when the
 surface *grows* (new registry, new export), the **major** bumps on any *breaking*
@@ -239,9 +240,10 @@ Guidance:
 - Set it to the version that introduced the newest capability you use, so an older
   host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
   for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
+- `registerReferences` arrived in API `4.8`. A plugin that calls it declares `"apiMin": "4.8"`.
 - Settings panel save declarations accept `Promise<boolean>` as well as `boolean`,
-  matching the host's existing await behavior. This is a type correction; the
-  runtime API remains `4.7`.
+  matching the host's existing await behavior. This is a type correction, not an
+  API change.
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
@@ -482,6 +484,19 @@ platform.registerMessageAction({ id, label, icon, order, task,
     isEnabled: (ctx) => ctx.metaDataId !== 0,   // e.g. destinations only
     onInvoke: (message, ctx) => { /* open a dialog, call /extensions/… with message.messageId, … */ } });
 
+// Reference list entries (Swing's CodeTemplatePlugin.getReferenceItems; API
+// 4.8+). The entries show in the filter/transformer Reference list under
+// `category`: a new category, or an existing one such as 'Conversion Functions'.
+// Script autocomplete offers them too: FUNCTION entries as calls, others by name.
+// type: FUNCTION drops the call, DRAG_AND_DROP_CODE (the default) drops the
+// code, COMPILED_CODE is not draggable. contexts: the ContextType names where
+// the entry shows (the default is every context).
+platform.registerReferences('My Functions', [
+    { name: 'Get Order ID', description: 'Returns the order ID from the message.',
+      code: "msg['ORC']['ORC.2']['ORC.2.1'].toString()",
+      contexts: ['SOURCE_FILTER_TRANSFORMER', 'DESTINATION_FILTER_TRANSFORMER'] }
+]);
+
 // Message attachment renderer (AttachmentViewer)
 platform.registerAttachmentViewer({ id,
     canHandle(attachment) { return attachment.type === 'application/dicom'; },
@@ -578,7 +593,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.7.0"` in Web Administrator 1.0, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.8.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
@@ -587,7 +602,7 @@ platform.setAuthorizationController({
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
 | `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. Data types are exposed separately through `platform.dataTypes()`. |
 | `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` / `platform.attachmentViewers()` | Read the registered data types / transmission modes / resource types / attachment viewers (each populated by a plugin). |
-| `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned User API IntelliSense, in-scope code-template completions, engine-backed validation, and client-side Format Document), else a plain textarea. `platform.setCodeEditorFactory` swaps the implementation app-wide. |
+| `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange, completionScope })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned User API IntelliSense, in-scope code-template completions, engine-backed validation, and client-side Format Document), else a plain textarea. `completionScope: { channelId, context }` gives the editor its own ContextType: while it has focus, code-template and Reference completions use that context (API `4.8`+). `platform.setCodeEditorFactory` swaps the implementation app-wide. |
 | `platform.createDiffEditor({ original, modified, language, renderSideBySide })` | Read-only side-by-side diff viewer backed by the host's single Monaco instance (side-by-side + inline word-level highlighting + syntax colors). Returns `{ el, setModels({ original, modified, language }), layout(), dispose() }`; mount `el`, call `setModels` to swap content, `dispose()` when done. Degrades to a plain two-pane text view if Monaco is unavailable, so you never branch on its presence. Used by `simple-channel-history` for its revision diff. |
 | `platform.router` | `navigate(path)`, `currentPath()` |
 | `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`, `'webadminConfig'`) and pub/sub bus |

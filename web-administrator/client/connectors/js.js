@@ -18,14 +18,15 @@ const javascriptReader = {
             script: ''
         };
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange, channel }) {
         return (React.createElement("div", null,
             React.createElement(PollSection, { properties: properties, onChange: onChange }),
             React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
                     { section: 'JavaScript Reader Settings' },
                     {
                         key: 'script', label: 'JavaScript', type: 'code', language: 'javascript', minHeight: '260px',
-                        placeholder: '// Return one or more messages to be processed'
+                        placeholder: '// Return one or more messages to be processed',
+                        completionScope: { channelId: channel && channel.id, context: 'SOURCE_RECEIVER' }
                     }
                 ] })));
     },
@@ -46,12 +47,13 @@ const javascriptWriter = {
             script: ''
         };
     },
-    component({ properties, onChange }) {
+    component({ properties, onChange, channel }) {
         return (React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
                 { section: 'JavaScript Writer Settings' },
                 {
                     key: 'script', label: 'JavaScript', type: 'code', language: 'javascript', minHeight: '300px',
-                    placeholder: '// Write your script here. Return a Response or a status to set the message status.'
+                    placeholder: '// Write your script here. Return a Response or a status to set the message status.',
+                    completionScope: { channelId: channel && channel.id, context: 'DESTINATION_DISPATCHER' }
                 }
             ] }));
     },

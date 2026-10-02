@@ -27,6 +27,7 @@ export function register() {
 - `platform.registerConnectorPanel(...)` / `platform.registerConnectorPropertiesPanel(...)` — connector editor panels
 - `platform.registerDashboardTab(...)` / `platform.registerDashboardColumn(...)` — dashboard tabs and columns
 - `platform.registerChannelTab(...)`, `platform.registerAttachmentViewer(...)`, `platform.registerStepType(...)` / `registerRuleType(...)`, `platform.registerResourceType(...)`
+- `platform.registerReferences(...)`: entries in the filter/transformer Reference list and script autocomplete
 - `platform.store` / `platform.router` / `platform.events` — shared app state, routing, and the event bus
 
 ## Plugin UI is React

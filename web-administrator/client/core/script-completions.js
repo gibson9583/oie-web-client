@@ -45,7 +45,9 @@ function libraryInScope(lib, channelId) {
 /* A FUNCTION template's code → { name, params, doc } (its signature + leading
    JSDoc), or null when there's no parseable `function name(...)`. */
 function parseFunction(template) {
-    const code = String((template.properties && template.properties.code) || '');
+    return parseFunctionCode(String((template.properties && template.properties.code) || ''));
+}
+function parseFunctionCode(code) {
     const fn = code.match(/function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/);
     if (!fn)
         return null;
@@ -171,7 +173,16 @@ function setActiveLibs(next) {
         catch { /* listener error */ }
     }
 }
+/* Bumped by every scope change and clear, so a slow template load cannot
+   restore a scope that was replaced or cleared while it ran. */
+let scopeGeneration = 0;
 export async function setActiveScope(channelId, contexts) {
+    const generation = ++scopeGeneration;
+    activeContexts = contexts || [];
+    activeChannelId = channelId;
+    if (!catalog.length && activeContexts.length) {
+        import('./reference-catalog.js').then((m) => { catalog = m.REFERENCE_CATALOG; }, () => { });
+    }
     if (!completionsEnabled() || !channelId || !contexts || !contexts.length) {
         active = [];
         setActiveLibs([]);
@@ -182,13 +193,92 @@ export async function setActiveScope(channelId, contexts) {
             templatesInScope(String(channelId), contexts),
             templateSourcesInScope(String(channelId), contexts)
         ]);
+        if (generation !== scopeGeneration)
+            return;
         active = fns;
         setActiveLibs(libs);
     }
     catch {
-        active = [];
-        setActiveLibs([]);
+        if (generation === scopeGeneration) {
+            active = [];
+            setActiveLibs([]);
+        }
     }
 }
-export function clearActiveScope() { active = []; setActiveLibs([]); }
+/** The current scope's token, for clearActiveScope(token). */
+export function currentScope() { return scopeGeneration; }
+/** The active scope's channel and contexts, to restore it later. */
+export function activeScope() {
+    return { channelId: activeChannelId, contexts: activeContexts };
+}
+/** Clear the scope; with a token, only while that scope is still the active one. */
+export function clearActiveScope(token) {
+    if (token !== undefined && token !== scopeGeneration)
+        return;
+    scopeGeneration++;
+    active = [];
+    activeContexts = [];
+    activeChannelId = null;
+    setActiveLibs([]);
+}
 export function getActiveCompletions() { return active; }
+const pluginReferences = [];
+/** Add plugin Reference entries (platform.registerReferences). Entries without
+    a name or category string, or with non-array contexts, are dropped: they
+    would break every view. */
+export function addReferences(entries) {
+    pluginReferences.push(...entries.filter((e) => e && typeof e.name === 'string' && e.name
+        && typeof e.category === 'string' && e.category
+        && (e.contexts == null || Array.isArray(e.contexts))));
+}
+export function registeredReferences() { return [...pluginReferences]; }
+/* The catalog and plugin entries that apply to any of `contexts`
+   (ReferenceListFactory.getCodeTemplates). Null-category catalog entries are
+   autocomplete-only variables, never Reference entries. */
+export function referencesFor(catalogEntries, contexts) {
+    return [...catalogEntries, ...pluginReferences].filter((r) => !!r.category && (!r.contexts || r.contexts.some((c) => contexts.includes(c))));
+}
+/* The engine catalog, loaded with the first scoped editor: the views that use
+   it load lazily, and a static import would put it in the startup bundle. */
+let catalog = [];
+let activeContexts = [];
+let activeChannelId = null;
+/** The active editor's Reference entries, offered as completions like Swing's. */
+export function getActiveReferences() {
+    return activeContexts.length ? referencesFor(catalog, activeContexts) : [];
+}
+/** A FUNCTION reference's signature, or null when its code has none. */
+export function referenceSignature(entry) {
+    return parseFunctionCode(String(entry.code || ''));
+}
+// ${name} placeholders are prompts in the Swing client; insert plain code.
+const cleanTemplate = (code) => String(code == null ? '' : code).replace(/\$\{([^}]*)\}/g, '$1');
+// Strip a leading /** ... */ JSDoc block (CodeTemplateUtil.stripDocumentation).
+const stripDocumentation = (code) => String(code == null ? '' : code).trim().replace(/^\/\*\*[\s\S]*?\*\/\s*/, '').trim();
+// Build a function's call from its definition (CodeTemplateFunctionDefinition
+// .getTransferData): "function name(a, b) {...}" -> "name(a, b)".
+function functionTransferData(code) {
+    const m = /function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/.exec(String(code == null ? '' : code));
+    if (!m)
+        return null;
+    const params = m[2].split(',').map(s => s.trim()).filter(Boolean).join(', ');
+    return `${m[1]}(${params})`;
+}
+// What a reference inserts on drop, driven by its template type — matches the
+// Swing ReferenceListHandler: FUNCTION drops the call signature, code blocks
+// drop the (documentation-stripped) code, compiled code is not draggable.
+export function dropTextFor(entry) {
+    // Accept both the enum name and its display value, since the engine may
+    // serialize either ("FUNCTION" / "Function", etc.).
+    const t = String(entry.type || '');
+    if (t === 'FUNCTION' || t === 'Function') {
+        const call = functionTransferData(entry.code);
+        if (call)
+            return call;
+    }
+    if (t === 'COMPILED_CODE' || t === 'Compiled Code Block')
+        return '';
+    return cleanTemplate(stripDocumentation(entry.code));
+}
+export const cleanDesc = (d) => String(d == null ? '' : d)
+    .replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();

@@ -19,7 +19,7 @@
 import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
-import { getActiveCompletions, getActiveLibs, onActiveLibsChange } from './script-completions.js';
+import { getActiveCompletions, getActiveLibs, onActiveLibsChange, getActiveReferences, referenceSignature, dropTextFor, cleanDesc, setActiveScope, clearActiveScope, currentScope, activeScope } from './script-completions.js';
 import { appUrl } from './deployment.js';
 // Where the server serves the vendored Monaco worker bundles. The editor bundle
 // itself is imported via the 'monaco-editor' specifier (import map / Vite).
@@ -325,6 +325,10 @@ function setup(monaco) {
             return [{ range: model.getFullModelRange(), text: formatted }];
         }
     });
+    // A call as a snippet with a tab stop per parameter. Snippet syntax treats
+    // $, } and \ as markup, so the identifiers ($value, $helper) are escaped.
+    const snippetText = (s) => s.replace(/[\\$}]/g, '\\$&');
+    const callSnippet = (name, params) => `${snippetText(name)}(${params.map((p, i) => `\${${i + 1}:${snippetText(p)}}`).join(', ')})`;
     // Channel + context scoped code-template functions (the user's own). The
     // Rhino scope variables themselves are no longer offered here — they're typed
     // globals in MIRTH_GLOBALS_DTS now, so the TS language service completes them
@@ -339,15 +343,42 @@ function setup(monaco) {
             const suggestions = [];
             // Channel + context scoped code-template functions (the user's own).
             for (const t of getActiveCompletions()) {
-                const args = t.params.map((p, i) => `\${${i + 1}:${p}}`).join(', ');
                 suggestions.push({
                     label: t.params.length ? `${t.name}(${t.params.join(', ')})` : `${t.name}()`,
                     filterText: t.name,
                     kind: monaco.languages.CompletionItemKind.Function,
                     detail: t.library ? `Code template · ${t.library}` : 'Code template',
                     documentation: t.doc || undefined,
-                    insertText: `${t.name}(${args})`,
+                    insertText: callSnippet(t.name, t.params),
                     insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                    range
+                });
+            }
+            // The editor context's Reference entries (Swing's completion cache):
+            // FUNCTION entries complete as calls, code entries by name. Global
+            // only, so never after a member dot.
+            if (model.getLineContent(position.lineNumber).charAt(word.startColumn - 2) === '.')
+                return { suggestions };
+            const seen = new Set();
+            for (const r of getActiveReferences()) {
+                const sig = r.type === 'FUNCTION' || r.type === 'Function' ? referenceSignature(r) : null;
+                const item = sig
+                    ? {
+                        label: `${sig.name}(${sig.params.join(', ')})`,
+                        filterText: sig.name,
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: callSnippet(sig.name, sig.params),
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+                    }
+                    : { label: r.name, filterText: r.name, kind: monaco.languages.CompletionItemKind.Snippet, insertText: dropTextFor(r) };
+                const key = `${item.label}\n${item.insertText}`;
+                if (!item.insertText || seen.has(key))
+                    continue;
+                seen.add(key);
+                suggestions.push({
+                    ...item,
+                    detail: `Reference · ${r.category}`,
+                    documentation: cleanDesc(r.description) || undefined,
                     range
                 });
             }
@@ -424,6 +455,25 @@ export function disposeDetachedMonaco() {
     for (const rec of [...liveMonaco]) {
         if (!document.contains(rec.el))
             rec.dispose();
+    }
+}
+let scopeOwner = null;
+const ownsScope = (holder) => !!holder && !holder.disposed && holder.token === currentScope();
+function releaseScope(holder) {
+    const owned = ownsScope(holder);
+    holder.disposed = true;
+    if (!owned)
+        return;
+    const back = holder.previous && !(holder.previous.owner && holder.previous.owner.disposed) ? holder.previous : null;
+    if (back && back.scope.contexts.length) {
+        setActiveScope(back.scope.channelId, back.scope.contexts);
+        if (back.owner)
+            back.owner.token = currentScope();
+        scopeOwner = back.owner;
+    }
+    else {
+        clearActiveScope();
+        scopeOwner = null;
     }
 }
 let routeSweepHooked = false;
@@ -506,6 +556,22 @@ export function mountMonaco(monaco, editor, opts = {}) {
         scheduleHighlight(e.changes);
     });
     highlightReservedVars(monaco, instance); // initial paint (whole document)
+    // An editor with its own context takes the completion scope on focus. On
+    // dispose it gives back the scope it displaced, unless another editor or
+    // view has taken it since — so a modal script editor returns the scope to
+    // the editor or view beneath it.
+    const scope = opts.completionScope;
+    const holder = { token: -1, previous: null, disposed: false };
+    const focusSub = scope ? instance.onDidFocusEditorText(() => {
+        // Refocus retries a failed template load, but must not replace the
+        // saved parent scope with this editor's own scope.
+        if (!ownsScope(holder)) {
+            holder.previous = { owner: ownsScope(scopeOwner) ? scopeOwner : null, scope: activeScope() };
+        }
+        setActiveScope(scope.channelId, [scope.context]);
+        holder.token = currentScope();
+        scopeOwner = holder;
+    }) : null;
     // The JS Monarch tokenizer resolves ASYNCHRONOUSLY, so the initial paint above
     // can run against typeless tokens — the string/comment skip then never matches
     // and reserved vars get colored inside comments, staying wrong on lines that
@@ -534,6 +600,10 @@ export function mountMonaco(monaco, editor, opts = {}) {
         changeSub.dispose();
         if (tokenSub)
             tokenSub.dispose();
+        if (focusSub) {
+            focusSub.dispose();
+            releaseScope(holder);
+        }
         const model = instance.getModel();
         instance.dispose();
         if (model)

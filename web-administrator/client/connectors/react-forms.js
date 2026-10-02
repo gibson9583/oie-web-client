@@ -52,11 +52,15 @@ let cformUid = 0;
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
    SOAP envelope, then repaints), the editor is updated to the new value — but
    only when it differs, so normal typing never clobbers the cursor. */
-function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label, fkey }) {
+function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label, fkey, completionScope }) {
     const hostRef = useRef(null);
     const edRef = useRef(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    // The newest value from either side. The editor's own edits land here at
+    // once, so a render captured before later keystrokes cannot revert them.
+    const latestRef = useRef(value);
+    latestRef.current = value;
     useEffect(() => {
         const host = hostRef.current;
         const editor = createCodeEditor({
@@ -68,7 +72,9 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
             maximizable: true, // connector code fields (incl. JavaScript Writer) can go full-screen
             popoutTitle: label, // full-screen code view: header title + velocity variables rail
             popoutVars: DESTINATION_MAPPINGS,
-            onChange: (v) => onChangeRef.current && onChangeRef.current(v)
+            completionScope,
+            onChange: (v) => { latestRef.current = v; if (onChangeRef.current)
+                onChangeRef.current(v); }
         });
         edRef.current = editor;
         host.appendChild(editor.el);
@@ -86,7 +92,8 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
         const ed = edRef.current;
         if (!ed)
             return;
-        const next = value === null || value === undefined ? '' : String(value);
+        const latest = latestRef.current;
+        const next = latest === null || latest === undefined ? '' : String(latest);
         if (ed.getValue() !== next)
             ed.setValue(next);
     }, [value]);
@@ -216,7 +223,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
             wide = true;
             break;
         case 'code':
-            control = React.createElement(CodeField, { value: value, label: typeof f.label === 'function' ? f.label(properties) : f.label, language: typeof f.language === 'function' ? f.language(properties) : f.language, minHeight: f.minHeight, placeholder: f.placeholder, onChange: (v) => set(v), disabled: disabled, fkey: f.key });
+            control = React.createElement(CodeField, { value: value, label: typeof f.label === 'function' ? f.label(properties) : f.label, language: typeof f.language === 'function' ? f.language(properties) : f.language, minHeight: f.minHeight, placeholder: f.placeholder, onChange: (v) => set(v), disabled: disabled, fkey: f.key, completionScope: f.completionScope });
             wide = true;
             break;
         case 'keyvalue':

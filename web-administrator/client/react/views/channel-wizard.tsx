@@ -412,7 +412,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                     </div>
                     {/* Inbound/outbound data types are settable right here (mirrored in the
                         Transformer tab's Message Templates — same model). */}
-                    <DataTypeBar holder={connector.transformer} version={version} connectorType={mode} onChange={onChange} />
+                    <DataTypeBar holder={connector.transformer} version={version} connectorType={mode} onChange={onChange} channelId={channel.id} />
                     {/* "Wait for previous" applies to the 2nd destination onward (nothing
                         precedes the first). */}
                     {isDest && destIndex > 0 && (
