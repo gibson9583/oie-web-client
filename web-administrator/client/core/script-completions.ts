@@ -197,6 +197,7 @@ let scopeGeneration = 0;
 export async function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void> {
     const generation = ++scopeGeneration;
     activeContexts = contexts || [];
+    activeChannelId = channelId;
     if (!catalog.length && activeContexts.length) {
         import('./reference-catalog.js').then((m) => { catalog = m.REFERENCE_CATALOG; }, () => { /* plugin references only */ });
     }
@@ -215,10 +216,15 @@ export async function setActiveScope(channelId: string | number | null | undefin
 /** The current scope's token, for clearActiveScope(token). */
 export function currentScope(): number { return scopeGeneration; }
 
+/** The active scope's channel and contexts, to restore it later. */
+export function activeScope(): { channelId: string | number | null | undefined; contexts: string[] } {
+    return { channelId: activeChannelId, contexts: activeContexts };
+}
+
 /** Clear the scope; with a token, only while that scope is still the active one. */
 export function clearActiveScope(token?: number): void {
     if (token !== undefined && token !== scopeGeneration) return;
-    scopeGeneration++; active = []; activeContexts = []; setActiveLibs([]);
+    scopeGeneration++; active = []; activeContexts = []; activeChannelId = null; setActiveLibs([]);
 }
 
 export function getActiveCompletions(): TemplateCompletion[] { return active; }
@@ -262,6 +268,7 @@ export function referencesFor(catalogEntries: CatalogEntry[], contexts: string[]
    it load lazily, and a static import would put it in the startup bundle. */
 let catalog: CatalogEntry[] = [];
 let activeContexts: string[] = [];
+let activeChannelId: string | number | null | undefined = null;
 
 /** The active editor's Reference entries, offered as completions like Swing's. */
 export function getActiveReferences(): ReferenceEntry[] {

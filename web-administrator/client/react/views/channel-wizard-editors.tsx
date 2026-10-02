@@ -37,7 +37,7 @@ function dtDefaults(name: any, version: any) {
 // Inbound/outbound data type selectors + collapsible properties for one connector's
 // transformer — so the types are settable right on the connector's Settings tab (not
 // buried in the transformer's Message Templates). `holder` is the transformer object.
-export function DataTypeBar({ holder, version, connectorType, onChange }: any) {
+export function DataTypeBar({ holder, version, connectorType, onChange, channelId }: any) {
     const [, tick] = useReducer((x: any) => x + 1, 0);
     const [open, setOpen] = useState(false);
     const types = dataTypeList();
@@ -70,13 +70,13 @@ export function DataTypeBar({ holder, version, connectorType, onChange }: any) {
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 min-w-0">
                             <div className="cform-section-title mb-1">Inbound properties</div>
-                            <DataTypePropertiesEditor typeName={holder.inboundDataType} props={holder.inboundProperties}
+                            <DataTypePropertiesEditor channelId={channelId} typeName={holder.inboundDataType} props={holder.inboundProperties}
                                 version={version} direction="inbound" connectorType={connectorType}
                                 onChange={changed} onReplace={(p: any) => { holder.inboundProperties = p; changed(); }} />
                         </div>
                         <div className="flex-1 min-w-0">
                             <div className="cform-section-title mb-1">Outbound properties</div>
-                            <DataTypePropertiesEditor typeName={holder.outboundDataType} props={holder.outboundProperties}
+                            <DataTypePropertiesEditor channelId={channelId} typeName={holder.outboundDataType} props={holder.outboundProperties}
                                 version={version} direction="outbound" connectorType={connectorType}
                                 onChange={changed} onReplace={(p: any) => { holder.outboundProperties = p; changed(); }} />
                         </div>

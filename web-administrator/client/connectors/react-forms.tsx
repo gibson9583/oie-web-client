@@ -71,6 +71,10 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
     const edRef = useRef<CodeEditor | null>(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    // The newest value from either side. The editor's own edits land here at
+    // once, so a render captured before later keystrokes cannot revert them.
+    const latestRef = useRef(value);
+    latestRef.current = value;
     useEffect(() => {
         const host = hostRef.current!;
         const editor = createCodeEditor({
@@ -83,7 +87,7 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
             popoutTitle: label,  // full-screen code view: header title + velocity variables rail
             popoutVars: DESTINATION_MAPPINGS,
             completionScope,
-            onChange: (v: string) => onChangeRef.current && onChangeRef.current(v)
+            onChange: (v: string) => { latestRef.current = v; if (onChangeRef.current) onChangeRef.current(v); }
         });
         edRef.current = editor;
         host.appendChild(editor.el);
@@ -96,7 +100,8 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
     useEffect(() => {
         const ed = edRef.current;
         if (!ed) return;
-        const next = value === null || value === undefined ? '' : String(value);
+        const latest = latestRef.current;
+        const next = latest === null || latest === undefined ? '' : String(latest);
         if (ed.getValue() !== next) ed.setValue(next);
     }, [value]);
     // Reflect disabled (Swing setEnabled) onto the editor: the baseline textarea

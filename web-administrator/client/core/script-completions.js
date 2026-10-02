@@ -179,6 +179,7 @@ let scopeGeneration = 0;
 export async function setActiveScope(channelId, contexts) {
     const generation = ++scopeGeneration;
     activeContexts = contexts || [];
+    activeChannelId = channelId;
     if (!catalog.length && activeContexts.length) {
         import('./reference-catalog.js').then((m) => { catalog = m.REFERENCE_CATALOG; }, () => { });
     }
@@ -206,6 +207,10 @@ export async function setActiveScope(channelId, contexts) {
 }
 /** The current scope's token, for clearActiveScope(token). */
 export function currentScope() { return scopeGeneration; }
+/** The active scope's channel and contexts, to restore it later. */
+export function activeScope() {
+    return { channelId: activeChannelId, contexts: activeContexts };
+}
 /** Clear the scope; with a token, only while that scope is still the active one. */
 export function clearActiveScope(token) {
     if (token !== undefined && token !== scopeGeneration)
@@ -213,6 +218,7 @@ export function clearActiveScope(token) {
     scopeGeneration++;
     active = [];
     activeContexts = [];
+    activeChannelId = null;
     setActiveLibs([]);
 }
 export function getActiveCompletions() { return active; }
@@ -236,6 +242,7 @@ export function referencesFor(catalogEntries, contexts) {
    it load lazily, and a static import would put it in the startup bundle. */
 let catalog = [];
 let activeContexts = [];
+let activeChannelId = null;
 /** The active editor's Reference entries, offered as completions like Swing's. */
 export function getActiveReferences() {
     return activeContexts.length ? referencesFor(catalog, activeContexts) : [];

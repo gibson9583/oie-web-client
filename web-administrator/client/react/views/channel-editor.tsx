@@ -183,7 +183,7 @@ function promptSaveChanges(channel: any) {
 
 /* ---- attachment handler properties modal (imperative, per handler type) ------- */
 
-function openAttachmentPropsModal(ap: any, markDirty: any) {
+function openAttachmentPropsModal(ap: any, markDirty: any, channelId: any) {
     /* Two-column key-indexed table (regex patterns / replacements). Rows are
        re-indexed on every commit, mirroring the Swing RegexAttachmentDialog
        which clears the map and rewrites keyA0/keyB0, keyA1/keyB1, ... */
@@ -305,6 +305,7 @@ function openAttachmentPropsModal(ap: any, markDirty: any) {
             const editor = createCodeEditor({
                 value: String(map['javascript.script'] ?? ''),
                 minHeight: '240px',
+                completionScope: { channelId, context: 'CHANNEL_ATTACHMENT' },
                 onChange: (value: any) => {
                     map['javascript.script'] = value;      // unknown keys in `map` survive
                     ap.properties = objToEntries(map);
@@ -502,6 +503,7 @@ function openDataTypesModal(channel: any, version: any, markDirty: any) {
 
         const editorHost = h('div');
         dtEditorRoots.push(mountReact(editorHost, <DataTypePropertiesEditor
+            channelId={channel.id}
             typeName={typeName}
             props={(row as any).draft[`${side}Properties`]}
             version={version}
@@ -1335,7 +1337,7 @@ function ChannelPropertiesPanel({ channel, version, isNewRef, tagState, markDirt
                                     {/* "Properties" opens the handler editor modal (enabled only
                                         when a handler other than None/DICOM is selected). */}
                                     <button className="btn btn-sm" disabled={ap.type === 'None' || ap.type === 'DICOM'}
-                                        onClick={() => openAttachmentPropsModal(ap, markDirty)}>Properties</button>
+                                        onClick={() => openAttachmentPropsModal(ap, markDirty, channel.id)}>Properties</button>
                                 </div>
                             </div>
                         </div>

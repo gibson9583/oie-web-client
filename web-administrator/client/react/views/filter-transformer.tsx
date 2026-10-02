@@ -787,7 +787,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
         const editorHost = h('div');
         const validationErrors = h('div', { role: 'alert', class: 'hint whitespace-pre-line', style: { color: 'var(--err)' } });
         const root = mountReact(editorHost, <DataTypePropertiesEditor
-            typeName={typeName} props={draft} version={version}
+            channelId={channel && channel.id} typeName={typeName} props={draft} version={version}
             direction={side} connectorType={connectorType}
             onChange={() => { validationErrors.textContent = ''; }}
             onReplace={(obj: any) => { draft = obj; }} />);

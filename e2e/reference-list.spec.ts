@@ -12,12 +12,12 @@ import { makeChannel, CASES } from './connector-fixtures.js';
 
 const CHANNEL_ID = 'reference-channel';
 
-const template = (id: string, name: string, contexts: string[], type = 'DRAG_AND_DROP_CODE') => ({
+const template = (id: string, name: string, contexts: string[], type = 'DRAG_AND_DROP_CODE', code?: string) => ({
     '@version': '4.6.0', id, name, revision: 1,
     contextSet: { delegate: { contextType: contexts } },
     properties: {
         '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties', type,
-        code: type === 'FUNCTION' ? `function ${id}() {}` : `${id}();`
+        code: code ?? (type === 'FUNCTION' ? `function ${id}() {}` : `${id}();`)
     }
 });
 
@@ -26,12 +26,16 @@ const connector = (name: string) => {
     return { transportName: c.name, properties: (c.properties as any)() };
 };
 const JS_CHANNEL_ID = 'reference-js-channel';
+const jsChannel = () => {
+    const channel = makeChannel(JS_CHANNEL_ID, { source: connector('JavaScript Reader'), destination: connector('JavaScript Writer') });
+    // Data type properties as the engine sends them, so the properties editor renders.
+    Object.assign(channel.sourceConnector.transformer, { inboundProperties: {}, outboundProperties: {} });
+    return channel;
+};
 
 const FIXTURES = {
     [`GET /channels/${CHANNEL_ID}`]: { channel: makeChannel(CHANNEL_ID) },
-    [`GET /channels/${JS_CHANNEL_ID}`]: { channel: makeChannel(JS_CHANNEL_ID, {
-        source: connector('JavaScript Reader'), destination: connector('JavaScript Writer')
-    }) },
+    [`GET /channels/${JS_CHANNEL_ID}`]: { channel: jsChannel() },
     'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [{
         '@version': '4.6.0', id: 'lib-ref', name: 'Demo Lib', revision: 1, description: '',
         includeNewChannels: true, enabledChannelIds: '', disabledChannelIds: '',
@@ -41,7 +45,9 @@ const FIXTURES = {
             template('respHelper', 'Resp Helper', ['DESTINATION_RESPONSE_TRANSFORMER']),
             template('postOnly', 'Post Only', ['CHANNEL_POSTPROCESSOR'], 'FUNCTION'),
             template('readerOnly', 'Reader Only', ['SOURCE_RECEIVER'], 'FUNCTION'),
-            template('writerOnly', 'Writer Only', ['DESTINATION_DISPATCHER'], 'FUNCTION')
+            template('writerOnly', 'Writer Only', ['DESTINATION_DISPATCHER'], 'FUNCTION'),
+            template('batchOnly', 'Batch Only', ['CHANNEL_BATCH'], 'FUNCTION'),
+            template('reviewDollarArg', 'Dollar Arg', ['CHANNEL_DEPLOY'], 'FUNCTION', 'function reviewDollarArg($value) {}')
         ] }
     }] } }
 };
@@ -50,13 +56,15 @@ const PLUGIN = `
     export function register(p) {
         p.registerReferences('Zeta Functions', [
             { name: 'Zeta Everywhere', description: 'Zeta.', code: 'zeta()' },
-            { name: 'Zeta Call', code: 'function zetaCall(a, b) {}', type: 'FUNCTION' }
+            { name: 'Zeta Call', code: 'function zetaCall(a, b) {}', type: 'FUNCTION' },
+            { name: 'Ref Helper', code: 'function $refHelper($value) {}', type: 'FUNCTION' }
         ]);
         p.registerReferences('Alpha Functions', [
             { name: 'Alpha Source Only', code: 'alpha()', contexts: ['SOURCE_FILTER_TRANSFORMER'] },
             { name: 'Alpha Postprocessor Only', code: 'alphaPost()', contexts: ['CHANNEL_POSTPROCESSOR'] },
             { name: 'Alpha Reader Only', code: 'alphaReader()', contexts: ['SOURCE_RECEIVER'] },
-            { name: 'Alpha Writer Only', code: 'alphaWriter()', contexts: ['DESTINATION_DISPATCHER'] }
+            { name: 'Alpha Writer Only', code: 'alphaWriter()', contexts: ['DESTINATION_DISPATCHER'] },
+            { name: 'Alpha Batch Only', code: 'alphaBatch()', contexts: ['CHANNEL_BATCH'] }
         ]);
         p.registerReferences('Conversion Functions', [{ name: 'Convert Demo to XML', code: 'demo()' }]);
         // Malformed entries are dropped, not rendered.
@@ -158,6 +166,23 @@ test('script autocomplete offers the editor context\'s Reference entries', async
     await expect.poll(() => page.evaluate(() => (window as any).monaco.editor.getModels()
         .some((m: any) => m.getValue().includes('zetaCall(a, b)')))).toBe(true);
 
+    // $ in a function or parameter name is inserted literally, not as a snippet variable.
+    for (const [typed, call] of [['$refH', '$refHelper($value)'], ['reviewDol', 'reviewDollarArg($value)']]) {
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('End');
+        await page.keyboard.press('Enter');
+        await page.keyboard.type(typed);
+        await expect(async () => {
+            await page.keyboard.press('Escape');
+            await page.keyboard.press('Control+Space');
+            await expect(page.locator('.suggest-widget .monaco-list-row', { hasText: call }).first()).toBeVisible({ timeout: 2000 });
+        }).toPass();
+        await page.locator('.suggest-widget .monaco-list-row', { hasText: call }).first().click();
+        await page.keyboard.press('Escape');
+        await expect.poll(() => page.evaluate((text) => (window as any).monaco.editor.getModels()
+            .some((m: any) => m.getValue().includes(text)), call)).toBe(true);
+    }
+
     // Never after a member dot.
     await page.keyboard.press('Escape');
     await page.keyboard.press('Enter');
@@ -245,6 +270,27 @@ test('the JavaScript Reader and Writer editors complete in their own contexts, n
         expect(deploy.templates).not.toContain(name);
     }
     await openPostprocessor(page);
+});
+
+test('the batch script dialog completes in CHANNEL_BATCH and gives the Reader its scope back', async ({ page }) => {
+    await installPlugin(page);
+    await mockEngine(page, FIXTURES);
+    await page.goto(`/channels/${JS_CHANNEL_ID}/guided`);
+    await page.locator('.wiz-step', { hasText: 'Source' }).click();
+
+    await page.locator('.ce .monaco-editor').first().click();
+    await expectScope(page, ['Alpha Reader Only', 'readerOnly'], ['Alpha Batch Only', 'batchOnly']);
+
+    await page.getByRole('button', { name: /Edit properties/ }).click();
+    await page.locator('div:has(> .cform-section-title:text-is("Inbound properties"))')
+        .getByRole('button', { name: /^Edit/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Script', exact: true });
+    await dialog.locator('.monaco-editor').click();
+    await expectScope(page, ['Alpha Batch Only', 'batchOnly'], ['Alpha Reader Only', 'readerOnly', ...POST]);
+
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expectScope(page, ['Alpha Reader Only', 'readerOnly'], ['Alpha Batch Only', 'batchOnly']);
 });
 
 test('a template load that finishes after the scope is cleared does not restore it', async ({ page }) => {

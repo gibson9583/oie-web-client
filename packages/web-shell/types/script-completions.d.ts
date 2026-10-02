@@ -21,6 +21,11 @@ export declare function getActiveLibs(): TemplateLib[];
 export declare function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void>;
 /** The current scope's token, for clearActiveScope(token). */
 export declare function currentScope(): number;
+/** The active scope's channel and contexts, to restore it later. */
+export declare function activeScope(): {
+    channelId: string | number | null | undefined;
+    contexts: string[];
+};
 /** Clear the scope; with a token, only while that scope is still the active one. */
 export declare function clearActiveScope(token?: number): void;
 export declare function getActiveCompletions(): TemplateCompletion[];
