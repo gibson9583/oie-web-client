@@ -19,7 +19,7 @@
 import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
 import { formatScript } from './serialize.js';
-import { getActiveCompletions, getActiveLibs, onActiveLibsChange } from './script-completions.js';
+import { getActiveCompletions, getActiveLibs, onActiveLibsChange, getActiveReferences, referenceSignature, dropTextFor, cleanDesc } from './script-completions.js';
 import { appUrl } from './deployment.js';
 // Where the server serves the vendored Monaco worker bundles. The editor bundle
 // itself is imported via the 'monaco-editor' specifier (import map / Vite).
@@ -348,6 +348,34 @@ function setup(monaco) {
                     documentation: t.doc || undefined,
                     insertText: `${t.name}(${args})`,
                     insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                    range
+                });
+            }
+            // The editor context's Reference entries (Swing's completion cache):
+            // FUNCTION entries complete as calls, code entries by name. Global
+            // only, so never after a member dot.
+            if (model.getLineContent(position.lineNumber).charAt(word.startColumn - 2) === '.')
+                return { suggestions };
+            const seen = new Set();
+            for (const r of getActiveReferences()) {
+                const sig = r.type === 'FUNCTION' || r.type === 'Function' ? referenceSignature(r) : null;
+                const item = sig
+                    ? {
+                        label: `${sig.name}(${sig.params.join(', ')})`,
+                        filterText: sig.name,
+                        kind: monaco.languages.CompletionItemKind.Function,
+                        insertText: `${sig.name}(${sig.params.map((p, i) => `\${${i + 1}:${p}}`).join(', ')})`,
+                        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
+                    }
+                    : { label: r.name, filterText: r.name, kind: monaco.languages.CompletionItemKind.Snippet, insertText: dropTextFor(r) };
+                const key = `${item.label}\n${item.insertText}`;
+                if (!item.insertText || seen.has(key))
+                    continue;
+                seen.add(key);
+                suggestions.push({
+                    ...item,
+                    detail: `Reference · ${r.category}`,
+                    documentation: cleanDesc(r.description) || undefined,
                     range
                 });
             }

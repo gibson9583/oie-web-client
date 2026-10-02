@@ -21,3 +21,31 @@ export declare function getActiveLibs(): TemplateLib[];
 export declare function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void>;
 export declare function clearActiveScope(): void;
 export declare function getActiveCompletions(): TemplateCompletion[];
+/** A Reference list entry: a categorized engine catalog entry or a plugin one. */
+export interface ReferenceEntry {
+    name: string;
+    category: string;
+    description?: string;
+    code: string;
+    type?: string;
+    contexts?: string[];
+}
+type CatalogEntry = Omit<ReferenceEntry, 'category'> & {
+    category: string | null;
+};
+/** Add plugin Reference entries (platform.registerReferences). Entries without
+    a name or category string, or with non-array contexts, are dropped: they
+    would break every view. */
+export declare function addReferences(entries: ReferenceEntry[]): void;
+export declare function registeredReferences(): ReferenceEntry[];
+export declare function referencesFor(catalogEntries: CatalogEntry[], contexts: string[]): ReferenceEntry[];
+/** The active editor's Reference entries, offered as completions like Swing's. */
+export declare function getActiveReferences(): ReferenceEntry[];
+/** A FUNCTION reference's signature, or null when its code has none. */
+export declare function referenceSignature(entry: ReferenceEntry): {
+    name: string;
+    params: string[];
+} | null;
+export declare function dropTextFor(entry: any): string;
+export declare const cleanDesc: (d: any) => string;
+export {};

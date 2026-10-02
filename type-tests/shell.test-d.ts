@@ -32,6 +32,11 @@ export function register(p: Platform) {
         isEnabled: ({ metaDataId }) => metaDataId === 0,
         onInvoke: (message, { channelId, connectorMessage }) => { void message; void channelId; void connectorMessage; },
     });
+    // Reference list entries: a new category or an existing one; type and contexts are optional.
+    p.registerReferences('Demo Functions', [
+        { name: 'Demo Call', description: 'Calls demo.', code: 'demo()', contexts: ['SOURCE_FILTER_TRANSFORMER'] },
+        { name: 'Demo Fn', code: 'function demo(a) {}', type: 'FUNCTION' },
+    ]);
 }
 
 async function libraries() {
@@ -56,6 +61,8 @@ function badUsage() {
     platform.mirth;
     // @ts-expect-error a channel tab requires `component` (the legacy imperative render path was removed)
     platform.registerChannelTab({ id: 'x', label: 'X' });
+    // @ts-expect-error a reference type must be a CodeTemplateType name
+    platform.registerReferences('X', [{ name: 'x', code: 'x', type: 'CODE' }]);
 }
 
 void libraries;

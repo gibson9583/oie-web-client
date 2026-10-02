@@ -11,5 +11,5 @@ export type {
     StepRuleType, ConnectorPanel, ConnectorPropertiesPanel,
     DataTypeDef, TransmissionModeDef, ResourceTypeDef,
     ChannelAction, ChannelActionContext, CodeTemplateAction, CodeTemplateActionContext,
-    MessageAction, MessageActionContext
+    MessageAction, MessageActionContext, ReferenceItem
 } from './platform.js';

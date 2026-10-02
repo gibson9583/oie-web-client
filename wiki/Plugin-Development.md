@@ -140,6 +140,7 @@ ones are built.
 | `ClientPlugin` adding a task to the Channels panel | `simple-channel-history` ("View History") | `registerChannelAction` — adds a right-click item + Channel Tasks button for a single-channel selection |
 | `ClientPlugin` adding a task to the Code Templates panel | `simple-channel-history` ("View History") | `registerCodeTemplateAction` — adds a right-click item for a selected code template |
 | *(none — Swing's `MessageBrowser` takes no plugin tasks)* | | `registerMessageAction` — adds a right-click item on a message row + a Message Tasks button for the selected row, with the row's connector in context. Web-only; API `4.7`+ |
+| `CodeTemplatePlugin` (`getReferenceItems`) | `http` (HTTP Listener/Sender Functions), `file` (File Reader Functions) | `registerReferences(category, items)`: adds entries to the filter/transformer Reference list, in a new category or in an existing one such as `Conversion Functions`, and to script autocomplete. Each entry shows only in its `contexts`. API `4.8`+ |
 | `TransformerStepPlugin` / `FilterRulePlugin` | mapper, messagebuilder, javascriptstep, xsltstep, destinationsetfilter, scriptfilestep, iterator; rulebuilder, javascriptrule, scriptfilerule | bundled as the `transformer-steps` web plugin calling `registerStepType` / `registerRuleType` |
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
@@ -238,6 +239,7 @@ Guidance:
 - Set it to the version that introduced the newest capability you use, so an older
   host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
   for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
+- `registerReferences` arrived in API `4.8`. A plugin that calls it declares `"apiMin": "4.8"`.
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
@@ -477,6 +479,19 @@ platform.registerCodeTemplateAction({ id, label, icon, order, task,
 platform.registerMessageAction({ id, label, icon, order, task,
     isEnabled: (ctx) => ctx.metaDataId !== 0,   // e.g. destinations only
     onInvoke: (message, ctx) => { /* open a dialog, call /extensions/… with message.messageId, … */ } });
+
+// Reference list entries (Swing's CodeTemplatePlugin.getReferenceItems; API
+// 4.8+). The entries show in the filter/transformer Reference list under
+// `category`: a new category, or an existing one such as 'Conversion Functions'.
+// Script autocomplete offers them too: FUNCTION entries as calls, others by name.
+// type: FUNCTION drops the call, DRAG_AND_DROP_CODE (the default) drops the
+// code, COMPILED_CODE is not draggable. contexts: the ContextType names where
+// the entry shows (the default is every context).
+platform.registerReferences('My Functions', [
+    { name: 'Get Order ID', description: 'Returns the order ID from the message.',
+      code: "msg['ORC']['ORC.2']['ORC.2.1'].toString()",
+      contexts: ['SOURCE_FILTER_TRANSFORMER', 'DESTINATION_FILTER_TRANSFORMER'] }
+]);
 
 // Message attachment renderer (AttachmentViewer)
 platform.registerAttachmentViewer({ id,

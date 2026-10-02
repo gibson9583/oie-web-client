@@ -50,7 +50,7 @@ import { generateElementScript } from '../../core/step-script.js';
 import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
-import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
+import { setActiveScope, clearActiveScope, referencesFor, dropTextFor, cleanDesc } from '../../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../../core/serialize.js';
 import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
@@ -182,37 +182,9 @@ const REFERENCE_CATEGORY_ORDER = [
     'Postprocessor Functions', 'Miscellaneous'
 ];
 
-// ${name} placeholders are prompts in the Swing client; insert plain code.
-const cleanTemplate = (code: any) => String(code == null ? '' : code).replace(/\$\{([^}]*)\}/g, '$1');
-
-// Strip a leading /** ... */ JSDoc block (CodeTemplateUtil.stripDocumentation).
-const stripDocumentation = (code: any) => String(code == null ? '' : code).trim().replace(/^\/\*\*[\s\S]*?\*\/\s*/, '').trim();
-
-// Build a function's call from its definition (CodeTemplateFunctionDefinition
-// .getTransferData): "function name(a, b) {...}" -> "name(a, b)".
-function functionTransferData(code: any) {
-    const m = /function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/.exec(String(code == null ? '' : code));
-    if (!m) return null;
-    const params = m[2].split(',').map(s => s.trim()).filter(Boolean).join(', ');
-    return `${m[1]}(${params})`;
-}
-
-// What a reference inserts on drop, driven by its template type — matches the
-// Swing ReferenceListHandler: FUNCTION drops the call signature, code blocks
-// drop the (documentation-stripped) code, compiled code is not draggable.
-function dropTextFor(entry: any) {
-    // Accept both the enum name and its display value, since the engine may
-    // serialize either ("FUNCTION" / "Function", etc.).
-    const t = String(entry.type || '');
-    if (t === 'FUNCTION' || t === 'Function') {
-        const call = functionTransferData(entry.code);
-        if (call) return call;
-    }
-    if (t === 'COMPILED_CODE' || t === 'Compiled Code Block') return '';
-    return cleanTemplate(stripDocumentation(entry.code));
-}
-const cleanDesc = (d: any) => String(d == null ? '' : d)
-    .replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();
+// The code-template ContextType of this view's script editors.
+const scriptContext = (connectorType: any) => connectorType === 'RESPONSE' ? 'DESTINATION_RESPONSE_TRANSFORMER'
+    : connectorType === 'SOURCE' ? 'SOURCE_FILTER_TRANSFORMER' : 'DESTINATION_FILTER_TRANSFORMER';
 
 // Variables made available by this transformer's enabled steps — Mapper
 // output variables and map puts in JavaScript steps. Mirrors the engine's
@@ -683,13 +655,13 @@ function ReferenceRow({ dragRef, name, subtitle, dropText, title }: any) {
     );
 }
 
-function ReferenceTab({ dragRef, channelId, getElements }: any) {
+function ReferenceTab({ dragRef, channelId, context, getElements }: any) {
     // Only categorized references appear in the Swing reference panel;
     // null-category entries (context variables, E4X methods) are
-    // autocomplete-only in the client, so they are excluded here.
-    const builtin = useMemo(() => REFERENCE_CATALOG
-        .filter(r => r.category)
-        .map(r => ({ name: r.name, category: r.category, description: r.description, code: r.code, type: r.type })), []);
+    // autocomplete-only in the client, so they are excluded here. Plugin
+    // references join the engine catalog; both filter on the editor context.
+    const builtin = useMemo(() => referencesFor(REFERENCE_CATALOG, [context])
+        .map(r => ({ name: r.name, category: r.category, description: r.description, code: r.code, type: r.type })), [context]);
     // Variables defined by this transformer's steps, computed when the tab
     // mounts (the panel remounts per tab switch, matching the legacy rebuild).
     const availableVars = useMemo(() => collectStepVariables(getElements()), [getElements]);
@@ -718,7 +690,8 @@ function ReferenceTab({ dragRef, channelId, getElements }: any) {
                     const name = library.name || '(unnamed library)';
                     if (!categories.includes(name)) categories.push(name);
                     for (const t of api.asList(library.codeTemplates, 'codeTemplate')) {
-                        if (t && typeof t === 'object') {
+                        if (t && typeof t === 'object' && api.asList(t.contextSet && t.contextSet.delegate, 'contextType')
+                            .map(String).includes(context)) {
                             entries.push({
                                 name: t.name, category: name,
                                 description: t.description,
@@ -734,12 +707,16 @@ function ReferenceTab({ dragRef, channelId, getElements }: any) {
             })
             .catch(() => { toast('Could not load user code-template libraries; showing built-ins only', 'warn'); });
         return () => { stale = true; };
-    }, [channelId]);
+    }, [channelId, context]);
 
     const entries = [...builtin, ...userEntries.entries];
     const present = new Set(entries.map(e => e.category));
-    const categories = REFERENCE_CATEGORY_ORDER.filter(c => present.has(c))
-        .concat(userEntries.categories.filter((c: any) => present.has(c)));
+    // Plugin categories sort alphabetically after the built-in and user ones
+    // (Swing's CategoryComparator).
+    const pluginCategories = [...present].filter(c =>
+        !REFERENCE_CATEGORY_ORDER.includes(c) && !userEntries.categories.includes(c)).sort();
+    const categories = [...new Set(REFERENCE_CATEGORY_ORDER.filter(c => present.has(c))
+        .concat(userEntries.categories.filter((c: any) => present.has(c)), pluginCategories))];
     const q = query.trim().toLowerCase();
     const visible = entries.filter(en =>
         (!category || en.category === category) &&
@@ -1102,7 +1079,8 @@ function SidePanel({ ctx }: any) {
 
     let body: any = null;
     if (label === 'Reference') {
-        body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId} getElements={ctx.getElements} />;
+        body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId}
+            context={scriptContext(ctx.connectorType)} getElements={ctx.getElements} />;
     } else if (label === 'Message Trees') {
         body = <TreesTab key="trees" target={ctx.target} isFilter={isFilter} dragRef={ctx.dragRef} onAddStep={ctx.onAddStep} />;
     } else if (label === 'Message Templates') {
@@ -1323,8 +1301,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
         // Scope code-template completions to this connector's editor context.
         // This view is a single context, so set it once (covers every step/rule
         // editor, including the plugin-rendered JavaScript ones).
-        setActiveScope(params.channelId, [connectorType === 'RESPONSE' ? 'DESTINATION_RESPONSE_TRANSFORMER'
-            : connectorType === 'SOURCE' ? 'SOURCE_FILTER_TRANSFORMER' : 'DESTINATION_FILTER_TRANSFORMER']);
+        setActiveScope(params.channelId, [scriptContext(connectorType)]);
         if (!embedded) store.setState('navGuard', (info: any) => guardImplRef.current(info));
         const unregister = embedded ? () => {} : registerUnsavedCheck(channelDirty);
         if (!embedded) {

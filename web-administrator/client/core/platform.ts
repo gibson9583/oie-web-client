@@ -18,6 +18,7 @@
  *   registerChannelAction  — Channels view row action    (ChannelPanelPlugin task)
  *   registerCodeTemplateAction — Code Templates row action
  *   registerMessageAction  — message browser row action  (web-only; Swing has no hook)
+ *   registerReferences     — Reference list + autocomplete entries (CodeTemplatePlugin)
  *   registerStepType / registerRuleType — transformer/filter editors
  *                                                        (TransformerStepPlugin/FilterRulePlugin)
  *   registerConnectorPanel — connector property editor   (ConnectorSettingsPanel)
@@ -41,6 +42,7 @@ import { setAuthorizationController, checkTask } from './authorization.js';
 import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
 import { apiUrl, appUrl } from './deployment.js';
+import { addReferences, registeredReferences } from './script-completions.js';
 import type { Command } from './commands.js';
 import type { OieObject } from './wire-types.js';
 import type { Api } from './api.js';
@@ -300,6 +302,18 @@ export interface MessageActionContext {
     [key: string]: any;
 }
 
+/** A Reference list entry for the script editors (Swing's
+    CodeTemplatePlugin.getReferenceItems). */
+export interface ReferenceItem {
+    name: string;
+    description?: string;
+    code: string;
+    /** FUNCTION drops the call, COMPILED_CODE is not draggable. Default: DRAG_AND_DROP_CODE (drops the code). */
+    type?: 'FUNCTION' | 'DRAG_AND_DROP_CODE' | 'COMPILED_CODE';
+    /** ContextType names the entry applies to, e.g. 'SOURCE_FILTER_TRANSFORMER'. Default: every context. */
+    contexts?: string[];
+}
+
 /** A loaded plugin's manifest plus its load status. */
 export interface PluginManifest {
     id: string;
@@ -327,7 +341,7 @@ export interface PluginManifest {
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.7.0';   // 4.7: registerMessageAction
+export const OIE_API_VERSION = '4.8.0';   // 4.8: registerReferences
 
 function parseApiVersion(v: unknown): { major: number; minor: number } {
     const [major, minor] = String(v == null ? '' : v).split('.');
@@ -407,6 +421,8 @@ export interface Platform {
     registerChannelAction(action: ChannelAction): void;
     registerCodeTemplateAction(action: CodeTemplateAction): void;
     registerMessageAction(action: MessageAction): void;
+    /** Add Reference list and autocomplete entries under `category` — a new category or an existing one such as 'Conversion Functions'. */
+    registerReferences(category: string, items: ReferenceItem[]): void;
     registerSettingsPanel(panel: SettingsPanel): void;
     registerAttachmentViewer(viewer: AttachmentViewer): void;
     registerStepType(type: string, def: StepRuleType): void;
@@ -425,6 +441,7 @@ export interface Platform {
     channelActions(): ChannelAction[];
     codeTemplateActions(): CodeTemplateAction[];
     messageActions(): MessageAction[];
+    references(): Array<ReferenceItem & { category: string }>;
     settingsPanels(): SettingsPanel[];
     attachmentViewers(): AttachmentViewer[];
     stepType(type: string): StepRuleType | undefined;
@@ -512,6 +529,13 @@ export const platform: Platform = {
        onInvoke(message, ctx) }. ctx = { platform, channelId, message,
        metaDataId, connectorMessage }. */
     registerMessageAction(action) { registries.messageActions.push(action); },
+    /* Script editor Reference list entries (Swing's CodeTemplatePlugin
+       .getReferenceItems). items = [{ name, description?, code,
+       type?  (FUNCTION | DRAG_AND_DROP_CODE (default) | COMPILED_CODE),
+       contexts?  (ContextType names; default every context) }]. */
+    registerReferences(category, items) {
+        addReferences(items.map((item) => ({ ...item, category })));
+    },
     registerSettingsPanel(panel) { registries.settingsPanels.push(panel); },
     registerAttachmentViewer(viewer) { registries.attachmentViewers.push(viewer); },
     registerStepType(type, def) { registries.stepTypes.set(type, def); },
@@ -544,6 +568,7 @@ export const platform: Platform = {
     channelActions: () => sorted(registries.channelActions),
     codeTemplateActions: () => sorted(registries.codeTemplateActions),
     messageActions: () => sorted(registries.messageActions),
+    references: () => registeredReferences() as Array<ReferenceItem & { category: string }>,
     settingsPanels: () => sorted(registries.settingsPanels),
     attachmentViewers: () => [...registries.attachmentViewers],
     stepType: (type) => registries.stepTypes.get(type),

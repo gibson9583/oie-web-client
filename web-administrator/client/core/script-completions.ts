@@ -59,7 +59,10 @@ function libraryInScope(lib: any, channelId: string): boolean {
 /* A FUNCTION template's code → { name, params, doc } (its signature + leading
    JSDoc), or null when there's no parseable `function name(...)`. */
 function parseFunction(template: any): TemplateCompletion | null {
-    const code = String((template.properties && template.properties.code) || '');
+    return parseFunctionCode(String((template.properties && template.properties.code) || ''));
+}
+
+function parseFunctionCode(code: string): TemplateCompletion | null {
     const fn = code.match(/function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/);
     if (!fn) return null;
     const params = fn[2].split(',').map((p) => p.trim()).filter(Boolean);
@@ -188,6 +191,10 @@ function setActiveLibs(next: TemplateLib[]): void {
 }
 
 export async function setActiveScope(channelId: string | number | null | undefined, contexts: string[] | null | undefined): Promise<void> {
+    activeContexts = contexts || [];
+    if (!catalog.length && activeContexts.length) {
+        import('./reference-catalog.js').then((m) => { catalog = m.REFERENCE_CATALOG; }, () => { /* plugin references only */ });
+    }
     if (!completionsEnabled() || !channelId || !contexts || !contexts.length) { active = []; setActiveLibs([]); return; }
     try {
         const [fns, libs] = await Promise.all([
@@ -199,6 +206,88 @@ export async function setActiveScope(channelId: string | number | null | undefin
     } catch { active = []; setActiveLibs([]); }
 }
 
-export function clearActiveScope(): void { active = []; setActiveLibs([]); }
+export function clearActiveScope(): void { active = []; activeContexts = []; setActiveLibs([]); }
 
 export function getActiveCompletions(): TemplateCompletion[] { return active; }
+
+/* ---- Reference list entries (Swing ReferenceListFactory) ------------------------ */
+
+/** A Reference list entry: a categorized engine catalog entry or a plugin one. */
+export interface ReferenceEntry {
+    name: string;
+    category: string;
+    description?: string;
+    code: string;
+    type?: string;
+    contexts?: string[];
+}
+
+type CatalogEntry = Omit<ReferenceEntry, 'category'> & { category: string | null };
+
+const pluginReferences: ReferenceEntry[] = [];
+
+/** Add plugin Reference entries (platform.registerReferences). Entries without
+    a name or category string, or with non-array contexts, are dropped: they
+    would break every view. */
+export function addReferences(entries: ReferenceEntry[]): void {
+    pluginReferences.push(...entries.filter((e) => e && typeof e.name === 'string' && e.name
+        && typeof e.category === 'string' && e.category
+        && (e.contexts == null || Array.isArray(e.contexts))));
+}
+
+export function registeredReferences(): ReferenceEntry[] { return [...pluginReferences]; }
+
+/* The catalog and plugin entries that apply to any of `contexts`
+   (ReferenceListFactory.getCodeTemplates). Null-category catalog entries are
+   autocomplete-only variables, never Reference entries. */
+export function referencesFor(catalogEntries: CatalogEntry[], contexts: string[]): ReferenceEntry[] {
+    return [...catalogEntries, ...pluginReferences].filter((r): r is ReferenceEntry =>
+        !!r.category && (!r.contexts || r.contexts.some((c) => contexts.includes(c))));
+}
+
+/* The engine catalog, loaded with the first scoped editor: the views that use
+   it load lazily, and a static import would put it in the startup bundle. */
+let catalog: CatalogEntry[] = [];
+let activeContexts: string[] = [];
+
+/** The active editor's Reference entries, offered as completions like Swing's. */
+export function getActiveReferences(): ReferenceEntry[] {
+    return activeContexts.length ? referencesFor(catalog, activeContexts) : [];
+}
+
+/** A FUNCTION reference's signature, or null when its code has none. */
+export function referenceSignature(entry: ReferenceEntry): { name: string; params: string[] } | null {
+    return parseFunctionCode(String(entry.code || ''));
+}
+
+// ${name} placeholders are prompts in the Swing client; insert plain code.
+const cleanTemplate = (code: any) => String(code == null ? '' : code).replace(/\$\{([^}]*)\}/g, '$1');
+
+// Strip a leading /** ... */ JSDoc block (CodeTemplateUtil.stripDocumentation).
+const stripDocumentation = (code: any) => String(code == null ? '' : code).trim().replace(/^\/\*\*[\s\S]*?\*\/\s*/, '').trim();
+
+// Build a function's call from its definition (CodeTemplateFunctionDefinition
+// .getTransferData): "function name(a, b) {...}" -> "name(a, b)".
+function functionTransferData(code: any) {
+    const m = /function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/.exec(String(code == null ? '' : code));
+    if (!m) return null;
+    const params = m[2].split(',').map(s => s.trim()).filter(Boolean).join(', ');
+    return `${m[1]}(${params})`;
+}
+
+// What a reference inserts on drop, driven by its template type — matches the
+// Swing ReferenceListHandler: FUNCTION drops the call signature, code blocks
+// drop the (documentation-stripped) code, compiled code is not draggable.
+export function dropTextFor(entry: any) {
+    // Accept both the enum name and its display value, since the engine may
+    // serialize either ("FUNCTION" / "Function", etc.).
+    const t = String(entry.type || '');
+    if (t === 'FUNCTION' || t === 'Function') {
+        const call = functionTransferData(entry.code);
+        if (call) return call;
+    }
+    if (t === 'COMPILED_CODE' || t === 'Compiled Code Block') return '';
+    return cleanTemplate(stripDocumentation(entry.code));
+}
+export const cleanDesc = (d: any) => String(d == null ? '' : d)
+    .replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/gi, ' ').trim();

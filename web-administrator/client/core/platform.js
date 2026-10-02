@@ -19,6 +19,7 @@
  *   registerChannelAction  — Channels view row action    (ChannelPanelPlugin task)
  *   registerCodeTemplateAction — Code Templates row action
  *   registerMessageAction  — message browser row action  (web-only; Swing has no hook)
+ *   registerReferences     — Reference list + autocomplete entries (CodeTemplatePlugin)
  *   registerStepType / registerRuleType — transformer/filter editors
  *                                                        (TransformerStepPlugin/FilterRulePlugin)
  *   registerConnectorPanel — connector property editor   (ConnectorSettingsPanel)
@@ -41,6 +42,7 @@ import { setAuthorizationController, checkTask } from './authorization.js';
 import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
 import { apiUrl, appUrl } from './deployment.js';
+import { addReferences, registeredReferences } from './script-completions.js';
 /* ---- @oie/* plugin API contract version --------------------------------------
  * The version of the framework surface (the `platform` registries + the @oie/web-*
  * exports) that this web admin implements. Tracks the OIE engine release line it
@@ -55,7 +57,7 @@ import { apiUrl, appUrl } from './deployment.js';
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.7.0'; // 4.7: registerMessageAction
+export const OIE_API_VERSION = '4.8.0'; // 4.8: registerReferences
 function parseApiVersion(v) {
     const [major, minor] = String(v == null ? '' : v).split('.');
     return { major: parseInt(major, 10) || 0, minor: parseInt(minor, 10) || 0 };
@@ -160,6 +162,13 @@ export const platform = {
        onInvoke(message, ctx) }. ctx = { platform, channelId, message,
        metaDataId, connectorMessage }. */
     registerMessageAction(action) { registries.messageActions.push(action); },
+    /* Script editor Reference list entries (Swing's CodeTemplatePlugin
+       .getReferenceItems). items = [{ name, description?, code,
+       type?  (FUNCTION | DRAG_AND_DROP_CODE (default) | COMPILED_CODE),
+       contexts?  (ContextType names; default every context) }]. */
+    registerReferences(category, items) {
+        addReferences(items.map((item) => ({ ...item, category })));
+    },
     registerSettingsPanel(panel) { registries.settingsPanels.push(panel); },
     registerAttachmentViewer(viewer) { registries.attachmentViewers.push(viewer); },
     registerStepType(type, def) { registries.stepTypes.set(type, def); },
@@ -190,6 +199,7 @@ export const platform = {
     channelActions: () => sorted(registries.channelActions),
     codeTemplateActions: () => sorted(registries.codeTemplateActions),
     messageActions: () => sorted(registries.messageActions),
+    references: () => registeredReferences(),
     settingsPanels: () => sorted(registries.settingsPanels),
     attachmentViewers: () => [...registries.attachmentViewers],
     stepType: (type) => registries.stepTypes.get(type),
