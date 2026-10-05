@@ -464,7 +464,9 @@ function releaseScope(holder) {
     holder.disposed = true;
     if (!owned)
         return;
-    const back = holder.previous && !(holder.previous.owner && holder.previous.owner.disposed) ? holder.previous : null;
+    let back = holder.previous;
+    while (back?.owner?.disposed)
+        back = back.owner.previous;
     if (back && back.scope.contexts.length) {
         setActiveScope(back.scope.channelId, back.scope.contexts);
         if (back.owner)
@@ -566,7 +568,14 @@ export function mountMonaco(monaco, editor, opts = {}) {
         // Refocus retries a failed template load, but must not replace the
         // saved parent scope with this editor's own scope.
         if (!ownsScope(holder)) {
-            holder.previous = { owner: ownsScope(scopeOwner) ? scopeOwner : null, scope: activeScope() };
+            const previousOwner = ownsScope(scopeOwner) ? scopeOwner : null;
+            for (let ancestor = previousOwner; ancestor; ancestor = ancestor.previous?.owner ?? null) {
+                if (ancestor.previous?.owner === holder) {
+                    ancestor.previous = holder.previous;
+                    break;
+                }
+            }
+            holder.previous = { owner: previousOwner, scope: activeScope() };
         }
         setActiveScope(scope.channelId, [scope.context]);
         holder.token = currentScope();
