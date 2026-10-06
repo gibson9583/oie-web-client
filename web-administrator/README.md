@@ -233,6 +233,10 @@ accessor at the drop point.
 
 ## Plugins
 
+The [1.1.0 API additions](PLUGINS.md#api-additions-in-web-client-110) cover
+Reference registrations and lookup, code/message editor options, connector
+forms, channel-tag helpers and Web Support's datatype vocabulary declarations.
+
 See [PLUGINS.md](PLUGINS.md) — it includes worked examples for every
 extension point. Nearly everything ships as a plugin: each connector
 (`plugins/connector-*`), data type (`plugins/datatype-*`), the transformer

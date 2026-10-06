@@ -358,6 +358,14 @@ shell internals:
 | [`@oie/web-shell`](packages/web-shell) | `platform` extension points (nav, views, settings, connectors) |
 | [`@oie/eslint-config`](packages/eslint-config) | Shared lint config enforcing the public-API boundary |
 
+Web Client 1.1.0 implements API **4.8.0**, with plugin Reference registrations
+and lookup, scoped editor completions, accessible/literal message editors with
+HL7 v2 highlighting, connector-form callbacks/validation and exact-name
+channel-tag helpers. See the
+[API additions](web-administrator/PLUGINS.md#api-additions-in-web-client-110)
+for signatures and compatibility, including Web Support's datatype vocabulary
+manifest declaration.
+
 At runtime the host page's import map resolves `@oie/*` to the shell's loaded
 copy, so a plugin shares one framework instance whether it's bundled or served
 from an extension zip. Plugins may also import the framework by absolute URL
