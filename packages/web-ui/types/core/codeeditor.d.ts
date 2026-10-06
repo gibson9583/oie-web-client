@@ -6,6 +6,9 @@ export interface CodeEditorOptions {
     readOnly?: boolean;
     minHeight?: string;
     placeholder?: string;
+    ariaLabel?: string;
+    /** Sample data: literal tabs and newlines, without typing assistance. */
+    literalInput?: boolean;
     onChange?(value: string): void;
     /** Corner toggle opening the full-screen code view. */
     maximizable?: boolean;
@@ -30,6 +33,7 @@ export declare class CodeEditor {
     monaco?: MonacoNs.editor.IStandaloneCodeEditor;
     __maxCleanup?: () => void;
     _lines?: number;
+    _tabFocus?: boolean;
     constructor(opts?: CodeEditorOptions);
     handleKey(e: KeyboardEvent): void;
     syncGutter(): void;

@@ -15,6 +15,9 @@ export interface CodeEditorOptions {
     readOnly?: boolean;
     minHeight?: string;
     placeholder?: string;
+    ariaLabel?: string;
+    /** Sample data: literal tabs and newlines, without typing assistance. */
+    literalInput?: boolean;
     onChange?(value: string): void;
     /** Corner toggle opening the full-screen code view. */
     maximizable?: boolean;
@@ -37,12 +40,14 @@ export class CodeEditor {
     monaco?: MonacoNs.editor.IStandaloneCodeEditor;
     __maxCleanup?: () => void;
     _lines?: number;
+    _tabFocus?: boolean;
     constructor(opts: CodeEditorOptions = {}) {
         this.opts = opts;
         this.gutter = h('div.ce-gutter', '1');
         this.area = h('textarea.ce-area', {
             spellcheck: 'false',
             readOnly: !!opts.readOnly,
+            'aria-label': opts.ariaLabel,
             placeholder: opts.placeholder || ''
         }) as HTMLTextAreaElement;
         this.area.value = opts.value ?? '';
@@ -61,7 +66,10 @@ export class CodeEditor {
     }
 
     handleKey(e: KeyboardEvent): void {
-        if (e.key === 'Tab' && !this.opts.readOnly) {
+        if (this.opts.literalInput && e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'm') {
+            e.preventDefault();
+            this._tabFocus = !this._tabFocus;
+        } else if (e.key === 'Tab' && !this.opts.readOnly && !this._tabFocus) {
             e.preventDefault();
             const { selectionStart: start, selectionEnd: end, value } = this.area;
             if (e.shiftKey) {
@@ -80,7 +88,7 @@ export class CodeEditor {
             }
             this.syncGutter();
             this.opts.onChange && this.opts.onChange(this.getValue());
-        } else if (e.key === 'Enter' && !this.opts.readOnly) {
+        } else if (e.key === 'Enter' && !this.opts.readOnly && !this.opts.literalInput) {
             // Keep the indentation of the previous line.
             const { selectionStart: start, value } = this.area;
             const lineStart = value.lastIndexOf('\n', start - 1) + 1;
@@ -305,8 +313,11 @@ import { ensureMonaco, mountMonaco } from './monaco.js';
 let factory: (opts?: CodeEditorOptions) => CodeEditor = (opts = {}) => {
     const editor = new CodeEditor(opts);
     if (opts.maximizable || opts.popoutable) attachCodeView(editor, opts);
+    let disposed = false;
+    const dispose = editor.dispose.bind(editor);
+    editor.dispose = () => { disposed = true; dispose(); };
     ensureMonaco().then((monaco) => {
-        if (!monaco) return;
+        if (!monaco || disposed) return;
         try { mountMonaco(monaco, editor, opts); }
         catch (e) { console.warn('[codeeditor] Monaco upgrade failed:', e); }
     });

@@ -47,6 +47,7 @@ import { createCodeEditor } from '@oie/web-ui';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { generateElementScript } from '../../core/step-script.js';
+import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
@@ -778,6 +779,40 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
     const dtLabel = (name: any) => (dataTypeDef(name) || { label: name }).label;
     const typeName = target[`${side}DataType`] || 'RAW';
     ensureProps();
+    const language = typeName === 'HL7V2' ? 'hl7v2' : typeName === 'JSON' ? 'json' : ['XML', 'HL7V3', 'DICOM'].includes(typeName) ? 'xml' : 'text';
+    const editorHostRef = useRef<HTMLDivElement>(null);
+    const editorRef = useRef<ReturnType<typeof createCodeEditor> | null>(null);
+    const commitRef = useRef(commit);
+    commitRef.current = commit;
+    const syncing = useRef(false);
+    const template = String(target[templateKey] ?? '');
+    useEffect(() => {
+        const host = editorHostRef.current!;
+        const editor = createCodeEditor({
+            value: String(target[templateKey] ?? ''), language, literalInput: true,
+            ariaLabel: `${title} Template`, placeholder: '(none)', minHeight: '160px',
+            onChange: value => {
+                if (syncing.current) return;
+                target[templateKey] = value === '' ? null : value;
+                commitRef.current();
+                bump();
+            }
+        });
+        editor.el.style.height = '200px';
+        editor.el.style.resize = 'vertical';
+        editorRef.current = editor;
+        host.appendChild(editor.el);
+        return () => { editor.dispose(); editorRef.current = null; host.replaceChildren(); };
+    }, [target, templateKey, language, title]);
+    useEffect(() => {
+        // A newer keystroke may have updated the model since this render.
+        if (template !== String(target[templateKey] ?? '')) return;
+        const editor = editorRef.current;
+        // Display normalization must not dirty an untouched CR/CRLF template.
+        if (!editor || normalizeLineEndings(editor.getValue()) === normalizeLineEndings(template)) return;
+        syncing.current = true;
+        try { editor.setValue(normalizeLineEndings(template)); } finally { syncing.current = false; }
+    }, [target, templateKey, template]);
 
     // Edit this side's data type properties in a modal (Swing's data type
     // properties dialog). Edits go to a draft and apply on OK; the modal is
@@ -868,9 +903,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
             </div>
             <div className="field">
                 <label>{`${title} Template`}</label>
-                <textarea rows={6} spellCheck={false} placeholder="(none)"
-                    value={target[templateKey] == null ? '' : String(target[templateKey])}
-                    onChange={(e: any) => { target[templateKey] = e.target.value === '' ? null : e.target.value; commit(); bump(); }} />
+                <div ref={editorHostRef} />
             </div>
         </div>
     );
@@ -879,6 +912,7 @@ function TemplatesSide({ side, title, templateKey, target, version, connectorTyp
 function TemplatesTab({ target, version, connectorType, channel, commit }: any) {
     return (
         <div className="p-3">
+            <p className="hint mb-2">Tab inserts a tab. {navigator.userAgent.includes('Macintosh') ? 'Ctrl+Shift+M' : 'Ctrl+M'} toggles Tab to move focus.</p>
             <TemplatesSide side="inbound" title="Inbound" templateKey="inboundTemplate"
                 target={target} version={version} connectorType={connectorType} channel={channel} commit={commit} />
             <div className="h-3.5" />
