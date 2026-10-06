@@ -539,6 +539,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 .wiz-steps { display: flex; align-items: stretch; }
 .wiz-step {
     display: flex; align-items: center; justify-content: center; gap: 5px;
+    border: 0;
     padding: 6px 18px 6px 27px;
     margin-left: -12px;                 /* overlap < notch → a thin seam of the bar bg shows between folds */
     background: var(--bg2);
