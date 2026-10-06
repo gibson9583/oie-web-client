@@ -593,7 +593,7 @@ function ReviewStep({ channel, inbound, outbound }: any) {
     const pruneText = (prune.pruneMetaDataDays == null && prune.pruneContentDays == null)
         ? 'Stored indefinitely'
         : `Metadata ${prune.pruneMetaDataDays == null ? 'kept' : prune.pruneMetaDataDays + ' days'} · Content ${prune.pruneContentDays == null ? 'with metadata' : prune.pruneContentDays + ' days'}`;
-    const tags = api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag').map((t: any) => t && t.name).filter(Boolean);
+    const tags = api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag').map((t: any) => t && t.name).filter((n: any) => n != null && n !== '').map(String);
     const attType = channel.properties && channel.properties.attachmentProperties && channel.properties.attachmentProperties.type;
     return (
         <div className="panel !mt-0 max-w-[738px]">

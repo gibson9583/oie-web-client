@@ -2,6 +2,7 @@ import api from './api.js';
 import { encodeChannelTemplates } from './oie.js';
 import { captureEngineSession } from './engine-fetch.js';
 import { normalizeChannelDataTypeArrays } from './datatype-arrays.js';
+import type { ChannelTag } from './wire-types.js';
 
 type EditState = { isNew: boolean; baseline: string | null; workingBaseline: string | null; saving: boolean; creationAttempts?: any[] };
 const sessions = new WeakMap<object, EditState>();
@@ -34,6 +35,33 @@ function repairFileCredentials(channel: any): boolean {
     return changed;
 }
 
+/** Send the engine's exact name for every tag it already knows by id. */
+export async function restoreChannelTagNames(channel: any, originalTagIds?: Set<string>): Promise<void> {
+    const tags = api.asList(channel?.exportData?.channelTags, 'channelTag');
+    if (!tags.length) return;
+    const assertSession = captureEngineSession();
+    let known: ChannelTag[];
+    try { known = await api.server.channelTags(); }
+    catch {
+        assertSession();
+        // Channel View also exposes assigned tags; Tags View is not required.
+        // Newly entered strings are already exact and are not in the saved export.
+        const assigned = tags.filter(tag => !originalTagIds || originalTagIds.has(String(tag?.id))
+            || typeof tag?.name !== 'string');
+        known = assigned.length ? await api.channels.tags(channel.id) : [];
+        if (assigned.some(tag => !known.some(existing => String(existing.id) === String(tag?.id)))) {
+            throw new Error('Cannot verify channel tag names. Retry before saving.');
+        }
+    }
+    assertSession();
+    const names = new Map(known.map(tag => [String(tag.id), tag.name]));
+    for (const tag of tags) {
+        const name = names.get(String(tag?.id)) ?? tag?.name;
+        if (typeof name !== 'string') throw new Error('Cannot verify channel tag names. Retry before saving.');
+        tag.name = name;
+    }
+}
+
 // External library/graph exports are not written by a channel save. Keep them
 // out of its baseline; resources, tags and all channel metadata remain included.
 function fingerprint(channel: any): string {
@@ -51,7 +79,9 @@ function fingerprint(channel: any): string {
 export async function loadChannelForEdit(id: string): Promise<any> {
     const channel = await api.channels.get(id);
     if (!channel || channel.id !== id) throw new Error(`Channel ${id} was not found.`);
-    sessions.set(channel, { isNew: false, baseline: fingerprint(channel), workingBaseline: fingerprint(channel), saving: false });
+    const baseline = fingerprint(channel);
+    await restoreChannelTagNames(channel);
+    sessions.set(channel, { isNew: false, baseline, workingBaseline: fingerprint(channel), saving: false });
     return channel;
 }
 
@@ -218,6 +248,11 @@ export async function saveChannelModel(channel: any, options: {
             return true;
         }
         normalizeChannelDataTypeArrays(submitted);
+        const original = state.baseline ? JSON.parse(state.baseline) : null;
+        const originalTagIds = new Set<string>(api.asList(original?.exportData?.channelTags, 'channelTag')
+            .map(tag => String(tag?.id)));
+        await restoreChannelTagNames(submitted, originalTagIds);
+        assertSession();
         const exportData = submitted.exportData = submitted.exportData || {};
         const metadata = exportData.metadata = exportData.metadata || { enabled: true };
         const previousTime = modifiedTime(current);

@@ -343,6 +343,38 @@ export function postXml(path, xml, params) {
 export function putXml(path, xml, params) {
     return put(path, String(xml), { params, contentType: 'application/xml' });
 }
+/** Read tag names as exact text from a tag set or channel export. */
+function parseChannelTagsXml(xml, channelId) {
+    const invalid = () => new Error('Engine returned invalid channel tag XML');
+    if (!String(xml || '').trim())
+        throw invalid();
+    const doc = new DOMParser().parseFromString(String(xml), 'application/xml');
+    const root = doc.documentElement;
+    if (doc.doctype || !root || root.tagName !== (channelId ? 'channel' : 'set')
+        || doc.getElementsByTagNameNS('http://www.mozilla.org/newlayout/xml/parsererror.xml', 'parsererror').length
+        || doc.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'parsererror').length) {
+        throw invalid();
+    }
+    const child = (node, tag) => Array.from(node.children).find(c => c.tagName === tag);
+    const text = (node, tag) => child(node, tag)?.textContent ?? '';
+    const container = channelId ? root.querySelector(':scope > exportData > channelTags') : root;
+    if (!container || (channelId && text(root, 'id') !== channelId))
+        throw invalid();
+    const seen = new Set();
+    return Array.from(container.children).map(node => {
+        if (node.tagName !== 'channelTag' || !text(node, 'id') || !text(node, 'name') || seen.has(text(node, 'id')))
+            throw invalid();
+        seen.add(text(node, 'id'));
+        const ids = Array.from(child(node, 'channelIds')?.children ?? []).map(id => id.textContent ?? '');
+        const tag = { id: text(node, 'id'), name: text(node, 'name'), channelIds: ids.length ? { string: ids } : '' };
+        const color = child(node, 'backgroundColor');
+        if (color) {
+            tag.backgroundColor = Object.fromEntries(['red', 'green', 'blue', 'alpha']
+                .filter(part => child(color, part)).map(part => [part, Number(text(color, part))]));
+        }
+        return tag;
+    });
+}
 export function del(path, params, opts) {
     return send(BASE + path + qs(params), {
         method: 'DELETE', headers: headers(), credentials: 'same-origin'
@@ -443,6 +475,7 @@ export const channels = {
     // Base64StringConverter); decode on read and re-encode a clone on write so
     // the in-memory channel keeps plain-text templates. See oie.ts.
     get: (channelId) => get(`/channels/${enc(channelId)}`).then(c => oie.decodeChannelTemplates(c)),
+    tags: (channelId) => getXml(`/channels/${enc(channelId)}`).then(xml => parseChannelTagsXml(xml, channelId)),
     create: (channel) => post('/channels', oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel' }),
     // override=false enables the engine's Swing-parity conflict check: the save is
     // rejected (body "false") when the channel changed after `startEdit` (a Date —
@@ -638,9 +671,7 @@ export const server = {
     setGlobalScripts: (scripts) => put('/server/globalScripts', scripts, { wrapKey: 'map' }),
     configurationMap: () => get('/server/configurationMap'),
     setConfigurationMap: (map) => put('/server/configurationMap', map, { wrapKey: 'map' }),
-    // Staxon can encode numeric tag names as JSON numbers; all consumers use strings.
-    channelTags: () => get('/server/channelTags').then(v => asList(v, 'channelTag')
-        .map(tag => ({ ...tag, name: String(tag.name ?? '') }))),
+    channelTags: () => getXml('/server/channelTags').then(parseChannelTagsXml),
     setChannelTags: (tags) => put('/server/channelTags', { channelTag: tags }, { wrapKey: 'set' }),
     channelDependencies: async () => {
         const dependencies = asList(await get('/server/channelDependencies'), 'channelDependency');

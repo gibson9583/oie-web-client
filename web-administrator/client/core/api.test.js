@@ -5,17 +5,16 @@ import api, { onSessionExpired, resetSessionExpired, isEngineReachable } from '.
 let pass = 0, fail = 0;
 const ok = (cond, label) => { if (cond) pass++; else { fail++; console.error('  FAIL -', label); } };
 
-// Numeric names from the engine are text labels, including zero and leading zeros.
-const wireTags = [
-    { id: 'numeric', name: 123, channelIds: { string: ['a', 'b'] }, extra: 'retain' },
-    { id: 'zero', name: 0 }, { id: 'leading-zero', name: '00123' }, { id: 'text', name: 'production' }
-];
-globalThis.fetch = async () => new Response(JSON.stringify({ set: { channelTag: wireTags } }), {
-    status: 200, headers: { 'Content-Type': 'application/json' }
-});
-const tags = await api.server.channelTags();
-ok(JSON.stringify(tags.map(t => t.name)) === JSON.stringify(['123', '0', '00123', 'production']), 'tag names normalize without losing zero or leading zeros');
-ok(tags[0].id === 'numeric' && tags[0].extra === 'retain' && tags[0].channelIds.string.join(',') === 'a,b', 'tag normalization retains identity, membership and additional fields');
+// Channel tags are read as XML; the browser parse is covered by e2e/channel-tags.spec.ts.
+let tagAccept = null;
+globalThis.fetch = async (_url, init) => {
+    tagAccept = new Headers(init?.headers).get('Accept');
+    return new Response('', { status: 200, headers: { 'Content-Type': 'application/xml' } });
+};
+let tagError;
+try { await api.server.channelTags(); } catch (error) { tagError = error; }
+ok(tagAccept === 'application/xml', 'channel tags request XML');
+ok(tagError?.message === 'Engine returned invalid channel tag XML', 'an empty response is not an authoritative empty tag set');
 
 // Drive the 401 path without a server: every api.get goes through global fetch.
 globalThis.fetch = async () => new Response('', { status: 401 });

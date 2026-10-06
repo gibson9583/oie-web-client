@@ -27,7 +27,7 @@ import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorM
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
-import { updateChannelWithConflict } from '../../core/channel-save.js';
+import { restoreChannelTagNames, updateChannelWithConflict } from '../../core/channel-save.js';
 import { normalizeChannelDataTypeArrays } from '../../core/datatype-arrays.js';
 import { confirmChannelOverwrite } from '../channel-persistence.js';
 import * as router from '../../core/router.js';
@@ -1154,6 +1154,7 @@ export function ChannelsView() {
         try {
             const copy = structuredClone(channel);
             normalizeChannelDataTypeArrays(copy);
+            await restoreChannelTagNames(copy);
             copy.id = uuid();
             copy.name = `${channel.name} copy`;
             copy.revision = 0;
