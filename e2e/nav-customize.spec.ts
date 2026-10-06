@@ -18,6 +18,93 @@ const layoutPref = (page: any) => page.evaluate(() => {
     return key ? (JSON.parse(localStorage.getItem(key) || '{}').navLayout || null) : null;
 });
 
+async function renameItem(page: any, id: string, label: string) {
+    await customize(page, true);
+    await rail(page).locator(`[data-nav-item="${id}"]`).click();
+    await page.getByRole('textbox', { name: 'Item name', exact: true }).fill(label);
+    await page.keyboard.press('Enter');
+}
+
+test('custom item names update the active heading and browser title, persist and reset', async ({ page }) => {
+    await page.goto('/channels?group=all');
+    await expect(page.locator('.view-title')).toHaveText('Channels');
+    await renameItem(page, 'channels', 'Interfaces');
+    await expect(page.locator('.view-title')).toHaveText('Interfaces');
+    await expect(page).toHaveTitle('Interfaces — OIE Administrator');
+    await customize(page, false);
+    await rail(page).locator('[data-nav-item="dashboard"]').click();
+    await expect(page.locator('.view-title')).toHaveText('Dashboard');
+    await rail(page).locator('[data-nav-item="channels"]').click();
+    await expect(page.locator('.view-title')).toHaveText('Interfaces');
+    await page.reload();
+    await expect(page.locator('.view-title')).toHaveText('Interfaces');
+    // Resetting an individual name and the complete layout both update immediately.
+    await renameItem(page, 'channels', 'Channels');
+    await expect(page.locator('.view-title')).toHaveText('Channels');
+    await renameItem(page, 'channels', 'Interfaces');
+    await page.locator('#rail-reset-nav').click();
+    await expect(page.locator('.view-title')).toHaveText('Channels');
+    await expect(page).toHaveTitle('Channels — OIE Administrator');
+});
+
+test('custom navigation names preserve detail and view-supplied titles and hidden deep links', async ({ page }) => {
+    await page.goto('/channels');
+    await renameItem(page, 'channels', 'Interfaces');
+    await customize(page, false);
+    await page.goto('/channels/new/guided');
+    await expect(page.locator('.view-title')).toHaveText('New Channel — Wizard');
+    await page.goto('/channels');
+    await expect(page.locator('.view-title')).toHaveText('Interfaces');
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('webadmin:set-title', {
+        detail: { title: 'Channel-specific title' }
+    })));
+    await renameItem(page, 'channels', 'Endpoints');
+    await expect(page.locator('.view-title')).toHaveText('Channel-specific title');
+    await expect(page).toHaveTitle('Channel-specific title — OIE Administrator');
+    await rail(page).locator('.rail-row', { has: page.locator('[data-nav-item="channels"]') })
+        .locator('.rail-eye').click();
+    await customize(page, false);
+    await expect(rail(page).locator('[data-nav-item="channels"]')).toHaveCount(0);
+    await page.goto('/channels');
+    await expect(page.locator('.view-title')).toHaveText('Endpoints');
+});
+
+test('plugin navigation titles use custom names and tolerate malformed saved labels', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /webplugins': ['navdemo'],
+        'GET /webplugins/navdemo/plugin.json': {
+            id: 'nav-demo', name: 'Navigation Demo', version: '1.0.0',
+            client: { entry: 'web/plugin.js' }
+        }
+    });
+    await page.route('**/api/webplugins/navdemo/web/plugin.js*', route => route.fulfill({
+        status: 200, contentType: 'text/javascript',
+        body: `export function register(platform) {
+            platform.registerNavItem({ id: 'nav-demo', label: 'Navigation Demo', path: '/nav-demo', section: 'Plugins' });
+            platform.registerView('/nav-demo', () => document.createElement('div'), { title: 'Plugin page' });
+        }`
+    }));
+    await page.goto('/dashboard');
+    await expect(rail(page).locator('[data-nav-item="nav-demo"]')).toBeVisible();
+    await renameItem(page, 'nav-demo', 'Interfaces & <Partners> 日本語');
+    await customize(page, false);
+    await rail(page).locator('[data-nav-item="nav-demo"]').click();
+    await expect(page.locator('.view-title')).toHaveText('Interfaces & <Partners> 日本語');
+    await expect(page).toHaveTitle('Interfaces & <Partners> 日本語 — OIE Administrator');
+    // Invalid persisted label types should fall back to the route title, without
+    // leaking an orphaned preference into the current navigation destination.
+    await page.evaluate(() => {
+        const key = Object.keys(localStorage).find(k => k.startsWith('webadmin-prefs'))!;
+        const prefs = JSON.parse(localStorage.getItem(key)!);
+        prefs.navLayout.items['nav-demo'].label = { bad: true };
+        prefs.navLayout.items.orphan = { label: 'Wrong title' };
+        localStorage.setItem(key, JSON.stringify(prefs));
+    });
+    await page.reload();
+    await expect(page.locator('.view-title')).toHaveText('Plugin page');
+    await expect(rail(page).locator('[data-nav-item="nav-demo"]')).toContainText('Navigation Demo');
+});
+
 async function customize(page: any, on: any) {
     const pressed = await gear(page).getAttribute('aria-pressed') === 'true';
     if (pressed !== on) await gear(page).click();
