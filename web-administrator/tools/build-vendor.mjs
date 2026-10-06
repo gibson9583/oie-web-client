@@ -142,8 +142,8 @@ for (const pkg of ['seek-bzip', 'buffer', 'base64-js', 'ieee754']) {
 const monacoOut = resolve(clientDir, 'vendor', 'monaco');
 // Editor namespace (ESM). esbuild emits editor.main.css alongside (Monaco's CSS
 // isn't auto-injected the way Vite/webpack do it); core/monaco.js links it. The
-// codicon webfont is inlined as a data URL so there are no separate asset files
-// or path rewrites to serve.
+// codicon webfont is emitted beside it as a file, because the server's CSP
+// allows only same-origin fonts (font-src 'self').
 const editorBuild = await build({
     // monaco-editor >=0.53 ships an `exports` map that rewrites `monaco-editor/*`
     // to `esm/vs/*`; the old deep `esm/vs/...` specifier now double-resolves, so
@@ -156,7 +156,7 @@ const editorBuild = await build({
     target: 'es2022',
     minify: true,
     legalComments: 'none',
-    loader: { '.ttf': 'dataurl' },
+    loader: { '.ttf': 'file' },
     metafile: true,
     plugins: [{
         name: 'patched-monaco-sanitizer',
