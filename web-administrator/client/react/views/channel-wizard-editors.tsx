@@ -714,9 +714,10 @@ function ChannelTags({ channel, version }: any) {
             const assigned = new Set();
             for (const t of all) if (t.channelIds.includes(channel.id)) assigned.add(t.name);
             for (const ct of api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag')) {
-                if (!ct || !ct.name) continue;
-                if (!all.some((t: any) => t.name === ct.name)) all.push({ id: ct.id || oie.uuid(), name: ct.name, channelIds: api.asList(ct.channelIds, 'string').map(String), backgroundColor: ct.backgroundColor });
-                assigned.add(String(ct.name));
+                if (!ct || ct.name == null || String(ct.name) === '') continue;
+                const name = String(ct.name);
+                if (!all.some((t: any) => t.name === name)) all.push({ id: ct.id || oie.uuid(), name, channelIds: api.asList(ct.channelIds, 'string').map(String), backgroundColor: ct.backgroundColor });
+                assigned.add(name);
             }
             st.current = { all, assigned, available: true, loaded: true };
             tick();

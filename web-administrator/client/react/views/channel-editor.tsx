@@ -1166,15 +1166,16 @@ async function ensureTags(tagState: any, channel: any) {
     // it survives an editor re-render (e.g. after editing a connector) before
     // the first save — the channel object itself lives on in the store.
     for (const ct of api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag')) {
-        if (!ct || !ct.name) continue;
-        if (!tagState.all.some((t: any) => t.name === ct.name)) {
+        if (!ct || ct.name == null || String(ct.name) === '') continue;
+        const name = String(ct.name);
+        if (!tagState.all.some((t: any) => t.name === name)) {
             tagState.all.push({
-                id: ct.id || oie.uuid(), name: ct.name,
+                id: ct.id || oie.uuid(), name,
                 channelIds: api.asList(ct.channelIds, 'string').map(String),
                 backgroundColor: ct.backgroundColor
             });
         }
-        tagState.assigned.add(String(ct.name));
+        tagState.assigned.add(name);
     }
     tagState.initial = new Set(tagState.assigned);
     tagState.loaded = true;

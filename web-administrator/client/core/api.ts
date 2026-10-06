@@ -942,7 +942,9 @@ export const server: ServerApi = {
     setGlobalScripts: (scripts) => put('/server/globalScripts', scripts, { wrapKey: 'map' }),
     configurationMap: () => get('/server/configurationMap'),
     setConfigurationMap: (map) => put('/server/configurationMap', map, { wrapKey: 'map' }),
-    channelTags: () => get('/server/channelTags').then(v => asList<ChannelTag>(v, 'channelTag')),
+    // Staxon can encode numeric tag names as JSON numbers; all consumers use strings.
+    channelTags: () => get('/server/channelTags').then(v => asList<ChannelTag>(v, 'channelTag')
+        .map(tag => ({ ...tag, name: String(tag.name ?? '') }))),
     setChannelTags: (tags) => put('/server/channelTags', { channelTag: tags }, { wrapKey: 'set' }),
     channelDependencies: async () => {
         const dependencies = asList<ChannelDependency>(await get('/server/channelDependencies'), 'channelDependency');
