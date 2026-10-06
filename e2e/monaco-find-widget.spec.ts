@@ -19,7 +19,7 @@ test('stylesheets load fonts as same-origin files that the CSP allows', async ({
     expect(font.status()).toBe(200);
 });
 
-test('the find widget draws its icons', async ({ page }) => {
+test('the find widget draws its icons and shows its tooltips in full', async ({ page }) => {
     const violations: string[] = [];
     page.on('console', message => { if (/Content Security Policy/i.test(message.text())) violations.push(message.text()); });
     await page.goto('/global-scripts');
@@ -31,5 +31,16 @@ test('the find widget draws its icons', async ({ page }) => {
     await expect.poll(() => page.evaluate(() => [...document.fonts]
         .filter(face => face.family.replace(/["']/g, '') === 'codicon').map(face => face.status)))
         .toEqual(['loaded']);
+
+    await regex.hover();
+    const tooltip = page.locator('.monaco-hover').filter({ hasText: 'Use Regular Expression' }).first();
+    await expect(tooltip).toBeVisible();
+    // A point inside the tooltip's top edge must hit the tooltip, not the page beneath a clipping box.
+    const visible = await tooltip.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + 2);
+        return !!hit && element.contains(hit);
+    });
+    expect(visible).toBe(true);
     expect(violations).toEqual([]);
 });
