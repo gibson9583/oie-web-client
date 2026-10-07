@@ -75,7 +75,8 @@ function ensureMonacoCss(): void {
     const link = document.createElement('link');
     link.id = 'oie-monaco-css';
     link.rel = 'stylesheet';
-    link.href = `${MONACO_VENDOR}/editor.main.css`;
+    // Bypass the still-fresh stylesheet that embedded the CSP-blocked font.
+    link.href = `${MONACO_VENDOR}/editor.main.css?v=external-fonts`;
     document.head.appendChild(link);
 }
 
