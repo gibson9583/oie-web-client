@@ -586,6 +586,10 @@ export function mountMonaco(monaco, editor, opts = {}) {
     if (!editor.el || !editor.el.classList || editor.monaco)
         return;
     const value = editor.getValue();
+    // Only hand off the active literal textarea; other editors must not steal focus.
+    const area = opts.literalInput ? editor.el.querySelector('textarea') : null;
+    const selection = area && document.activeElement === area
+        ? { start: area.selectionStart, end: area.selectionEnd, backward: area.selectionDirection === 'backward' } : null;
     const host = document.createElement('div');
     host.className = 'monaco-host';
     // Preserve the optional zoom controls (maximize / pop out — see attachZoomControls
@@ -626,7 +630,7 @@ export function mountMonaco(monaco, editor, opts = {}) {
         wordBasedSuggestions: lang === 'javascript' ? 'off' : 'currentDocument',
         ...(opts.literalInput ? {
             lineNumbersMinChars: 2, lineDecorationsWidth: 4, folding: lang !== 'plaintext' && lang !== 'hl7v2',
-            insertSpaces: false, detectIndentation: false, autoIndent: 'none',
+            insertSpaces: false, useTabStops: false, detectIndentation: false, autoIndent: 'none',
             trimAutoWhitespace: false,
             // Native EditContext can bypass the cancellable beforeinput below.
             editContext: false,
@@ -754,4 +758,12 @@ export function mountMonaco(monaco, editor, opts = {}) {
     editor.setValue = (v) => instance.setValue(v ?? '');
     editor.focus = () => instance.focus();
     editor.dispose = record.dispose;
+    if (selection && editor.el.isConnected
+        && (document.activeElement === document.body || editor.el.contains(document.activeElement))) {
+        const model = instance.getModel();
+        const anchor = model.getPositionAt(selection.backward ? selection.end : selection.start);
+        const active = model.getPositionAt(selection.backward ? selection.start : selection.end);
+        instance.setSelection(new monaco.Selection(anchor.lineNumber, anchor.column, active.lineNumber, active.column));
+        instance.focus();
+    }
 }

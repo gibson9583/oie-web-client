@@ -379,3 +379,71 @@ test('large templates have usable line numbers and a resizable editor', async ({
     await expect(editor).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('templates-tablet.png') });
 });
+
+for (const route of ['transformer/0', 'transformer/1', 'response/1']) {
+    test(`${route}: literal Backspace removes one data space and saves both sides`, async ({ page }) => {
+        const writes = await setup(page, route, '    X', '    X');
+        await expect(panel(page).locator('.ce-monaco')).toHaveCount(2);
+        for (const side of ['Inbound', 'Outbound']) {
+            await page.evaluate(side => {
+                const m = (window as any).monaco;
+                const editor = m.editor.getEditors().find((e: any) => e.getOption(m.editor.EditorOption.ariaLabel) === `${side} Template`);
+                editor.setPosition({ lineNumber: 1, column: 5 }); editor.focus();
+            }, side);
+            await page.keyboard.press('Backspace');
+            expect((await snapshot(page, side)).value).toBe('   X');
+        }
+        await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+        await expect.poll(() => writes.length).toBe(1);
+        expect(decode(targetOf(writes[0], route).inboundTemplate)).toBe('   X');
+        expect(decode(targetOf(writes[0], route).outboundTemplate)).toBe('   X');
+    });
+}
+
+for (const side of ['Inbound', 'Outbound']) {
+    for (const backward of [false, true]) {
+        test(`delayed upgrade keeps ${side} focus and ${backward ? 'backward' : 'forward'} selection`, async ({ page }) => {
+            let release!: () => void;
+            const gate = new Promise<void>(resolve => { release = resolve; });
+            await page.route('**/vendor/monaco/editor.main.js', async route => { await gate; await route.continue(); });
+            const writes = await setup(page, 'transformer/0', 'A😀\nBCDE', 'A😀\nBCDE');
+            await field(page, side).focus();
+            await field(page, side).evaluate((el: HTMLTextAreaElement, backward) => el.setSelectionRange(4, 6, backward ? 'backward' : 'forward'), backward);
+            await expect(field(page, side)).toBeFocused();
+            release();
+            await expect(panel(page).locator('.ce-monaco')).toHaveCount(2);
+            const actual = await page.evaluate(side => {
+                const m = (window as any).monaco;
+                const editor = m.editor.getEditors().find((e: any) => e.getOption(m.editor.EditorOption.ariaLabel) === `${side} Template`);
+                return { focused: editor.hasTextFocus(), selection: editor.getSelection() };
+            }, side);
+            expect(actual.focused).toBe(true);
+            expect(actual.selection).toMatchObject({ selectionStartLineNumber: 2, selectionStartColumn: backward ? 3 : 1,
+                positionLineNumber: 2, positionColumn: backward ? 1 : 3 });
+            await page.keyboard.type('Z');
+            expect((await snapshot(page, side)).value).toBe('A😀\nZDE');
+            await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+            await expect.poll(() => writes.length).toBe(1);
+            expect(decode(targetOf(writes[0], 'transformer/0')[side === 'Inbound' ? 'inboundTemplate' : 'outboundTemplate'])).toBe('A😀\nZDE');
+        });
+    }
+}
+
+test('delayed template upgrade does not steal focus after the user leaves the textarea', async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route('**/vendor/monaco/editor.main.js', async route => { await gate; await route.continue(); });
+    await setup(page, 'transformer/0', 'ABCDE');
+    await field(page).focus();
+    await page.evaluate(() => {
+        const input = document.createElement('input'); input.id = 'other-input';
+        document.body.appendChild(input); input.focus();
+    });
+    await expect(page.locator('#other-input')).toBeFocused();
+    release();
+    await expect(panel(page).locator('.ce-monaco')).toHaveCount(2);
+    await expect(page.locator('#other-input')).toBeFocused();
+    await page.keyboard.type('Z');
+    await expect(page.locator('#other-input')).toHaveValue('Z');
+    expect((await snapshot(page)).value).toBe('ABCDE');
+});
