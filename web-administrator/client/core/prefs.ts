@@ -89,6 +89,14 @@ export const PREF_DEFAULTS: PrefValues = {
     navLayout: null
 };
 
+const listeners = new Set<() => void>();
+
+/** Observe same-window preference edits, including resets. */
+export function onPrefsChange(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+}
+
 let cache: Record<string, any> | null = null;
 let cacheKey: string | null = null;   // storageKey the cache belongs to; re-reads when the server namespace changes
 
@@ -114,6 +122,7 @@ export function setPrefs(obj: Partial<PrefValues> & Record<string, any>): void {
     cache = { ...all(), ...obj };
     cacheKey = storageKey();
     try { localStorage.setItem(storageKey(), JSON.stringify(cache)); } catch { /* private mode */ }
+    for (const listener of listeners) listener();
 }
 
 /** Reset all preferences to their defaults. */
@@ -121,4 +130,5 @@ export function resetPrefs(): void {
     cache = { ...PREF_DEFAULTS };
     cacheKey = storageKey();
     try { localStorage.removeItem(storageKey()); } catch { /* private mode */ }
+    for (const listener of listeners) listener();
 }

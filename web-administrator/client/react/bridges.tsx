@@ -9,6 +9,9 @@
 import { useSyncExternalStore, useState, useEffect, useReducer, useCallback, useRef } from 'react';
 import * as store from '../core/store.js';
 import * as router from '../core/router.js';
+import { getPref, onPrefsChange } from '../core/prefs.js';
+import { mergeNav, normalizeLayout } from '../core/nav-layout.js';
+import { platform } from '@oie/web-shell';
 import { timezoneMode, cycleTimezone, resolvedAbbr, onTimezoneChange } from '../core/timezone.js';
 import { iconPath } from '../core/icons.js';
 import api, { onConnectionChange, isEngineReachable } from '@oie/web-api';
@@ -47,10 +50,16 @@ export function useTimezone() {
  * vanilla shell. Also keeps document.title in sync.
  */
 export function useViewTitle() {
-    const [title, setTitle] = useState('');
+    const [view, setView] = useState({ path: '', title: '', refined: false });
+    const layout = useSyncExternalStore(onPrefsChange, () => getPref('navLayout'));
+    useStoreKey('webPlugins');
     useEffect(() => {
-        const onRoute = (e: any) => setTitle(e.detail?.meta?.title || '');
-        const onSet = (e: any) => { if (e.detail?.title) setTitle(e.detail.title); };
+        const onRoute = (e: any) => setView({
+            path: e.detail?.path || '', title: e.detail?.meta?.title || '', refined: false
+        });
+        const onSet = (e: any) => {
+            if (e.detail?.title) setView(v => ({ ...v, title: e.detail.title, refined: true }));
+        };
         window.addEventListener('route:changed', onRoute);
         window.addEventListener('webadmin:set-title', onSet);
         return () => {
@@ -58,6 +67,14 @@ export function useViewTitle() {
             window.removeEventListener('webadmin:set-title', onSet);
         };
     }, []);
+    // Only exact navigation destinations use a custom name. Detail/editor routes
+    // and titles explicitly supplied by views retain their own meaning. The merge
+    // is shared with the rail, including hidden entries that still have deep links.
+    const allowed = platform.navItems()
+        .filter((it: any) => !it.task || platform.checkTask(it.rbac || 'view', it.task));
+    const item = mergeNav(allowed, normalizeLayout(layout)).flatMap(group => group.items)
+        .find(it => !it.action && it.path?.split('?')[0] === view.path);
+    const title = !view.refined && item?.renamed ? item.label : view.title;
     useEffect(() => {
         document.title = (title ? title + ' — ' : '') + 'OIE Administrator';
     }, [title]);

@@ -45,6 +45,12 @@ export const PREF_DEFAULTS = {
     paletteRecent: [],
     navLayout: null
 };
+const listeners = new Set();
+/** Observe same-window preference edits, including resets. */
+export function onPrefsChange(listener) {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+}
 let cache = null;
 let cacheKey = null; // storageKey the cache belongs to; re-reads when the server namespace changes
 function all() {
@@ -75,6 +81,8 @@ export function setPrefs(obj) {
         localStorage.setItem(storageKey(), JSON.stringify(cache));
     }
     catch { /* private mode */ }
+    for (const listener of listeners)
+        listener();
 }
 /** Reset all preferences to their defaults. */
 export function resetPrefs() {
@@ -84,4 +92,6 @@ export function resetPrefs() {
         localStorage.removeItem(storageKey());
     }
     catch { /* private mode */ }
+    for (const listener of listeners)
+        listener();
 }
