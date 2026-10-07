@@ -70,6 +70,8 @@ export default defineConfig({
         outDir: process.env.OIE_WEBADMIN_BUILD_OUT_DIR || 'dist',
         emptyOutDir: true,
         target: 'es2022',
+        // Fonts stay files: the server's CSP allows only same-origin fonts.
+        assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf|eot)$/i.test(file) ? false : undefined),
         // Keep the framework's `/core/*.js` external imports as absolute URLs
         // (don't rewrite them to relative paths).
         rollupOptions: {
