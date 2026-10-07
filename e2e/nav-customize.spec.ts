@@ -1,5 +1,6 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
+import type { Page } from '@playwright/test';
 
 /*
  * Per-user navigation layout (react/nav-rail.jsx + core/nav-layout.js).
@@ -103,6 +104,119 @@ test('plugin navigation titles use custom names and tolerate malformed saved lab
     await page.reload();
     await expect(page.locator('.view-title')).toHaveText('Plugin page');
     await expect(rail(page).locator('[data-nav-item="nav-demo"]')).toContainText('Navigation Demo');
+});
+
+async function queryNavigation(page: Page, generic = false) {
+    const items = [
+        ...(generic ? [{ id: 'report-all', label: 'All reports', path: '/nav-reports' }] : []),
+        { id: 'report-a', label: 'Report A', path: '/nav-reports?kind=a&format=summary' },
+        { id: 'report-b', label: 'Report B', path: '/nav-reports?kind=b&format=summary' },
+    ];
+    await mockEngine(page, {
+        'GET /webplugins': ['navquery'],
+        'GET /webplugins/navquery/plugin.json': {
+            id: 'nav-query', name: 'Query navigation', version: '1.0.0',
+            client: { entry: 'web/plugin.js' }
+        }
+    });
+    await page.route('**/api/webplugins/navquery/web/plugin.js*', route => route.fulfill({
+        status: 200, contentType: 'text/javascript',
+        body: `export function register(platform) {
+            for (const [order, item] of ${JSON.stringify(items)}.entries()) {
+                platform.registerNavItem({ ...item, section: 'Plugins', order });
+            }
+            platform.registerView('/nav-reports', async ({ query }) => {
+                if (query.kind === 'b' && window.holdReportB) {
+                    window.holdReportB = false;
+                    await new Promise(resolve => { window.releaseReportB = resolve; });
+                }
+                const el = document.createElement('div');
+                el.textContent = 'Report kind: ' + (query.kind || 'all');
+                return el;
+            }, { title: 'Reports' });
+        }`
+    }));
+    await page.goto('/dashboard');
+}
+
+test('query-specific navigation names take precedence over the generic destination', async ({ page }) => {
+    await queryNavigation(page, true);
+    await renameItem(page, 'report-all', 'Reporting home');
+    await renameItem(page, 'report-a', 'Invoices');
+    await customize(page, false);
+    // An unrenamed exact destination must not inherit the generic item's rename.
+    await rail(page).locator('[data-nav-item="report-b"]').click();
+    await expect(page.locator('main')).toHaveText('Report kind: b');
+    await expect(page.locator('.view-title')).toHaveText('Reports');
+    await renameItem(page, 'report-b', 'Deliveries');
+    await customize(page, false);
+    await expect(page.locator('.view-title')).toHaveText('Deliveries');
+    await expect(page).toHaveTitle('Deliveries — OIE Administrator');
+    await rail(page).locator('[data-nav-item="report-a"]').click();
+    await expect(page.locator('.view-title')).toHaveText('Invoices');
+    await page.goBack();
+    await expect(page.locator('.view-title')).toHaveText('Deliveries');
+    await expect(rail(page).locator('[data-nav-item="report-b"]')).toHaveClass(/active/);
+    await page.goForward();
+    await expect(page.locator('.view-title')).toHaveText('Invoices');
+    await page.reload();
+    await expect(page.locator('.view-title')).toHaveText('Invoices');
+    // Compare parsed queries, including the router's last-value-wins semantics.
+    for (const path of [
+        '/nav-reports?format=summary&kind=%62',
+        '/nav-reports?kind=a&kind=b&format=summary',
+    ]) {
+        await page.goto(path);
+        await expect(page.locator('.view-title')).toHaveText('Deliveries');
+        await expect(page).toHaveTitle('Deliveries — OIE Administrator');
+    }
+    // A genuinely generic entry still names bare and otherwise filtered routes.
+    for (const path of ['/nav-reports', '/nav-reports?kind=c&format=summary']) {
+        await page.goto(path);
+        await expect(page.locator('.view-title')).toHaveText('Reporting home');
+        await expect(page).toHaveTitle('Reporting home — OIE Administrator');
+    }
+});
+
+test('query-specific navigation names do not label the bare route or unmatched queries', async ({ page }) => {
+    await queryNavigation(page);
+    await renameItem(page, 'report-a', 'Invoices');
+    await renameItem(page, 'report-b', 'Deliveries');
+    await customize(page, false);
+    for (const path of [
+        '/nav-reports',
+        '/nav-reports?kind=c&format=summary',
+        '/nav-reports?kind=b',
+        '/nav-reports?kind=b&format=other',
+        '/nav-reports?kind=b&format=summary&extra=',
+    ]) {
+        await page.goto(path);
+        await expect(page.locator('.view-title')).toHaveText('Reports');
+        await expect(page).toHaveTitle('Reports — OIE Administrator');
+    }
+    await page.goto('/nav-reports?kind=b&format=summary');
+    await expect(page.locator('.view-title')).toHaveText('Deliveries');
+    await expect(page).toHaveTitle('Deliveries — OIE Administrator');
+});
+
+test('query-specific navigation names follow the rendered route while another query loads', async ({ page }) => {
+    await queryNavigation(page);
+    await renameItem(page, 'report-a', 'Invoices');
+    await renameItem(page, 'report-b', 'Deliveries');
+    await customize(page, false);
+    await rail(page).locator('[data-nav-item="report-a"]').click();
+    await expect(page.locator('.view-title')).toHaveText('Invoices');
+    await page.evaluate(() => { (window as any).holdReportB = true; });
+    await rail(page).locator('[data-nav-item="report-b"]').click();
+    await expect.poll(() => page.evaluate(() => typeof (window as any).releaseReportB)).toBe('function');
+    // A preference update must use the displayed route, not the pending URL.
+    await renameItem(page, 'report-a', 'Current invoices');
+    await expect(page.locator('.view-title')).toHaveText('Current invoices');
+    await expect(page).toHaveTitle('Current invoices — OIE Administrator');
+    await page.evaluate(() => (window as any).releaseReportB());
+    await expect(page.locator('main')).toHaveText('Report kind: b');
+    await expect(page.locator('.view-title')).toHaveText('Deliveries');
+    await expect(page).toHaveTitle('Deliveries — OIE Administrator');
 });
 
 async function customize(page: any, on: any) {

@@ -50,12 +50,13 @@ export function useTimezone() {
  * vanilla shell. Also keeps document.title in sync.
  */
 export function useViewTitle() {
-    const [view, setView] = useState({ path: '', title: '', refined: false });
+    const [view, setView] = useState({ path: '', query: {} as Record<string, string>, title: '', refined: false });
     const layout = useSyncExternalStore(onPrefsChange, () => getPref('navLayout'));
     useStoreKey('webPlugins');
     useEffect(() => {
         const onRoute = (e: any) => setView({
-            path: e.detail?.path || '', title: e.detail?.meta?.title || '', refined: false
+            path: e.detail?.path || '', query: { ...e.detail?.query },
+            title: e.detail?.meta?.title || '', refined: false
         });
         const onSet = (e: any) => {
             if (e.detail?.title) setView(v => ({ ...v, title: e.detail.title, refined: true }));
@@ -72,8 +73,17 @@ export function useViewTitle() {
     // is shared with the rail, including hidden entries that still have deep links.
     const allowed = platform.navItems()
         .filter((it: any) => !it.task || platform.checkTask(it.rbac || 'view', it.task));
-    const item = mergeNav(allowed, normalizeLayout(layout)).flatMap(group => group.items)
-        .find(it => !it.action && it.path?.split('?')[0] === view.path);
+    const items = mergeNav(allowed, normalizeLayout(layout)).flatMap(group => group.items)
+        .filter(it => !it.action && it.path?.split('?')[0] === view.path);
+    // Prefer an exact parsed query over a plain-path fallback (e.g. filtered
+    // Channels). Use the accepted route's query, not an in-flight navigation URL.
+    const item = items.find(it => {
+        const queryIndex = it.path.indexOf('?');
+        if (queryIndex < 0) return false;
+        const query = Object.fromEntries(new URLSearchParams(it.path.slice(queryIndex + 1)));
+        return Object.keys(query).length === Object.keys(view.query).length
+            && Object.entries(query).every(([key, value]) => view.query[key] === value);
+    }) || items.find(it => it.path === view.path);
     const title = !view.refined && item?.renamed ? item.label : view.title;
     useEffect(() => {
         document.title = (title ? title + ' — ' : '') + 'OIE Administrator';
