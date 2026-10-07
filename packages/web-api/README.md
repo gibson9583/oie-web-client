@@ -23,6 +23,21 @@ const ids      = asList(someXStreamMap, 'string');
   XStream-encoded value the way the Swing client shows it (`{k=v, …}` for a
   map, `[a, b]` for a list, the payload for a scalar).
 
+## Channel tags (API 4.8)
+
+The API provides `api.channels.tags(channelId: string): Promise<ChannelTag[]>`
+for the tags assigned to one channel. It reads the channel's XML export using
+Channel View permission, so it also works for users without Tags View.
+`api.server.channelTags(): Promise<ChannelTag[]>` reads all tags using Tags View.
+Both preserve names as exact XML strings, including `-0`, `null` and `1e5`.
+
+Match existing tags by `id`; preserve names, memberships and optional colors
+when writing. Read membership lists with `asList(tag.channelIds, 'string')`.
+Valid empty collections return `[]`; failed requests or invalid XML reject,
+so keep the draft for retry rather than replacing its tags with an empty list.
+See [Channel tag helpers](../../web-administrator/PLUGINS.md#channel-tag-helpers)
+for the response and failure contracts.
+
 ## Runtime model (important for plugin authors)
 
 At runtime inside the web admin, `@oie/web-api` resolves — via the page's

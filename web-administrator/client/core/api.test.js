@@ -5,6 +5,17 @@ import api, { onSessionExpired, resetSessionExpired, isEngineReachable } from '.
 let pass = 0, fail = 0;
 const ok = (cond, label) => { if (cond) pass++; else { fail++; console.error('  FAIL -', label); } };
 
+// Channel tags are read as XML; the browser parse is covered by e2e/channel-tags.spec.ts.
+let tagAccept = null;
+globalThis.fetch = async (_url, init) => {
+    tagAccept = new Headers(init?.headers).get('Accept');
+    return new Response('', { status: 200, headers: { 'Content-Type': 'application/xml' } });
+};
+let tagError;
+try { await api.server.channelTags(); } catch (error) { tagError = error; }
+ok(tagAccept === 'application/xml', 'channel tags request XML');
+ok(tagError?.message === 'Engine returned invalid channel tag XML', 'an empty response is not an authoritative empty tag set');
+
 // Drive the 401 path without a server: every api.get goes through global fetch.
 globalThis.fetch = async () => new Response('', { status: 401 });
 

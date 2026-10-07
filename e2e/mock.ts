@@ -74,7 +74,7 @@ export async function mockEngine(page: any, overrides = {}) {
             return route.fulfill({ status: fx.__status, contentType: 'application/json', body: JSON.stringify(fx.body ?? {}) });
         }
         if (req.method() === 'GET' && req.headers().accept?.includes('application/xml')
-            && (path === '/server/globalScripts' || /^\/channels\/[^/]+\/status$/.test(path) || /^\/channels\/[^/]+\/messages\/[^/]+$/.test(path))) {
+            && (path === '/server/globalScripts' || path === '/server/channelTags' || /^\/channels\/[^/]+\/status$/.test(path) || /^\/channels\/[^/]+\/messages\/[^/]+$/.test(path))) {
             if (/^\/channels\/[^/]+\/messages\/[^/]+$/.test(path)) {
                 return route.fulfill({ status: 200, contentType: 'application/xml', body: fixtureXml('message', fx.message ?? fx) });
             }

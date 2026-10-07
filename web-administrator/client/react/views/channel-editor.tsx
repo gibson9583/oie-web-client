@@ -1154,7 +1154,7 @@ function openDebugDeployModal(channel: any, save: any) {
 async function ensureTags(tagState: any, channel: any) {
     if (tagState.loaded) return tagState;
     try {
-        const tags = await api.server.channelTags();
+        const tags = await api.server.channelTags().catch(() => api.asList(channel.exportData?.channelTags, 'channelTag'));
         tagState.all = tags.map(t => ({
             id: t.id, name: t.name, backgroundColor: t.backgroundColor,
             channelIds: api.asList(t.channelIds, 'string').map(String)
@@ -1166,15 +1166,18 @@ async function ensureTags(tagState: any, channel: any) {
     // it survives an editor re-render (e.g. after editing a connector) before
     // the first save — the channel object itself lives on in the store.
     for (const ct of api.asList(channel.exportData && channel.exportData.channelTags, 'channelTag')) {
-        if (!ct || !ct.name) continue;
-        if (!tagState.all.some((t: any) => t.name === ct.name)) {
-            tagState.all.push({
-                id: ct.id || oie.uuid(), name: ct.name,
-                channelIds: api.asList(ct.channelIds, 'string').map(String),
-                backgroundColor: ct.backgroundColor
-            });
-        }
-        tagState.assigned.add(String(ct.name));
+        if (!ct) continue;
+        const known = (ct.id && tagState.all.find((t: any) => t.id === ct.id))
+            || (ct.name != null && tagState.all.find((t: any) => t.name === String(ct.name)));
+        if (known) { tagState.assigned.add(known.name); continue; }
+        if (ct.name == null || String(ct.name) === '') continue;
+        const name = String(ct.name);
+        tagState.all.push({
+            id: ct.id || oie.uuid(), name,
+            channelIds: api.asList(ct.channelIds, 'string').map(String),
+            backgroundColor: ct.backgroundColor
+        });
+        tagState.assigned.add(name);
     }
     tagState.initial = new Set(tagState.assigned);
     tagState.loaded = true;

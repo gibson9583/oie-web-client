@@ -593,6 +593,7 @@ platform.setAuthorizationController({
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
+| `platform.api.channels.tags(channelId)` / `platform.api.server.channelTags()` | Assigned tags for one channel / all server tags, with names preserved as exact XML text. See [Channel tag helpers](#channel-tag-helpers). |
 | `platform.ui` | DOM toolkit: `h()`, `DataTable`, `tabs()`, `modal()`, `confirmDialog`, `promptDialog`, `toast`, `contextMenu`, form helpers, `downloadFile`, `pickFile`, `fmtDate`, `icon(name)`. `fmtDate` renders every timestamp in the user's chosen time zone (the topbar Server/Local/UTC toggle, `core/timezone.js`) — use it for all displayed dates. |
 | `platform.setAuthorizationController(ctrl)` / `platform.checkTask(group, task)` | RBAC menu-hiding (Swing `AuthorizationController`). A plugin registers `{ checkTask(taskGroup, taskName) }` to hide nav/task/right-click items; `checkTask` is what the menu builders consult. Default allows all. **See [`RBAC.md`](https://github.com/gibson9583/oie-web-client/blob/main/web-administrator/RBAC.md).** |
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
@@ -604,6 +605,36 @@ platform.setAuthorizationController({
 | `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`, `'webadminConfig'`) and pub/sub bus |
 | `platform.registerLoginAuthenticator(clientPluginClass, authenticate)` | Register a multi-factor / extended-login handler (Swing `MultiFactorAuthenticationClientPlugin`). See [MFA / extended login](#mfa--extended-login) — MUST be registered pre-login, so it only works from a **bundled** plugin. |
 | Registry lookups (`navItems()`, `dashboardTabs()`, `channelTabs()`, `stepType()` / `stepTypes()`, `connectorPanel()` / `connectorPanels()`, and their peers) | Read the current public registries. Prefer the singular lookup when you know an id/type; collection accessors return the currently registered values for plugin-to-plugin integration. |
+
+### Channel tag helpers
+
+Both helpers return `Promise<ChannelTag[]>` through the shared engine session:
+
+| Helper | Read and permission |
+|---|---|
+| `api.channels.tags(channelId: string)` | Reads the assigned tags from that channel's XML export (`GET /channels/{id}`); uses the engine's Channel View permission. |
+| `api.server.channelTags()` | Reads all server tags from XML (`GET /server/channelTags`); uses the engine's Tags View permission. |
+
+```ts
+import api, { asList } from '@oie/web-api';
+
+export async function assignedTags(channelId: string) {
+    const tags = await api.channels.tags(channelId);
+    return tags.map(tag => ({ id: tag.id, name: tag.name,
+        channelIds: asList(tag.channelIds, 'string') }));
+}
+```
+
+Names such as `-0`, `null`, `1e5` and long digit strings remain exact strings.
+Match existing tags by `id` and preserve their names, memberships and optional
+`backgroundColor` when writing. `channelIds` retains its XStream list shape;
+use `asList(tag.channelIds, 'string')` as above.
+
+An empty valid tag collection returns `[]`. HTTP/authentication failures,
+malformed XML, missing or duplicate identities, missing names, and a mismatched
+channel export reject the promise. Keep the draft available for retry; a failed
+lookup must not be treated as an empty tag collection. The channel helper is
+useful when a user can view a channel but cannot list all server tags.
 
 ### MFA / extended login
 

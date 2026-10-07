@@ -73,6 +73,7 @@ export interface ChannelsApi {
     list(channelIds?: string | string[], pollingOnly?: boolean): Promise<WireChannel[]>;
     /** Returns the RAW engine shape (see `WireChannel`) — read destinations via `destinationsOf`. */
     get(channelId: string): Promise<WireChannel>;
+    tags(channelId: string): Promise<ChannelTag[]>;
     create(channel: WireChannel | Channel | OieObject): Promise<Json>;
     /**
      * `override=false` enables the engine's Swing-parity conflict check: the save
