@@ -32,6 +32,31 @@ async function snapshot(page: Page, side = 'Inbound') {
     }, side);
 }
 
+for (const fallback of [false, true]) {
+    for (const sample of [
+        { name: 'blank first field', keys: ['Space', 'Space', 'Tab', 's'], value: '  \ts' },
+        { name: 'empty-field row', keys: ['Tab', 'Enter', 'n'], value: '\t\nn' },
+        { name: 'closing brace', keys: ['{', 'Enter', 'Space', 'Space', 'Space', 'Space', '}'], value: '{\n    }' },
+        { name: 'closing bracket', keys: ['[', 'Enter', 'Space', 'Space', ']'], value: '[\n  ]' },
+        { name: 'text input closing brace', keys: ['{', 'Enter'], text: '    }', value: '{\n    }' },
+    ]) {
+        test(`${fallback ? 'fallback' : 'Monaco'} preserves literal ${sample.name} through save`, async ({ page }) => {
+            if (fallback) await page.route('**/vendor/monaco/**', route => route.abort());
+            const writes = await setup(page, 'transformer/0', '', '');
+            if (!fallback) await expect(panel(page).locator('.ce-monaco')).toHaveCount(2);
+            // The outbound side uses JSON, including its electric closing brackets.
+            await field(page, 'Outbound').focus();
+            for (const key of sample.keys) await page.keyboard.press(key);
+            if (sample.text) await page.keyboard.insertText(sample.text);
+            const value = fallback ? await field(page, 'Outbound').inputValue() : (await snapshot(page, 'Outbound')).value;
+            expect(value.replaceAll('\r\n', '\n')).toBe(sample.value);
+            await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+            await expect.poll(() => writes.length).toBe(1);
+            expect(decode(targetOf(writes[0], 'transformer/0').outboundTemplate)).toBe(value);
+        });
+    }
+}
+
 for (const route of ['transformer/0', 'transformer/1', 'response/1']) {
     test(`${route}: templates find text, retain literal input, and round-trip both sides`, async ({ page }) => {
         const writes = await setup(page, route);
@@ -78,6 +103,84 @@ for (const route of ['transformer/0', 'transformer/1', 'response/1']) {
         expect(targetOf(writes[1], route).outboundTemplate).toBeNull();
     });
 }
+
+test('literal typing preserves multiple cursors, selections and undo/redo', async ({ page }) => {
+    await setup(page, 'transformer/0', '', '');
+    await expect(panel(page).locator('.ce-monaco')).toHaveCount(2);
+    const modifier = await page.evaluate(() => navigator.userAgent.includes('Macintosh') ? 'Meta' : 'Control');
+    await page.evaluate(() => {
+        const m = (window as any).monaco;
+        const editor = m.editor.getEditors().find((e: any) => e.getOption(m.editor.EditorOption.ariaLabel) === 'Outbound Template');
+        editor.setValue('  \n  ');
+        editor.setSelections([new m.Selection(1, 3, 1, 3), new m.Selection(2, 3, 2, 3)]);
+        editor.focus();
+    });
+    await page.keyboard.press('Tab');
+    expect((await snapshot(page, 'Outbound')).value).toBe('  \t\n  \t');
+    await page.keyboard.press(`${modifier}+z`);
+    expect((await snapshot(page, 'Outbound')).value).toBe('  \n  ');
+    await page.keyboard.press(`${modifier}+Shift+z`);
+    expect((await snapshot(page, 'Outbound')).value).toBe('  \t\n  \t');
+    await page.keyboard.press(`${modifier}+a`);
+    await page.keyboard.press('Tab');
+    expect((await snapshot(page, 'Outbound')).value).toBe('\t');
+    await page.keyboard.press('Shift+Tab');
+    expect((await snapshot(page, 'Outbound')).value).toBe('');
+
+    await page.evaluate(() => {
+        const m = (window as any).monaco;
+        const editor = m.editor.getEditors().find((e: any) => e.getOption(m.editor.EditorOption.ariaLabel) === 'Outbound Template');
+        editor.setValue('{\n    ');
+        editor.setPosition({ lineNumber: 2, column: 5 });
+    });
+    await page.keyboard.press('}');
+    expect((await snapshot(page, 'Outbound')).value).toBe('{\n    }');
+    await page.keyboard.press(`${modifier}+z`);
+    expect((await snapshot(page, 'Outbound')).value).toBe('{\n    ');
+    await page.keyboard.press(`${modifier}+Shift+z`);
+    expect((await snapshot(page, 'Outbound')).value).toBe('{\n    }');
+    expect((await snapshot(page)).value).toBe('');
+});
+
+test('literal handlers leave find inputs, read-only editors and normal script Tab behavior intact', async ({ page }) => {
+    await setup(page, 'transformer/0', '', '  ');
+    await expect(panel(page).locator('.ce-monaco')).toHaveCount(2);
+    await field(page, 'Outbound').focus();
+    const modifier = await page.evaluate(() => navigator.userAgent.includes('Macintosh') ? 'Meta' : 'Control');
+    await page.keyboard.press(`${modifier}+f`);
+    await page.keyboard.type('}');
+    expect((await snapshot(page, 'Outbound')).value).toBe('  ');
+    await expect(panel(page).getByRole('textbox', { name: 'Find', exact: true })).toHaveValue('}');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => {
+        const m = (window as any).monaco;
+        const editor = m.editor.getEditors().find((e: any) => e.getOption(m.editor.EditorOption.ariaLabel) === 'Outbound Template');
+        editor.updateOptions({ readOnly: true, tabFocusMode: true }); editor.focus();
+        const next = document.createElement('input');
+        next.setAttribute('aria-label', 'After editor');
+        editor.getDomNode().closest('.field').appendChild(next);
+    });
+    await page.keyboard.press('}');
+    await page.keyboard.press('Tab');
+    expect((await snapshot(page, 'Outbound')).value).toBe('  ');
+    await expect(page.getByRole('textbox', { name: 'After editor', exact: true })).toBeFocused();
+
+    await page.evaluate(async () => {
+        const { createCodeEditor } = await import(String('/core/codeeditor.js'));
+        const editor = createCodeEditor({ value: '  ', language: 'javascript', ariaLabel: 'Ordinary Script' });
+        editor.el.style.height = '160px';
+        document.body.appendChild(editor.el);
+    });
+    const script = page.locator('.ce-monaco').getByRole('textbox', { name: 'Ordinary Script', exact: true });
+    await expect(script).toHaveCount(1);
+    await script.focus();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => {
+        const m = (window as any).monaco;
+        return m.editor.getEditors().find((e: any) => e.getOption(m.editor.EditorOption.ariaLabel) === 'Ordinary Script').getValue();
+    })).toBe('\t');
+});
 
 test('a failed save retains the template draft and retry writes it once', async ({ page }) => {
     const writes = await setup(page);

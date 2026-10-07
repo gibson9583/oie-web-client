@@ -657,6 +657,9 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
         ...(opts.literalInput ? {
             lineNumbersMinChars: 2, lineDecorationsWidth: 4, folding: lang !== 'plaintext' && lang !== 'hl7v2',
             insertSpaces: false, detectIndentation: false, autoIndent: 'none' as const,
+            trimAutoWhitespace: false,
+            // Native EditContext can bypass the cancellable beforeinput below.
+            editContext: false,
             autoClosingBrackets: 'never' as const, autoClosingQuotes: 'never' as const,
             autoSurround: 'never' as const, quickSuggestions: false,
             wordBasedSuggestions: 'off' as const, suggestOnTriggerCharacters: false,
@@ -668,6 +671,23 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
         dropIntoEditor: { enabled: false },
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 }
     });
+
+    // Monaco's Tab and electric closing brackets can rewrite whitespace even
+    // with autoIndent disabled. Its plain typing command handles selections,
+    // multiple cursors and undo without applying those indentation heuristics.
+    const literalTab = opts.literalInput ? instance.addAction({
+        id: 'oie.literalTab', label: 'Insert Tab', keybindings: [monaco.KeyCode.Tab],
+        precondition: 'editorTextFocus && !editorReadonly && !editorTabMovesFocus',
+        run: editor => editor.trigger('literal-input', 'type', { text: '\t' })
+    }) : null;
+    const literalBracket = (event: InputEvent) => {
+        if (!event.cancelable || event.isComposing || event.inputType !== 'insertText'
+            || !/[\]})>]/.test(event.data || '') || !instance.hasTextFocus()
+            || instance.getOption(monaco.editor.EditorOption.readOnly)) return;
+        event.preventDefault();
+        instance.trigger('literal-input', 'type', { text: event.data });
+    };
+    if (opts.literalInput) host.addEventListener('beforeinput', literalBracket, true);
 
     // Re-highlight only the lines an edit touched (debounced), not the whole doc.
     let hlTimer: ReturnType<typeof setTimeout> | null = null, hlFrom = Infinity, hlTo = 0;
@@ -739,6 +759,8 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
         if (editor.__maxCleanup) editor.__maxCleanup();
         if (hlTimer) clearTimeout(hlTimer);
         changeSub.dispose();
+        literalTab?.dispose();
+        if (opts.literalInput) host.removeEventListener('beforeinput', literalBracket, true);
         if (tokenSub) tokenSub.dispose();
         if (focusSub) { focusSub.dispose(); releaseScope(holder); }
         const model = instance.getModel();
