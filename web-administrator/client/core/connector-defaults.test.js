@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { connectorHasNonDefaultProperties } from './connector-defaults.js';
+import { applyServerQueueBufferSize, connectorHasNonDefaultProperties, keepConnectorResources } from './connector-defaults.js';
 import { defaultSourceConnector, defaultDestinationConnector } from './oie.js';
 
 const version = '4.6.0';
@@ -34,24 +34,43 @@ for (const mode of Object.keys(factories)) {
         assert.deepEqual(connector, before);
     });
 
-    test(`${mode}: inherited queue values are not assumed to equal factory defaults`, () => {
-        for (const queue of [0, '0', -1, '-1', 2048, '2048']) {
+    test(`${mode}: queue sizes compare like Swing, against the server queue buffer size`, () => {
+        const withServer = (connector, size) => connectorHasNonDefaultProperties(connector, mode, version, panelFor(mode), [], size);
+        for (const [queue, server, prompts] of [
+            [0, 1000, false], ['0', 1000, false], [-1, 1000, false], [1000, 1000, false], [2048, 1000, true],
+            [0, 2048, false], ['-1', 2048, false], [2048, 2048, false], ['2048', 2048, false], [1000, 2048, true], [4096, 2048, true]
+        ]) {
             const connector = factories[mode](version);
             connector.properties[commonKey].queueBufferSize = queue;
             const before = structuredClone(connector);
-            assert.equal(changed(connector, mode), true);
-            if (Number(queue) <= 0) {
-                const inheritedDefaults = { defaults: () => structuredClone(connector.properties) };
-                assert.equal(changed(connector, mode, inheritedDefaults), true, 'unknown engine defaults still require confirmation');
-            }
+            assert.equal(withServer(connector, server), prompts, `queue ${queue}, server ${server}`);
             assert.deepEqual(connector, before);
+        }
+    });
+
+    test(`${mode}: resources are not compared and are kept by a switch`, () => {
+        const connector = factories[mode](version);
+        const resources = { entry: { string: ['custom', 'Custom Resource'] } };
+        connector.properties[commonKey].resourceIds = resources;
+        assert.equal(changed(connector, mode), false);
+        const target = factories[mode](version).properties;
+        keepConnectorResources(connector.properties, target);
+        assert.deepEqual(target[commonKey].resourceIds, resources);
+        assert.notEqual(target[commonKey].resourceIds, resources);
+    });
+
+    test(`${mode}: server queue buffer size replaces only an unset default`, () => {
+        for (const [queue, expected] of [[1000, 2048], [0, 2048], ['0', 2048], [500, 500]]) {
+            const properties = factories[mode](version).properties;
+            properties[commonKey].queueBufferSize = queue;
+            applyServerQueueBufferSize(properties, 2048);
+            assert.equal(properties[commonKey].queueBufferSize, expected);
         }
     });
 
     test(`${mode}: changes to shared settings, resources and unknown plugin data prompt`, () => {
         for (const edit of [
             p => { p[commonKey].queueBufferSize = 2000; },
-            p => { p[commonKey].resourceIds = { entry: { string: ['custom', 'Custom Resource'] } }; },
             p => { p.pluginProperties = { 'plugin.CustomProperties': { token: 'keep' } }; },
             p => { p.pluginProperties = { 'plugin.EmptyProperties': { '@version': version } }; },
             p => { p.responseConnectorPluginProperties = { 'plugin.EmptyProperties': null }; },

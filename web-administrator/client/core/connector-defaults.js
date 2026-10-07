@@ -30,11 +30,36 @@ function comparable(value, preserveEmptyEntries = false) {
 function equalProperties(left, right) {
     return JSON.stringify(comparable(left)) === JSON.stringify(comparable(right));
 }
+const COMMON_KEYS = ['sourceConnectorProperties', 'destinationConnectorProperties'];
+// The queue buffer size the web connector factories write for "not set".
+const PANEL_QUEUE_BUFFER_SIZE = 1000;
+function commonProperties(properties) {
+    return COMMON_KEYS.map(key => properties?.[key]).filter(common => common && typeof common === 'object');
+}
+/** Swing ConnectorPanel.getDefaults: an unset queue buffer size takes the
+ * server's queue buffer size. */
+export function applyServerQueueBufferSize(defaults, queueBufferSize) {
+    for (const common of commonProperties(defaults)) {
+        if (!('queueBufferSize' in common))
+            continue;
+        const size = Number(common.queueBufferSize);
+        if (!(size > 0) || size === PANEL_QUEUE_BUFFER_SIZE)
+            common.queueBufferSize = queueBufferSize;
+    }
+}
+/** Swing ChannelSetup keeps the connector's resources when the type changes. */
+export function keepConnectorResources(from, to) {
+    const [source] = commonProperties(from), [target] = commonProperties(to);
+    if (source && target && source.resourceIds != null)
+        target.resourceIds = structuredClone(source.resourceIds);
+}
 /** Swing ChannelSetup compares the CURRENT connector's properties with its
  * defaults, irrespective of channel age, dirty state or earlier type switches.
+ * Like Swing, a queue buffer size of zero or less compares as the server's
+ * size, and resources are not compared because a switch keeps them.
  * Compare copies: opening/cancelling the prompt must not normalize the draft.
  * Missing/failed plugin defaults never authorize silently discarding settings. */
-export function connectorHasNonDefaultProperties(connector, mode, version, panel, propertyPanels = []) {
+export function connectorHasNonDefaultProperties(connector, mode, version, panel, propertyPanels = [], queueBufferSize = PANEL_QUEUE_BUFFER_SIZE) {
     try {
         if (!panel?.defaults || !connector.properties || typeof connector.properties !== 'object')
             return true;
@@ -42,13 +67,13 @@ export function connectorHasNonDefaultProperties(connector, mode, version, panel
         if (!defaults || typeof defaults !== 'object' || Array.isArray(defaults))
             return true;
         const current = structuredClone(connector.properties);
-        // Inherited queue values depend on engine settings, not web defaults.
-        // Even a plugin default of zero cannot authorize a silent queue reset.
-        for (const key of ['sourceConnectorProperties', 'destinationConnectorProperties']) {
-            const buffer = current[key]?.queueBufferSize;
-            if (buffer != null && Number(buffer) <= 0)
-                return true;
+        applyServerQueueBufferSize(defaults, queueBufferSize);
+        for (const common of commonProperties(current)) {
+            if (common.queueBufferSize != null && Number(common.queueBufferSize) <= 0)
+                common.queueBufferSize = queueBufferSize;
         }
+        for (const common of [...commonProperties(current), ...commonProperties(defaults)])
+            delete common.resourceIds;
         // Extra connector-properties panels (e.g. HTTP authentication) are part
         // of Swing's defaults too. Web panels may leave their default entry
         // absent until edited; accept either absent or explicitly default.

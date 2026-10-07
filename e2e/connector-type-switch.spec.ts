@@ -242,12 +242,14 @@ for (const mode of ['SOURCE', 'DESTINATION'] as const) {
 
 for (const mode of ['SOURCE', 'DESTINATION'] as const) {
     for (const wizard of [false, true]) {
-        test(`${wizard ? 'wizard' : 'classic'} ${mode}: inherited server queue size requires confirmation before resetting`, async ({ page }) => {
+        test(`${wizard ? 'wizard' : 'classic'} ${mode}: server queue size and resources follow Swing`, async ({ page }) => {
             const channel = makeChannel('inherited-queue');
             const connector = mode === 'SOURCE' ? channel.sourceConnector : channel.destinationConnectors.connector[0];
             const key = mode === 'SOURCE' ? 'sourceConnectorProperties' : 'destinationConnectorProperties';
+            const resources = { '@class': 'linked-hash-map', entry: { string: ['custom-id', 'Custom Resource'] } };
             connector.properties[key].queueBufferSize = 0;
-            const overrides = { 'GET /server/publicSettings': { map: { entry: { string: ['queueBufferSize', '2048'] } } } };
+            connector.properties[key].resourceIds = resources;
+            const overrides = { 'GET /server/publicSettings': { publicServerSettings: { serverName: 'E2E Engine', queueBufferSize: '2048' } } };
             if (wizard) {
                 await mockEngine(page, { 'GET /channels/inherited-queue': { channel }, ...overrides });
                 await page.goto('/channels/inherited-queue/guided');
@@ -257,16 +259,11 @@ for (const mode of ['SOURCE', 'DESTINATION'] as const) {
                 : selector(page, mode).selectOption(httpName(mode));
             const before = await state(page, mode);
             await pick();
-            await expect(dialog(page)).toBeVisible();
-            expect(await state(page, mode)).toEqual(before);
-            await dialog(page).getByRole('button', { name: 'Cancel', exact: true }).click();
-            expect(await state(page, mode)).toEqual(before);
-            await pick();
-            await expect(dialog(page)).toBeVisible();
-            await dialog(page).getByRole('button', { name: 'OK', exact: true }).click();
             await expect.poll(async () => (await state(page, mode)).connector.transportName).toBe(httpName(mode));
+            await expect(dialog(page)).toHaveCount(0);
             const after = await state(page, mode);
-            expect(after.connector.properties[key].queueBufferSize).toBe(1000);
+            expect(after.connector.properties[key].queueBufferSize).toBe(2048);
+            expect(after.connector.properties[key].resourceIds).toEqual(resources);
             expect(after.dirty).toBe(true);
             const { properties: _properties, transportName: _name, ...preserved } = before.connector;
             expect(after.connector).toMatchObject(preserved);
