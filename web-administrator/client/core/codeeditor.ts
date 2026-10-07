@@ -86,8 +86,9 @@ export class CodeEditor {
                 this.area.value = value.slice(0, start) + '\t' + value.slice(end);
                 this.area.selectionStart = this.area.selectionEnd = start + 1;
             }
-            this.syncGutter();
-            this.opts.onChange && this.opts.onChange(this.getValue());
+            if (this.area.value !== value) {
+                this.area.dispatchEvent(new Event('input', { bubbles: true }));
+            }
         } else if (e.key === 'Enter' && !this.opts.readOnly && !this.opts.literalInput) {
             // Keep the indentation of the previous line.
             const { selectionStart: start, value } = this.area;
