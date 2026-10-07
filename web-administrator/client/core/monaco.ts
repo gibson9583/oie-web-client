@@ -259,7 +259,31 @@ function highlightReservedVars(monaco: Monaco, instance: MonacoNs.editor.IStanda
     instance.deltaDecorations(oldIds, decorations);
 }
 
+/** Monaco attaches hovers and context menus to the focused editor, where the
+    app's scroll containers clip them. Attach them to the page instead. */
+function pageLayoutService(monaco: Monaco) {
+    const none = () => ({ dispose() { /* no layout events */ } });
+    const page = () => document.body;
+    const area = () => ({ width: window.innerWidth, height: window.innerHeight });
+    return {
+        onDidLayoutMainContainer: none, onDidLayoutActiveContainer: none, onDidLayoutContainer: none,
+        onDidChangeActiveContainer: none, onDidAddContainer: none,
+        get mainContainer() { return page(); },
+        get activeContainer() { return page(); },
+        get containers() { return [page()]; },
+        getContainer: page,
+        get mainContainerDimension() { return area(); },
+        get activeContainerDimension() { return area(); },
+        mainContainerOffset: { top: 0, quickPickTop: 0 },
+        activeContainerOffset: { top: 0, quickPickTop: 0 },
+        whenContainerStylesLoaded: () => undefined,
+        focus: () => monaco.editor.getEditors().find(editor => editor.hasWidgetFocus())?.focus()
+    };
+}
+
 function setup(monaco: Monaco): void {
+    // Standalone services start on first use; this editor supplies the override first.
+    monaco.editor.create(document.createElement('div'), {}, { layoutService: pageLayoutService(monaco) } as any).dispose();
     // Mirth scripts run in Rhino (E4X XML literals, Java interop) — Monaco's TS
     // parser would false-flag valid Rhino syntax, so disable its diagnostics and
     // let the engine's Rhino compile (core/serialize.js validateScript) be the
