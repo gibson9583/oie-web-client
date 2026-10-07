@@ -27,8 +27,27 @@ export function register() {
 - `platform.registerConnectorPanel(...)` / `platform.registerConnectorPropertiesPanel(...)` — connector editor panels
 - `platform.registerDashboardTab(...)` / `platform.registerDashboardColumn(...)` — dashboard tabs and columns
 - `platform.registerChannelTab(...)`, `platform.registerAttachmentViewer(...)`, `platform.registerStepType(...)` / `registerRuleType(...)`, `platform.registerResourceType(...)`
-- `platform.registerReferences(...)`: entries in the filter/transformer Reference list and script autocomplete
+- `platform.registerReferences(category, items)` / `platform.references()` — add Reference/autocomplete entries and inspect plugin registrations (API 4.8)
 - `platform.store` / `platform.router` / `platform.events` — shared app state, routing, and the event bus
+
+## Script references (API 4.8)
+
+Import `ReferenceItem` from `@oie/web-shell` to type registrations. Each item
+requires `name` and `code`; optional fields are `description`, `type`
+(`FUNCTION`, `DRAG_AND_DROP_CODE` or `COMPILED_CODE`) and `contexts` (engine
+`ContextType` names). Omitted contexts apply everywhere; `[]` matches none.
+Register once during plugin setup: calls append entries.
+
+`platform.references()` returns `Array<ReferenceItem & { category: string }>`
+for plugin registrations across all contexts. Built-in catalog entries and
+channel code templates are not included. The array is a copy; treat its entries
+as read-only. Use an editor's `completionScope` to select its completion context.
+
+The framework implements API **4.8.0**, independently of the engine
+version. Declare `"oie": { "apiMin": "4.8" }` when using these additions. See
+[Script references](../../web-administrator/PLUGINS.md#script-references) and the
+[API 4.8 contracts](../../web-administrator/PLUGINS.md#api-48-plugin-contracts)
+for the full contracts, including completion scope and connector forms.
 
 ## Plugin UI is React
 

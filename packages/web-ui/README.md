@@ -39,6 +39,16 @@ TypeScript declarations generated from the web administrator's TypeScript
 sources (`index.d.ts` re-exports `types/`, emitted by
 `npm run gen:types -w oie-web-administrator`).
 
+## Connector form additions (API 4.8)
+
+`FormField.onSet(properties, value, previousValue?)` receives the row's
+render-time value as its third argument, after the new property value is set.
+`RequiredFieldSpec.unset` lets `requireFields()` reject an exact placeholder
+such as `Please Select a Driver`. React `ConnectorForm` code fields also accept
+`completionScope`. See
+[Connector form callbacks and validation](../../web-administrator/PLUGINS.md#connector-form-callbacks-and-validation)
+for callback ordering, conditional requirements and an example.
+
 ## License
 
 MPL-2.0

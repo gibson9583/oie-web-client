@@ -96,6 +96,10 @@ plugin always loads (no gate); set it when you rely on a framework capability
 added in a specific version, so an older web administrator that lacks it skips
 your plugin with a clear message instead of crashing on a missing API.
 
+Engine datatype extensions can also declare `vocabularies` in their
+`webadmin/plugin.json` to provide message-tree field names. See
+[Datatype vocabulary descriptions](#datatype-vocabulary-descriptions).
+
 Drop the folder into `plugins/` (or any configured `pluginDirs` entry) — with a
 built `web/plugin.js` present (see [Building the browser entry](#building-the-browser-entry)) —
 and **refresh the browser**. Plugin directories are re-scanned on every load, so
@@ -212,8 +216,9 @@ export function register() {
 ### API version compatibility
 
 The framework surface — the `platform` registries plus the `@oie/web-*` exports —
-is versioned by an **API contract version**, `platform.apiVersion`, which tracks the
-OIE engine release line the web administrator ships with (e.g. `"4.6.0"`). It follows
+is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
+implements **4.8.0** against OIE **4.6.0**. The API minor can advance independently
+when exports are added; it is not the application or engine version. It follows
 major.minor (the patch is ignored for compatibility): the **minor** bumps when the
 surface *grows* (new registry, new export), the **major** bumps on any *breaking*
 change (a removed/renamed export or a changed signature).
@@ -240,9 +245,24 @@ Guidance:
   host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
   for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
 - `registerReferences` arrived in API `4.8`. A plugin that calls it declares `"apiMin": "4.8"`.
+- Settings panel save declarations accept `Promise<boolean>` as well as `boolean`,
+  matching the host's existing await behavior. This is a type correction, not an
+  API change.
 - For runtime feature-detection, read `platform.apiVersion` directly (import
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
+
+### API 4.8 plugin contracts
+
+The framework implements API **4.8.0**. Plugins using the capabilities
+below should declare `"oie": { "apiMin": "4.8" }`.
+
+| Surface | Addition |
+|---|---|
+| `@oie/web-shell` | `ReferenceItem`, `platform.registerReferences(category, items)` and `platform.references()`; see [Script references](#script-references). |
+| `@oie/web-ui` / `platform.createCodeEditor` | `completionScope` selects the active JavaScript completion context; see [Platform services](#platform-services). |
+| `@oie/web-ui` connector forms | `FormField.onSet` receives `previousValue`, `RequiredFieldSpec.unset` marks placeholder selections as missing, and React code fields accept `completionScope`; see [Connector form callbacks and validation](#connector-form-callbacks-and-validation). |
+| Engine extension manifest | `vocabularies` is consumed by **Web Support 1.1.0**, independently of the browser API gate; see [Datatype vocabulary descriptions](#datatype-vocabulary-descriptions). |
 
 ### Two import styles, one runtime instance
 
@@ -589,7 +609,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — tracks the OIE engine release line (e.g. `"4.6.0"`). Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.8.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |
@@ -599,6 +619,7 @@ platform.setAuthorizationController({
 | `platform.columns` | Resizable + reorderable columns for hand-built `table.dt` grids: `createColumnManager(key, defaultWidths)` + `decorateColumns(table, opts)`. See [Resizable / reorderable columns](#resizable--reorderable-columns). |
 | `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. Data types are exposed separately through `platform.dataTypes()`. |
 | `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` / `platform.attachmentViewers()` | Read the registered data types / transmission modes / resource types / attachment viewers (each populated by a plugin). |
+| `platform.registerReferences(category, items)` / `platform.references()` | Add Reference/autocomplete entries and inspect plugin registrations (API `4.8`+). See [Script references](#script-references). |
 | `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange, completionScope })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned User API IntelliSense, in-scope code-template completions, engine-backed validation, and client-side Format Document), else a plain textarea. `completionScope: { channelId, context }` gives the editor its own ContextType: while it has focus, code-template and Reference completions use that context (API `4.8`+). `platform.setCodeEditorFactory` swaps the implementation app-wide. |
 | `platform.createDiffEditor({ original, modified, language, renderSideBySide })` | Read-only side-by-side diff viewer backed by the host's single Monaco instance (side-by-side + inline word-level highlighting + syntax colors). Returns `{ el, setModels({ original, modified, language }), layout(), dispose() }`; mount `el`, call `setModels` to swap content, `dispose()` when done. Degrades to a plain two-pane text view if Monaco is unavailable, so you never branch on its presence. Used by `simple-channel-history` for its revision diff. |
 | `platform.router` | `navigate(path)`, `currentPath()` |
@@ -635,6 +656,57 @@ malformed XML, missing or duplicate identities, missing names, and a mismatched
 channel export reject the promise. Keep the draft available for retry; a failed
 lookup must not be treated as an empty tag collection. The channel helper is
 useful when a user can view a channel but cannot list all server tags.
+
+### Script references
+
+`platform.registerReferences(category: string, items: ReferenceItem[]): void`
+adds entries to a new or existing Reference category. Import the `ReferenceItem`
+type from `@oie/web-shell` when authoring in TypeScript.
+
+| `ReferenceItem` field | Contract |
+|---|---|
+| `name`, `code` | Required display name and insertion text or function definition. |
+| `description` | Optional documentation shown by the Reference list and autocomplete. |
+| `type` | `DRAG_AND_DROP_CODE` (default) inserts the code; `FUNCTION` derives a call from a `function name(args) { ... }` definition; `COMPILED_CODE` is not draggable. |
+| `contexts` | Optional array of engine `ContextType` names, such as `SOURCE_FILTER_TRANSFORMER`, `DESTINATION_RESPONSE_TRANSFORMER`, `CHANNEL_DEPLOY` or `SOURCE_RECEIVER`. Omit for every context; an empty array matches none. |
+
+Register once from the plugin's `register()` function: registrations append,
+with no replacement or unregister operation. Reference registration supplies
+editor hints and insertion text; executable helpers still need to exist in the
+engine extension or the channel's linked code-template libraries.
+
+`platform.references(): Array<ReferenceItem & { category: string }>` returns
+plugin registrations across all contexts, without the built-in catalog or
+channel code templates. It returns a new array; treat its entry objects as
+read-only. The host filters entries for the active editor's context.
+
+### Connector form callbacks and validation
+
+The `FormField` and `RequiredFieldSpec` types and `requireFields` helper are
+exported by `@oie/web-ui`.
+
+- `FormField.onSet(properties, value, previousValue?)` runs after the field's
+  property has been assigned and before the form's `onChange` notification.
+  `previousValue` is the value captured when that row was rendered. Both
+  `ConnectorForm` and `buildForm` pass it; existing two-argument callbacks work.
+- `RequiredFieldSpec.unset?: string` gives `requireFields(properties, specs)`
+  an exact placeholder value to reject alongside null, undefined and blank
+  values. `key` is a dotted property path, `label` names the missing field, and
+  optional `when(properties)` gates the requirement. The result is an array of
+  `{ key, label }` errors suitable for a connector's `validate` callback.
+- React `ConnectorForm` fields with `type: 'code'` forward
+  `completionScope: { channelId, context }` to their shared editor. This applies
+  the [editor scope contract](#platform-services) to connector scripts.
+
+```ts
+import { requireFields } from '@oie/web-ui';
+
+export function validate(properties: { driver?: string }) {
+    return requireFields(properties, [
+        { key: 'driver', label: 'Driver', unset: 'Please Select a Driver' }
+    ]);
+}
+```
 
 ### MFA / extended login
 
@@ -960,6 +1032,46 @@ Three things must line up with the engine plugin:
 The web panel registration alone makes the type selectable; if the engine
 plugin isn't installed, saving/deploying a channel that uses it will fail on
 the engine side.
+
+## Datatype vocabulary descriptions
+
+Web Support **1.1.0** can load an extension's message vocabulary on the engine
+and return field names with the existing serialization response. Add a
+`vocabularies` map to the extension's existing `webadmin/plugin.json`, keeping
+its other fields:
+
+```json
+{
+    "id": "datatype-edifact",
+    "vocabularies": {
+        "EDIFACT": "com.mirth.connect.plugins.datatypes.edifact.EDIFACTVocabulary"
+    }
+}
+```
+
+The key must match the installed datatype's plugin point name. The class must
+extend `com.mirth.connect.model.util.MessageVocabulary`, be available in the
+engine extension's **SHARED** libraries, expose a public
+`(String version, String type)` constructor and return the matching datatype
+from `getDataType()`. Constructor arguments come from each message's serializer
+metadata; the server does not instantiate a Swing client plugin.
+
+`POST /api/extensions/websupport/datatypes/_serialize?dataType=EDIFACT` accepts
+the message as `text/plain` and returns
+`{ format, data, meta: { root, descriptions } }`. Optional `props` is a query
+parameter containing newline-separated `key=value` serialization overrides.
+For XML output, `descriptions` maps element IDs to vocabulary names; the client
+uses these in message trees. This keeps the existing REST
+response shape and does not introduce a new browser API version.
+
+Only engine-enabled extensions participate; `"enabled": false` in the manifest
+also excludes its vocabulary. Built-in HL7 v2, X12, NCPDP and DICOM mappings
+remain authoritative. Missing, invalid, unavailable or conflicting declarations
+fall back to bare labels without preventing serialization. Manifests are read
+per request and vocabulary instances are not shared; updated SHARED libraries
+still require an engine restart. See the
+[Web Support vocabulary contract](https://github.com/gibson9583/oie-web-support-plugin#vocabulary-descriptions-from-datatype-extensions)
+for the server-side requirements.
 
 ## Pairing with engine-side extensions
 

@@ -233,6 +233,10 @@ accessor at the drop point.
 
 ## Plugins
 
+The [API 4.8 contracts](PLUGINS.md#api-48-plugin-contracts) cover Reference
+registrations and lookup, scoped completions, connector forms and Web
+Support's datatype vocabulary declarations.
+
 See [PLUGINS.md](PLUGINS.md) — it includes worked examples for every
 extension point. Nearly everything ships as a plugin: each connector
 (`plugins/connector-*`), data type (`plugins/datatype-*`), the transformer
