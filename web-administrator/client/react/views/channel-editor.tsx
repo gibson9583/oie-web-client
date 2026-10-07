@@ -1,4 +1,5 @@
 import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
+import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 import { persistChannelEdits, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { channelDependencyState, copyLibrarySelection, copyDependencySelection, dependencySelection, librarySelection, refreshLibraryChoices, refreshDependencyChoices, hasDependencyChanges, hasLibraryChanges, persistChannelDependencies, persistLibraryAssociations } from '../../core/channel-dependencies.js';
 /*
@@ -1687,10 +1688,11 @@ function transportNamesFor(mode: any, current: any) {
 
 /* Connector type dropdown. Engine-installed types with no web panel merge in
    asynchronously, labeled so the gap is visible; switching resets properties
-   to the panel's defaults after a confirm (filter/transformer are kept). */
+   to the panel's defaults. Like Swing, confirm only when the current connector
+   differs from its own defaults (filter/transformer are kept). */
 function ConnectorTypeSelect({ connector, mode, engineTypes, version, markDirty, onChanged, width }: any) {
-    const [, bump] = useReducer((x: any) => x + 1, 0);
     const [engineList, setEngineList] = useState([] as any[]);
+    const { switching, switchType } = useConnectorTypeSwitch(connector, mode, version, () => { markDirty(); onChanged(); });
     const names = transportNamesFor(mode, connector.transportName);
     useEffect(() => {
         let stale = false;
@@ -1702,28 +1704,8 @@ function ConnectorTypeSelect({ connector, mode, engineTypes, version, markDirty,
     // type never appears twice (plain + '(no web editor)').
     const extra = engineList.filter(t => t.type === mode && !names.includes(t.name)).map(t => t.name);
     return (
-        <select style={width ? { width } : undefined} value={connector.transportName}
-            onChange={async (e: any) => {
-                const name = e.target.value;
-                if (name === connector.transportName) return;
-                const def = platform.connectorPanel(name, mode);
-                if (!def || typeof def.defaults !== 'function') {
-                    // Engine-only type: we cannot synthesize its '@class'
-                    // properties object, so block the switch. (Existing
-                    // channels already using such a type still render via the
-                    // generic JSON fallback panel.)
-                    bump();   // snap the select back to the model value
-                    toast(`"${name}" cannot be configured in the web administrator — install a web admin plugin that registers a connector panel for it.`, 'warn');
-                    return;
-                }
-                const ok = await confirmDialog('Change Connector Type',
-                    `Switch this connector to ${name}? Connector settings will reset to defaults (the filter and transformer are kept).`);
-                if (!ok) { bump(); return; }
-                connector.transportName = name;
-                connector.properties = def.defaults(version);
-                markDirty();
-                onChanged();
-            }}>
+        <select style={width ? { width } : undefined} value={connector.transportName} disabled={switching}
+            onChange={(e: any) => switchType(e.target.value)}>
             {names.map(n => <option key={n} value={n}>{n}</option>)}
             {extra.map(n => <option key={n} value={n}>{`${n} (no web editor)`}</option>)}
         </select>

@@ -41,6 +41,7 @@ import {
 // the wizard has no other reason to reference the classic editor, and that lone
 // import is what would otherwise chain the two into one bundle chunk.
 import { DESTINATION_MAPPINGS } from '../../core/mappings.js';
+import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 
 const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinations', 'Scripts', 'Review'];
 
@@ -118,15 +119,6 @@ function defaultDataType(types: any) {
     return hl7 ? hl7.name : (types[0] ? types[0].name : 'RAW');
 }
 
-function applyTransport(connector: any, mode: any, name: any, version: any, onChange: any) {
-    if (name === connector.transportName) return;
-    const def = platform.connectorPanel(name, mode);
-    if (!def || typeof def.defaults !== 'function') { toast(`"${name}" has no web configuration panel.`, 'warn'); return; }
-    connector.transportName = name;
-    connector.properties = def.defaults(version);
-    onChange();
-}
-
 /* ---- connector panel island --------------------------------------------------- */
 
 // Mount the real connector panel (all fields) as an imperative React island so it
@@ -145,14 +137,14 @@ function ConnectorPanelMount({ channel, connector, mode, onChange }: any) {
 
 /* ---- transport picker --------------------------------------------------------- */
 
-function TransportPicker({ mode, current, onPick }: any) {
+function TransportPicker({ mode, current, onPick, disabled }: any) {
     const names = transportsFor(mode);
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5">
             {names.map((name: any) => {
                 const active = name === current;
                 return (
-                    <button key={name} type="button" onClick={() => onPick(name)} style={{ font: 'inherit' }}
+                    <button key={name} type="button" disabled={disabled} onClick={() => onPick(name)} style={{ font: 'inherit' }}
                         className={`panel !mt-0 appearance-none text-[var(--text)] text-left p-3 flex items-center gap-2.5 cursor-pointer transition-colors ${active ? 'border-accent bg-[var(--accent-glow)]' : 'hover:border-accent'}`}>
                         <Icon name={connectorIcon(name)} size={18} />
                         <span className={active ? 'text-accent font-semibold' : ''}>{name}</span>
@@ -377,6 +369,7 @@ function DestinationMappingsRail({ hostRef }: any) {
 }
 
 function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex }: any) {
+    const { switching, switchType } = useConnectorTypeSwitch(connector, mode, version, onChange);
     const isDest = mode === 'DESTINATION';
     const TABS = isDest ? ['Settings', 'Filter', 'Transformer', 'Response'] : ['Settings', 'Filter', 'Transformer'];
     // Wizard chrome above/below the embedded editor (header, stepper, tab bar,
@@ -408,7 +401,7 @@ function ConnectorTabs({ channel, connector, mode, version, onChange, destIndex 
                     <div>
                         <div className="cform-section-title mb-2">Connector type</div>
                         <TransportPicker mode={mode} current={connector.transportName}
-                            onPick={(name: any) => applyTransport(connector, mode, name, version, onChange)} />
+                            disabled={switching} onPick={switchType} />
                     </div>
                     {/* Inbound/outbound data types are settable right here (mirrored in the
                         Transformer tab's Message Templates — same model). */}
