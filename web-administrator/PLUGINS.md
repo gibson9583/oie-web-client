@@ -1069,9 +1069,7 @@ also excludes its vocabulary. Built-in HL7 v2, X12, NCPDP and DICOM mappings
 remain authoritative. Missing, invalid, unavailable or conflicting declarations
 fall back to bare labels without preventing serialization. Manifests are read
 per request and vocabulary instances are not shared; updated SHARED libraries
-still require an engine restart. See the
-[Web Support vocabulary contract](https://github.com/gibson9583/oie-web-support-plugin#vocabulary-descriptions-from-datatype-extensions)
-for the server-side requirements.
+still require an engine restart.
 
 ## Pairing with engine-side extensions
 
