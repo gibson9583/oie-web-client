@@ -181,7 +181,7 @@ export function defaultSourceConnector(version) {
                 firstResponse: false,
                 processingThreads: 1,
                 resourceIds: DEFAULT_RESOURCE,
-                queueBufferSize: 1000
+                queueBufferSize: 0 // Inherit the server default, like the engine constructor.
             }
         },
         transformer: emptyTransformer(version),
@@ -214,7 +214,7 @@ export function defaultDestinationConnector(version, metaDataId = 1, name = 'Des
                 threadAssignmentVariable: null,
                 validateResponse: false,
                 resourceIds: DEFAULT_RESOURCE,
-                queueBufferSize: 1000,
+                queueBufferSize: 0, // Inherit the server default, like the engine constructor.
                 reattachAttachments: true
             },
             channelId: 'none',

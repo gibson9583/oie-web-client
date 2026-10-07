@@ -1009,7 +1009,7 @@ function openAdvancedQueueSettings(dcp: any, markDirty: any, onDone: any) {
         includeFilterTransformer: !!dcp.includeFilterTransformer,
         threadCount: Number(dcp.threadCount) || 1,
         threadAssignmentVariable: String(dcp.threadAssignmentVariable ?? ''),
-        queueBufferSize: Number(dcp.queueBufferSize) || 1000
+        queueBufferSize: Number(dcp.queueBufferSize) || 0
     };
 
     function ynGroup(name: any, value: any, onChange: any) {
@@ -1047,8 +1047,8 @@ function openAdvancedQueueSettings(dcp: any, markDirty: any, onDone: any) {
         onInput: (e: any) => { draft.threadAssignmentVariable = e.target.value; }
     });
     const bufferInput = numberInput(draft.queueBufferSize, {
-        min: 1,
-        onInput: (e: any) => { draft.queueBufferSize = Math.max(1, Number(e.target.value) || 1); }
+        min: 0, title: '0 uses the server default',
+        onInput: (e: any) => { draft.queueBufferSize = Math.max(0, Number(e.target.value) || 0); }
     });
 
     function sync() {
@@ -1882,7 +1882,7 @@ function SourceSettings({ channel, scp, markDirty }: any) {
                 {/* Only meaningful (editable) when queue is ON. Uncontrolled: the
                     clamped model must never overwrite the text mid-edit. */}
                 <input key={respondAfter ? 'q-off' : 'q-on'} type="number" min={0} disabled={respondAfter}
-                    defaultValue={scp.queueBufferSize || 1000}
+                    defaultValue={scp.queueBufferSize ?? 0} title="0 uses the server default"
                     onChange={(e: any) => { scp.queueBufferSize = Number(e.target.value) || 0; markDirty(); }} />
             </div>
             <div className="field">
