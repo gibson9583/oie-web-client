@@ -15,10 +15,17 @@ test('empty fields, repetitions, components, subcomponents and escapes retain fi
         ['1', 'PID-1'], ['123', 'PID-3'], ['Doe', 'PID-5'], ['Family', 'PID-5'],
         ['Jane', 'PID-5.2'], ['Smith', 'PID-5'], ['John', 'PID-5.2']
     ]);
-    assert.deepEqual(fields('OBX|1|TX|ID||a\\Z^&~|literal\\b^c'), [
-        ['1', 'OBX-1'], ['TX', 'OBX-2'], ['ID', 'OBX-3'], ['a\\Z^&~|literal\\b', 'OBX-5'], ['c', 'OBX-5.2']
+    assert.deepEqual(fields('OBX|1|TX|ID||a\\T\\b^c'), [
+        ['1', 'OBX-1'], ['TX', 'OBX-2'], ['ID', 'OBX-3'], ['a\\T\\b', 'OBX-5'], ['c', 'OBX-5.2']
     ]);
     assert.deepEqual(fields('PID|unclosed\\|next'), [['unclosed\\', 'PID-1'], ['next', 'PID-2']]);
+});
+
+test('escape characters never hide delimiters, matching the engine parser', () => {
+    assert.deepEqual(fields('OBX|1|TX|||Path C:\\dir|N|||F|||D:\\x|Dr^Smith'), [
+        ['1', 'OBX-1'], ['TX', 'OBX-2'], ['Path C:\\dir', 'OBX-5'], ['N', 'OBX-6'], ['F', 'OBX-9'],
+        ['D:\\x', 'OBX-12'], ['Dr', 'OBX-13'], ['Smith', 'OBX-13.2']
+    ]);
 });
 
 test('custom batch/message delimiters and incomplete text are safe to tokenize', () => {

@@ -155,7 +155,7 @@ export function hl7Encoding(line, previous = '|^~\\&') {
 }
 /** Shared, lossless line tokenizer for the message browser and Monaco. */
 export function tokenizeHl7Line(line, encoding = '|^~\\&') {
-    const [sep, component, repetition, escape, subcomponent] = encoding;
+    const [sep, component, repetition, , subcomponent] = encoding;
     if (!/^[A-Z][A-Z\d]{2}/.test(line) || (line.length > 3 && line[3] !== sep))
         return [{ startIndex: 0, scopes: '' }];
     const segment = line.slice(0, 3), tokens = [{ startIndex: 0, scopes: 'hl7-seg' }];
@@ -183,11 +183,9 @@ export function tokenizeHl7Line(line, encoding = '|^~\\&') {
         }
         else {
             tokens.push({ startIndex: offset, scopes: 'hl7-field', field: `${segment}.${field}.${comp}` });
-            do {
-                // Delimiters inside a closed escape sequence are literal data.
-                const end = line[offset] === escape ? line.indexOf(escape, offset + 1) : -1;
-                offset = end < 0 ? offset + 1 : end + 1;
-            } while (offset < line.length && ![sep, component, repetition, subcomponent].includes(line[offset]));
+            do
+                offset++;
+            while (offset < line.length && ![sep, component, repetition, subcomponent].includes(line[offset]));
         }
     }
     return tokens;
