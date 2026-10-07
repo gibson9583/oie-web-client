@@ -290,11 +290,14 @@ let factory = (opts = {}) => {
     const editor = new CodeEditor(opts);
     if (opts.maximizable || opts.popoutable)
         attachCodeView(editor, opts);
-    let disposed = false;
+    let disposed = false, edited = false;
+    // Keep native undo history when a template is edited before Monaco loads.
+    if (opts.literalInput)
+        editor.area.addEventListener('input', () => { edited = true; }, { once: true });
     const dispose = editor.dispose.bind(editor);
     editor.dispose = () => { disposed = true; dispose(); };
     ensureMonaco().then((monaco) => {
-        if (!monaco || disposed)
+        if (!monaco || disposed || edited)
             return;
         try {
             mountMonaco(monaco, editor, opts);
