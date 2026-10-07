@@ -3214,6 +3214,9 @@ input.cform-invalid, select.cform-invalid, textarea.cform-invalid,
 
 } /* end @layer components */
 
+/* Monaco's stylesheet is unlayered; keep its HL7 hover override here too. */
+.hl7-editor.monaco-host .hoverHighlight { background: var(--accent-glow); border-radius: 2px; }
+
 /* ── Dashboard: KPI stat strip + card-styled channel table & log dock ────
    Engine-wide totals (summed from the same per-channel stats the table shows).
    The table/dock get the lifted-card look via paint-only borders/shadow on the

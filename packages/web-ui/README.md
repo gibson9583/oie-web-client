@@ -30,6 +30,35 @@ modal({ title: 'Hello', body: field('Name', textInput('')), buttons: [{ label: '
   with these. See the SQS connector for a worked example.
 - **Formatting** — `fmtDate` (timezone-aware), `icon`.
 
+## Code and message editors (API 4.8)
+
+`createCodeEditor(options)` and `platform.createCodeEditor(options)` share the
+same factory. Editors support accessible labels, literal message input and
+HL7 v2 highlighting:
+
+```ts
+import { createCodeEditor } from '@oie/web-ui';
+
+const editor = createCodeEditor({
+  value: 'MSH|^~\\&|SENDER|FACILITY', language: 'hl7v2',
+  literalInput: true, ariaLabel: 'Inbound Template'
+});
+// Append editor.el to your view; call editor.dispose() on unmount.
+```
+
+`literalInput` disables typing assistance and uses compact line numbers.
+`ariaLabel` also names the fallback textarea. For JavaScript editors,
+`completionScope: { channelId, context }` selects the channel and engine
+`ContextType` used for Reference and code-template completions while focused.
+
+Languages: `javascript` (`js` / `rhino`), `json`, `xml`, `html`, `sql`, `hl7v2`
+and `text`. HL7 hovers show field paths and optional engine-supplied names.
+The shared editor returns `el`, `getValue()`, `setValue()`, `focus()` and
+`dispose()`; Monaco loading is optional. Display values can normalize line
+endings, and `setValue()` can notify `onChange` once Monaco is active. See
+[Code and message editors](../../web-administrator/PLUGINS.md#code-and-message-editors)
+for lifecycle, keyboard and raw-message preservation guidance.
+
 ## Runtime model
 
 Like `@oie/web-api`, this resolves at runtime (via the page import map) to the

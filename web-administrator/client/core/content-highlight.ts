@@ -128,100 +128,72 @@ function highlightJson(json: string, out: Node[]): void {
 
 /* ---- HL7 v2 highlighter ----------------------------------------------------- */
 
-interface EncodingChars {
-    fieldSep: string;
-    componentSep: string;
-    repetitionSep: string;
-    escapeChar: string;
-    subComponentSep: string;
+/** Delimiters in wire order; headers can change them within a batch. */
+export function hl7Encoding(line: string, previous = '|^~\\&'): string {
+    return /^(MSH|BHS|FHS)/.test(line) && line.length >= 8 ? line.slice(3, 8) : previous;
 }
 
-function parseEncodingChars(mshLine: string): EncodingChars {
-    const fieldSep = mshLine.charAt(3) || '|';
-    const enc = mshLine.substring(4, 8);
-    return {
-        fieldSep,
-        componentSep: enc.charAt(0) || '^',
-        repetitionSep: enc.charAt(1) || '~',
-        escapeChar: enc.charAt(2) || '\\',
-        subComponentSep: enc.charAt(3) || '&'
-    };
+export interface Hl7Token {
+    startIndex: number;
+    scopes: string;
+    field?: string;
 }
 
-// Field name from the sidecar descriptions map (by node id like PID.5 / PID.5.1).
-// Without the sidecar there's no name — the tooltip falls back to the path.
-function hl7Name(seg: string, field: number, comp: number, descriptions: Hl7Descriptions | null | undefined): string | undefined {
-    if (descriptions) {
-        if (comp > 1 && descriptions[`${seg}.${field}.${comp}`]) return descriptions[`${seg}.${field}.${comp}`];
-        if (descriptions[`${seg}.${field}.1`] && comp <= 1) return descriptions[`${seg}.${field}.1`];
-        if (descriptions[`${seg}.${field}`]) return descriptions[`${seg}.${field}`];
+/** Shared, lossless line tokenizer for the message browser and Monaco. */
+export function tokenizeHl7Line(line: string, encoding = '|^~\\&'): Hl7Token[] {
+    const [sep, component, repetition, escape, subcomponent] = encoding;
+    if (!/^[A-Z][A-Z\d]{2}/.test(line) || (line.length > 3 && line[3] !== sep)) return [{ startIndex: 0, scopes: '' }];
+    const segment = line.slice(0, 3), tokens: Hl7Token[] = [{ startIndex: 0, scopes: 'hl7-seg' }];
+    let offset = 3, field = 0, comp = 1;
+    if (/^(MSH|BHS|FHS)$/.test(segment) && line.length > 3) {
+        tokens.push({ startIndex: 3, scopes: 'hl7-sep' });
+        if (line.length > 4) tokens.push({ startIndex: 4, scopes: 'hl7-field', field: `${segment}.2.1` });
+        const end = line.indexOf(sep, 4);
+        offset = end < 0 ? line.length : end;
+        field = 2;
     }
-    return undefined;
-}
-
-function hl7Tooltip(seg: string, field: number, comp: number, descriptions: Hl7Descriptions | null | undefined): string {
-    const name = hl7Name(seg, field, comp, descriptions);
-    const path = comp > 1 ? `${seg}-${field}.${comp}` : `${seg}-${field}`;
-    return name ? `${path} · ${name}` : path;
-}
-
-function highlightField(value: string, seg: string, field: number, enc: EncodingChars, descriptions: Hl7Descriptions | null | undefined, out: Node[]): void {
-    const reps = value.split(enc.repetitionSep);
-    for (let r = 0; r < reps.length; r++) {
-        if (r > 0) out.push(span('tok-hl7-sep', enc.repetitionSep));
-        const comps = reps[r].split(enc.componentSep);
-        for (let c = 0; c < comps.length; c++) {
-            if (c > 0) out.push(span('tok-hl7-sep', enc.componentSep));
-            if (!comps[c]) continue;
-            const subs = comps[c].split(enc.subComponentSep);
-            for (let sc = 0; sc < subs.length; sc++) {
-                if (sc > 0) out.push(span('tok-hl7-sep', enc.subComponentSep));
-                if (!subs[sc]) continue;
-                out.push(span('tok-hl7-field', subs[sc], hl7Tooltip(seg, field, c + 1, descriptions)));
-            }
+    while (offset < line.length) {
+        const char = line[offset];
+        if ([sep, component, repetition, subcomponent].includes(char)) {
+            tokens.push({ startIndex: offset++, scopes: 'hl7-sep' });
+            if (char === sep) { field++; comp = 1; }
+            else if (char === component) comp++;
+            else if (char === repetition) comp = 1;
+        } else {
+            tokens.push({ startIndex: offset, scopes: 'hl7-field', field: `${segment}.${field}.${comp}` });
+            do {
+                // Delimiters inside a closed escape sequence are literal data.
+                const end = line[offset] === escape ? line.indexOf(escape, offset + 1) : -1;
+                offset = end < 0 ? offset + 1 : end + 1;
+            } while (offset < line.length && ![sep, component, repetition, subcomponent].includes(line[offset]));
         }
     }
+    return tokens;
 }
 
-function highlightMshLine(line: string, enc: EncodingChars, descriptions: Hl7Descriptions | null | undefined, out: Node[]): void {
-    out.push(span('tok-hl7-seg', 'MSH'));
-    out.push(span('tok-hl7-sep', enc.fieldSep));
-    out.push(span('tok-hl7-field', line.substring(4, 8), hl7Tooltip('MSH', 2, 1, descriptions)));
-    const rest = line.substring(8);
-    if (!rest) return;
-    const fields = rest.split(enc.fieldSep);
-    for (let i = 0; i < fields.length; i++) {
-        if (i > 0 || fields[0] === '') out.push(span('tok-hl7-sep', enc.fieldSep));
-        if (i === 0 && fields[0] === '') continue;
-        if (!fields[i]) continue;
-        highlightField(fields[i], 'MSH', i + 2, enc, descriptions, out);
-    }
+export function hl7FieldName(field: string, descriptions?: Hl7Descriptions | null): string | undefined {
+    const name = descriptions?.[field] || descriptions?.[field.slice(0, field.lastIndexOf('.'))];
+    return typeof name === 'string' ? name : undefined;
 }
 
-function highlightSegmentLine(line: string, enc: EncodingChars, descriptions: Hl7Descriptions | null | undefined, out: Node[]): void {
-    const sepIdx = line.indexOf(enc.fieldSep);
-    const seg = sepIdx > 0 ? line.substring(0, sepIdx) : line;
-    out.push(span('tok-hl7-seg', seg));
-    if (sepIdx < 0) return;
-    const fields = line.substring(sepIdx + 1).split(enc.fieldSep);
-    for (let i = 0; i < fields.length; i++) {
-        out.push(span('tok-hl7-sep', enc.fieldSep));
-        if (!fields[i]) continue;
-        highlightField(fields[i], seg, i + 1, enc, descriptions, out);
-    }
+export function hl7Tooltip(field: string, descriptions?: Hl7Descriptions | null): string {
+    const path = field.replace('.', '-').replace(/\.1$/, '');
+    const name = hl7FieldName(field, descriptions);
+    return name ? `${path} · ${name}` : path;
 }
 
 function highlightHl7(hl7: string, descriptions: Hl7Descriptions | null | undefined, out: Node[]): void {
     const lines = hl7.split('\n');
-    const mshLine = lines.find((l) => l.startsWith('MSH'));
-    const enc = parseEncodingChars(mshLine || 'MSH|^~\\&');
+    let encoding = hl7Encoding('');
     for (let i = 0; i < lines.length; i++) {
         if (i > 0) out.push(document.createTextNode('\n'));
         const line = lines[i];
-        if (!line.trim()) continue;
-        if (line.startsWith('MSH')) highlightMshLine(line, enc, descriptions, out);
-        else if (/^[A-Z][A-Z\d]{2}/.test(line)) highlightSegmentLine(line, enc, descriptions, out);
-        else out.push(document.createTextNode(line));
+        encoding = hl7Encoding(line, encoding);
+        const tokens = tokenizeHl7Line(line, encoding);
+        tokens.forEach((token, index) => {
+            const text = line.slice(token.startIndex, tokens[index + 1]?.startIndex);
+            out.push(token.scopes ? span(`tok-${token.scopes}`, text, token.field ? hl7Tooltip(token.field, descriptions) : undefined) : document.createTextNode(text));
+        });
     }
 }
 

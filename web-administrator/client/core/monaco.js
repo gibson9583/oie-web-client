@@ -18,7 +18,8 @@
  */
 import { getState, subscribe } from './store.js';
 import { USER_API_DTS } from './userapi.generated.js';
-import { formatScript } from './serialize.js';
+import { formatScript, serializeTemplate } from './serialize.js';
+import { hl7Encoding, tokenizeHl7Line, hl7Tooltip, hl7FieldName } from './content-highlight.js';
 import { getActiveCompletions, getActiveLibs, onActiveLibsChange, getActiveReferences, referenceSignature, dropTextFor, cleanDesc, setActiveScope, clearActiveScope, currentScope, activeScope } from './script-completions.js';
 import { appUrl } from './deployment.js';
 // Where the server serves the vendored Monaco worker bundles. The editor bundle
@@ -250,9 +251,73 @@ function pageLayoutService(monaco) {
         focus: () => monaco.editor.getEditors().find(editor => editor.hasWidgetFocus())?.focus()
     };
 }
+class Hl7State {
+    encoding;
+    constructor(encoding = hl7Encoding('')) {
+        this.encoding = encoding;
+    }
+    clone() { return this; }
+    equals(other) { return other instanceof Hl7State && other.encoding === this.encoding; }
+}
+function hl7FieldAt(monaco, model, position) {
+    let encoding = hl7Encoding('');
+    for (let n = position.lineNumber; n > 0; n--) {
+        const line = model.getLineContent(n);
+        if (/^(MSH|BHS|FHS)/.test(line) && line.length >= 8) {
+            encoding = hl7Encoding(line);
+            break;
+        }
+    }
+    const line = model.getLineContent(position.lineNumber), tokens = tokenizeHl7Line(line, encoding);
+    const index = tokens.findIndex((token, i) => token.startIndex <= position.column - 1 && position.column - 1 < (tokens[i + 1]?.startIndex ?? line.length));
+    const field = tokens[index]?.field;
+    return field ? { field, range: new monaco.Range(position.lineNumber, tokens[index].startIndex + 1, position.lineNumber, (tokens[index + 1]?.startIndex ?? line.length) + 1) } : null;
+}
+function setupHl7(monaco) {
+    monaco.languages.register({ id: 'hl7v2' });
+    monaco.languages.setTokensProvider('hl7v2', {
+        getInitialState: () => new Hl7State(),
+        tokenize: (line, state) => {
+            const encoding = hl7Encoding(line, state.encoding);
+            return { tokens: tokenizeHl7Line(line, encoding), endState: new Hl7State(encoding) };
+        }
+    });
+    monaco.languages.registerHoverProvider('hl7v2', {
+        provideHover(model, position) {
+            const hit = hl7FieldAt(monaco, model, position);
+            return hit ? { range: hit.range, contents: [{ value: hl7Tooltip(hit.field) }] } : null;
+        }
+    });
+    // Enrich the immediate field path lazily, just as the browser uses the
+    // serializer's descriptions. Share one request per model revision; never
+    // serialize on keystrokes or show a response for text that has since changed.
+    const descriptions = new WeakMap();
+    monaco.languages.registerHoverProvider('hl7v2', {
+        async provideHover(model, position, token) {
+            const hit = hl7FieldAt(monaco, model, position);
+            if (!hit)
+                return null;
+            const version = model.getVersionId();
+            let cached = descriptions.get(model);
+            if (cached?.version !== version) {
+                cached = { version, result: serializeTemplate('HL7V2', {}, model.getValue()).then(result => result?.meta?.descriptions || null) };
+                descriptions.set(model, cached);
+            }
+            const result = await cached.result;
+            if (!result && descriptions.get(model) === cached)
+                descriptions.delete(model);
+            if (token.isCancellationRequested || model.isDisposed() || model.getVersionId() !== version)
+                return null;
+            const name = hl7FieldName(hit.field, result);
+            // Engine vocabulary is plain text, never executable Markdown/HTML.
+            return name ? { range: hit.range, contents: [{ value: name.replace(/[\\`*_{}[\]()<>!#+\-.|~&]/g, '\\$&') }] } : null;
+        }
+    });
+}
 function setup(monaco) {
     // Standalone services start on first use; this editor supplies the override first.
     monaco.editor.create(document.createElement('div'), {}, { layoutService: pageLayoutService(monaco) }).dispose();
+    setupHl7(monaco);
     // Mirth scripts run in Rhino (E4X XML literals, Java interop) — Monaco's TS
     // parser would false-flag valid Rhino syntax, so disable its diagnostics and
     // let the engine's Rhino compile (core/serialize.js validateScript) be the
@@ -425,7 +490,9 @@ function setup(monaco) {
             { token: 'keyword', foreground: '6aa9e0' },
             { token: 'type', foreground: '4ec9b0' },
             { token: 'type.identifier', foreground: '4ec9b0' },
-            { token: 'delimiter', foreground: '9db2c4' }
+            { token: 'delimiter', foreground: '9db2c4' },
+            { token: 'hl7-seg', foreground: '6aa9e0', fontStyle: 'bold' },
+            { token: 'hl7-sep', foreground: '6a7a88' }
         ],
         colors: {
             'editor.background': '#0c1116',
@@ -447,7 +514,9 @@ function setup(monaco) {
             { token: 'keyword', foreground: '1c4fbb' },
             { token: 'type', foreground: '167c6d' },
             { token: 'type.identifier', foreground: '167c6d' },
-            { token: 'delimiter', foreground: '55677a' }
+            { token: 'delimiter', foreground: '55677a' },
+            { token: 'hl7-seg', foreground: '1c4fbb', fontStyle: 'bold' },
+            { token: 'hl7-sep', foreground: '5f7686' }
         ],
         colors: {
             'editor.background': '#ffffff',
@@ -462,7 +531,7 @@ function setup(monaco) {
 }
 const LANGUAGES = {
     javascript: 'javascript', js: 'javascript', rhino: 'javascript',
-    xml: 'xml', html: 'html', json: 'json', sql: 'sql', text: 'plaintext'
+    xml: 'xml', html: 'html', json: 'json', sql: 'sql', hl7v2: 'hl7v2', text: 'plaintext'
 };
 /* Monaco editors hold a model, listeners, layout observer and a debounce timer
    that DOM removal alone doesn't free. We track live instances and, on each
@@ -528,10 +597,13 @@ export function mountMonaco(monaco, editor, opts = {}) {
     for (const b of zoomBtns)
         editor.el.appendChild(b);
     const lang = LANGUAGES[opts.language || 'javascript'] || 'plaintext';
+    if (lang === 'hl7v2')
+        host.classList.add('hl7-editor');
     const instance = monaco.editor.create(host, {
         value,
         language: lang,
         readOnly: !!opts.readOnly,
+        ariaLabel: opts.ariaLabel,
         automaticLayout: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
@@ -552,6 +624,14 @@ export function mountMonaco(monaco, editor, opts = {}) {
         // Turn it off for JS; keep it for SQL/XML/plaintext, where it's the main
         // completion source.
         wordBasedSuggestions: lang === 'javascript' ? 'off' : 'currentDocument',
+        ...(opts.literalInput ? {
+            lineNumbersMinChars: 2, lineDecorationsWidth: 4, folding: lang !== 'plaintext' && lang !== 'hl7v2',
+            insertSpaces: false, detectIndentation: false, autoIndent: 'none',
+            autoClosingBrackets: 'never', autoClosingQuotes: 'never',
+            autoSurround: 'never', quickSuggestions: false,
+            wordBasedSuggestions: 'off', suggestOnTriggerCharacters: false,
+            formatOnPaste: false, formatOnType: false
+        } : {}),
         // Monaco's native drop-into-editor inserts dropped text as a *snippet*
         // (escaping ${...} to \${...\} and appending a $0 tab stop). We insert
         // velocity/accessor tokens as plain text ourselves, so disable it.

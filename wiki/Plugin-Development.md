@@ -620,7 +620,7 @@ platform.setAuthorizationController({
 | `platform.oie` | Model helpers: `elementsToArray`/`arrayToElements` (XStream polymorphic lists), `newChannel`, `statePip`, `uuid`. Data types are exposed separately through `platform.dataTypes()`. |
 | `platform.dataTypes()` / `platform.transmissionModes()` / `platform.resourceTypes()` / `platform.attachmentViewers()` | Read the registered data types / transmission modes / resource types / attachment viewers (each populated by a plugin). |
 | `platform.registerReferences(category, items)` / `platform.references()` | Add Reference/autocomplete entries and inspect plugin registrations (API `4.8`+). See [Script references](#script-references). |
-| `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange, completionScope })` | Code editor component — upgrades to Monaco when reachable (Rhino-tuned User API IntelliSense, in-scope code-template completions, engine-backed validation, and client-side Format Document), else a plain textarea. `completionScope: { channelId, context }` gives the editor its own ContextType: while it has focus, code-template and Reference completions use that context (API `4.8`+). `platform.setCodeEditorFactory` swaps the implementation app-wide. |
+| `platform.createCodeEditor({ value, language, readOnly, minHeight, onChange, completionScope, ariaLabel, literalInput })` | Shared editor with Rhino IntelliSense, validation and formatting, or syntax-colored sample messages including HL7 v2. Falls back to a textarea if Monaco cannot load. `platform.setCodeEditorFactory` swaps the implementation app-wide. See [Code and message editors](#code-and-message-editors). |
 | `platform.createDiffEditor({ original, modified, language, renderSideBySide })` | Read-only side-by-side diff viewer backed by the host's single Monaco instance (side-by-side + inline word-level highlighting + syntax colors). Returns `{ el, setModels({ original, modified, language }), layout(), dispose() }`; mount `el`, call `setModels` to swap content, `dispose()` when done. Degrades to a plain two-pane text view if Monaco is unavailable, so you never branch on its presence. Used by `simple-channel-history` for its revision diff. |
 | `platform.router` | `navigate(path)`, `currentPath()` |
 | `platform.store` / `platform.events` | Shared state (`getState('user')`, `'serverVersion'`, `'webPlugins'`, `'webadminConfig'`) and pub/sub bus |
@@ -696,7 +696,7 @@ exported by `@oie/web-ui`.
   `{ key, label }` errors suitable for a connector's `validate` callback.
 - React `ConnectorForm` fields with `type: 'code'` forward
   `completionScope: { channelId, context }` to their shared editor. This applies
-  the [editor scope contract](#platform-services) to connector scripts.
+  the [editor scope contract](#code-and-message-editors) to connector scripts.
 
 ```ts
 import { requireFields } from '@oie/web-ui';
@@ -707,6 +707,51 @@ export function validate(properties: { driver?: string }) {
     ]);
 }
 ```
+
+### Code and message editors
+
+Use `createCodeEditor` from `@oie/web-ui` or `platform.createCodeEditor`.
+Both return the same editor contract: `el`, `getValue()`, `setValue(value)`,
+`focus()` and `dispose()`. Mount `el` and dispose the editor when its view or
+component unmounts, including while the optional Monaco upgrade is still loading.
+
+```ts
+import { createCodeEditor } from '@oie/web-ui';
+
+export function mountHl7Template(host: HTMLElement, value: string,
+    onChange: (value: string) => void): () => void {
+    const editor = createCodeEditor({
+        value, language: 'hl7v2', literalInput: true,
+        ariaLabel: 'Inbound Template', minHeight: '160px', onChange
+    });
+    host.appendChild(editor.el);
+    return () => { editor.dispose(); editor.el.remove(); };
+}
+```
+
+| Option | Contract |
+|---|---|
+| `ariaLabel?: string` | Accessible name for both Monaco and the fallback textarea. |
+| `literalInput?: boolean` | Opt-in sample-data mode: literal tabs/newlines, no automatic indentation, bracket/quote closing, suggestions or format-on-type/paste. Uses compact line-number gutters; plain text and HL7 omit folding controls. Defaults to normal script-editing behavior. |
+| `completionScope?: { channelId?: string; context: string }` | Gives a JavaScript editor its own engine `ContextType` while focused. Supply `channelId` for that channel's linked code-template completions; omit it for a context without channel templates. Nested editors restore the prior scope on disposal. |
+
+Language IDs are `javascript` (also `js` / `rhino`), `json`, `xml`, `html`,
+`sql`, `hl7v2` and `text`; unknown IDs use plain text. Use `xml` for HL7 v3 or
+serialized DICOM XML. HL7 v2 shares the message browser's tokenizer, with
+segment/separator colors and field highlighting. Hovers show field paths
+immediately and add names from the connected engine's serializer when available.
+Names are fetched on hover and cached per editor revision; failed lookups leave
+the path usable.
+The textarea fallback retains editing and line numbers without syntax colors.
+
+In literal mode, **Ctrl+M** toggles whether Tab moves focus (**Ctrl+Shift+M**
+in Monaco on macOS); the fallback also accepts Ctrl+M on macOS. This lets users
+leave the editor using the keyboard while keeping Tab available as message data.
+
+`literalInput` does not preserve original CR/CRLF bytes: editor display values
+can normalize line endings. Retain the original message separately until an
+edit if those bytes matter. `setValue()` can call `onChange` after Monaco loads;
+guard model-to-editor synchronization against feedback and stale updates.
 
 ### MFA / extended login
 
