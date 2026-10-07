@@ -27,12 +27,25 @@ for (const mode of Object.keys(factories)) {
         for (const key of Object.keys(common)) {
             if (['number', 'boolean'].includes(typeof common[key])) common[key] = String(common[key]);
         }
-        common.queueBufferSize = '0';
         common.resourceIds = { entry: { string: ['Default Resource', '[Default Resource]'] } };
         if (mode === 'DESTINATION') delete properties.mapVariables;
         const before = structuredClone(connector);
         assert.equal(changed(connector, mode), false);
         assert.deepEqual(connector, before);
+    });
+
+    test(`${mode}: inherited queue values are not assumed to equal factory defaults`, () => {
+        for (const queue of [0, '0', -1, '-1', 2048, '2048']) {
+            const connector = factories[mode](version);
+            connector.properties[commonKey].queueBufferSize = queue;
+            const before = structuredClone(connector);
+            assert.equal(changed(connector, mode), true);
+            if (Number(queue) <= 0) {
+                const inheritedDefaults = { defaults: () => structuredClone(connector.properties) };
+                assert.equal(changed(connector, mode, inheritedDefaults), true, 'unknown engine defaults still require confirmation');
+            }
+            assert.deepEqual(connector, before);
+        }
     });
 
     test(`${mode}: changes to shared settings, resources and unknown plugin data prompt`, () => {

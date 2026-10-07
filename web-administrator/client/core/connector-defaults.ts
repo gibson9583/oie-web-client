@@ -45,12 +45,11 @@ export function connectorHasNonDefaultProperties(
         if (!defaults || typeof defaults !== 'object' || Array.isArray(defaults)) return true;
         const current = structuredClone(connector.properties);
 
-        // Swing's source/destination settings panels resolve zero to the default
-        // queue buffer size when loading an existing connector.
+        // Inherited queue values depend on engine settings, not web defaults.
+        // Even a plugin default of zero cannot authorize a silent queue reset.
         for (const key of ['sourceConnectorProperties', 'destinationConnectorProperties']) {
-            if (String(current[key]?.queueBufferSize) === '0' && defaults[key]?.queueBufferSize != null) {
-                current[key].queueBufferSize = defaults[key].queueBufferSize;
-            }
+            const buffer = current[key]?.queueBufferSize;
+            if (buffer != null && Number(buffer) <= 0) return true;
         }
 
         // Extra connector-properties panels (e.g. HTTP authentication) are part
