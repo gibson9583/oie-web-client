@@ -407,6 +407,7 @@ export function register(platform: Platform) {
         isSupported: (transportName: any, mode: any) => mode === 'SOURCE' && [
             'HTTP Listener', 'Web Service Listener', 'FHIR Listener', 'Health Data Hub Listener'
         ].includes(transportName),
+        defaults: (version: string) => defaultAuthProperties('NONE', version),
         component: HttpAuthPanel
     });
 }

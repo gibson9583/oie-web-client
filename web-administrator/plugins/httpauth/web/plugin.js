@@ -382,6 +382,7 @@ function register(platform2) {
       "FHIR Listener",
       "Health Data Hub Listener"
     ].includes(transportName),
+    defaults: (version) => defaultAuthProperties("NONE", version),
     component: HttpAuthPanel
   });
 }

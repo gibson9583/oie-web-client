@@ -1,0 +1,73 @@
+import { useEffect, useReducer, useRef, useState } from 'react';
+import api from '@oie/web-api';
+import { platform } from '@oie/web-shell';
+import { confirmDialog, errorModal, toast } from '@oie/web-ui';
+import type { ConnectorMode } from '../core/platform.js';
+import type { OieObject } from '../core/wire-types.js';
+import { applyServerQueueBufferSize, connectorHasNonDefaultProperties, keepConnectorResources } from '../core/connector-defaults.js';
+import { channelSessionActive } from './channel-persistence.js';
+
+/** Swing ChannelSetup: the server's queue buffer size when set above zero, else 1000. */
+function serverQueueBufferSize(): Promise<number> {
+    return api.server.publicSettings().then(settings => {
+        const size = Number(settings?.queueBufferSize);
+        return Number.isInteger(size) && size > 0 ? size : 1000;
+    });
+}
+
+/** Shared by the classic dropdown and wizard picker. Confirm only when the
+ * current connector differs from its defaults, just like Swing ChannelSetup. */
+export function useConnectorTypeSwitch(connector: OieObject, mode: ConnectorMode, version: string, onChanged: () => void) {
+    const [, bump] = useReducer((revision: number) => revision + 1, 0);
+    const [switching, setSwitching] = useState(false);
+    const switchingRef = useRef(false);
+    const currentConnectorRef = useRef(connector);
+    currentConnectorRef.current = connector;
+    const mountedRef = useRef(true);
+    useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+    async function switchType(name: string) {
+        if (switchingRef.current || name === connector.transportName) return;
+        const def = platform.connectorPanel(name, mode);
+        if (!def || typeof def.defaults !== 'function') {
+            bump(); // Restore the select's model value for engine-only types.
+            toast(`"${name}" cannot be configured in the web administrator — install a web admin plugin that registers a connector panel for it.`, 'warn');
+            return;
+        }
+        switchingRef.current = true;
+        setSwitching(true);
+        const isCurrentSession = channelSessionActive();
+        const oldName = connector.transportName, oldProperties = connector.properties;
+        const isCurrent = () => mountedRef.current && isCurrentSession() && currentConnectorRef.current === connector
+            && connector.transportName === oldName && connector.properties === oldProperties;
+        try {
+            // Build before changing either model field: a plugin default
+            // factory failure must leave the old connector intact.
+            const properties = def.defaults(version);
+            if (!properties || typeof properties !== 'object' || Array.isArray(properties)) {
+                throw new Error(`"${name}" did not provide valid default connector settings.`);
+            }
+            const queueBufferSize = await serverQueueBufferSize();
+            if (!isCurrent()) return;
+            applyServerQueueBufferSize(properties, queueBufferSize);
+            if (connectorHasNonDefaultProperties(connector, mode, version,
+                platform.connectorPanel(oldName, mode), platform.connectorPropertiesPanels(), queueBufferSize)) {
+                const ok = await confirmDialog('Change Connector Type',
+                    `Switch this connector to ${name}? Connector settings will reset to defaults (the filter, transformer and resources are kept).`);
+                if (!ok) return;
+            }
+            if (!isCurrent()) return;
+            keepConnectorResources(oldProperties, properties);
+            connector.transportName = name;
+            connector.properties = properties;
+            onChanged();
+        } catch (error) {
+            if (isCurrent()) errorModal('Change Connector Type Failed', error);
+        } finally {
+            switchingRef.current = false;
+            if (mountedRef.current) { setSwitching(false); bump(); }
+        }
+    }
+
+    return { switching, switchType };
+}
