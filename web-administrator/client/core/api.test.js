@@ -141,5 +141,43 @@ ok((await partJson('updatedCodeTemplates')).list.codeTemplate[0].id === 'tpl', '
 ok((await partJson('removedLibraryIds')).set.string[0] === 'old-lib', 'bulk removed libraries use the engine set envelope');
 ok((await partJson('removedCodeTemplateIds')).set.string[0] === 'old-tpl', 'bulk removed templates use the engine set envelope');
 
+/* ---- exact response-name writes ---- */
+const responseChannel = key => ({
+    '@version': '4.6.0', id: 'response-channel',
+    sourceConnector: { properties: { '@class': 'example.Source', sourceConnectorProperties: { responseVariable: key } } },
+});
+for (const key of ['1.0', 'null', '', '-0', '1e3', '9007199254740993', 'line\nbreak']) {
+    await api.channels.update('response-channel', responseChannel(key), false);
+    ok(new Headers(lastInit.headers).get('Content-Type') === 'application/json', `${JSON.stringify(key)} retains the ordinary JSON write`);
+    ok(JSON.parse(lastInit.body).channel.sourceConnector.properties.sourceConnectorProperties.responseVariable === key, 'response name is written as exact string');
+}
+const crChannel = responseChannel('line\r<&"break');
+crChannel.sourceConnector.transformer = { inboundTemplate: '0', outboundTemplate: 'test' };
+const before = JSON.stringify(crChannel);
+await api.channels.update('response-channel', crChannel, false, new Date('2026-10-08T12:00:00Z'));
+ok(new Headers(lastInit.headers).get('Content-Type') === 'application/xml', 'CR response names use XML');
+ok(lastInit.body.includes('<responseVariable>line&#13;&lt;&amp;&quot;break</responseVariable>'), 'XML preserves CR and escapes markup');
+ok(lastInit.body.includes('<properties class="example.Source">'), 'XML preserves type attributes');
+ok(lastInit.body.includes('<inboundTemplate encoding="base64">MA==</inboundTemplate>'), 'rare XML writes still encode templates');
+ok(lastUrl.includes('override=false') && lastUrl.includes('startEdit=2026-10-08T12%3A00%3A00%2B0000'), 'XML writes retain conflict parameters');
+ok(JSON.stringify(crChannel) === before, 'XML serialization leaves the editor model untouched');
+await api.channels.create(crChannel);
+ok(lastInit.method === 'POST' && new Headers(lastInit.headers).get('Content-Type') === 'application/xml', 'new channels preserve CR names too');
+const writesBeforeInvalid = lastInit;
+let invalidName;
+try { await api.channels.create(responseChannel('bad\0key')); } catch (error) { invalidName = error; }
+ok(/engine cannot reload/.test(invalidName?.message), 'unreloadable XML control names fail before saving');
+ok(lastInit === writesBeforeInvalid, 'invalid response name sends no write');
+crChannel.description = 'bad\0description';
+let invalidField;
+try { await api.channels.update('response-channel', crChannel); } catch (error) { invalidField = error; }
+ok(/engine cannot reload/.test(invalidField?.message), 'rare XML writes also reject invalid controls in other channel fields');
+ok(lastInit === writesBeforeInvalid, 'invalid XML field sends no write');
+let invalidSurrogate;
+try { await api.channels.create(responseChannel('bad\ud800key\r')); } catch (error) { invalidSurrogate = error; }
+ok(/engine cannot reload/.test(invalidSurrogate?.message) && lastInit === writesBeforeInvalid, 'unpaired surrogates fail before UTF-8 can replace them');
+await api.channels.create(responseChannel('😀\r'));
+ok(lastInit.body.includes('<responseVariable>😀&#13;</responseVariable>'), 'valid supplementary characters remain supported');
+
 console.log(`api.test: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

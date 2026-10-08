@@ -67,3 +67,24 @@ for (const prefix of ['responseMap.put', '$r']) {
 
 assert.deepEqual(responseVariablesIn("$r('getter' // note, read only\n);"), [], 'comma inside a comment is not a write argument');
 assert.deepEqual(responseVariablesIn("responseMap.put('prefix' // note, computed key\n + suffix, response);"), [], 'line comments cannot backtrack into a computed key');
+
+for (const format of ['\u00ad', '\u200b', '\u200c', '\u202e']) {
+    const cases = [
+        [`a\\${format}z`, 'az'], [`a\\${format}n`, 'a\n'],
+        [`a\\${format}'z`, "a'z"], [`a\\${format}\\z`, 'a\\z'],
+        [`\\u0${format}04${format}1${format}`, `A${format}`],
+        [`\\x${format}4${format}1${format}`, `A${format}`],
+        [`\\u0${format}0${format}z`, 'u00z'], [`\\x4${format}z`, 'x4z'],
+        [`\\1${format}0${format}1${format}z`, 'Az'],
+        [`\\4${format}0${format}0${format}`, ` 0${format}`],
+        [`a${format}z`, `a${format}z`], [`\\n${format}z`, `\n${format}z`],
+        [`\\\\${format}z`, `\\${format}z`],
+        ...['\n', '\r', '\r\n', '\u2028', '\u2029'].map(newline => [`a\\${format}${newline}${format}z`, 'az']),
+    ];
+    for (const [literal, expected] of cases) {
+        assert.deepEqual(responseVariablesIn(`$r('${literal}', response);`), [expected], `Rhino raw format handling: ${JSON.stringify(literal)}`);
+    }
+}
+for (const format of ['\ufeff', '\u{e0001}']) {
+    assert.deepEqual(responseVariablesIn(`$r('a\\${format}z', response);`), [`a${format}z`], 'Rhino preserves BOM and supplementary format characters');
+}

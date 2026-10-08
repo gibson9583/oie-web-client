@@ -16,8 +16,8 @@
 
 import * as oie from './oie.js';
 import { API_BASE } from './deployment.js';
-import { engineFetch, assertEngineResponse } from './engine-fetch.js';
-import { parseMessageXml } from './message-xml.js';
+import { engineFetch, assertEngineResponse, captureEngineSession } from './engine-fetch.js';
+import { parseMessageDocument, parseMessageXml } from './message-xml.js';
 import type {
     AlertModel, AlertStatus, Attachment, Channel, ChannelDependency, ChannelGroup,
     ChannelStatistics, ChannelTag, CodeTemplate, CodeTemplateLibrary, DashboardStatus,
@@ -742,23 +742,107 @@ export const users: UsersApi = {
    Channels                                                       /channels
    ========================================================================== */
 
+const responseName = (name: string, parent: string) =>
+    name === 'responseVariable' && parent === 'sourceConnectorProperties'
+    || name === 'variable' && parent === 'com.mirth.connect.plugins.mapper.MapperStep';
+
+const hasResponseName = (value: Json, test: (key: Json) => boolean, parent = ''): boolean => Array.isArray(value)
+    ? value.some(item => hasResponseName(item, test, parent))
+    : !!value && typeof value === 'object' && Object.entries(value).some(([key, child]) =>
+        responseName(key, parent) && test(child) || hasResponseName(child, test, key));
+
+// Only ambiguous JSON names need an additional XML read. Reject a changed
+// snapshot instead of combining a newer response name with an older channel.
+async function restoreResponseNames(channel: Json): Promise<Json> {
+    if (!hasResponseName(channel, value => typeof value !== 'string')) return channel;
+    const root = parseMessageDocument(await getXml(`/channels/${enc(channel.id)}`)).documentElement;
+    const direct = (node: Element, tag: string) => Array.from(node.children).find(child => child.tagName === tag);
+    const stamp = root.querySelector(':scope > exportData > metadata > lastModified > time')?.textContent;
+    if (root.tagName !== 'channel' || direct(root, 'id')?.textContent !== String(channel.id)
+        || direct(root, 'revision')?.textContent !== String(channel.revision)
+        || (stamp ?? '') !== String(channel.exportData?.metadata?.lastModified?.time ?? '')) {
+        throw new Error('Channel changed while reading response names. Reload the channel and retry.');
+    }
+    const restored = cloneJson(channel);
+    const patch = (value: Json, node: Element) => {
+        if (!value || typeof value !== 'object') return;
+        for (const [key, child] of Object.entries(value)) {
+            const nodes = Array.from(node.children).filter(item => item.tagName === key);
+            if (responseName(key, node.tagName)) {
+                if (nodes.length !== 1 || nodes[0].children.length || nodes[0].hasAttribute('reference')) {
+                    throw new Error('Engine returned invalid response name XML.');
+                }
+                value[key] = nodes[0].textContent ?? '';
+            } else (Array.isArray(child) ? child : [child]).forEach((item, index) => {
+                if (nodes[index]) patch(item, nodes[index]);
+            });
+        }
+    };
+    patch(restored, root);
+    if (hasResponseName(restored, value => typeof value !== 'string')) throw new Error('Engine returned incomplete response name XML.');
+    return restored;
+}
+
+async function readChannels(path: string, params?: QueryParams, list = false): Promise<Json> {
+    const assertSession = captureEngineSession();
+    const value = await get(path, params);
+    assertSession();
+    const result = list ? await Promise.all(asList<WireChannel>(value, 'channel').map(restoreResponseNames)) : await restoreResponseNames(value);
+    assertSession();
+    return result;
+}
+
+function channelWire(channel: Json): { body: Json; options: WriteOptions } {
+    const body = oie.encodeChannelTemplates(cloneJson(channel));
+    if (hasResponseName(body, value => typeof value === 'string' && /[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]/u.test(value))) {
+        throw new Error('This response name contains a character the engine cannot reload. Choose a different response name.');
+    }
+    if (!hasResponseName(body, value => typeof value === 'string' && value.includes('\r'))) return { body, options: { wrapKey: 'channel' } };
+    // JSON -> XML normalizes raw CR. Only these uncommon response names need
+    // an XML write; other writes stay JSON.
+    const escape = (value: Json) => {
+        const text = String(value ?? '');
+        if (/[\x00-\x08\x0B\x0C\x0E-\x1F\uD800-\uDFFF\uFFFE\uFFFF]/u.test(text)) throw new Error('This channel contains a character the engine cannot reload.');
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/[\t\n\r]/g, c => `&#${c.charCodeAt(0)};`);
+    };
+    const name = (key: string) => {
+        if (!/^[A-Za-z_][\w.:-]*$/.test(key)) throw new Error('Invalid channel XML field name.');
+        return key;
+    };
+    const xml = (tag: string, value: Json): string => {
+        if (Array.isArray(value)) return value.map(item => xml(tag, item)).join('');
+        const entries = value && typeof value === 'object' ? Object.entries(value) : [];
+        const attributes = entries.filter(([key]) => key.startsWith('@')).map(([key, child]) => ` ${name(key.slice(1))}="${escape(child)}"`).join('');
+        const text = value && typeof value === 'object'
+            ? entries.filter(([key]) => !key.startsWith('@')).map(([key, child]) => key === '$' ? escape(child) : xml(key, child)).join('') : escape(value);
+        return `<${name(tag)}${attributes}>${text}</${tag}>`;
+    };
+    return { body: xml('channel', body), options: { contentType: 'application/xml' } };
+}
+
 export const channels: ChannelsApi = {
     list: (channelIds, pollingOnly) =>
-        get('/channels', { channelId: channelIds, pollingOnly }).then(v => asList<WireChannel>(v, 'channel')),
+        readChannels('/channels', { channelId: channelIds, pollingOnly }, true),
     // Transformer templates are base64-wrapped on the wire (engine
     // Base64StringConverter); decode on read and re-encode a clone on write so
     // the in-memory channel keeps plain-text templates. See oie.ts.
-    get: (channelId) => get(`/channels/${enc(channelId)}`).then(c => oie.decodeChannelTemplates(c)),
+    get: (channelId) => readChannels(`/channels/${enc(channelId)}`).then(c => oie.decodeChannelTemplates(c)),
     tags: (channelId) => getXml(`/channels/${enc(channelId)}`).then(xml => parseChannelTagsXml(xml, channelId)),
-    create: (channel) => post('/channels', oie.encodeChannelTemplates(cloneJson(channel)), { wrapKey: 'channel' }),
+    create: (channel) => {
+        const { body, options } = channelWire(channel);
+        return post('/channels', body, options);
+    },
     // override=false enables the engine's Swing-parity conflict check: the save is
     // rejected (body "false") when the channel changed after `startEdit` (a Date —
     // when the user opened it for editing). Callers prompt, then retry override=true.
-    update: (channelId, channel, override = true, startEdit) =>
-        put(`/channels/${enc(channelId)}`, oie.encodeChannelTemplates(cloneJson(channel)), {
-            wrapKey: 'channel',
+    update: (channelId, channel, override = true, startEdit) => {
+        const { body, options } = channelWire(channel);
+        return put(`/channels/${enc(channelId)}`, body, {
+            ...options,
             params: { override, startEdit: startEdit instanceof Date ? fmtStartEdit(startEdit) : startEdit }
-        }),
+        });
+    },
     remove: (channelId) => del(`/channels/${enc(channelId)}`),
     idsAndNames: () => get('/channels/idsAndNames'),
     connectorNames: (channelId) => get(`/channels/${enc(channelId)}/connectorNames`),

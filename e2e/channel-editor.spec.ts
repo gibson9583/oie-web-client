@@ -760,6 +760,111 @@ test.describe('Channel editor', () => {
         expect(savedKeys).toEqual(['reply', 'line\nbreak', 'trail\\']);
     });
 
+    test('Source Response restores exact engine-coerced keys before unrelated saves', async ({ page }) => {
+        let channel = structuredClone(FULL_CHANNEL);
+        // Actual ObjectJSONSerializer outputs observed for these Java String keys.
+        const keys = ['1.0', 'null', '', '-0', '1e3', '9007199254740993'];
+        const wireValues = [1, null, null, 0, 1000, 9007199254740992];
+        channel.postprocessingScript = keys.map(key => `$r(${JSON.stringify(key)}, 'ACK');`).join('\n');
+        const saved: string[] = [];
+        let xmlReads = 0;
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES,
+            [`GET /channels/${CHANNEL_ID}`]: (request: any) => {
+                const key = channel.sourceConnector.properties.sourceConnectorProperties.responseVariable;
+                if (request.headers().accept === 'application/xml') {
+                    xmlReads++;
+                    return `<channel><id>${CHANNEL_ID}</id><revision>${channel.revision}</revision>
+                        <sourceConnector><properties><sourceConnectorProperties><responseVariable>${key}</responseVariable></sourceConnectorProperties></properties></sourceConnector>
+                        <exportData><metadata><lastModified><time>${channel.exportData.metadata.lastModified.time}</time></lastModified></metadata></exportData></channel>`;
+                }
+                const wire = structuredClone(channel);
+                const index = keys.indexOf(key);
+                if (index >= 0) wire.sourceConnector.properties.sourceConnectorProperties.responseVariable = wireValues[index];
+                return { channel: wire };
+            },
+            [`PUT /channels/${CHANNEL_ID}`]: (request: any) => {
+                channel = request.postDataJSON().channel;
+                saved.push(channel.sourceConnector.properties.sourceConnectorProperties.responseVariable);
+                return true;
+            },
+        });
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('tab', { name: 'Source', exact: true }).click();
+        for (const [index, key] of keys.entries()) {
+            await responseSelect(page).selectOption(key);
+            await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+            await expect.poll(() => saved.length).toBe(index * 2 + 1);
+            await expect(page.locator('.toast-msg', { hasText: 'Saved Round Trip Channel' }).last()).toBeVisible();
+            await page.reload();
+            await page.getByRole('tab', { name: 'Source', exact: true }).click();
+            await expect(responseSelect(page)).toHaveValue(key);
+            await page.locator('.field:has(> label:text-is("Max Processing Threads")) input').fill(String(index + 2));
+            await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+            await expect.poll(() => saved.length).toBe(index * 2 + 2);
+            expect(saved.slice(-2)).toEqual([key, key]);
+            await expect(page.locator('.toast-msg', { hasText: 'Saved Round Trip Channel' }).last()).toBeVisible();
+        }
+        expect(xmlReads).toBeGreaterThanOrEqual(keys.length);
+    });
+
+    test('Source Response exact-name reads preserve list clones and reject stale or failed XML', async ({ page }) => {
+        const channel = structuredClone(FULL_CHANNEL);
+        channel.sourceConnector.properties.sourceConnectorProperties.responseVariable = 1;
+        const mapper = 'com.mirth.connect.plugins.mapper.MapperStep';
+        channel.sourceConnector.transformer.elements = { [mapper]: [
+            { scope: 'RESPONSE', variable: 1000, sequenceNumber: 0 },
+            { scope: 'RESPONSE', variable: null, sequenceNumber: 1 },
+        ] };
+        let mode = 'success', xmlReads = 0;
+        let release = () => {};
+        let pending: Promise<void> | undefined;
+        const writes: any[] = [];
+        await mockEngine(page, {
+            ...CHANNEL_FIXTURES, 'GET /channels': { list: { channel } },
+            [`GET /channels/${CHANNEL_ID}`]: async (request: any) => {
+                if (request.headers().accept !== 'application/xml') return { channel };
+                xmlReads++;
+                if (pending) await pending;
+                if (mode === 'failure') return { __status: 503, body: 'XML unavailable' };
+                return `<channel><id>${mode === 'id' ? 'different' : CHANNEL_ID}</id><revision>${mode === 'revision' ? 4 : 3}</revision>
+                    <sourceConnector><properties><sourceConnectorProperties>${mode === 'missing' ? '' : '<responseVariable>1.0</responseVariable>'}</sourceConnectorProperties></properties>
+                    <transformer><elements><${mapper}><variable>1e3</variable></${mapper}><${mapper}><variable>null</variable></${mapper}></elements></transformer></sourceConnector>
+                    <exportData><metadata><lastModified><time>${mode === 'timestamp' ? 2 : channel.exportData.metadata.lastModified.time}</time></lastModified></metadata></exportData></channel>`;
+            },
+            'POST /channels': (request: any) => { writes.push(request.postDataJSON().channel); return true; },
+        });
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await expect(page.getByRole('tab', { name: 'Source', exact: true })).toBeVisible();
+        const cloned = await page.evaluate(async () => {
+            const api = await import(String('/core/api.js'));
+            const [channel] = await api.channels.list();
+            await api.channels.create({ ...channel, id: 'cloned' });
+            return channel;
+        });
+        expect(cloned.sourceConnector.properties.sourceConnectorProperties.responseVariable).toBe('1.0');
+        expect(writes[0].sourceConnector.transformer.elements[mapper].map((step: any) => step.variable)).toEqual(['1e3', 'null']);
+        for (mode of ['id', 'revision', 'timestamp', 'missing', 'failure']) {
+            const error = await page.evaluate(async id => {
+                try { await (await import(String('/core/api.js'))).channels.get(id); return ''; }
+                catch (error: any) { return error.message; }
+            }, CHANNEL_ID);
+            expect(error).toMatch(mode === 'missing' ? /invalid response name XML/ : mode === 'failure' ? /XML unavailable/ : /Channel changed/);
+        }
+        mode = 'success';
+        pending = new Promise<void>(resolve => { release = resolve; });
+        const before = xmlReads;
+        const read = page.evaluate(async id => {
+            try { await (await import(String('/core/api.js'))).channels.get(id); return ''; }
+            catch (error: any) { return error.message; }
+        }, CHANNEL_ID);
+        try {
+            await expect.poll(() => xmlReads).toBeGreaterThan(before);
+            await page.evaluate(async () => (await import(String('/core/engine-fetch.js'))).discardEngineResponses());
+        } finally { release(); }
+        expect(await read).toMatch(/previous session/);
+    });
+
     test('Source Response discovers custom server elements from unsaved edits and deduplicates keys', async ({ page }) => {
         let channel = customResponseChannel();
         const sourceRule = channel.sourceConnector.filter.elements[CUSTOM_RESPONSE_RULE];
