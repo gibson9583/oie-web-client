@@ -14,7 +14,16 @@ assert.deepEqual(responseVariablesIn(`
 const cases = [
     [String.raw`unicode\u0041`, 'unicodeA'],
     [String.raw`pair\uD83D\uDE00`, 'pair😀'],
-    [String.raw`point\u{1F600}`, 'point😀'],
+    // Rhino 1.7.13 drops the backslash for unsupported Unicode/hex escapes.
+    [String.raw`point\u{1F600}`, 'pointu{1F600}'],
+    [String.raw`\u{41}`, 'u{41}'],
+    [String.raw`bad\u12`, 'badu12'],
+    [String.raw`bad\uZZZZ`, 'baduZZZZ'],
+    [String.raw`bad\xZ1`, 'badxZ1'],
+    [String.raw`bad\x1`, 'badx1'],
+    [String.raw`bad\u{}`, 'badu{}'],
+    [String.raw`bad\u{110000}`, 'badu{110000}'],
+    [String.raw`\u\x`, 'ux'],
     [String.raw`hex\x41`, 'hexA'],
     [String.raw`control\b\f\n\r\t\v`, 'control\b\f\n\r\t\v'],
     [String.raw`null\0`, 'null\0'],
@@ -32,17 +41,14 @@ for (const [literal, expected] of cases) {
     }
 }
 
-for (const literal of [String.raw`bad\u12`, String.raw`bad\uZZZZ`, String.raw`bad\xZ1`, String.raw`bad\x1`, String.raw`bad\u{}`, String.raw`bad\u{110000}`]) {
-    assert.deepEqual(responseVariablesIn(`responseMap.put('${literal}', response); $r('valid', response);`), ['valid'], `skip malformed key: ${literal}`);
-}
-
 assert.deepEqual(responseVariablesIn(String.raw`responseMap.put('ack', response); $r('\u0061ck', response);`), ['ack'], 'deduplicate decoded keys');
+assert.deepEqual(responseVariablesIn(String.raw`responseMap.put('\u{41}', response); $r('u{41}', response); $r('valid', response);`), ['u{41}', 'valid'], 'deduplicate Rhino keys and keep scanning subsequent writes');
 assert.deepEqual(responseVariablesIn("responseMap.put('safe', (globalThis.__responseScanExecuted = true));"), ['safe']);
 assert.equal(globalThis.__responseScanExecuted, undefined, 'channel JavaScript is never executed');
 assert.deepEqual(responseVariablesIn("$r('again', response);"), ['again']);
 assert.deepEqual(responseVariablesIn("$r('again', response);"), ['again'], 'global regex does not retain scan position');
 
-console.log('response-variables: literal decoding, malformed keys, put/get distinction, deduplication and non-execution passed');
+console.log('response-variables: Rhino literal decoding, put/get distinction, deduplication and non-execution passed');
 
 for (const prefix of ['responseMap.put', '$r']) {
     assert.deepEqual(responseVariablesIn(String.raw`${prefix}('trail\\', response);`), ['trail\\']);

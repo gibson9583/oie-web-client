@@ -2,39 +2,23 @@
 /* Literal response-map writes, including escaped quotes and trailing backslashes. */
 const RESPONSE_PUT_RE = /(?:responseMap\s*\.\s*put|\$r)\s*\(\s*(['"])((?:\\(?:\r\n|[\s\S])|(?!\1)[^\\\r\n\u2028\u2029])*)\1(?=(?:\s|\/\*(?:[^*]|\*(?!\/))*\*\/|\/\/[^\r\n\u2028\u2029]*(?=[\r\n\u2028\u2029]|$))*,)/g;
 const ESCAPES = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
-// Decode string contents without evaluating channel JavaScript. Invalid escapes
-// can occur while editing; omit only that key and continue scanning the script.
+// Match Rhino 1.7.13 without evaluating scripts: unsupported u/x escapes lose
+// only the backslash, including brace-form Unicode and incomplete hex escapes.
 function decodeKey(key) {
-    let valid = true;
-    const value = key.replace(/\\(u\{[\da-fA-F]+\}|u[\da-fA-F]{4}|x[\da-fA-F]{2}|[0-3][0-7]{0,2}|[4-7][0-7]?|\r\n|[\s\S])/g, (_, escape) => {
-        if (escape === 'u' || escape === 'x') {
-            valid = false;
-            return '';
-        }
-        if (escape.startsWith('u{')) {
-            const point = parseInt(escape.slice(2, -1), 16);
-            if (point > 0x10ffff) {
-                valid = false;
-                return '';
-            }
-            return String.fromCodePoint(point);
-        }
-        if (escape[0] === 'u' || escape[0] === 'x')
+    return key.replace(/\\(u[\da-fA-F]{4}|x[\da-fA-F]{2}|[0-3][0-7]{0,2}|[4-7][0-7]?|\r\n|[\s\S])/g, (_, escape) => {
+        if (escape.length > 1 && (escape[0] === 'u' || escape[0] === 'x'))
             return String.fromCharCode(parseInt(escape.slice(1), 16));
         if (/^[0-7]/.test(escape))
             return String.fromCharCode(parseInt(escape, 8));
         return /^[\r\n\u2028\u2029]/.test(escape) ? '' : ESCAPES[escape] ?? escape;
     });
-    return valid ? value : undefined;
 }
 export function responseVariablesIn(script) {
     if (typeof script !== 'string')
         return [];
     const variables = new Set();
     for (const match of script.matchAll(RESPONSE_PUT_RE)) {
-        const key = decodeKey(match[2]);
-        if (key !== undefined)
-            variables.add(key);
+        variables.add(decodeKey(match[2]));
     }
     return [...variables];
 }
