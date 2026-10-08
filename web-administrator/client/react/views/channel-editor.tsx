@@ -1839,6 +1839,40 @@ function RawConnectorProps({ connector, markDirty }: any) {
 
 /* ---- Source tab --------------------------------------------------------------- */
 
+/* Swing SourceSettingsPanel.updateResponseDropDown + JavaScriptSharedUtil.RESULT_PATTERN. */
+const RESPONSE_PUT_RE = /responseMap\s*\.\s*put\s*\(\s*(['"])(((?!(?<!\\)\1).)*)(?<!\\)\1|\$r\s*\(\s*(['"])(((?!(?<!\\)\4).)*)(?<!\\)\4(?=\s*,)/g;
+
+function responseVariablesOf(channel: any): string[] {
+    const vars = new Set<string>();
+    const scan = (script: any) => {
+        if (typeof script !== 'string') return;
+        for (const m of script.matchAll(RESPONSE_PUT_RE)) vars.add((m[2] ?? m[5]).replace(/\\(.)/g, '$1'));
+    };
+    const check = (el: any) => {
+        if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
+            if (el.scope === 'RESPONSE' && el.variable) vars.add(String(el.variable));
+        } else if (el.__type === 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep'
+            || el.__type === 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule') {
+            scan(el.script);
+        }
+    };
+    const src = channel.sourceConnector || {};
+    for (const el of [...oie.elementsToArray(src.filter?.elements), ...oie.elementsToArray(src.transformer?.elements)]) {
+        if (el.enabled !== false && el.enabled !== 'false') check(el);
+    }
+    for (const d of oie.destinationsOf(channel)) {
+        const p: any = d.properties || {};
+        if (d.transportName === 'JavaScript Writer') scan(p.script);
+        if (d.transportName === 'Database Writer' && (p.useScript === true || p.useScript === 'true')) scan(p.query);
+        for (const t of [d.filter, d.transformer, d.responseTransformer] as any[]) {
+            for (const el of oie.elementsToArray(t?.elements)) check(el);
+        }
+    }
+    scan(channel.preprocessingScript);
+    scan(channel.postprocessingScript);
+    return [...vars];
+}
+
 /* Source Settings — parity with the Swing SourceSettingsPanel. */
 function SourceSettings({ channel, scp, markDirty }: any) {
     const [, bump] = useReducer((x: any) => x + 1, 0);
@@ -1852,6 +1886,9 @@ function SourceSettings({ channel, scp, markDirty }: any) {
     if (respondAfter) {
         for (const d of oie.destinationsOf(channel)) {
             respOpts.push({ value: 'd' + d.metaDataId, label: d.name || `Destination ${d.metaDataId}` });
+        }
+        for (const v of responseVariablesOf(channel)) {
+            if (!respOpts.some(o => o.value === v)) respOpts.push({ value: v, label: v });
         }
     }
     const currentResp = scp.responseVariable ?? 'None';

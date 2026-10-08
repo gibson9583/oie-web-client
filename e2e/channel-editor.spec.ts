@@ -671,4 +671,39 @@ test.describe('Channel editor', () => {
         expect(page.url()).not.toContain('#');
     });
 
+    test('Source Response lists the response variables the channel puts (issue #99)', async ({ page }) => {
+        const channel = structuredClone(FULL_CHANNEL);
+        channel.sourceConnector.transformer.elements = {
+            'com.mirth.connect.plugins.mapper.MapperStep': {
+                '@version': '4.6.0', name: 'Map Response', sequenceNumber: '0', enabled: true,
+                variable: 'sourceMapped', mapping: "'x'", defaultValue: '', replacements: '', scope: 'RESPONSE',
+            },
+            'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
+                '@version': '4.6.0', name: 'Disabled Step', sequenceNumber: '1', enabled: false,
+                script: "responseMap.put('disabledSource', 'x');",
+            },
+        };
+        const dest = channel.destinationConnectors.connector[0];
+        dest.responseTransformer.elements = {
+            'com.mirth.connect.plugins.javascriptstep.JavaScriptStep': {
+                '@version': '4.6.0', name: 'Put ACK', sequenceNumber: '0', enabled: true,
+                script: "responseMap.put('destAck', response);\n$r('getOnly');",
+            },
+        };
+        channel.postprocessingScript = "$r('postVar', 'x');\nreturn;";
+        await mockEngine(page, { ...CHANNEL_FIXTURES, [`GET /channels/${CHANNEL_ID}`]: { channel } });
+
+        await page.goto(`/channels/${CHANNEL_ID}/edit`);
+        await page.getByRole('tab', { name: 'Source', exact: true }).click();
+
+        const response = page.locator('.field:has(> label:text-is("Response")) select');
+        await expect(response.locator('option')).toHaveText([
+            'None', 'Auto-generate (Before processing)', 'Auto-generate (After source transformer)',
+            'Auto-generate (Destinations completed)', 'Postprocessor', 'Send To Downstream',
+            'sourceMapped', 'destAck', 'postVar',
+        ]);
+        await response.selectOption('destAck');
+        await expect(response).toHaveValue('destAck');
+    });
+
 });
