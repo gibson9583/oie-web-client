@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { DESTINATION_MAPPINGS, destinationMappingsFor } from './mappings.js';
 
 // Exercise the shipped editor and factory with a delayed loader, without a browser/Monaco.
 const source = readFileSync(new URL('./codeeditor.js', import.meta.url), 'utf8');
@@ -135,3 +136,89 @@ for (const toggles of [1, 2]) {
         assert.equal(changes, 0);
     });
 }
+
+// Captured by executing Swing's VariableListHandler/VariableTransferable at
+// OIE 3bcba0b9087ebf3780067dbbd8a29d5bfe62011d. Retain exact transferred text:
+// some entries are statements or XML fragments, not standalone expressions.
+// Message Hash is outside the existing web list; Swing omits Count in JS mode.
+const swingJavaScriptMappings = [
+    ['Channel ID', "$('Channel ID')"],
+    ['Channel Name', "$('Channel Name')"],
+    ['Message ID', 'connectorMessage.getMessageId()'],
+    ['Raw Data', 'connectorMessage.getRawData()'],
+    ['Transformed Data', 'connectorMessage.getTransformedData()'],
+    ['Encoded Data', 'connectorMessage.getEncodedData()'],
+    ['Message Source', "$('mirth_source')"],
+    ['Message Type', "$('mirth_type')"],
+    ['Message Version', "$('mirth_version')"],
+    ['Date', "var date = DateUtil.getDate('pattern','date');"],
+    ['Formatted Date', "var dateString = DateUtil.getCurrentDate('yyyy-M-d H.m.s');"],
+    ['Timestamp', "var dateString = DateUtil.getCurrentDate('yyyyMMddHHmmss');"],
+    ['Unique ID', 'var uuid = UUIDGenerator.getUUID();'],
+    ['Original File Name', "$('originalFilename')"],
+    ['XML Entity Encoder', "var encodedMessage = XmlUtil.encode('message');"],
+    ['XML Pretty Printer', "var prettyPrintedMessage = XmlUtil.prettyPrint('message');"],
+    ['Escape JSON String', "var escapedJSONString = JsonUtil.escape('message');"],
+    ['JSON Pretty Printer', "var prettyPrintedMessage = JsonUtil.prettyPrint('message');"],
+    ['CDATA Tag', '<![CDATA[]]>'],
+    ['DICOM Message Raw Data', 'var rawData = DICOMUtil.getDICOMRawData(connectorMessage);']
+];
+
+for (const [name, className, useScript] of [
+    ['JavaScript Writer', 'js.JavaScriptDispatcherProperties'],
+    ['Database Writer with boolean mode', 'jdbc.DatabaseDispatcherProperties', true],
+    ['Database Writer with serialized mode', 'jdbc.DatabaseDispatcherProperties', 'true']
+]) {
+    test(`${name} transfers the exact Swing JavaScript snippets`, () => {
+        const mappings = destinationMappingsFor({
+            '@class': `com.mirth.connect.connectors.${className}`,
+            destinationConnectorProperties: {}, useScript
+        });
+        assert.deepEqual(mappings, swingJavaScriptMappings);
+        assert.ok(!mappings.some(([label]) => label === 'Count'));
+        assert.deepEqual(mappings.find(([label]) => label === 'CDATA Tag'), ['CDATA Tag', '<![CDATA[]]>']);
+    });
+}
+
+test('SQL and template destinations retain the existing Velocity list', () => {
+    for (const useScript of [false, 'false', undefined, null]) {
+        assert.equal(destinationMappingsFor({
+            '@class': 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties',
+            destinationConnectorProperties: {}, useScript
+        }), DESTINATION_MAPPINGS);
+    }
+    for (const className of ['http.HttpDispatcherProperties', 'file.FileDispatcherProperties', 'custom.DispatcherProperties']) {
+        assert.equal(destinationMappingsFor({
+            '@class': `com.mirth.connect.connectors.${className}`,
+            destinationConnectorProperties: {}, useScript: true
+        }), DESTINATION_MAPPINGS, 'a useScript property alone does not change the connector transfer mode');
+    }
+});
+
+test('source, authentication, and incomplete properties have no destination mappings', () => {
+    for (const properties of [
+        undefined,
+        null,
+        {},
+        { '@class': 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties' },
+        { '@class': 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties', destinationConnectorProperties: null },
+        { '@class': 'com.mirth.connect.connectors.js.JavaScriptReceiverProperties', sourceConnectorProperties: {} },
+        { '@class': 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties', sourceConnectorProperties: {}, useScript: true },
+        { '@class': 'com.mirth.connect.plugins.httpauth.javascript.JavaScriptHttpAuthProperties' }
+    ]) {
+        assert.deepEqual(destinationMappingsFor(properties), []);
+    }
+});
+
+test('changing database transfer mode does not retain or mutate a previous context', () => {
+    const properties = {
+        '@class': 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties',
+        destinationConnectorProperties: {}, useScript: false
+    };
+    assert.equal(destinationMappingsFor(properties), DESTINATION_MAPPINGS);
+    properties.useScript = true;
+    assert.deepEqual(destinationMappingsFor(properties), swingJavaScriptMappings);
+    properties.useScript = false;
+    assert.equal(destinationMappingsFor(properties), DESTINATION_MAPPINGS);
+    assert.deepEqual(DESTINATION_MAPPINGS.find(([label]) => label === 'Count'), ['Count', '${COUNT}']);
+});

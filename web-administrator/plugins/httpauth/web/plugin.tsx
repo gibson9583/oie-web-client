@@ -19,7 +19,6 @@
  */
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
-import { DESTINATION_MAPPINGS } from '@oie/web-ui';
 const React = platform.React;
 
 const AUTH_TYPE_OPTIONS = [
@@ -151,7 +150,7 @@ export function register(platform: Platform) {
     /* CodeMirror/Monaco island: mounts platform.createCodeEditor's .el into a
        ref'd div and pushes edits back through onChange. (Same code editor the
        imperative buildForm 'code' field used.) */
-    function CodeField({ value, language, minHeight, onChange }: any) {
+    function CodeField({ value, language, minHeight, onChange, channelId }: any) {
         const hostRef = React.useRef(null as any);
         const editorRef = React.useRef(null as any);
         const onChangeRef = React.useRef(onChange);
@@ -163,14 +162,14 @@ export function register(platform: Platform) {
                 minHeight: minHeight || '240px',
                 popoutable: true,   // dedicated full-screen code view
                 popoutTitle: 'Script',
-                popoutVars: DESTINATION_MAPPINGS,   // connector settings context
+                completionScope: { channelId, context: 'SOURCE_RECEIVER' },
                 onChange: (v: any) => onChangeRef.current(v)
             });
             editorRef.current = editor;
             const host = hostRef.current;
             if (host) host.appendChild(editor.el);
             return () => {
-                if ((editor as any).destroy) (editor as any).destroy();
+                editor.dispose?.();
                 if (host) host.replaceChildren();
             };
             // Mount once; the editor owns its own value after mount.
@@ -302,7 +301,7 @@ export function register(platform: Platform) {
     /* Per-type editor rendered below the Authentication Type select. Operates on
        the auth entry object itself (its keys are not reachable by dot path from
        the receiver properties — FQCN keys contain dots). */
-    function AuthEditor({ entry, onChange }: any) {
+    function AuthEditor({ entry, onChange, channelId }: any) {
         switch (String(entry.authType)) {
             case 'BASIC':
                 return (
@@ -333,7 +332,7 @@ export function register(platform: Platform) {
                 return (
                     <div className="cform"><div className="cform-section"><div className="cform-grid">
                         <CformRow label="Script" top>
-                            <CodeField value={entry.script} language="javascript" minHeight="200px"
+                            <CodeField value={entry.script} language="javascript" minHeight="200px" channelId={channelId}
                                 onChange={(v: any) => { entry.script = v; onChange(); }} />
                         </CformRow>
                     </div></div></div>
@@ -369,10 +368,10 @@ export function register(platform: Platform) {
 
     /* Authentication Type select + per-type editor. Type changes mutate
        connector.properties via setAuthType and force a re-render. ctx (props):
-       { connector, onChange } (+ getEntry/setEntry/propertiesClass/channel/platform
+       { connector, onChange, channel } (+ getEntry/setEntry/propertiesClass/platform
        which this panel does not need — it edits connector.properties directly,
        the same object getEntry/setEntry read/write). */
-    function HttpAuthPanel({ connector, onChange }: any) {
+    function HttpAuthPanel({ connector, onChange, channel }: any) {
         const [, force] = React.useReducer((x: any) => x + 1, 0);
         if (!connector || !connector.properties) return null;
         const properties = connector.properties;
@@ -389,7 +388,7 @@ export function register(platform: Platform) {
                     </select>
                 </div>
                 {type !== 'NONE' && state && (
-                    <AuthEditor key={state.key} entry={state.entry} onChange={onChange} />
+                    <AuthEditor key={state.key} entry={state.entry} onChange={onChange} channelId={channel?.id} />
                 )}
             </div>
         );

@@ -6,7 +6,6 @@
 
 import { h } from './ui.js';
 import { icon } from './icons.js';
-import { DESTINATION_MAPPINGS, destinationMappingToken } from './mappings.js';
 import type * as MonacoNs from 'monaco-editor';
 
 export interface CodeEditorOptions {
@@ -52,7 +51,7 @@ export class CodeEditor {
             placeholder: opts.placeholder || ''
         }) as HTMLTextAreaElement;
         this.area.value = opts.value ?? '';
-        this.el = h('div.ce', { 'data-language': opts.language || 'javascript', style: opts.minHeight ? { minHeight: opts.minHeight } : null },
+        this.el = h('div.ce', { style: opts.minHeight ? { minHeight: opts.minHeight } : null },
             this.gutter, this.area);
 
         this.area.addEventListener('input', () => {
@@ -211,13 +210,7 @@ function attachCodeView(editor: CodeEditor, opts: CodeEditorOptions): void {
         const vars = opts.popoutVars;
         if (!Array.isArray(vars) || vars.length === 0 || opts.readOnly) return null;
         const list = h('div.ce-popout-vars-list');
-        for (const [label, value] of vars) {
-            // Only the shared destination list is language-dependent. Custom
-            // popoutVars remain literal insertion text, as supplied by plugins.
-            const token = vars === DESTINATION_MAPPINGS
-                ? destinationMappingToken(value, editor.monaco?.getModel()?.getLanguageId() || opts.language || 'javascript')
-                : value;
-            if (token === null) continue;
+        for (const [label, token] of vars) {
             list.appendChild(h('div.ce-popout-var', {
                 title: token,
                 draggable: 'true',

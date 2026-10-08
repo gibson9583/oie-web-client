@@ -1,6 +1,5 @@
 // plugins/httpauth/web/plugin.tsx
 import { platform } from "@oie/web-shell";
-import { DESTINATION_MAPPINGS } from "@oie/web-ui";
 var React = platform.React;
 var AUTH_TYPE_OPTIONS = [
   { value: "NONE", label: "None" },
@@ -107,7 +106,7 @@ function writeMapRows(rows) {
   return target;
 }
 function register(platform2) {
-  function CodeField({ value, language, minHeight, onChange }) {
+  function CodeField({ value, language, minHeight, onChange, channelId }) {
     const hostRef = React.useRef(null);
     const editorRef = React.useRef(null);
     const onChangeRef = React.useRef(onChange);
@@ -120,15 +119,14 @@ function register(platform2) {
         popoutable: true,
         // dedicated full-screen code view
         popoutTitle: "Script",
-        popoutVars: DESTINATION_MAPPINGS,
-        // connector settings context
+        completionScope: { channelId, context: "SOURCE_RECEIVER" },
         onChange: (v) => onChangeRef.current(v)
       });
       editorRef.current = editor;
       const host = hostRef.current;
       if (host) host.appendChild(editor.el);
       return () => {
-        if (editor.destroy) editor.destroy();
+        editor.dispose?.();
         if (host) host.replaceChildren();
       };
     }, []);
@@ -281,7 +279,7 @@ function register(platform2) {
       }
     ));
   }
-  function AuthEditor({ entry, onChange }) {
+  function AuthEditor({ entry, onChange, channelId }) {
     switch (String(entry.authType)) {
       case "BASIC":
         return /* @__PURE__ */ React.createElement("div", { className: "cform" }, /* @__PURE__ */ React.createElement("div", { className: "cform-section" }, /* @__PURE__ */ React.createElement("div", { className: "cform-grid" }, /* @__PURE__ */ React.createElement(TextRow, { label: "Realm", entry, fieldKey: "realm", width: "220px", onChange }), /* @__PURE__ */ React.createElement(CredentialFields, { entry, onChange }))));
@@ -312,6 +310,7 @@ function register(platform2) {
             value: entry.script,
             language: "javascript",
             minHeight: "200px",
+            channelId,
             onChange: (v) => {
               entry.script = v;
               onChange();
@@ -348,7 +347,7 @@ function register(platform2) {
         return /* @__PURE__ */ React.createElement("div", null);
     }
   }
-  function HttpAuthPanel({ connector, onChange }) {
+  function HttpAuthPanel({ connector, onChange, channel }) {
     const [, force] = React.useReducer((x) => x + 1, 0);
     if (!connector || !connector.properties) return null;
     const properties = connector.properties;
@@ -366,7 +365,7 @@ function register(platform2) {
         }
       },
       AUTH_TYPE_OPTIONS.map((o) => /* @__PURE__ */ React.createElement("option", { key: o.value, value: o.value }, o.label))
-    )), type !== "NONE" && state && /* @__PURE__ */ React.createElement(AuthEditor, { key: state.key, entry: state.entry, onChange }));
+    )), type !== "NONE" && state && /* @__PURE__ */ React.createElement(AuthEditor, { key: state.key, entry: state.entry, onChange, channelId: channel?.id }));
   }
   platform2.registerConnectorPropertiesPanel({
     id: "httpauth",

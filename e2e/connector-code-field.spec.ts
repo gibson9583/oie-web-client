@@ -2,6 +2,7 @@ import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { makeChannel, CASES } from './connector-fixtures.js';
 import type { Locator, Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 
 /*
  * Connector code fields (react-forms CodeField): the editor keeps every
@@ -88,19 +89,28 @@ const codeValue = (editor: Locator) => editor.evaluate(el => {
 });
 
 async function focusCodeEnd(editor: Locator) {
-    await editor.evaluate(el => {
+    await focusCodeOffset(editor, (await codeValue(editor)).length);
+}
+
+async function focusCodeOffset(editor: Locator, offset: number) {
+    await editor.evaluate((el, offset) => {
         const instance = (window as any).monaco?.editor.getEditors().find((ed: any) => el.contains(ed.getDomNode()));
         if (instance) {
-            const model = instance.getModel();
-            const lineNumber = model.getLineCount();
-            instance.setPosition({ lineNumber, column: model.getLineMaxColumn(lineNumber) });
+            instance.setPosition(instance.getModel().getPositionAt(offset));
             instance.focus();
         } else {
             const area = el.querySelector('textarea.ce-area') as HTMLTextAreaElement;
             area.focus();
-            area.setSelectionRange(area.value.length, area.value.length);
+            area.setSelectionRange(offset, offset);
         }
-    });
+    }, offset);
+}
+
+async function expectCompletionScope(page: Page, channelId: string, context: string) {
+    await expect.poll(() => page.evaluate(async () => {
+        const path = '/core/script-completions.js';
+        return (await import(path)).activeScope();
+    })).toEqual({ channelId, contexts: [context] });
 }
 
 const mapping = (page: Page, label: string) => page.locator('[draggable="true"][title]').filter({ hasText: new RegExp(`^${label}$`) });
@@ -116,19 +126,22 @@ async function dropMapping(page: Page, source: Locator, target: Locator) {
 for (const surface of ['classic', 'wizard']) {
     for (const fallback of [false, true]) {
         const backend = fallback ? 'textarea' : 'Monaco';
-        test(`${surface} ${backend}: JavaScript Writer mappings click, drop and code view save Rhino expressions`, async ({ page }) => {
-            const save = await openMappings(page, surface, fallback, 'JavaScript Writer', { script: '// mapping: ' });
+        test(`${surface} ${backend}: JavaScript Writer saves Swing snippets in expressions, strings and E4X`, async ({ page }, testInfo) => {
+            let expected = 'var transformed = ;\nvar channel = ;\nvar external = "";\nvar xml = <root></root>;\n\nreturn transformed;';
+            const save = await openMappings(page, surface, fallback, 'JavaScript Writer', { script: expected });
             const editor = await codeField(page, 'script', fallback);
-            await focusCodeEnd(editor);
+            await focusCodeOffset(editor, expected.indexOf(';'));
             await mapping(page, 'Transformed Data').click();
-            let expected = '// mapping: connectorMessage.getTransformedData()';
+            expected = expected.replace('var transformed = ;', 'var transformed = connectorMessage.getTransformedData();');
             await expect.poll(() => codeValue(editor)).toBe(expected);
+            await focusCodeOffset(editor, expected.indexOf(';\nvar external'));
             await dropMapping(page, mapping(page, 'Channel ID'), editor.locator(fallback ? 'textarea.ce-area' : '.monaco-editor'));
-            expected += 'channelId';
+            expected = expected.replace('var channel = ;', "var channel = $('Channel ID');");
             await expect.poll(() => codeValue(editor)).toBe(expected);
 
             // A plain external text drop is literal, even if it happens to
             // contain the same text as a known destination mapping.
+            await focusCodeOffset(editor, expected.indexOf('""') + 1);
             const external = await page.evaluateHandle(() => {
                 const data = new DataTransfer();
                 data.setData('text/plain', '${channelId}');
@@ -136,30 +149,60 @@ for (const surface of ['classic', 'wizard']) {
             });
             await editor.locator(fallback ? 'textarea.ce-area' : '.monaco-editor').dispatchEvent('drop', { dataTransfer: external });
             await external.dispose();
-            expected += '${channelId}';
+            expected = expected.replace('""', '"${channelId}"');
             await expect.poll(() => codeValue(editor)).toBe(expected);
 
-            // These have no script equivalent; neither click nor drop may write
-            // invalid JavaScript or silently copy the template token instead.
-            await mapping(page, 'Count').click();
-            const warning = page.getByRole('dialog', { name: 'Warning', exact: true });
-            await expect(warning).toContainText('This mapping is only available in template fields');
-            await expect.poll(() => codeValue(editor)).toBe(expected);
-            await warning.getByRole('button', { name: 'Close', exact: true }).last().click();
+            // Swing retains CDATA in JavaScript: it is an XML fragment, so test
+            // insertion in an E4X literal rather than as a standalone expression.
+            await expect(mapping(page, 'Count')).toHaveCount(0);
+            await focusCodeOffset(editor, expected.indexOf('</root>'));
             await dropMapping(page, mapping(page, 'CDATA Tag'), editor.locator(fallback ? 'textarea.ce-area' : '.monaco-editor'));
-            await expect(warning).toContainText('This mapping is only available in template fields');
+            expected = expected.replace('<root></root>', '<root><![CDATA[]]></root>');
             await expect.poll(() => codeValue(editor)).toBe(expected);
-            await warning.getByRole('button', { name: 'Close', exact: true }).last().click();
 
             await editor.locator('.ce-pop-btn').click({ force: true });
             const overlay = page.locator('.ce-popout-overlay');
             await expect(overlay.locator('.ce-popout-var', { hasText: 'Transformed Data' })).toHaveAttribute('title', 'connectorMessage.getTransformedData()');
-            await expect(overlay.locator('.ce-popout-var').filter({ hasText: /^(Count|CDATA Tag)$/ })).toHaveCount(0);
+            await expect(overlay.locator('.ce-popout-var').filter({ hasText: /^Count$/ })).toHaveCount(0);
+            await expect(overlay.locator('.ce-popout-var', { hasText: 'CDATA Tag' })).toHaveAttribute('title', '<![CDATA[]]>');
+            await focusCodeOffset(overlay.locator('.ce'), expected.indexOf('\n\nreturn') + 1);
             await overlay.locator('.ce-popout-var', { hasText: 'Unique ID' }).click();
-            expected += 'UUIDGenerator.getUUID()';
+            expected = expected.replace('\n\nreturn', '\nvar uuid = UUIDGenerator.getUUID();\nreturn');
             await expect.poll(() => codeValue(overlay.locator('.ce'))).toBe(expected);
             await overlay.getByRole('button', { name: 'Back', exact: true }).click();
-            expect((await save()).script).toBe(expected);
+            const saved = await save();
+            expect(saved.script).toBe(expected);
+            // Preserve the browser's actual PUT script for Rhino execution in
+            // the engine-context audit; this is code, not commented-out tokens.
+            const scriptPath = testInfo.outputPath('saved-script.js');
+            await writeFile(scriptPath, saved.script);
+            await testInfo.attach('saved-script', { path: scriptPath, contentType: 'application/javascript' });
+        });
+
+        test(`${surface} ${backend}: Database Writer saves JavaScript mappings while Use JavaScript is enabled`, async ({ page }) => {
+            const save = await openMappings(page, surface, fallback, 'Database Writer', { query: 'SELECT 1' });
+            await page.locator('[data-fkey="useScript"]').getByRole('radio', { name: 'Yes', exact: true }).check();
+            const editor = await codeField(page, 'query', fallback);
+            const boilerplate = await codeValue(editor);
+            await focusCodeEnd(editor);
+            if (!fallback) await expectCompletionScope(page, 'destination-mapping', 'DESTINATION_DISPATCHER');
+            await mapping(page, 'Unique ID').click();
+            const expected = boilerplate + 'var uuid = UUIDGenerator.getUUID();';
+            await expect.poll(() => codeValue(editor)).toBe(expected);
+            await expect(mapping(page, 'Count')).toHaveCount(0);
+
+            // Swing's transfer mode belongs to the destination connector, so
+            // its plain text fields receive the same JavaScript snippets.
+            const username = page.locator('input[data-fkey="username"]');
+            await username.fill('mapped-');
+            await mapping(page, 'Channel ID').click();
+            await dropMapping(page, mapping(page, 'Raw Data'), username);
+            const expectedUsername = "mapped-$('Channel ID')connectorMessage.getRawData()";
+            await expect(username).toHaveValue(expectedUsername);
+            const saved = await save();
+            expect(saved.useScript).toBe(true);
+            expect(saved.query).toBe(expected);
+            expect(saved.username).toBe(expectedUsername);
         });
 
         test(`${surface} ${backend}: Database Writer mappings follow SQL to JavaScript to SQL switches`, async ({ page }) => {
@@ -214,32 +257,33 @@ for (const surface of ['classic', 'wizard']) {
     });
 }
 
-test('fallback code views resolve default and alias JavaScript languages while custom variables stay literal', async ({ page }) => {
+test('generic code views insert their supplied variables literally regardless of language', async ({ page }) => {
     await page.route('**/vendor/monaco/**', route => route.abort());
     await mockEngine(page);
     await page.goto('/channels');
     await expect(page.getByRole('button', { name: 'New Channel', exact: true }).first()).toBeVisible();
-    for (const language of ['default', 'js', 'rhino', 'custom']) {
-        await page.evaluate(async language => {
+    for (const language of ['default', 'javascript', 'js', 'rhino', 'custom']) {
+        const expected = await page.evaluate(async language => {
             const editorPath = '/core/codeeditor.js';
             const mappingsPath = '/core/mappings.js';
             const { createCodeEditor } = await import(editorPath);
             const { DESTINATION_MAPPINGS } = await import(mappingsPath);
+            const variables = language === 'custom' ? [['Channel ID', '${channelId}'], ['Count', '${COUNT}']] : DESTINATION_MAPPINGS;
             const editor = createCodeEditor({
                 language: language === 'default' ? undefined : language === 'custom' ? 'javascript' : language,
                 maximizable: true,
-                popoutVars: language === 'custom' ? [['Channel ID', '${channelId}'], ['Count', '${COUNT}']] : DESTINATION_MAPPINGS,
+                popoutVars: variables,
             });
             editor.el.id = 'mapping-probe';
             document.body.appendChild(editor.el);
             (window as any).mappingProbe = editor;
+            return variables.find(([label]: [string, string]) => label === 'Channel ID')[1];
         }, language);
         await page.locator('#mapping-probe .ce-pop-btn').click({ force: true });
         const overlay = page.locator('.ce-popout-overlay');
         const channelId = overlay.locator('.ce-popout-var').filter({ hasText: /^Channel ID$/ });
-        const expected = language === 'custom' ? '${channelId}' : 'channelId';
         await expect(channelId).toHaveAttribute('title', expected);
-        await expect(overlay.locator('.ce-popout-var').filter({ hasText: /^Count$/ })).toHaveCount(language === 'custom' ? 1 : 0);
+        await expect(overlay.locator('.ce-popout-var').filter({ hasText: /^Count$/ })).toHaveCount(1);
         await channelId.click();
         await expect(overlay.locator('textarea.ce-area')).toHaveValue(expected);
         await overlay.getByRole('button', { name: 'Back', exact: true }).click();
@@ -249,4 +293,68 @@ test('fallback code views resolve default and alias JavaScript languages while c
             delete (window as any).mappingProbe;
         });
     }
+});
+
+for (const name of ['JavaScript Reader', 'Database Reader', 'HTTP Listener']) {
+    for (const fallback of [false, true]) {
+        test(`${name} ${fallback ? 'textarea' : 'Monaco'}: source code views do not offer destination-only mappings`, async ({ page }) => {
+            if (fallback) await page.route('**/vendor/monaco/**', route => route.abort());
+            const id = 'source-mapping-context';
+            const source = connector(name, name === 'Database Reader' ? { useScript: true, updateMode: 3, select: 'return [];', update: 'return;' } : {});
+            if (name === 'HTTP Listener') source.properties.pluginProperties = {
+                'com.mirth.connect.plugins.httpauth.javascript.JavaScriptHttpAuthProperties': {
+                    '@version': '4.6.0', authType: 'JAVASCRIPT', script: 'return AUTHORIZED;',
+                },
+            };
+            await mockEngine(page, { [`GET /channels/${id}`]: { channel: makeChannel(id, { source }) } });
+            await page.goto(`/channels/${id}/edit`);
+            await page.getByRole('tab', { name: 'Source', exact: true }).click();
+            const editors = page.locator('.ce');
+            await expect(editors).toHaveCount(name === 'Database Reader' ? 2 : 1);
+            for (let index = 0; index < await editors.count(); index++) {
+                const editor = editors.nth(index);
+                await expect(editor.locator(fallback ? 'textarea.ce-area' : '.monaco-editor')).toBeVisible();
+                await editor.locator('.ce-pop-btn').click({ force: true });
+                const overlay = page.locator('.ce-popout-overlay');
+                await expect(overlay).toBeVisible();
+                await expect(overlay.locator('.ce-popout-vars')).toHaveCount(0);
+                if (!fallback) await expectCompletionScope(page, id, 'SOURCE_RECEIVER');
+                await overlay.getByRole('button', { name: 'Back', exact: true }).click();
+            }
+        });
+    }
+}
+
+test('HTTP authentication releases its completion scope when its script editor is removed', async ({ page }) => {
+    const id = 'auth-scope-disposal';
+    await mockEngine(page, { [`GET /channels/${id}`]: {
+        channel: makeChannel(id, { source: connector('HTTP Listener') }),
+    } });
+    await page.goto(`/channels/${id}/edit`);
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
+    const authType = page.locator('.field').filter({ has: page.getByText('Authentication Type', { exact: true }) }).locator('select');
+    const readScope = () => page.evaluate(async () => {
+        const path = '/core/script-completions.js';
+        return (await import(path)).activeScope();
+    });
+    const previousScope = await readScope();
+
+    await authType.selectOption('JAVASCRIPT');
+    const editor = page.locator('.ce');
+    await expect(editor.locator('.monaco-editor')).toBeVisible();
+    await focusCodeEnd(editor);
+    await expectCompletionScope(page, id, 'SOURCE_RECEIVER');
+
+    // This unmount does not change routes, so the route-level Monaco sweep
+    // cannot hide an incorrect destroy/dispose hook in the plugin.
+    await authType.selectOption('NONE');
+    await expect(editor).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => (window as any).monaco.editor.getModels().length)).toBe(0);
+    await expect.poll(readScope).toEqual(previousScope);
+
+    await page.getByRole('tab', { name: 'Scripts', exact: true }).click();
+    await expect(editor.locator('.monaco-editor')).toBeVisible();
+    await focusCodeEnd(editor);
+    await expectCompletionScope(page, id, 'CHANNEL_DEPLOY');
+    await expect.poll(() => page.evaluate(() => (window as any).monaco.editor.getModels().length)).toBe(1);
 });

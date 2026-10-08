@@ -263,7 +263,7 @@ const databaseReader = {
             encoding: 'DEFAULT_ENCODING'
         };
     },
-    component({ properties, platform, onChange }: any) {
+    component({ properties, platform, onChange, channel }: any) {
         return (
             <div>
                 <PollSection properties={properties} onChange={onChange} />
@@ -307,6 +307,7 @@ const databaseReader = {
                     {
                         // Swing flips selectSQLLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
                         key: 'select', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                        completionScope: { channelId: channel?.id, context: 'SOURCE_RECEIVER' },
                         language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql',
                         tooltip: 'SQL select statement, or a JavaScript script when "Use JavaScript" is Yes'
                     },
@@ -324,6 +325,7 @@ const databaseReader = {
                         // Swing updateNeverActionPerformed keeps this editor VISIBLE but disabled at Never.
                         // The `code` field now honours `disabled`, so match Swing: grey it out (not hide it).
                         key: 'update', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                        completionScope: { channelId: channel?.id, context: 'SOURCE_RECEIVER' },
                         language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql',
                         disabled: (p: any) => Number(p.updateMode) === 1
                     }
@@ -361,7 +363,7 @@ const databaseWriter = {
             useScript: false
         };
     },
-    component({ properties, platform, onChange }: any) {
+    component({ properties, platform, onChange, channel }: any) {
         return (
             <ConnectorForm properties={properties} onChange={onChange} fields={[
                 { section: 'Connection Settings' },
@@ -380,6 +382,7 @@ const databaseWriter = {
                 {
                     // Swing flips sqlLabel 'SQL:'<->'JavaScript:' + the editor syntax on Use JavaScript.
                     key: 'query', label: (p: any) => asBool(p.useScript) ? 'JavaScript' : 'SQL', type: 'code', minHeight: '260px',
+                    completionScope: { channelId: channel?.id, context: 'DESTINATION_DISPATCHER' },
                     language: (p: any) => asBool(p.useScript) ? 'javascript' : 'sql'
                 }
             ]} />

@@ -5,11 +5,12 @@
  * auth scripts). Public lists keep the [label, insertText] shape.
  */
 
-// [label, Velocity token, Rhino expression]. Keep expressions embeddable in
-// scripts (e.g. `return <expression>;`), without Swing's `var ... =` wrappers.
+// [label, Velocity token, JavaScript transfer text]. Match Swing's
+// VariableListHandler / VariableTransferable: entries can be expressions,
+// statements, or raw fragments (CDATA), depending on where they are inserted.
 const destinationMappings: Array<[string, string, string | null]> = [
-    ['Channel ID', '${channelId}', 'channelId'],
-    ['Channel Name', '${channelName}', 'channelName'],
+    ['Channel ID', '${channelId}', "$('Channel ID')"],
+    ['Channel Name', '${channelName}', "$('Channel Name')"],
     ['Message ID', '${message.messageId}', 'connectorMessage.getMessageId()'],
     ['Raw Data', '${message.rawData}', 'connectorMessage.getRawData()'],
     ['Transformed Data', '${message.transformedData}', 'connectorMessage.getTransformedData()'],
@@ -17,27 +18,36 @@ const destinationMappings: Array<[string, string, string | null]> = [
     ['Message Source', '${message.source}', "$('mirth_source')"],
     ['Message Type', '${message.type}', "$('mirth_type')"],
     ['Message Version', '${message.version}', "$('mirth_version')"],
-    ['Date', '${date}', 'new java.util.Date()'],
-    ['Formatted Date', "${date.get('yyyy-M-d H.m.s')}", "DateUtil.getCurrentDate('yyyy-M-d H.m.s')"],
-    ['Timestamp', '${SYSTIME}', 'java.lang.System.currentTimeMillis()'],
-    ['Unique ID', '${UUID}', 'UUIDGenerator.getUUID()'],
+    ['Date', '${date}', "var date = DateUtil.getDate('pattern','date');"],
+    ['Formatted Date', "${date.get('yyyy-M-d H.m.s')}", "var dateString = DateUtil.getCurrentDate('yyyy-M-d H.m.s');"],
+    ['Timestamp', '${SYSTIME}', "var dateString = DateUtil.getCurrentDate('yyyyMMddHHmmss');"],
+    ['Unique ID', '${UUID}', 'var uuid = UUIDGenerator.getUUID();'],
     ['Original File Name', '${originalFilename}', "$('originalFilename')"],
     ['Count', '${COUNT}', null],
-    ['XML Entity Encoder', '${XmlUtil.encode()}', "XmlUtil.encode('message')"],
-    ['XML Pretty Printer', '${XmlUtil.prettyPrint()}', "XmlUtil.prettyPrint('message')"],
-    ['Escape JSON String', '${JsonUtil.escape()}', "JsonUtil.escape('message')"],
-    ['JSON Pretty Printer', '${JsonUtil.prettyPrint()}', "JsonUtil.prettyPrint('message')"],
-    ['CDATA Tag', '<![CDATA[]]>', null],
-    ['DICOM Message Raw Data', '${DICOMMESSAGE}', 'DICOMUtil.getDICOMRawData(connectorMessage)']
+    ['XML Entity Encoder', '${XmlUtil.encode()}', "var encodedMessage = XmlUtil.encode('message');"],
+    ['XML Pretty Printer', '${XmlUtil.prettyPrint()}', "var prettyPrintedMessage = XmlUtil.prettyPrint('message');"],
+    ['Escape JSON String', '${JsonUtil.escape()}', "var escapedJSONString = JsonUtil.escape('message');"],
+    ['JSON Pretty Printer', '${JsonUtil.prettyPrint()}', "var prettyPrintedMessage = JsonUtil.prettyPrint('message');"],
+    ['CDATA Tag', '<![CDATA[]]>', '<![CDATA[]]>'],
+    ['DICOM Message Raw Data', '${DICOMMESSAGE}', 'var rawData = DICOMUtil.getDICOMRawData(connectorMessage);']
 ];
 
 export const DESTINATION_MAPPINGS: Array<[string, string]> = destinationMappings.map(([label, token]) => [label, token]);
 
-/** Resolve a mapping against the target's current language; null means template-only. */
-export function destinationMappingToken(token: string, language?: string): string | null {
-    if (language !== 'javascript' && language !== 'js' && language !== 'rhino') return token;
-    const mapping = destinationMappings.find(([, velocity]) => velocity === token);
-    return mapping ? mapping[2] : token;
+const JAVASCRIPT_DESTINATION_MAPPINGS: Array<[string, string]> = destinationMappings
+    .filter(([, , script]) => script !== null)
+    .map(([label, , script]) => [label, script!]);
+
+/** Swing's destination list uses the connector's transfer mode, not editor syntax.
+ * Source receivers and authentication scripts have separate reference contexts. */
+export function destinationMappingsFor(properties?: unknown): Array<[string, string]> {
+    if (!properties || typeof properties !== 'object'
+        || !('destinationConnectorProperties' in properties) || !properties.destinationConnectorProperties) return [];
+    const type = '@class' in properties ? properties['@class'] : undefined;
+    const javascript = type === 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties'
+        || (type === 'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties'
+            && 'useScript' in properties && (properties.useScript === true || properties.useScript === 'true'));
+    return javascript ? JAVASCRIPT_DESTINATION_MAPPINGS : DESTINATION_MAPPINGS;
 }
 
 /* Rhino script scope — the identifiers available inside filter/transformer steps

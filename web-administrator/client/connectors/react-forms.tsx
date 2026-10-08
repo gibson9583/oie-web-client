@@ -23,7 +23,7 @@ import { platform } from '@oie/web-shell';
 // Import UI helpers from the core modules directly (NOT @oie/web-ui): pkg-ui
 // re-exports this module, so importing pkg-ui here would be a cycle.
 import { h, modal, toast, taskButton, icon } from '../core/ui.js';
-import { DESTINATION_MAPPINGS } from '../core/mappings.js';
+import { destinationMappingsFor } from '../core/mappings.js';
 import { createCodeEditor } from '../core/codeeditor.js';
 import * as api from '../core/api.js';
 import {
@@ -62,10 +62,11 @@ let cformUid = 0;
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
    SOAP envelope, then repaints), the editor is updated to the new value — but
    only when it differs, so normal typing never clobbers the cursor. */
-function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label, fkey, completionScope }: {
+function CodeField({ value, language, minHeight, placeholder, onChange, disabled, label, fkey, completionScope, properties }: {
     value: any; language?: string; minHeight?: string; placeholder?: string;
     onChange: (v: string) => void; disabled?: boolean; label?: string; fkey?: string;
     completionScope?: { channelId?: string; context: string };
+    properties: any;
 }) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const edRef = useRef<CodeEditor | null>(null);
@@ -84,8 +85,8 @@ function CodeField({ value, language, minHeight, placeholder, onChange, disabled
             placeholder,
             readOnly: !!disabled,
             maximizable: true,   // connector code fields (incl. JavaScript Writer) can go full-screen
-            popoutTitle: label,  // full-screen code view: header title + velocity variables rail
-            popoutVars: DESTINATION_MAPPINGS,
+            popoutTitle: label,
+            popoutVars: destinationMappingsFor(properties),
             completionScope,
             onChange: (v: string) => { latestRef.current = v; if (onChangeRef.current) onChangeRef.current(v); }
         });
@@ -260,7 +261,7 @@ function FieldRow({ properties, field, onChange, repaint }: { properties: any; f
             break;
         case 'code':
             control = <CodeField value={value} label={typeof f.label === 'function' ? f.label(properties) : f.label} language={typeof f.language === 'function' ? f.language(properties) : f.language} minHeight={f.minHeight}
-                placeholder={f.placeholder} onChange={(v) => set(v)} disabled={disabled} fkey={f.key} completionScope={f.completionScope} />;
+                placeholder={f.placeholder} onChange={(v) => set(v)} disabled={disabled} fkey={f.key} completionScope={f.completionScope} properties={properties} />;
             wide = true;
             break;
         case 'keyvalue':
