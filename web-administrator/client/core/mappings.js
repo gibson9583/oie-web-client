@@ -3,31 +3,41 @@
  * Shared variable-reference lists shown beside code editors: the classic
  * Administrator's "Destination Mappings" velocity tokens (connector templates)
  * and the Rhino scope cheat-sheet for channel scripts (filter/transformer steps,
- * auth scripts). Each entry is [label, insertText].
+ * auth scripts). Public lists keep the [label, insertText] shape.
  */
-export const DESTINATION_MAPPINGS = [
-    ['Channel ID', '${channelId}'],
-    ['Channel Name', '${channelName}'],
-    ['Message ID', '${message.messageId}'],
-    ['Raw Data', '${message.rawData}'],
-    ['Transformed Data', '${message.transformedData}'],
-    ['Encoded Data', '${message.encodedData}'],
-    ['Message Source', '${message.source}'],
-    ['Message Type', '${message.type}'],
-    ['Message Version', '${message.version}'],
-    ['Date', '${date}'],
-    ['Formatted Date', "${date.get('yyyy-M-d H.m.s')}"],
-    ['Timestamp', '${SYSTIME}'],
-    ['Unique ID', '${UUID}'],
-    ['Original File Name', '${originalFilename}'],
-    ['Count', '${COUNT}'],
-    ['XML Entity Encoder', '${XmlUtil.encode()}'],
-    ['XML Pretty Printer', '${XmlUtil.prettyPrint()}'],
-    ['Escape JSON String', '${JsonUtil.escape()}'],
-    ['JSON Pretty Printer', '${JsonUtil.prettyPrint()}'],
-    ['CDATA Tag', '<![CDATA[]]>'],
-    ['DICOM Message Raw Data', '${DICOMMESSAGE}']
+// [label, Velocity token, Rhino expression]. Keep expressions embeddable in
+// scripts (e.g. `return <expression>;`), without Swing's `var ... =` wrappers.
+const destinationMappings = [
+    ['Channel ID', '${channelId}', 'channelId'],
+    ['Channel Name', '${channelName}', 'channelName'],
+    ['Message ID', '${message.messageId}', 'connectorMessage.getMessageId()'],
+    ['Raw Data', '${message.rawData}', 'connectorMessage.getRawData()'],
+    ['Transformed Data', '${message.transformedData}', 'connectorMessage.getTransformedData()'],
+    ['Encoded Data', '${message.encodedData}', 'connectorMessage.getEncodedData()'],
+    ['Message Source', '${message.source}', "$('mirth_source')"],
+    ['Message Type', '${message.type}', "$('mirth_type')"],
+    ['Message Version', '${message.version}', "$('mirth_version')"],
+    ['Date', '${date}', 'new java.util.Date()'],
+    ['Formatted Date', "${date.get('yyyy-M-d H.m.s')}", "DateUtil.getCurrentDate('yyyy-M-d H.m.s')"],
+    ['Timestamp', '${SYSTIME}', 'java.lang.System.currentTimeMillis()'],
+    ['Unique ID', '${UUID}', 'UUIDGenerator.getUUID()'],
+    ['Original File Name', '${originalFilename}', "$('originalFilename')"],
+    ['Count', '${COUNT}', null],
+    ['XML Entity Encoder', '${XmlUtil.encode()}', "XmlUtil.encode('message')"],
+    ['XML Pretty Printer', '${XmlUtil.prettyPrint()}', "XmlUtil.prettyPrint('message')"],
+    ['Escape JSON String', '${JsonUtil.escape()}', "JsonUtil.escape('message')"],
+    ['JSON Pretty Printer', '${JsonUtil.prettyPrint()}', "JsonUtil.prettyPrint('message')"],
+    ['CDATA Tag', '<![CDATA[]]>', null],
+    ['DICOM Message Raw Data', '${DICOMMESSAGE}', 'DICOMUtil.getDICOMRawData(connectorMessage)']
 ];
+export const DESTINATION_MAPPINGS = destinationMappings.map(([label, token]) => [label, token]);
+/** Resolve a mapping against the target's current language; null means template-only. */
+export function destinationMappingToken(token, language) {
+    if (language !== 'javascript' && language !== 'js' && language !== 'rhino')
+        return token;
+    const mapping = destinationMappings.find(([, velocity]) => velocity === token);
+    return mapping ? mapping[2] : token;
+}
 /* Rhino script scope — the identifiers available inside filter/transformer steps
    and channel scripts (JavaScript context). */
 export const SCRIPT_REFERENCE = [

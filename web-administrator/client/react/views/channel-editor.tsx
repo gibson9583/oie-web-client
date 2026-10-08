@@ -97,7 +97,7 @@ const DEFAULT_ATTACHMENT_SCRIPT = '// Modify the message variable below to creat
 /* Classic Administrator "Destination Mappings" velocity variables — canonical list
    lives in core/mappings.js (shared with the wizard rail and the code-view vars). */
 export { DESTINATION_MAPPINGS } from '../../core/mappings.js';
-import { DESTINATION_MAPPINGS, SCRIPT_REFERENCE } from '../../core/mappings.js';
+import { DESTINATION_MAPPINGS, SCRIPT_REFERENCE, destinationMappingToken } from '../../core/mappings.js';
 
 /* Summary text shown next to the Advanced Queue Settings button, replicating
    the Swing DestinationSettingsPanel.updateAdvancedSettingsLabel(). */
@@ -2394,6 +2394,8 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
             const inst = target.monaco;
             const node = inst.getDomNode && inst.getDomNode();
             if (node && node.isConnected) {
+                token = destinationMappingToken(token, inst.getModel()?.getLanguageId());
+                if (token === null) { toast('This mapping is only available in template fields', 'warn'); return; }
                 inst.executeEdits('destination-mapping', [{
                     range: inst.getSelection(), text: token, forceMoveMarkers: true
                 }]);
@@ -2402,6 +2404,8 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
             }
         }
         if (target && target.el && target.el.isConnected) {
+            token = destinationMappingToken(token, target.el.closest('.ce')?.dataset.language);
+            if (token === null) { toast('This mapping is only available in template fields', 'warn'); return; }
             insertIntoField(target.el, token);
             return;
         }
@@ -2439,12 +2443,17 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
         if (mappingResolveEditorAt(e.target)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
     }
     function onMappingDrop(e: any) {
-        const token = dragRef.current ||
+        const isMapping = dragRef.current || e.dataTransfer?.types.includes(MAPPING_FLAVOR);
+        let token = dragRef.current ||
             (e.dataTransfer && (e.dataTransfer.getData(MAPPING_FLAVOR) || e.dataTransfer.getData('text/plain')));
         const editor = token ? mappingResolveEditorAt(e.target) : null;
         dragRef.current = null;
         if (!editor) return;
         e.preventDefault();
+        if (isMapping) {
+            token = destinationMappingToken(token, editor.monaco?.getModel()?.getLanguageId() || editor.el?.closest('.ce')?.dataset.language);
+            if (token === null) { toast('This mapping is only available in template fields', 'warn'); return; }
+        }
         if (editor.monaco) {
             const inst = editor.monaco;
             let pos = inst.getPosition();

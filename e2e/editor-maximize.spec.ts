@@ -67,7 +67,7 @@ test('(B) code template Maximize overtakes the library list, keeps the Context p
     await expect(libraryList).toBeVisible();
 });
 
-test('(A) JavaScript Writer opens the code view with velocity variables', async ({ page }) => {
+test('(A) JavaScript Writer opens the code view with JavaScript variables', async ({ page }) => {
     const js = CONNECTOR_CASES.find((c) => c.name === 'JavaScript Writer');
     const id = 'max-jsw';
     const channel = makeChannel(id, { destination: { transportName: 'JavaScript Writer', properties: js!.properties() } });
@@ -89,9 +89,9 @@ test('(A) JavaScript Writer opens the code view with velocity variables', async 
     const vp = page.viewportSize();
     expect(box!.width).toBeGreaterThan(vp!.width - 4);
     expect(box!.height).toBeGreaterThan(vp!.height - 4);
-    // …with a Back button and the velocity variables rail built in.
+    // …with a Back button and the JavaScript variables rail built in.
     await expect(overlay.getByRole('button', { name: 'Back' })).toBeVisible();
-    await expect(overlay.locator('.ce-popout-var', { hasText: 'Encoded Data' })).toBeVisible();
+    await expect(overlay.locator('.ce-popout-var', { hasText: 'Encoded Data' })).toHaveAttribute('title', 'connectorMessage.getEncodedData()');
 
     await page.keyboard.press('Escape');
     await expect(page.locator('.ce-popout-overlay')).toHaveCount(0);

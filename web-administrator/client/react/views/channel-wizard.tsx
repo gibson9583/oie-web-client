@@ -40,7 +40,7 @@ import {
 // Straight from core/mappings.js, not via channel-editor.jsx's re-export of it —
 // the wizard has no other reason to reference the classic editor, and that lone
 // import is what would otherwise chain the two into one bundle chunk.
-import { DESTINATION_MAPPINGS } from '../../core/mappings.js';
+import { DESTINATION_MAPPINGS, destinationMappingToken } from '../../core/mappings.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
 
 const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinations', 'Scripts', 'Review'];
@@ -252,7 +252,13 @@ function insertableAt(node: any) {
     return null;
 }
 
-function insertIntoTarget(target: any, token: any, position?: any) {
+function insertIntoTarget(target: any, token: any, position?: any, isMapping = true) {
+    const node = target.monaco ? target.monaco.getDomNode() : target.el;
+    if (!node?.isConnected) return false;
+    if (isMapping) {
+        token = destinationMappingToken(token, target.monaco?.getModel()?.getLanguageId() || target.el?.closest('.ce')?.dataset.language);
+        if (token === null) { toast('This mapping is only available in template fields', 'warn'); return true; }
+    }
     if (target.monaco) {
         const inst = target.monaco;
         const pos = position || inst.getPosition();
@@ -296,6 +302,7 @@ function DestinationMappingsRail({ hostRef }: any) {
             if (insertableAt(e.target)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }
         };
         const onDrop = (e: any) => {
+            const isMapping = !!dragTokenRef.current || e.dataTransfer?.types.includes(MAPPING_FLAVOR);
             const token = dragTokenRef.current
                 || (e.dataTransfer && (e.dataTransfer.getData(MAPPING_FLAVOR) || e.dataTransfer.getData('text/plain')));
             dragTokenRef.current = null;
@@ -307,7 +314,7 @@ function DestinationMappingsRail({ hostRef }: any) {
                 const tgt = target.monaco.getTargetAtClientPoint(e.clientX, e.clientY);
                 if (tgt && tgt.position) pos = tgt.position;
             }
-            insertIntoTarget(target, token, pos);
+            insertIntoTarget(target, token, pos, isMapping);
         };
         host.addEventListener('focusin', trackFocus);
         host.addEventListener('dragover', onDragOver);
