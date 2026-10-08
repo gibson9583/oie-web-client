@@ -1902,7 +1902,7 @@ function SourceSettings({ channel, scp, markDirty }: any) {
             if (!respOpts.some(o => o.value === v)) respOpts.push({ value: v, label: v });
         }
     }
-    const currentResp = scp.responseVariable ?? 'None';
+    const currentResp = String(scp.responseVariable ?? 'None');
     if (!respOpts.some(o => o.value === currentResp)) respOpts.push({ value: currentResp, label: currentResp });
 
     return (

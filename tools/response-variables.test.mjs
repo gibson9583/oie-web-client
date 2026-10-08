@@ -4,13 +4,14 @@ import { test } from 'node:test';
 import { transform } from 'esbuild';
 import * as oie from '../web-administrator/client/core/oie.js';
 
-// Exercise the private scanner without mounting the editor or evaluating scripts.
+// Exercise private scanner/settings code without mounting the editor or evaluating scripts.
 const source = await readFile(new URL('../web-administrator/client/react/views/channel-editor.tsx', import.meta.url), 'utf8');
 const start = source.indexOf('const RESPONSE_PUT_RE =');
-const end = source.indexOf('/* Source Settings', start);
+const end = source.indexOf('function SourceTab(', start);
 assert.ok(start >= 0 && end > start, 'response scanner source boundaries exist');
-const { code } = await transform(source.slice(start, end), { loader: 'ts' });
-const scan = new Function('oie', `${code}\nreturn responseVariablesOf;`)(oie);
+const { code } = await transform(source.slice(start, end), { loader: 'tsx', jsxFactory: 'jsx' });
+const jsx = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) });
+const { scan, render } = new Function('oie', 'useReducer', 'jsx', `${code}\nreturn { scan: responseVariablesOf, render: SourceSettings };`)(oie, () => [0, () => {}], jsx);
 const JS = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
 const RULE = 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule';
 const MAPPER = 'com.mirth.connect.plugins.mapper.MapperStep';
@@ -46,6 +47,19 @@ test('response Mapper names survive primitive wire values', () => {
         assert.deepEqual(scan({ sourceConnector: { transformer: stage(MAPPER, { scope: 'RESPONSE', variable }) } }), []);
     }
     assert.deepEqual(scan({ sourceConnector: { transformer: stage(MAPPER, { scope: 'CHANNEL', variable: 'other' }) } }), []);
+});
+
+test('loaded primitive selections do not duplicate discovered response options', () => {
+    for (const variable of [0, false, true]) {
+        const channel = { sourceConnector: { transformer: stage(MAPPER, { scope: 'RESPONSE', variable }) } };
+        const scp = { respondAfterProcessing: true, responseVariable: variable };
+        const tree = render({ channel, scp, markDirty: () => {} });
+        const field = tree.children.find(node => node.children?.some(child => child?.type === 'label' && child.children[0] === 'Response'));
+        const select = field.children.find(node => node?.type === 'select');
+        assert.equal(select.props.value, String(variable));
+        assert.equal(select.children.filter(option => String(option.props.value) === String(variable)).length, 1);
+        assert.equal(scp.responseVariable, variable, 'render must not mutate the saved model');
+    }
 });
 
 test('scanner retains put/get distinction, whitespace support and decoded deduplication', () => {
