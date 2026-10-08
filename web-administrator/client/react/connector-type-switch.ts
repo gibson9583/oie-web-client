@@ -6,6 +6,7 @@ import type { ConnectorMode } from '../core/platform.js';
 import type { OieObject } from '../core/wire-types.js';
 import { applyServerQueueBufferSize, connectorHasNonDefaultProperties, keepConnectorResources } from '../core/connector-defaults.js';
 import { channelSessionActive } from './channel-persistence.js';
+import { withEditorSave } from './save-lock.js';
 
 /** Swing ChannelSetup: the server's queue buffer size when set above zero, else 1000. */
 function serverQueueBufferSize(): Promise<number> {
@@ -26,8 +27,14 @@ export function useConnectorTypeSwitch(connector: OieObject, mode: ConnectorMode
     const mountedRef = useRef(true);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
-    async function switchType(name: string) {
+    function switchType(name: string) {
         if (switchingRef.current || name === connector.transportName) return;
+        // Keep Save from submitting the old connector while settings or
+        // confirmation are pending, using the same lock as channel saves.
+        return withEditorSave(() => switchTypeUnlocked(name), 'Changing connector type…');
+    }
+
+    async function switchTypeUnlocked(name: string) {
         const def = platform.connectorPanel(name, mode);
         if (!def || typeof def.defaults !== 'function') {
             bump(); // Restore the select's model value for engine-only types.
