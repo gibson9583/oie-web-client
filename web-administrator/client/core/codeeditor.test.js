@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { DESTINATION_MAPPINGS, destinationMappingsFor } from './mappings.js';
 
 // Exercise the shipped editor and factory with a delayed loader, without a browser/Monaco.
@@ -164,20 +165,44 @@ const swingJavaScriptMappings = [
     ['DICOM Message Raw Data', 'var rawData = DICOMUtil.getDICOMRawData(connectorMessage);']
 ];
 
+// Swing's fallback treats these labels as map keys, but the dispatcher supplies
+// channel identity as globals. Keep the captured fixture and make the exception explicit.
+const channelGlobals = { 'Channel ID': 'channelId', 'Channel Name': 'channelName' };
+const correctedJavaScriptMappings = swingJavaScriptMappings.map(([label, token]) => [label, channelGlobals[label] || token]);
+
 for (const [name, className, useScript] of [
     ['JavaScript Writer', 'js.JavaScriptDispatcherProperties'],
     ['Database Writer with boolean mode', 'jdbc.DatabaseDispatcherProperties', true],
     ['Database Writer with serialized mode', 'jdbc.DatabaseDispatcherProperties', 'true']
 ]) {
-    test(`${name} transfers the exact Swing JavaScript snippets`, () => {
+    test(`${name} transfers Swing snippets with corrected channel globals`, () => {
         const mappings = destinationMappingsFor({
             '@class': `com.mirth.connect.connectors.${className}`,
             destinationConnectorProperties: {}, useScript
         });
-        assert.deepEqual(mappings, swingJavaScriptMappings);
+        assert.deepEqual(mappings, correctedJavaScriptMappings);
         assert.ok(!mappings.some(([label]) => label === 'Count'));
         assert.deepEqual(mappings.find(([label]) => label === 'CDATA Tag'), ['CDATA Tag', '<![CDATA[]]>']);
     });
+
+    for (const conflicting of [false, true]) {
+        test(`${name} channel identity evaluates correctly with ${conflicting ? 'conflicting' : 'empty'} maps`, () => {
+            const mappings = destinationMappingsFor({
+                '@class': `com.mirth.connect.connectors.${className}`,
+                destinationConnectorProperties: {}, useScript
+            });
+            const values = { channelId: 'actual-channel-id', channelName: 'Actual Channel Name' };
+            const map = new Map(conflicting ? [['Channel ID', 'unrelated-id'], ['Channel Name', 'Unrelated Name']] : []);
+            // Scope boundary fixture: the engine exposes identity as globals;
+            // its $ helper returns map values or an empty string, not globals.
+            const scope = { ...values, $: key => map.get(key) ?? '' };
+            for (const [label, global] of Object.entries(channelGlobals)) {
+                const expression = mappings.find(([name]) => name === label)?.[1];
+                assert.equal(typeof expression, 'string', `${label} must be available`);
+                assert.equal(runInNewContext(expression, scope), values[global], label);
+            }
+        });
+    }
 }
 
 test('SQL and template destinations retain the existing Velocity list', () => {
@@ -217,7 +242,7 @@ test('changing database transfer mode does not retain or mutate a previous conte
     };
     assert.equal(destinationMappingsFor(properties), DESTINATION_MAPPINGS);
     properties.useScript = true;
-    assert.deepEqual(destinationMappingsFor(properties), swingJavaScriptMappings);
+    assert.deepEqual(destinationMappingsFor(properties), correctedJavaScriptMappings);
     properties.useScript = false;
     assert.equal(destinationMappingsFor(properties), DESTINATION_MAPPINGS);
     assert.deepEqual(DESTINATION_MAPPINGS.find(([label]) => label === 'Count'), ['Count', '${COUNT}']);

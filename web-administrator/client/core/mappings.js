@@ -8,9 +8,11 @@
 // [label, Velocity token, JavaScript transfer text]. Match Swing's
 // VariableListHandler / VariableTransferable: entries can be expressions,
 // statements, or raw fragments (CDATA), depending on where they are inserted.
+// Channel identity is an intentional exception: the engine exposes globals,
+// while Swing's fallback looks for unrelated map keys named after the labels.
 const destinationMappings = [
-    ['Channel ID', '${channelId}', "$('Channel ID')"],
-    ['Channel Name', '${channelName}', "$('Channel Name')"],
+    ['Channel ID', '${channelId}', 'channelId'],
+    ['Channel Name', '${channelName}', 'channelName'],
     ['Message ID', '${message.messageId}', 'connectorMessage.getMessageId()'],
     ['Raw Data', '${message.rawData}', 'connectorMessage.getRawData()'],
     ['Transformed Data', '${message.transformedData}', 'connectorMessage.getTransformedData()'],

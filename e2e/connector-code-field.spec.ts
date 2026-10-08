@@ -126,17 +126,17 @@ async function dropMapping(page: Page, source: Locator, target: Locator) {
 for (const surface of ['classic', 'wizard']) {
     for (const fallback of [false, true]) {
         const backend = fallback ? 'textarea' : 'Monaco';
-        test(`${surface} ${backend}: JavaScript Writer saves Swing snippets in expressions, strings and E4X`, async ({ page }, testInfo) => {
-            let expected = 'var transformed = ;\nvar channel = ;\nvar external = "";\nvar xml = <root></root>;\n\nreturn transformed;';
+        test(`${surface} ${backend}: JavaScript Writer saves channel globals and Swing snippets in expressions, strings and E4X`, async ({ page }, testInfo) => {
+            let expected = 'var transformed = ;\nvar channel = ;\nvar channelLabel = ;\nvar external = "";\nvar xml = <root></root>;\n\nreturn transformed;';
             const save = await openMappings(page, surface, fallback, 'JavaScript Writer', { script: expected });
             const editor = await codeField(page, 'script', fallback);
             await focusCodeOffset(editor, expected.indexOf(';'));
             await mapping(page, 'Transformed Data').click();
             expected = expected.replace('var transformed = ;', 'var transformed = connectorMessage.getTransformedData();');
             await expect.poll(() => codeValue(editor)).toBe(expected);
-            await focusCodeOffset(editor, expected.indexOf(';\nvar external'));
+            await focusCodeOffset(editor, expected.indexOf(';\nvar channelLabel'));
             await dropMapping(page, mapping(page, 'Channel ID'), editor.locator(fallback ? 'textarea.ce-area' : '.monaco-editor'));
-            expected = expected.replace('var channel = ;', "var channel = $('Channel ID');");
+            expected = expected.replace('var channel = ;', 'var channel = channelId;');
             await expect.poll(() => codeValue(editor)).toBe(expected);
 
             // A plain external text drop is literal, even if it happens to
@@ -162,6 +162,13 @@ for (const surface of ['classic', 'wizard']) {
 
             await editor.locator('.ce-pop-btn').click({ force: true });
             const overlay = page.locator('.ce-popout-overlay');
+            await expect(overlay.locator('.ce-popout-var').filter({ hasText: /^Channel ID$/ })).toHaveAttribute('title', 'channelId');
+            const channelName = overlay.locator('.ce-popout-var').filter({ hasText: /^Channel Name$/ });
+            await expect(channelName).toHaveAttribute('title', 'channelName');
+            await focusCodeOffset(overlay.locator('.ce'), expected.indexOf(';\nvar external'));
+            await channelName.click();
+            expected = expected.replace('var channelLabel = ;', 'var channelLabel = channelName;');
+            await expect.poll(() => codeValue(overlay.locator('.ce'))).toBe(expected);
             await expect(overlay.locator('.ce-popout-var', { hasText: 'Transformed Data' })).toHaveAttribute('title', 'connectorMessage.getTransformedData()');
             await expect(overlay.locator('.ce-popout-var').filter({ hasText: /^Count$/ })).toHaveCount(0);
             await expect(overlay.locator('.ce-popout-var', { hasText: 'CDATA Tag' })).toHaveAttribute('title', '<![CDATA[]]>');
@@ -197,7 +204,7 @@ for (const surface of ['classic', 'wizard']) {
             await username.fill('mapped-');
             await mapping(page, 'Channel ID').click();
             await dropMapping(page, mapping(page, 'Raw Data'), username);
-            const expectedUsername = "mapped-$('Channel ID')connectorMessage.getRawData()";
+            const expectedUsername = 'mapped-channelIdconnectorMessage.getRawData()';
             await expect(username).toHaveValue(expectedUsername);
             const saved = await save();
             expect(saved.useScript).toBe(true);
