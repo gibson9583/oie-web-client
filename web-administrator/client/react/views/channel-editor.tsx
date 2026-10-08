@@ -1842,15 +1842,26 @@ function RawConnectorProps({ connector, markDirty }: any) {
 /* Swing SourceSettingsPanel.updateResponseDropDown + JavaScriptSharedUtil.RESULT_PATTERN. */
 const RESPONSE_PUT_RE = /responseMap\s*\.\s*put\s*\(\s*(['"])(((?!(?<!\\)\1).)*)(?<!\\)\1|\$r\s*\(\s*(['"])(((?!(?<!\\)\4).)*)(?<!\\)\4(?=\s*,)/g;
 
+// Decode literal keys without evaluating channel scripts or unescaping twice.
+function decodeResponseKey(key: string): string {
+    const escapes: Record<string, string> = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
+    return key.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([0-3][0-7]{2}|[0-7]{1,2})|(.))/g,
+        (_match, unicode, hex, octal, char) => {
+            if (unicode !== undefined || hex !== undefined) return String.fromCharCode(parseInt(unicode ?? hex, 16));
+            if (octal !== undefined) return String.fromCharCode(parseInt(octal, 8));
+            return escapes[char] ?? char;
+        });
+}
+
 function responseVariablesOf(channel: any): string[] {
     const vars = new Set<string>();
     const scan = (script: any) => {
         if (typeof script !== 'string') return;
-        for (const m of script.matchAll(RESPONSE_PUT_RE)) vars.add((m[2] ?? m[5]).replace(/\\(.)/g, '$1'));
+        for (const m of script.matchAll(RESPONSE_PUT_RE)) vars.add(decodeResponseKey(m[2] ?? m[5]));
     };
     const check = (el: any) => {
         if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
-            if (el.scope === 'RESPONSE' && el.variable) vars.add(String(el.variable));
+            if (el.scope === 'RESPONSE' && el.variable != null && el.variable !== '') vars.add(String(el.variable));
         } else if (el.__type === 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep'
             || el.__type === 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule') {
             scan(el.script);
