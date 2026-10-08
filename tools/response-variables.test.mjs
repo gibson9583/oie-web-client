@@ -3,15 +3,20 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { transform } from 'esbuild';
 import * as oie from '../web-administrator/client/core/oie.js';
+import { channelResponseVariables } from '../web-administrator/client/core/channel-response.js';
 
-// Exercise private scanner/settings code without mounting the editor or evaluating scripts.
+// Exercise the shared scanner and private settings render without mounting the editor,
+// running effects/HTTP requests, or evaluating channel scripts.
 const source = await readFile(new URL('../web-administrator/client/react/views/channel-editor.tsx', import.meta.url), 'utf8');
-const start = source.indexOf('const RESPONSE_PUT_RE =');
+const start = source.indexOf('function SourceSettings(');
 const end = source.indexOf('function SourceTab(', start);
-assert.ok(start >= 0 && end > start, 'response scanner source boundaries exist');
+assert.ok(start >= 0 && end > start, 'source settings source boundaries exist');
 const { code } = await transform(source.slice(start, end), { loader: 'tsx', jsxFactory: 'jsx' });
 const jsx = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) });
-const { scan, render } = new Function('oie', 'useReducer', 'jsx', `${code}\nreturn { scan: responseVariablesOf, render: SourceSettings };`)(oie, () => [0, () => {}], jsx);
+const scan = channel => channelResponseVariables(channel).variables;
+const render = new Function('oie', 'channelResponseVariables', 'useReducer', 'useState', 'useEffect', 'jsx',
+    `${code}\nreturn SourceSettings;`)(oie, channelResponseVariables,
+    () => [0, () => {}], initial => [initial, () => {}], () => {}, jsx);
 const JS = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
 const RULE = 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule';
 const MAPPER = 'com.mirth.connect.plugins.mapper.MapperStep';

@@ -46,6 +46,7 @@ import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { validateScript } from '../../core/serialize.js';
+import { channelResponseVariables, loadCustomResponseVariables } from '../../core/channel-response.js';
 import { setActiveScope, clearActiveScope } from '../../core/script-completions.js';
 import { getPref } from '../../core/prefs.js';
 import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../datatypes/index.js';
@@ -1839,55 +1840,26 @@ function RawConnectorProps({ connector, markDirty }: any) {
 
 /* ---- Source tab --------------------------------------------------------------- */
 
-/* Swing SourceSettingsPanel.updateResponseDropDown + JavaScriptSharedUtil.RESULT_PATTERN. */
-const RESPONSE_PUT_RE = /responseMap\s*\.\s*put\s*\(\s*(['"])(((?!(?<!\\)\1).)*)(?<!\\)\1|\$r\s*\(\s*(['"])(((?!(?<!\\)\4).)*)(?<!\\)\4(?=\s*,)/g;
-
-// Decode literal keys without evaluating channel scripts or unescaping twice.
-function decodeResponseKey(key: string): string {
-    const escapes: Record<string, string> = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v' };
-    return key.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([0-3][0-7]{2}|[0-7]{1,2})|(.))/g,
-        (_match, unicode, hex, octal, char) => {
-            if (unicode !== undefined || hex !== undefined) return String.fromCharCode(parseInt(unicode ?? hex, 16));
-            if (octal !== undefined) return String.fromCharCode(parseInt(octal, 8));
-            return escapes[char] ?? char;
-        });
-}
-
-function responseVariablesOf(channel: any): string[] {
-    const vars = new Set<string>();
-    const scan = (script: any) => {
-        if (typeof script !== 'string') return;
-        for (const m of script.matchAll(RESPONSE_PUT_RE)) vars.add(decodeResponseKey(m[2] ?? m[5]));
-    };
-    const check = (el: any) => {
-        if (el.__type === 'com.mirth.connect.plugins.mapper.MapperStep') {
-            if (el.scope === 'RESPONSE' && el.variable != null && el.variable !== '') vars.add(String(el.variable));
-        } else if (el.__type === 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep'
-            || el.__type === 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule') {
-            scan(el.script);
-        }
-    };
-    const src = channel.sourceConnector || {};
-    for (const el of [...oie.elementsToArray(src.filter?.elements), ...oie.elementsToArray(src.transformer?.elements)]) {
-        if (el.enabled !== false && el.enabled !== 'false') check(el);
-    }
-    for (const d of oie.destinationsOf(channel)) {
-        const p: any = d.properties || {};
-        if (d.transportName === 'JavaScript Writer') scan(p.script);
-        if (d.transportName === 'Database Writer' && (p.useScript === true || p.useScript === 'true')) scan(p.query);
-        for (const t of [d.filter, d.transformer, d.responseTransformer] as any[]) {
-            for (const el of oie.elementsToArray(t?.elements)) check(el);
-        }
-    }
-    scan(channel.preprocessingScript);
-    scan(channel.postprocessingScript);
-    return [...vars];
-}
-
 /* Source Settings — parity with the Swing SourceSettingsPanel. */
 function SourceSettings({ channel, scp, markDirty }: any) {
     const [, bump] = useReducer((x: any) => x + 1, 0);
     const respondAfter = scp.respondAfterProcessing !== false;   // queue OFF when true
+    const { variables, customRequest } = respondAfter
+        ? channelResponseVariables(channel) : { variables: [], customRequest: '' };
+    const [attempt, retry] = useReducer((value: number) => value + 1, 0);
+    const [result, setResult] = useState<{ request: string; attempt: number; variables: string[]; error?: string } | null>(null);
+    useEffect(() => {
+        if (!customRequest) return;
+        const isCurrent = channelSessionActive();
+        let active = true;
+        loadCustomResponseVariables(customRequest).then(
+            variables => { if (active && isCurrent()) setResult({ request: customRequest, attempt, variables }); },
+            error => { if (active && isCurrent()) setResult({ request: customRequest, attempt, variables: [], error: error.message }); }
+        );
+        return () => { active = false; };
+    }, [customRequest, attempt]);
+    // Never render a previous connector's options while its replacement is loading.
+    const custom = result?.request === customRequest && result.attempt === attempt ? result : null;
 
     // Response: static auto-generate options (fewer when queued), plus
     // "respond from" each destination (stored as the "d<id>" response key).
@@ -1898,7 +1870,7 @@ function SourceSettings({ channel, scp, markDirty }: any) {
         for (const d of oie.destinationsOf(channel)) {
             respOpts.push({ value: 'd' + d.metaDataId, label: d.name || `Destination ${d.metaDataId}` });
         }
-        for (const v of responseVariablesOf(channel)) {
+        for (const v of [...variables, ...(custom?.variables || [])]) {
             if (!respOpts.some(o => o.value === v)) respOpts.push({ value: v, label: v });
         }
     }
@@ -1939,6 +1911,11 @@ function SourceSettings({ channel, scp, markDirty }: any) {
                     onChange={(e: any) => { scp.responseVariable = e.target.value; markDirty(); bump(); }}>
                     {respOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+                {customRequest && !custom && <div className="hint" role="status">Loading custom response variables…</div>}
+                {customRequest && custom?.error && <div className="hint" role="status">
+                    Custom response variables could not be loaded. {custom.error}{' '}
+                    <button type="button" className="btn" onClick={() => retry()}>Retry</button>
+                </div>}
             </div>
             <div className="field">
                 <label>Process Batch</label>
