@@ -89,7 +89,7 @@ var ServerLogSession = class {
     if (newest) {
       this.lastId = Number(newest.id);
       this.lastItem = newest;
-    } else if (resetting || this.lastId === null) {
+    } else if (this.resetPending || this.lastId === null) {
       this.lastId = 0;
       this.lastItem = null;
     }

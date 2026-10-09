@@ -127,7 +127,9 @@ export class ServerLogSession {
         if (newest) {
             this.lastId = Number(newest.id);
             this.lastItem = newest;
-        } else if (resetting || this.lastId === null) {
+        } else if (this.resetPending || this.lastId === null) {
+            // Only a still-pending Reset may discard an established cursor;
+            // Clear can cancel it while the request is in flight.
             this.lastId = 0;
             this.lastItem = null;
         }

@@ -272,13 +272,16 @@ test('Reset supersedes a pending old poll and replaces it with current retained 
     } finally { held.release(); }
 });
 
-test('Clear after Reset wins over its pending reload while future log entries remain live', async ({ page }) => {
+for (const emptyReset of [false, true]) test(`Clear after Reset keeps future entries live, empty response: ${emptyReset}`, async ({ page }) => {
     const engine = logEngine();
     const held = gate();
     let holdNext = false, waiting = false;
     await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
         const response = engine.read(request);
-        if (holdNext) { holdNext = false; waiting = true; await held.promise; }
+        if (holdNext) {
+            holdNext = false; waiting = true; await held.promise;
+            if (emptyReset) return { serverLogItem: [] };
+        }
         return response;
     } });
     try {

@@ -333,6 +333,28 @@ test('Clear cancels a failed Reset retry without suppressing later rows', async 
     assert.deepEqual(h.ids(), [4]);
 });
 
+for (const lifecycle of ['live', 'paused', 'remount']) {
+    for (const next of ['unchanged', 'new', 'restarted']) {
+        test('Clear cancels an empty Reset: ' + lifecycle + ', next snapshot ' + next, async t => {
+            const h = harness(t);
+            await h.resolve(rows(3));
+            if (lifecycle === 'paused') h.session.togglePause();
+            h.session.reset();
+            h.session.clear();
+            if (lifecycle === 'remount') h.unmount();
+            await h.resolve([]);
+            assert.deepEqual(h.ids(), []);
+            assert.equal(h.state().resetting, false);
+            if (lifecycle === 'paused') h.session.togglePause();
+            else if (lifecycle === 'remount') h.mount();
+            else await h.tick();
+            await h.resolve(rows(next === 'new' ? 4 : 3, next === 'restarted' ? 'restarted' : 'original'));
+            assert.deepEqual(h.ids(), next === 'unchanged' ? [] : next === 'new' ? [4] : [3, 2, 1]);
+            assert.ok(h.state().items.every(item => item.message.startsWith(next === 'restarted' ? 'restarted-' : 'original-')));
+        });
+    }
+}
+
 test('an empty Reset replaces stale rows and a hidden Reset does not restart polling', async t => {
     const h = harness(t);
     await h.resolve(rows(3));
