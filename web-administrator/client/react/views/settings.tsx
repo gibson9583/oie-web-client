@@ -676,8 +676,8 @@ function AdministratorTab({ ctx }: any) {
         if (!current()) return;
         setForm({
             dashRefresh: String(getPref('dashboardRefreshSeconds') ?? ''),
-            msgPageSize: String(Number(getPref('messagePageSize')) || 20),
-            evtPageSize: String(Number(getPref('eventPageSize')) || 20),
+            msgPageSize: String(Number(getPref('messagePageSize')) || PREF_DEFAULTS.messagePageSize),
+            evtPageSize: String(Number(getPref('eventPageSize')) || PREF_DEFAULTS.eventPageSize),
             formatMsgs: getPref('formatMessages') !== false,
             confirmReprocess: getPref('confirmReprocessRemove') !== false,
             importLibs: yesNoAskValue(getPref('importLibrariesWithChannels')),
@@ -717,10 +717,16 @@ function AdministratorTab({ ctx }: any) {
         if (!current()) return false;
         const f = formRef.current;
         if (!f) return;
+        for (const [key, label] of [['msgPageSize', 'Message browser page size'], ['evtPageSize', 'Event browser page size']]) {
+            if (!/^\d{1,3}$/.test(f[key]) || Number(f[key]) < 1) {
+                toast(`${label} must be a whole number from 1 to 999.`, 'error');
+                return false;
+            }
+        }
         setPrefs({
             dashboardRefreshSeconds: Math.max(1, parseInt(f.dashRefresh, 10) || DASHBOARD_REFRESH_SECONDS),
-            messagePageSize: Number(f.msgPageSize) || 20,
-            eventPageSize: Number(f.evtPageSize) || 20,
+            messagePageSize: Number(f.msgPageSize),
+            eventPageSize: Number(f.evtPageSize),
             formatMessages: f.formatMsgs,
             confirmReprocessRemove: f.confirmReprocess,
             importLibrariesWithChannels: f.importLibs,
@@ -806,8 +812,6 @@ function AdministratorTab({ ctx }: any) {
 
     if (!form) return <div className="loading-block"><div className="spinner" />Loading…</div>;
 
-    const pageSizeOptions = [20, 50, 100].map((n: any) => <option key={n} value={String(n)}>{n}</option>);
-
     return (
         <>
             <div className="panel">
@@ -818,10 +822,12 @@ function AdministratorTab({ ctx }: any) {
                             onChange={(e: any) => patch({ dashRefresh: e.target.value })} />
                     </PrefRow>
                     <PrefRow label="Message browser page size">
-                        <select value={form.msgPageSize} onChange={(e: any) => patch({ msgPageSize: e.target.value })}>{pageSizeOptions}</select>
+                        <input type="number" min="1" max="999" step="1" aria-label="Message browser page size"
+                            value={form.msgPageSize} onChange={(e: any) => patch({ msgPageSize: e.target.value })} />
                     </PrefRow>
                     <PrefRow label="Event browser page size">
-                        <select value={form.evtPageSize} onChange={(e: any) => patch({ evtPageSize: e.target.value })}>{pageSizeOptions}</select>
+                        <input type="number" min="1" max="999" step="1" aria-label="Event browser page size"
+                            value={form.evtPageSize} onChange={(e: any) => patch({ evtPageSize: e.target.value })} />
                     </PrefRow>
                     <PrefRow label="Format text in message browser">
                         <YesNo value={form.formatMsgs} onChange={(v: any) => patch({ formatMsgs: v })} />

@@ -44,7 +44,7 @@ async function closeError(page: Page, text = invalidSize) {
 test('custom event page sizes apply through both Search buttons, Enter and context Refresh', async ({ page }) => {
     const { searches, calls } = await openEvents(page);
     const size = page.getByRole('spinbutton', { name: 'Page Size', exact: true });
-    await expect(size).toHaveValue('20');
+    await expect(size).toHaveValue('100');
     await expect(size).toHaveAttribute('min', '1');
     await expect(size).toHaveAttribute('max', '999');
     for (const [value, action] of [['1', 'criteria'], ['37', 'size'], ['999', 'task'], ['001', 'refresh']]) {
@@ -70,7 +70,7 @@ test('invalid event sizes block all search entry points without search or count 
         await submit(page, action);
         await closeError(page);
         expect(calls).toEqual(before);
-        await expect(page.locator('.counts')).toHaveText('1–20 of 45');
+        await expect(page.locator('.counts')).toHaveText('1–45 of 45');
     }
     await size.fill('1');
     await submit(page, 'name');

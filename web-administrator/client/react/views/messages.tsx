@@ -41,7 +41,7 @@ import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../../core/content-highlight.js';
 import { formatSentProperties } from '../../core/sent-format.js';
 import { mappingEntries, parseResponse, toDisplayString } from '../../core/xstream.js';
-import { getPref } from '../../core/prefs.js';
+import { getPref, PREF_DEFAULTS } from '../../core/prefs.js';
 import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
 import { createCodeEditor, createColumnManager } from '@oie/web-ui';
@@ -1997,7 +1997,7 @@ export function MessagesView({ params, query }: any) {
        menus (which outlive the render that opened them) always call a fresh
        closure. */
     const offsetRef = useRef(0);
-    const limitRef = useRef(Number(getPref('messagePageSize')) || 20);
+    const limitRef = useRef(Number(getPref('messagePageSize')) || PREF_DEFAULTS.messagePageSize);
     const totalRef = useRef<any>(null);   // full match count — null until counted (lazy) or auto-resolved on the last page
     const lastParamsRef = useRef<any>({});
     // The displayed rows and every result operation share one successful search.
@@ -2029,7 +2029,7 @@ export function MessagesView({ params, query }: any) {
     const [textSearch, setTextSearch] = useState('');
     const [textRegex, setTextRegex] = useState(false);
     const [connectorVal, setConnectorVal] = useState('');
-    const [pageSize, setPageSize] = useState(() => String(Number(getPref('messagePageSize')) || 20));
+    const [pageSize, setPageSize] = useState(() => String(Number(getPref('messagePageSize')) || PREF_DEFAULTS.messagePageSize));
     const [advOn, setAdvOn] = useState(() => advIsActive(advRef.current));
     const [searchSummary, setSearchSummary] = useState('Current Search: (none — press Search)');
     const [criteriaCollapsed, setCriteriaCollapsed] = useState(false);
@@ -2881,7 +2881,7 @@ export function MessagesView({ params, query }: any) {
         setTextSearch('');
         setTextRegex(false);
         setConnectorVal('');
-        setPageSize(String(Number(getPref('messagePageSize')) || 20));
+        setPageSize(String(Number(getPref('messagePageSize')) || PREF_DEFAULTS.messagePageSize));
         advRef.current = defaultAdvancedCriteria();
         setAdvOn(false);
     }

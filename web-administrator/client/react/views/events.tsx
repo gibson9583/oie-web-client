@@ -16,7 +16,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { h, icon, toast, confirmDialog, contextMenu, fmtDate, fmtNumber } from '@oie/web-ui';
 import api from '@oie/web-api';
 import { toDisplayString } from '../../core/xstream.js';
-import { getPref } from '../../core/prefs.js';
+import { getPref, PREF_DEFAULTS } from '../../core/prefs.js';
 import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton, DataTableHost } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
@@ -179,7 +179,7 @@ export function EventsView() {
     const [name, setName] = useState('');
     const [levels, setLevels] = useState<any>({ INFORMATION: true, WARNING: true, ERROR: true });
     const [outcome, setOutcome] = useState('');
-    const [pageSize, setPageSize] = useState(() => String(Number(getPref('eventPageSize')) || 20));
+    const [pageSize, setPageSize] = useState(() => String(Number(getPref('eventPageSize')) || PREF_DEFAULTS.eventPageSize));
     const [advancedOpen, setAdvancedOpen] = useState(false);
     const [userId, setUserId] = useState('');
     const [ip, setIp] = useState('');
@@ -205,7 +205,7 @@ export function EventsView() {
     // the pager bar. `params` are the criteria of the LAST run search, so
     // Prev/Next page through those, not whatever is typed now (classic behavior).
     const [events, setEvents] = useState([] as any[]);
-    const [page, setPage] = useState<any>({ offset: 0, limit: Number(getPref('eventPageSize')) || 20, total: 0, params: null });
+    const [page, setPage] = useState<any>({ offset: 0, limit: Number(getPref('eventPageSize')) || PREF_DEFAULTS.eventPageSize, total: 0, params: null });
 
     // Best-effort id -> username cache. A ref (not state) because the table's
     // column renderers are captured once by DataTableHost at mount; when the

@@ -28,8 +28,8 @@ test('system preferences are stored under the per-server, per-user key', async (
     await page.goto('/settings?tab=administrator');
     await expect(page.getByRole('tab', { name: 'Administrator', exact: true })).toHaveClass(/active/);
 
-    // Dashboard refresh interval is the only number input on the tab.
-    await page.locator('input[type=number]').fill('42');
+    await page.getByText('Dashboard refresh interval (seconds)', { exact: true })
+        .locator('..').getByRole('spinbutton').fill('42');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.locator('.toast-msg', { hasText: 'Preferences saved' })).toBeVisible();
 

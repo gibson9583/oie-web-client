@@ -28,7 +28,7 @@ export const DASHBOARD_REFRESH_SECONDS = 20;
 export const PREF_DEFAULTS = {
     dashboardRefreshSeconds: DASHBOARD_REFRESH_SECONDS,
     messagePageSize: 20,
-    eventPageSize: 20,
+    eventPageSize: 100,
     formatMessages: true,
     confirmReprocessRemove: true,
     importLibrariesWithChannels: 'ask',
