@@ -26,26 +26,25 @@ const api = platform.api;
 const { h, modal, toast } = platform.ui;
 
 function createSession() {
-    return new ServerLogSession(async (fetchSize, lastLogId) =>
-        api.asList(await api.get('/extensions/serverlog', { fetchSize, lastLogId }), 'serverLogItem'));
+    // The engine retains at most 100 entries. Read one snapshot so reused IDs
+    // can be detected without separate head checks or restart reloads.
+    return new ServerLogSession(async () =>
+        api.asList(await api.get('/extensions/serverlog', { fetchSize: 100 }), 'serverLogItem'));
 }
 
 let logSession = createSession();
 const userKey = (user: any) => user ? String(user.id ?? user.username) : null;
 let currentUser = userKey(platform.store.getState('user'));
-function endSession() {
-    logSession.dispose();
-    logSession = createSession();
-}
-// These subscriptions share the plugin module's lifetime, including while its
-// tab is unmounted. The shell clears user on expiry, engine/context changes,
-// and sign-out. Account-detail refreshes for the same identity keep the log.
+// The shell clears user on sign-out, expiry and engine changes, even while
+// the tab is unmounted. Same-user account refreshes preserve the log.
 platform.store.subscribe('user', (user: any) => {
     const next = userKey(user);
-    if (next !== currentUser) endSession();
+    if (next !== currentUser) {
+        logSession.dispose();
+        logSession = createSession();
+    }
     currentUser = next;
 });
-platform.events.on('session:logout', endSession);
 
 /* Date arrives as an XStream java.util.Date — a {time} object, an epoch
    number, or a string. Normalize to "yyyy-MM-dd HH:mm:ss.SSS". */
@@ -179,14 +178,6 @@ function ServerLogTab() {
     // Column sort — timestamp-desc is the classic newest-first default.
     const [sort, setSort] = React.useState({ key: 'timestamp', dir: -1 });
 
-    function togglePause() {
-        session.togglePause();
-    }
-
-    function clearLog() {
-        session.clear();
-    }
-
     function applySize() {
         const n = Math.max(1, Math.min(99999, parseInt(sizeText, 10) || DEFAULT_LOG_SIZE));
         session.setSize(n);
@@ -245,10 +236,10 @@ function ServerLogTab() {
             </div>
             {/* thin sticky bottom toolbar: pause | clear | reset | … | Log Size */}
             <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]">
-                <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={togglePause}>
+                <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={() => session.togglePause()}>
                     <span className="text-[11.5px] leading-none">{paused ? '⏵' : '⏸'}</span>
                 </button>
-                <button className={"icon-btn " + btnClass} title="Clear the displayed log" onClick={clearLog}>
+                <button className={"icon-btn " + btnClass} title="Clear the displayed log" onClick={() => session.clear()}>
                     <span className="text-err font-bold">✕</span>
                 </button>
                 <button className={"icon-btn " + btnClass + " disabled:opacity-40 disabled:cursor-wait"}

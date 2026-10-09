@@ -17,7 +17,7 @@ interface Snapshot {
 
 const POLL_MS = 5000;
 const DEFAULT_LOG_SIZE = 100;
-type FetchLogs = (size: number, lastId: number | null) => Promise<LogItem[]>;
+type FetchLogs = () => Promise<LogItem[]>;
 
 function fingerprint(item: LogItem): string {
     return JSON.stringify([item.serverId, item.id, item.date, item.level, item.category, item.message]);
@@ -28,7 +28,6 @@ export class ServerLogSession {
     private listeners = new Set<() => void>();
     private lastItem: LogItem | null = null;
     private lastId: number | null = null;
-    private clearVersion = 0;
     private baselinePending = false;
     private resetVersion = 0;
     private resetPending = false;
@@ -61,7 +60,6 @@ export class ServerLogSession {
 
     clear(): void {
         if (this.disposed) return;
-        this.clearVersion++;
         this.resetPending = false;
         // An outstanding request belongs to the display the user just cleared.
         // Consume its cursor without displaying its rows. If it fails, retain
@@ -105,52 +103,39 @@ export class ServerLogSession {
     }
 
     private async receive(): Promise<void> {
-        const version = this.clearVersion;
         const resetVersion = this.resetVersion;
         const resetting = this.resetPending;
-        const current = () => !this.disposed && resetVersion === this.resetVersion;
-        let fresh = await this.fetchLogs(this.snapshot.logSize, resetting ? null : this.lastId);
-        if (!current()) return;
-        let restarted = false;
-
-        // Engine log IDs restart from 1. An empty incremental response alone
-        // cannot distinguish an idle engine from a restarted one. Inspect just
-        // the newest retained entry, and reload only if the cursor was reset.
-        if (!resetting && !fresh.length && this.lastId !== null) {
-            const [head] = await this.fetchLogs(1, null);
-            if (!current()) return;
-            if (head && (Number(head.id) < this.lastId ||
-                (Number(head.id) === this.lastId && this.lastItem && fingerprint(head) !== fingerprint(this.lastItem)))) {
-                restarted = true;
-                fresh = await this.fetchLogs(this.snapshot.logSize, null);
-                if (!current()) return;
-            }
-        }
-
-        const suppress = this.baselinePending || version !== this.clearVersion;
+        const retained = await this.fetchLogs();
+        // A queued Reset supersedes this read; Clear cancels that Reset and
+        // allows the same read to establish its baseline without losing a batch.
+        if (this.disposed || (this.resetPending && resetVersion !== this.resetVersion)) return;
+        const suppress = this.baselinePending;
         // Pause freezes the display and cursor; resuming can fetch these rows
         // again. A clear baseline may still finish while paused.
         if (this.snapshot.paused && !suppress && !resetting) return;
-        // Commit the restart only after its reload succeeded. A failed reload
-        // must not discard the old cursor or bypass a pending clear on retry.
-        if (restarted || resetting) {
-            this.lastId = null;
-            this.lastItem = null;
-        }
-        fresh = fresh.filter(item => Number.isFinite(Number(item.id)))
+
+        const history = retained.filter(item => Number.isFinite(Number(item.id)))
             .sort((a, b) => Number(b.id) - Number(a.id));
-        const newest = fresh[0];
+        const newest = history[0];
+        const cursor = this.lastId;
+        const anchor = history.find(item => Number(item.id) === cursor);
+        // Compare identity even when IDs have overtaken the saved cursor. An
+        // empty snapshot or an aged-out anchor cannot prove a process restart.
+        const replace = resetting || !!(newest && cursor !== null && (Number(newest.id) < cursor ||
+            (anchor && this.lastItem && fingerprint(anchor) !== fingerprint(this.lastItem))));
+        const fresh = replace || cursor === null ? history : history.filter(item => Number(item.id) > cursor);
         if (newest) {
             this.lastId = Number(newest.id);
             this.lastItem = newest;
-        } else if (this.lastId === null) {
+        } else if (resetting || this.lastId === null) {
             this.lastId = 0;
+            this.lastItem = null;
         }
         this.baselinePending = false;
-        if (resetting) this.resetPending = false;
+        this.resetPending = false;
         // Defensive de-duplication also protects against repeated server rows.
         const byId = new Map<string, LogItem>();
-        const previous = restarted || resetting ? [] : this.snapshot.items;
+        const previous = replace ? [] : this.snapshot.items;
         for (const item of suppress ? previous : fresh.concat(previous)) {
             if (!byId.has(String(item.id))) byId.set(String(item.id), item);
         }
@@ -166,10 +151,10 @@ export class ServerLogSession {
         // A single shared request survives remounts; it cannot race a resume or
         // another mount. Once hidden, it may finish but cannot schedule a poll.
         this.flight = this.receive().catch(error => {
-            if (!this.disposed && resetVersion === this.resetVersion) this.publish({
-                // Revoked log access must remove previously authorized content
-                // from the session cache as well as expose the denial in the UI.
-                ...(error?.status === 403 ? { items: [] } : {}),
+            if (this.disposed) return;
+            // Display actions may supersede results, but never an access denial.
+            if (error?.status === 403) this.publish({ items: [] });
+            if (!this.resetPending || resetVersion === this.resetVersion) this.publish({
                 error: error instanceof Error ? error.message : String(error),
                 resetting: false
             });

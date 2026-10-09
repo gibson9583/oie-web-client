@@ -16,7 +16,6 @@ var ServerLogSession = class {
   listeners = /* @__PURE__ */ new Set();
   lastItem = null;
   lastId = null;
-  clearVersion = 0;
   baselinePending = false;
   resetVersion = 0;
   resetPending = false;
@@ -42,7 +41,6 @@ var ServerLogSession = class {
   }
   clear() {
     if (this.disposed) return;
-    this.clearVersion++;
     this.resetPending = false;
     this.baselinePending = this.baselinePending || this.lastId === null || this.flight !== null;
     this.publish({ items: [], error: null, resetting: false });
@@ -76,40 +74,29 @@ var ServerLogSession = class {
     this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE, resetting: false });
   }
   async receive() {
-    const version = this.clearVersion;
     const resetVersion = this.resetVersion;
     const resetting = this.resetPending;
-    const current = () => !this.disposed && resetVersion === this.resetVersion;
-    let fresh = await this.fetchLogs(this.snapshot.logSize, resetting ? null : this.lastId);
-    if (!current()) return;
-    let restarted = false;
-    if (!resetting && !fresh.length && this.lastId !== null) {
-      const [head] = await this.fetchLogs(1, null);
-      if (!current()) return;
-      if (head && (Number(head.id) < this.lastId || Number(head.id) === this.lastId && this.lastItem && fingerprint(head) !== fingerprint(this.lastItem))) {
-        restarted = true;
-        fresh = await this.fetchLogs(this.snapshot.logSize, null);
-        if (!current()) return;
-      }
-    }
-    const suppress = this.baselinePending || version !== this.clearVersion;
+    const retained = await this.fetchLogs();
+    if (this.disposed || this.resetPending && resetVersion !== this.resetVersion) return;
+    const suppress = this.baselinePending;
     if (this.snapshot.paused && !suppress && !resetting) return;
-    if (restarted || resetting) {
-      this.lastId = null;
-      this.lastItem = null;
-    }
-    fresh = fresh.filter((item) => Number.isFinite(Number(item.id))).sort((a, b) => Number(b.id) - Number(a.id));
-    const newest = fresh[0];
+    const history = retained.filter((item) => Number.isFinite(Number(item.id))).sort((a, b) => Number(b.id) - Number(a.id));
+    const newest = history[0];
+    const cursor = this.lastId;
+    const anchor = history.find((item) => Number(item.id) === cursor);
+    const replace = resetting || !!(newest && cursor !== null && (Number(newest.id) < cursor || anchor && this.lastItem && fingerprint(anchor) !== fingerprint(this.lastItem)));
+    const fresh = replace || cursor === null ? history : history.filter((item) => Number(item.id) > cursor);
     if (newest) {
       this.lastId = Number(newest.id);
       this.lastItem = newest;
-    } else if (this.lastId === null) {
+    } else if (resetting || this.lastId === null) {
       this.lastId = 0;
+      this.lastItem = null;
     }
     this.baselinePending = false;
-    if (resetting) this.resetPending = false;
+    this.resetPending = false;
     const byId = /* @__PURE__ */ new Map();
-    const previous = restarted || resetting ? [] : this.snapshot.items;
+    const previous = replace ? [] : this.snapshot.items;
     for (const item of suppress ? previous : fresh.concat(previous)) {
       if (!byId.has(String(item.id))) byId.set(String(item.id), item);
     }
@@ -122,10 +109,9 @@ var ServerLogSession = class {
     const resetVersion = this.resetVersion;
     if (this.resetPending) this.publish({ resetting: true });
     this.flight = this.receive().catch((error) => {
-      if (!this.disposed && resetVersion === this.resetVersion) this.publish({
-        // Revoked log access must remove previously authorized content
-        // from the session cache as well as expose the denial in the UI.
-        ...error?.status === 403 ? { items: [] } : {},
+      if (this.disposed) return;
+      if (error?.status === 403) this.publish({ items: [] });
+      if (!this.resetPending || resetVersion === this.resetVersion) this.publish({
         error: error instanceof Error ? error.message : String(error),
         resetting: false
       });
@@ -151,21 +137,19 @@ var DEFAULT_LOG_SIZE2 = 100;
 var api = platform.api;
 var { h, modal, toast } = platform.ui;
 function createSession() {
-  return new ServerLogSession(async (fetchSize, lastLogId) => api.asList(await api.get("/extensions/serverlog", { fetchSize, lastLogId }), "serverLogItem"));
+  return new ServerLogSession(async () => api.asList(await api.get("/extensions/serverlog", { fetchSize: 100 }), "serverLogItem"));
 }
 var logSession = createSession();
 var userKey = (user) => user ? String(user.id ?? user.username) : null;
 var currentUser = userKey(platform.store.getState("user"));
-function endSession() {
-  logSession.dispose();
-  logSession = createSession();
-}
 platform.store.subscribe("user", (user) => {
   const next = userKey(user);
-  if (next !== currentUser) endSession();
+  if (next !== currentUser) {
+    logSession.dispose();
+    logSession = createSession();
+  }
   currentUser = next;
 });
-platform.events.on("session:logout", endSession);
 function formatLogDate(value) {
   if (value === null || value === void 0 || value === "") return "";
   let millis = value;
@@ -277,12 +261,6 @@ function ServerLogTab() {
   const { items, paused, logSize, error, resetting } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [sizeText, setSizeText] = React.useState(() => String(logSize));
   const [sort, setSort] = React.useState({ key: "timestamp", dir: -1 });
-  function togglePause() {
-    session.togglePause();
-  }
-  function clearLog() {
-    session.clear();
-  }
   function applySize() {
     const n = Math.max(1, Math.min(99999, parseInt(sizeText, 10) || DEFAULT_LOG_SIZE2));
     session.setSize(n);
@@ -301,7 +279,7 @@ function ServerLogTab() {
     });
   }, [items, sort]);
   const headerTh = (key, label, extra = "") => /* @__PURE__ */ React.createElement("th", { className: "sortable sticky top-0 z-[1] bg-bg2 text-left " + extra, onClick: () => handleSort(key) }, label, sort.key === key ? /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, sort.dir > 0 ? "\u25B2" : "\u25BC") : null);
-  return /* @__PURE__ */ React.createElement("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden" }, /* @__PURE__ */ React.createElement("table", { className: "dt server-log w-full", "aria-busy": resetting }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, headerTh("timestamp", "Timestamp", "w-[160px]"), headerTh("level", "Level", "w-[76px]"), headerTh("message", "Message"))), /* @__PURE__ */ React.createElement("tbody", null, error && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, `Server Log unavailable: ${error}`)), items.length ? sortedItems.map((item) => /* @__PURE__ */ React.createElement(LogRow, { key: item.id, item })) : !error && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, resetting ? "Loading recent server log entries\u2026" : "No server log entries yet."))))), /* @__PURE__ */ React.createElement("div", { className: "taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]" }, /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Pause or resume the live log", onClick: togglePause }, /* @__PURE__ */ React.createElement("span", { className: "text-[11.5px] leading-none" }, paused ? "\u23F5" : "\u23F8")), /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Clear the displayed log", onClick: clearLog }, /* @__PURE__ */ React.createElement("span", { className: "text-err font-bold" }, "\u2715")), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden" }, /* @__PURE__ */ React.createElement("table", { className: "dt server-log w-full", "aria-busy": resetting }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, headerTh("timestamp", "Timestamp", "w-[160px]"), headerTh("level", "Level", "w-[76px]"), headerTh("message", "Message"))), /* @__PURE__ */ React.createElement("tbody", null, error && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, `Server Log unavailable: ${error}`)), items.length ? sortedItems.map((item) => /* @__PURE__ */ React.createElement(LogRow, { key: item.id, item })) : !error && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, resetting ? "Loading recent server log entries\u2026" : "No server log entries yet."))))), /* @__PURE__ */ React.createElement("div", { className: "taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]" }, /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Pause or resume the live log", onClick: () => session.togglePause() }, /* @__PURE__ */ React.createElement("span", { className: "text-[11.5px] leading-none" }, paused ? "\u23F5" : "\u23F8")), /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Clear the displayed log", onClick: () => session.clear() }, /* @__PURE__ */ React.createElement("span", { className: "text-err font-bold" }, "\u2715")), /* @__PURE__ */ React.createElement(
     "button",
     {
       className: "icon-btn " + btnClass + " disabled:opacity-40 disabled:cursor-wait",

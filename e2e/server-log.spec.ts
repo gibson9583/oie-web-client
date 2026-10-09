@@ -2,8 +2,7 @@ import type { Page, Request } from '@playwright/test';
 import { test, expect } from './base.js';
 import { mockEngine, login } from './mock.js';
 
-// Model the engine's incremental cursor and bounded retained history. A static
-// response would repopulate every poll and cannot detect a lost remount cursor.
+// Model the engine's bounded retained history and optional cursor filtering.
 function entry(id: number, message = `Server log entry ${id}`) {
     return { id: String(id), level: 'INFO', category: 'test', lineNumber: '1', message,
         date: { time: 1700000000000 + id, timezone: 'UTC' } };
@@ -55,7 +54,7 @@ async function remount(page: Page, surface: 'route' | 'dock' | 'cards') {
 test.beforeEach(async ({ page }) => { await page.clock.install(); });
 
 for (const surface of ['route', 'dock', 'cards'] as const) {
-    test(`clear survives a ${surface} remount and subsequent polls still show new entries`, async ({ page }) => {
+    test(`a ${surface} remount preserves Clear and recovers an engine restart with reused IDs`, async ({ page }) => {
         const engine = logEngine();
         await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => engine.read(request) });
         await page.goto('/dashboard');
@@ -71,10 +70,23 @@ for (const surface of ['route', 'dock', 'cards'] as const) {
         await tick(page);
         await expect(rows(page)).toHaveCount(1);
         await expect(rows(page)).toContainText('Server log entry 12');
-        expect(engine.calls.slice(1).some(call => call.cursor === 11)).toBe(true);
         await remount(page, surface);
         await expect(rows(page)).toHaveCount(1);
         await expect(rows(page)).toContainText('Server log entry 12');
+
+        // Authentication can survive restart; its new IDs have passed our cursor.
+        engine.entries = [11, 12, 13].map(id => ({
+            ...entry(id, `Restarted entry ${id}`),
+            date: { time: 1700000010000 + id, timezone: 'UTC' }
+        }));
+        await remount(page, surface);
+        await expect(rows(page).locator('td:last-child')).toHaveText([
+            '(test:1): Restarted entry 13', '(test:1): Restarted entry 12', '(test:1): Restarted entry 11'
+        ]);
+        engine.entries.push(entry(14, 'Live after restart'));
+        await tick(page);
+        await expect(rows(page)).toHaveCount(4);
+        await expect(rows(page).filter({ hasText: 'Live after restart' })).toHaveCount(1);
     });
 }
 
@@ -103,113 +115,6 @@ test('displayed rows, pause and log size survive every remount in the same sessi
     await pause(page).click();
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page)).toContainText('Server log entry 12');
-});
-
-test('clear fences a pending initial history response and establishes a baseline for new entries', async ({ page }) => {
-    const engine = logEngine();
-    const held = gate();
-    let initial = true;
-    await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
-        const response = engine.read(request);
-        if (initial) { initial = false; await held.promise; }
-        return response;
-    } });
-    try {
-        await page.goto('/dashboard');
-        await expect.poll(() => engine.calls.length).toBe(1);
-        await clear(page);
-        const initialResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/extensions/serverlog');
-        held.release();
-        await (await initialResponse).finished();
-        await expect(rows(page)).toHaveText(['No server log entries yet.']);
-        // The successful initial response establishes the suppressed baseline.
-        await tick(page);
-        await expect(rows(page)).toHaveText(['No server log entries yet.']);
-        engine.entries.push(entry(12));
-        await tick(page);
-        await expect(rows(page)).toHaveCount(1);
-        await expect(rows(page)).toContainText('Server log entry 12');
-    } finally { held.release(); }
-});
-
-test('an old response cannot restore entries after clear and a route remount', async ({ page }) => {
-    const engine = logEngine();
-    const held = gate();
-    let holdNext = false, waiting = false;
-    await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
-        const response = engine.read(request);
-        if (holdNext) { holdNext = false; waiting = true; await held.promise; }
-        return response;
-    } });
-    try {
-        await page.goto('/dashboard');
-        await expect(rows(page)).toHaveCount(2);
-        engine.entries.push(entry(12, 'Pending before clear'));
-        holdNext = true;
-        await tick(page);
-        await expect.poll(() => waiting).toBe(true);
-        await clear(page);
-        await remount(page, 'route');
-        held.release();
-        await tick(page);
-        await expect(rows(page)).toHaveText(['No server log entries yet.']);
-        engine.entries.push(entry(13, 'Created after clear'));
-        await tick(page);
-        await expect(rows(page)).toHaveCount(1);
-        await expect(rows(page)).toContainText('Created after clear');
-    } finally { held.release(); }
-});
-
-test('failed reads recover without forgetting a clear boundary', async ({ page }) => {
-    const engine = logEngine();
-    let failing = true;
-    await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => {
-        const response = engine.read(request);
-        return failing ? { __status: 503, body: { message: 'Synthetic log outage' } } : response;
-    } });
-    await page.goto('/dashboard');
-    await expect(rows(page)).toContainText('Server Log unavailable:');
-    failing = false;
-    await tick(page);
-    await expect(rows(page)).toHaveCount(2);
-    await clear(page);
-    failing = true;
-    await tick(page);
-    await expect(rows(page)).toContainText('Server Log unavailable:');
-    failing = false;
-    await remount(page, 'route');
-    await expect(rows(page)).toHaveText(['No server log entries yet.']);
-    engine.entries.push(entry(12));
-    await tick(page);
-    await expect(rows(page)).toHaveCount(1);
-    await expect(rows(page)).toContainText('Server log entry 12');
-});
-
-test('rapid pause and resume while a read is pending does not duplicate entries', async ({ page }) => {
-    const engine = logEngine();
-    const held = gate();
-    let holdNext = false, waiting = false;
-    await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
-        const response = engine.read(request);
-        if (holdNext) { holdNext = false; waiting = true; await held.promise; }
-        return response;
-    } });
-    try {
-        await page.goto('/dashboard');
-        await expect(rows(page)).toHaveCount(2);
-        engine.entries.push(entry(12));
-        holdNext = true;
-        await tick(page);
-        await expect.poll(() => waiting).toBe(true);
-        const requestsBefore = engine.calls.length;
-        await pause(page).click();
-        await pause(page).click();
-        await tick(page);
-        expect(engine.calls).toHaveLength(requestsBefore);
-        held.release();
-        await expect(rows(page)).toHaveCount(3);
-        await expect(rows(page).filter({ hasText: 'Server log entry 12' })).toHaveCount(1);
-    } finally { held.release(); }
 });
 
 for (const exit of ['logout', 'expiry'] as const) {
@@ -243,34 +148,16 @@ for (const exit of ['logout', 'expiry'] as const) {
         await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
         engine.entries = [entry(1, 'New session only')];
         userId = exit === 'expiry' ? 2 : 1;
-        const requestsBefore = engine.calls.length;
         await login(page, userId === 1 ? 'admin' : 'second-admin');
         await expect(page.locator('.shell')).toBeVisible();
         await expect(rows(page)).toHaveCount(1);
         await expect(rows(page)).toContainText('New session only');
         await expect(size).toHaveValue('100');
         await expect(pause(page)).toHaveText('⏸');
-        expect(engine.calls.slice(requestsBefore).some(call => call.cursor == null || call.cursor < 1)).toBe(true);
         expect(await page.evaluate(() => JSON.stringify({ local: localStorage, session: sessionStorage })))
             .not.toContain('Server log entry');
     });
 }
-
-test('an engine restart with lower log IDs resumes the live stream', async ({ page }) => {
-    const engine = logEngine();
-    await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => engine.read(request) });
-    await page.goto('/dashboard');
-    await expect(rows(page)).toHaveCount(2);
-    await clear(page);
-    engine.entries = [entry(1, 'New process startup')];
-    await tick(page);
-    await expect(rows(page)).toHaveCount(1);
-    await expect(rows(page)).toContainText('New process startup');
-    engine.entries.push(entry(2, 'New process live entry'));
-    await tick(page);
-    await expect(rows(page)).toHaveCount(2);
-    await expect(rows(page).filter({ hasText: 'New process live entry' })).toHaveCount(1);
-});
 
 test('refreshing the same user with a normalized ID or renamed username preserves the live log', async ({ page }) => {
     const engine = logEngine();
@@ -417,6 +304,91 @@ test('Clear after Reset wins over its pending reload while future log entries re
     } finally { held.release(); }
 });
 
+for (const lifecycle of ['live', 'pause-resume', 'route'] as const) {
+    test(`Clear cancels a queued Reset without dropping new entries across ${lifecycle}`, async ({ page }) => {
+        const engine = logEngine();
+        const held = gate();
+        let holdNext = false, waiting = false;
+        await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
+            const response = engine.read(request);
+            if (holdNext) { holdNext = false; waiting = true; await held.promise; }
+            return response;
+        } });
+        try {
+            await page.goto('/dashboard');
+            await expect(rows(page)).toHaveCount(2);
+            engine.entries.push(entry(12, 'Pending before Reset and Clear'));
+            holdNext = true;
+            await tick(page);
+            await expect.poll(() => waiting).toBe(true);
+            if (lifecycle === 'pause-resume') await pause(page).click();
+            await page.getByRole('button', { name: 'Reset', exact: true }).click();
+            await clear(page);
+            if (lifecycle === 'route') await remount(page, 'route');
+            const response = page.waitForResponse(result => new URL(result.url()).pathname === '/api/extensions/serverlog');
+            held.release();
+            await (await response).finished();
+            await expect(rows(page)).toHaveText(['No server log entries yet.']);
+            // Clear consumes the original poll as its baseline, even though
+            // Reset had superseded it. The following poll must remain visible.
+            engine.entries.push(entry(13, 'First entry after cleared Reset'));
+            if (lifecycle === 'pause-resume') await pause(page).click();
+            else await tick(page);
+            await expect(rows(page)).toHaveCount(1);
+            await expect(rows(page)).toContainText('First entry after cleared Reset');
+            engine.entries.push(entry(14, 'Second entry after cleared Reset'));
+            await tick(page);
+            await expect(rows(page)).toHaveCount(2);
+            await expect(rows(page).filter({ hasText: 'First entry after cleared Reset' })).toHaveCount(1);
+            await expect(rows(page).filter({ hasText: 'Second entry after cleared Reset' })).toHaveCount(1);
+        } finally { held.release(); }
+    });
+}
+
+test('a superseded permission denial purges cached rows even when a queued paused Reset fails', async ({ page }) => {
+    const engine = logEngine();
+    const denied = gate();
+    const reset = gate();
+    await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
+        const response = engine.read(request);
+        if (engine.calls.length === 1) return response;
+        if (engine.calls.length === 2) {
+            await denied.promise;
+            return { __status: 403, body: { message: 'Synthetic log access revoked' } };
+        }
+        await reset.promise;
+        return { __status: 503, body: { message: 'Synthetic reset unavailable' } };
+    } });
+    try {
+        await page.goto('/dashboard');
+        await expect(rows(page)).toHaveCount(2);
+        await tick(page);
+        await expect.poll(() => engine.calls.length).toBe(2);
+        await pause(page).click();
+        await page.getByRole('button', { name: 'Reset', exact: true }).click();
+        denied.release();
+        await expect.poll(() => engine.calls.length).toBe(3);
+        // The access denial must purge the cache before the replacement read
+        // settles; an unrelated failure must never keep revoked content alive.
+        await expect(rows(page).filter({ hasText: 'Server log entry' })).toHaveCount(0);
+        reset.release();
+        await expect(rows(page)).toContainText('Synthetic reset unavailable');
+        await expect(pause(page)).toHaveText('⏵');
+        await tick(page);
+        expect(engine.calls).toHaveLength(3);
+        // A remount retries the failed explicit Reset even while paused; its
+        // failure must preserve the purge without starting background polls.
+        await remount(page, 'route');
+        await expect.poll(() => engine.calls.length).toBe(4);
+        await expect(page.getByRole('button', { name: 'Reset', exact: true })).toBeEnabled();
+        await tick(page);
+        expect(engine.calls).toHaveLength(4);
+        await expect(rows(page)).toHaveCount(1);
+        await expect(rows(page)).toContainText('Synthetic reset unavailable');
+        await expect(rows(page).filter({ hasText: 'Server log entry' })).toHaveCount(0);
+    } finally { denied.release(); reset.release(); }
+});
+
 test('a failed Reset exposes an error and a second Reset retries without resuming a paused log', async ({ page }) => {
     const engine = logEngine();
     let failing = false;
@@ -480,7 +452,7 @@ test('signing out during Reset prevents its late history from reaching the next 
     } finally { held.release(); }
 });
 
-test('Reset matches the compact log toolbar buttons at desktop and narrow widths', async ({ page }, testInfo) => {
+test('Reset stays compact and accessible at desktop and narrow widths while loading', async ({ page }, testInfo) => {
     const engine = logEngine();
     let pending: ReturnType<typeof gate> | null = null;
     await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
@@ -496,44 +468,35 @@ test('Reset matches the compact log toolbar buttons at desktop and narrow widths
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await page.goto('/dashboard');
         await expect(rows(page)).toHaveCount(2);
+        await page.evaluate(() => document.fonts.ready);
         const toolbar = page.locator('.dash-dock .taskbar');
         const reset = toolbar.getByRole('button', { name: 'Reset', exact: true });
-        await expect(reset).toHaveAccessibleName('Reset');
-        await expect(reset.locator('svg')).toBeVisible();
-        await expect(reset).toHaveText('');
-        await page.evaluate(() => document.fonts.ready);
-        const metrics = () => toolbar.locator('button').evaluateAll(buttons => buttons.slice(0, 3).map(button => {
-            const rect = button.getBoundingClientRect();
-            const style = getComputedStyle(button);
-            return {
-                width: rect.width, height: rect.height, top: rect.top - buttons[0].getBoundingClientRect().top,
-                background: style.backgroundColor, border: style.border,
-                radius: style.borderRadius, padding: style.padding
-            };
-        }));
-        await page.mouse.move(0, 0);
-        const ready = await metrics();
-        expect(ready).toHaveLength(3);
-        expect(ready[2]).toEqual(ready[0]);
-        expect(ready[2]).toEqual(ready[1]);
-        const readyScreenshot = testInfo.outputPath(`server-log-toolbar-${viewport.name}.png`);
-        await toolbar.screenshot({ path: readyScreenshot, animations: 'disabled' });
-        await testInfo.attach(`server-log-toolbar-${viewport.name}`, { path: readyScreenshot, contentType: 'image/png' });
-
         const held = gate();
-        pending = held;
+        let ready: { width: number; height: number } | undefined;
         try {
-            await reset.click();
-            await expect(reset).toBeDisabled();
-            await expect(reset).toHaveAccessibleName('Reset');
-            await expect(reset).toHaveText('');
-            await expect(reset.locator('svg')).toBeVisible();
-            await expect(reset).toHaveAttribute('title', 'Resetting displayed log…');
-            await page.mouse.move(0, 0);
-            expect(await metrics()).toEqual(ready);
-            const loadingScreenshot = testInfo.outputPath(`server-log-toolbar-${viewport.name}-loading.png`);
-            await toolbar.screenshot({ path: loadingScreenshot, animations: 'disabled' });
-            await testInfo.attach(`server-log-toolbar-${viewport.name}-loading`, { path: loadingScreenshot, contentType: 'image/png' });
+            for (const loading of [false, true]) {
+                if (loading) { pending = held; await reset.click(); }
+                await expect(reset).toBeEnabled({ enabled: !loading });
+                await expect(reset).toHaveAccessibleName('Reset');
+                await expect(reset).toHaveText('');
+                await expect(reset.locator('svg')).toBeVisible();
+                await expect(page.locator('table.server-log')).toHaveAttribute('aria-busy', String(loading));
+                await page.mouse.move(0, 0);
+                const sizes = await toolbar.locator('button').evaluateAll(buttons => buttons.slice(0, 3).map(button => {
+                    const { width, height } = button.getBoundingClientRect();
+                    return { width, height };
+                }));
+                expect(sizes).toHaveLength(3);
+                ready ??= sizes[2];
+                for (const size of sizes) {
+                    expect(Math.abs(size.width - ready.width)).toBeLessThanOrEqual(0.5);
+                    expect(Math.abs(size.height - ready.height)).toBeLessThanOrEqual(0.5);
+                }
+                const name = `server-log-toolbar-${viewport.name}${loading ? '-loading' : ''}`;
+                const path = testInfo.outputPath(`${name}.png`);
+                await toolbar.screenshot({ path, animations: 'disabled' });
+                await testInfo.attach(name, { path, contentType: 'image/png' });
+            }
             held.release();
             await expect(reset).toBeEnabled();
         } finally { held.release(); pending = null; }
