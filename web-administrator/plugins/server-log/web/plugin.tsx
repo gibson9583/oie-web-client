@@ -8,25 +8,43 @@
  * stack trace, truncated with an ellipsis) — defaulting to newest-first.
  * Level sorts by severity rank, not alphabetically. Double-clicking a row
  * opens the full entry, including the complete stack trace. A thin bottom
- * toolbar (pause, clear, log size) sticks to the bottom; the header sticks
+ * toolbar (pause, clear, reset, log size) sticks to the bottom; the header sticks
  * to the top.
  *
- * React port: the tab is a {component} (useEffect polling, JSX table). The
- * fetch + newest-first sort + size-cap + level/scope normalization are reused
- * VERBATIM; only the rendering became React/JSX. The detail dialog stays an
- * imperative platform.ui.modal (built with platform.ui.h), which the contract
- * allows for imperative helpers.
+ * Session state survives dashboard navigation; polling runs only while the
+ * tab is mounted. The detail dialog uses the platform's imperative modal.
  */
 
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
+import { ServerLogSession } from './session';
 const React = platform.React;
 
 const DEFAULT_LOG_SIZE = 100;
-const POLL_MS = 5000;
 
 const api = platform.api;
 const { h, modal, toast } = platform.ui;
+
+function createSession() {
+    // The engine retains at most 100 entries. Read one snapshot so reused IDs
+    // can be detected without separate head checks or restart reloads.
+    return new ServerLogSession(async () =>
+        api.asList(await api.get('/extensions/serverlog', { fetchSize: 100 }), 'serverLogItem'));
+}
+
+let logSession = createSession();
+const userKey = (user: any) => user ? String(user.id ?? user.username) : null;
+let currentUser = userKey(platform.store.getState('user'));
+// The shell clears user on sign-out, expiry and engine changes, even while
+// the tab is unmounted. Same-user account refreshes preserve the log.
+platform.store.subscribe('user', (user: any) => {
+    const next = userKey(user);
+    if (next !== currentUser) {
+        logSession.dispose();
+        logSession = createSession();
+    }
+    currentUser = next;
+});
 
 /* Date arrives as an XStream java.util.Date — a {time} object, an epoch
    number, or a string. Normalize to "yyyy-MM-dd HH:mm:ss.SSS". */
@@ -152,84 +170,18 @@ function LogRow({ item }: any) {
     );
 }
 
-/* The polled Server Log tab. Owns its fetch loop (useEffect) + state. */
+/* A mounted view of the current session's log; hiding it stops further polls. */
 function ServerLogTab() {
-    const [items, setItems] = React.useState([] as any[]);     // newest first
-    const [paused, setPaused] = React.useState(false);
-    const [logSize, setLogSize] = React.useState(DEFAULT_LOG_SIZE);
-    const [sizeText, setSizeText] = React.useState(String(DEFAULT_LOG_SIZE));
-    const [error, setError] = React.useState(null as any);
+    const [session] = React.useState(() => logSession);
+    const { items, paused, logSize, error, resetting } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
+    const [sizeText, setSizeText] = React.useState(() => String(logSize));
     // Column sort — timestamp-desc is the classic newest-first default.
     const [sort, setSort] = React.useState({ key: 'timestamp', dir: -1 });
 
-    // Refs so the single poll loop reads live values without re-arming on
-    // every state change (closures stay correct across the setTimeout chain).
-    const itemsRef = React.useRef(items);
-    const lastLogIdRef = React.useRef(null as any);
-    const pausedRef = React.useRef(paused);
-    const logSizeRef = React.useRef(logSize);
-    const aliveRef = React.useRef(true);
-    const timerRef = React.useRef(null as any);
-
-    itemsRef.current = items;
-    pausedRef.current = paused;
-    logSizeRef.current = logSize;
-
-    // Single poll loop; arms exactly one pending timer at a time. Reuses the
-    // legacy fetch + newest-first sort + size cap VERBATIM.
-    const poll = React.useCallback(async function poll() {
-        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-        if (!aliveRef.current) return;
-        if (!pausedRef.current) {
-            try {
-                const raw = await api.get('/extensions/serverlog', { fetchSize: logSizeRef.current, lastLogId: lastLogIdRef.current });
-                if (!aliveRef.current) return;
-                const fresh = api.asList(raw, 'serverLogItem');
-                if (fresh.length) {
-                    // Server returns items with id > lastLogId; show newest first.
-                    fresh.sort((a: any, b: any) => Number(b.id) - Number(a.id));
-                    lastLogIdRef.current = Number(fresh[0].id);
-                    setItems((prev: any) => fresh.concat(prev).slice(0, logSizeRef.current));
-                    setError(null);
-                } else {
-                    setError(null);   // reachable + empty: clear any prior error
-                }
-            } catch (e: any) {
-                if (!itemsRef.current.length) setError(e.message);
-            }
-        }
-        if (aliveRef.current) timerRef.current = setTimeout(poll, POLL_MS);
-    }, []);
-
-    React.useEffect(() => {
-        aliveRef.current = true;
-        poll();
-        return () => {
-            aliveRef.current = false;
-            if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-        };
-    }, [poll]);
-
-    function togglePause() {
-        setPaused((prev: any) => {
-            const next = !prev;
-            pausedRef.current = next;
-            if (!next) poll();   // resume immediately
-            return next;
-        });
-    }
-
-    function clearLog() {
-        setItems([]);
-        setError(null);
-    }
-
     function applySize() {
         const n = Math.max(1, Math.min(99999, parseInt(sizeText, 10) || DEFAULT_LOG_SIZE));
-        logSizeRef.current = n;
-        setLogSize(n);
+        session.setSize(n);
         setSizeText(String(n));
-        setItems((prev: any) => prev.length > n ? prev.slice(0, n) : prev);
     }
 
     const btnClass = 'py-[1px] px-1.5 h-[20px] leading-none';
@@ -263,7 +215,7 @@ function ServerLogTab() {
         <div className="flex flex-col h-full min-h-0">
             {/* scrollable log table */}
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-                <table className="dt server-log w-full">
+                <table className="dt server-log w-full" aria-busy={resetting}>
                     <thead>
                         <tr>
                             {headerTh('timestamp', 'Timestamp', 'w-[160px]')}
@@ -272,23 +224,31 @@ function ServerLogTab() {
                         </tr>
                     </thead>
                     <tbody>
-                        {error && !items.length ? (
+                        {error && (
                             <tr><td colSpan={3} className="text-text-faint p-3">{`Server Log unavailable: ${error}`}</td></tr>
-                        ) : !items.length ? (
-                            <tr><td colSpan={3} className="text-text-faint p-3">No server log entries yet.</td></tr>
-                        ) : (
-                            sortedItems.map((item: any) => <LogRow key={item.id} item={item} />)
                         )}
+                        {items.length ? sortedItems.map((item: any) => <LogRow key={item.id} item={item} />)
+                            : !error && <tr><td colSpan={3} className="text-text-faint p-3">
+                                {resetting ? 'Loading recent server log entries…' : 'No server log entries yet.'}
+                            </td></tr>}
                     </tbody>
                 </table>
             </div>
-            {/* thin sticky bottom toolbar: pause | clear | … | Log Size */}
+            {/* thin sticky bottom toolbar: pause | clear | reset | … | Log Size */}
             <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]">
-                <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={togglePause}>
+                <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={() => session.togglePause()}>
                     <span className="text-[11.5px] leading-none">{paused ? '⏵' : '⏸'}</span>
                 </button>
-                <button className={"icon-btn " + btnClass} title="Clear the displayed log" onClick={clearLog}>
+                <button className={"icon-btn " + btnClass} title="Clear the displayed log" onClick={() => session.clear()}>
                     <span className="text-err font-bold">✕</span>
+                </button>
+                <button className={"icon-btn " + btnClass + " disabled:opacity-40 disabled:cursor-wait"}
+                    aria-label="Reset" disabled={resetting}
+                    title={resetting ? 'Resetting displayed log…' : 'Reset displayed log: reload recent entries up to the current Log Size'}
+                    onClick={() => session.reset()}>
+                    <span className="inline-flex" aria-hidden="true" ref={(el: HTMLSpanElement | null) => {
+                        if (el && !el.firstChild) el.appendChild(platform.ui.icon('undo', 14));
+                    }} />
                 </button>
                 <span className="flex-1" />
                 <label className="text-text-faint mr-0.5">Log Size:</label>
