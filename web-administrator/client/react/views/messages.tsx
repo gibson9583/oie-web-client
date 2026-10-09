@@ -2234,12 +2234,18 @@ export function MessagesView({ params, query }: any) {
     const searchGenRef = useRef(0);
 
     async function runSearch(resetOffset: any, { automatic = false, offset = offsetRef.current }: any = {}) {
+        // Swing accepts a three-digit page size, applied only on a new search.
+        // Validate before invalidating the active search or requesting metadata.
+        if (resetOffset && (!/^\d{1,3}$/.test(pageSize) || Number(pageSize) < 1)) {
+            toast('Page size must be a whole number from 1 to 999.', 'error');
+            return;
+        }
         const gen = ++searchGenRef.current;
         searchPendingRef.current = true;
         const candidate = {
             params: structuredClone(resetOffset ? buildParams() : lastParamsRef.current),
             offset: resetOffset ? 0 : offset,
-            limit: resetOffset ? Number(pageSize) || 20 : limitRef.current,
+            limit: resetOffset ? Number(pageSize) : limitRef.current,
             summary: resetOffset ? `Current Search: ${describeSearch()}` : resultRef.current?.summary,
             total: resetOffset ? null : totalRef.current
         };
@@ -3031,7 +3037,7 @@ export function MessagesView({ params, query }: any) {
                                 </label>
                                 <input type="text" placeholder="Search message content…" className="w-[198px]"
                                     value={textSearch} onChange={(e: any) => setTextSearch(e.target.value)}
-                                    onKeyDown={(e: any) => { if (e.key === 'Enter') runSearch(true); }} />
+                                    onKeyDown={(e: any) => { if (e.key === 'Enter') { e.preventDefault(); runSearch(true); } }} />
                             </div>
                             <Field label="Connector">
                                 <select value={connectorVal} onChange={(e: any) => setConnectorVal(e.target.value)}>
@@ -3042,9 +3048,10 @@ export function MessagesView({ params, query }: any) {
                                 </select>
                             </Field>
                             <Field label="Page Size">
-                                <select value={pageSize} onChange={(e: any) => setPageSize(e.target.value)}>
-                                    {[20, 50, 100].map(n => <option key={n} value={String(n)}>{n}</option>)}
-                                </select>
+                                <input type="number" min="1" max="999" step="1" aria-label="Page Size"
+                                    className="w-[74px]" title="Changes take effect on a new search."
+                                    value={pageSize} onChange={(e: any) => setPageSize(e.target.value)}
+                                    onKeyDown={(e: any) => { if (e.key === 'Enter') { e.preventDefault(); runSearch(true); } }} />
                             </Field>
                             <button className="btn btn-primary" onClick={() => runSearch(true)}><Icon name="search" />Search</button>
                             <button className="btn" onClick={resetSearch}>Reset</button>
