@@ -11,22 +11,41 @@
  * toolbar (pause, clear, log size) sticks to the bottom; the header sticks
  * to the top.
  *
- * React port: the tab is a {component} (useEffect polling, JSX table). The
- * fetch + newest-first sort + size-cap + level/scope normalization are reused
- * VERBATIM; only the rendering became React/JSX. The detail dialog stays an
- * imperative platform.ui.modal (built with platform.ui.h), which the contract
- * allows for imperative helpers.
+ * Session state survives dashboard navigation; polling runs only while the
+ * tab is mounted. The detail dialog uses the platform's imperative modal.
  */
 
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
+import { ServerLogSession } from './session';
 const React = platform.React;
 
 const DEFAULT_LOG_SIZE = 100;
-const POLL_MS = 5000;
 
 const api = platform.api;
 const { h, modal, toast } = platform.ui;
+
+function createSession() {
+    return new ServerLogSession(async (fetchSize, lastLogId) =>
+        api.asList(await api.get('/extensions/serverlog', { fetchSize, lastLogId }), 'serverLogItem'));
+}
+
+let logSession = createSession();
+const userKey = (user: any) => user ? String(user.id ?? user.username) : null;
+let currentUser = userKey(platform.store.getState('user'));
+function endSession() {
+    logSession.dispose();
+    logSession = createSession();
+}
+// These subscriptions share the plugin module's lifetime, including while its
+// tab is unmounted. The shell clears user on expiry, engine/context changes,
+// and sign-out. Account-detail refreshes for the same identity keep the log.
+platform.store.subscribe('user', (user: any) => {
+    const next = userKey(user);
+    if (next !== currentUser) endSession();
+    currentUser = next;
+});
+platform.events.on('session:logout', endSession);
 
 /* Date arrives as an XStream java.util.Date — a {time} object, an epoch
    number, or a string. Normalize to "yyyy-MM-dd HH:mm:ss.SSS". */
@@ -152,84 +171,26 @@ function LogRow({ item }: any) {
     );
 }
 
-/* The polled Server Log tab. Owns its fetch loop (useEffect) + state. */
+/* A mounted view of the current session's log; hiding it stops further polls. */
 function ServerLogTab() {
-    const [items, setItems] = React.useState([] as any[]);     // newest first
-    const [paused, setPaused] = React.useState(false);
-    const [logSize, setLogSize] = React.useState(DEFAULT_LOG_SIZE);
-    const [sizeText, setSizeText] = React.useState(String(DEFAULT_LOG_SIZE));
-    const [error, setError] = React.useState(null as any);
+    const [session] = React.useState(() => logSession);
+    const { items, paused, logSize, error } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
+    const [sizeText, setSizeText] = React.useState(() => String(logSize));
     // Column sort — timestamp-desc is the classic newest-first default.
     const [sort, setSort] = React.useState({ key: 'timestamp', dir: -1 });
 
-    // Refs so the single poll loop reads live values without re-arming on
-    // every state change (closures stay correct across the setTimeout chain).
-    const itemsRef = React.useRef(items);
-    const lastLogIdRef = React.useRef(null as any);
-    const pausedRef = React.useRef(paused);
-    const logSizeRef = React.useRef(logSize);
-    const aliveRef = React.useRef(true);
-    const timerRef = React.useRef(null as any);
-
-    itemsRef.current = items;
-    pausedRef.current = paused;
-    logSizeRef.current = logSize;
-
-    // Single poll loop; arms exactly one pending timer at a time. Reuses the
-    // legacy fetch + newest-first sort + size cap VERBATIM.
-    const poll = React.useCallback(async function poll() {
-        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-        if (!aliveRef.current) return;
-        if (!pausedRef.current) {
-            try {
-                const raw = await api.get('/extensions/serverlog', { fetchSize: logSizeRef.current, lastLogId: lastLogIdRef.current });
-                if (!aliveRef.current) return;
-                const fresh = api.asList(raw, 'serverLogItem');
-                if (fresh.length) {
-                    // Server returns items with id > lastLogId; show newest first.
-                    fresh.sort((a: any, b: any) => Number(b.id) - Number(a.id));
-                    lastLogIdRef.current = Number(fresh[0].id);
-                    setItems((prev: any) => fresh.concat(prev).slice(0, logSizeRef.current));
-                    setError(null);
-                } else {
-                    setError(null);   // reachable + empty: clear any prior error
-                }
-            } catch (e: any) {
-                if (!itemsRef.current.length) setError(e.message);
-            }
-        }
-        if (aliveRef.current) timerRef.current = setTimeout(poll, POLL_MS);
-    }, []);
-
-    React.useEffect(() => {
-        aliveRef.current = true;
-        poll();
-        return () => {
-            aliveRef.current = false;
-            if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-        };
-    }, [poll]);
-
     function togglePause() {
-        setPaused((prev: any) => {
-            const next = !prev;
-            pausedRef.current = next;
-            if (!next) poll();   // resume immediately
-            return next;
-        });
+        session.togglePause();
     }
 
     function clearLog() {
-        setItems([]);
-        setError(null);
+        session.clear();
     }
 
     function applySize() {
         const n = Math.max(1, Math.min(99999, parseInt(sizeText, 10) || DEFAULT_LOG_SIZE));
-        logSizeRef.current = n;
-        setLogSize(n);
+        session.setSize(n);
         setSizeText(String(n));
-        setItems((prev: any) => prev.length > n ? prev.slice(0, n) : prev);
     }
 
     const btnClass = 'py-[1px] px-1.5 h-[20px] leading-none';

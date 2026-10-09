@@ -1,10 +1,147 @@
 // plugins/server-log/web/plugin.tsx
 import { platform } from "@oie/web-shell";
-var React = platform.React;
-var DEFAULT_LOG_SIZE = 100;
+
+// plugins/server-log/web/session.ts
 var POLL_MS = 5e3;
+var DEFAULT_LOG_SIZE = 100;
+function fingerprint(item) {
+  return JSON.stringify([item.serverId, item.id, item.date, item.level, item.category, item.message]);
+}
+var ServerLogSession = class {
+  constructor(fetchLogs) {
+    this.fetchLogs = fetchLogs;
+  }
+  fetchLogs;
+  snapshot = { items: [], paused: false, logSize: DEFAULT_LOG_SIZE, error: null };
+  listeners = /* @__PURE__ */ new Set();
+  lastItem = null;
+  lastId = null;
+  clearVersion = 0;
+  baselinePending = false;
+  disposed = false;
+  timer = null;
+  flight = null;
+  getSnapshot = () => this.snapshot;
+  subscribe = (listener) => {
+    this.listeners.add(listener);
+    if (this.listeners.size === 1) void this.poll();
+    return () => {
+      this.listeners.delete(listener);
+      if (!this.listeners.size) this.stopTimer();
+    };
+  };
+  publish(patch) {
+    this.snapshot = { ...this.snapshot, ...patch };
+    this.listeners.forEach((listener) => listener());
+  }
+  stopTimer() {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
+  clear() {
+    if (this.disposed) return;
+    this.clearVersion++;
+    this.baselinePending = this.baselinePending || this.lastId === null || this.flight !== null;
+    this.publish({ items: [], error: null });
+  }
+  togglePause() {
+    if (this.disposed) return;
+    this.publish({ paused: !this.snapshot.paused });
+    this.stopTimer();
+    if (!this.snapshot.paused) void this.poll();
+  }
+  setSize(value) {
+    if (this.disposed) return;
+    const logSize = Math.max(1, Math.min(99999, Math.trunc(value) || DEFAULT_LOG_SIZE));
+    this.publish({ logSize, items: this.snapshot.items.slice(0, logSize) });
+  }
+  dispose() {
+    this.disposed = true;
+    this.stopTimer();
+    this.lastId = null;
+    this.lastItem = null;
+    this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE });
+  }
+  async receive() {
+    const version = this.clearVersion;
+    let fresh = await this.fetchLogs(this.snapshot.logSize, this.lastId);
+    if (this.disposed) return;
+    let restarted = false;
+    if (!fresh.length && this.lastId !== null) {
+      const [head] = await this.fetchLogs(1, null);
+      if (this.disposed) return;
+      if (head && (Number(head.id) < this.lastId || Number(head.id) === this.lastId && this.lastItem && fingerprint(head) !== fingerprint(this.lastItem))) {
+        restarted = true;
+        fresh = await this.fetchLogs(this.snapshot.logSize, null);
+        if (this.disposed) return;
+      }
+    }
+    const suppress = this.baselinePending || version !== this.clearVersion;
+    if (this.snapshot.paused && !suppress) return;
+    if (restarted) {
+      this.lastId = null;
+      this.lastItem = null;
+    }
+    fresh = fresh.filter((item) => Number.isFinite(Number(item.id))).sort((a, b) => Number(b.id) - Number(a.id));
+    const newest = fresh[0];
+    if (newest) {
+      this.lastId = Number(newest.id);
+      this.lastItem = newest;
+    } else if (this.lastId === null) {
+      this.lastId = 0;
+    }
+    this.baselinePending = false;
+    const byId = /* @__PURE__ */ new Map();
+    const previous = restarted ? [] : this.snapshot.items;
+    for (const item of suppress ? previous : fresh.concat(previous)) {
+      if (!byId.has(String(item.id))) byId.set(String(item.id), item);
+    }
+    this.publish({ items: [...byId.values()].slice(0, this.snapshot.logSize), error: null });
+  }
+  poll() {
+    this.stopTimer();
+    if (this.disposed || !this.listeners.size || this.snapshot.paused) return Promise.resolve();
+    if (this.flight) return this.flight;
+    this.flight = this.receive().catch((error) => {
+      if (!this.disposed) this.publish({
+        // Revoked log access must remove previously authorized content
+        // from the session cache as well as expose the denial in the UI.
+        ...error?.status === 403 ? { items: [] } : {},
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }).finally(() => {
+      this.flight = null;
+      if (!this.disposed && this.listeners.size && !this.snapshot.paused) {
+        this.timer = setTimeout(() => {
+          void this.poll();
+        }, POLL_MS);
+      }
+    });
+    return this.flight;
+  }
+};
+
+// plugins/server-log/web/plugin.tsx
+var React = platform.React;
+var DEFAULT_LOG_SIZE2 = 100;
 var api = platform.api;
 var { h, modal, toast } = platform.ui;
+function createSession() {
+  return new ServerLogSession(async (fetchSize, lastLogId) => api.asList(await api.get("/extensions/serverlog", { fetchSize, lastLogId }), "serverLogItem"));
+}
+var logSession = createSession();
+var userKey = (user) => user ? String(user.id ?? user.username) : null;
+var currentUser = userKey(platform.store.getState("user"));
+function endSession() {
+  logSession.dispose();
+  logSession = createSession();
+}
+platform.store.subscribe("user", (user) => {
+  const next = userKey(user);
+  if (next !== currentUser) endSession();
+  currentUser = next;
+});
+platform.events.on("session:logout", endSession);
 function formatLogDate(value) {
   if (value === null || value === void 0 || value === "") return "";
   let millis = value;
@@ -112,75 +249,20 @@ function LogRow({ item }) {
   );
 }
 function ServerLogTab() {
-  const [items, setItems] = React.useState([]);
-  const [paused, setPaused] = React.useState(false);
-  const [logSize, setLogSize] = React.useState(DEFAULT_LOG_SIZE);
-  const [sizeText, setSizeText] = React.useState(String(DEFAULT_LOG_SIZE));
-  const [error, setError] = React.useState(null);
+  const [session] = React.useState(() => logSession);
+  const { items, paused, logSize, error } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const [sizeText, setSizeText] = React.useState(() => String(logSize));
   const [sort, setSort] = React.useState({ key: "timestamp", dir: -1 });
-  const itemsRef = React.useRef(items);
-  const lastLogIdRef = React.useRef(null);
-  const pausedRef = React.useRef(paused);
-  const logSizeRef = React.useRef(logSize);
-  const aliveRef = React.useRef(true);
-  const timerRef = React.useRef(null);
-  itemsRef.current = items;
-  pausedRef.current = paused;
-  logSizeRef.current = logSize;
-  const poll = React.useCallback(async function poll2() {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (!aliveRef.current) return;
-    if (!pausedRef.current) {
-      try {
-        const raw = await api.get("/extensions/serverlog", { fetchSize: logSizeRef.current, lastLogId: lastLogIdRef.current });
-        if (!aliveRef.current) return;
-        const fresh = api.asList(raw, "serverLogItem");
-        if (fresh.length) {
-          fresh.sort((a, b) => Number(b.id) - Number(a.id));
-          lastLogIdRef.current = Number(fresh[0].id);
-          setItems((prev) => fresh.concat(prev).slice(0, logSizeRef.current));
-          setError(null);
-        } else {
-          setError(null);
-        }
-      } catch (e) {
-        if (!itemsRef.current.length) setError(e.message);
-      }
-    }
-    if (aliveRef.current) timerRef.current = setTimeout(poll2, POLL_MS);
-  }, []);
-  React.useEffect(() => {
-    aliveRef.current = true;
-    poll();
-    return () => {
-      aliveRef.current = false;
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [poll]);
   function togglePause() {
-    setPaused((prev) => {
-      const next = !prev;
-      pausedRef.current = next;
-      if (!next) poll();
-      return next;
-    });
+    session.togglePause();
   }
   function clearLog() {
-    setItems([]);
-    setError(null);
+    session.clear();
   }
   function applySize() {
-    const n = Math.max(1, Math.min(99999, parseInt(sizeText, 10) || DEFAULT_LOG_SIZE));
-    logSizeRef.current = n;
-    setLogSize(n);
+    const n = Math.max(1, Math.min(99999, parseInt(sizeText, 10) || DEFAULT_LOG_SIZE2));
+    session.setSize(n);
     setSizeText(String(n));
-    setItems((prev) => prev.length > n ? prev.slice(0, n) : prev);
   }
   const btnClass = "py-[1px] px-1.5 h-[20px] leading-none";
   function handleSort(key) {
