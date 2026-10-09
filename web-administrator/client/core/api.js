@@ -17,7 +17,7 @@
 import * as oie from './oie.js';
 import { API_BASE } from './deployment.js';
 import { engineFetch, assertEngineResponse, captureEngineSession } from './engine-fetch.js';
-import { parseMessageDocument, parseMessageXml } from './message-xml.js';
+import { parseMessageDocument, parseMessageXml, parseMessageListXml } from './message-xml.js';
 const BASE = API_BASE;
 const listeners = { sessionExpired: [], engineUnknown: [] };
 let sessionExpiredFired = false;
@@ -653,14 +653,24 @@ export const engine = {
    Messages                                       /channels/{id}/messages
    ========================================================================== */
 export const messages = {
-    search: (channelId, params) => get(`/channels/${enc(channelId)}/messages`, params).then(v => asList(v, 'message')),
+    search: (channelId, params) => {
+        const path = `/channels/${enc(channelId)}/messages`;
+        // Exact searches and pages whose upper bound permits large IDs must
+        // retain Java Long precision through selection.
+        if ((params?.minMessageId != null && String(params.minMessageId) === String(params.maxMessageId))
+            || Number(params?.maxMessageId) > Number.MAX_SAFE_INTEGER) {
+            return getXml(path, params).then(parseMessageListXml);
+        }
+        return get(path, params).then(v => asList(v, 'message'));
+    },
     // A COUNT over a large message table is legitimately slow (it's why the
     // browser defers it to an explicit button, like Swing) — no client ceiling.
     count: (channelId, params) => get(`/channels/${enc(channelId)}/messages/count`, params, { timeoutMs: null }),
     // The engine's JSON conversion rejects XStream's NCPDP/control references.
     // Use the lossless XML reader; generic parseBody also coerces Java Strings.
     get: (channelId, messageId) => getXml(`/channels/${enc(channelId)}/messages/${enc(messageId)}`).then(parseMessageXml),
-    maxMessageId: (channelId) => get(`/channels/${enc(channelId)}/messages/maxMessageId`),
+    // XML scalar parsing retains large long values as decimal strings.
+    maxMessageId: (channelId) => getXml(`/channels/${enc(channelId)}/messages/maxMessageId`).then(parseBody),
     attachments: (channelId, messageId, includeContent = false) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments`, { includeContent })
         .then(v => asList(v, 'attachment')),
     attachment: (channelId, messageId, attachmentId) => get(`/channels/${enc(channelId)}/messages/${enc(messageId)}/attachments/${encodeURIComponent(attachmentId)}`),

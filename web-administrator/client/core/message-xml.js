@@ -81,8 +81,7 @@ export function parseMessageDocument(text) {
     walk(root);
     return doc;
 }
-export function parseMessageXml(text) {
-    const root = parseMessageDocument(text).documentElement;
+function parseMessageElement(root) {
     if (root.tagName !== 'message')
         throw new Error('Engine returned invalid message XML');
     const read = (node) => {
@@ -114,4 +113,14 @@ export function parseMessageXml(text) {
     if (!result || typeof result !== 'object')
         throw new Error('Engine returned invalid message XML');
     return result;
+}
+export function parseMessageXml(text) {
+    return parseMessageElement(parseMessageDocument(text).documentElement);
+}
+export function parseMessageListXml(text) {
+    const root = parseMessageDocument(text).documentElement;
+    if (root.tagName !== 'list' || Array.from(root.childNodes).some(node => (node.nodeType === 3 || node.nodeType === 4) && node.textContent?.trim())) {
+        throw new Error('Engine returned invalid message XML');
+    }
+    return Array.from(root.children, parseMessageElement);
 }

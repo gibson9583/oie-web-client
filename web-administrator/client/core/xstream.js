@@ -177,6 +177,74 @@ export function mappingEntries(mc) {
     }
     return out;
 }
+/** Keep message IDs exact through links, including values beyond JS's safe integers. */
+export function messageIdString(value) {
+    if (typeof value === 'number' && !Number.isSafeInteger(value))
+        return null;
+    if (typeof value !== 'string' && typeof value !== 'number')
+        return null;
+    const id = String(value);
+    return /^[1-9]\d*$/.test(id) && (id.length < 19 || (id.length === 19 && id <= '9223372036854775807')) ? id : null;
+}
+function referenceScalar(value, types) {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return null;
+    const keys = Object.keys(value).filter(k => !k.startsWith('@'));
+    return keys.length === 1 && types.includes(keys[0]) && !('@reference' in value) ? value[keys[0]] : null;
+}
+function sourceReference(channel, message) {
+    const channelId = referenceScalar(channel, ['string']);
+    const messageId = messageIdString(referenceScalar(message, ['long', 'int', 'string']));
+    return typeof channelId === 'string' && channelId !== '' && channelId.trim() === channelId && messageId
+        ? { channelId, messageId } : null;
+}
+function referenceList(value) {
+    const inner = referenceScalar(value, ['list', 'array-list', 'linked-list', 'string-array', 'long-array', 'object-array']);
+    if (inner === '')
+        return [];
+    if (!inner || typeof inner !== 'object' || Array.isArray(inner) || '@reference' in inner)
+        return null;
+    const keys = Object.keys(inner).filter(k => !k.startsWith('@'));
+    // Mixed child types lose their relative positions in XStream JSON. Never guess pairs.
+    if (keys.length !== 1)
+        return null;
+    return toArray(inner[keys[0]]).map(item => ({ [keys[0]]: item }));
+}
+/** Read only structured source-map references; display strings are not navigation data. */
+export function sourceMessageReferences(mc) {
+    const node = mapNode(mc);
+    const fields = new Map();
+    if (node && typeof node === 'object')
+        for (const entry of asList(node.entry)) {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+                continue;
+            const pairs = Object.entries(entry).filter(([key]) => !key.startsWith('@'));
+            let key, value;
+            if (pairs.length === 1 && pairs[0][0] === 'string' && Array.isArray(pairs[0][1]) && pairs[0][1].length === 2) {
+                [key, value] = pairs[0][1];
+                value = { string: value };
+            }
+            else if (pairs.length === 2 && pairs[0][0] === 'string') {
+                key = pairs[0][1];
+                value = { [pairs[1][0]]: pairs[1][1] };
+            }
+            if (typeof key === 'string')
+                fields.set(key, fields.has(key) ? null : value);
+        }
+    const parent = sourceReference(fields.get('sourceChannelId'), fields.get('sourceMessageId'));
+    const channels = referenceList(fields.get('sourceChannelIds'));
+    const messages = referenceList(fields.get('sourceMessageIds'));
+    const ancestors = [];
+    if (channels && messages && channels.length === messages.length) {
+        for (let i = 0; i < channels.length; i++) {
+            const reference = sourceReference(channels[i], messages[i]);
+            if (!reference)
+                return { parent, ancestors: [] };
+            ancestors.push(reference);
+        }
+    }
+    return { parent, ancestors };
+}
 /* ---- serialized Response envelope (browser-only; uses DOMParser) -------------
    The Response/Processed-Response content stages store a serialized Response
    object. The Swing browser deserializes it, shows status+statusMessage in the

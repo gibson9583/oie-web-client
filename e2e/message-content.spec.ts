@@ -113,6 +113,45 @@ test('nested Response and Sent envelopes decode controls without changing litera
     expect(result.sent).toContain('DATA\x1c&#x1d;');
 });
 
+test('message list XML preserves large IDs and decoded control characters', async ({ page }) => {
+    await mockEngine(page);
+    await page.goto('/channels');
+    const messages = await page.evaluate(async (xml) => {
+        const { parseMessageListXml } = await import(String('/core/message-xml.js'));
+        return parseMessageListXml('<list>' + xml.replaceAll('12345', '9223372036854775807')
+            + xml.replaceAll('12345', '12346') + '</list>');
+    }, XML);
+    expect(messages).toHaveLength(2);
+    expect(messages[0].messageId).toBe('9223372036854775807');
+    expect(messages[0].connectorMessages.entry.connectorMessage.messageId).toBe('9223372036854775807');
+    expect(messages[0].connectorMessages.entry.connectorMessage.raw.content).toBe(RAW);
+    expect(messages[1].messageId).toBe(12346);
+});
+
+test('message list XML accepts an empty engine list', async ({ page }) => {
+    await mockEngine(page);
+    await page.goto('/channels');
+    const lists = await page.evaluate(async () => {
+        const { parseMessageListXml } = await import(String('/core/message-xml.js'));
+        return ['<list/>', '<list>\n</list>'].map(parseMessageListXml);
+    });
+    expect(lists).toEqual([[], []]);
+});
+
+test('message list XML rejects malformed documents and unexpected list content', async ({ page }) => {
+    await mockEngine(page);
+    await page.goto('/channels');
+    const errors = await page.evaluate(async () => {
+        const { parseMessageListXml } = await import(String('/core/message-xml.js'));
+        return ['<list><message>', '<message><messageId>1</messageId></message>',
+            '<list><error>unavailable</error></list>', '<list>unavailable</list>'].map(xml => {
+            try { parseMessageListXml(xml); return null; }
+            catch (error) { return (error as Error).message; }
+        });
+    });
+    expect(errors).toEqual(Array(4).fill('Engine returned invalid message XML'));
+});
+
 for (const failure of ['malformed', 'wrong root', 'DTD', 'invalid reference', '500', '401']) {
     test(`message detail ${failure} rejects safely without a JSON retry`, async ({ page }) => {
         let calls = 0;

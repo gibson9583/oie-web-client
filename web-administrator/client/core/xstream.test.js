@@ -5,7 +5,7 @@
  * new XStream quirk surfaces, add a fixture here and fix it in xstream.js once.
  */
 
-import { toDisplayString, mappingEntries } from './xstream.js';
+import { toDisplayString, mappingEntries, messageIdString, sourceMessageReferences } from './xstream.js';
 
 let pass = 0, fail = 0;
 function eq(label, got, want) {
@@ -82,6 +82,68 @@ eq('mappingEntries connector string-pairs', JSON.stringify(mappingEntries(connec
 const responseMap = { content: { entry: { string: 'd1', response: { status: 'SENT', statusMessage: 'Message routed successfully to channel id: none' } } } };
 eq('mappingEntries response value', JSON.stringify(mappingEntries(responseMap)),
     JSON.stringify([['d1', 'SENT: Message routed successfully to channel id: none']]));
+
+/* ---- Source-map navigation: preserve the stored index and exact message ID ---- */
+const parentEntries = [
+    { string: ['sourceChannelId', 'channel-b'] },
+    { string: 'sourceMessageId', long: '9223372036854775807' }
+];
+const parent = { channelId: 'channel-b', messageId: '9223372036854775807' };
+function references(label, entries, want) {
+    eq(label, JSON.stringify(sourceMessageReferences({ content: { m: { entry: entries } } })), JSON.stringify(want));
+}
+references('singular String/Long pair', parentEntries, { parent, ancestors: [] });
+references('string message ID', [{ string: ['sourceChannelId', 'channel-a'] }, { string: ['sourceMessageId', '42'] }],
+    { parent: { channelId: 'channel-a', messageId: '42' }, ancestors: [] });
+references('pair lists by index, preserving repeated channels and large IDs', [
+    ...parentEntries,
+    { string: 'sourceChannelIds', list: { string: ['channel-a', 'channel-a', 'channel-b'] } },
+    { string: 'sourceMessageIds', list: { long: [1, 2, '9223372036854775807'] } }
+], { parent, ancestors: [
+    { channelId: 'channel-a', messageId: '1' },
+    { channelId: 'channel-a', messageId: '2' },
+    parent
+] });
+for (const [channels, messages] of [
+    [{ list: { string: 'channel-a' } }, { list: { long: 1 } }],
+    [{ 'array-list': { string: 'channel-a' } }, { 'linked-list': { long: 1 } }],
+    [{ 'string-array': { string: 'channel-a' } }, { 'long-array': { long: 1 } }],
+    [{ 'object-array': { string: 'channel-a' } }, { 'object-array': { long: 1 } }]
+]) references('typed singleton collections', [
+    { string: 'sourceChannelIds', ...channels }, { string: 'sourceMessageIds', ...messages }
+], { parent: null, ancestors: [{ channelId: 'channel-a', messageId: '1' }] });
+
+for (const [channels, messages] of [
+    [{ list: '' }, { list: '' }],
+    [{ list: { string: ['channel-a', 'channel-b'] } }, { list: { long: 1 } }],
+    [{ list: { string: ['channel-a', null, 'channel-b'] } }, { list: { long: [1, 2, 3] } }],
+    [{ list: { string: ['channel-a', 'channel-b'] } }, { list: { long: [1, null] } }],
+    [{ list: { string: ['channel-a', 'channel-b'] } }, { list: { long: 1, string: '2' } }],
+    [{ list: { string: 'channel-a', null: '' } }, { list: { long: [1, 2] } }],
+    [{ list: { string: 'channel-a' } }, { list: { double: 1 } }],
+    [{ list: { string: 'channel-a' } }, { list: { long: Number.MAX_SAFE_INTEGER + 1 } }],
+    [{ list: { string: 'channel-a' } }, { list: { long: '9223372036854775808' } }],
+    [{ list: { string: 'channel-a' } }, { list: null }],
+    [{ set: { string: 'channel-a' } }, { list: { long: 1 } }],
+    [{ list: { string: 'channel-a' } }, { list: { '@reference': '../other' } }]
+]) references('malformed or empty arrays keep valid parent only', [
+    ...parentEntries, { string: 'sourceChannelIds', ...channels }, { string: 'sourceMessageIds', ...messages }
+], { parent, ancestors: [] });
+references('formatted list strings are not references', [
+    { string: ['sourceChannelIds', '[channel-a, channel-b]'] },
+    { string: ['sourceMessageIds', '[1, 2]'] }
+], { parent: null, ancestors: [] });
+references('no partial singular pair', [parentEntries[0]], { parent: null, ancestors: [] });
+references('duplicate fields are ambiguous', [...parentEntries, parentEntries[0]], { parent: null, ancestors: [] });
+references('blank channel is not a reference', [{ string: ['sourceChannelId', ' '] }, parentEntries[1]],
+    { parent: null, ancestors: [] });
+eq('missing source map', JSON.stringify(sourceMessageReferences(null)), JSON.stringify({ parent: null, ancestors: [] }));
+for (const id of [1, Number.MAX_SAFE_INTEGER, '9007199254740992', '9223372036854775807']) {
+    eq('valid message ID stays exact', messageIdString(id), String(id));
+}
+for (const id of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, Infinity, NaN, null, true, {}, '', '01', '+1', ' 1', '1 ', '1e2', '1.0', '9223372036854775808']) {
+    eq('invalid or unsafe message ID', messageIdString(id), null);
+}
 
 console.log(`\nxstream.test: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

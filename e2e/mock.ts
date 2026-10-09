@@ -74,7 +74,15 @@ export async function mockEngine(page: any, overrides = {}) {
             return route.fulfill({ status: fx.__status, contentType: 'application/json', body: JSON.stringify(fx.body ?? {}) });
         }
         if (req.method() === 'GET' && req.headers().accept?.includes('application/xml')
-            && (path === '/server/globalScripts' || path === '/server/channelTags' || /^\/channels(?:\/[^/]+)?$/.test(path) || /^\/channels\/[^/]+\/status$/.test(path) || /^\/channels\/[^/]+\/messages\/[^/]+$/.test(path))) {
+            && (path === '/server/globalScripts' || path === '/server/channelTags' || /^\/channels(?:\/[^/]+)?$/.test(path) || /^\/channels\/[^/]+\/status$/.test(path) || /^\/channels\/[^/]+\/messages(?:\/[^/]+)?$/.test(path))) {
+            if (/^\/channels\/[^/]+\/messages\/maxMessageId$/.test(path)) {
+                return route.fulfill({ status: 200, contentType: 'application/xml', body: fixtureXml('long', fx.long ?? fx) });
+            }
+            if (/^\/channels\/[^/]+\/messages$/.test(path)) {
+                const list = fx.list ?? fx;
+                return route.fulfill({ status: 200, contentType: 'application/xml',
+                    body: fixtureXml('list', Array.isArray(list) ? { message: list } : list) });
+            }
             if (/^\/channels\/[^/]+\/messages\/[^/]+$/.test(path)) {
                 return route.fulfill({ status: 200, contentType: 'application/xml', body: fixtureXml('message', fx.message ?? fx) });
             }

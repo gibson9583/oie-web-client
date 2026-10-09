@@ -40,7 +40,8 @@ import api from '@oie/web-api';
 import { messageStatusTag } from '@oie/web-api';
 import { renderHighlighted, detectType } from '../../core/content-highlight.js';
 import { formatSentProperties } from '../../core/sent-format.js';
-import { mappingEntries, parseResponse, toDisplayString } from '../../core/xstream.js';
+import { mappingEntries, messageIdString, sourceMessageReferences, parseResponse, toDisplayString } from '../../core/xstream.js';
+import { routeUrl } from '../../core/deployment.js';
 import { getPref, PREF_DEFAULTS } from '../../core/prefs.js';
 import { serializeTemplate } from '../../core/serialize.js';
 import { createZip } from '../../core/zip.js';
@@ -594,6 +595,10 @@ function ResultsTable({
     const tableRef = useRef<any>(null);
     const colRefs = useRef<any>({});       // key -> <col> element (live resize)
 
+    useEffect(() => {
+        tableRef.current?.querySelector('tr.selected')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }, [selKey]);
+
     const lastKey = cols.length ? cols[cols.length - 1].key : null;
     // Min width so the table scrolls (rather than crushing columns) when the fixed
     // widths exceed the viewport; the auto last column keeps an 80px floor.
@@ -884,7 +889,12 @@ function openContentPopout(title: any, props: any) {
 const MAPPING_COLS = [
     { key: 'scope', label: 'Scope' }, { key: 'variable', label: 'Variable' }, { key: 'value', label: 'Value' }];
 
-function MappingsTable({ cm }: any) {
+function messagePath(channelId: string, messageId: string) {
+    return `/messages/${encodeURIComponent(channelId)}?messageId=${encodeURIComponent(messageId)}`;
+}
+
+function MappingsTable({ cm, channelId, messageId }: any) {
+    const references = useMemo(() => sourceMessageReferences(cm.sourceMapContent), [cm]);
     // Scope, deserialized map content. Matches the Swing browser exactly:
     // Source / Connector / Channel / Response only — no Custom Metadata.
     const rows = useMemo(() => {
@@ -914,6 +924,33 @@ function MappingsTable({ cm }: any) {
         ? [...rows].sort((a: any, b: any) => String(a[sort.key]).localeCompare(String(b[sort.key]), undefined, { numeric: true }) * sort.dir)
         : rows;
 
+    function mappingValue(row: any) {
+        if (row.scope !== 'Source' || !platform.checkTask('view', 'doShowMessages')) return row.value;
+        const plural = row.variable === 'sourceChannelIds' || row.variable === 'sourceMessageIds';
+        const singular = row.variable === 'sourceChannelId' || row.variable === 'sourceMessageId';
+        const refs = plural ? references.ancestors : singular && references.parent ? [references.parent] : [];
+        if (!refs.length) return row.value;
+        const key = row.variable.startsWith('sourceChannel') ? 'channelId' : 'messageId';
+        return <>{plural && '['}{refs.map((ref, index) => {
+            const path = messagePath(ref.channelId, ref.messageId);
+            return <span key={index}>{index > 0 && ', '}<a href={routeUrl(path)} className="text-accent underline"
+                title={`Open message ${ref.messageId} in channel ${ref.channelId}`}
+                onDoubleClick={e => e.stopPropagation()}
+                onAuxClick={e => {
+                    try { captureEngineSession()(); } catch { e.preventDefault(); }
+                }}
+                onClick={e => {
+                    try { captureEngineSession()(); } catch { e.preventDefault(); return; }
+                    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    // Back returns to this message, even if it was selected from a broad search.
+                    const originId = messageIdString(messageId);
+                    if (originId) history.replaceState(history.state, '', routeUrl(messagePath(channelId, originId)));
+                    router.navigate(path);
+                }}>{ref[key]}</a></span>;
+        })}{plural && ']'}</>;
+    }
+
     // No inner overflow wrapper: the table scrolls in the tab body
     // (flex-1 min-h-0 overflow-auto), so the sticky header sticks to the pane
     // top and reads as a static banner instead of scrolling away with a nested
@@ -937,7 +974,7 @@ function MappingsTable({ cm }: any) {
                         onDoubleClick={() => openMappingValue(r.value)}>
                         <td className="w-[108px]">{r.scope}</td>
                         <td className="mono w-[30%]">{r.variable}</td>
-                        <td className="mono whitespace-pre-wrap break-all">{r.value}</td>
+                        <td className="mono whitespace-pre-wrap break-all">{mappingValue(r)}</td>
                     </tr>
                 ))}
             </tbody>
@@ -1253,7 +1290,7 @@ function ConnectorTabs({ message, cm, channelId, channelName, platform, anchor, 
         });
     }
 
-    defs.push({ label: 'Mappings', node: <MappingsTable cm={cm} /> });
+    defs.push({ label: 'Mappings', node: <MappingsTable cm={cm} channelId={channelId} messageId={message.messageId} /> });
     // Keep the tab visible on a failed attachment request so the failure cannot
     // masquerade as a message with no attachments.
     if (message.__attachmentsError || (message.__attachments && message.__attachments.length)) {
@@ -1989,6 +2026,9 @@ function Field({ label, children }: any) {
 
 export function MessagesView({ params, query }: any) {
     const channelId = params.channelId;
+    const targetMessageId = messageIdString(query.messageId);
+    const invalidTarget = query.messageId != null && !targetMessageId;
+    const pendingTargetRef = useRef(targetMessageId);
 
     /* ---- search-engine state ------------------------------------------------
        Search is an explicit command, so its cursor lives in refs the commands
@@ -2017,7 +2057,7 @@ export function MessagesView({ params, query }: any) {
     const advRef = useRef<any>(null);
     if (!advRef.current) {
         advRef.current = defaultAdvancedCriteria();
-        if (query.metaDataId != null && query.metaDataId !== '') {
+        if (!targetMessageId && query.metaDataId != null && query.metaDataId !== '') {
             advRef.current.includedMetaDataIds = [Number(query.metaDataId)];
         }
     }
@@ -2052,7 +2092,8 @@ export function MessagesView({ params, query }: any) {
     const [expandedIds, setExpandedIds] = useState(() => new Set());
     const [allExpanded, setAllExpanded] = useState(false);
     const [selected, setSelected] = useState<any>(null);             // {m, metaDataId}
-    const [detail, setDetail] = useState<any>({ status: 'empty' });
+    const [detail, setDetail] = useState<any>(invalidTarget
+        ? { status: 'error', error: 'Invalid message ID.' } : { status: 'empty' });
 
     /* ---- compare state ------------------------------------------------------
        The anchor lives in core/compare.js (it has to survive this view and be
@@ -2242,11 +2283,21 @@ export function MessagesView({ params, query }: any) {
         }
         const gen = ++searchGenRef.current;
         searchPendingRef.current = true;
+        // A navigation target positions the opening page; it never becomes a
+        // search filter. Explicit Search/Refresh supersedes that navigation.
+        const openingTarget = automatic ? pendingTargetRef.current : null;
+        if (!automatic) {
+            pendingTargetRef.current = null;
+            if (resetOffset && query.messageId != null) {
+                history.replaceState(history.state, '', routeUrl(`/messages/${encodeURIComponent(channelId)}`));
+            }
+        }
         const candidate = {
-            params: structuredClone(resetOffset ? buildParams() : lastParamsRef.current),
+            params: openingTarget ? {} : structuredClone(resetOffset ? buildParams() : lastParamsRef.current),
             offset: resetOffset ? 0 : offset,
             limit: resetOffset ? Number(pageSize) : limitRef.current,
-            summary: resetOffset ? `Current Search: ${describeSearch()}` : resultRef.current?.summary,
+            summary: openingTarget ? 'Current Search: All messages'
+                : resetOffset ? `Current Search: ${describeSearch()}` : resultRef.current?.summary,
             total: resetOffset ? null : totalRef.current
         };
         try {
@@ -2266,6 +2317,26 @@ export function MessagesView({ params, query }: any) {
                 candidate.params.maxMessageId = String(maximum);
             }
             if (gen !== searchGenRef.current) return;
+            // Engine pages are ordered by descending message ID. Count through
+            // the target (inclusive), not ID differences: deleted IDs leave gaps.
+            // Keep this positioning range out of the result/search criteria.
+            const targetOffset = async () => {
+                if (!openingTarget || BigInt(openingTarget) >= BigInt(candidate.params.maxMessageId)) return 0;
+                const raw: any = await api.messages.count(channelId, {
+                    maxMessageId: candidate.params.maxMessageId, minMessageId: openingTarget
+                });
+                const value = raw && typeof raw === 'object' ? raw.long ?? raw.int ?? raw.integer : raw;
+                const count = Number(value);
+                const position = Math.floor(Math.max(0, count - 1) / candidate.limit) * candidate.limit;
+                if (!/^\d+$/.test(String(value)) || !Number.isSafeInteger(count) || position > 2147483647) {
+                    throw new Error('Unable to determine the message page');
+                }
+                return position;
+            };
+            if (openingTarget) {
+                candidate.offset = await targetOffset();
+                if (gen !== searchGenRef.current) return;
+            }
             // Fetch one extra row to learn whether a next page exists, instead of
             // paying for a COUNT on every search (Swing's lazy-count model).
             const search = api.messages.search(channelId, { ...candidate.params, offset: candidate.offset, limit: candidate.limit + 1 });
@@ -2286,8 +2357,20 @@ export function MessagesView({ params, query }: any) {
                 api.messages.auditQueriedPHI(attributes).catch((e: any) =>
                     toast(`Unable to audit queried PHI: ${e.message || e}`, 'error'));
             }
-            const rows = await search;
+            let rows = await search;
             if (gen !== searchGenRef.current) return;   // superseded by a newer search
+            const isTarget = (m: any) => String(m?.messageId) === openingTarget && String(m?.channelId) === String(channelId);
+            if (openingTarget && !rows.slice(0, candidate.limit).some(isTarget)) {
+                // Pruning between count and fetch can move the target to another
+                // page. Reposition once within the same arrival boundary.
+                const correctedOffset = await targetOffset();
+                if (gen !== searchGenRef.current) return;
+                if (correctedOffset !== candidate.offset) {
+                    candidate.offset = correctedOffset;
+                    rows = await api.messages.search(channelId, { ...candidate.params, offset: candidate.offset, limit: candidate.limit + 1 });
+                    if (gen !== searchGenRef.current) return;
+                }
+            }
             const list = rows.filter(m => m && typeof m === 'object');
             const hasNext = list.length > candidate.limit;
             if (hasNext) list.pop();   // drop the probe row
@@ -2314,6 +2397,16 @@ export function MessagesView({ params, query }: any) {
             setAllExpanded(true);
             setMessages(list);
             setPager({ offset: offsetRef.current, shown: list.length, total: totalRef.current, hasNext });
+            const targetId = pendingTargetRef.current;
+            if (targetId) {
+                const target = list.find(m => String(m.messageId) === targetId && String(m.channelId) === String(channelId));
+                if (target && sourceOf(target)) {
+                    pendingTargetRef.current = null;
+                    selectMessage(target, 0);
+                } else {
+                    setDetail({ status: 'error', error: `Message ${targetId} could not be located in the current results.` });
+                }
+            }
         } catch (e: any) {
             if (gen !== searchGenRef.current) return;   // superseded — its results are on screen
             toast(`Search failed: ${e.message}`, 'error');
@@ -2391,6 +2484,10 @@ export function MessagesView({ params, query }: any) {
         try {
             message = await api.messages.get(channelId, row.messageId);
             if (!message || typeof message !== 'object') throw new Error('Engine returned an invalid message');
+            if (String(message.messageId) !== String(row.messageId)
+                || (message.channelId != null && String(message.channelId) !== String(channelId))) {
+                throw new Error('Engine returned a different message');
+            }
         } catch (e: any) {
             if (!isCurrentSelection()) return;
             const error = `Failed to load message content: ${e.message || e}`;
@@ -2942,12 +3039,14 @@ export function MessagesView({ params, query }: any) {
                 }
             } catch (e: any) { toast(`Failed to load channels: ${e.message || e}`, 'error'); }
             // Nothing to search until a channel is chosen.
-            if (!cancelled && channelId && metaDataReadyRef.current) searchRef.current(true, { automatic: true });
+            if (!cancelled && channelId && metaDataReadyRef.current && !invalidTarget && searchGenRef.current === 0) {
+                searchRef.current(true, { automatic: true });
+            }
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
         // Invalidate the latest request counter, including searches started since mount.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        return () => { cancelled = true; ++searchGenRef.current; selectedRef.current = null; resultRef.current = null; closeStatusMenu(); };
+        return () => { cancelled = true; ++searchGenRef.current; searchRef.current = () => {}; selectedRef.current = null; resultRef.current = null; closeStatusMenu(); };
         // Build once; channelId is stable for the view's lifetime (route remount on change).
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);

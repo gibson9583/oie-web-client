@@ -11,3 +11,4 @@ export declare function protectMessageXml(text: string): {
     content stage. Restore text only after the browser has validated the XML. */
 export declare function parseMessageDocument(text: string): XMLDocument;
 export declare function parseMessageXml(text: string): Message;
+export declare function parseMessageListXml(text: string): Message[];

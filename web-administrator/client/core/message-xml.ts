@@ -90,8 +90,7 @@ export function parseMessageDocument(text: string): XMLDocument {
     return doc;
 }
 
-export function parseMessageXml(text: string): Message {
-    const root = parseMessageDocument(text).documentElement;
+function parseMessageElement(root: Element): Message {
     if (root.tagName !== 'message') throw new Error('Engine returned invalid message XML');
     const read = (node: Element): Value => {
         // A null prototype keeps arbitrary engine map/metadata names, including
@@ -115,4 +114,17 @@ export function parseMessageXml(text: string): Message {
     const result = read(root);
     if (!result || typeof result !== 'object') throw new Error('Engine returned invalid message XML');
     return result as Message;
+}
+
+export function parseMessageXml(text: string): Message {
+    return parseMessageElement(parseMessageDocument(text).documentElement);
+}
+
+export function parseMessageListXml(text: string): Message[] {
+    const root = parseMessageDocument(text).documentElement;
+    if (root.tagName !== 'list' || Array.from(root.childNodes).some(node =>
+        (node.nodeType === 3 || node.nodeType === 4) && node.textContent?.trim())) {
+        throw new Error('Engine returned invalid message XML');
+    }
+    return Array.from(root.children, parseMessageElement);
 }
