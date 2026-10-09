@@ -12,12 +12,14 @@ var ServerLogSession = class {
     this.fetchLogs = fetchLogs;
   }
   fetchLogs;
-  snapshot = { items: [], paused: false, logSize: DEFAULT_LOG_SIZE, error: null };
+  snapshot = { items: [], paused: false, logSize: DEFAULT_LOG_SIZE, error: null, resetting: false };
   listeners = /* @__PURE__ */ new Set();
   lastItem = null;
   lastId = null;
   clearVersion = 0;
   baselinePending = false;
+  resetVersion = 0;
+  resetPending = false;
   disposed = false;
   timer = null;
   flight = null;
@@ -41,8 +43,18 @@ var ServerLogSession = class {
   clear() {
     if (this.disposed) return;
     this.clearVersion++;
+    this.resetPending = false;
     this.baselinePending = this.baselinePending || this.lastId === null || this.flight !== null;
-    this.publish({ items: [], error: null });
+    this.publish({ items: [], error: null, resetting: false });
+  }
+  /** Restore the engine's retained history without changing display settings. */
+  reset() {
+    if (this.disposed || this.resetPending && this.snapshot.resetting) return;
+    this.resetVersion++;
+    this.resetPending = true;
+    this.baselinePending = false;
+    this.publish({ error: null, resetting: true });
+    void this.poll();
   }
   togglePause() {
     if (this.disposed) return;
@@ -60,25 +72,29 @@ var ServerLogSession = class {
     this.stopTimer();
     this.lastId = null;
     this.lastItem = null;
-    this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE });
+    this.resetPending = false;
+    this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE, resetting: false });
   }
   async receive() {
     const version = this.clearVersion;
-    let fresh = await this.fetchLogs(this.snapshot.logSize, this.lastId);
-    if (this.disposed) return;
+    const resetVersion = this.resetVersion;
+    const resetting = this.resetPending;
+    const current = () => !this.disposed && resetVersion === this.resetVersion;
+    let fresh = await this.fetchLogs(this.snapshot.logSize, resetting ? null : this.lastId);
+    if (!current()) return;
     let restarted = false;
-    if (!fresh.length && this.lastId !== null) {
+    if (!resetting && !fresh.length && this.lastId !== null) {
       const [head] = await this.fetchLogs(1, null);
-      if (this.disposed) return;
+      if (!current()) return;
       if (head && (Number(head.id) < this.lastId || Number(head.id) === this.lastId && this.lastItem && fingerprint(head) !== fingerprint(this.lastItem))) {
         restarted = true;
         fresh = await this.fetchLogs(this.snapshot.logSize, null);
-        if (this.disposed) return;
+        if (!current()) return;
       }
     }
     const suppress = this.baselinePending || version !== this.clearVersion;
-    if (this.snapshot.paused && !suppress) return;
-    if (restarted) {
+    if (this.snapshot.paused && !suppress && !resetting) return;
+    if (restarted || resetting) {
       this.lastId = null;
       this.lastItem = null;
     }
@@ -91,30 +107,38 @@ var ServerLogSession = class {
       this.lastId = 0;
     }
     this.baselinePending = false;
+    if (resetting) this.resetPending = false;
     const byId = /* @__PURE__ */ new Map();
-    const previous = restarted ? [] : this.snapshot.items;
+    const previous = restarted || resetting ? [] : this.snapshot.items;
     for (const item of suppress ? previous : fresh.concat(previous)) {
       if (!byId.has(String(item.id))) byId.set(String(item.id), item);
     }
-    this.publish({ items: [...byId.values()].slice(0, this.snapshot.logSize), error: null });
+    this.publish({ items: [...byId.values()].slice(0, this.snapshot.logSize), error: null, resetting: false });
   }
   poll() {
     this.stopTimer();
-    if (this.disposed || !this.listeners.size || this.snapshot.paused) return Promise.resolve();
+    if (this.disposed || !this.listeners.size || this.snapshot.paused && !this.resetPending) return Promise.resolve();
     if (this.flight) return this.flight;
+    const resetVersion = this.resetVersion;
+    if (this.resetPending) this.publish({ resetting: true });
     this.flight = this.receive().catch((error) => {
-      if (!this.disposed) this.publish({
+      if (!this.disposed && resetVersion === this.resetVersion) this.publish({
         // Revoked log access must remove previously authorized content
         // from the session cache as well as expose the denial in the UI.
         ...error?.status === 403 ? { items: [] } : {},
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        resetting: false
       });
     }).finally(() => {
       this.flight = null;
-      if (!this.disposed && this.listeners.size && !this.snapshot.paused) {
-        this.timer = setTimeout(() => {
+      if (!this.disposed && this.listeners.size) {
+        if (this.resetPending && resetVersion !== this.resetVersion) {
           void this.poll();
-        }, POLL_MS);
+        } else if (!this.snapshot.paused) {
+          this.timer = setTimeout(() => {
+            void this.poll();
+          }, POLL_MS);
+        }
       }
     });
     return this.flight;
@@ -250,7 +274,7 @@ function LogRow({ item }) {
 }
 function ServerLogTab() {
   const [session] = React.useState(() => logSession);
-  const { items, paused, logSize, error } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const { items, paused, logSize, error, resetting } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
   const [sizeText, setSizeText] = React.useState(() => String(logSize));
   const [sort, setSort] = React.useState({ key: "timestamp", dir: -1 });
   function togglePause() {
@@ -277,7 +301,19 @@ function ServerLogTab() {
     });
   }, [items, sort]);
   const headerTh = (key, label, extra = "") => /* @__PURE__ */ React.createElement("th", { className: "sortable sticky top-0 z-[1] bg-bg2 text-left " + extra, onClick: () => handleSort(key) }, label, sort.key === key ? /* @__PURE__ */ React.createElement("span", { className: "sort-arrow" }, sort.dir > 0 ? "\u25B2" : "\u25BC") : null);
-  return /* @__PURE__ */ React.createElement("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden" }, /* @__PURE__ */ React.createElement("table", { className: "dt server-log w-full" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, headerTh("timestamp", "Timestamp", "w-[160px]"), headerTh("level", "Level", "w-[76px]"), headerTh("message", "Message"))), /* @__PURE__ */ React.createElement("tbody", null, error && !items.length ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, `Server Log unavailable: ${error}`)) : !items.length ? /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, "No server log entries yet.")) : sortedItems.map((item) => /* @__PURE__ */ React.createElement(LogRow, { key: item.id, item }))))), /* @__PURE__ */ React.createElement("div", { className: "taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]" }, /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Pause or resume the live log", onClick: togglePause }, /* @__PURE__ */ React.createElement("span", { className: "text-[11.5px] leading-none" }, paused ? "\u23F5" : "\u23F8")), /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Clear the displayed log", onClick: clearLog }, /* @__PURE__ */ React.createElement("span", { className: "text-err font-bold" }, "\u2715")), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), /* @__PURE__ */ React.createElement("label", { className: "text-text-faint mr-0.5" }, "Log Size:"), /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("div", { className: "flex flex-col h-full min-h-0" }, /* @__PURE__ */ React.createElement("div", { className: "flex-1 min-h-0 overflow-y-auto overflow-x-hidden" }, /* @__PURE__ */ React.createElement("table", { className: "dt server-log w-full", "aria-busy": resetting }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, headerTh("timestamp", "Timestamp", "w-[160px]"), headerTh("level", "Level", "w-[76px]"), headerTh("message", "Message"))), /* @__PURE__ */ React.createElement("tbody", null, error && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, `Server Log unavailable: ${error}`)), items.length ? sortedItems.map((item) => /* @__PURE__ */ React.createElement(LogRow, { key: item.id, item })) : !error && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 3, className: "text-text-faint p-3" }, resetting ? "Loading recent server log entries\u2026" : "No server log entries yet."))))), /* @__PURE__ */ React.createElement("div", { className: "taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]" }, /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Pause or resume the live log", onClick: togglePause }, /* @__PURE__ */ React.createElement("span", { className: "text-[11.5px] leading-none" }, paused ? "\u23F5" : "\u23F8")), /* @__PURE__ */ React.createElement("button", { className: "icon-btn " + btnClass, title: "Clear the displayed log", onClick: clearLog }, /* @__PURE__ */ React.createElement("span", { className: "text-err font-bold" }, "\u2715")), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "icon-btn " + btnClass + " disabled:opacity-40 disabled:cursor-wait",
+      "aria-label": "Reset",
+      disabled: resetting,
+      title: resetting ? "Resetting displayed log\u2026" : "Reset displayed log: reload recent entries up to the current Log Size",
+      onClick: () => session.reset()
+    },
+    /* @__PURE__ */ React.createElement("span", { className: "inline-flex", "aria-hidden": "true", ref: (el) => {
+      if (el && !el.firstChild) el.appendChild(platform.ui.icon("undo", 14));
+    } })
+  ), /* @__PURE__ */ React.createElement("span", { className: "flex-1" }), /* @__PURE__ */ React.createElement("label", { className: "text-text-faint mr-0.5" }, "Log Size:"), /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "number",

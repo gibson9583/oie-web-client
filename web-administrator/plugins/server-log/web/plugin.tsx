@@ -8,7 +8,7 @@
  * stack trace, truncated with an ellipsis) — defaulting to newest-first.
  * Level sorts by severity rank, not alphabetically. Double-clicking a row
  * opens the full entry, including the complete stack trace. A thin bottom
- * toolbar (pause, clear, log size) sticks to the bottom; the header sticks
+ * toolbar (pause, clear, reset, log size) sticks to the bottom; the header sticks
  * to the top.
  *
  * Session state survives dashboard navigation; polling runs only while the
@@ -174,7 +174,7 @@ function LogRow({ item }: any) {
 /* A mounted view of the current session's log; hiding it stops further polls. */
 function ServerLogTab() {
     const [session] = React.useState(() => logSession);
-    const { items, paused, logSize, error } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
+    const { items, paused, logSize, error, resetting } = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
     const [sizeText, setSizeText] = React.useState(() => String(logSize));
     // Column sort — timestamp-desc is the classic newest-first default.
     const [sort, setSort] = React.useState({ key: 'timestamp', dir: -1 });
@@ -224,7 +224,7 @@ function ServerLogTab() {
         <div className="flex flex-col h-full min-h-0">
             {/* scrollable log table */}
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
-                <table className="dt server-log w-full">
+                <table className="dt server-log w-full" aria-busy={resetting}>
                     <thead>
                         <tr>
                             {headerTh('timestamp', 'Timestamp', 'w-[160px]')}
@@ -233,23 +233,31 @@ function ServerLogTab() {
                         </tr>
                     </thead>
                     <tbody>
-                        {error && !items.length ? (
+                        {error && (
                             <tr><td colSpan={3} className="text-text-faint p-3">{`Server Log unavailable: ${error}`}</td></tr>
-                        ) : !items.length ? (
-                            <tr><td colSpan={3} className="text-text-faint p-3">No server log entries yet.</td></tr>
-                        ) : (
-                            sortedItems.map((item: any) => <LogRow key={item.id} item={item} />)
                         )}
+                        {items.length ? sortedItems.map((item: any) => <LogRow key={item.id} item={item} />)
+                            : !error && <tr><td colSpan={3} className="text-text-faint p-3">
+                                {resetting ? 'Loading recent server log entries…' : 'No server log entries yet.'}
+                            </td></tr>}
                     </tbody>
                 </table>
             </div>
-            {/* thin sticky bottom toolbar: pause | clear | … | Log Size */}
+            {/* thin sticky bottom toolbar: pause | clear | reset | … | Log Size */}
             <div className="taskbar flex items-center gap-1.5 py-[3px] px-2 flex-none text-[11px] z-[2] bg-bg2 border-t border-[var(--bg3)]">
                 <button className={"icon-btn " + btnClass} title="Pause or resume the live log" onClick={togglePause}>
                     <span className="text-[11.5px] leading-none">{paused ? '⏵' : '⏸'}</span>
                 </button>
                 <button className={"icon-btn " + btnClass} title="Clear the displayed log" onClick={clearLog}>
                     <span className="text-err font-bold">✕</span>
+                </button>
+                <button className={"icon-btn " + btnClass + " disabled:opacity-40 disabled:cursor-wait"}
+                    aria-label="Reset" disabled={resetting}
+                    title={resetting ? 'Resetting displayed log…' : 'Reset displayed log: reload recent entries up to the current Log Size'}
+                    onClick={() => session.reset()}>
+                    <span className="inline-flex" aria-hidden="true" ref={(el: HTMLSpanElement | null) => {
+                        if (el && !el.firstChild) el.appendChild(platform.ui.icon('undo', 14));
+                    }} />
                 </button>
                 <span className="flex-1" />
                 <label className="text-text-faint mr-0.5">Log Size:</label>

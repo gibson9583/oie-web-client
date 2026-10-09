@@ -319,3 +319,223 @@ test('revoked log access clears the remount cache and restored access shows only
     await expect(rows(page)).toHaveCount(1);
     await expect(rows(page)).toContainText('Newly authorized live entry');
 });
+
+test('Reset restores retained history with the current size, sort and pause setting', async ({ page }) => {
+    const engine = logEngine([entry(10), entry(11), entry(12)]);
+    await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => engine.read(request) });
+    await page.goto('/dashboard');
+    await expect(rows(page)).toHaveCount(3);
+    const size = page.locator('.dash-dock input[type=number]');
+    await size.fill('3');
+    await size.press('Enter');
+    await page.locator('table.server-log th', { hasText: 'Message' }).click();
+    await pause(page).click();
+    // Older cached entries have aged out of the server buffer. Reset must
+    // replace them with the retained snapshot, not append to them.
+    engine.entries = [entry(20, 'Zebra retained'), entry(21, 'Alpha retained'), entry(22, 'Mike retained'), entry(23, 'Bravo retained')];
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await expect(rows(page)).toHaveCount(3);
+    await expect(rows(page).locator('td:last-child')).toHaveText([
+        '(test:1): Alpha retained', '(test:1): Bravo retained', '(test:1): Mike retained'
+    ]);
+    await expect(size).toHaveValue('3');
+    await expect(pause(page)).toHaveText('⏵');
+    const requestsBefore = engine.calls.length;
+    await tick(page);
+    expect(engine.calls).toHaveLength(requestsBefore);
+    await clear(page);
+    await expect(rows(page)).toHaveText(['No server log entries yet.']);
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await expect(rows(page)).toHaveCount(3);
+    await expect(rows(page).locator('td:last-child')).toHaveText([
+        '(test:1): Alpha retained', '(test:1): Bravo retained', '(test:1): Mike retained'
+    ]);
+    await remount(page, 'route');
+    await expect(rows(page)).toHaveCount(3);
+    await expect(pause(page)).toHaveText('⏵');
+    await expect(size).toHaveValue('3');
+});
+
+test('Reset supersedes a pending old poll and replaces it with current retained history', async ({ page }) => {
+    const engine = logEngine();
+    const held = gate();
+    let holdNext = false, waiting = false;
+    await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
+        const response = engine.read(request);
+        if (holdNext) { holdNext = false; waiting = true; await held.promise; }
+        return response;
+    } });
+    try {
+        await page.goto('/dashboard');
+        await expect(rows(page)).toHaveCount(2);
+        engine.entries.push(entry(12, 'Superseded poll row'));
+        holdNext = true;
+        await tick(page);
+        await expect.poll(() => waiting).toBe(true);
+        engine.entries = [entry(20, 'Latest retained snapshot')];
+        await page.getByRole('button', { name: 'Reset', exact: true }).click();
+        held.release();
+        await expect(rows(page)).toHaveCount(1);
+        await expect(rows(page)).toContainText('Latest retained snapshot');
+        await expect(rows(page).filter({ hasText: 'Superseded poll row' })).toHaveCount(0);
+        engine.entries.push(entry(21, 'Live after reset'));
+        await tick(page);
+        await expect(rows(page)).toHaveCount(2);
+        await expect(rows(page).filter({ hasText: 'Live after reset' })).toHaveCount(1);
+    } finally { held.release(); }
+});
+
+test('Clear after Reset wins over its pending reload while future log entries remain live', async ({ page }) => {
+    const engine = logEngine();
+    const held = gate();
+    let holdNext = false, waiting = false;
+    await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
+        const response = engine.read(request);
+        if (holdNext) { holdNext = false; waiting = true; await held.promise; }
+        return response;
+    } });
+    try {
+        await page.goto('/dashboard');
+        await expect(rows(page)).toHaveCount(2);
+        holdNext = true;
+        await page.getByRole('button', { name: 'Reset', exact: true }).click();
+        await expect.poll(() => waiting).toBe(true);
+        await expect(page.getByRole('button', { name: 'Reset', exact: true })).toBeDisabled();
+        await expect(page.locator('table.server-log')).toHaveAttribute('aria-busy', 'true');
+        await expect(page.getByTitle('Clear the displayed log', { exact: true })).toBeEnabled();
+        await clear(page);
+        const resetResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/extensions/serverlog');
+        held.release();
+        await (await resetResponse).finished();
+        await expect(rows(page)).toHaveText(['No server log entries yet.']);
+        await tick(page);
+        await expect(rows(page)).toHaveText(['No server log entries yet.']);
+        engine.entries.push(entry(12, 'Live after cleared reset'));
+        await tick(page);
+        await expect(rows(page)).toHaveCount(1);
+        await expect(rows(page)).toContainText('Live after cleared reset');
+    } finally { held.release(); }
+});
+
+test('a failed Reset exposes an error and a second Reset retries without resuming a paused log', async ({ page }) => {
+    const engine = logEngine();
+    let failing = false;
+    await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => {
+        const response = engine.read(request);
+        return failing ? { __status: 503, body: { message: 'Synthetic reset failure' } } : response;
+    } });
+    await page.goto('/dashboard');
+    await expect(rows(page)).toHaveCount(2);
+    await pause(page).click();
+    failing = true;
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await expect(page.getByText(/Synthetic reset failure/)).toBeVisible();
+    await expect(rows(page).filter({ hasText: 'Server log entry' })).toHaveCount(2);
+    await expect(page.getByRole('button', { name: 'Reset', exact: true })).toBeEnabled();
+    await expect(page.locator('table.server-log')).toHaveAttribute('aria-busy', 'false');
+    await expect(pause(page)).toHaveText('⏵');
+    failing = false;
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await expect(rows(page)).toHaveCount(2);
+    await expect(page.getByText(/Synthetic reset failure/)).toHaveCount(0);
+    await expect(pause(page)).toHaveText('⏵');
+    const requestsBefore = engine.calls.length;
+    await tick(page);
+    expect(engine.calls).toHaveLength(requestsBefore);
+});
+
+test('signing out during Reset prevents its late history from reaching the next session', async ({ page }) => {
+    const engine = logEngine();
+    const held = gate();
+    let holdNext = false, waiting = false, authenticated = true;
+    await mockEngine(page, {
+        'GET /extensions/serverlog': async (request: Request) => {
+            const response = engine.read(request);
+            if (holdNext) { holdNext = false; waiting = true; await held.promise; }
+            return response;
+        },
+        'GET /users/current': () => authenticated ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+        'POST /users/_login': () => { authenticated = true; return { status: 'SUCCESS' }; },
+        'POST /users/_logout': () => { authenticated = false; return ''; },
+    });
+    try {
+        await page.goto('/dashboard');
+        await expect(rows(page)).toHaveCount(2);
+        holdNext = true;
+        await page.getByRole('button', { name: 'Reset', exact: true }).click();
+        await expect.poll(() => waiting).toBe(true);
+        await page.locator('button.user-chip').click();
+        await page.getByRole('menuitem', { name: 'Sign out', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+        engine.entries = [entry(1, 'Fresh session history')];
+        await login(page);
+        await expect(rows(page)).toHaveCount(1);
+        await expect(rows(page)).toContainText('Fresh session history');
+        const oldResetResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/extensions/serverlog');
+        held.release();
+        await (await oldResetResponse).finished();
+        await tick(page);
+        await expect(rows(page)).toHaveCount(1);
+        await expect(rows(page)).toContainText('Fresh session history');
+    } finally { held.release(); }
+});
+
+test('Reset matches the compact log toolbar buttons at desktop and narrow widths', async ({ page }, testInfo) => {
+    const engine = logEngine();
+    let pending: ReturnType<typeof gate> | null = null;
+    await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
+        const response = engine.read(request);
+        const held = pending;
+        if (held) { pending = null; await held.promise; }
+        return response;
+    } });
+    for (const viewport of [
+        { name: 'desktop', width: 1440, height: 900 },
+        { name: 'narrow', width: 375, height: 812 }
+    ]) {
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.goto('/dashboard');
+        await expect(rows(page)).toHaveCount(2);
+        const toolbar = page.locator('.dash-dock .taskbar');
+        const reset = toolbar.getByRole('button', { name: 'Reset', exact: true });
+        await expect(reset).toHaveAccessibleName('Reset');
+        await expect(reset.locator('svg')).toBeVisible();
+        await expect(reset).toHaveText('');
+        await page.evaluate(() => document.fonts.ready);
+        const metrics = () => toolbar.locator('button').evaluateAll(buttons => buttons.slice(0, 3).map(button => {
+            const rect = button.getBoundingClientRect();
+            const style = getComputedStyle(button);
+            return {
+                width: rect.width, height: rect.height, top: rect.top - buttons[0].getBoundingClientRect().top,
+                background: style.backgroundColor, border: style.border,
+                radius: style.borderRadius, padding: style.padding
+            };
+        }));
+        await page.mouse.move(0, 0);
+        const ready = await metrics();
+        expect(ready).toHaveLength(3);
+        expect(ready[2]).toEqual(ready[0]);
+        expect(ready[2]).toEqual(ready[1]);
+        const readyScreenshot = testInfo.outputPath(`server-log-toolbar-${viewport.name}.png`);
+        await toolbar.screenshot({ path: readyScreenshot, animations: 'disabled' });
+        await testInfo.attach(`server-log-toolbar-${viewport.name}`, { path: readyScreenshot, contentType: 'image/png' });
+
+        const held = gate();
+        pending = held;
+        try {
+            await reset.click();
+            await expect(reset).toBeDisabled();
+            await expect(reset).toHaveAccessibleName('Reset');
+            await expect(reset).toHaveText('');
+            await expect(reset.locator('svg')).toBeVisible();
+            await expect(reset).toHaveAttribute('title', 'Resetting displayed log…');
+            await page.mouse.move(0, 0);
+            expect(await metrics()).toEqual(ready);
+            const loadingScreenshot = testInfo.outputPath(`server-log-toolbar-${viewport.name}-loading.png`);
+            await toolbar.screenshot({ path: loadingScreenshot, animations: 'disabled' });
+            await testInfo.attach(`server-log-toolbar-${viewport.name}-loading`, { path: loadingScreenshot, contentType: 'image/png' });
+            held.release();
+            await expect(reset).toBeEnabled();
+        } finally { held.release(); pending = null; }
+    }
+});

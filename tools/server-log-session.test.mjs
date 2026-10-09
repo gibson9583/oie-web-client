@@ -84,7 +84,7 @@ for (const result of ['success', 'failure']) {
         if (result === 'success') await h.resolve([entry(10)]);
         else await h.reject('late session failure');
         assert.equal(h.session.getSnapshot(), disposed);
-        assert.deepEqual(disposed, { items: [], error: null, paused: false, logSize: 100 });
+        assert.deepEqual(disposed, { items: [], error: null, paused: false, logSize: 100, resetting: false });
         h.session.clear();
         h.session.togglePause();
         h.session.setSize(2);
@@ -295,3 +295,152 @@ for (const failureStage of ['incremental', 'head', 'restart reload']) {
         });
     }
 }
+
+test('Reset replaces the retained buffer and applies current size while preserving pause', async t => {
+    const h = harness(t);
+    await h.resolve([entry(10), entry(11)]);
+    h.session.togglePause();
+    h.session.setSize(3);
+    h.session.reset();
+    assert.equal(h.session.getSnapshot().resetting, true);
+    assert.equal(h.requests.at(-1).cursor, null);
+    assert.equal(h.requests.at(-1).size, 3);
+    h.session.setSize(2);
+    await h.resolve([entry(20), entry(21), entry(22)]);
+    assert.deepEqual(h.ids(), [22, 21]);
+    assert.equal(h.session.getSnapshot().resetting, false);
+    assert.equal(h.session.getSnapshot().paused, true);
+    assert.equal(h.session.getSnapshot().logSize, 2);
+    assert.equal(h.timers.size, 0);
+    h.session.togglePause();
+    assert.equal(h.requests.at(-1).cursor, 22);
+    await h.resolve([entry(23)]);
+    assert.deepEqual(h.ids(), [23, 22]);
+});
+
+test('Reset after Clear wins over a pending initial clear baseline and restores retained history', async t => {
+    const h = harness(t);
+    h.session.clear();
+    h.session.reset();
+    await h.resolve([entry(10), entry(11)], 0);
+    assert.deepEqual(h.ids(), []);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests.at(-1).cursor, null);
+    await h.resolve([entry(10), entry(11)]);
+    assert.deepEqual(h.ids(), [11, 10]);
+});
+
+test('repeated Reset coalesces and a pre-reset poll cannot publish after the reset request', async t => {
+    const h = harness(t);
+    await h.resolve([entry(10)]);
+    await h.tick();
+    const observed = [];
+    h.session.subscribe(() => { observed.push(h.ids()); });
+    h.session.reset();
+    h.session.reset();
+    h.session.reset();
+    assert.equal(h.requests.length, 2, 'the reset waits for the existing read');
+    await h.resolve([entry(11)], 1);
+    assert.equal(h.requests.length, 3);
+    assert.equal(h.requests.at(-1).cursor, null);
+    h.session.reset();
+    await h.resolve([entry(20)]);
+    assert.deepEqual(h.ids(), [20]);
+    assert.equal(h.requests.length, 3, 'repeated reset does not queue a second reload');
+    assert.equal(observed.some(ids => ids.includes(11)), false, 'the superseded read never reaches observers');
+    assert.equal(h.timers.size, 1);
+});
+
+test('Clear after Reset suppresses the pending historical reload and advances its cursor for live rows', async t => {
+    const h = harness(t);
+    await h.resolve([entry(11)]);
+    h.session.reset();
+    assert.equal(h.session.getSnapshot().resetting, true);
+    h.session.clear();
+    assert.equal(h.session.getSnapshot().resetting, false);
+    await h.resolve([entry(10), entry(11)]);
+    assert.deepEqual(h.ids(), []);
+    await h.tick();
+    assert.equal(h.requests.at(-1).cursor, 11);
+    await h.resolve([entry(12)]);
+    assert.deepEqual(h.ids(), [12]);
+});
+
+test('a failed Reset can be retried while paused without losing its history-restoration intent', async t => {
+    const h = harness(t);
+    await h.resolve([entry(11)]);
+    h.session.clear();
+    h.session.togglePause();
+    h.session.reset();
+    await h.reject('reset snapshot unavailable');
+    assert.equal(h.session.getSnapshot().resetting, false);
+    assert.deepEqual(h.ids(), []);
+    assert.equal(h.session.getSnapshot().error, 'reset snapshot unavailable');
+    assert.equal(h.session.getSnapshot().paused, true);
+    assert.equal(h.timers.size, 0);
+    h.session.reset();
+    assert.equal(h.requests.at(-1).cursor, null);
+    await h.resolve([entry(10), entry(11)]);
+    assert.deepEqual(h.ids(), [11, 10]);
+    assert.equal(h.session.getSnapshot().error, null);
+    assert.equal(h.session.getSnapshot().paused, true);
+    assert.equal(h.timers.size, 0);
+});
+
+test('disposing a session during Reset prevents its response or another Reset from reviving the session', async t => {
+    const h = harness(t);
+    await h.resolve([entry(11)]);
+    h.session.reset();
+    h.session.dispose();
+    const disposed = h.session.getSnapshot();
+    await h.resolve([entry(99, 'departed session secret')]);
+    h.session.reset();
+    assert.equal(h.session.getSnapshot(), disposed);
+    assert.deepEqual(h.ids(), []);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.timers.size, 0);
+});
+
+test('a Reset completing while hidden updates the session buffer without starting hidden polling', async t => {
+    const h = harness(t);
+    await h.resolve([entry(11)]);
+    h.session.reset();
+    h.unmount();
+    await h.resolve([entry(20)]);
+    assert.deepEqual(h.ids(), [20]);
+    assert.equal(h.timers.size, 0);
+    h.mount();
+    assert.equal(h.requests.at(-1).cursor, 20);
+    await h.resolve([entry(21)]);
+    assert.deepEqual(h.ids(), [21, 20]);
+});
+
+test('an empty Reset replaces stale rows and establishes zero as the cursor for a newly started stream', async t => {
+    const h = harness(t);
+    await h.resolve([entry(11)]);
+    h.session.reset();
+    await h.resolve([]);
+    assert.deepEqual(h.ids(), []);
+    assert.equal(h.requests.length, 2, 'an empty explicit snapshot does not need a restart probe');
+    await h.tick();
+    assert.equal(h.requests.at(-1).cursor, 0);
+    await h.resolve([entry(1)]);
+    assert.deepEqual(h.ids(), [1]);
+});
+
+test('a failed live Reset retains existing rows and retries a full snapshot on the next poll', async t => {
+    const h = harness(t);
+    await h.resolve([entry(11)]);
+    h.session.reset();
+    await h.reject('temporary snapshot failure');
+    assert.deepEqual(h.ids(), [11]);
+    assert.equal(h.session.getSnapshot().error, 'temporary snapshot failure');
+    assert.equal(h.session.getSnapshot().resetting, false);
+    await h.tick();
+    assert.equal(h.requests.at(-1).cursor, null, 'retry must still restore history rather than use the old cursor');
+    assert.equal(h.session.getSnapshot().resetting, true);
+    await h.resolve([entry(20)]);
+    assert.deepEqual(h.ids(), [20]);
+    assert.equal(h.session.getSnapshot().error, null);
+    assert.equal(h.session.getSnapshot().resetting, false);
+});
