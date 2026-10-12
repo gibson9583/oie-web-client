@@ -54,7 +54,7 @@ import { RailPane, TaskButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
 import * as router from '../../core/router.js';
 import { DateTimeField } from '../date-time-field.jsx';
-import { on } from '../../core/store.js';
+import { on, scopedKey } from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import {
     COMPARE_STAGES, cancelPending, confirmCompare, describeRef, getAnchor, getPending,
@@ -236,6 +236,30 @@ function defaultAdvancedCriteria() {
         contentSearches: [],   // [{type, text}]
         metaDataSearches: []   // [{column, operator, value, ignoreCase}]
     };
+}
+
+/* Last-used Custom Metadata search rows, remembered per channel (and, through
+   scopedKey, per server + user) so the Advanced dialog can pre-populate them.
+   Only the column, operator and ignore-case flag are stored — never the search
+   value, which may be PHI. The default channel search is unaffected. */
+const META_SEARCH_KEYS_PREFIX = 'oie-meta-search-keys:';
+
+function loadMetaSearchKeys(channelId: string) {
+    try {
+        const saved = JSON.parse(localStorage.getItem(scopedKey(META_SEARCH_KEYS_PREFIX + channelId)) || '[]');
+        return Array.isArray(saved)
+            ? saved.filter((k: any) => k && typeof k.column === 'string' && META_SEARCH_OPERATORS.includes(k.operator))
+                .map((k: any) => ({ column: k.column, operator: k.operator, ignoreCase: !!k.ignoreCase }))
+            : [];
+    } catch { return []; }
+}
+
+function saveMetaSearchKeys(channelId: string, keys: any[]) {
+    const key = scopedKey(META_SEARCH_KEYS_PREFIX + channelId);
+    try {
+        if (keys.length) localStorage.setItem(key, JSON.stringify(keys.map(k => ({ column: k.column, operator: k.operator, ignoreCase: !!k.ignoreCase }))));
+        else localStorage.removeItem(key);
+    } catch { /* private mode */ }
 }
 
 function advIsActive(adv: any) {
@@ -1347,7 +1371,7 @@ function DetailBody({ detail, channelId, channelName, platform, anchor, onActive
 
 /* Imperative modal (like the other dialogs): self-contained, reads the staged
    criteria passed in and hands the resolved criteria back through onApply. */
-function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) {
+function openAdvancedSearch({ channelId, connectors, metaDataColumns, adv, onApply }: any) {
     /* ---- connector inclusion table (Id | Current Connector Name | Included) --
        Mirrors the Swing MessageBrowserAdvancedFilter: all checked = no filter;
        if "Deleted Connectors" (null) stays checked, exclude the unchecked real
@@ -1441,8 +1465,9 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
 
     /* Custom Metadata searches — "COLUMN OPERATOR value" strings. */
     const ms = makeSelectableTable(['Metadata', 'Operator', 'Value', 'Ignore Case']);
-    function addMetaSearchRow(column?: any, operator = 'CONTAINS', value = '', ignoreCase = false) {
+    function addMetaSearchRow(column?: any, operator = 'CONTAINS', value = '', ignoreCase = false, remembered = false) {
         const row = {
+            remembered,
             column: metaDataColumns.length
                 ? select(metaDataColumns.map((c: any) => c.name), column ?? metaDataColumns[0].name)
                 : h('input', { type: 'text', value: column ?? '', placeholder: 'COLUMN_NAME' }),
@@ -1458,7 +1483,16 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
         ms.sel(row);
         return row;
     }
-    adv.metaDataSearches.forEach((m: any) => addMetaSearchRow(m.column, m.operator, m.value, m.ignoreCase));
+    if (adv.metaDataSearches.length) {
+        adv.metaDataSearches.forEach((m: any) => addMetaSearchRow(m.column, m.operator, m.value, m.ignoreCase));
+    } else {
+        // Nothing staged — pre-populate this channel's remembered keys (empty
+        // values), skipping columns the channel no longer has.
+        const columns = metaDataColumns.map((c: any) => c.name);
+        loadMetaSearchKeys(channelId)
+            .filter((k: any) => !columns.length || columns.includes(k.column))
+            .forEach((k: any) => addMetaSearchRow(k.column, k.operator, '', k.ignoreCase, true));
+    }
 
     const sectionLabel = (text: any) => h('div', { class: 'font-semibold mt-3.5 mx-0 mb-1.5' }, text);
 
@@ -1498,6 +1532,12 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
                             included = checked.map(r => r.key).filter(k => k !== null);
                         }
                     }
+                    const metaRows = ms.rows
+                        .map(r => ({ column: String(r.column.value).trim(), operator: r.operator.value, value: r.value.value, ignoreCase: r.ignoreCase.checked, remembered: r.remembered }))
+                        .filter(r => r.column);
+                    // Remember the rows still in the table (keys only); a
+                    // pre-populated row left without a value doesn't search.
+                    saveMetaSearchKeys(channelId, metaRows);
                     // Stage the criteria + flag the button; the user runs the
                     // search with Search (no auto-search on apply).
                     onApply({
@@ -1513,9 +1553,9 @@ function openAdvancedSearch({ connectors, metaDataColumns, adv, onApply }: any) 
                         contentSearches: cs.rows
                             .map(r => ({ type: r.type.value, text: r.text.value.trim() }))
                             .filter(r => r.text),
-                        metaDataSearches: ms.rows
-                            .map(r => ({ column: String(r.column.value).trim(), operator: r.operator.value, value: r.value.value, ignoreCase: r.ignoreCase.checked }))
-                            .filter(r => r.column)
+                        metaDataSearches: metaRows
+                            .filter(r => !(r.remembered && r.value === ''))
+                            .map(({ remembered: _, ...r }) => r)
                     });
                 }
             }
@@ -2987,7 +3027,7 @@ export function MessagesView({ params, query }: any) {
         // Close the narrow Filters popover first, so it doesn't float over the modal.
         setFiltersOpen(false);
         openAdvancedSearch({
-            connectors, metaDataColumns, adv: advRef.current,
+            channelId, connectors, metaDataColumns, adv: advRef.current,
             onApply: (next: any) => { advRef.current = next; setAdvOn(advIsActive(next)); }
         });
     }

@@ -213,6 +213,61 @@ test('audits explicit PHI searches and accessed connector messages, but not the 
     expect(accessedBody).toContain('<string>messageId</string><string>12345</string>');
 });
 
+test('remembers Custom Metadata search keys per channel, never values', async ({ page }) => {
+    const searches: URLSearchParams[] = [];
+    page.on('request', request => {
+        const url = new URL(request.url());
+        if (request.method() === 'GET' && url.pathname === `/api/channels/${CID}/messages`) searches.push(url.searchParams);
+    });
+    await mockEngine(page, {
+        ...MESSAGE_FIXTURES,
+        [`GET /channels/${CID}/metaDataColumns`]: { list: { metaDataColumn: [
+            { name: 'PATIENT_ID', type: 'STRING' }, { name: 'ACCESSION_NUMBER', type: 'STRING' }
+        ] } },
+    });
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Advanced…', exact: true }).click();
+    let advanced = page.getByRole('dialog', { name: 'Advanced Search Filter' });
+    let metadataTable = advanced.locator('table', { hasText: 'Metadata' });
+    await expect(metadataTable.locator('tbody tr')).toHaveCount(0);
+    await advanced.getByRole('button', { name: 'New', exact: true }).nth(1).click();
+    await metadataTable.locator('select').nth(0).selectOption('ACCESSION_NUMBER');
+    await metadataTable.locator('select').nth(1).selectOption('=');
+    await metadataTable.locator('input[type="text"]').fill('ACC-SECRET-1');
+    await advanced.getByRole('button', { name: 'OK', exact: true }).click();
+
+    const stored = await page.evaluate(() => Object.keys(localStorage)
+        .filter(k => k.startsWith('oie-meta-search-keys:'))
+        .map(k => localStorage.getItem(k)).join(''));
+    expect(stored).toContain('ACCESSION_NUMBER');
+    expect(stored).not.toContain('ACC-SECRET-1');
+
+    // Reopening the channel runs the default search — no metadata criteria.
+    searches.length = 0;
+    await page.reload();
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+    expect(searches.length).toBeGreaterThan(0);
+    expect(searches.every(p => !p.has('metaDataSearch') && !p.has('metaDataCaseInsensitiveSearch'))).toBe(true);
+
+    // Advanced pre-populates the remembered key + operator with an empty value.
+    await page.getByRole('button', { name: 'Advanced…', exact: true }).click();
+    advanced = page.getByRole('dialog', { name: 'Advanced Search Filter' });
+    metadataTable = advanced.locator('table', { hasText: 'Metadata' });
+    await expect(metadataTable.locator('tbody tr')).toHaveCount(1);
+    await expect(metadataTable.locator('select').nth(0)).toHaveValue('ACCESSION_NUMBER');
+    await expect(metadataTable.locator('select').nth(1)).toHaveValue('=');
+    await expect(metadataTable.locator('input[type="text"]')).toHaveValue('');
+
+    // Left empty, the remembered row is not searched.
+    await advanced.getByRole('button', { name: 'OK', exact: true }).click();
+    searches.length = 0;
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect.poll(() => searches.length).toBeGreaterThan(0);
+    expect(searches.every(p => !p.has('metaDataSearch'))).toBe(true);
+});
+
 test('audits the first explicit PHI search after metadata loading recovers', async ({ page }) => {
     let metadataLoads = 0;
     let messageSearches = 0;
