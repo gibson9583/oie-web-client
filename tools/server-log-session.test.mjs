@@ -231,6 +231,54 @@ test('a full cursor read without the cursor entry is aged out, not a restart', a
     assert.equal(h.ids().at(-1), 1);
 });
 
+for (const cleared of [false, true]) {
+    test('an empty cursor read with unchanged history is not a restart, cleared: ' + cleared, async t => {
+        const h = harness(t);
+        await h.resolve(rows(3));
+        if (cleared) h.session.clear();
+        await h.tick();
+        // The engine answers empty when a log write races its buffer copy.
+        await h.resolve([]);
+        await h.restart(rows(3));
+        assert.deepEqual(h.ids(), cleared ? [] : [3, 2, 1]);
+        await h.tick();
+        assert.equal(h.requests.at(-1).since, 2, 'unverified suspicion is not retained');
+        await h.resolve(rows(4));
+        assert.deepEqual(h.ids(), cleared ? [4] : [4, 3, 2, 1]);
+    });
+}
+
+for (const fallback of ['empty', 'failed']) {
+    test('a proven restart survives a history read that is ' + fallback + ', until rows replace the display', async t => {
+        const h = harness(t);
+        await h.resolve(rows(5));
+        await h.tick();
+        await h.resolve(rows(5, 'restarted'));
+        if (fallback === 'empty') await h.restart([]);
+        else await h.reject();
+        assert.deepEqual(h.ids(), [5, 4, 3, 2, 1]);
+        // The new process logs past the old cursor until its entry ages out.
+        await h.tick();
+        assert.equal(h.requests.at(-1).since, undefined, 'the next poll reads full history');
+        await h.resolve(rows(200, 'restarted'));
+        assert.equal(h.ids().length, 100);
+        assert.ok(h.state().items.every(item => item.message.startsWith('restarted-')));
+        await h.tick();
+        assert.equal(h.requests.at(-1).since, 199, 'replacing the display ends the restart');
+    });
+}
+
+test('a changed cursor entry in a full cursor read is a restart', async t => {
+    const h = harness(t);
+    await h.resolve(rows(5));
+    await h.tick();
+    const next = rows(104, 'restarted');
+    await h.resolve(next);
+    await h.restart(next);
+    assert.equal(h.ids()[0], 104);
+    assert.ok(h.state().items.every(item => item.message.startsWith('restarted-')));
+});
+
 test('a cursor outside the retained window does not falsely discard accumulated display rows', async t => {
     const h = harness(t);
     h.session.setSize(300);

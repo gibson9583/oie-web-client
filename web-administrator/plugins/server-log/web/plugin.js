@@ -21,6 +21,7 @@ var ServerLogSession = class {
   lastItem = null;
   lastId = null;
   baselinePending = false;
+  restartProven = false;
   resetVersion = 0;
   resetPending = false;
   disposed = false;
@@ -82,10 +83,18 @@ var ServerLogSession = class {
   async read(resetting) {
     const cursor = this.lastId, last = this.lastItem;
     if (resetting || !cursor || !last) return { history: newestFirst(await this.fetchLogs()), restarted: false };
-    const recent = newestFirst(await this.fetchLogs(cursor - 1));
-    const anchor = recent.find((item) => Number(item.id) === cursor);
-    const restarted = anchor ? fingerprint(anchor) !== fingerprint(last) : recent.length < RETAINED;
-    return restarted ? { history: newestFirst(await this.fetchLogs()), restarted } : { history: recent, restarted };
+    const same = (item) => !!item && fingerprint(item) === fingerprint(last);
+    if (!this.restartProven) {
+      const recent = newestFirst(await this.fetchLogs(cursor - 1));
+      const anchor2 = recent.find((item) => Number(item.id) === cursor);
+      if (anchor2 ? same(anchor2) : recent.length >= RETAINED) return { history: recent, restarted: false };
+      if (recent.length) this.restartProven = true;
+    }
+    const history = newestFirst(await this.fetchLogs());
+    const anchor = history.find((item) => Number(item.id) === cursor);
+    const oldest = history.at(-1);
+    if (anchor ? !same(anchor) : !!oldest && Number(oldest.id) < cursor) this.restartProven = true;
+    return { history, restarted: this.restartProven && history.length > 0 };
   }
   async receive() {
     const resetVersion = this.resetVersion;
@@ -96,7 +105,8 @@ var ServerLogSession = class {
     if (this.snapshot.paused && !suppress && !resetting) return;
     const newest = history[0];
     const cursor = this.lastId;
-    const replace = resetting || restarted && !!newest;
+    const replace = resetting || restarted;
+    if (replace) this.restartProven = false;
     const fresh = replace || cursor === null ? history : history.filter((item) => Number(item.id) > cursor);
     if (newest) {
       this.lastId = Number(newest.id);

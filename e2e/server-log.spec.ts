@@ -90,6 +90,62 @@ for (const surface of ['route', 'dock', 'cards'] as const) {
     });
 }
 
+test('an empty cursor response from concurrent logging does not restore cleared entries', async ({ page }) => {
+    const engine = logEngine();
+    let emptyNext = false;
+    await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => {
+        const response = engine.read(request);
+        if (emptyNext && new URL(request.url()).searchParams.has('lastLogId')) {
+            emptyNext = false;
+            return { serverLogItem: [] };
+        }
+        return response;
+    } });
+    await page.goto('/dashboard');
+    await expect(rows(page)).toHaveCount(2);
+    await clear(page);
+    emptyNext = true;
+    const calls = engine.calls.length;
+    await tick(page);
+    await expect.poll(() => engine.calls.length).toBe(calls + 2);
+    await expect(rows(page)).toHaveText(['No server log entries yet.']);
+    engine.entries.push(entry(12));
+    await tick(page);
+    await expect(rows(page)).toHaveCount(1);
+    await expect(rows(page)).toContainText('Server log entry 12');
+});
+
+test('a proven restart survives a failed history read and never mixes processes', async ({ page }) => {
+    const engine = logEngine();
+    let failHistory = false;
+    await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => {
+        const response = engine.read(request);
+        if (failHistory && !new URL(request.url()).searchParams.has('lastLogId')) {
+            failHistory = false;
+            return { __status: 503, body: { message: 'Synthetic history failure' } };
+        }
+        return response;
+    } });
+    await page.goto('/dashboard');
+    await expect(rows(page)).toHaveCount(2);
+    // Room for old-process rows, so any mixing stays visible.
+    const size = page.locator('.dash-dock input[type=number]');
+    await size.fill('200');
+    await size.press('Enter');
+    engine.entries = [{ ...entry(11, 'Restarted entry 11'), date: { time: 1700000010011, timezone: 'UTC' } }];
+    failHistory = true;
+    const calls = engine.calls.length;
+    await tick(page);
+    await expect.poll(() => engine.calls.length).toBe(calls + 2);
+    await expect(rows(page)).toHaveCount(2);
+    // The new process logs until the old cursor entry ages out.
+    engine.entries = Array.from({ length: 150 }, (_, i) => entry(i + 1, `Restarted entry ${i + 1}`));
+    await tick(page);
+    await expect(rows(page)).toHaveCount(100);
+    await expect(rows(page).filter({ hasText: 'Server log entry' })).toHaveCount(0);
+    await expect(rows(page).first()).toContainText('Restarted entry 150');
+});
+
 test('displayed rows, pause and log size survive every remount in the same session', async ({ page }) => {
     const engine = logEngine();
     await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => engine.read(request) });

@@ -35,6 +35,7 @@ export class ServerLogSession {
     private lastItem: LogItem | null = null;
     private lastId: number | null = null;
     private baselinePending = false;
+    private restartProven = false;
     private resetVersion = 0;
     private resetPending = false;
     private disposed = false;
@@ -113,12 +114,22 @@ export class ServerLogSession {
     private async read(resetting: boolean): Promise<{ history: LogItem[]; restarted: boolean }> {
         const cursor = this.lastId, last = this.lastItem;
         if (resetting || !cursor || !last) return { history: newestFirst(await this.fetchLogs()), restarted: false };
-        const recent = newestFirst(await this.fetchLogs(cursor - 1));
-        const anchor = recent.find(item => Number(item.id) === cursor);
-        // Without the anchor, a short read means its ID was reused; a full read
-        // means it aged out and cannot prove a restart.
-        const restarted = anchor ? fingerprint(anchor) !== fingerprint(last) : recent.length < RETAINED;
-        return restarted ? { history: newestFirst(await this.fetchLogs()), restarted } : { history: recent, restarted };
+        const same = (item?: LogItem) => !!item && fingerprint(item) === fingerprint(last);
+        if (!this.restartProven) {
+            const recent = newestFirst(await this.fetchLogs(cursor - 1));
+            const anchor = recent.find(item => Number(item.id) === cursor);
+            // A full read without the anchor means it aged out.
+            if (anchor ? same(anchor) : recent.length >= RETAINED) return { history: recent, restarted: false };
+            // The engine answers empty when logging races its read, so only a
+            // non-empty short read proves the anchor's ID was reused.
+            if (recent.length) this.restartProven = true;
+        }
+        const history = newestFirst(await this.fetchLogs());
+        const anchor = history.find(item => Number(item.id) === cursor);
+        const oldest = history.at(-1);
+        if (anchor ? !same(anchor) : !!oldest && Number(oldest.id) < cursor) this.restartProven = true;
+        // A proven restart persists until a non-empty history replaces the display.
+        return { history, restarted: this.restartProven && history.length > 0 };
     }
 
     private async receive(): Promise<void> {
@@ -135,8 +146,8 @@ export class ServerLogSession {
 
         const newest = history[0];
         const cursor = this.lastId;
-        // An empty history after a restart keeps the display until entries arrive.
-        const replace = resetting || (restarted && !!newest);
+        const replace = resetting || restarted;
+        if (replace) this.restartProven = false;
         const fresh = replace || cursor === null ? history : history.filter(item => Number(item.id) > cursor);
         if (newest) {
             this.lastId = Number(newest.id);
