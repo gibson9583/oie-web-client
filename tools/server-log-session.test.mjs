@@ -34,8 +34,8 @@ function harness(t) {
         state: () => session.getSnapshot(),
         ids: () => session.getSnapshot().items.map(item => item.id),
         async resolve(items, index = requests.length - 1) { requests[index].resolve(items); await settle(); },
-        // A proven restart follows its cursor read with one full history read.
-        async restart(items) {
+        // An unconfirmed cursor read is followed by one full history read.
+        async fullRead(items) {
             assert.notEqual(requests.at(-2).since, undefined);
             assert.equal(requests.at(-1).since, undefined);
             await this.resolve(items);
@@ -179,7 +179,7 @@ for (const size of [1, 100]) {
                 else await h.tick();
                 const next = rows(head, 'restarted');
                 await h.resolve(next);
-                await h.restart(next);
+                await h.fullRead(next);
                 assert.deepEqual(h.state().items.map(item => item.message),
                     next.reverse().slice(0, size).map(item => item.message));
                 await h.tick();
@@ -196,11 +196,11 @@ test('an empty snapshot preserves restart identity until a later snapshot can ve
     h.unmount();
     h.mount();
     await h.resolve([]);
-    await h.restart([]);
+    await h.fullRead([]);
     assert.deepEqual(h.ids(), [3, 2, 1]);
     await h.tick();
     await h.resolve(rows(4, 'restarted'));
-    await h.restart(rows(4, 'restarted'));
+    await h.fullRead(rows(4, 'restarted'));
     assert.deepEqual(h.state().items.map(item => item.message),
         ['restarted-4', 'restarted-3', 'restarted-2', 'restarted-1']);
 });
@@ -239,7 +239,7 @@ for (const cleared of [false, true]) {
         await h.tick();
         // The engine answers empty when a log write races its buffer copy.
         await h.resolve([]);
-        await h.restart(rows(3));
+        await h.fullRead(rows(3));
         assert.deepEqual(h.ids(), cleared ? [] : [3, 2, 1]);
         await h.tick();
         assert.equal(h.requests.at(-1).since, 2, 'unverified suspicion is not retained');
@@ -254,7 +254,7 @@ for (const fallback of ['empty', 'failed']) {
         await h.resolve(rows(5));
         await h.tick();
         await h.resolve(rows(5, 'restarted'));
-        if (fallback === 'empty') await h.restart([]);
+        if (fallback === 'empty') await h.fullRead([]);
         else await h.reject();
         assert.deepEqual(h.ids(), [5, 4, 3, 2, 1]);
         // The new process logs past the old cursor until its entry ages out.
@@ -274,9 +274,25 @@ test('a changed cursor entry in a full cursor read is a restart', async t => {
     await h.tick();
     const next = rows(104, 'restarted');
     await h.resolve(next);
-    await h.restart(next);
+    await h.fullRead(next);
     assert.equal(h.ids()[0], 104);
     assert.ok(h.state().items.every(item => item.message.startsWith('restarted-')));
+});
+
+test('a short cursor read missing the anchor is verified before discarding accumulated rows', async t => {
+    const h = harness(t);
+    h.session.setSize(300);
+    await h.resolve(rows(100));
+    await h.tick();
+    await h.resolve(rows(150, 'original', 51));
+    assert.equal(h.ids().length, 150);
+    await h.tick();
+    // A read racing the engine's eviction can omit the anchor and return 99 newer entries.
+    await h.resolve(rows(249, 'original', 151));
+    await h.fullRead(rows(250, 'original', 151));
+    assert.equal(h.ids().length, 250);
+    assert.equal(h.ids()[0], 250);
+    assert.equal(h.ids().at(-1), 1);
 });
 
 test('a cursor outside the retained window does not falsely discard accumulated display rows', async t => {
@@ -301,7 +317,7 @@ test('failed restart reads preserve Clear until one successful snapshot consumes
     await h.reject();
     await h.tick();
     await h.resolve(rows(2, 'restarted'));
-    await h.restart(rows(2, 'restarted'));
+    await h.fullRead(rows(2, 'restarted'));
     assert.deepEqual(h.ids(), []);
     await h.tick();
     await h.resolve(rows(3, 'restarted'));
@@ -437,7 +453,7 @@ for (const lifecycle of ['live', 'paused', 'remount']) {
             else await h.tick();
             const snapshot = rows(next === 'new' ? 4 : 3, next === 'restarted' ? 'restarted' : 'original');
             await h.resolve(snapshot);
-            if (next === 'restarted') await h.restart(snapshot);
+            if (next === 'restarted') await h.fullRead(snapshot);
             assert.deepEqual(h.ids(), next === 'unchanged' ? [] : next === 'new' ? [4] : [3, 2, 1]);
             assert.ok(h.state().items.every(item => item.message.startsWith(next === 'restarted' ? 'restarted-' : 'original-')));
         });

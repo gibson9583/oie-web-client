@@ -115,6 +115,34 @@ test('an empty cursor response from concurrent logging does not restore cleared 
     await expect(rows(page)).toContainText('Server log entry 12');
 });
 
+test('a short response racing eviction does not discard accumulated rows', async ({ page }) => {
+    const engine = logEngine(Array.from({ length: 100 }, (_, i) => entry(i + 1)));
+    let shortNext = false;
+    await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => {
+        const response = engine.read(request);
+        if (shortNext && new URL(request.url()).searchParams.has('lastLogId')) {
+            shortNext = false;
+            return { serverLogItem: response.serverLogItem.slice(1) };
+        }
+        return response;
+    } });
+    await page.goto('/dashboard');
+    await expect(rows(page)).toHaveCount(100);
+    const size = page.locator('.dash-dock input[type=number]');
+    await size.fill('300');
+    await size.press('Enter');
+    engine.entries = Array.from({ length: 100 }, (_, i) => entry(i + 51));
+    await tick(page);
+    await expect(rows(page)).toHaveCount(150);
+    // The engine evicted the cursor entry mid-read, leaving 99 newer entries.
+    engine.entries = Array.from({ length: 100 }, (_, i) => entry(i + 151));
+    shortNext = true;
+    await tick(page);
+    await expect(rows(page)).toHaveCount(250);
+    await expect(rows(page).first()).toContainText('Server log entry 250');
+    await expect(rows(page).last()).toContainText('Server log entry 1');
+});
+
 test('a proven restart survives a failed history read and never mixes processes', async ({ page }) => {
     const engine = logEngine();
     let failHistory = false;

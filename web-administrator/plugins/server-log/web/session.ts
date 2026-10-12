@@ -120,9 +120,9 @@ export class ServerLogSession {
             const anchor = recent.find(item => Number(item.id) === cursor);
             // A full read without the anchor means it aged out.
             if (anchor ? same(anchor) : recent.length >= RETAINED) return { history: recent, restarted: false };
-            // The engine answers empty when logging races its read, so only a
-            // non-empty short read proves the anchor's ID was reused.
-            if (recent.length) this.restartProven = true;
+            // Only a changed anchor proves its ID was reused. Logging that races
+            // the engine's read can omit the anchor or every entry.
+            if (anchor) this.restartProven = true;
         }
         const history = newestFirst(await this.fetchLogs());
         const anchor = history.find(item => Number(item.id) === cursor);

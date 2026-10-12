@@ -88,7 +88,7 @@ var ServerLogSession = class {
       const recent = newestFirst(await this.fetchLogs(cursor - 1));
       const anchor2 = recent.find((item) => Number(item.id) === cursor);
       if (anchor2 ? same(anchor2) : recent.length >= RETAINED) return { history: recent, restarted: false };
-      if (recent.length) this.restartProven = true;
+      if (anchor2) this.restartProven = true;
     }
     const history = newestFirst(await this.fetchLogs());
     const anchor = history.find((item) => Number(item.id) === cursor);
