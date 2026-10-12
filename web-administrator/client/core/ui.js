@@ -918,7 +918,10 @@ export function taskButton(label, iconName, onClick, opts = {}) {
     // null, which the rail's taskbar host skips.
     if (opts.task && !checkTask(opts.group, opts.task))
         return null;
-    return h(`button.btn${opts.primary ? '.btn-primary' : ''}${opts.danger ? '.btn-danger' : ''}`, { onClick, disabled: opts.disabled, title: opts.title || null }, iconName ? icon(iconName) : null, label);
+    return h(`button.btn${opts.primary ? '.btn-primary' : ''}${opts.danger ? '.btn-danger' : ''}`, { onClick: (event) => {
+            if (!opts.disabled && (!opts.task || checkTask(opts.group, opts.task)))
+                onClick?.(event);
+        }, disabled: opts.disabled, title: opts.title || null }, iconName ? icon(iconName) : null, label);
 }
 export function downloadFile(filename, content, type = 'application/octet-stream') {
     const blob = content instanceof Blob ? content : new Blob([content], { type });

@@ -63,6 +63,29 @@ function get(port, rawPath) {
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
     const port = server.address().port;
 
+    await test('authorization metadata survives discovery and incomplete manifests fail closed', async () => {
+        const manifestPath = path.join(pdir, 'plugin.json');
+        const original = fs.readFileSync(manifestPath, 'utf8');
+        try {
+            fs.writeFileSync(manifestPath, JSON.stringify({ id: 'demo', authorization: true, client: { entry: 'web/plugin.js' } }));
+            let response = await get(port, '/webadmin/plugins.json');
+            assert.strictEqual(response.status, 200);
+            assert.strictEqual(JSON.parse(response.body)[0].authorization, true);
+            for (const broken of ['{', JSON.stringify({ client: { entry: 'web/plugin.js' } })]) {
+                fs.writeFileSync(manifestPath, broken);
+                response = await get(port, '/webadmin/plugins.json');
+                assert.strictEqual(response.status, 503, 'must not hide a broken authorization manifest');
+            }
+            fs.writeFileSync(manifestPath, JSON.stringify({ enabled: false }));
+            response = await get(port, '/webadmin/plugins.json');
+            assert.strictEqual(response.status, 200, 'an explicitly disabled plugin is not a discovery failure');
+            assert.deepStrictEqual(JSON.parse(response.body), []);
+            fs.writeFileSync(manifestPath, JSON.stringify({ enabled: 'false' }));
+            assert.strictEqual((await get(port, '/webadmin/plugins.json')).status, 503, 'only boolean false disables a plugin');
+        } finally { fs.writeFileSync(manifestPath, original); }
+        assert.strictEqual((await get(port, '/webadmin/plugins.json')).status, 200, 'repair is retryable');
+    });
+
     await test('serves a legitimate in-tree plugin asset (200)', async () => {
         const r = await get(port, '/plugins/demo/web/plugin.js');
         assert.strictEqual(r.status, 200);

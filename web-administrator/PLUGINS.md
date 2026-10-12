@@ -90,6 +90,12 @@ framework instance instead of bundling its own). See
 }
 ```
 
+Plugins that install an authorization controller must declare `"authorization": true`
+at the top level of their manifest. The host blocks startup if such a plugin
+cannot load, is incompatible, or fails to install a valid controller. The legacy
+RBAC plugin ID `rbac` is also recognized. Both Node and WAR delivery preserve
+this flag; ordinary plugin load failures remain isolated.
+
 `oie.apiMin` (optional) is the **minimum `@oie/*` API version your plugin needs** —
 see [API version compatibility](#api-version-compatibility). Omit it and your
 plugin always loads (no gate); set it when you rely on a framework capability

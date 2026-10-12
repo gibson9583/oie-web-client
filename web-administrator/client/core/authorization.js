@@ -26,35 +26,52 @@
  * the Swing concept.
  */
 const ALLOW_ALL = { checkTask: () => true };
+const DENY_ALL = { checkTask: () => false };
 let controller = ALLOW_ALL;
+let blocked = false;
+let revision = 0;
+let registered = false;
+/** Plugin discovery must settle before an authorization provider can allow tasks. */
+export function blockAuthorization(value) { blocked = value; }
+/** Receipt used to verify that an authorization plugin installed its controller. */
+export function authorizationRegistration() {
+    return { revision, registered };
+}
 /** Register the RBAC controller (or clear it by passing null). */
 export function setAuthorizationController(ctrl) {
-    controller = (ctrl && typeof ctrl.checkTask === 'function') ? ctrl : ALLOW_ALL;
+    revision++;
+    registered = !!ctrl && typeof ctrl.checkTask === 'function';
+    controller = registered ? ctrl : ctrl == null ? ALLOW_ALL : DENY_ALL;
     if (controller.initialize) {
         try {
             controller.initialize();
         }
         catch (e) {
-            console.warn('[auth] controller.initialize failed:', e);
+            controller = DENY_ALL;
+            registered = false;
+            throw e;
         }
     }
 }
 /**
  * True if the user may see/use the task. Untagged items (no task name) are
- * always allowed, and a throwing controller fails OPEN (visible) — matching
- * Swing's DefaultAuthorizationController, which permits everything.
+ * allowed after discovery, while a throwing controller denies tagged tasks.
+ * A failed or pending authorization bootstrap denies all task checks, even
+ * if a plugin installed a permissive controller before failing registration.
  *
  * A task WITHOUT a group is still checked (group passed as ''): tagging a task
  * signals gating intent, and RBAC controllers resolve bare Swing task names
  * without the group — so a missing group tag must not silently fail open.
  */
 export function checkTask(taskGroup, taskName) {
+    if (blocked)
+        return false;
     if (!taskName)
         return true;
     try {
         return controller.checkTask(taskGroup || '', taskName) !== false;
     }
     catch {
-        return true;
+        return false;
     }
 }

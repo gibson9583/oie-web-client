@@ -11,7 +11,7 @@ import { useState, useEffect, useRef, forwardRef, useImperativeHandle, createCon
 import * as Collapsible from '@radix-ui/react-collapsible';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import * as RadioGroup from '@radix-ui/react-radio-group';
-import { Icon } from './bridges.jsx';
+import { Icon, useStoreKey } from './bridges.jsx';
 import { DataTable } from '@oie/web-ui';
 import { createCodeEditor } from '../core/codeeditor.js';
 import { checkTask } from '../core/authorization.js';
@@ -91,6 +91,7 @@ export function RailPane({
    constant, e.g. "doNewChannel") + the pane's group gate visibility via RBAC: an
    unauthorized task renders nothing, exactly like Swing hiding the task. */
 export function TaskButton({ label, icon, onClick, primary, danger, task, group, disabled, title }: any) {
+    useStoreKey('webPlugins');
     const ctxGroup = useContext(TaskGroupContext);
     if (task && !checkTask(group || ctxGroup, task)) return null;
     const cls = 'btn' + (primary ? ' btn-primary' : '') + (danger ? ' btn-danger' : '');
@@ -98,7 +99,9 @@ export function TaskButton({ label, icon, onClick, primary, danger, task, group,
     // greyed task), as opposed to one the user may not run at all — that is RBAC's
     // job above, and it hides the button outright.
     return (
-        <button className={cls} onClick={onClick} disabled={disabled} title={title}>
+        <button className={cls} onClick={(event) => {
+            if (!disabled && (!task || checkTask(group || ctxGroup, task))) onClick?.(event);
+        }} disabled={disabled} title={title}>
             {icon ? <Icon name={icon} /> : null}{label}
         </button>
     );

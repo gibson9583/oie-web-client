@@ -25,6 +25,8 @@ import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
 const React = platform.React;
 
+const TASK_GROUP = 'settings_Data Pruner';
+
 const PRUNER_STATUS_ORDER = ['currentState', 'currentProcess', 'lastProcess', 'nextProcess', 'isRunning'];
 
 /* ---- XStream sub-document (pollingProperties / archiverOptions) helpers ----
@@ -221,6 +223,11 @@ export function register(platform: Platform) {
         const [busy, setBusy] = React.useState(false);
         const operationRef = React.useRef(false);
         const mountedRef = React.useRef(true);
+        const runningRef = React.useRef(null as boolean | null);
+        const [permissions, updatePermissions] = React.useReducer((n: number) => n + 1, 0);
+        React.useEffect(() => platform.store.subscribe('webPlugins', updatePermissions), [platform]);
+        const allowed = (task: string) => platform.checkTask(TASK_GROUP, task);
+        const canSave = allowed('doSave');
 
         // The live, mutable property list (round-trips pollingProperties /
         // archiverOptions / includeAttachments and any unknown keys unchanged).
@@ -268,7 +275,7 @@ export function register(platform: Platform) {
         // field), updating the matching state and restoring the caret after the
         // controlled re-render.
         const insertArchiveVar = (input: any, token: any) => {
-            if (!input || input.disabled) return;
+            if (!input || input.disabled || !allowed('doSave') || !mountedRef.current) return;
             const setter = input === rootInputRef.current ? setRootFolder : setFilePattern;
             const s = input.selectionStart ?? input.value.length;
             const e = input.selectionEnd ?? input.value.length;
@@ -426,26 +433,53 @@ export function register(platform: Platform) {
         }
 
         async function refreshStatus() {
+            if (!mountedRef.current) return;
+            runningRef.current = null;
+            if (!allowed('doRefresh')) {
+                setStatusState({ phase: 'error', pairs: [], message: 'You do not have permission to view Data Pruner status.' });
+                return;
+            }
+            setStatusState({ phase: 'loading', pairs: [], message: '' });
             try {
                 const raw = await api.get('/extensions/datapruner/status');
-                setStatusState({ phase: 'ready', pairs: statusPairs(raw), message: '' });
+                if (!mountedRef.current) return;
+                if (!allowed('doRefresh')) {
+                    setStatusState({ phase: 'error', pairs: [], message: 'You do not have permission to view Data Pruner status.' });
+                    return;
+                }
+                const pairs = statusPairs(raw);
+                const running = pairs.find(([key]: any) => key === 'isRunning')?.[1];
+                runningRef.current = running === 'true' ? true : running === 'false' ? false : null;
+                setStatusState({ phase: 'ready', pairs, message: '' });
             } catch (e: any) {
+                if (!mountedRef.current) return;
                 setStatusState({ phase: 'error', pairs: [], message: `Status unavailable: ${e.message}` });
             }
         }
 
         async function load() {
             if (operationRef.current || !mountedRef.current) return;
+            if (!allowed('doRefresh')) {
+                setErrorMessage('You do not have permission to view Data Pruner settings.');
+                setPhase('error');
+                return;
+            }
             operationRef.current = true;
+            runningRef.current = null;
             setBusy(true);
             setPhase('loading');
             try {
                 const properties = await api.extensions.properties('Data Pruner');
                 if (!mountedRef.current) return;
+                if (!allowed('doRefresh')) {
+                    setErrorMessage('You do not have permission to view Data Pruner settings.');
+                    setPhase('error');
+                    return;
+                }
                 propListRef.current = propsToList(properties);
                 applyPropsToForm();
                 setPhase('ready');
-                refreshStatus();
+                await refreshStatus();
             } catch (e: any) {
                 if (!mountedRef.current) return;
                 toast(`Failed to load Data Pruner properties: ${e.message}`, 'error');
@@ -458,7 +492,7 @@ export function register(platform: Platform) {
         }
 
         async function save() {
-            if (operationRef.current || phase !== 'ready' || !mountedRef.current) return false;
+            if (operationRef.current || phase !== 'ready' || !mountedRef.current || !allowed('doSave')) return false;
             operationRef.current = true;
             setBusy(true);
             const submittedSnapshot = snapshot();
@@ -549,27 +583,34 @@ export function register(platform: Platform) {
             }
         }
 
-        async function pruneNow() {
-            if (await confirmDialog('Prune Now', 'Start the Data Pruner now? Pruning may take a long time on large message stores.', { okLabel: 'Start' })) {
+        async function changeRunning(start: boolean) {
+            const task = start ? 'doStart' : 'doStop';
+            if (operationRef.current || phase !== 'ready' || !mountedRef.current
+                || !allowed(task) || runningRef.current !== !start) return;
+            // Reserve the operation through confirmation, the mutation and its
+            // status refresh; stale DOM clicks cannot overlap Save/Refresh/Stop.
+            operationRef.current = true;
+            setBusy(true);
+            try {
+                if (start && !await confirmDialog('Prune Now', 'Start the Data Pruner now? Pruning may take a long time on large message stores.', { okLabel: 'Start' })) return;
+                if (!mountedRef.current || !allowed(task) || runningRef.current !== !start) return;
                 try {
-                    await api.post('/extensions/datapruner/_start');
-                    toast('Data Pruner started');
+                    await api.post('/extensions/datapruner/' + (start ? '_start' : '_stop'));
+                    if (!mountedRef.current) return;
+                    toast(start ? 'Data Pruner started' : 'Stop requested');
                 } catch (e: any) {
-                    toast(`Start failed: ${e.message}`, 'error');
+                    if (!mountedRef.current) return;
+                    toast(`${start ? 'Start' : 'Stop'} failed: ${e.message}`, 'error');
                 }
-                refreshStatus();
+                await refreshStatus();
+            } finally {
+                operationRef.current = false;
+                if (mountedRef.current) setBusy(false);
             }
         }
 
-        async function stopPruner() {
-            try {
-                await api.post('/extensions/datapruner/_stop');
-                toast('Stop requested');
-            } catch (e: any) {
-                toast(`Stop failed: ${e.message}`, 'error');
-            }
-            refreshStatus();
-        }
+        const pruneNow = () => changeRunning(true);
+        const stopPruner = () => changeRunning(false);
 
         // Initial load only; repeating when edit-state closures change would overwrite the form.
         React.useEffect(() => {
@@ -589,14 +630,16 @@ export function register(platform: Platform) {
             // can save on the user's behalf.
             setSave(save);
             setTasks('Data Pruner Tasks', [
-                taskButton('Refresh', 'refresh', () => { load(); }, { disabled: busy }),
-                taskButton('Save', 'save', save, { primary: true, disabled: busy || phase !== 'ready' }),
-                taskButton('View Events', 'events', () => platform.router.navigate('/events')),
-                taskButton('Prune Now', 'play', pruneNow),
-                taskButton('Stop Pruner', 'stop', stopPruner, { danger: true })
+                taskButton('Refresh', 'refresh', () => { load(); }, { group: TASK_GROUP, task: 'doRefresh', disabled: busy }),
+                taskButton('Save', 'save', save, { group: TASK_GROUP, task: 'doSave', primary: true, disabled: busy || phase !== 'ready' }),
+                taskButton('View Events', 'events', () => {
+                    if (mountedRef.current && platform.checkTask('view', 'doShowEvents')) platform.router.navigate('/events');
+                }, { group: 'view', task: 'doShowEvents' }),
+                taskButton('Prune Now', 'play', pruneNow, { group: TASK_GROUP, task: 'doStart', disabled: busy || phase !== 'ready' || runningRef.current !== false }),
+                taskButton('Stop Pruner', 'stop', stopPruner, { group: TASK_GROUP, task: 'doStop', danger: true, disabled: busy || phase !== 'ready' || runningRef.current !== true })
             ]);
             // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, [busy, phase, enabled, blockSize, pruneEvents, maxEventAge, archiveEnabled, archiverBlockSize,
+        }, [permissions, statusState, busy, phase, enabled, blockSize, pruneEvents, maxEventAge, archiveEnabled, archiverBlockSize,
             includeAttachments, scheduleType, freqValue, freqUnit, pollTime, cronJobs, scheduleDirty,
             contentKey, encrypt, compressKey, passwordEnabled, password, encryptionType,
             rootFolder, filePattern, archiverDirty]);
@@ -663,6 +706,7 @@ export function register(platform: Platform) {
                     </div>
                 </div>
 
+                <fieldset disabled={!canSave} className="border-0 p-0 m-0 min-w-0">
                 <div className="panel">
                     <div className="panel-header">Schedule</div>
                     <div className="panel-body">
@@ -878,9 +922,9 @@ export function register(platform: Platform) {
                                         style={{ opacity: archiveEnabled ? 1 : 0.5 }}
                                         title="Drag a variable into Root Path / File Pattern, or click to insert it at the last-focused one">
                                         {ARCHIVE_VARS.map((v: any) => (
-                                            <div key={v.label} draggable={archiveEnabled}
+                                            <div key={v.label} draggable={archiveEnabled && canSave}
                                                 className="py-[3px] px-3 text-[11px] select-none cursor-grab hover:bg-bg2"
-                                                onClick={() => archiveEnabled && insertArchiveVar(lastVarTargetRef.current || rootInputRef.current, v.token)}
+                                                onClick={() => archiveEnabled && canSave && insertArchiveVar(lastVarTargetRef.current || rootInputRef.current, v.token)}
                                                 onDragStart={(ev: any) => {
                                                     ev.dataTransfer.clearData();
                                                     ev.dataTransfer.setData(ARCHIVE_VAR_MIME, v.token);
@@ -899,6 +943,7 @@ export function register(platform: Platform) {
                         )}
                     </div>
                 </div>
+                </fieldset>
             </div>
         );
     }

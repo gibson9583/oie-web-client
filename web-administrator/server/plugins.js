@@ -68,7 +68,7 @@ exports.preloadLinks = preloadLinks;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const express_1 = __importDefault(require("express"));
-function discover(pluginDirs) {
+function discover(pluginDirs, strict = false) {
     const plugins = [];
     const seen = new Set();
     for (const pluginDir of pluginDirs) {
@@ -89,16 +89,15 @@ function discover(pluginDirs) {
                 continue;
             try {
                 const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf8'));
-                if (!manifest.id || !/^[a-z0-9][a-z0-9-_]*$/i.test(manifest.id)) {
-                    console.error(`[plugins] ${entry.name}: plugin.json is missing a valid "id" — skipped`);
+                if (manifest.enabled === false) {
+                    console.log(`[plugins] ${entry.name}: disabled in manifest — skipped`);
                     continue;
+                }
+                if (!manifest.id || !/^[a-z0-9][a-z0-9-_]*$/i.test(manifest.id)) {
+                    throw new Error('plugin.json is missing a valid "id"');
                 }
                 if (seen.has(manifest.id)) {
                     console.log(`[plugins] ${manifest.id}: already loaded from another directory — skipped`);
-                    continue;
-                }
-                if (manifest.enabled === false) {
-                    console.log(`[plugins] ${manifest.id}: disabled in manifest — skipped`);
                     continue;
                 }
                 seen.add(manifest.id);
@@ -106,6 +105,8 @@ function discover(pluginDirs) {
             }
             catch (e) {
                 console.error(`[plugins] ${entry.name}: failed to read plugin.json: ${e.message}`);
+                if (strict)
+                    throw e;
             }
         }
     }
@@ -132,6 +133,7 @@ function install(app, config) {
             version: manifest.version || '0.0.0',
             author: manifest.author || '',
             description: manifest.description || '',
+            authorization: manifest.authorization === true,
             // Minimum @oie API version the plugin declares (client-side compat gate).
             apiMin: manifest.oie && manifest.oie.apiMin ? String(manifest.oie.apiMin) : null,
             entry: manifest.client && manifest.client.entry
@@ -197,10 +199,17 @@ function install(app, config) {
     });
     // The frontend bootstraps from this manifest — freshly scanned each time.
     app.get('/webadmin/plugins.json', (req, res) => {
-        const plugins = discover(dirs);
-        for (const { dir, manifest } of plugins)
-            mountServerEntry(dir, manifest);
-        res.json(plugins.map(p => toClientManifest(p.manifest)));
+        try {
+            // A skipped unreadable manifest could be the authorization provider.
+            // Report incomplete discovery instead of returning a permissive subset.
+            const plugins = discover(dirs, true);
+            for (const { dir, manifest } of plugins)
+                mountServerEntry(dir, manifest);
+            res.json(plugins.map(p => toClientManifest(p.manifest)));
+        }
+        catch {
+            res.status(503).json({ error: 'Plugin discovery is unavailable.' });
+        }
     });
     // Startup report (also mounts server entries present at boot).
     const initial = discover(dirs);

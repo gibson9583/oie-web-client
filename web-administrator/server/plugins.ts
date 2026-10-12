@@ -38,6 +38,7 @@ export interface ServerPluginManifest {
     author?: string;
     description?: string;
     enabled?: boolean;
+    authorization?: boolean;
     client?: { entry?: string };
     server?: { entry?: string };
     oie?: { apiMin?: string };
@@ -46,7 +47,7 @@ export interface ServerPluginManifest {
     [key: string]: unknown;
 }
 
-function discover(pluginDirs: string[]): Array<{ dir: string; manifest: ServerPluginManifest }> {
+function discover(pluginDirs: string[], strict = false): Array<{ dir: string; manifest: ServerPluginManifest }> {
     const plugins: Array<{ dir: string; manifest: ServerPluginManifest }> = [];
     const seen = new Set();
 
@@ -66,22 +67,22 @@ function discover(pluginDirs: string[]): Array<{ dir: string; manifest: ServerPl
 
             try {
                 const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'plugin.json'), 'utf8'));
-                if (!manifest.id || !/^[a-z0-9][a-z0-9-_]*$/i.test(manifest.id)) {
-                    console.error(`[plugins] ${entry.name}: plugin.json is missing a valid "id" — skipped`);
+                if (manifest.enabled === false) {
+                    console.log(`[plugins] ${entry.name}: disabled in manifest — skipped`);
                     continue;
+                }
+                if (!manifest.id || !/^[a-z0-9][a-z0-9-_]*$/i.test(manifest.id)) {
+                    throw new Error('plugin.json is missing a valid "id"');
                 }
                 if (seen.has(manifest.id)) {
                     console.log(`[plugins] ${manifest.id}: already loaded from another directory — skipped`);
-                    continue;
-                }
-                if (manifest.enabled === false) {
-                    console.log(`[plugins] ${manifest.id}: disabled in manifest — skipped`);
                     continue;
                 }
                 seen.add(manifest.id);
                 plugins.push({ dir, manifest });
             } catch (e) {
                 console.error(`[plugins] ${entry.name}: failed to read plugin.json: ${(e as Error).message}`);
+                if (strict) throw e;
             }
         }
     }
@@ -110,6 +111,7 @@ export function install(app: Express, config: WebAdminConfig) {
             version: manifest.version || '0.0.0',
             author: manifest.author || '',
             description: manifest.description || '',
+            authorization: manifest.authorization === true,
             // Minimum @oie API version the plugin declares (client-side compat gate).
             apiMin: manifest.oie && manifest.oie.apiMin ? String(manifest.oie.apiMin) : null,
             entry: manifest.client && manifest.client.entry
@@ -171,9 +173,15 @@ export function install(app: Express, config: WebAdminConfig) {
 
     // The frontend bootstraps from this manifest — freshly scanned each time.
     app.get('/webadmin/plugins.json', (req: Request, res: Response) => {
-        const plugins = discover(dirs);
-        for (const { dir, manifest } of plugins) mountServerEntry(dir, manifest);
-        res.json(plugins.map(p => toClientManifest(p.manifest)));
+        try {
+            // A skipped unreadable manifest could be the authorization provider.
+            // Report incomplete discovery instead of returning a permissive subset.
+            const plugins = discover(dirs, true);
+            for (const { dir, manifest } of plugins) mountServerEntry(dir, manifest);
+            res.json(plugins.map(p => toClientManifest(p.manifest)));
+        } catch {
+            res.status(503).json({ error: 'Plugin discovery is unavailable.' });
+        }
     });
 
     // Startup report (also mounts server entries present at boot).
@@ -206,4 +214,3 @@ export function preloadLinks(config: WebAdminConfig): string[] {
         (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
     return clientEntries(config).map((e) => `<link rel="modulepreload" href="${esc(e)}">`);
 }
-

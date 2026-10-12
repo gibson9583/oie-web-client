@@ -1,6 +1,7 @@
 // plugins/datapruner/web/plugin.tsx
 import { platform } from "@oie/web-shell";
 var React = platform.React;
+var TASK_GROUP = "settings_Data Pruner";
 var PRUNER_STATUS_ORDER = ["currentState", "currentProcess", "lastProcess", "nextProcess", "isRunning"];
 function childEl(root, name) {
   if (!root) return null;
@@ -164,6 +165,11 @@ function register(platform2) {
     const [busy, setBusy] = React.useState(false);
     const operationRef = React.useRef(false);
     const mountedRef = React.useRef(true);
+    const runningRef = React.useRef(null);
+    const [permissions, updatePermissions] = React.useReducer((n) => n + 1, 0);
+    React.useEffect(() => platform3.store.subscribe("webPlugins", updatePermissions), [platform3]);
+    const allowed = (task) => platform3.checkTask(TASK_GROUP, task);
+    const canSave = allowed("doSave");
     const propListRef = React.useRef([]);
     const scheduleRef = React.useRef(null);
     const archiverRef = React.useRef(null);
@@ -193,7 +199,7 @@ function register(platform2) {
     const patternInputRef = React.useRef(null);
     const lastVarTargetRef = React.useRef(null);
     const insertArchiveVar = (input, token) => {
-      if (!input || input.disabled) return;
+      if (!input || input.disabled || !allowed("doSave") || !mountedRef.current) return;
       const setter = input === rootInputRef.current ? setRootFolder : setFilePattern;
       const s = input.selectionStart ?? input.value.length;
       const e = input.selectionEnd ?? input.value.length;
@@ -342,25 +348,52 @@ function register(platform2) {
       setHasArchiver(buildArchiver());
     }
     async function refreshStatus() {
+      if (!mountedRef.current) return;
+      runningRef.current = null;
+      if (!allowed("doRefresh")) {
+        setStatusState({ phase: "error", pairs: [], message: "You do not have permission to view Data Pruner status." });
+        return;
+      }
+      setStatusState({ phase: "loading", pairs: [], message: "" });
       try {
         const raw = await api.get("/extensions/datapruner/status");
-        setStatusState({ phase: "ready", pairs: statusPairs(raw), message: "" });
+        if (!mountedRef.current) return;
+        if (!allowed("doRefresh")) {
+          setStatusState({ phase: "error", pairs: [], message: "You do not have permission to view Data Pruner status." });
+          return;
+        }
+        const pairs = statusPairs(raw);
+        const running = pairs.find(([key]) => key === "isRunning")?.[1];
+        runningRef.current = running === "true" ? true : running === "false" ? false : null;
+        setStatusState({ phase: "ready", pairs, message: "" });
       } catch (e) {
+        if (!mountedRef.current) return;
         setStatusState({ phase: "error", pairs: [], message: `Status unavailable: ${e.message}` });
       }
     }
     async function load() {
       if (operationRef.current || !mountedRef.current) return;
+      if (!allowed("doRefresh")) {
+        setErrorMessage("You do not have permission to view Data Pruner settings.");
+        setPhase("error");
+        return;
+      }
       operationRef.current = true;
+      runningRef.current = null;
       setBusy(true);
       setPhase("loading");
       try {
         const properties = await api.extensions.properties("Data Pruner");
         if (!mountedRef.current) return;
+        if (!allowed("doRefresh")) {
+          setErrorMessage("You do not have permission to view Data Pruner settings.");
+          setPhase("error");
+          return;
+        }
         propListRef.current = propsToList(properties);
         applyPropsToForm();
         setPhase("ready");
-        refreshStatus();
+        await refreshStatus();
       } catch (e) {
         if (!mountedRef.current) return;
         toast(`Failed to load Data Pruner properties: ${e.message}`, "error");
@@ -372,7 +405,7 @@ function register(platform2) {
       }
     }
     async function save() {
-      if (operationRef.current || phase !== "ready" || !mountedRef.current) return false;
+      if (operationRef.current || phase !== "ready" || !mountedRef.current || !allowed("doSave")) return false;
       operationRef.current = true;
       setBusy(true);
       const submittedSnapshot = snapshot();
@@ -456,26 +489,30 @@ function register(platform2) {
         if (mountedRef.current) setBusy(false);
       }
     }
-    async function pruneNow() {
-      if (await confirmDialog("Prune Now", "Start the Data Pruner now? Pruning may take a long time on large message stores.", { okLabel: "Start" })) {
-        try {
-          await api.post("/extensions/datapruner/_start");
-          toast("Data Pruner started");
-        } catch (e) {
-          toast(`Start failed: ${e.message}`, "error");
-        }
-        refreshStatus();
-      }
-    }
-    async function stopPruner() {
+    async function changeRunning(start) {
+      const task = start ? "doStart" : "doStop";
+      if (operationRef.current || phase !== "ready" || !mountedRef.current || !allowed(task) || runningRef.current !== !start) return;
+      operationRef.current = true;
+      setBusy(true);
       try {
-        await api.post("/extensions/datapruner/_stop");
-        toast("Stop requested");
-      } catch (e) {
-        toast(`Stop failed: ${e.message}`, "error");
+        if (start && !await confirmDialog("Prune Now", "Start the Data Pruner now? Pruning may take a long time on large message stores.", { okLabel: "Start" })) return;
+        if (!mountedRef.current || !allowed(task) || runningRef.current !== !start) return;
+        try {
+          await api.post("/extensions/datapruner/" + (start ? "_start" : "_stop"));
+          if (!mountedRef.current) return;
+          toast(start ? "Data Pruner started" : "Stop requested");
+        } catch (e) {
+          if (!mountedRef.current) return;
+          toast(`${start ? "Start" : "Stop"} failed: ${e.message}`, "error");
+        }
+        await refreshStatus();
+      } finally {
+        operationRef.current = false;
+        if (mountedRef.current) setBusy(false);
       }
-      refreshStatus();
     }
+    const pruneNow = () => changeRunning(true);
+    const stopPruner = () => changeRunning(false);
     React.useEffect(() => {
       mountedRef.current = true;
       load();
@@ -488,13 +525,17 @@ function register(platform2) {
       setTasks("Data Pruner Tasks", [
         taskButton("Refresh", "refresh", () => {
           load();
-        }, { disabled: busy }),
-        taskButton("Save", "save", save, { primary: true, disabled: busy || phase !== "ready" }),
-        taskButton("View Events", "events", () => platform3.router.navigate("/events")),
-        taskButton("Prune Now", "play", pruneNow),
-        taskButton("Stop Pruner", "stop", stopPruner, { danger: true })
+        }, { group: TASK_GROUP, task: "doRefresh", disabled: busy }),
+        taskButton("Save", "save", save, { group: TASK_GROUP, task: "doSave", primary: true, disabled: busy || phase !== "ready" }),
+        taskButton("View Events", "events", () => {
+          if (mountedRef.current && platform3.checkTask("view", "doShowEvents")) platform3.router.navigate("/events");
+        }, { group: "view", task: "doShowEvents" }),
+        taskButton("Prune Now", "play", pruneNow, { group: TASK_GROUP, task: "doStart", disabled: busy || phase !== "ready" || runningRef.current !== false }),
+        taskButton("Stop Pruner", "stop", stopPruner, { group: TASK_GROUP, task: "doStop", danger: true, disabled: busy || phase !== "ready" || runningRef.current !== true })
       ]);
     }, [
+      permissions,
+      statusState,
       busy,
       phase,
       enabled,
@@ -578,7 +619,7 @@ function register(platform2) {
       setCronJobs(cronJobs.map((job, i) => i === idx ? { ...job, [key]: value } : job));
       setScheduleDirty(true);
     };
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Status"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, statusState.phase === "loading" && /* @__PURE__ */ React.createElement(Loading, { text: "Loading status\u2026" }), statusState.phase === "error" && /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, statusState.message), statusState.phase === "ready" && (statusState.pairs.length ? /* @__PURE__ */ React.createElement("dl", { className: "kv" }, statusState.pairs.map(([k, v], i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: `${k}-${i}` }, /* @__PURE__ */ React.createElement("dt", null, labelCase(k)), /* @__PURE__ */ React.createElement("dd", null, v)))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "No status reported")))), /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Schedule"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Enable"), /* @__PURE__ */ React.createElement(YesNo, { value: enabled, onChange: setEnabled })), hasSchedule ? /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Schedule Type" }, /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Status"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, statusState.phase === "loading" && /* @__PURE__ */ React.createElement(Loading, { text: "Loading status\u2026" }), statusState.phase === "error" && /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, statusState.message), statusState.phase === "ready" && (statusState.pairs.length ? /* @__PURE__ */ React.createElement("dl", { className: "kv" }, statusState.pairs.map(([k, v], i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: `${k}-${i}` }, /* @__PURE__ */ React.createElement("dt", null, labelCase(k)), /* @__PURE__ */ React.createElement("dd", null, v)))) : /* @__PURE__ */ React.createElement("div", { className: "text-text-faint" }, "No status reported")))), /* @__PURE__ */ React.createElement("fieldset", { disabled: !canSave, className: "border-0 p-0 m-0 min-w-0" }, /* @__PURE__ */ React.createElement("div", { className: "panel" }, /* @__PURE__ */ React.createElement("div", { className: "panel-header" }, "Schedule"), /* @__PURE__ */ React.createElement("div", { className: "panel-body" }, /* @__PURE__ */ React.createElement("div", { className: "field" }, /* @__PURE__ */ React.createElement("label", null, "Enable"), /* @__PURE__ */ React.createElement(YesNo, { value: enabled, onChange: setEnabled })), hasSchedule ? /* @__PURE__ */ React.createElement("div", { className: "form-grid" }, /* @__PURE__ */ React.createElement(Field, { label: "Schedule Type" }, /* @__PURE__ */ React.createElement(
       "select",
       {
         value: scheduleType,
@@ -848,9 +889,9 @@ function register(platform2) {
         "div",
         {
           key: v.label,
-          draggable: archiveEnabled,
+          draggable: archiveEnabled && canSave,
           className: "py-[3px] px-3 text-[11px] select-none cursor-grab hover:bg-bg2",
-          onClick: () => archiveEnabled && insertArchiveVar(lastVarTargetRef.current || rootInputRef.current, v.token),
+          onClick: () => archiveEnabled && canSave && insertArchiveVar(lastVarTargetRef.current || rootInputRef.current, v.token),
           onDragStart: (ev) => {
             ev.dataTransfer.clearData();
             ev.dataTransfer.setData(ARCHIVE_VAR_MIME, v.token);
@@ -859,7 +900,7 @@ function register(platform2) {
         },
         v.label
       ))
-    ))) : /* @__PURE__ */ React.createElement("div", { className: "hint mt-[11px]" }, "Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged."))));
+    ))) : /* @__PURE__ */ React.createElement("div", { className: "hint mt-[11px]" }, "Advanced archiver options (archiverOptions) could not be parsed; they will be preserved unchanged.")))));
   }
   platform2.registerSettingsPanel({
     label: "Data Pruner",

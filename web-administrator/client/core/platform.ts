@@ -30,7 +30,7 @@
 import * as router from './router.js';
 import * as store from './store.js';
 import * as apiModule from './api.js';
-import { engineFetch, assertEngineResponse } from './engine-fetch.js';
+import { engineFetch, assertEngineResponse, captureEngineSession } from './engine-fetch.js';
 import * as ui from './ui.js';
 import * as oie from './oie.js';
 import { webSupportBase } from './websupport.js';
@@ -38,7 +38,7 @@ import { registerLoginAuthenticator } from './login-auth.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
-import { setAuthorizationController, checkTask } from './authorization.js';
+import { setAuthorizationController, checkTask, blockAuthorization, authorizationRegistration } from './authorization.js';
 import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
 import { apiUrl, appUrl } from './deployment.js';
@@ -316,6 +316,8 @@ export interface ReferenceItem {
 
 /** A loaded plugin's manifest plus its load status. */
 export interface PluginManifest {
+    /** A load failure must block the UI until this authorization provider loads. */
+    authorization?: boolean;
     id: string;
     name?: string;
     version?: string;
@@ -490,7 +492,10 @@ export const platform: Platform = {
        calls setAuthorizationController({ checkTask(taskGroup, taskName) }) to hide
        nav items / task buttons / right-click items. checkTask is consulted by the
        menu builders. Default = allow all. */
-    setAuthorizationController,
+    setAuthorizationController(controller) {
+        setAuthorizationController(controller);
+        store.setState('webPlugins', [...(store.getState('webPlugins') || [])]);
+    },
     checkTask,
 
     /* ---- extension points ---- */
@@ -610,9 +615,10 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
             ui.toast('The Web Support plugin is not installed on this engine — plugin UIs, message trees, and script validation are disabled. Install "websupport" from the Extensions page.', 'warn');
             return [];
         }
-        paths = apiModule.asList(await apiModule.get(`${wsBase}/webplugins`), 'string').map(String).filter(Boolean);
-    } catch {
-        return []; // unreachable / not logged in yet — nothing to add
+        paths = apiModule.asList(await apiModule.get(`${wsBase}/webplugins`, undefined, { noAuthHandler: true }), 'string');
+        if (paths.some(path => typeof path !== 'string' || !path.trim())) throw new Error('Invalid plugin discovery response');
+    } catch (error) {
+        throw new Error('Unable to discover authorization plugins', { cause: error });
     }
 
     const results = await Promise.all(paths.map(async (path): Promise<PluginManifest | null> => {
@@ -624,10 +630,11 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
                 headers: { 'X-Requested-With': 'OpenIntegrationEngine-WebAdmin' },
                 signal: AbortSignal.timeout(120_000)
             });
-            if (!res.ok) return null;
+            if (!res.ok) throw new Error(`Plugin manifest request failed (${res.status})`);
             const m = await res.json();
             assertEngineResponse(res);
-            if (!m || !m.id) return null;
+            if (!m || typeof m.id !== 'string' || !m.id.trim()) throw new Error('Invalid plugin manifest');
+            if (m.client?.entry != null && (typeof m.client.entry !== 'string' || !m.client.entry.trim())) throw new Error('Invalid plugin entry');
             const entry = m.client && m.client.entry ? `${base}/${m.client.entry}` : null;
             return {
                 id: m.id,
@@ -638,24 +645,56 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
                 // Minimum @oie API version the plugin was built against (compat gate).
                 apiMin: m.oie && m.oie.apiMin ? String(m.oie.apiMin) : null,
                 entry,
-                source: 'engine'
+                source: 'engine',
+                authorization: m.authorization === true || m.id === 'rbac' || path === 'rbac'
             };
         } catch (e) {
             console.warn(`[plugins] engine plugin "${path}" manifest failed:`, e);
-            return null;
+            throw new Error(`Unable to discover authorization for plugin ${path}`, { cause: e });
         }
     }));
     return results.filter((m): m is PluginManifest => !!m);
 }
 
-export async function loadPlugins(): Promise<PluginManifest[]> {
+// Registries append during register(), so retries must reload the page. Sharing
+// this promise also prevents simultaneous callers registering a plugin twice.
+let pluginsLoading: Promise<PluginManifest[]> | null = null;
+export function loadPlugins(): Promise<PluginManifest[]> {
+    if (!pluginsLoading) {
+        blockAuthorization(true);
+        const assertEngineSession = captureEngineSession();
+        const identity = () => {
+            const user = store.getState('user');
+            return user ? String(user.id ?? user.username) : null;
+        };
+        const user = identity();
+        const assertSession = () => {
+            assertEngineSession();
+            if (identity() !== user) throw new Error('Discarded plugin loading from the previous session');
+        };
+        store.subscribe('user', () => { if (identity() !== user) blockAuthorization(true); });
+        pluginsLoading = loadPluginsOnce(assertSession).then(loaded => {
+            assertSession();
+            blockAuthorization(false);
+            store.setState('webPlugins', [...(store.getState('webPlugins') || [])]);
+            try { assertSession(); } catch (error) { blockAuthorization(true); throw error; }
+            return loaded;
+        });
+    }
+    return pluginsLoading;
+}
+
+async function loadPluginsOnce(assertSession: () => void): Promise<PluginManifest[]> {
     let manifests: PluginManifest[] = [];
     try {
         const res = await fetch(appUrl('/webadmin/plugins.json'), { signal: AbortSignal.timeout(120_000) });
-        if (res.ok) manifests = await res.json();
+        if (!res.ok) throw new Error(`Bundled plugin manifest request failed (${res.status})`);
+        manifests = await res.json();
+        if (!Array.isArray(manifests) || manifests.some(m => !m || typeof m.id !== 'string' || !m.id.trim())) throw new Error('Invalid bundled plugin manifests');
     } catch (e) {
-        console.warn('[plugins] manifest fetch failed:', e);
+        throw new Error('Unable to discover bundled authorization plugins', { cause: e });
     }
+    assertSession();
 
     // Merge in the connected engine's own web plugins. Installs are forward-only —
     // the engine owns and serves an extension's web half — so the ENGINE copy is
@@ -673,6 +712,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
     }));
 
     const engineManifests = await fetchEngineManifests();
+    assertSession();
     const engineIds = new Set(engineManifests.map((m) => m.id).filter(Boolean));
     manifests = manifests.filter((m) => !engineIds.has(m.id)).concat(engineManifests);
 
@@ -682,11 +722,13 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
     // code — and surface them so the mismatch is visible (Extensions → web plugins)
     // instead of a silent failure. Plugins with no apiMin (bundled/framework, and
     // any built before this contract) are unaffected.
+    const isAuthorization = (manifest: PluginManifest) => manifest.authorization === true || manifest.id === 'rbac';
     const incompatible: PluginManifest[] = [];
     manifests = manifests.filter((m) => {
         if (apiCompatible(OIE_API_VERSION, m.apiMin)) return true;
         const message = `requires @oie API ${m.apiMin}, but this web administrator provides ${OIE_API_VERSION}`;
         console.warn(`[plugins] ${m.id} skipped — ${message}`);
+        if (isAuthorization(m)) throw new Error(`Authorization plugin ${m.id} ${message}`);
         incompatible.push({ ...m, status: 'incompatible', error: message });
         return false;
     });
@@ -694,7 +736,7 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
     // Import every plugin entry module IN PARALLEL — a serial `await import()`
     // per plugin cost a round-trip each (34 plugins ≈ 34 RTs; at 100ms that's
     // ~3.4s). Server-side modulepreload hints start these fetches even earlier.
-    const imported = await Promise.all(manifests.map(async (manifest): Promise<{ manifest: PluginManifest; module?: any; error?: any }> => {
+    const imported = await Promise.all(manifests.map(async (manifest): Promise<{ manifest: PluginManifest; module?: any; failed?: boolean; error?: unknown }> => {
         if (!manifest.entry) return { manifest, module: null };
         // Plugin entries are runtime URLs (/plugins/<id>/…), not build-time paths —
         // tell Vite/Rollup not to analyze/bundle this import (it's loaded live).
@@ -727,30 +769,50 @@ export async function loadPlugins(): Promise<PluginManifest[]> {
             }
             return { manifest, module: await import(/* @vite-ignore */ manifest.entry) };
         }
-        catch (e) { return { manifest, error: e }; }
+        catch (e) { return { manifest, failed: true, error: e }; }
     }));
 
     // Register in manifest order so ordering (nav items, tabs) stays stable.
+    assertSession();
     const loaded: PluginManifest[] = [];
-    for (const { manifest, module, error } of imported) {
-        if (!manifest.entry) { loaded.push({ ...manifest, status: 'no-client' }); continue; }
-        if (error) {
+    for (const { manifest, module, failed, error } of imported) {
+        if (!manifest.entry) {
+            if (isAuthorization(manifest)) throw new Error(`Authorization plugin ${manifest.id} has no entry module`);
+            loaded.push({ ...manifest, status: 'no-client' }); continue;
+        }
+        if (failed) {
+            if (isAuthorization(manifest)) throw new Error(`Authorization plugin ${manifest.id} failed to load`, { cause: error });
             console.error(`[plugins] ${manifest.id} failed:`, error);
-            loaded.push({ ...manifest, status: 'error', error: error.message });
+            loaded.push({ ...manifest, status: 'error', error: error instanceof Error ? error.message : String(error) });
             continue;
         }
         if (typeof module.register === 'function') {
+            const before = authorizationRegistration();
             try {
                 await module.register(platform);
+                assertSession();
+                const after = authorizationRegistration();
+                if (isAuthorization(manifest) && (!after.registered || after.revision === before.revision)) {
+                    throw new Error('The authorization plugin did not install a controller');
+                }
                 loaded.push({ ...manifest, status: 'loaded' });
                 console.log(`[plugins] ${manifest.id} v${manifest.version} registered`);
             } catch (e) {
+                assertSession();
+                if (isAuthorization(manifest) || authorizationRegistration().revision !== before.revision) {
+                    throw new Error(`Authorization plugin ${manifest.id} failed to initialize`, { cause: e });
+                }
                 console.error(`[plugins] ${manifest.id} register failed:`, e);
-                loaded.push({ ...manifest, status: 'error', error: (e as Error).message });
+                loaded.push({ ...manifest, status: 'error', error: e instanceof Error ? e.message : String(e) });
             }
         } else {
+            if (isAuthorization(manifest)) throw new Error(`Authorization plugin ${manifest.id} has no register export`);
             loaded.push({ ...manifest, status: 'error', error: 'entry module has no register(platform) export' });
         }
+    }
+    assertSession();
+    if (manifests.some(isAuthorization) && !authorizationRegistration().registered) {
+        throw new Error('The authorization controller was removed during plugin loading');
     }
     // Include the version-skipped plugins so the mismatch is visible in the UI.
     store.setState('webPlugins', [...loaded, ...incompatible]);

@@ -74,6 +74,7 @@ function bundledPluginManifests() {
             version: manifest.version || '0.0.0',
             author: manifest.author || '',
             description: manifest.description || '',
+            authorization: manifest.authorization === true,
             apiMin: manifest.oie?.apiMin ? String(manifest.oie.apiMin) : null,
             entry: manifest.client?.entry ? `/plugins/${manifest.id}/${manifest.client.entry}` : null
         });

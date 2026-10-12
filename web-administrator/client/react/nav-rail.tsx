@@ -246,6 +246,7 @@ export function NavRail({ collapsed, onPeek, onLogout }: any) {
     } : {});
 
     const activate = (item: any) => {
+        if (item.task && !platform.checkTask(item.rbac || 'view', item.task)) return;
         if (item.action) item.action();
         else if (item.path) router.navigate(item.path);
     };

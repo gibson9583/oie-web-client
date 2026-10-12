@@ -225,8 +225,9 @@ test('a probe refused with 421 ENGINE_UNKNOWN is not reported as a missing plugi
         'GET /extensions/websupport/webplugins': { __status: 421, body: { error: 'ENGINE_UNKNOWN' } }
     });
     await page.goto('/dashboard');
-    // Settle point: the rows render after boot, and boot awaits loadPlugins().
-    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    // An unverified discovery must not mount a view under default permissions.
+    await expect(page.getByRole('alert').filter({ hasText: 'Unable to load access controls' })).toBeVisible();
+    await expect(page.getByText('Demo Started', { exact: true })).toHaveCount(0);
     await expect(page.locator('.modal', { hasText: 'Web Support plugin' })).toHaveCount(0);
 });
 

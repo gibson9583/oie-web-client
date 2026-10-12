@@ -34,13 +34,17 @@ Semantics (`client/core/authorization.ts`):
 
 - **`checkTask(group, task)` returning `false` hides** the matching nav item, task
   button, and its right-click twin. Any other return value shows it.
-- **Fail-open.** A missing controller, an untagged item (no `task`), or a
-  controller that throws all resolve to *visible* — exactly like Swing's
-  `DefaultAuthorizationController`. RBAC can only ever *remove* options, never break
-  the UI. A `task` **without** a `group` is still checked (the group is passed as
-  `''`): tagging a task signals gating intent, and RBAC controllers resolve bare
-  Swing task names without the group — a missing group tag must not silently fail
-  open.
+- A successfully discovered engine with no authorization controller keeps the
+  default unrestricted UI. Untagged items remain visible. A controller that throws
+  denies the tagged task; an initialization failure also denies access.
+- Discovery must finish before views mount. Discovery or manifest failures block
+  startup with a reload action. Authorization plugins should declare
+  `"authorization": true` in their manifest (legacy `id: "rbac"` is recognized).
+  Missing/incompatible modules, failed registration, or registration without a
+  valid controller block startup. Unrelated plugin failures stay isolated.
+- A task without a group is still checked with `''` as its group. Task buttons
+  check again on invocation; multi-step handlers must also check after their own
+  asynchronous prompts before performing a restricted action.
 - There is one current controller; a later registration replaces it. Register
   yours in `register(platform)` (which runs during plugin load, before views
   mount).
@@ -129,6 +133,8 @@ task/`JPopupMenu` behavior.
 - `doStartConnector` — Start Connector · `doStopConnector` — Stop Connector
 
 ### `channel` — Channel Tasks (Channels view)
+- `doEditGlobalScripts` — Global Scripts navigation
+- `doEditCodeTemplates` — Code Templates navigation
 - `doRefreshChannels` — Refresh
 - `doRedeployAll` — Redeploy All
 - `doDeployChannel` — Deploy Channel *(Debug Channel is `channelEdit/doDebugDeployFromChannelView`, in the channel editor)*
@@ -223,6 +229,7 @@ Shared on every tab: `doRefresh` — Refresh · `doSave` — Save.
   The in-panel **Add Row** button also rides `doSave` (no separate identifier —
   adding a row is meaningless without save rights)
 - **`settings_Database Tasks`** — `doRunDatabaseTask` (Run Task), `doCancelDatabaseTask` (Cancel Task)
+- **`settings_Data Pruner`** — `doRefresh` (View Settings), `doSave` (Save Settings), `doStart` and `doStop` (Start / Stop). These require scoped mappings because the bare start/stop names also identify channel controls.
 - **`settings_Resources`** — `doAddResource` (Add Resource), `doRemoveResource` (Remove Resource), `doReloadResource` (Reload Resource)
 
 ---

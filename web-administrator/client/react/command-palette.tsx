@@ -26,10 +26,11 @@ import api, * as oie from '@oie/web-api';
 import { platform } from '../core/platform.js';
 import { allCommands, fuzzyMatch } from '../core/commands.js';
 import { checkTask } from '../core/authorization.js';
+import { BUILTIN_SETTINGS_LABELS, canViewSettingsTab, settingsTabId } from '../core/settings-navigation.js';
 import { getPref, setPrefs } from '../core/prefs.js';
 import * as router from '../core/router.js';
 import { queryClient } from './queries.js';
-import { Icon } from './bridges.jsx';
+import { Icon, useStoreKey } from './bridges.jsx';
 
 /* Enough that scoping to a kind (`/` for views) lists all of them rather than
    truncating, while still keeping an unscoped search scannable. */
@@ -67,22 +68,45 @@ function Highlight({ text, hits }: any) {
 
 /* ---- the entries ------------------------------------------------------------ */
 
+function permitted(item: any) {
+    return (!item.task || checkTask(item.rbac || 'view', item.task)) && (!item.visible || item.visible());
+}
+
 function viewEntries() {
     return platform.navItems()
-        .filter((item: any) => !item.task || checkTask(item.rbac || 'view', item.task))
+        .filter(permitted)
         .map((item: any) => ({
             kind: 'view', id: 'view:' + item.id, label: item.label, icon: item.icon || 'chevR',
-            group: 'Views', hint: item.path || '', path: item.path, run: item.action
+            group: 'Views', hint: item.path || '', path: item.path, run: item.action, allowed: () => permitted(item)
         }));
 }
 
 function commandEntries() {
-    return allCommands()
-        .filter((c: any) => !c.task || checkTask(c.rbac || 'view', c.task))
+    const commands = allCommands();
+    const ids = new Set(commands.map(command => command.id));
+    // Derive plugin destinations from the current panel registry. Recovery adds
+    // them to an already-open palette without accumulating registrations.
+    for (const panel of platform.settingsPanels()) {
+        const label = panel.label;
+        const id = 'settings-' + settingsTabId(label);
+        if (ids.has(id) || BUILTIN_SETTINGS_LABELS.includes(label)) continue;
+        ids.add(id);
+        commands.push({
+            id, label: 'Settings: ' + label, icon: 'settings', section: 'Settings',
+            order: BUILTIN_SETTINGS_LABELS.length, keywords: label,
+            task: 'doShowSettings', rbac: 'view', path: '/settings?tab=' + encodeURIComponent(label),
+            visible: () => canViewSettingsTab(platform, label)
+                && platform.settingsPanels().some(current => current.label === label)
+        });
+    }
+    return commands
+        .sort((a, b) => String(a.section || '').localeCompare(String(b.section || ''))
+            || (a.order ?? 100) - (b.order ?? 100) || a.label.localeCompare(b.label))
+        .filter(permitted)
         .map((c: any) => ({
             kind: 'command', id: 'cmd:' + c.id, label: c.label, icon: c.icon || 'chevR',
             group: c.section || 'Commands', hint: c.hint || '', path: c.path, run: c.run,
-            keywords: c.keywords || ''
+            keywords: c.keywords || '', allowed: () => permitted(c)
         }));
 }
 
@@ -124,8 +148,8 @@ function channelEntries(fallback: any) {
         // this file's own header contract — the palette must never surface an
         // entry RBAC hides elsewhere.
         return [
-            checkTask('view', 'doShowChannel') ? { ...base, id: 'chan:' + c.id, hint: 'edit', path: '/channels/' + c.id + '/edit' } : null,
-            checkTask('view', 'doShowMessages') ? { ...base, id: 'chanmsg:' + c.id, hint: 'messages', path: '/messages/' + c.id } : null
+            checkTask('view', 'doShowChannel') ? { ...base, id: 'chan:' + c.id, hint: 'edit', path: '/channels/' + c.id + '/edit', allowed: () => checkTask('view', 'doShowChannel') } : null,
+            checkTask('view', 'doShowMessages') ? { ...base, id: 'chanmsg:' + c.id, hint: 'messages', path: '/messages/' + c.id, allowed: () => checkTask('view', 'doShowMessages') } : null
         ].filter(Boolean);
     });
 }
@@ -133,6 +157,7 @@ function channelEntries(fallback: any) {
 /* ---- the component ---------------------------------------------------------- */
 
 export function CommandPalette() {
+    const permissions = useStoreKey('webPlugins');
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [cursor, setCursor] = useState(0);
@@ -173,13 +198,15 @@ export function CommandPalette() {
             })
             .catch(() => { /* the palette is still useful without channels */ });
         return () => { cancelled = true; };
-    }, [open, fallbackChannels.length]);
+    }, [open, fallbackChannels.length, permissions]);
 
     useEffect(() => { if (open) { setQuery(''); setCursor(0); } }, [open]);
 
     const entries = useMemo(
         () => (open ? [...viewEntries(), ...commandEntries(), ...channelEntries(fallbackChannels)] : []),
-        [open, fallbackChannels]
+        // The controller reads its permission snapshot outside React.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [open, fallbackChannels, permissions]
     );
 
     const results = useMemo(() => {
@@ -213,12 +240,13 @@ export function CommandPalette() {
     useEffect(() => { setCursor(0); }, [query]);
 
     const run = useCallback((entry: any) => {
-        if (!entry) return;
+        if (!entry || (entry.allowed && !entry.allowed())) return;
         setOpen(false);
         const recent = [entry.id, ...(getPref('paletteRecent') || []).filter((id: any) => id !== entry.id)];
         setPrefs({ paletteRecent: recent.slice(0, MAX_RECENT) });
         // After the dialog has closed, so focus restore doesn't fight the view swap.
         setTimeout(() => {
+            if (entry.allowed && !entry.allowed()) return;
             if (entry.run) entry.run();
             else if (entry.path) router.navigate(entry.path);
         }, 0);

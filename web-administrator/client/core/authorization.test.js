@@ -1,5 +1,5 @@
 /* Unit tests for the RBAC authorization hook (Swing AuthorizationController port). */
-import { setAuthorizationController, checkTask } from './authorization.js';
+import { setAuthorizationController, checkTask, blockAuthorization, authorizationRegistration } from './authorization.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, label) => { if (cond) pass++; else { fail++; console.error('  FAIL -', label); } };
@@ -34,15 +34,30 @@ ok(checkTask(undefined, 'doExportChannel') === true, 'groupless unrelated task a
 setAuthorizationController({ checkTask: () => undefined });
 ok(checkTask('channel', 'doNewChannel') === true, 'non-false return → visible');
 
-// A throwing controller fails OPEN (visible), like Swing's default.
+// A broken authorization provider must never grant a task.
 setAuthorizationController({ checkTask() { throw new Error('boom'); } });
-ok(checkTask('channel', 'doNewChannel') === true, 'throwing controller fails open');
+ok(checkTask('channel', 'doNewChannel') === false, 'throwing controller fails closed');
 
-// Invalid controller / clearing resets to allow-all.
+// Explicit clearing resets to allow-all; an invalid provider remains denied.
 setAuthorizationController(null);
 ok(checkTask('channel', 'doNewChannel') === true, 'cleared → allow all');
 setAuthorizationController({ notCheckTask: true });
-ok(checkTask('channel', 'doNewChannel') === true, 'controller without checkTask → allow all');
+ok(checkTask('channel', 'doNewChannel') === false, 'controller without checkTask → deny');
+const before = authorizationRegistration();
+setAuthorizationController({ checkTask: () => true });
+ok(authorizationRegistration().registered && authorizationRegistration().revision > before.revision, 'valid provider has a registration receipt');
+blockAuthorization(true);
+ok(!checkTask('view', 'doShowDashboard'), 'pending discovery blocks a permissive provider');
+setAuthorizationController(null);
+ok(!checkTask('view', 'doShowDashboard'), 'clearing controller cannot remove bootstrap denial');
+blockAuthorization(false);
+ok(checkTask('view', 'doShowDashboard'), 'successful discovery without provider restores default');
+let threw = false;
+try { setAuthorizationController({ initialize() { throw new Error('cannot load'); }, checkTask: () => true }); }
+catch { threw = true; }
+ok(threw && !authorizationRegistration().registered, 'failed initialization cannot earn valid receipt');
+ok(!checkTask('view', 'doShowDashboard'), 'failed initialization remains denied');
+setAuthorizationController(null);
 
 console.log(`authorization.test: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);

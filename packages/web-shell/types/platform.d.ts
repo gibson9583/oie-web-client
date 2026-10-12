@@ -268,6 +268,8 @@ export interface ReferenceItem {
 }
 /** A loaded plugin's manifest plus its load status. */
 export interface PluginManifest {
+    /** A load failure must block the UI until this authorization provider loads. */
+    authorization?: boolean;
     id: string;
     name?: string;
     version?: string;
