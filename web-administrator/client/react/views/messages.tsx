@@ -1490,7 +1490,7 @@ function openAdvancedSearch({ channelId, connectors, metaDataColumns, adv, onApp
         // values), skipping columns the channel no longer has.
         const columns = metaDataColumns.map((c: any) => c.name);
         loadMetaSearchKeys(channelId)
-            .filter((k: any) => !columns.length || columns.includes(k.column))
+            .filter((k: any) => columns.includes(k.column))
             .forEach((k: any) => addMetaSearchRow(k.column, k.operator, '', k.ignoreCase, true));
     }
 
@@ -2122,6 +2122,7 @@ export function MessagesView({ params, query }: any) {
        bare /messages route — and the picker is how you choose. */
     const [channelList, setChannelList] = useState([] as any[]);
     const [metaDataColumns, setMetaDataColumns] = useState([] as any[]);
+    const [metaDataReady, setMetaDataReady] = useState(!channelId);
     const [metaDataError, setMetaDataError] = useState<string | null>(null);
     const [messages, setMessages] = useState([] as any[]);
     // shown: null = no search has completed yet (blank counts label, legacy
@@ -2299,11 +2300,13 @@ export function MessagesView({ params, query }: any) {
             setMetaDataColumns(cols);
             phiEnabledRef.current = cols.some(col => String(col.name).toLowerCase() === 'patient_id');
             metaDataReadyRef.current = true;
+            setMetaDataReady(true);
             setMetaDataError(null);
             return true;
         } catch (e: any) {
             const error = String(e.message || e);
             metaDataReadyRef.current = false;
+            setMetaDataReady(false);
             setMetaDataError(error);
             toast(`Failed to load channel metadata: ${error}`, 'error');
             return false;
@@ -3024,6 +3027,9 @@ export function MessagesView({ params, query }: any) {
     }
 
     function openAdvanced() {
+        // The imperative dialog keeps its opening column list. Wait for a
+        // successful load so remembered rows are validated before it opens.
+        if (!metaDataReady) return;
         // Close the narrow Filters popover first, so it doesn't float over the modal.
         setFiltersOpen(false);
         openAdvancedSearch({
@@ -3197,8 +3203,10 @@ export function MessagesView({ params, query }: any) {
                             {/* The Advanced… button carries a dot whenever any advanced
                                 criterion is staged. Applying advanced criteria does NOT
                                 auto-search — the user runs it with Search (Swing parity). */}
-                            <button className="btn" onClick={openAdvanced}
-                                title={advOn ? 'Advanced filter applied — press Search to run it' : undefined}>
+                            <button className="btn" onClick={openAdvanced} disabled={!metaDataReady}
+                                title={!metaDataReady
+                                    ? (metaDataError ? 'Press Search to retry loading channel metadata' : 'Loading channel metadata…')
+                                    : advOn ? 'Advanced filter applied — press Search to run it' : undefined}>
                                 <Icon name="filter" />Advanced…
                                 {advOn && <span className="inline-block w-[6px] h-[6px] ml-[6px] rounded-full bg-accent" />}
                             </button>

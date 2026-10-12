@@ -183,6 +183,7 @@ test('audits explicit PHI searches and accessed connector messages, but not the 
         ...MESSAGE_FIXTURES,
         [`GET /channels/${CID}/metaDataColumns`]: { list: { metaDataColumn: [{ name: 'PATIENT_ID', type: 'STRING' }] } },
         [`GET /channels/${CID}/messages/12345`]: phiMessage,
+        'POST /channels/_auditAccessedPHIMessage': '',
     });
     await page.goto(`/messages/${CID}`);
     await expect(page.getByText('12345', { exact: true })).toBeVisible();
@@ -266,6 +267,81 @@ test('remembers Custom Metadata search keys per channel, never values', async ({
     await page.getByRole('button', { name: 'Search', exact: true }).click();
     await expect.poll(() => searches.length).toBeGreaterThan(0);
     expect(searches.every(p => !p.has('metaDataSearch'))).toBe(true);
+});
+
+test('skips remembered metadata when the last column was removed', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('oie-meta-search-keys:c-started:e2e-server-1:1',
+        JSON.stringify([{ column: 'ACCESSION_NUMBER', operator: '=', ignoreCase: true }])));
+    await page.goto(`/messages/${CID}`);
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Advanced…', exact: true }).click();
+    const advanced = page.getByRole('dialog', { name: 'Advanced Search Filter' });
+    await expect(advanced.locator('table', { hasText: 'Metadata' }).locator('tbody tr')).toHaveCount(0);
+    await advanced.getByRole('button', { name: 'OK', exact: true }).click();
+    expect(await page.evaluate(() => localStorage.getItem('oie-meta-search-keys:c-started:e2e-server-1:1'))).toBeNull();
+});
+
+for (const columnStillExists of [true, false]) {
+    test(`waits for metadata before restoring remembered rows (column exists: ${columnStillExists})`, async ({ page }) => {
+        let release!: () => void;
+        const pending = new Promise<void>(resolve => { release = resolve; });
+        await mockEngine(page, {
+            ...MESSAGE_FIXTURES,
+            [`GET /channels/${CID}/metaDataColumns`]: async () => {
+                await pending;
+                return { list: { metaDataColumn: [{ name: columnStillExists ? 'ACCESSION_NUMBER' : 'PATIENT_ID', type: 'STRING' }] } };
+            },
+        });
+        await page.addInitScript(() => localStorage.setItem('oie-meta-search-keys:c-started:e2e-server-1:1',
+            JSON.stringify([{ column: 'ACCESSION_NUMBER', operator: '=', ignoreCase: true }])));
+        try {
+            await page.goto(`/messages/${CID}`);
+            const button = page.getByRole('button', { name: 'Advanced…', exact: true });
+            await expect(button).toBeDisabled();
+            await expect(page.getByRole('dialog', { name: 'Advanced Search Filter' })).toHaveCount(0);
+            release();
+            await expect(button).toBeEnabled();
+            await button.click();
+            const advanced = page.getByRole('dialog', { name: 'Advanced Search Filter' });
+            const table = advanced.locator('table', { hasText: 'Metadata' });
+            await expect(table.locator('tbody tr')).toHaveCount(columnStillExists ? 1 : 0);
+            if (columnStillExists) {
+                await expect(table.locator('select').first()).toHaveValue('ACCESSION_NUMBER');
+                await expect(table.locator('select').nth(1)).toHaveValue('=');
+                await expect(table.locator('input[type="text"]')).toHaveValue('');
+                await expect(table.locator('input[type="checkbox"]')).toBeChecked();
+            }
+        } finally { release(); }
+    });
+}
+
+test('preserves remembered metadata through a failed load and retry', async ({ page }) => {
+    let loads = 0;
+    await mockEngine(page, {
+        ...MESSAGE_FIXTURES,
+        [`GET /channels/${CID}/metaDataColumns`]: () => ++loads === 1
+            ? { __status: 500, body: { error: 'metadata temporarily unavailable' } }
+            : { list: { metaDataColumn: [{ name: 'ACCESSION_NUMBER', type: 'STRING' }] } },
+    });
+    await page.addInitScript(() => localStorage.setItem('oie-meta-search-keys:c-started:e2e-server-1:1',
+        JSON.stringify([{ column: 'ACCESSION_NUMBER', operator: '=', ignoreCase: true }])));
+    await page.goto(`/messages/${CID}`);
+    const errorDialog = page.getByRole('dialog', { name: 'Error' });
+    await expect(errorDialog).toContainText('metadata temporarily unavailable');
+    await errorDialog.getByRole('button', { name: 'Close' }).last().click();
+    const button = page.getByRole('button', { name: 'Advanced…', exact: true });
+    await expect(button).toBeDisabled();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('oie-meta-search-keys:c-started:e2e-server-1:1')!)))
+        .toEqual([{ column: 'ACCESSION_NUMBER', operator: '=', ignoreCase: true }]);
+
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await expect(page.getByText('12345', { exact: true })).toBeVisible();
+    await expect(button).toBeEnabled();
+    await button.click();
+    const table = page.getByRole('dialog', { name: 'Advanced Search Filter' }).locator('table', { hasText: 'Metadata' });
+    await expect(table.locator('select').first()).toHaveValue('ACCESSION_NUMBER');
+    await expect(table.locator('input[type="text"]')).toHaveValue('');
 });
 
 test('audits the first explicit PHI search after metadata loading recovers', async ({ page }) => {
