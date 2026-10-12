@@ -23,7 +23,10 @@ function harness(t) {
         return timerId;
     });
     t.mock.method(globalThis, 'clearTimeout', id => { timers.delete(id); });
-    const session = new ServerLogSession(() => new Promise((resolve, reject) => requests.push({ resolve, reject })));
+    // Like the engine: newest first, after lastLogId, at most 100 entries.
+    const session = new ServerLogSession(since => new Promise((resolve, reject) => requests.push({ since, reject,
+        resolve: items => resolve(items.filter(item => since === undefined || Number(item.id) > since)
+            .sort((x, y) => Number(y.id) - Number(x.id)).slice(0, 100)) })));
     t.after(() => session.dispose());
     let unmount = session.subscribe(() => {});
     return {
@@ -31,6 +34,12 @@ function harness(t) {
         state: () => session.getSnapshot(),
         ids: () => session.getSnapshot().items.map(item => item.id),
         async resolve(items, index = requests.length - 1) { requests[index].resolve(items); await settle(); },
+        // A proven restart follows its cursor read with one full history read.
+        async restart(items) {
+            assert.notEqual(requests.at(-2).since, undefined);
+            assert.equal(requests.at(-1).since, undefined);
+            await this.resolve(items);
+        },
         async reject(status = 503, index = requests.length - 1) {
             requests[index].reject(Object.assign(new Error('failure-' + status), { status }));
             await settle();
@@ -170,6 +179,7 @@ for (const size of [1, 100]) {
                 else await h.tick();
                 const next = rows(head, 'restarted');
                 await h.resolve(next);
+                await h.restart(next);
                 assert.deepEqual(h.state().items.map(item => item.message),
                     next.reverse().slice(0, size).map(item => item.message));
                 await h.tick();
@@ -186,11 +196,39 @@ test('an empty snapshot preserves restart identity until a later snapshot can ve
     h.unmount();
     h.mount();
     await h.resolve([]);
+    await h.restart([]);
     assert.deepEqual(h.ids(), [3, 2, 1]);
     await h.tick();
     await h.resolve(rows(4, 'restarted'));
+    await h.restart(rows(4, 'restarted'));
     assert.deepEqual(h.state().items.map(item => item.message),
         ['restarted-4', 'restarted-3', 'restarted-2', 'restarted-1']);
+});
+
+test('polls read from the cursor entry, so an idle poll transfers one entry', async t => {
+    const h = harness(t);
+    await h.resolve(rows(3));
+    assert.equal(h.requests[0].since, undefined);
+    await h.tick();
+    assert.equal(h.requests[1].since, 2);
+    await h.resolve(rows(3));
+    assert.deepEqual(h.ids(), [3, 2, 1]);
+    assert.equal(h.requests.length, 2, 'a matching cursor entry needs no full read');
+    h.session.clear();
+    await h.tick();
+    await h.resolve(rows(4));
+    assert.deepEqual(h.ids(), [4]);
+});
+
+test('a full cursor read without the cursor entry is aged out, not a restart', async t => {
+    const h = harness(t);
+    h.session.setSize(300);
+    await h.resolve(rows(3));
+    await h.tick();
+    await h.resolve(rows(103, 'original', 4));
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.ids()[0], 103);
+    assert.equal(h.ids().at(-1), 1);
 });
 
 test('a cursor outside the retained window does not falsely discard accumulated display rows', async t => {
@@ -215,6 +253,7 @@ test('failed restart reads preserve Clear until one successful snapshot consumes
     await h.reject();
     await h.tick();
     await h.resolve(rows(2, 'restarted'));
+    await h.restart(rows(2, 'restarted'));
     assert.deepEqual(h.ids(), []);
     await h.tick();
     await h.resolve(rows(3, 'restarted'));
@@ -348,7 +387,9 @@ for (const lifecycle of ['live', 'paused', 'remount']) {
             if (lifecycle === 'paused') h.session.togglePause();
             else if (lifecycle === 'remount') h.mount();
             else await h.tick();
-            await h.resolve(rows(next === 'new' ? 4 : 3, next === 'restarted' ? 'restarted' : 'original'));
+            const snapshot = rows(next === 'new' ? 4 : 3, next === 'restarted' ? 'restarted' : 'original');
+            await h.resolve(snapshot);
+            if (next === 'restarted') await h.restart(snapshot);
             assert.deepEqual(h.ids(), next === 'unchanged' ? [] : next === 'new' ? [4] : [3, 2, 1]);
             assert.ok(h.state().items.every(item => item.message.startsWith(next === 'restarted' ? 'restarted-' : 'original-')));
         });
@@ -378,7 +419,7 @@ for (const status of [403, 503]) {
             if (pendingClear) { h.session.reset(); h.session.clear(); }
             await h.reject(status);
             assert.deepEqual(h.ids(), pendingClear || status === 403 ? [] : [3, 2, 1]);
-            assert.equal(h.state().error, 'failure-' + status);
+            assert.equal(h.state().error, h.ids().length ? null : 'failure-' + status, 'shown rows keep a poll failure quiet');
             h.unmount();
             h.mount();
             await h.resolve(rows(4));

@@ -4,8 +4,12 @@ import { platform } from "@oie/web-shell";
 // plugins/server-log/web/session.ts
 var POLL_MS = 5e3;
 var DEFAULT_LOG_SIZE = 100;
+var RETAINED = 100;
 function fingerprint(item) {
   return JSON.stringify([item.serverId, item.id, item.date, item.level, item.category, item.message]);
+}
+function newestFirst(items) {
+  return items.filter((item) => Number.isFinite(Number(item.id))).sort((a, b) => Number(b.id) - Number(a.id));
 }
 var ServerLogSession = class {
   constructor(fetchLogs) {
@@ -73,18 +77,26 @@ var ServerLogSession = class {
     this.resetPending = false;
     this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE, resetting: false });
   }
+  /** Reads entries from the cursor onward. The cursor entry itself proves
+   * the engine has not restarted; otherwise read the full retained history. */
+  async read(resetting) {
+    const cursor = this.lastId, last = this.lastItem;
+    if (resetting || !cursor || !last) return { history: newestFirst(await this.fetchLogs()), restarted: false };
+    const recent = newestFirst(await this.fetchLogs(cursor - 1));
+    const anchor = recent.find((item) => Number(item.id) === cursor);
+    const restarted = anchor ? fingerprint(anchor) !== fingerprint(last) : recent.length < RETAINED;
+    return restarted ? { history: newestFirst(await this.fetchLogs()), restarted } : { history: recent, restarted };
+  }
   async receive() {
     const resetVersion = this.resetVersion;
     const resetting = this.resetPending;
-    const retained = await this.fetchLogs();
+    const { history, restarted } = await this.read(resetting);
     if (this.disposed || this.resetPending && resetVersion !== this.resetVersion) return;
     const suppress = this.baselinePending;
     if (this.snapshot.paused && !suppress && !resetting) return;
-    const history = retained.filter((item) => Number.isFinite(Number(item.id))).sort((a, b) => Number(b.id) - Number(a.id));
     const newest = history[0];
     const cursor = this.lastId;
-    const anchor = history.find((item) => Number(item.id) === cursor);
-    const replace = resetting || !!(newest && cursor !== null && (Number(newest.id) < cursor || anchor && this.lastItem && fingerprint(anchor) !== fingerprint(this.lastItem)));
+    const replace = resetting || restarted && !!newest;
     const fresh = replace || cursor === null ? history : history.filter((item) => Number(item.id) > cursor);
     if (newest) {
       this.lastId = Number(newest.id);
@@ -112,7 +124,7 @@ var ServerLogSession = class {
       if (this.disposed) return;
       if (error?.status === 403) this.publish({ items: [] });
       if (!this.resetPending || resetVersion === this.resetVersion) this.publish({
-        error: error instanceof Error ? error.message : String(error),
+        ...this.resetPending || !this.snapshot.items.length ? { error: error instanceof Error ? error.message : String(error) } : {},
         resetting: false
       });
     }).finally(() => {
@@ -137,7 +149,7 @@ var DEFAULT_LOG_SIZE2 = 100;
 var api = platform.api;
 var { h, modal, toast } = platform.ui;
 function createSession() {
-  return new ServerLogSession(async () => api.asList(await api.get("/extensions/serverlog", { fetchSize: 100 }), "serverLogItem"));
+  return new ServerLogSession(async (lastLogId) => api.asList(await api.get("/extensions/serverlog", { fetchSize: RETAINED, lastLogId }), "serverLogItem"));
 }
 var logSession = createSession();
 var userKey = (user) => user ? String(user.id ?? user.username) : null;
@@ -285,7 +297,7 @@ function ServerLogTab() {
       className: "icon-btn " + btnClass + " disabled:opacity-40 disabled:cursor-wait",
       "aria-label": "Reset",
       disabled: resetting,
-      title: resetting ? "Resetting displayed log\u2026" : "Reset displayed log: reload recent entries up to the current Log Size",
+      title: resetting ? "Resetting displayed log\u2026" : "Reset displayed log: reload the entries the server retains (up to 100)",
       onClick: () => session.reset()
     },
     /* @__PURE__ */ React.createElement("span", { className: "inline-flex", "aria-hidden": "true", ref: (el) => {

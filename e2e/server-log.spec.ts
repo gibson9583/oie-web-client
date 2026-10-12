@@ -175,6 +175,8 @@ test('refreshing the same user with a normalized ID or renamed username preserve
     await tick(page);
     await expect(rows(page)).toHaveCount(3);
     await expect(rows(page).filter({ hasText: 'Server log entry 12' })).toHaveCount(1);
+    // Polls read from the last seen entry, not the whole retained history.
+    expect(engine.calls.at(-1)).toEqual({ cursor: 10, size: 100 });
     await remount(page, 'route');
     await expect(rows(page)).toHaveCount(3);
 });

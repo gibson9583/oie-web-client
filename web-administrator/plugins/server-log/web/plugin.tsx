@@ -17,7 +17,7 @@
 
 import { platform } from '@oie/web-shell';
 import type { Platform } from '@oie/web-shell';
-import { ServerLogSession } from './session';
+import { RETAINED, ServerLogSession } from './session';
 const React = platform.React;
 
 const DEFAULT_LOG_SIZE = 100;
@@ -26,10 +26,8 @@ const api = platform.api;
 const { h, modal, toast } = platform.ui;
 
 function createSession() {
-    // The engine retains at most 100 entries. Read one snapshot so reused IDs
-    // can be detected without separate head checks or restart reloads.
-    return new ServerLogSession(async () =>
-        api.asList(await api.get('/extensions/serverlog', { fetchSize: 100 }), 'serverLogItem'));
+    return new ServerLogSession(async lastLogId =>
+        api.asList(await api.get('/extensions/serverlog', { fetchSize: RETAINED, lastLogId }), 'serverLogItem'));
 }
 
 let logSession = createSession();
@@ -244,7 +242,7 @@ function ServerLogTab() {
                 </button>
                 <button className={"icon-btn " + btnClass + " disabled:opacity-40 disabled:cursor-wait"}
                     aria-label="Reset" disabled={resetting}
-                    title={resetting ? 'Resetting displayed log…' : 'Reset displayed log: reload recent entries up to the current Log Size'}
+                    title={resetting ? 'Resetting displayed log…' : 'Reset displayed log: reload the entries the server retains (up to 100)'}
                     onClick={() => session.reset()}>
                     <span className="inline-flex" aria-hidden="true" ref={(el: HTMLSpanElement | null) => {
                         if (el && !el.firstChild) el.appendChild(platform.ui.icon('undo', 14));

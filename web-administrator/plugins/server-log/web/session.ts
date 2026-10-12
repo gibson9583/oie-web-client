@@ -17,10 +17,16 @@ interface Snapshot {
 
 const POLL_MS = 5000;
 const DEFAULT_LOG_SIZE = 100;
-type FetchLogs = () => Promise<LogItem[]>;
+// The engine retains at most this many entries.
+export const RETAINED = 100;
+type FetchLogs = (lastLogId?: number) => Promise<LogItem[]>;
 
 function fingerprint(item: LogItem): string {
     return JSON.stringify([item.serverId, item.id, item.date, item.level, item.category, item.message]);
+}
+
+function newestFirst(items: LogItem[]): LogItem[] {
+    return items.filter(item => Number.isFinite(Number(item.id))).sort((a, b) => Number(b.id) - Number(a.id));
 }
 
 export class ServerLogSession {
@@ -102,10 +108,23 @@ export class ServerLogSession {
         this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE, resetting: false });
     }
 
+    /** Reads entries from the cursor onward. The cursor entry itself proves
+     * the engine has not restarted; otherwise read the full retained history. */
+    private async read(resetting: boolean): Promise<{ history: LogItem[]; restarted: boolean }> {
+        const cursor = this.lastId, last = this.lastItem;
+        if (resetting || !cursor || !last) return { history: newestFirst(await this.fetchLogs()), restarted: false };
+        const recent = newestFirst(await this.fetchLogs(cursor - 1));
+        const anchor = recent.find(item => Number(item.id) === cursor);
+        // Without the anchor, a short read means its ID was reused; a full read
+        // means it aged out and cannot prove a restart.
+        const restarted = anchor ? fingerprint(anchor) !== fingerprint(last) : recent.length < RETAINED;
+        return restarted ? { history: newestFirst(await this.fetchLogs()), restarted } : { history: recent, restarted };
+    }
+
     private async receive(): Promise<void> {
         const resetVersion = this.resetVersion;
         const resetting = this.resetPending;
-        const retained = await this.fetchLogs();
+        const { history, restarted } = await this.read(resetting);
         // A queued Reset supersedes this read; Clear cancels that Reset and
         // allows the same read to establish its baseline without losing a batch.
         if (this.disposed || (this.resetPending && resetVersion !== this.resetVersion)) return;
@@ -114,15 +133,10 @@ export class ServerLogSession {
         // again. A clear baseline may still finish while paused.
         if (this.snapshot.paused && !suppress && !resetting) return;
 
-        const history = retained.filter(item => Number.isFinite(Number(item.id)))
-            .sort((a, b) => Number(b.id) - Number(a.id));
         const newest = history[0];
         const cursor = this.lastId;
-        const anchor = history.find(item => Number(item.id) === cursor);
-        // Compare identity even when IDs have overtaken the saved cursor. An
-        // empty snapshot or an aged-out anchor cannot prove a process restart.
-        const replace = resetting || !!(newest && cursor !== null && (Number(newest.id) < cursor ||
-            (anchor && this.lastItem && fingerprint(anchor) !== fingerprint(this.lastItem))));
+        // An empty history after a restart keeps the display until entries arrive.
+        const replace = resetting || (restarted && !!newest);
         const fresh = replace || cursor === null ? history : history.filter(item => Number(item.id) > cursor);
         if (newest) {
             this.lastId = Number(newest.id);
@@ -156,8 +170,10 @@ export class ServerLogSession {
             if (this.disposed) return;
             // Display actions may supersede results, but never an access denial.
             if (error?.status === 403) this.publish({ items: [] });
+            // A failed background poll stays quiet while rows are shown; Reset reports.
             if (!this.resetPending || resetVersion === this.resetVersion) this.publish({
-                error: error instanceof Error ? error.message : String(error),
+                ...(this.resetPending || !this.snapshot.items.length
+                    ? { error: error instanceof Error ? error.message : String(error) } : {}),
                 resetting: false
             });
         }).finally(() => {
