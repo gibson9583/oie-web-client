@@ -689,7 +689,7 @@ function AppShell({ user, onLogout }: any) {
                 </div>
                 <div className="rail-foot"><span id="rail-version">{railVersion}</span></div>
             </aside>
-            {bootReady && <CommandPalette />}
+            <CommandPalette ready={bootReady} />
             {/* Off-canvas drawer backdrop (phone/tablet only via CSS) — tap to close. */}
             {railCollapsed && <RailFlyout target={peek} />}
             <div className="rail-backdrop" onClick={() => store.setState('railCollapsed', true)} />

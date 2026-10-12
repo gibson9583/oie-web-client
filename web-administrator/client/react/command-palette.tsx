@@ -156,9 +156,15 @@ function channelEntries(fallback: any) {
 
 /* ---- the component ---------------------------------------------------------- */
 
-export function CommandPalette() {
+export function CommandPalette({ ready }: { ready: boolean }) {
     const permissions = useStoreKey('webPlugins');
-    const [open, setOpen] = useState(false);
+    // Keep the shortcut listener available as soon as the shell mounts, but
+    // reveal nothing and make no requests before access controls are ready.
+    const [openRequested, setOpen] = useState(false);
+    const open = ready && openRequested;
+    const readyRef = useRef(ready);
+    readyRef.current = ready;
+    const mountedRef = useRef(true);
     const [query, setQuery] = useState('');
     const [cursor, setCursor] = useState(0);
     const [fallbackChannels, setFallbackChannels] = useState([] as any[]);
@@ -166,14 +172,20 @@ export function CommandPalette() {
 
     // ⌘K / Ctrl+K anywhere. Capture phase so a focused editor can't swallow it.
     useEffect(() => {
+        mountedRef.current = true;
         const onKey = (e: any) => {
             if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 setOpen((v: any) => !v);
+            } else if (e.key === 'Escape' && !readyRef.current) {
+                setOpen(false);
             }
         };
         document.addEventListener('keydown', onKey, true);
-        return () => document.removeEventListener('keydown', onKey, true);
+        return () => {
+            mountedRef.current = false;
+            document.removeEventListener('keydown', onKey, true);
+        };
     }, []);
 
     // Only if the dashboard has never been visited: one cheap id/name fetch, once.
@@ -240,13 +252,13 @@ export function CommandPalette() {
     useEffect(() => { setCursor(0); }, [query]);
 
     const run = useCallback((entry: any) => {
-        if (!entry || (entry.allowed && !entry.allowed())) return;
+        if (!mountedRef.current || !readyRef.current || !entry || (entry.allowed && !entry.allowed())) return;
         setOpen(false);
         const recent = [entry.id, ...(getPref('paletteRecent') || []).filter((id: any) => id !== entry.id)];
         setPrefs({ paletteRecent: recent.slice(0, MAX_RECENT) });
         // After the dialog has closed, so focus restore doesn't fight the view swap.
         setTimeout(() => {
-            if (entry.allowed && !entry.allowed()) return;
+            if (!mountedRef.current || !readyRef.current || (entry.allowed && !entry.allowed())) return;
             if (entry.run) entry.run();
             else if (entry.path) router.navigate(entry.path);
         }, 0);
