@@ -36,6 +36,8 @@ export class ServerLogSession {
     private lastId: number | null = null;
     private baselinePending = false;
     private restartProven = false;
+    private restartRows: LogItem[] = [];
+    private recoveryVersion = 0;
     private resetVersion = 0;
     private resetPending = false;
     private disposed = false;
@@ -71,7 +73,8 @@ export class ServerLogSession {
         // An outstanding request belongs to the display the user just cleared.
         // Consume its cursor without displaying its rows. If it fails, retain
         // this intent until the next successful fetch establishes the baseline.
-        this.baselinePending = this.baselinePending || this.lastId === null || this.flight !== null;
+        this.baselinePending = this.baselinePending || this.lastId === null || this.flight !== null || this.restartProven;
+        this.discardRestartRows();
         this.publish({ items: [], error: null, resetting: false });
     }
 
@@ -79,6 +82,7 @@ export class ServerLogSession {
     reset(): void {
         if (this.disposed || (this.resetPending && this.snapshot.resetting)) return;
         this.resetVersion++;
+        this.discardRestartRows();
         this.resetPending = true;
         this.baselinePending = false;
         this.publish({ error: null, resetting: true });
@@ -97,11 +101,14 @@ export class ServerLogSession {
     setSize(value: number): void {
         if (this.disposed) return;
         const logSize = Math.max(1, Math.min(99999, Math.trunc(value) || DEFAULT_LOG_SIZE));
+        this.restartRows = this.restartRows.slice(0, logSize);
         this.publish({ logSize, items: this.snapshot.items.slice(0, logSize) });
     }
 
     dispose(): void {
         this.disposed = true;
+        this.restartProven = false;
+        this.discardRestartRows();
         this.stopTimer();
         this.lastId = null;
         this.lastItem = null;
@@ -109,26 +116,56 @@ export class ServerLogSession {
         this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE, resetting: false });
     }
 
-    /** Reads entries from the cursor onward. The cursor entry itself proves
-     * the engine has not restarted; otherwise read the full retained history. */
+    private discardRestartRows(): void {
+        this.recoveryVersion++;
+        this.restartRows = [];
+    }
+
+    /** Retain received rows until restart recovery commits. A later observation
+     * with changed overlapping identities or a lower head belongs to a new run. */
+    private rememberRestartRows(rows: LogItem[], version: number): LogItem[] {
+        if (this.disposed || version !== this.recoveryVersion) return rows;
+        const previous = new Map(this.restartRows.map(item => [String(item.id), item]));
+        const changed = rows.some(item => {
+            const old = previous.get(String(item.id));
+            return old && fingerprint(old) !== fingerprint(item);
+        });
+        const lower = rows.length && this.restartRows.length && Number(rows[0].id) < Number(this.restartRows[0].id);
+        const merged = changed || lower ? rows : rows.concat(this.restartRows);
+        const byId = new Map<string, LogItem>();
+        for (const item of newestFirst(merged)) {
+            if (!byId.has(String(item.id))) byId.set(String(item.id), item);
+        }
+        this.restartRows = [...byId.values()].slice(0, this.snapshot.logSize);
+        return this.restartRows;
+    }
+
+    /** Read newer rows directly; only empty reads or a changed cursor need
+     * full-history verification. Preserve observations while recovering. */
     private async read(resetting: boolean): Promise<{ history: LogItem[]; restarted: boolean }> {
         const cursor = this.lastId, last = this.lastItem;
         if (resetting || !cursor || !last) return { history: newestFirst(await this.fetchLogs()), restarted: false };
+        const resetVersion = this.resetVersion, recoveryVersion = this.recoveryVersion;
+        const obsolete = () => this.disposed || (this.resetPending && resetVersion !== this.resetVersion);
         const same = (item?: LogItem) => !!item && fingerprint(item) === fingerprint(last);
         if (!this.restartProven) {
             const recent = newestFirst(await this.fetchLogs(cursor - 1));
+            if (obsolete()) return { history: [], restarted: false };
             const anchor = recent.find(item => Number(item.id) === cursor);
-            // A full read without the anchor means it aged out.
-            if (anchor ? same(anchor) : recent.length >= RETAINED) return { history: recent, restarted: false };
-            // Only a changed anchor proves its ID was reused. Logging that races
-            // the engine's read can omit the anchor or every entry.
-            if (anchor) this.restartProven = true;
+            // Missing identity is not restart evidence, regardless of row count.
+            if (anchor ? same(anchor) : recent.length > 0) return { history: recent, restarted: false };
+            if (anchor) {
+                this.restartProven = true;
+                this.rememberRestartRows(recent, recoveryVersion);
+            }
         }
-        const history = newestFirst(await this.fetchLogs());
+        let history = newestFirst(await this.fetchLogs());
+        if (obsolete()) return { history: [], restarted: false };
         const anchor = history.find(item => Number(item.id) === cursor);
         const oldest = history.at(-1);
         if (anchor ? !same(anchor) : !!oldest && Number(oldest.id) < cursor) this.restartProven = true;
-        // A proven restart persists until a non-empty history replaces the display.
+        // Empty/error responses leave both proof and observations pending.
+        if (this.restartProven && history.length) history = this.rememberRestartRows(history, recoveryVersion);
         return { history, restarted: this.restartProven && history.length > 0 };
     }
 
@@ -144,10 +181,18 @@ export class ServerLogSession {
         // again. A clear baseline may still finish while paused.
         if (this.snapshot.paused && !suppress && !resetting) return;
 
+        // Clear during unresolved restart recovery must keep suppressing the
+        // recovery baseline even when an intermediate full read is empty.
+        if (suppress && this.restartProven && !history.length) {
+            this.publish({ error: null, resetting: false });
+            return;
+        }
+
         const newest = history[0];
         const cursor = this.lastId;
         const replace = resetting || restarted;
         if (replace) this.restartProven = false;
+        if (replace || suppress) this.discardRestartRows();
         const fresh = replace || cursor === null ? history : history.filter(item => Number(item.id) > cursor);
         if (newest) {
             this.lastId = Number(newest.id);
@@ -180,7 +225,10 @@ export class ServerLogSession {
         this.flight = this.receive().catch(error => {
             if (this.disposed) return;
             // Display actions may supersede results, but never an access denial.
-            if (error?.status === 403) this.publish({ items: [] });
+            if (error?.status === 403) {
+                this.discardRestartRows();
+                this.publish({ items: [] });
+            }
             // A failed background poll stays quiet while rows are shown; Reset reports.
             if (!this.resetPending || resetVersion === this.resetVersion) this.publish({
                 ...(this.resetPending || !this.snapshot.items.length

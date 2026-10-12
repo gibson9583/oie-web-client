@@ -56,6 +56,23 @@ function harness(t) {
     };
 }
 
+const newestRows = (head, process = 'original', first = 1) => rows(head, process, first).reverse();
+
+async function accumulate(h) {
+    h.session.setSize(400);
+    await h.resolve(rows(100));
+    await h.tick();
+    await h.resolve(rows(150));
+    assert.deepEqual(h.state().items, newestRows(150));
+}
+
+async function observeRestart(h) {
+    await accumulate(h);
+    await h.tick();
+    await h.resolve(rows(249, 'restarted', 150));
+    assert.equal(h.requests.at(-1).since, undefined, 'changed cursor needs full history');
+}
+
 test('snapshots sort, deduplicate, apply the current size and do not restore trimmed history', async t => {
     const h = harness(t);
     h.session.setSize(3);
@@ -279,21 +296,203 @@ test('a changed cursor entry in a full cursor read is a restart', async t => {
     assert.ok(h.state().items.every(item => item.message.startsWith('restarted-')));
 });
 
-test('a short cursor read missing the anchor is verified before discarding accumulated rows', async t => {
+for (const nextRead of ['success', 'empty', 'failed']) {
+    test('a short cursor batch is retained when the next read is ' + nextRead, async t => {
+        const h = harness(t);
+        await accumulate(h);
+        await h.tick();
+        const requestCount = h.requests.length;
+        // Concurrent eviction can omit the anchor and leave 99 newer entries.
+        await h.resolve(rows(249, 'original', 151));
+        assert.equal(h.requests.length, requestCount, 'accept received rows without a second read');
+        assert.deepEqual(h.state().items, newestRows(249));
+        await h.tick();
+        if (nextRead === 'success') {
+            await h.resolve(rows(251, 'original', 152));
+            assert.deepEqual(h.state().items, newestRows(251), 'received ID 151 must not be lost');
+            await h.tick();
+            await h.resolve(rows(252, 'original', 153));
+            assert.deepEqual(h.state().items, newestRows(252));
+        } else {
+            if (nextRead === 'empty') await h.resolve([]);
+            else { await h.reject(); await h.tick(); }
+            await h.resolve(rows(351, 'original', 252));
+            assert.deepEqual(h.state().items, newestRows(351, 'original', 252).concat(newestRows(249)),
+                'keep every received row, including the entire earlier 99-row batch');
+        }
+    });
+}
+
+for (const fallback of ['success', 'empty', 'failed']) {
+    test('restart observations survive an advancing history read after ' + fallback, async t => {
+        const h = harness(t);
+        await observeRestart(h);
+        if (fallback === 'success') {
+            await h.fullRead(rows(250, 'restarted', 151));
+            assert.deepEqual(h.state().items, newestRows(250, 'restarted', 150),
+                'received ID 150 survives the moving full-history window');
+        } else {
+            if (fallback === 'empty') await h.fullRead([]);
+            else await h.reject();
+            assert.deepEqual(h.state().items, newestRows(150), 'unsuccessful recovery keeps the visible log');
+            await h.tick();
+            assert.equal(h.requests.at(-1).since, undefined);
+            await h.resolve(rows(350, 'restarted', 251));
+            assert.deepEqual(h.state().items,
+                newestRows(350, 'restarted', 251).concat(newestRows(249, 'restarted', 150)),
+                'retain received data as well as the restart proof across retries');
+        }
+    });
+}
+
+test('changed overlapping identities during recovery replace earlier staged process rows', async t => {
     const h = harness(t);
-    h.session.setSize(300);
-    await h.resolve(rows(100));
-    await h.tick();
-    await h.resolve(rows(150, 'original', 51));
-    assert.equal(h.ids().length, 150);
-    await h.tick();
-    // A read racing the engine's eviction can omit the anchor and return 99 newer entries.
-    await h.resolve(rows(249, 'original', 151));
-    await h.fullRead(rows(250, 'original', 151));
-    assert.equal(h.ids().length, 250);
-    assert.equal(h.ids()[0], 250);
-    assert.equal(h.ids().at(-1), 1);
+    await observeRestart(h);
+    await h.fullRead(rows(250, 'second-restart', 151));
+    assert.deepEqual(h.state().items, newestRows(250, 'second-restart', 151));
 });
+
+for (const fallback of ['success', 'empty', 'failed']) {
+    test('a lower nonoverlapping head replaces staged rows after ' + fallback, async t => {
+        const h = harness(t);
+        await observeRestart(h);
+        if (fallback !== 'success') {
+            if (fallback === 'empty') await h.fullRead([]);
+            else await h.reject();
+            await h.tick();
+        }
+        await h.resolve(rows(10, 'second-restart'));
+        assert.deepEqual(h.state().items, newestRows(10, 'second-restart'));
+    });
+}
+
+for (const clearAt of ['failed-idle', 'inflight-empty', 'inflight-failed']) {
+    for (const lifecycle of ['live', 'paused', 'remount']) {
+        test('Clear discards staged observations at ' + clearAt + ', ' + lifecycle, async t => {
+            const h = harness(t);
+            await observeRestart(h);
+            if (clearAt === 'failed-idle') await h.reject();
+            h.session.clear();
+            if (lifecycle === 'paused') h.session.togglePause();
+            else if (lifecycle === 'remount') h.unmount();
+            if (clearAt === 'inflight-empty') await h.fullRead([]);
+            else if (clearAt === 'inflight-failed') await h.reject();
+            if (lifecycle === 'paused') h.session.togglePause();
+            else if (lifecycle === 'remount') h.mount();
+            else await h.tick();
+            assert.equal(h.requests.at(-1).since, undefined);
+            await h.resolve(rows(250, 'restarted', 151));
+            assert.deepEqual(h.ids(), [], 'Clear consumes the pending restart baseline');
+            await h.tick();
+            await h.resolve(rows(251, 'restarted', 152));
+            assert.deepEqual(h.state().items, [entry(251, 'restarted')]);
+        });
+    }
+}
+
+for (const stage of ['cursor', 'fallback']) {
+    for (const outcome of ['success', 'empty', 'failed']) {
+        test('Reset supersedes ' + stage + ' observations before ' + outcome, async t => {
+            const h = harness(t);
+            await accumulate(h);
+            await h.tick();
+            if (stage === 'fallback') await h.resolve(rows(249, 'restarted', 150));
+            h.session.reset();
+            if (outcome === 'failed') await h.reject();
+            else await h.resolve(outcome === 'empty' ? [] : rows(249, 'restarted', 150));
+            assert.equal(h.requests.at(-1).since, undefined);
+            await h.resolve(rows(350, 'restarted', 251));
+            assert.deepEqual(h.state().items, newestRows(350, 'restarted', 251),
+                'late observations from the previous action must not contaminate Reset');
+        });
+    }
+}
+
+for (const pauseAt of ['cursor', 'fallback']) {
+    test('Pause preserves observed restart rows before the ' + pauseAt + ' stage finishes', async t => {
+        const h = harness(t);
+        await accumulate(h);
+        await h.tick();
+        if (pauseAt === 'cursor') h.session.togglePause();
+        await h.resolve(rows(249, 'restarted', 150));
+        if (pauseAt === 'fallback') h.session.togglePause();
+        await h.fullRead(rows(250, 'restarted', 151));
+        assert.deepEqual(h.state().items, newestRows(150), 'pause freezes visible rows');
+        assert.equal(h.timers.size, 0);
+        h.session.togglePause();
+        assert.equal(h.requests.at(-1).since, undefined);
+        await h.resolve(rows(350, 'restarted', 251));
+        assert.deepEqual(h.state().items, newestRows(350, 'restarted', 150),
+            'resume retains all received new-process rows, including those now aged out');
+    });
+}
+
+for (const superseded of [false, true]) {
+    test('403 evicts staged observations, superseded by Reset: ' + superseded, async t => {
+        const h = harness(t);
+        await observeRestart(h);
+        if (superseded) h.session.reset();
+        await h.reject(403);
+        assert.deepEqual(h.ids(), []);
+        if (!superseded) await h.tick();
+        await h.resolve(rows(350, 'restarted', 251));
+        assert.deepEqual(h.state().items, newestRows(350, 'restarted', 251),
+            'restored access must not revive observations evicted by denial');
+    });
+}
+
+test('shrinking then growing Log Size cannot restore trimmed restart observations', async t => {
+    const h = harness(t);
+    await observeRestart(h);
+    h.session.setSize(20);
+    h.session.setSize(400);
+    await h.fullRead(rows(350, 'restarted', 251));
+    assert.deepEqual(h.state().items,
+        newestRows(350, 'restarted', 251).concat(newestRows(249, 'restarted', 230)));
+});
+
+for (const paused of [false, true]) {
+    test('Clear cancels an empty Reset during known restart recovery, paused: ' + paused, async t => {
+        const h = harness(t);
+        await observeRestart(h);
+        await h.reject();
+        if (paused) h.session.togglePause();
+        h.session.reset();
+        h.session.clear();
+        await h.resolve([]);
+        assert.deepEqual(h.ids(), []);
+        if (paused) h.session.togglePause();
+        else await h.tick();
+        assert.equal(h.requests.at(-1).since, undefined, 'empty canceled Reset keeps recovery pending');
+        await h.resolve(rows(250, 'restarted', 151));
+        assert.deepEqual(h.ids(), [], 'Clear still suppresses the unresolved restart baseline');
+        await h.tick();
+        await h.resolve(rows(251, 'restarted', 152));
+        assert.deepEqual(h.state().items, [entry(251, 'restarted')]);
+    });
+}
+
+for (const stage of ['cursor', 'fallback']) {
+    for (const outcome of ['success', 'empty', 'failed']) {
+        test('disposal fences staged restart work at ' + stage + ' before ' + outcome, async t => {
+            const h = harness(t);
+            await accumulate(h);
+            await h.tick();
+            if (stage === 'fallback') await h.resolve(rows(249, 'restarted', 150));
+            const requests = h.requests.length;
+            h.session.dispose();
+            const disposed = h.state();
+            if (outcome === 'failed') await h.reject();
+            else await h.resolve(outcome === 'empty' ? [] : rows(250, 'restarted', 151));
+            h.session.reset();
+            h.mount();
+            assert.equal(h.state(), disposed);
+            assert.deepEqual(h.ids(), []);
+            assert.equal(h.requests.length, requests, 'late cursor response cannot start a new fallback');
+            assert.equal(h.timers.size, 0);
+        });
+    }
+}
 
 test('a cursor outside the retained window does not falsely discard accumulated display rows', async t => {
     const h = harness(t);

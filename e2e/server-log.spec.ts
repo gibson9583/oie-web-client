@@ -1,4 +1,4 @@
-import type { Page, Request } from '@playwright/test';
+import type { Page, Request, Response } from '@playwright/test';
 import { test, expect } from './base.js';
 import { mockEngine, login } from './mock.js';
 
@@ -30,6 +30,25 @@ function gate() {
     return { promise, release };
 }
 const rows = (page: Page) => page.locator('table.server-log tbody tr');
+const logRange = (first: number, last: number, restarted = false) => Array.from({ length: last - first + 1 }, (_, i) => {
+    const id = first + i;
+    return entry(id, restarted ? `Restarted entry ${id}` : `Server log entry ${id}`);
+});
+const isFullLogResponse = (response: Response) => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/extensions/serverlog' && !url.searchParams.has('lastLogId');
+};
+async function setLogSize(page: Page, value: number) {
+    const size = page.locator('.dash-dock input[type=number]');
+    await size.fill(String(value));
+    await size.press('Enter');
+}
+async function expectMessages(page: Page, expected: ReturnType<typeof entry>[]) {
+    await expect(rows(page).locator('td:last-child')).toHaveText([...expected]
+        .sort((a, b) => b.date.time - a.date.time || Number(b.id) - Number(a.id))
+        .map(row => `(test:1): ${row.message}`));
+}
+
 const clear = (page: Page) => page.getByTitle('Clear the displayed log', { exact: true }).click();
 const pause = (page: Page) => page.getByTitle('Pause or resume the live log', { exact: true });
 async function tick(page: Page) { await page.clock.fastForward(5001); }
@@ -115,33 +134,140 @@ test('an empty cursor response from concurrent logging does not restore cleared 
     await expect(rows(page)).toContainText('Server log entry 12');
 });
 
-test('a short response racing eviction does not discard accumulated rows', async ({ page }) => {
-    const engine = logEngine(Array.from({ length: 100 }, (_, i) => entry(i + 1)));
+test('a received short batch survives advancing subsequent polls', async ({ page }) => {
+    const engine = logEngine(logRange(1, 100));
     let shortNext = false;
     await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => {
         const response = engine.read(request);
         if (shortNext && new URL(request.url()).searchParams.has('lastLogId')) {
             shortNext = false;
-            return { serverLogItem: response.serverLogItem.slice(1) };
+            // Advance after capturing the successful batch, before any fallback
+            // can run. Replacing that batch with another read would lose 151.
+            engine.entries = logRange(152, 251);
         }
         return response;
     } });
     await page.goto('/dashboard');
     await expect(rows(page)).toHaveCount(100);
-    const size = page.locator('.dash-dock input[type=number]');
-    await size.fill('300');
-    await size.press('Enter');
-    engine.entries = Array.from({ length: 100 }, (_, i) => entry(i + 51));
+    await setLogSize(page, 300);
+    engine.entries = logRange(51, 150);
     await tick(page);
     await expect(rows(page)).toHaveCount(150);
-    // The engine evicted the cursor entry mid-read, leaving 99 newer entries.
-    engine.entries = Array.from({ length: 100 }, (_, i) => entry(i + 151));
+    // A concurrent eviction produces 99 valid newer entries without the anchor.
+    engine.entries = logRange(151, 249);
     shortNext = true;
     await tick(page);
-    await expect(rows(page)).toHaveCount(250);
-    await expect(rows(page).first()).toContainText('Server log entry 250');
-    await expect(rows(page).last()).toContainText('Server log entry 1');
+    await expectMessages(page, logRange(1, 249));
+    await tick(page);
+    await expectMessages(page, logRange(1, 251));
+    engine.entries = logRange(153, 252);
+    await tick(page);
+    await expectMessages(page, logRange(1, 252));
 });
+
+for (const fallback of ['advancing', 'empty', 'failed'] as const) {
+    test(`received restart rows survive ${fallback} history recovery`, async ({ page }) => {
+        const engine = logEngine(logRange(1, 100));
+        let stage: 'ordinary' | 'cursor' | 'history' = 'ordinary';
+        await mockEngine(page, { 'GET /extensions/serverlog': (request: Request) => {
+            const response = engine.read(request);
+            const cursor = new URL(request.url()).searchParams.has('lastLogId');
+            if (stage === 'cursor' && cursor) {
+                stage = 'history';
+                engine.entries = logRange(151, 250, true);
+            } else if (stage === 'history' && !cursor) {
+                stage = 'ordinary';
+                if (fallback === 'empty') return { serverLogItem: [] };
+                if (fallback === 'failed') return { __status: 503, body: { message: 'Synthetic history failure' } };
+            }
+            return response;
+        } });
+        await page.goto('/dashboard');
+        await expect(rows(page)).toHaveCount(100);
+        await setLogSize(page, 300);
+        engine.entries = logRange(51, 150);
+        await tick(page);
+        await expect(rows(page)).toHaveCount(150);
+        engine.entries = logRange(150, 249, true);
+        stage = 'cursor';
+        const historyResponse = page.waitForResponse(isFullLogResponse);
+        await tick(page);
+        await (await historyResponse).finished();
+        await page.clock.runFor(1);
+        if (fallback === 'advancing') {
+            await expectMessages(page, logRange(150, 250, true));
+            engine.entries = logRange(152, 251, true);
+            await tick(page);
+            await expectMessages(page, logRange(150, 251, true));
+        } else {
+            await expectMessages(page, logRange(1, 150));
+            // The first received window has aged out before a healthy retry.
+            engine.entries = logRange(251, 350, true);
+            await tick(page);
+            await expectMessages(page, [...logRange(150, 249, true), ...logRange(251, 350, true)]);
+            engine.entries = logRange(252, 351, true);
+            await tick(page);
+            await expectMessages(page, [...logRange(150, 249, true), ...logRange(251, 351, true)]);
+        }
+    });
+}
+
+for (const clearAt of ['failed-idle', 'empty-fallback', 'reset-clear-empty'] as const) {
+    test(`Clear suppresses received restart rows through ${clearAt} recovery`, async ({ page }) => {
+        const engine = logEngine();
+        const held = gate();
+        let nextHistory: 'normal' | 'failed' | 'held-empty' = 'normal';
+        let waiting = false;
+        await mockEngine(page, { 'GET /extensions/serverlog': async (request: Request) => {
+            const response = engine.read(request);
+            if (!new URL(request.url()).searchParams.has('lastLogId') && nextHistory !== 'normal') {
+                const outcome = nextHistory;
+                nextHistory = 'normal';
+                if (outcome === 'failed') return { __status: 503, body: { message: 'Synthetic history failure' } };
+                waiting = true;
+                await held.promise;
+                return { serverLogItem: [] };
+            }
+            return response;
+        } });
+        try {
+            await page.goto('/dashboard');
+            await expect(rows(page)).toHaveCount(2);
+            await setLogSize(page, 300);
+            engine.entries = logRange(11, 110, true);
+            nextHistory = clearAt === 'empty-fallback' ? 'held-empty' : 'failed';
+            const failedResponse = clearAt === 'empty-fallback' ? null : page.waitForResponse(isFullLogResponse);
+            await tick(page);
+            if (failedResponse) {
+                await (await failedResponse).finished();
+                await page.clock.runFor(1);
+                await expect(rows(page)).toHaveCount(2);
+            }
+            if (clearAt === 'reset-clear-empty') {
+                nextHistory = 'held-empty';
+                await page.getByRole('button', { name: 'Reset', exact: true }).click();
+            }
+            if (clearAt !== 'failed-idle') await expect.poll(() => waiting).toBe(true);
+            await clear(page);
+            if (clearAt !== 'failed-idle') {
+                const emptyResponse = page.waitForResponse(isFullLogResponse);
+                held.release();
+                await (await emptyResponse).finished();
+                await page.clock.runFor(1);
+            }
+            await expect(rows(page)).toHaveText(['No server log entries yet.']);
+            engine.entries = logRange(12, 111, true);
+            const recovery = page.waitForResponse(isFullLogResponse);
+            await tick(page);
+            await (await recovery).finished();
+            await page.clock.runFor(1);
+            await expect(rows(page)).toHaveText(['No server log entries yet.']);
+            engine.entries = logRange(13, 112, true);
+            await tick(page);
+            await expectMessages(page, [entry(112, 'Restarted entry 112')]);
+        } finally { held.release(); }
+    });
+}
 
 test('a proven restart survives a failed history read and never mixes processes', async ({ page }) => {
     const engine = logEngine();
@@ -160,7 +286,8 @@ test('a proven restart survives a failed history read and never mixes processes'
     const size = page.locator('.dash-dock input[type=number]');
     await size.fill('200');
     await size.press('Enter');
-    engine.entries = [{ ...entry(11, 'Restarted entry 11'), date: { time: 1700000010011, timezone: 'UTC' } }];
+    const restarted = { ...entry(11, 'Restarted entry 11'), date: { time: 1700000010011, timezone: 'UTC' } };
+    engine.entries = [restarted];
     failHistory = true;
     const calls = engine.calls.length;
     await tick(page);
@@ -169,9 +296,8 @@ test('a proven restart survives a failed history read and never mixes processes'
     // The new process logs until the old cursor entry ages out.
     engine.entries = Array.from({ length: 150 }, (_, i) => entry(i + 1, `Restarted entry ${i + 1}`));
     await tick(page);
-    await expect(rows(page)).toHaveCount(100);
+    await expectMessages(page, [restarted, ...logRange(51, 150, true)]);
     await expect(rows(page).filter({ hasText: 'Server log entry' })).toHaveCount(0);
-    await expect(rows(page).first()).toContainText('Restarted entry 150');
 });
 
 test('displayed rows, pause and log size survive every remount in the same session', async ({ page }) => {
@@ -280,7 +406,13 @@ test('revoked log access clears the remount cache and restored access shows only
     await expect(rows(page)).toContainText('Server Log unavailable:');
     await expect(rows(page)).toContainText('Synthetic log access denied');
     await expect(page.locator('.shell')).toBeVisible();
+    const deniedResponse = page.waitForResponse(response =>
+        new URL(response.url()).pathname === '/api/extensions/serverlog' && response.status() === 403);
     await remount(page, 'dock');
+    await (await deniedResponse).finished();
+    // The old error is already visible; wait for the remount read to finish
+    // scheduling its retry before advancing the polling clock.
+    await page.clock.runFor(1);
     await expect(rows(page)).toContainText('Server Log unavailable:');
     await expect(rows(page).filter({ hasText: 'Server log entry' })).toHaveCount(0);
     authorized = true;

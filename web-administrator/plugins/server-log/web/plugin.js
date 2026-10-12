@@ -22,6 +22,8 @@ var ServerLogSession = class {
   lastId = null;
   baselinePending = false;
   restartProven = false;
+  restartRows = [];
+  recoveryVersion = 0;
   resetVersion = 0;
   resetPending = false;
   disposed = false;
@@ -47,13 +49,15 @@ var ServerLogSession = class {
   clear() {
     if (this.disposed) return;
     this.resetPending = false;
-    this.baselinePending = this.baselinePending || this.lastId === null || this.flight !== null;
+    this.baselinePending = this.baselinePending || this.lastId === null || this.flight !== null || this.restartProven;
+    this.discardRestartRows();
     this.publish({ items: [], error: null, resetting: false });
   }
   /** Restore the engine's retained history without changing display settings. */
   reset() {
     if (this.disposed || this.resetPending && this.snapshot.resetting) return;
     this.resetVersion++;
+    this.discardRestartRows();
     this.resetPending = true;
     this.baselinePending = false;
     this.publish({ error: null, resetting: true });
@@ -68,32 +72,65 @@ var ServerLogSession = class {
   setSize(value) {
     if (this.disposed) return;
     const logSize = Math.max(1, Math.min(99999, Math.trunc(value) || DEFAULT_LOG_SIZE));
+    this.restartRows = this.restartRows.slice(0, logSize);
     this.publish({ logSize, items: this.snapshot.items.slice(0, logSize) });
   }
   dispose() {
     this.disposed = true;
+    this.restartProven = false;
+    this.discardRestartRows();
     this.stopTimer();
     this.lastId = null;
     this.lastItem = null;
     this.resetPending = false;
     this.publish({ items: [], error: null, paused: false, logSize: DEFAULT_LOG_SIZE, resetting: false });
   }
-  /** Reads entries from the cursor onward. The cursor entry itself proves
-   * the engine has not restarted; otherwise read the full retained history. */
+  discardRestartRows() {
+    this.recoveryVersion++;
+    this.restartRows = [];
+  }
+  /** Retain received rows until restart recovery commits. A later observation
+   * with changed overlapping identities or a lower head belongs to a new run. */
+  rememberRestartRows(rows, version) {
+    if (this.disposed || version !== this.recoveryVersion) return rows;
+    const previous = new Map(this.restartRows.map((item) => [String(item.id), item]));
+    const changed = rows.some((item) => {
+      const old = previous.get(String(item.id));
+      return old && fingerprint(old) !== fingerprint(item);
+    });
+    const lower = rows.length && this.restartRows.length && Number(rows[0].id) < Number(this.restartRows[0].id);
+    const merged = changed || lower ? rows : rows.concat(this.restartRows);
+    const byId = /* @__PURE__ */ new Map();
+    for (const item of newestFirst(merged)) {
+      if (!byId.has(String(item.id))) byId.set(String(item.id), item);
+    }
+    this.restartRows = [...byId.values()].slice(0, this.snapshot.logSize);
+    return this.restartRows;
+  }
+  /** Read newer rows directly; only empty reads or a changed cursor need
+   * full-history verification. Preserve observations while recovering. */
   async read(resetting) {
     const cursor = this.lastId, last = this.lastItem;
     if (resetting || !cursor || !last) return { history: newestFirst(await this.fetchLogs()), restarted: false };
+    const resetVersion = this.resetVersion, recoveryVersion = this.recoveryVersion;
+    const obsolete = () => this.disposed || this.resetPending && resetVersion !== this.resetVersion;
     const same = (item) => !!item && fingerprint(item) === fingerprint(last);
     if (!this.restartProven) {
       const recent = newestFirst(await this.fetchLogs(cursor - 1));
+      if (obsolete()) return { history: [], restarted: false };
       const anchor2 = recent.find((item) => Number(item.id) === cursor);
-      if (anchor2 ? same(anchor2) : recent.length >= RETAINED) return { history: recent, restarted: false };
-      if (anchor2) this.restartProven = true;
+      if (anchor2 ? same(anchor2) : recent.length > 0) return { history: recent, restarted: false };
+      if (anchor2) {
+        this.restartProven = true;
+        this.rememberRestartRows(recent, recoveryVersion);
+      }
     }
-    const history = newestFirst(await this.fetchLogs());
+    let history = newestFirst(await this.fetchLogs());
+    if (obsolete()) return { history: [], restarted: false };
     const anchor = history.find((item) => Number(item.id) === cursor);
     const oldest = history.at(-1);
     if (anchor ? !same(anchor) : !!oldest && Number(oldest.id) < cursor) this.restartProven = true;
+    if (this.restartProven && history.length) history = this.rememberRestartRows(history, recoveryVersion);
     return { history, restarted: this.restartProven && history.length > 0 };
   }
   async receive() {
@@ -103,10 +140,15 @@ var ServerLogSession = class {
     if (this.disposed || this.resetPending && resetVersion !== this.resetVersion) return;
     const suppress = this.baselinePending;
     if (this.snapshot.paused && !suppress && !resetting) return;
+    if (suppress && this.restartProven && !history.length) {
+      this.publish({ error: null, resetting: false });
+      return;
+    }
     const newest = history[0];
     const cursor = this.lastId;
     const replace = resetting || restarted;
     if (replace) this.restartProven = false;
+    if (replace || suppress) this.discardRestartRows();
     const fresh = replace || cursor === null ? history : history.filter((item) => Number(item.id) > cursor);
     if (newest) {
       this.lastId = Number(newest.id);
@@ -132,7 +174,10 @@ var ServerLogSession = class {
     if (this.resetPending) this.publish({ resetting: true });
     this.flight = this.receive().catch((error) => {
       if (this.disposed) return;
-      if (error?.status === 403) this.publish({ items: [] });
+      if (error?.status === 403) {
+        this.discardRestartRows();
+        this.publish({ items: [] });
+      }
       if (!this.resetPending || resetVersion === this.resetVersion) this.publish({
         ...this.resetPending || !this.snapshot.items.length ? { error: error instanceof Error ? error.message : String(error) } : {},
         resetting: false
