@@ -222,6 +222,9 @@ const META_SEARCH_OPERATORS = [
     'STARTS WITH', 'DOES NOT START WITH', 'ENDS WITH', 'DOES NOT END WITH'
 ];
 
+type MetaSearchKey = { column: string; operator: string; ignoreCase: boolean };
+type MetaSearchRow = MetaSearchKey & { value: string; remembered: boolean };
+
 /* Advanced search criteria defaults (cleared by the dialog's Reset button). */
 function defaultAdvancedCriteria() {
     return {
@@ -234,7 +237,10 @@ function defaultAdvancedCriteria() {
         includedMetaDataIds: null,  // null = all connectors; else [ids]
         excludedMetaDataIds: null,  // set instead when "Deleted Connectors" stays included
         contentSearches: [],   // [{type, text}]
-        metaDataSearches: []   // [{column, operator, value, ignoreCase}]
+        metaDataSearches: [],   // [{column, operator, value, ignoreCase}]
+        // Keep blank templates in the dialog draft, separate from active filters.
+        // null restores saved keys; [] means the user explicitly deleted all rows.
+        metaDataSearchRows: null as MetaSearchRow[] | null
     };
 }
 
@@ -244,7 +250,7 @@ function defaultAdvancedCriteria() {
    value, which may be PHI. The default channel search is unaffected. */
 const META_SEARCH_KEYS_PREFIX = 'oie-meta-search-keys:';
 
-function loadMetaSearchKeys(channelId: string) {
+function loadMetaSearchKeys(channelId: string): MetaSearchKey[] {
     try {
         const saved = JSON.parse(localStorage.getItem(scopedKey(META_SEARCH_KEYS_PREFIX + channelId)) || '[]');
         return Array.isArray(saved)
@@ -254,7 +260,7 @@ function loadMetaSearchKeys(channelId: string) {
     } catch { return []; }
 }
 
-function saveMetaSearchKeys(channelId: string, keys: any[]) {
+function saveMetaSearchKeys(channelId: string, keys: MetaSearchKey[]) {
     const key = scopedKey(META_SEARCH_KEYS_PREFIX + channelId);
     try {
         if (keys.length) localStorage.setItem(key, JSON.stringify(keys.map(k => ({ column: k.column, operator: k.operator, ignoreCase: !!k.ignoreCase }))));
@@ -1483,8 +1489,8 @@ function openAdvancedSearch({ channelId, connectors, metaDataColumns, adv, onApp
         ms.sel(row);
         return row;
     }
-    if (adv.metaDataSearches.length) {
-        adv.metaDataSearches.forEach((m: any) => addMetaSearchRow(m.column, m.operator, m.value, m.ignoreCase));
+    if (adv.metaDataSearchRows !== null) {
+        adv.metaDataSearchRows.forEach((m: MetaSearchRow) => addMetaSearchRow(m.column, m.operator, m.value, m.ignoreCase, m.remembered));
     } else {
         // Nothing staged — pre-populate this channel's remembered keys (empty
         // values), skipping columns the channel no longer has.
@@ -1532,7 +1538,7 @@ function openAdvancedSearch({ channelId, connectors, metaDataColumns, adv, onApp
                             included = checked.map(r => r.key).filter(k => k !== null);
                         }
                     }
-                    const metaRows = ms.rows
+                    const metaRows: MetaSearchRow[] = ms.rows
                         .map(r => ({ column: String(r.column.value).trim(), operator: r.operator.value, value: r.value.value, ignoreCase: r.ignoreCase.checked, remembered: r.remembered }))
                         .filter(r => r.column);
                     // Remember the rows still in the table (keys only); a
@@ -1553,6 +1559,7 @@ function openAdvancedSearch({ channelId, connectors, metaDataColumns, adv, onApp
                         contentSearches: cs.rows
                             .map(r => ({ type: r.type.value, text: r.text.value.trim() }))
                             .filter(r => r.text),
+                        metaDataSearchRows: metaRows,
                         metaDataSearches: metaRows
                             .filter(r => !(r.remembered && r.value === ''))
                             .map(({ remembered: _, ...r }) => r)
@@ -2089,6 +2096,8 @@ export function MessagesView({ params, query }: any) {
     const selectedRef = useRef<any>(null);
     const phiEnabledRef = useRef(false);
     const metaDataReadyRef = useRef(!channelId);
+    const metaDataLoadGenRef = useRef(0);
+    const metaDataLoadRef = useRef<Promise<boolean> | null>(null);
     const channelNameRef = useRef(channelId);
 
     // Staged advanced criteria (the dialog stages; Search runs). Deep-link from
@@ -2293,24 +2302,36 @@ export function MessagesView({ params, query }: any) {
 
     /* ---- search (explicit command) ---- */
 
-    async function loadMetaDataColumns() {
-        if (!channelId) return true;
-        try {
-            const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
-            setMetaDataColumns(cols);
-            phiEnabledRef.current = cols.some(col => String(col.name).toLowerCase() === 'patient_id');
-            metaDataReadyRef.current = true;
-            setMetaDataReady(true);
-            setMetaDataError(null);
-            return true;
-        } catch (e: any) {
-            const error = String(e.message || e);
-            metaDataReadyRef.current = false;
-            setMetaDataReady(false);
-            setMetaDataError(error);
-            toast(`Failed to load channel metadata: ${error}`, 'error');
-            return false;
-        }
+    function loadMetaDataColumns(): Promise<boolean> {
+        if (!channelId || metaDataReadyRef.current) return Promise.resolve(true);
+        // Bootstrap and explicit searches share discovery, so an older response
+        // cannot overwrite a successful retry or strand a search waiting on it.
+        if (metaDataLoadRef.current) return metaDataLoadRef.current;
+        const gen = ++metaDataLoadGenRef.current;
+        const load = (async () => {
+            try {
+                const cols = (await api.channels.metaDataColumns(channelId)).filter(c => c && c.name);
+                if (gen !== metaDataLoadGenRef.current) return false;
+                setMetaDataColumns(cols);
+                phiEnabledRef.current = cols.some(col => String(col.name).toLowerCase() === 'patient_id');
+                metaDataReadyRef.current = true;
+                setMetaDataReady(true);
+                setMetaDataError(null);
+                return true;
+            } catch (e: any) {
+                if (gen !== metaDataLoadGenRef.current) return false;
+                const error = String(e.message || e);
+                metaDataReadyRef.current = false;
+                setMetaDataReady(false);
+                setMetaDataError(error);
+                toast(`Failed to load channel metadata: ${error}`, 'error');
+                return false;
+            }
+        })().finally(() => {
+            if (gen === metaDataLoadGenRef.current) metaDataLoadRef.current = null;
+        });
+        metaDataLoadRef.current = load;
+        return load;
     }
 
     // Search responses can resolve out of order (a slow page-1 landing after a
@@ -3090,9 +3111,19 @@ export function MessagesView({ params, query }: any) {
             }
         })();
         if (channelId && query.send === '1') setTimeout(() => { if (!cancelled) sendMessageTask(); }, 200);
-        // Invalidate the latest request counter, including searches started since mount.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        return () => { cancelled = true; ++searchGenRef.current; searchRef.current = () => {}; selectedRef.current = null; resultRef.current = null; closeStatusMenu(); };
+        // Invalidate searches and metadata discovery, including work started since mount.
+        return () => {
+            cancelled = true;
+            // eslint-disable-next-line react-hooks/exhaustive-deps -- invalidate the latest generation, not the mount-time value
+            ++searchGenRef.current;
+            // eslint-disable-next-line react-hooks/exhaustive-deps -- invalidate the latest generation, not the mount-time value
+            ++metaDataLoadGenRef.current;
+            metaDataLoadRef.current = null;
+            searchRef.current = () => {};
+            selectedRef.current = null;
+            resultRef.current = null;
+            closeStatusMenu();
+        };
         // Build once; channelId is stable for the view's lifetime (route remount on change).
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
