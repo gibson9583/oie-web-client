@@ -182,10 +182,13 @@ export function CommandPalette() {
         const cachedIds = new Set(cached.map(c => c.id));
         const source = [...cached, ...fallbackChannels.filter(c => !cachedIds.has(c.id))];
         if (context?.kind !== 'channel') return source;
-        // Current view data is authoritative even if the dashboard was never
-        // opened, its cache is old, or the optional names request failed.
-        const current = context.channelIds.map(id => context.channels?.find(c => c.id === id)
-            || source.find(c => c.id === id) || { id, name: id });
+        // Current view fields win, while cached metadata (such as runtime
+        // status) remains available when the view only supplies ID and name.
+        const current = context.channelIds.map(id => ({
+            id, name: id,
+            ...source.find(c => c.id === id),
+            ...context.channels?.find(c => c.id === id)
+        }));
         const ids = new Set(current.map(c => c.id));
         return [...current, ...source.filter(c => !ids.has(c.id))];
     }, [open, fallbackChannels, context]); // eslint-disable-line react-hooks/exhaustive-deps -- read cache on each open
@@ -233,7 +236,9 @@ export function CommandPalette() {
     const resultKey = (entry: any) => entry.group + ':' + entry.id;
     // Async suggestions may arrive above a recent entry. Track identity so an
     // ArrowDown followed by Enter cannot silently execute a different action.
-    const cursor = Math.max(0, results.findIndex((entry: any) => resultKey(entry) === activeKey));
+    // If that entry disappears, require a new selection instead of substituting
+    // the first result. Only an untouched selection defaults to the first row.
+    const cursor = activeKey === null ? 0 : results.findIndex((entry: any) => resultKey(entry) === activeKey);
     const setCursor = (index: number) => setActiveKey(results[index] ? resultKey(results[index]) : null);
     useEffect(() => { setActiveKey(null); }, [query]);
 

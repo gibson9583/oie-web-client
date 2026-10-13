@@ -309,6 +309,69 @@ test('keyboard selection retains the recent destination when templates arrive ab
     } finally { release(); }
 });
 
+for (const recoveryKey of ['ArrowDown', 'ArrowUp']) {
+    test(`Enter waits for ${recoveryKey} to reselect after a delayed template recent removes the chosen view`, async ({ page }) => {
+        let hold = false;
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        await mockEngine(page, { ...fixtures, 'GET /codeTemplateLibraries': async () => {
+            if (hold) await gate;
+            return catalog(explicit);
+        } });
+        try {
+            await page.goto('/messages/c-started');
+            await open(page);
+            await option(page, 'Explicit Library Helper').click();
+            await expect(page.getByRole('button', { name: 'Export Code Template', exact: true })).toBeVisible();
+            hold = true;
+            await page.goBack();
+            await expect(page).toHaveURL(/\/messages\/c-started$/);
+            const query = await open(page);
+            const selected = page.locator('.cmdk-opt[aria-selected="true"]');
+            for (let i = 0; i < 20 && await selected.locator('.cmdk-label').textContent() !== 'Events'; i++) {
+                await page.keyboard.press('ArrowDown');
+            }
+            await expect(selected.locator('.cmdk-label')).toHaveText('Events');
+            release();
+            await expect(recent(page).locator('.cmdk-label')).toHaveText(['Explicit Library Helper']);
+            await expect(selected).toHaveCount(0);
+            await expect(query).not.toHaveAttribute('aria-activedescendant');
+            await page.keyboard.press('Enter');
+            await expect(page.locator('.cmdk')).toBeVisible();
+            await expect(page).toHaveURL(/\/messages\/c-started$/);
+            // Both deliberate arrow selection and a new search recover normally.
+            await page.keyboard.press(recoveryKey);
+            await expect(selected).toHaveCount(1);
+            await expect(selected.locator('.cmdk-hint')).toHaveText('edit');
+            await query.fill('/events');
+            await expect(selected.locator('.cmdk-label')).toHaveText('Events');
+            await page.keyboard.press('Enter');
+            await expect(page).toHaveURL(/\/events$/);
+        } finally { release(); }
+    });
+}
+
+for (const surface of ['dashboard', 'cards'] as const) {
+    test(`${surface} selection preserves status in suggested and searched channels`, async ({ page }) => {
+        await mockEngine(page, { ...fixtures, 'GET /codeTemplateLibraries': catalog() });
+        await page.goto('/dashboard');
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+        if (surface === 'cards') await page.getByRole('button', { name: 'Card view', exact: true }).click();
+        for (const [name, state] of [['Demo Started', 'ok'], ['Demo Stopped', 'err']]) {
+            await (await open(page)).fill('#' + name);
+            await expect(option(page, name).first().locator('.cmdk-pip')).toHaveClass('cmdk-pip ' + state);
+            await close(page);
+            await page.getByText(name, { exact: true }).click();
+            const query = await open(page);
+            await expect(suggested(page)).toHaveCount(2);
+            await expect(suggested(page).first().locator('.cmdk-pip')).toHaveClass('cmdk-pip ' + state);
+            await query.fill('#' + name);
+            await expect(option(page, name).first().locator('.cmdk-pip')).toHaveClass('cmdk-pip ' + state);
+            await close(page);
+        }
+    });
+}
+
 async function installAuthorizationProbe(page: Page, denied = ['channel:doEditChannel', 'codeTemplate:doRefreshCodeTemplates']) {
     await page.route('**/webadmin/plugins.json', async route => {
         const response = await route.fetch();
@@ -338,13 +401,18 @@ test('suggestions respect edit and template permissions at render and at activat
     await page.evaluate(() => { (window as any).suggestionDenied = []; });
     await open(page);
     await expect(suggested(page).locator('.cmdk-label')).toHaveText(['Demo Started', 'Explicit Library', 'Explicit Library Helper']);
-    // Revoke without publishing a render: the already-rendered option must be
-    // checked again when clicked, before navigation or recent-history changes.
-    await page.evaluate(() => { (window as any).suggestionDenied = ['channel:doEditChannel', 'codeTemplate:doRefreshCodeTemplates']; });
-    await suggested(page).first().click();
+    // Revoke and dispatch in one browser task so an intervening render cannot
+    // remove the target before the navigation and history guard is exercised.
+    await suggested(page).first().evaluate(element => {
+        (window as any).suggestionDenied = ['channel:doEditChannel'];
+        (element as HTMLElement).click();
+    });
     await expect(page).toHaveURL(/\/messages\/c-started$/);
     await expect(page.locator('.cmdk')).toBeVisible();
-    await option(page, 'Explicit Library Helper').click();
+    await option(page, 'Explicit Library Helper').evaluate(element => {
+        (window as any).suggestionDenied = ['channel:doEditChannel', 'codeTemplate:doRefreshCodeTemplates'];
+        (element as HTMLElement).click();
+    });
     await expect(page).toHaveURL(/\/messages\/c-started$/);
     await expect(page.locator('.cmdk')).toBeVisible();
     await close(page);
@@ -368,8 +436,10 @@ for (const surface of ['dashboard', 'cards', 'channels'] as const) {
         await page.evaluate(() => { (window as any).suggestionDenied = []; });
         await open(page);
         await expect(suggested(page).locator('.cmdk-hint')).toHaveText(['edit', 'messages']);
-        await page.evaluate(value => { (window as any).suggestionDenied = [value]; }, permission);
-        await suggested(page).filter({ has: page.locator('.cmdk-hint', { hasText: /^messages$/ }) }).click();
+        await suggested(page).filter({ has: page.locator('.cmdk-hint', { hasText: /^messages$/ }) }).evaluate((element, value) => {
+            (window as any).suggestionDenied = [value];
+            (element as HTMLElement).click();
+        }, permission);
         await expect(page).toHaveURL(new RegExp('/' + (surface === 'channels' ? 'channels' : 'dashboard') + '$'));
         await expect(page.locator('.cmdk')).toBeVisible();
         await close(page);

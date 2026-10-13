@@ -9,6 +9,14 @@ const notify = () => listeners.forEach(listener => listener());
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const getPaletteContext = (): PaletteContext => active?.context ?? null;
 
+// A dependency dialog can finish after its editor has remounted. Update the
+// current publisher only when it still owns the same working channel model.
+export function publishChannelLibrarySelection(channel: object, librarySelection: Map<string, boolean>) {
+    if (!active || active.context?.kind !== 'channel' || !active.context.channels?.includes(channel)) return;
+    active = { ...active, context: { ...active.context, librarySelection } };
+    notify();
+}
+
 export function usePaletteContext(context: PaletteContext) {
     const owner = useRef(Symbol('palette-context')).current;
     useLayoutEffect(() => {

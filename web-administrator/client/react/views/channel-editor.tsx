@@ -58,7 +58,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
-import { usePaletteContext } from '../palette-context.js';
+import { publishChannelLibrarySelection, usePaletteContext } from '../palette-context.js';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
 
@@ -961,6 +961,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                             const saved = await persistLibraryAssociations(channel, libState, version, confirmLibraryOverwrite);
                             if (!isCurrent() || !saved) return false;
                             pending.libraries.current = copyLibrarySelection(libState.current);
+                            publishChannelLibrarySelection(channel, pending.libraries.current.checked);
                             toast('Code template libraries saved');
                         }
 
@@ -986,6 +987,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                         // even when a later confirmation or request fails.
                         pending.dependencies.current = copyDependencySelection(depState.current);
                         pending.libraries.current = copyLibrarySelection(libState.current);
+                        publishChannelLibrarySelection(channel, pending.libraries.current.checked);
                         if (resChanged) markDirty();
                     } catch (e: any) {
                         if (isCurrent()) toast(e.message, 'error');
