@@ -97,12 +97,21 @@ const CONVERSION: Record<string, Record<string, number>> = {
 };
 const convertTo = (value: any, from: any, to: any) => (CONVERSION[from]?.[to] ?? 1) * value;
 
+// Recognize complete Java decimal literals, including Double.parseDouble's
+// optional f/d suffix and surrounding ASCII whitespace. Partial expressions and
+// JavaScript-only hex, binary and octal integers must not match a page preset.
+const decimalDimension = (value: any): number => {
+    const text = String(value ?? '');
+    const match = /^[\x00-\x20]*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)[fFdD]?[\x00-\x20]*$/.exec(text);
+    // JS's $ can match before a final non-ASCII line separator, which Java rejects.
+    return match && match[0] === text ? Number(match[1]) : NaN;
+};
+
 // updatePageSizeComboBox(): the preset reflecting the current width/height/unit, or
 // 'CUSTOM' when none matches (CUSTOM only appears in this case).
 const matchingPreset = (p: any) => {
-    // A numeric prefix followed by a Velocity expression is still Custom.
-    const width = Number(p.pageWidth);
-    const height = Number(p.pageHeight);
+    const width = decimalDimension(p.pageWidth);
+    const height = decimalDimension(p.pageHeight);
     const unit = String(p.pageUnit ?? 'INCHES');
     if (!Number.isFinite(width) || !Number.isFinite(height)) return 'CUSTOM';
     for (const ps of PAGE_SIZES) {

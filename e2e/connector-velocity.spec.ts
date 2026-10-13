@@ -275,6 +275,69 @@ test('Document Writer keeps typing focus, presets and units synchronized through
     await expect(preset).toHaveValue('CUSTOM');
 });
 
+test('Document Writer recognizes Java decimal dimensions without changing saved text', async ({ page }) => {
+    const spec = fields.find(field => field.name === 'Document Writer' && field.key === 'pageWidth')!;
+    const { state, input: width, savedProperties } = await openField(page, spec);
+    const height = page.locator('[data-fkey="pageHeight"]');
+    const unit = width.locator('..').locator('select').nth(0);
+    const preset = width.locator('..').locator('select').nth(1);
+    const samples = [
+        ['8.5D', '11D', 'INCHES', 'Letter'],
+        ['8.5d', '11f', 'INCHES', 'Letter'],
+        ['+85e-1F', '1.1e+1d', 'INCHES', 'Letter'],
+        ['.85e1', '11.', 'INCHES', 'Letter'],
+        [' 8.5D ', ' 11D ', 'INCHES', 'Letter'],
+        ['0210.0F', '0297D', 'MM', 'A4'],
+    ];
+    for (const [index, [w, h, u, name]] of samples.entries()) {
+        await width.fill(w);
+        await height.fill(h);
+        await unit.selectOption(u);
+        await expect(preset).toHaveValue(name);
+        await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+        await expect.poll(() => state.writes.length).toBe(index + 1);
+        await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
+        expect(savedProperties()).toMatchObject({ pageWidth: w, pageHeight: h, pageUnit: u });
+        await page.reload();
+        await showPanel(page, 'Document Writer');
+        await expect(width).toHaveValue(w);
+        await expect(height).toHaveValue(h);
+        await expect(preset).toHaveValue(name);
+    }
+});
+
+test('Document Writer keeps JavaScript-only numbers and partial expressions Custom', async ({ page }) => {
+    const spec = fields.find(field => field.name === 'Document Writer' && field.key === 'pageWidth')!;
+    const { input: width } = await openField(page, spec);
+    const height = page.locator('[data-fkey="pageHeight"]');
+    const unit = width.locator('..').locator('select').nth(0);
+    const preset = width.locator('..').locator('select').nth(1);
+    // Reject JavaScript-only forms, non-Java whitespace and non-finite dimensions.
+    await unit.selectOption('MM');
+    for (const [w, h] of [
+        ['0xD2', '0x129'],
+        ['0b11010010', '0b100101001'],
+        ['0o322', '0o451'],
+        ['210\u00a0', '297'],
+        ['210\u2028', '297'],
+        ['NaN', '297'],
+        ['Infinity', '297'],
+        ['1e309', '297'],
+    ]) {
+        await width.fill(w);
+        await height.fill(h);
+        await expect(preset).toHaveValue('CUSTOM');
+        await expect(width).toHaveValue(w);
+        await expect(height).toHaveValue(h);
+    }
+    await unit.selectOption('INCHES');
+    for (const w of ['8.5${extra}', '8.5D${extra}', '8.5DD']) {
+        await width.fill(w);
+        await height.fill('11');
+        await expect(preset).toHaveValue('CUSTOM');
+    }
+});
+
 test('channel wizard keeps Document Writer dimensions editable through navigation and creation', async ({ page }) => {
     const writes: any[] = [];
     await page.route('**/vendor/monaco/**', route => route.abort());
