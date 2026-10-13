@@ -42,6 +42,7 @@ import {
 // import is what would otherwise chain the two into one bundle chunk.
 import { destinationMappingsFor } from '../../core/mappings.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
+import { usePaletteContext } from '../palette-context.js';
 
 const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinations', 'Scripts', 'Review'];
 
@@ -670,6 +671,12 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     const pendingDependencies = channelDependencyState(channel);
     const libStateRef = pendingDependencies.libraries;
     const depStateRef = pendingDependencies.dependencies;
+    usePaletteContext({
+        kind: 'channel', surface: 'editor',
+        channelIds: isNew ? [] : [channel.id],
+        channels: isNew ? [] : [channel],
+        librarySelection: libStateRef.current?.checked
+    });
 
     // Keep the model in the store (the embedded editors read it) + prompt-on-leave.
     // The channel also mirrors a `editingChannelDirty` flag the classic editor reads.

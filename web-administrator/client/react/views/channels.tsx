@@ -46,6 +46,7 @@ import { libraryImportCallbacks } from './code-template-import-dialogs.js';
 import { applyGroupImports, bundledLibrarySaveError, consolidateBundledLibraries, resolveGroupImport } from './channel-import.js';
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { runLifecycle } from './channel-lifecycle.js';
+import { usePaletteContext } from '../palette-context.js';
 import {
     loadViewMode, saveViewMode, loadTagMode, saveTagMode,
     VIEW_MODE_OPTIONS, TAG_MODE_OPTIONS, tagRgb, tagIcon
@@ -960,6 +961,13 @@ export function ChannelsView() {
         }
         return [];
     }
+
+    const paletteChannels = effectiveChannels();
+    usePaletteContext({
+        kind: 'channel', surface: 'channels',
+        channelIds: paletteChannels.map((channel: any) => channel.id),
+        channels: paletteChannels
+    });
 
     const requireSingle = (rows: any) => {
         if (rows.length !== 1) { toast('Select a single channel', 'warn'); return null; }

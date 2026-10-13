@@ -38,6 +38,7 @@ import {
 import { CardsView } from './cards.jsx';
 import { runLifecycle } from './channel-lifecycle.js';
 import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
+import { usePaletteContext } from '../palette-context.js';
 
 // Loaded on demand. This dialog is the dashboard's ONLY use of the message
 // browser, and importing it statically drags that whole view — the largest in the
@@ -429,6 +430,13 @@ function DashboardView({ onToggleView }: any) {
     const selectionForTabs = selectedConnector
         ? [{ channelId: selectedConnector.channelId, metaDataId: selectedConnector.metaDataId }]
         : statuses.filter(s => selected.has(s.channelId));
+    const paletteChannels = statuses.filter(status => selectedConnector
+        ? status.channelId === selectedConnector.channelId : selected.has(status.channelId));
+    usePaletteContext({
+        kind: 'channel', surface: 'dashboard',
+        channelIds: paletteChannels.map(channel => channel.channelId),
+        channels: paletteChannels.map(channel => ({ id: channel.channelId, name: channel.name }))
+    });
 
     /* The single choke point for USER selection changes: set both halves and
        re-emit for outside listeners (plugins). Rendering (task pane, tabs)

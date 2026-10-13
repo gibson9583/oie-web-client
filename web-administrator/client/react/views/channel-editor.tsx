@@ -58,6 +58,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { usePaletteContext } from '../palette-context.js';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
 
@@ -2584,6 +2585,12 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     const setup = setupRef.current;
     const { channel, version, tagState } = setup;
     const isNewRef = { get current() { return setup.isNew; } };
+    usePaletteContext({
+        kind: 'channel', surface: 'editor',
+        channelIds: setup.isNew ? [] : [channel.id],
+        channels: setup.isNew ? [] : [channel],
+        librarySelection: channelDependencyState(channel).libraries.current?.checked
+    });
 
     const [, bumpRev] = useReducer((x: any) => x + 1, 0);
     const [activeTab, setActiveTabState] = useState('Summary');

@@ -1327,6 +1327,10 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .cmdk-label b { color: var(--accent); font-weight: 660; }
 .cmdk-hint {
     flex: none;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--text-faint);
