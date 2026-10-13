@@ -41,6 +41,7 @@ import { LoginForm, isOidcCallback, isExpectedOidcCallback, takeOidcCallback, ta
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
 import { clearSsoSession, holdAutoRedirect, isSsoSession, takeSsoPending } from './sso-session.js';
+import { AccessDeniedView } from './access-denied.jsx';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -64,7 +65,17 @@ const ISSUES_URL = 'https://github.com/OpenIntegrationEngine/engine/issues';
  * plugin rewrites core/ imports per-module, and it cannot see a computed one —
  * a template literal here would silently produce a second framework instance.
  */
-const VIEW_ROUTES = [
+type RouteTask = [group: string, task: string];
+interface ViewRoute {
+    path: string;
+    meta: { title: string };
+    nav?: any;
+    tasks?: RouteTask[] | ((ctx: any) => RouteTask[]);
+    load: () => Promise<any>;
+    pick: (module: any) => any;
+}
+
+const VIEW_ROUTES: ViewRoute[] = [
     { path: '/dashboard', meta: { title: 'Dashboard' },
         nav: { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Monitor', order: 0, task: 'doShowDashboard' },
         load: () => import('./views/dashboard.jsx'), pick: (m: any) => m.DashboardHost },
@@ -72,16 +83,22 @@ const VIEW_ROUTES = [
         nav: { id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Design', order: 0, task: 'doShowChannel' },
         load: () => import('./views/channels.jsx'), pick: (m: any) => m.ChannelsView },
     { path: '/channels/:channelId/edit', meta: { title: 'Edit Channel' },
+        tasks: ({ query }) => [['view', 'doShowChannel'], ['channel', query.new === '1' ? 'doNewChannel' : 'doEditChannel']],
         load: () => import('./views/channel-editor.jsx'), pick: (m: any) => m.ChannelEditorView },
     { path: '/channels/:channelId/filter/:metaDataId', meta: { title: 'Filter' },
+        tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditFilter']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.FilterView },
     { path: '/channels/:channelId/transformer/:metaDataId', meta: { title: 'Transformer' },
+        tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditTransformer']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.TransformerView },
     { path: '/channels/:channelId/response/:metaDataId', meta: { title: 'Response Transformer' },
+        tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditResponseTransformer']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.ResponseTransformerView },
     { path: '/channels/new/guided', meta: { title: 'New Channel — Wizard' },
+        tasks: [['view', 'doShowChannel'], ['channel', 'doNewChannel']],
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
     { path: '/channels/:channelId/guided', meta: { title: 'Channel — Wizard' },
+        tasks: [['view', 'doShowChannel'], ['channel', 'doEditChannel']],
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
     /* Channel-less entry to the message browser: the same view, with its channel
        picker as the way in. Registered BEFORE the parameterised route so
@@ -91,6 +108,7 @@ const VIEW_ROUTES = [
             section: 'Monitor', order: 1, task: 'doShowMessages' },
         load: () => import('./views/messages.jsx'), pick: (m: any) => m.MessagesView },
     { path: '/messages/:channelId', meta: { title: 'Messages' },
+        tasks: [['view', 'doShowMessages']],
         load: () => import('./views/messages.jsx'), pick: (m: any) => m.MessagesView },
     { path: '/events', meta: { title: 'Events' },
         nav: { id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Monitor', order: 3, task: 'doShowEvents' },
@@ -99,10 +117,13 @@ const VIEW_ROUTES = [
         nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Monitor', order: 2, task: 'doShowAlerts' },
         load: () => import('./views/alerts.jsx'), pick: (m: any) => m.AlertsList },
     { path: '/alerts/:alertId/edit', meta: { title: 'Edit Alert' },
+        tasks: ({ query }) => [['view', 'doShowAlerts'], ['alert', query.new === '1' ? 'doNewAlert' : 'doEditAlert']],
         load: () => import('./views/alert-editor.jsx'), pick: (m: any) => m.AlertEditor },
     { path: '/alerts/new/guided', meta: { title: 'New Alert — Wizard' },
+        tasks: [['view', 'doShowAlerts'], ['alert', 'doNewAlert']],
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
     { path: '/alerts/:alertId/guided', meta: { title: 'Alert — Wizard' },
+        tasks: [['view', 'doShowAlerts'], ['alert', 'doEditAlert']],
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
     { path: '/users', meta: { title: 'Users' },
         nav: { id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Manage', order: 0, task: 'doShowUsers' },
@@ -111,10 +132,10 @@ const VIEW_ROUTES = [
         nav: { id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Manage', order: 1, task: 'doShowSettings' },
         load: () => import('./views/settings.jsx'), pick: (m: any) => m.SettingsView },
     { path: '/code-templates', meta: { title: 'Code Templates' },
-        nav: { id: 'code-templates', label: 'Code Templates', icon: 'code', path: '/code-templates', section: 'Design', order: 1 },
+        nav: { id: 'code-templates', label: 'Code Templates', icon: 'code', path: '/code-templates', section: 'Design', order: 1, task: 'doEditCodeTemplates', rbac: 'channel' },
         load: () => import('./views/code-templates.jsx'), pick: (m: any) => m.CodeTemplatesView },
     { path: '/global-scripts', meta: { title: 'Global Scripts' },
-        nav: { id: 'global-scripts', label: 'Global Scripts', icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2 },
+        nav: { id: 'global-scripts', label: 'Global Scripts', icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2, task: 'doEditGlobalScripts', rbac: 'channel' },
         load: () => import('./views/global-scripts.jsx'), pick: (m: any) => m.GlobalScriptsView },
     { path: '/extensions', meta: { title: 'Extensions' },
         nav: { id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Manage', order: 2, task: 'doShowExtensions' },
@@ -130,12 +151,24 @@ const VIEW_ROUTES = [
 // still downloading. Mounting the superseded view anyway would install ITS nav
 // guard over the surviving view's, and then null the slot entirely when the
 // discarded instance unmounts — leaving the visible view unguarded.
-function lazyView(load: any, pick: any) {
+function canEnterView(route: ViewRoute, ctx: any) {
+    if (route.nav?.task && !platform.checkTask(route.nav.rbac || 'view', route.nav.task)) return false;
+    const tasks = typeof route.tasks === 'function' ? route.tasks(ctx) : route.tasks || [];
+    return tasks.every(([group, task]) => platform.checkTask(group, task));
+}
+
+function lazyView(route: ViewRoute) {
     return async (ctx: any) => {
         const token = router.navigationToken();
-        const mod = await load();
+        // A hidden menu item can still be reached by a bookmark, history entry,
+        // or another view. Gate before importing so denied views never mount or
+        // issue their protected requests. The router still owns leave guards.
+        if (!canEnterView(route, ctx)) return reactView(AccessDeniedView)(ctx);
+        const mod = await route.load();
         if (router.navigationToken() !== token) return null;
-        return reactView(pick(mod))(ctx);
+        // Permission state can change while a cold view module is downloading.
+        if (!canEnterView(route, ctx)) return reactView(AccessDeniedView)(ctx);
+        return reactView(route.pick(mod))(ctx);
     };
 }
 
@@ -201,7 +234,7 @@ function registerCommands(plat: any) {
 function registerViewRoutes(plat: any) {
     for (const route of VIEW_ROUTES) {
         if (route.nav) plat.registerNavItem(route.nav);
-        plat.registerView(route.path, lazyView(route.load, route.pick), route.meta);
+        plat.registerView(route.path, lazyView(route), route.meta);
     }
     for (const action of OTHER_ACTIONS) plat.registerNavItem(action);
     registerCommands(plat);

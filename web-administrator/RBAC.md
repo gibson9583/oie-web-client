@@ -3,6 +3,9 @@
 The web administrator ports OIE's Swing **`AuthorizationController`** hook so a
 third-party RBAC plugin can **hide menu items the current user isn't authorized for**
 — left-nav entries, task-pane buttons, and right-click context-menu items.
+Built-in routes also check those permissions before loading or mounting a view,
+so a restricted bookmark displays **Access denied** without starting the view's
+data requests.
 
 With **no RBAC plugin installed the UI is unchanged** (everything is permitted). A
 plugin opts in by registering a controller; the controller is asked, per item,
@@ -34,6 +37,10 @@ Semantics (`client/core/authorization.ts`):
 
 - **`checkTask(group, task)` returning `false` hides** the matching nav item, task
   button, and its right-click twin. Any other return value shows it.
+- **Built-in route entry** uses the same checks, including direct URLs and browser
+  history. Nested editors require both their parent view permission and their
+  entry action (for example, `view/doShowChannel` and `channel/doEditChannel`).
+  Permissions are checked again after a lazy view module finishes loading.
 - **Fail-open.** A missing controller, an untagged item (no `task`), or a
   controller that throws all resolve to *visible* — exactly like Swing's
   `DefaultAuthorizationController`. RBAC can only ever *remove* options, never break
@@ -93,7 +100,9 @@ never carry one user's cached permissions into a later soft login.
 
 | Surface | How an item is tagged | File |
 | --- | --- | --- |
-| **Left nav** (Dashboard, Channels, …) | `registerNavItem({ …, task })` — group is always `view` | `client/react/shell.tsx` (`Nav`) |
+| **Left nav** (Dashboard, Channels, …) | `registerNavItem({ …, task, rbac })` — group defaults to `view`; Code Templates and Global Scripts use `channel` | `client/react/nav-rail.tsx` |
+| **Built-in routes** | Navigation task plus any nested route entry tasks; denial replaces the view without mounting it | `client/react/shell.tsx` (`VIEW_ROUTES`) |
+| **Settings tabs** (built-in and plugin) | `settings_<label>/doRefresh` OR `doSave`; no visible tabs displays an access-denied state | `client/react/views/settings.tsx` |
 | **Task-pane buttons** (React) | `<TaskButton task="…" />`; the pane's `<RailPane group="…">` supplies the group via context | `client/react/ui.tsx` |
 | **Task-pane buttons** (imperative, used by Settings) | `taskButton(label, icon, onClick, { task, group })` | `client/core/ui.ts` |
 | **Right-click context menus** | each item `{ label, task, group, … }`; `contextMenu(x, y, items, group)` can supply a default group for all items | `client/core/ui.ts` (`contextMenu`) |
@@ -101,6 +110,13 @@ never carry one user's cached permissions into a later soft login.
 A task button and the context-menu item that performs the same action carry the **same
 `(group, task)`**, so denying it hides both — exactly Swing's paired
 task/`JPopupMenu` behavior.
+
+The built-in route checks do not automatically protect routes contributed through
+`platform.registerView`. Plugins must check their own route permissions before
+mounting content or starting requests. Server-side authorization remains required
+for every endpoint, including resource-level restrictions within an allowed view.
+After permissions recover or change, navigate to the page again (or reload) to
+re-evaluate route access and the visible Settings tabs.
 
 ---
 
@@ -281,11 +297,12 @@ Shared on every tab: `doRefresh` — Refresh · `doSave` — Save.
 
 The `(group, task)` pair is a typed model — **`TaskRef` in `@oie/web-ui`** — shared by
 every actionable surface: `ContextMenuItem` and `taskButton` opts extend it, and
-`NavItem`/`DashboardTab` in `@oie/web-shell` carry its `task` field (their groups are
-fixed: `view` and `dashboard` respectively). `type-tests/` guards the surface.
+`NavItem`/`DashboardTab` in `@oie/web-shell` carry its `task` field (navigation defaults
+to `view`, with an optional `rbac` group override; dashboard tabs use `dashboard`).
+`type-tests/` guards the surface.
 
 1. Pick the `(group, task)` — reuse a Swing identifier from the catalog where one fits.
-2. **Nav:** add `task: '<doShow…>'` to `registerNavItem({ … })` (group is `view`).
+2. **Nav:** add `task: '<doShow…>'` to `registerNavItem({ … })` (group defaults to `view`).
 3. **Dashboard tab:** add `task: '<…>'` to `registerDashboardTab({ … })` (group is
    `dashboard`; extension-published task names resolve through the merge).
 4. **React task button:** ensure the pane is `<RailPane group="<key>">` and add
@@ -296,4 +313,5 @@ fixed: `view` and `dashboard` respectively). `type-tests/` guards the surface.
    as its task-button twin so both hide together.
 
 Tests: `client/core/authorization.test.js` (the hook) and `e2e/rbac.spec.ts` (a plugin
-denying a nav item + a task; the no-controller case stays visible).
+denying each built-in route prerequisite, empty and read-only Settings, permission
+load failures, and navigation races; the no-controller case stays visible).
