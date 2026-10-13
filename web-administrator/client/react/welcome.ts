@@ -370,6 +370,7 @@ function showWelcomeDialog(user: any): Promise<boolean> {
             onClose: () => {
                 closed = true;
                 acceptedPassword = null;
+                acceptedProfile = null;
                 (pwInput as any).value = '';
                 (confirmInput as any).value = '';
                 offExpired(); offEngine();
@@ -399,12 +400,24 @@ function showWelcomeDialog(user: any): Promise<boolean> {
                             // Set the password first (Swing order); the engine answers
                             // with a list of policy violations if it's rejected.
                             if (acceptedPassword !== pw) {
+                                const previousPassword = acceptedPassword;
+                                // A failed response can follow a committed write.
+                                // The old receipt is valid only if the engine
+                                // explicitly rejects this replacement password.
+                                acceptedPassword = null;
                                 const violations = passwordViolations(await api.users.updatePassword(userId, pw));
                                 if (!current()) return false;
-                                if (violations.length) { toast(passwordRejectedMessage(violations), 'error'); return false; }
+                                if (violations.length) {
+                                    acceptedPassword = previousPassword;
+                                    toast(passwordRejectedMessage(violations), 'error');
+                                    return false;
+                                }
                                 acceptedPassword = pw;
                             }
                             if (acceptedProfile !== signature) {
+                                // If this write loses its response, reverting to
+                                // the previous fields must still restore them.
+                                acceptedProfile = null;
                                 await api.users.update(userId, submitted);
                                 if (!current()) return false;
                                 acceptedProfile = signature;

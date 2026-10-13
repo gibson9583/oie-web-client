@@ -62,7 +62,11 @@ async function setup(page: Page, fail: Stage | null = null, rejected = false) {
     await page.goto('/');
     await login(page);
     await expect(welcome(page)).toBeVisible();
-    return { calls, failNext: (stage: Stage) => { failure = stage; } };
+    return {
+        calls,
+        failNext: (stage: Stage) => { failure = stage; },
+        rejectNextPassword: () => { rejected = true; },
+    };
 }
 
 for (const stage of ['profile', 'preference'] as const) {
@@ -119,14 +123,15 @@ for (const rejected of [false, true]) {
     });
 }
 
-test('Welcome permits an intentional new password and retains the last confirmed receipt after rejection', async ({ page }) => {
-    const { calls, failNext } = await setup(page, 'profile');
+test('Welcome permits an intentional new password and retains the last confirmed receipt after policy rejection', async ({ page }) => {
+    const { calls, failNext, rejectNextPassword } = await setup(page, 'profile');
     await fillPassword(page);
     await finish(page);
     await dismissError(page);
-    failNext('password');
+    rejectNextPassword();
     await fillPassword(page, OTHER_PASSWORD);
     await finish(page);
+    await expect(error(page)).toContainText('Password was rejected');
     await dismissError(page);
     await fillPassword(page);
     failNext('profile');
@@ -137,6 +142,133 @@ test('Welcome permits an intentional new password and retains the last confirmed
     await finish(page);
     await expect(page.locator('.shell')).toBeVisible();
     expect(calls.passwords).toEqual([PASSWORD, OTHER_PASSWORD, OTHER_PASSWORD]);
+});
+
+for (const scenario of [
+    { name: 'retries the selected password after a replacement password response is lost', commit: true, history: false },
+    { name: 'blocks stale password completion after a lost response and recovers with a new password', commit: true, history: true },
+    { name: 'conservatively retries after a replacement password connection fails before commit', commit: false, history: false },
+]) {
+    test(`Welcome ${scenario.name}`, async ({ page }) => {
+        let authed = false;
+        let upstreamPassword = 'OriginalPassword';
+        let profileWrites = 0;
+        let preferenceWrites = 0;
+        const passwordWrites: string[] = [];
+        const accepted = new Set<string>();
+        const rejectedPassword = 'PolicyRejectedPassword3!';
+        await mockEngine(page, {
+            'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+            'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+            'GET /users/*/preferences/firstlogin': 'true',
+            'PUT /users/1': () => ++profileWrites === 1 ? { __status: 500, body: { message: 'Profile write failed' } } : '',
+            'PUT /users/1/preferences/firstlogin': () => { preferenceWrites++; return ''; },
+        });
+        await page.route('**/api/users/1/password', async route => {
+            const value = route.request().postData() || '';
+            passwordWrites.push(value);
+            if (value === rejectedPassword) {
+                return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ list: { string: ['Password violates policy'] } }) });
+            }
+            if (scenario.history && accepted.has(value)) {
+                return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ list: { string: ['Password was recently used'] } }) });
+            }
+            // A connection failure is ambiguous: it can occur either before or
+            // after the engine accepts the replacement password.
+            if (value !== OTHER_PASSWORD || scenario.commit) {
+                upstreamPassword = value;
+                accepted.add(value);
+            }
+            if (value === OTHER_PASSWORD) return route.abort('connectionreset');
+            await route.fulfill({ status: 200, body: '' });
+        });
+        await page.goto('/');
+        await login(page);
+        await fillPassword(page);
+        await finish(page);
+        await dismissError(page);
+        await fillPassword(page, OTHER_PASSWORD);
+        await finish(page);
+        await dismissError(page);
+        if (scenario.history) {
+            // Neither a history rejection of B nor a definite rejection of C
+            // can resurrect the old receipt for A after B's ambiguous result.
+            for (const [value, message] of [
+                [OTHER_PASSWORD, 'Password was recently used'],
+                [rejectedPassword, 'Password violates policy'],
+            ]) {
+                await fillPassword(page, value);
+                await finish(page);
+                await expect(error(page)).toContainText(message);
+                await expect(page.locator('.shell')).toHaveCount(0);
+                expect(profileWrites).toBe(1);
+                expect(preferenceWrites).toBe(0);
+                await dismissError(page);
+            }
+        }
+        await fillPassword(page);
+        await finish(page);
+        if (scenario.history) {
+            await expect(error(page)).toContainText('Password was recently used');
+            await expect(page.locator('.shell')).toHaveCount(0);
+            expect(profileWrites).toBe(1);
+            expect(preferenceWrites).toBe(0);
+            expect(upstreamPassword).toBe(OTHER_PASSWORD);
+            expect(passwordWrites).toEqual([PASSWORD, OTHER_PASSWORD, OTHER_PASSWORD, rejectedPassword, PASSWORD]);
+            await dismissError(page);
+            const recoveryPassword = 'FreshRecoveryPassword4!';
+            await fillPassword(page, recoveryPassword);
+            await finish(page);
+            await expect(page.locator('.shell')).toBeVisible();
+            expect(upstreamPassword).toBe(recoveryPassword);
+            expect(passwordWrites).toEqual([PASSWORD, OTHER_PASSWORD, OTHER_PASSWORD, rejectedPassword, PASSWORD, recoveryPassword]);
+        } else {
+            await expect(page.locator('.shell')).toBeVisible();
+            expect(upstreamPassword).toBe(PASSWORD);
+            expect(passwordWrites).toEqual([PASSWORD, OTHER_PASSWORD, PASSWORD]);
+        }
+        expect(profileWrites).toBe(2);
+        expect(preferenceWrites).toBe(1);
+    });
+}
+
+test('Welcome restores the selected profile after a replacement profile response is lost', async ({ page }) => {
+    let authed = false;
+    let preferenceWrites = 0;
+    let upstreamFirstName = 'Original';
+    const profileWrites: string[] = [];
+    const passwordWrites: string[] = [];
+    await mockEngine(page, {
+        'GET /users/current': () => authed ? { user: { id: 1, username: 'admin', firstName: 'Original' } } : { __status: 401 },
+        'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+        'GET /users/*/preferences/firstlogin': 'true',
+        'PUT /users/1/password': (request: any) => { passwordWrites.push(request.postData() || ''); return ''; },
+        'PUT /users/1/preferences/firstlogin': () => ++preferenceWrites === 1 ? { __status: 500, body: { message: 'Preference write failed' } } : '',
+    });
+    await page.route('**/api/users/1', async route => {
+        upstreamFirstName = route.request().postDataJSON().user.firstName;
+        profileWrites.push(upstreamFirstName);
+        if (upstreamFirstName === 'Profile B') return route.abort('connectionreset');
+        await route.fulfill({ status: 200, body: '' });
+    });
+    await page.goto('/');
+    await login(page);
+    await fillPassword(page);
+    await profileField(page, 'First Name').fill('Profile A');
+    await finish(page);
+    await dismissError(page);
+    await profileField(page, 'First Name').fill('Profile B');
+    await finish(page);
+    await dismissError(page);
+    await profileField(page, 'First Name').fill('Profile A');
+    await finish(page);
+    await expect(page.locator('.shell')).toBeVisible();
+    const publishedUser = await page.evaluate(async () => (await import(String('/core/store.js'))).getState('user'));
+    expect(upstreamFirstName).toBe('Profile A');
+    expect(publishedUser.firstName).toBe(upstreamFirstName);
+    expect(profileWrites).toEqual(['Profile A', 'Profile B', 'Profile A']);
+    expect(passwordWrites).toEqual([PASSWORD]);
+    expect(preferenceWrites).toBe(2);
 });
 
 test('Welcome serializes Finish, prevents pending dismissal and snapshots profile before awaiting', async ({ page }) => {

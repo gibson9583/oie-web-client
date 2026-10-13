@@ -1,5 +1,6 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import type { Page } from '@playwright/test';
+import { mockEngine, login } from './mock.js';
 import { listen, startWebAdmin } from './server-harness.js';
 
 /*
@@ -27,6 +28,142 @@ test.afterEach(async ({ page }) => {
         await new Promise<void>(resolve => server.close(() => resolve()));
         providers.delete(page);
     }
+});
+
+test.describe('authentication mode after interrupted SSO setup', () => {
+    const welcome = (page: Page) => page.getByRole('dialog', { name: 'Welcome to Open Integration Engine', exact: true });
+
+    async function mockHandoff(page: Page, multiEngine = false) {
+        const state = {
+            user: null as { id: number; username: string } | null,
+            requireWelcome: true,
+            notifySso: false,
+            logouts: 0,
+            setupWrites: 0,
+            rejectLocal: false,
+        };
+        await mockEngine(page, {
+            'GET /users/current': () => state.user ? { user: state.user } : { __status: 401 },
+            'POST /extensions/oidcauth/callback': envelope({ ok: true, ticket: 'handoff-ticket', returnPath: '/' }),
+            'POST /users/_login': (request: any) => {
+                const username = new URLSearchParams(request.postData() || '').get('username') || '';
+                if (username !== 'oidc' && state.rejectLocal) return loginStatus('FAIL');
+                state.user = username === 'oidc' ? { id: 1, username: 'sso-user' } : { id: 2, username };
+                return loginStatus('SUCCESS');
+            },
+            'POST /users/_logout': () => { state.user = null; state.logouts++; return ''; },
+            'GET /users/*/preferences/firstlogin': () => String(state.requireWelcome),
+            'GET /server/publicSettings': () => ({ publicServerSettings: {
+                loginNotificationEnabled: state.notifySso && state.user?.username === 'sso-user',
+                loginNotificationMessage: 'Accept this login notification.',
+            } }),
+            'GET /handoff-expiry': () => { state.user = null; return { __status: 401 }; },
+            'PUT /users/*/password': () => { state.setupWrites++; return ''; },
+            'PUT /users/*': () => { state.setupWrites++; return ''; },
+            'PUT /users/*/preferences/firstlogin': () => { state.setupWrites++; return ''; },
+        });
+        if (multiEngine) await page.route('**/webadmin/config.json', route => route.fulfill({
+            contentType: 'application/json',
+            body: JSON.stringify({ engines: [{ key: 'k:first', name: 'First' }, { key: 'k:second', name: 'Second' }] }),
+        }));
+        return state;
+    }
+
+    for (const branch of ['soft login', 'permission reload', 'engine reload']) {
+        test(`local login replaces expired SSO mode through ${branch}`, async ({ page }) => {
+            const state = await mockHandoff(page, branch === 'engine reload');
+            if (branch !== 'soft login') {
+                // Let a real shell load plugins and record its engine/user. These
+                // markers force the next sign-in through the actual reload paths.
+                state.requireWelcome = false;
+                await page.goto('/');
+                await login(page, 'previous-user');
+                await expect(page.locator('.statusbar')).toContainText('as previous-user');
+                await expect.poll(() => page.evaluate(() => sessionStorage.getItem('oie-loaded-user'))).toBe('previous-user');
+                await page.getByRole('button', { name: 'Logout', exact: true }).click();
+                await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+                state.requireWelcome = true;
+            }
+            // Exercise callback redemption and the real SSO mode assignment.
+            await page.goto('/oidc/callback?code=handoff-code&state=handoff-state');
+            await expect(welcome(page)).toBeVisible();
+            expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBe('1');
+            await page.evaluate(async () => {
+                const api = await import('@oie/web-api');
+                await api.default.get('/handoff-expiry').catch(() => {});
+            });
+            await expect(welcome(page)).toHaveCount(0);
+            await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+            if (branch === 'engine reload') await page.locator('select').selectOption('k:second');
+            await page.evaluate(() => { (window as any).authModeDocument = true; });
+            const logoutsBeforeCancel = state.logouts;
+            await login(page, 'local-admin', 'temporary');
+            await expect(welcome(page)).toBeVisible();
+            expect(await page.evaluate(() => !!(window as any).authModeDocument)).toBe(branch === 'soft login');
+            expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBeNull();
+            await page.keyboard.press('Escape');
+            await expect(page.getByText('Sign-in canceled — set a new password to continue.')).toBeVisible();
+            await expect(page.locator('.shell')).toHaveCount(0);
+            expect(state.logouts).toBe(logoutsBeforeCancel + 1);
+            expect(state.setupWrites).toBe(0);
+
+            // A returning local account also regains its password affordance.
+            state.requireWelcome = false;
+            await login(page, 'local-admin', 'temporary');
+            await expect(page.locator('.statusbar')).toContainText('as local-admin');
+            await page.locator('button.user-chip').click();
+            await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Change Password', exact: true })).toBeVisible();
+        });
+    }
+
+    test('local login replaces SSO mode after declining the login notification', async ({ page }) => {
+        const state = await mockHandoff(page);
+        state.notifySso = true;
+        await page.goto('/oidc/callback?code=handoff-code&state=handoff-state');
+        const notification = page.getByRole('dialog', { name: 'Login Notification', exact: true });
+        await expect(notification).toBeVisible();
+        expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBe('1');
+        await notification.getByRole('button', { name: 'I Decline', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+        await login(page, 'local-admin', 'temporary');
+        await expect(welcome(page)).toBeVisible();
+        expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBeNull();
+        await page.keyboard.press('Escape');
+        await expect(page.getByText('Sign-in canceled — set a new password to continue.')).toBeVisible();
+        await expect(page.locator('.shell')).toHaveCount(0);
+        expect(state.logouts).toBe(2);
+        expect(state.setupWrites).toBe(0);
+    });
+
+    test('an authenticated SSO account retains its Welcome exemption', async ({ page }) => {
+        const state = await mockHandoff(page);
+        await page.goto('/oidc/callback?code=handoff-code&state=handoff-state');
+        await expect(welcome(page)).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(page.locator('.statusbar')).toContainText('as sso-user');
+        expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBe('1');
+        await page.locator('button.user-chip').click();
+        await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Change Password', exact: true })).toHaveCount(0);
+        expect(state.logouts).toBe(0);
+        expect(state.setupWrites).toBe(0);
+    });
+
+    test('failed local credentials do not replace an authenticated SSO mode', async ({ page }) => {
+        const state = await mockHandoff(page);
+        await page.goto('/oidc/callback?code=handoff-code&state=handoff-state');
+        await expect(welcome(page)).toBeVisible();
+        await page.evaluate(async () => {
+            const api = await import('@oie/web-api');
+            await api.default.get('/handoff-expiry').catch(() => {});
+        });
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+        state.rejectLocal = true;
+        await login(page, 'local-admin', 'wrong-password');
+        await expect(page.getByText('Invalid username or password.')).toBeVisible();
+        expect(await page.evaluate(() => sessionStorage.getItem('oie-sso-session'))).toBe('1');
+        await expect(page.locator('.shell')).toHaveCount(0);
+        expect(state.setupWrites).toBe(0);
+    });
 });
 const envelope = (body: unknown) => ({ string: JSON.stringify(body) });
 const loginStatus = (status: string, extra: Record<string, unknown> = {}) =>
