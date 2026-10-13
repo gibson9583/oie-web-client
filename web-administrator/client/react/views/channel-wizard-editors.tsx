@@ -164,7 +164,7 @@ const DEP_TABS = [
     ['deploy', 'Deploy/Start Dependencies']
 ];
 
-export function DependenciesStep({ channel, libState, depState, onChange }: any) {
+export function DependenciesStep({ channel, libState, depState, onChange, onLoaded }: any) {
     const [, tick] = useReducer((x: any) => x + 1, 0);
     const [tab, setTab] = useState('libraries');
     const [loaded, setLoaded] = useState(false);
@@ -237,6 +237,7 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
             setFailedLoads(failed);
             setLoadError(message || null);
             setLoaded(true);
+            onLoaded();
             if (message) toast(`Failed to load dependencies: ${message}`, 'error');
         });
         return () => { alive = false; };
@@ -249,6 +250,11 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
 
     const changed = () => { tick(); onChange(); };
     const toggleLib = (id: any, on: any) => { st.checked.set(id, on); changed(); };
+    const toggleLibraries = (on: boolean) => {
+        if (!libraries.some((lib: any) => !!st.checked.get(lib.id) !== on)) return;
+        libraries.forEach((lib: any) => st.checked.set(lib.id, on));
+        changed();
+    };
     const toggleRes = (id: any, name: any, on: any) => {
         for (const h of resourceHolders(channel)) {
             const obj = entriesToObj(h.resourceIds);
@@ -324,8 +330,8 @@ export function DependenciesStep({ channel, libState, depState, onChange }: any)
                         <span>Code Template Libraries</span>
                         {libraries.length > 0 && (
                             <span className="ml-auto flex flex-wrap gap-1">
-                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { libraries.forEach((l: any) => st.checked.set(l.id, true)); tick(); }}>Select all</button>
-                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => { libraries.forEach((l: any) => st.checked.set(l.id, false)); tick(); }}>Deselect all</button>
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => toggleLibraries(true)}>Select all</button>
+                                <button type="button" className="btn btn-sm btn-ghost" onClick={() => toggleLibraries(false)}>Deselect all</button>
                                 <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(new Set(libraries.map((l: any) => l.id)))}>Expand all</button>
                                 <button type="button" className="btn btn-sm btn-ghost" onClick={() => setExpanded(new Set())}>Collapse all</button>
                             </span>

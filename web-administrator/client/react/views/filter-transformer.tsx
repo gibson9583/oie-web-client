@@ -1271,10 +1271,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             const saved = await persistChannelEdits(channel);
             if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
-            onTasksChange();
             toast(`Saved ${channel.name}`);
         } catch (e: any) {
             if (isCurrent()) toast(e.message, 'error');
+        } finally {
+            if (isCurrent() && mountedRef.current) onTasksChange();
         }
     }
 

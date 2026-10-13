@@ -944,7 +944,8 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                             onChange={bump} onNameChange={() => { setNameTouched(true); bump(); }}
                             onInbound={changeInbound} onOutbound={changeOutbound} nameError={nErr} />
                     )}
-                    {stepName === 'Dependencies' && <DependenciesStep channel={channel} libState={libStateRef} depState={depStateRef} onChange={bump} />}
+                    {stepName === 'Dependencies' && <DependenciesStep channel={channel} libState={libStateRef} depState={depStateRef}
+                        onChange={bump} onLoaded={forceRender} />}
                     {stepName === 'Channel Options' && <ChannelSettings channel={channel} version={version} onChange={bump} />}
                     {stepName === 'Source' && (
                         <ConnectorTabs channel={channel} connector={channel.sourceConnector} mode="SOURCE" version={version} onChange={bump} />

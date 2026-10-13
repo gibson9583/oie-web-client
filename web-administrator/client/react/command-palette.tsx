@@ -120,6 +120,7 @@ export function CommandPalette() {
     const channelContext = context?.kind === 'channel' && context.channelIds.length > 0;
     const templateContext = context?.kind === 'templates';
     const listRef = useRef<any>(null);
+    const pointerRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
     // ⌘K / Ctrl+K anywhere. Capture phase so a focused editor can't swallow it.
     useEffect(() => {
@@ -129,8 +130,18 @@ export function CommandPalette() {
                 setOpen((v: any) => !v);
             }
         };
+        // WebKit emits stationary mousemoves when results move under the pointer.
+        const onMouseMove = (e: MouseEvent) => {
+            const previous = pointerRef.current;
+            pointerRef.current = { x: e.clientX, y: e.clientY,
+                moved: !!previous && (previous.x !== e.clientX || previous.y !== e.clientY) };
+        };
         document.addEventListener('keydown', onKey, true);
-        return () => document.removeEventListener('keydown', onKey, true);
+        document.addEventListener('mousemove', onMouseMove, true);
+        return () => {
+            document.removeEventListener('keydown', onKey, true);
+            document.removeEventListener('mousemove', onMouseMove, true);
+        };
     }, []);
 
     // Only if the dashboard has never been visited: one cheap id/name fetch, once.
@@ -310,7 +321,7 @@ export function CommandPalette() {
                                         {head && <div className="cmdk-group">{head}</div>}
                                         <div id={'cmdk-opt-' + i} role="option" aria-selected={i === cursor}
                                             className="cmdk-opt" data-group={entry.group}
-                                            onMouseMove={() => setCursor(i)}
+                                            onMouseMove={() => { if (pointerRef.current?.moved) setCursor(i); }}
                                             onClick={() => run(entry)}>
                                             {entry.kind === 'channel'
                                                 ? <span className={'cmdk-pip ' + stateClass(entry.state)} />

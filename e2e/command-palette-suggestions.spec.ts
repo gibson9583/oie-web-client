@@ -283,6 +283,41 @@ for (const exit of ['close', 'navigate'] as const) {
     });
 }
 
+test('stationary pointer preserves keyboard selection and real movement restores hover', async ({ page }) => {
+    await mockEngine(page, fixtures);
+    await page.goto('/events');
+    await (await open(page)).fill('/');
+    const channels = option(page, 'Channels');
+    await expect(channels).toBeVisible();
+    const box = (await channels.boundingBox())!;
+    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const firstLabel = await page.locator('.cmdk-opt .cmdk-label').first().textContent();
+    const selected = page.locator('.cmdk-opt[aria-selected="true"] .cmdk-label');
+
+    // Seed the document-level position outside the list, then genuinely hover.
+    // WebKit reports zero movementX/Y even when client coordinates change.
+    await page.mouse.move(0, 0);
+    await page.mouse.move(point.x, point.y);
+    await expect(selected).toHaveText('Channels');
+    await page.keyboard.press('Home');
+    await expect(selected).toHaveText(firstLabel!);
+
+    // Layout/scroll can emit mousemove at the stationary pointer. Such an event
+    // must not undo the keyboard selection or activate a replacement result.
+    await channels.dispatchEvent('mousemove', { clientX: point.x, clientY: point.y, movementX: 0, movementY: 0 });
+    await expect(selected).toHaveText(firstLabel!);
+    await page.mouse.move(point.x + 1, point.y);
+    await expect(selected).toHaveText('Channels');
+
+    await page.keyboard.press('Home');
+    await expect(selected).toHaveText(firstLabel!);
+    await page.mouse.move(0, 0);
+    await expect(selected).toHaveText(firstLabel!);
+    // Returning to the exact last row position still moves from outside it.
+    await page.mouse.move(point.x + 1, point.y);
+    await expect(selected).toHaveText('Channels');
+});
+
 test('keyboard selection retains the recent destination when templates arrive above it', async ({ page }) => {
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });

@@ -2779,13 +2779,14 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             const saved = await persistChannelEdits(channel);
             if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
-            onTasksChange();
-            bumpRev();
             toast(`Saved ${channel.name}`);
             return true;
         } catch (e: any) {
             if (isCurrent()) toast(e.message, 'error');
             return false;
+        } finally {
+            // Creation may succeed before a related dependency write fails.
+            if (isCurrent() && mountedRef.current) { onTasksChange(); bumpRev(); }
         }
     }
 
