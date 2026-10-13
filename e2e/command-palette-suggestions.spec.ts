@@ -300,6 +300,230 @@ test('reverse channel discovery refreshes once per opening and retries failures 
     }
 });
 
+for (const change of ['rename', 'delete', 'delete-all'] as const) {
+    test(`reverse discovery uses the authoritative ${change} inventory after visiting Dashboard`, async ({ page }) => {
+        const current = change === 'rename'
+            ? [{ string: ['c-started', 'Renamed Channel'] }, { string: ['c-stopped', 'Demo Stopped'] }]
+            : change === 'delete' ? [{ string: ['c-stopped', 'Demo Stopped'] }] : [];
+        const labels = current.flatMap(entry => [entry.string[1], entry.string[1]]);
+        let reads = 0, inventory = channelNames.map.entry;
+        await mockEngine(page, {
+            ...fixtures,
+            'GET /channels/idsAndNames': () => { reads++; return { map: { entry: inventory } }; },
+            'GET /codeTemplateLibraries': catalog(defaultLibrary),
+        });
+        await page.goto('/dashboard');
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+        await expect(page.getByText('Demo Stopped', { exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'Code Templates', exact: true }).click();
+        // The server changes after Dashboard has populated its older snapshot.
+        inventory = current;
+        for (const target of ['Default Library', 'Default Library Helper']) {
+            // LibraryEditor independently reads names for its association checklist.
+            const checklistRead = target === 'Default Library'
+                ? page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames') : null;
+            await page.getByRole('treegrid').getByText(target, { exact: true }).click();
+            if (checklistRead) await settle(page, await checklistRead);
+            const readsBeforePalette = reads;
+            const response = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+            const query = await open(page);
+            await settle(page, await response);
+            await expect(suggested(page).locator('.cmdk-label')).toHaveText(labels);
+            expect(reads).toBe(readsBeforePalette + 1);
+            for (const entry of current) {
+                const state = entry.string[0] === 'c-started' ? 'ok' : 'err';
+                await expect(option(page, entry.string[1]).first().locator('.cmdk-pip')).toHaveClass('cmdk-pip ' + state);
+            }
+            // Search must use the same inventory, including an authoritative empty result.
+            await query.fill('#');
+            await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(labels);
+            await close(page);
+        }
+    });
+}
+
+test('reverse discovery retains the last successful inventory through failed reads, including empty inventories', async ({ page }) => {
+    let reads = 0;
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /channels/idsAndNames': () => {
+            reads++;
+            if (reads % 2 === 1) return { __status: 503 };
+            return { map: { entry: reads === 2 ? [{ string: ['c-started', 'Current Name'] }] : [] } };
+        },
+        'GET /codeTemplateLibraries': catalog(defaultLibrary),
+    });
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    await expect(page.getByText('Demo Stopped', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Code Templates', exact: true }).click();
+    // A template selection has no LibraryEditor checklist read to affect the sequence.
+    await page.getByRole('treegrid').getByText('Default Library Helper', { exact: true }).click();
+    for (let opening = 1; opening <= 5; opening++) {
+        const response = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+        const query = await open(page);
+        await settle(page, await response);
+        const labels = opening === 1 ? ['Demo Started', 'Demo Started', 'Demo Stopped', 'Demo Stopped']
+            : opening < 4 ? ['Current Name', 'Current Name'] : [];
+        await expect(suggested(page).locator('.cmdk-label')).toHaveText(labels);
+        expect(reads).toBe(opening);
+        if (opening < 4) {
+            await expect(suggested(page).first().locator('.cmdk-pip')).toHaveClass('cmdk-pip ok');
+        }
+        await query.fill('#');
+        await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(labels);
+        await close(page);
+    }
+});
+
+test('failed first reverse discovery retains newer Dashboard channels after an ordinary palette inventory', async ({ page }) => {
+    let responseMode: 'ordinary' | 'failed' | 'empty' = 'ordinary';
+    let reads = 0;
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /codeTemplateLibraries': catalog(defaultLibrary),
+        'GET /channels/idsAndNames': () => {
+            reads++;
+            if (responseMode === 'failed') return { __status: 503 };
+            return { map: { entry: responseMode === 'empty' ? [] : [{ string: ['c-started', 'Old Ordinary Name'] }] } };
+        },
+    });
+    await page.goto('/events');
+    await (await open(page)).fill('#');
+    await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(['Old Ordinary Name', 'Old Ordinary Name']);
+    await close(page);
+    expect(reads).toBe(1);
+    // This later visit learns both the current name and an additional channel.
+    await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    await expect(page.getByText('Demo Stopped', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Code Templates', exact: true }).click();
+    await page.getByRole('treegrid').getByText('Default Library Helper', { exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Export Code Template', exact: true })).toBeVisible();
+    for (const [index, mode] of (['failed', 'empty', 'failed'] as const).entries()) {
+        responseMode = mode;
+        const response = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+        const query = await open(page);
+        await settle(page, await response);
+        const labels = index === 0 ? ['Demo Started', 'Demo Started', 'Demo Stopped', 'Demo Stopped'] : [];
+        await expect(suggested(page).locator('.cmdk-label')).toHaveText(labels);
+        await query.fill('#');
+        await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(labels);
+        expect(reads).toBe(index + 2);
+        await close(page);
+    }
+});
+
+test('a newer ordinary inventory refreshes a previously successful empty reverse inventory', async ({ page }) => {
+    let responseMode: 'empty' | 'new-channel' | 'failed' = 'empty';
+    let reads = 0;
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /codeTemplateLibraries': catalog(defaultLibrary),
+        'GET /channels/idsAndNames': () => {
+            reads++;
+            if (responseMode === 'failed') return { __status: 503 };
+            return { map: { entry: responseMode === 'empty' ? [] : [{ string: ['c-new', 'New Channel'] }] } };
+        },
+    });
+    // No Dashboard cache: this reverse discovery is the first complete inventory.
+    await page.goto('/code-templates?libraryId=default&templateId=default-template');
+    await expect(page.getByRole('button', { name: 'Export Code Template', exact: true })).toBeVisible();
+    const emptyResponse = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+    await open(page);
+    await settle(page, await emptyResponse);
+    await expect(suggested(page)).toHaveCount(0);
+    await close(page);
+    expect(reads).toBe(1);
+
+    // Another administrator creates a channel. Ordinary discovery subsequently
+    // succeeds with the same full endpoint and learns the current inventory.
+    responseMode = 'new-channel';
+    await page.getByRole('button', { name: 'Events', exact: true }).click();
+    await (await open(page)).fill('#');
+    await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(['New Channel', 'New Channel']);
+    await close(page);
+    expect(reads).toBe(2);
+
+    // A failed next reverse read must retain that newer successful inventory.
+    responseMode = 'failed';
+    await page.getByRole('button', { name: 'Code Templates', exact: true }).click();
+    await page.getByRole('treegrid').getByText('Default Library Helper', { exact: true }).click();
+    const failedResponse = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+    const query = await open(page);
+    await settle(page, await failedResponse);
+    await expect(suggested(page).locator('.cmdk-label')).toHaveText(['New Channel', 'New Channel']);
+    await query.fill('#');
+    await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(['New Channel', 'New Channel']);
+    expect(reads).toBe(3);
+});
+
+test('leaving an empty template inventory still suggests the current Channels selection', async ({ page }) => {
+    let reads = 0;
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /channels': { list: { channel: [{ ...makeChannel('c-current'), name: 'Current Selection' }] } },
+        'GET /channels/idsAndNames': () => { reads++; return { map: { entry: [] } }; },
+        'GET /codeTemplateLibraries': catalog(defaultLibrary),
+    });
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Code Templates', exact: true }).click();
+    await page.getByRole('treegrid').getByText('Default Library Helper', { exact: true }).click();
+    const response = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+    await open(page);
+    await settle(page, await response);
+    await expect(suggested(page)).toHaveCount(0);
+    await close(page);
+    await page.getByRole('button', { name: 'Channels', exact: true }).click();
+    await page.getByText('Current Selection', { exact: true }).click();
+    const query = await open(page);
+    await expect(suggested(page).filter({ has: page.locator('.cmdk-pip') }).locator('.cmdk-label'))
+        .toHaveText(['Current Selection', 'Current Selection']);
+    await query.fill('#Current Selection');
+    await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(['Current Selection', 'Current Selection']);
+    expect(reads).toBe(1);
+});
+
+test('leaving template discovery preserves newer Dashboard channels, names and runtime status', async ({ page }) => {
+    let newerDashboard = false, reads = 0;
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /channels/statuses': () => newerDashboard ? { list: { dashboardStatus: [
+            { channelId: 'c-started', name: 'Dashboard Current', state: 'PAUSED', statistics: {} },
+            { channelId: 'c-new', name: 'Dashboard New', state: 'STOPPED', statistics: {} },
+        ] } } : DEFAULT_FIXTURES['GET /channels/statuses'],
+        'GET /channels/idsAndNames': () => { reads++; return { map: { entry: [{ string: ['c-started', 'Discovery Name'] }] } }; },
+        'GET /codeTemplateLibraries': catalog(defaultLibrary),
+    });
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Code Templates', exact: true }).click();
+    await page.getByRole('treegrid').getByText('Default Library Helper', { exact: true }).click();
+    const response = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+    await open(page);
+    await settle(page, await response);
+    await expect(suggested(page).locator('.cmdk-label')).toHaveText(['Discovery Name', 'Discovery Name']);
+    await expect(suggested(page).first().locator('.cmdk-pip')).toHaveClass('cmdk-pip ok');
+    await close(page);
+    newerDashboard = true;
+    await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+    await expect(page.getByText('Dashboard Current', { exact: true })).toBeVisible();
+    await expect(page.getByText('Dashboard New', { exact: true })).toBeVisible();
+    const query = await open(page);
+    await query.fill('#');
+    await expect(page.locator('.cmdk-opt .cmdk-label'))
+        .toHaveText(['Dashboard Current', 'Dashboard Current', 'Dashboard New', 'Dashboard New']);
+    await expect(option(page, 'Dashboard Current').first().locator('.cmdk-pip')).toHaveClass('cmdk-pip warn');
+    await expect(option(page, 'Dashboard New').first().locator('.cmdk-pip')).toHaveClass('cmdk-pip err');
+    await close(page);
+    await page.getByText('Dashboard New', { exact: true }).click();
+    await open(page);
+    await expect(suggested(page).filter({ has: page.locator('.cmdk-pip') }).locator('.cmdk-label'))
+        .toHaveText(['Dashboard New', 'Dashboard New']);
+    expect(reads).toBe(1);
+});
+
 test('a failed library read keeps the direct channel action and retries on reopening', async ({ page }) => {
     let calls = 0;
     await mockEngine(page, { ...fixtures, 'GET /codeTemplateLibraries': () => ++calls === 1

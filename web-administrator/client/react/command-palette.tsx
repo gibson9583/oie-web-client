@@ -115,6 +115,10 @@ export function CommandPalette() {
     const [query, setQuery] = useState('');
     const [activeKey, setActiveKey] = useState<string | null>(null);
     const [fallbackChannels, setFallbackChannels] = useState([] as any[]);
+    // An old ordinary search must not hide newer Dashboard rows if the first
+    // reverse lookup fails. After one succeeds, keep its snapshot current with
+    // every successful full name read; null is unread and [] is confirmed empty.
+    const [reverseChannels, setReverseChannels] = useState<any[] | null>(null);
     const [fetchedLibraries, setFetchedLibraries] = useState([] as any[]);
     const context = useCurrentPaletteContext();
     const channelContext = context?.kind === 'channel' && context.channelIds.length > 0;
@@ -164,6 +168,7 @@ export function CommandPalette() {
                     return [{ id, name: name == null ? id : String(name) || id }];
                 });
                 setFallbackChannels(rows);
+                setReverseChannels(previous => templateContext || previous !== null ? rows : null);
             })
             .catch(() => { /* the palette is still useful without channels */ });
         return () => { cancelled = true; };
@@ -197,8 +202,15 @@ export function CommandPalette() {
     const libraries = templateContext ? context.libraries : fetchedLibraries;
     const channels = useMemo(() => {
         const cached = cachedChannels();
-        const cachedIds = new Set(cached.map(c => c.id));
-        const source = [...cached, ...fallbackChannels.filter(c => !cachedIds.has(c.id))];
+        const cachedById = new Map<string, any>();
+        // Parent statuses precede connector children; retain the parent's state.
+        for (const channel of cached) if (!cachedById.has(channel.id)) cachedById.set(channel.id, channel);
+        // Reverse links use the last successful inventory, including an empty
+        // one. Dashboard contributes runtime state, never obsolete IDs/names.
+        // Other views still follow their newer Dashboard cache and selection.
+        const source = templateContext && reverseChannels !== null
+            ? reverseChannels.map(channel => ({ ...channel, state: cachedById.get(channel.id)?.state }))
+            : [...cached, ...fallbackChannels.filter(channel => !cachedById.has(channel.id))];
         if (context?.kind !== 'channel') return source;
         // Current view fields win, while cached metadata (such as runtime
         // status) remains available when the view only supplies ID and name.
@@ -209,7 +221,7 @@ export function CommandPalette() {
         }));
         const ids = new Set(current.map(c => c.id));
         return [...current, ...source.filter(c => !ids.has(c.id))];
-    }, [open, fallbackChannels, context]); // eslint-disable-line react-hooks/exhaustive-deps -- read cache on each open
+    }, [open, fallbackChannels, reverseChannels, context]); // eslint-disable-line react-hooks/exhaustive-deps -- read cache on each open
 
     const suggested = useMemo(() => open
         ? contextSuggestions(context, channels, libraries, checkTask).slice(0, MAX_SUGGESTED) : [],
