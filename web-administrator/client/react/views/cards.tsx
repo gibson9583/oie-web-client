@@ -292,7 +292,7 @@ function CardsView({ onToggleView }: any) {
     usePaletteContext({
         kind: 'channel', surface: 'dashboard',
         channelIds: sel.flatMap(channel => channel.channelId ? [channel.channelId] : []),
-        channels: sel.map(channel => ({ id: channel.channelId, name: channel.name }))
+        channels: sel.map(channel => ({ id: channel.channelId, name: channel.name, state: channel.state }))
     });
     const hasSel = sel.length > 0;
     const anySel = (pred: any) => sel.some((s: any) => pred(s.state));

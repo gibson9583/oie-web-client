@@ -705,6 +705,66 @@ for (const surface of ['dashboard', 'cards'] as const) {
     });
 }
 
+test('cold Cards selection supplies status without a classic Dashboard cache', async ({ page }) => {
+    await mockEngine(page, { ...fixtures, 'GET /codeTemplateLibraries': catalog() });
+    await page.addInitScript(() => localStorage.setItem('webadmin-prefs:e2e-server-1:1', JSON.stringify({ dashboardView: 'cards' })));
+    await page.goto('/dashboard');
+    await expect(page.getByRole('button', { name: 'Table view', exact: true })).toBeVisible();
+    for (const [name, state] of [['Demo Started', 'ok'], ['Demo Stopped', 'err']]) {
+        await page.getByText(name, { exact: true }).click();
+        const query = await open(page);
+        const pips = ['cmdk-pip ' + state, 'cmdk-pip ' + state];
+        await expect(suggested(page).locator('.cmdk-label')).toHaveText([name, name]);
+        await expect(suggested(page).locator('.cmdk-pip')).toHaveClass(pips);
+        await query.fill('#' + name);
+        await expect(option(page, name).locator('.cmdk-pip')).toHaveClass(pips);
+        await close(page);
+    }
+});
+
+test('Cards refresh updates suggested status and preserves the selected destination', async ({ page }) => {
+    let refreshing = false;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /codeTemplateLibraries': catalog(),
+        'GET /channels/statuses': async () => {
+            const refreshed = refreshing;
+            if (refreshed) await gate;
+            return { list: { dashboardStatus: [
+                { channelId: 'c-started', name: 'Demo Started', state: refreshed ? 'STOPPED' : 'STARTED', statistics: {} },
+            ] } };
+        },
+    });
+    try {
+        // Seed the independent classic Dashboard cache with the older status.
+        await page.goto('/dashboard');
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+        await page.getByRole('button', { name: 'Card view', exact: true }).click();
+        await page.getByText('Demo Started', { exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+        refreshing = true;
+        const refresh = page.waitForRequest(request => new URL(request.url()).pathname === '/api/channels/statuses');
+        await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+        await refresh;
+        const query = await open(page);
+        await expect(suggested(page).locator('.cmdk-pip')).toHaveClass(['cmdk-pip ok', 'cmdk-pip ok']);
+        await page.keyboard.press('ArrowDown');
+        const selected = page.locator('.cmdk-opt[aria-selected="true"]');
+        await expect(selected.locator('.cmdk-hint')).toHaveText('messages');
+        release();
+        await expect(suggested(page).locator('.cmdk-pip')).toHaveClass(['cmdk-pip err', 'cmdk-pip err']);
+        await expect(selected.locator('.cmdk-label')).toHaveText('Demo Started');
+        await expect(selected.locator('.cmdk-hint')).toHaveText('messages');
+        await query.fill('#Demo Started');
+        await expect(option(page, 'Demo Started').locator('.cmdk-pip')).toHaveClass(['cmdk-pip err', 'cmdk-pip err']);
+        await close(page);
+        await expect(page.getByRole('button', { name: 'Start', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
+    } finally { release(); }
+});
+
 async function installAuthorizationProbe(page: Page, denied = ['channel:doEditChannel', 'codeTemplate:doRefreshCodeTemplates']) {
     await page.route('**/webadmin/plugins.json', async route => {
         const response = await route.fetch();
