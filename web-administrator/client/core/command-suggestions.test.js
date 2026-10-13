@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { channelPaletteEntries, contextSuggestions, entryAllowed, templatePaletteEntries } from './command-suggestions.js';
+import { canBrowseTemplates, channelPaletteEntries, contextSuggestions, entryAllowed, templatePaletteEntries } from './command-suggestions.js';
 
 const allowAll = () => true;
 const idsOf = entries => entries.map(entry => entry.id);
@@ -147,19 +147,29 @@ console.log('command-suggestions: invalid payloads, renderable labels, encoded d
 
 // Each permission is independently necessary. Filtering a denied destination
 // must not hide unrelated authorized destinations or weaken the activation guard.
-const permissions = ['view:doShowChannel', 'channel:doEditChannel', 'view:doShowMessages', 'codeTemplate:doRefreshCodeTemplates'];
+const templatePermissions = ['channel:doEditCodeTemplates', 'codeTemplate:doRefreshCodeTemplates'];
+const permissions = ['view:doShowChannel', 'channel:doEditChannel', 'view:doShowMessages', ...templatePermissions];
 for (const denied of permissions) {
     const can = (group, task) => `${group}:${task}` !== denied;
     const expected = [
         ...(!['view:doShowChannel', 'channel:doEditChannel'].includes(denied) ? ['chan:orders'] : []),
         ...(denied !== 'view:doShowMessages' ? ['chanmsg:orders'] : []),
-        ...(denied !== 'codeTemplate:doRefreshCodeTemplates' ? ['library:linked', 'template:linked-template'] : [])
+        ...(!templatePermissions.includes(denied) ? ['library:linked', 'template:linked-template'] : [])
     ];
     assert.deepEqual(idsOf(contextSuggestions(channelContext('dashboard'), channels, [relatedLibrary], can)), expected, denied);
 }
 assert.deepEqual(contextSuggestions(channelContext('dashboard'), channels, [relatedLibrary], () => false), []);
 assert.deepEqual(templatePaletteEntries([relatedLibrary], () => false), []);
 assert.deepEqual(channelPaletteEntries(channels, () => false), []);
+for (const denied of templatePermissions) {
+    const can = (group, task) => `${group}:${task}` !== denied;
+    assert.equal(canBrowseTemplates(can), false, `${denied} must suppress the optional library fetch`);
+    assert.deepEqual(templatePaletteEntries([relatedLibrary], can), [], `${denied} also removes search and recent destinations`);
+    for (const entry of templatePaletteEntries([relatedLibrary], allowAll)) {
+        assert.equal(entryAllowed(entry, can), false, `${denied} must also block a previously rendered ${entry.id}`);
+    }
+}
+assert.equal(canBrowseTemplates(allowAll), true);
 for (const [surface, denied] of [['channels', 'channel:doViewMessages'], ['dashboard', 'dashboard:doShowMessages']]) {
     const can = (group, task) => `${group}:${task}` !== denied;
     const context = channelContext(surface);

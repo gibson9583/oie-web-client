@@ -50,6 +50,10 @@ function taskGating() {
     // Nav items and dashboard tabs carry the RBAC task tag (view/dashboard groups).
     platform.registerNavItem({ id: 'x', label: 'X', path: '/x', task: 'doShowChannel' });
     platform.registerDashboardTab({ id: 'y', label: 'Y', task: 'doShowThreadViewer', component: () => null });
+    // Additional route prerequisites combine with the existing command task.
+    const prerequisites = [['view', 'doShowChannel'], ['channel', 'doNewChannel']] as const;
+    platform.registerCommand({ id: 'new-channel', label: 'New Channel', task: 'doNewChannel', rbac: 'channel',
+        permissions: prerequisites, path: '/channels/new/guided' });
 }
 
 function badUsage() {
@@ -63,6 +67,10 @@ function badUsage() {
     platform.registerChannelTab({ id: 'x', label: 'X' });
     // @ts-expect-error a reference type must be a CodeTemplateType name
     platform.registerReferences('X', [{ name: 'x', code: 'x', type: 'CODE' }]);
+    // @ts-expect-error a command prerequisite needs both group and task
+    platform.registerCommand({ id: 'bad-task', label: 'Bad Task', permissions: [['view']] });
+    // @ts-expect-error command prerequisite names are strings
+    platform.registerCommand({ id: 'bad-task-type', label: 'Bad Task', permissions: [['view', 1]] });
 }
 
 void libraries;

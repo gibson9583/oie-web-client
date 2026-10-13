@@ -69,7 +69,7 @@ export function AlertsList() {
         store.setState('editingAlert', model);
         router.navigate(`/alerts/${model.id}/edit?new=1`);
     }
-    const startGuidedAlert = () => router.navigate('/alerts/new/guided');
+    const startGuidedAlert = () => router.navigate('/alerts/new/guided?fresh=1');
 
     // New Alert: honor the saved default (Settings → Administrator), else show a
     // Classic-vs-Wizard chooser. "Remember" writes the pick to the default.

@@ -1,4 +1,4 @@
-import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
+import { isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
 import { channelDependencyState } from '../../core/channel-dependencies.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
@@ -1965,7 +1965,7 @@ function FilterTransformerView({ params, kindName }: any) {
     // The wizard publishes its own context; only routed sub-editors publish here.
     const channel = ready ? store.getState('editingChannel') : null;
     const persistedChannel = channel && channel.id === params.channelId
-        && !channelEditState(channel, store.getState('editingChannelNew') === true).isNew;
+        && !isNewChannelDraft(channel);
     usePaletteContext({
         kind: 'channel', surface: 'connector',
         channelIds: persistedChannel ? [channel.id] : [],

@@ -2565,7 +2565,7 @@ function ScriptsTab({ channel, markDirty }: any) {
 
 /* ---- the editor body ---------------------------------------------------------- */
 
-function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
+function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     /* ---- one-time setup: working model + save baseline ---- */
     const setupRef = useRef<any>(null);
     if (!setupRef.current) {
@@ -2573,7 +2573,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         setupRef.current = {
             channel,
             version: channel['@version'] || store.getState('serverVersion') || '4.5.2',
-            get isNew() { return channelEditState(channel, query.new === '1' || store.getState('editingChannelNew') === true).isNew; },
+            get isNew() { return channelEditState(channel).isNew; },
             // Tags cache shared by the Summary field and save().
             tagState: { loaded: false, available: false, all: [], assigned: new Set(), initial: new Set() }
         };

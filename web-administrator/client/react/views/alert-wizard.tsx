@@ -12,7 +12,8 @@ import { withEditorSave } from '../save-lock.js';
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import api from '@oie/web-api';
-import { alertBaseline, loadAlertForEdit, confirmIfAlertChanged } from '../alert-conflict.js';
+import { alertBaseline, loadAlertForEdit, confirmIfAlertChanged, rememberAlertSave } from '../alert-conflict.js';
+import { isNewAlertDraft } from '../../core/editor-route-state.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { useInvalidate } from '../queries.js';
 import { toast, saveFile } from '@oie/web-ui';
@@ -42,12 +43,14 @@ function normalizeActionGroups(a: any) {
 
 // Loader: resolve the alert to edit (see wizard-frame's useWizardModel), then
 // render the wizard. /alerts/new/guided creates; /alerts/:alertId/guided edits.
-function AlertWizardView({ params }: any) {
+function AlertWizardView({ params, query = {} }: any) {
     const version = store.getState('serverVersion') || '4.5.2';
     const { model, isNew, ready } = useWizardModel({
         routeId: params && params.alertId,
+        fresh: query.fresh === '1',
         storeKey: 'editingAlert',
-        isValid: (a: any) => !!a.trigger,
+        isValid: (a: any) => !!a.id && !!a.trigger,
+        isNewModel: isNewAlertDraft,
         makeNew: () => newAlert('', version),
         fetch: loadAlertForEdit,
         normalize: normalizeActionGroups,
@@ -58,6 +61,7 @@ function AlertWizardView({ params }: any) {
 }
 
 function AlertWizardInner({ alert, isNew }: any) {
+    isNew = isNewAlertDraft(alert);
     const baselineRef = useRef(alertBaseline(alert));
     useEffect(() => {
         // Tab-close guard: the wizard's dirty flag, synchronous (core/unsaved.js).
@@ -105,7 +109,7 @@ function AlertWizardInner({ alert, isNew }: any) {
 
     // Keep the model in the store + prompt-on-leave (shared with the channel wizard).
     useLeaveGuard({
-        model: alert, isNew, storeKey: 'editingAlert', storeNewKey: 'editingAlertNew',
+        model: alert, isNew: () => isNewAlertDraft(alert), storeKey: 'editingAlert', storeNewKey: 'editingAlertNew',
         entityLabel: 'alert', dirtyKey: 'editingAlertDirty', dirtyRef, savedRef, switchingRef, save: () => saveAlert(false),
         canSave: () => platform.checkTask('alertEdit', 'doSaveAlerts')
     });
@@ -186,17 +190,20 @@ function AlertWizardInner({ alert, isNew }: any) {
         if (probs.length) { const s = firstProblemStep(); if (s >= 0) setStep(s); toast(probs.join('  ·  '), 'warn'); return false; }
         if (enable && !alert.enabled) { alert.enabled = true; bump(); }
         try {
-            if (isNew) {
+            if (isNewAlertDraft(alert)) {
                 await api.alerts.create(alert);
             } else {
                 if (!await confirmIfAlertChanged(alert.id, baselineRef.current)) return false;
                 await api.alerts.update(alert.id, alert);
             }
+            rememberAlertSave(alert);
+            baselineRef.current = alertBaseline(alert);
             // The list caches ['alerts'] for 30s and outlives this view, so without
             // this the alerts list repaints its pre-save rows on the way back.
             await invalidate('alerts');
             savedRef.current = true;
             dirtyRef.current = false;
+            store.setState('editingAlertDirty', false);
             return true;
         } catch (e: any) {
             toast(e && e.message ? e.message : 'Could not save the alert.', 'error');
@@ -205,24 +212,26 @@ function AlertWizardInner({ alert, isNew }: any) {
     }
     async function finish(enable: any) {
         if (saving || store.getState('editorSave')) return;
+        const wasNew = isNewAlertDraft(alert);
         setSaving(true);
         const ok = await saveAlert(enable);
         if (!ok) { setSaving(false); return; }
         store.setState('navGuard', null);
-        toast(`Alert “${alert.name}” ${isNew ? 'created' : 'saved'}${enable ? ' and enabled' : ''}.`, 'info');
+        toast(`Alert “${alert.name}” ${wasNew ? 'created' : 'saved'}${enable ? ' and enabled' : ''}.`, 'info');
         router.navigate('/alerts');
     }
     function switchToClassic() {
+        const draft = isNewAlertDraft(alert);
         switchingRef.current = true;
         store.setState('editingAlert', alert);
-        store.setState('editingAlertNew', isNew);
+        store.setState('editingAlertNew', draft);
         store.setState('navGuard', null);
-        router.navigate(`/alerts/${alert.id}/edit${isNew ? '?new=1' : ''}`);
+        router.navigate(`/alerts/${alert.id}/edit${draft ? '?new=1' : ''}`);
     }
     async function exportAlert() {
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
-        if (isNew) { toast('Save the alert first, then export it', 'warn'); return; }
+        if (isNewAlertDraft(alert)) { toast('Save the alert first, then export it', 'warn'); return; }
         try {
             await saveFile(`${alert.name || alert.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/alerts/${alert.id}`);

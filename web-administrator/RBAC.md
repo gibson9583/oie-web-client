@@ -41,6 +41,18 @@ Semantics (`client/core/authorization.ts`):
   history. Nested editors require both their parent view permission and their
   entry action (for example, `view/doShowChannel` and `channel/doEditChannel`).
   Permissions are checked again after a lazy view module finishes loading.
+  Create/edit checks follow the matching editor draft and its persistence state;
+  `?new=1` alone does not grant creation access to an existing record. Wizard
+  checks use decoded route parameters, including encoded aliases of `new`.
+  Explicit New commands start a fresh draft; builder handoffs retain the current
+  model. If a denied or still-loading destination leaves a dirty draft without
+  an editor guard, the shell requires confirmation before replacing or leaving
+  that draft. Returning to the same model preserves it.
+- **Palette destinations** require the same view/action prerequisites as their
+  routes. Commands may declare additional `permissions: [[group, task], ...]`;
+  every pair must pass along with the existing `task`/`rbac` pair. Checks run when
+  entries are built and again before activation. Template suggestions, search,
+  recents, and their background library reads also require route access.
 - **Fail-open.** A missing controller, an untagged item (no `task`), or a
   controller that throws all resolve to *visible* — exactly like Swing's
   `DefaultAuthorizationController`. RBAC can only ever *remove* options, never break
@@ -102,6 +114,7 @@ never carry one user's cached permissions into a later soft login.
 | --- | --- | --- |
 | **Left nav** (Dashboard, Channels, …) | `registerNavItem({ …, task, rbac })` — group defaults to `view`; Code Templates and Global Scripts use `channel` | `client/react/nav-rail.tsx` |
 | **Built-in routes** | Navigation task plus any nested route entry tasks; denial replaces the view without mounting it | `client/react/shell.tsx` (`VIEW_ROUTES`) |
+| **Command palette** | Command `task`/`rbac` plus all `permissions`; built-in destinations share route prerequisites | `client/core/route-tasks.ts`, `client/react/command-palette.tsx` |
 | **Settings tabs** (built-in and plugin) | `settings_<label>/doRefresh` OR `doSave`; no visible tabs displays an access-denied state | `client/react/views/settings.tsx` |
 | **Task-pane buttons** (React) | `<TaskButton task="…" />`; the pane's `<RailPane group="…">` supplies the group via context | `client/react/ui.tsx` |
 | **Task-pane buttons** (imperative, used by Settings) | `taskButton(label, icon, onClick, { task, group })` | `client/core/ui.ts` |
@@ -314,4 +327,5 @@ to `view`, with an optional `rbac` group override; dashboard tabs use `dashboard
 
 Tests: `client/core/authorization.test.js` (the hook) and `e2e/rbac.spec.ts` (a plugin
 denying each built-in route prerequisite, empty and read-only Settings, permission
-load failures, and navigation races; the no-controller case stays visible).
+load failures, navigation races, draft handoffs, encoded wizard aliases, and palette
+render/activation checks; the no-controller case stays visible).

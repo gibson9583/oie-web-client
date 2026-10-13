@@ -1,5 +1,7 @@
 import { asList } from './api.js';
 import { libraryEnabledFor } from './channel-dependencies.js';
+import { CODE_TEMPLATE_TASKS, EDIT_CHANNEL_TASKS } from './route-tasks.js';
+import type { RouteTasks } from './route-tasks.js';
 
 export type PaletteContext = {
     kind: 'channel';
@@ -23,7 +25,7 @@ export interface PaletteEntry {
     path: string;
     icon?: string;
     state?: string;
-    permissions: [string, string][];
+    permissions: RouteTasks;
 }
 
 const validId = (id: any): id is string => typeof id === 'string' && !!id.trim();
@@ -31,8 +33,15 @@ const label = (name: any, id: string): string => name != null && ['string', 'num
     ? String(name) || id : id;
 const templatesOf = (library: any): any[] => asList(library?.codeTemplates, 'codeTemplate').filter(t => t && validId(t.id));
 
-export function entryAllowed(entry: { permissions?: [string, string][] }, can: PermissionCheck): boolean {
+export function entryAllowed(entry: { permissions?: RouteTasks }, can: PermissionCheck): boolean {
     return !entry.permissions || entry.permissions.every(([group, task]) => can(group, task));
+}
+
+const TEMPLATE_PALETTE_TASKS: RouteTasks = [...CODE_TEMPLATE_TASKS, ['codeTemplate', 'doRefreshCodeTemplates']];
+
+/** Fetching palette libraries is useful only when their destination is allowed. */
+export function canBrowseTemplates(can: PermissionCheck): boolean {
+    return TEMPLATE_PALETTE_TASKS.every(([group, task]) => can(group, task));
 }
 
 /** The same entries back search, suggestions and recents, with stable IDs. */
@@ -46,19 +55,20 @@ export function channelPaletteEntries(channels: any[], can: PermissionCheck): Pa
         const base = { kind: 'channel', label: label(c.name, c.id), group: 'Channels', state: c.state };
         const id = encodeURIComponent(c.id);
         return [
-            { ...base, id: 'chan:' + c.id, hint: 'edit', path: `/channels/${id}/edit`, permissions: [['view', 'doShowChannel'], ['channel', 'doEditChannel']] },
+            { ...base, id: 'chan:' + c.id, hint: 'edit', path: `/channels/${id}/edit`, permissions: EDIT_CHANNEL_TASKS },
             { ...base, id: 'chanmsg:' + c.id, hint: 'messages', path: `/messages/${id}`, permissions: [['view', 'doShowMessages']] }
         ] as PaletteEntry[];
     }).filter(e => entryAllowed(e, can));
 }
 
 export function templatePaletteEntries(libraries: any[], can: PermissionCheck): PaletteEntry[] {
+    if (!canBrowseTemplates(can)) return [];
     const entries: PaletteEntry[] = [];
     for (const library of libraries) {
         if (!library || !validId(library.id)) continue;
         const libraryName = label(library.name, library.id);
         const path = '/code-templates?libraryId=' + encodeURIComponent(library.id);
-        const base = { kind: 'template', group: 'Code Templates', permissions: [['codeTemplate', 'doRefreshCodeTemplates']] as [string, string][] };
+        const base = { kind: 'template', group: 'Code Templates', permissions: TEMPLATE_PALETTE_TASKS };
         entries.push({ ...base, id: 'library:' + library.id, label: libraryName, hint: 'code template library', icon: 'folder', path });
         for (const template of templatesOf(library)) {
             entries.push({ ...base, id: 'template:' + template.id, label: label(template.name, template.id),

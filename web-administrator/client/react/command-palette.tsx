@@ -26,13 +26,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import api, * as oie from '@oie/web-api';
 import { platform } from '../core/platform.js';
-import { allCommands, fuzzyMatch } from '../core/commands.js';
+import { allCommands, commandPermissions, fuzzyMatch } from '../core/commands.js';
 import { checkTask } from '../core/authorization.js';
 import { getPref, setPrefs } from '../core/prefs.js';
 import * as router from '../core/router.js';
 import { queryClient } from './queries.js';
 import { Icon } from './bridges.jsx';
-import { channelPaletteEntries, contextSuggestions, entryAllowed, templatePaletteEntries } from '../core/command-suggestions.js';
+import { canBrowseTemplates, channelPaletteEntries, contextSuggestions, entryAllowed, templatePaletteEntries } from '../core/command-suggestions.js';
 import { useCurrentPaletteContext } from './palette-context.js';
 
 /* Enough that scoping to a kind (`/` for views) lists all of them rather than
@@ -84,12 +84,12 @@ function viewEntries() {
 
 function commandEntries() {
     return allCommands()
-        .filter((c: any) => !c.task || checkTask(c.rbac || 'view', c.task))
         .map((c: any) => ({
             kind: 'command', id: 'cmd:' + c.id, label: c.label, icon: c.icon || 'chevR',
             group: c.section || 'Commands', hint: c.hint || '', path: c.path, run: c.run,
-            keywords: c.keywords || '', permissions: c.task ? [[c.rbac || 'view', c.task]] : []
-        }));
+            keywords: c.keywords || '', permissions: commandPermissions(c)
+        }))
+        .filter(entry => entryAllowed(entry, checkTask));
 }
 
 /* Channels come from whatever the dashboard has already polled — the
@@ -182,14 +182,14 @@ export function CommandPalette() {
     useEffect(() => {
         setFetchedLibraries([]);
         const recent = getPref('paletteRecent') || [];
-        if (!open || templateContext || !checkTask('codeTemplate', 'doRefreshCodeTemplates')
+        if (!open || templateContext || !canBrowseTemplates(checkTask)
             || (!channelContext && !recent.some((id: string) => /^(template|library):/.test(id)))) return;
         let request = 0;
         const refresh = () => {
             const current = ++request;
-            if (!checkTask('codeTemplate', 'doRefreshCodeTemplates')) return;
+            if (!canBrowseTemplates(checkTask)) { setFetchedLibraries([]); return; }
             api.codeTemplates.libraries(true).then(libraries => {
-                if (current === request) setFetchedLibraries(libraries);
+                if (current === request) setFetchedLibraries(canBrowseTemplates(checkTask) ? libraries : []);
             }).catch(() => { /* retain usable results when a refresh fails */ });
         };
         // A dependency save may finish after navigation to Messages. Refresh

@@ -25,7 +25,7 @@ import { getPref } from '../core/prefs.js';
 import api, { onEngineUnknown, onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout, isIdleLocked, setIdleLocked } from '../core/idle-logout.js';
 import { closeSessionDialogs } from './dialog-host.js';
-import { discardEngineResponses } from '../core/engine-fetch.js';
+import { captureEngineSession, discardEngineResponses } from '../core/engine-fetch.js';
 import { migrateLegacyCache } from '../core/cache-migration.js';
 import { getAnchor, describeRef } from '../core/compare.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
@@ -42,6 +42,10 @@ import { openEditUserModal, openChangePasswordModal } from './views/user-modals.
 import { maybeShowWelcome } from './welcome.js';
 import { clearSsoSession, holdAutoRedirect, isSsoSession, takeSsoPending } from './sso-session.js';
 import { AccessDeniedView } from './access-denied.jsx';
+import { isNewChannelRoute, isNewAlertRoute, isNewAlertDraft } from '../core/editor-route-state.js';
+import { isNewChannelDraft } from '../core/channel-save.js';
+import { NEW_CHANNEL_TASKS, EDIT_CHANNEL_TASKS, NEW_ALERT_TASKS, EDIT_ALERT_TASKS, CODE_TEMPLATE_TASKS } from '../core/route-tasks.js';
+import type { RouteTasks } from '../core/route-tasks.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -65,12 +69,13 @@ const ISSUES_URL = 'https://github.com/OpenIntegrationEngine/engine/issues';
  * plugin rewrites core/ imports per-module, and it cannot see a computed one —
  * a template literal here would silently produce a second framework instance.
  */
-type RouteTask = [group: string, task: string];
 interface ViewRoute {
     path: string;
     meta: { title: string };
     nav?: any;
-    tasks?: RouteTask[] | ((ctx: any) => RouteTask[]);
+    editor?: 'channel' | 'alert';
+    wizard?: boolean;
+    tasks?: RouteTasks | ((ctx: any) => RouteTasks);
     load: () => Promise<any>;
     pick: (module: any) => any;
 }
@@ -83,22 +88,28 @@ const VIEW_ROUTES: ViewRoute[] = [
         nav: { id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Design', order: 0, task: 'doShowChannel' },
         load: () => import('./views/channels.jsx'), pick: (m: any) => m.ChannelsView },
     { path: '/channels/:channelId/edit', meta: { title: 'Edit Channel' },
-        tasks: ({ query }) => [['view', 'doShowChannel'], ['channel', query.new === '1' ? 'doNewChannel' : 'doEditChannel']],
+        editor: 'channel',
+        tasks: ({ params }) => isNewChannelRoute(params.channelId, store.getState('editingChannel')) ? NEW_CHANNEL_TASKS : EDIT_CHANNEL_TASKS,
         load: () => import('./views/channel-editor.jsx'), pick: (m: any) => m.ChannelEditorView },
     { path: '/channels/:channelId/filter/:metaDataId', meta: { title: 'Filter' },
+        editor: 'channel',
         tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditFilter']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.FilterView },
     { path: '/channels/:channelId/transformer/:metaDataId', meta: { title: 'Transformer' },
+        editor: 'channel',
         tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditTransformer']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.TransformerView },
     { path: '/channels/:channelId/response/:metaDataId', meta: { title: 'Response Transformer' },
+        editor: 'channel',
         tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditResponseTransformer']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.ResponseTransformerView },
     { path: '/channels/new/guided', meta: { title: 'New Channel — Wizard' },
-        tasks: [['view', 'doShowChannel'], ['channel', 'doNewChannel']],
+        editor: 'channel', wizard: true,
+        tasks: ({ params, query }) => isNewChannelRoute(params.channelId, store.getState('editingChannel'), true, query.fresh === '1') ? NEW_CHANNEL_TASKS : EDIT_CHANNEL_TASKS,
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
     { path: '/channels/:channelId/guided', meta: { title: 'Channel — Wizard' },
-        tasks: [['view', 'doShowChannel'], ['channel', 'doEditChannel']],
+        editor: 'channel', wizard: true,
+        tasks: ({ params, query }) => isNewChannelRoute(params.channelId, store.getState('editingChannel'), true, query.fresh === '1') ? NEW_CHANNEL_TASKS : EDIT_CHANNEL_TASKS,
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
     /* Channel-less entry to the message browser: the same view, with its channel
        picker as the way in. Registered BEFORE the parameterised route so
@@ -117,13 +128,16 @@ const VIEW_ROUTES: ViewRoute[] = [
         nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Monitor', order: 2, task: 'doShowAlerts' },
         load: () => import('./views/alerts.jsx'), pick: (m: any) => m.AlertsList },
     { path: '/alerts/:alertId/edit', meta: { title: 'Edit Alert' },
-        tasks: ({ query }) => [['view', 'doShowAlerts'], ['alert', query.new === '1' ? 'doNewAlert' : 'doEditAlert']],
+        editor: 'alert',
+        tasks: ({ params }) => isNewAlertRoute(params.alertId, store.getState('editingAlert')) ? NEW_ALERT_TASKS : EDIT_ALERT_TASKS,
         load: () => import('./views/alert-editor.jsx'), pick: (m: any) => m.AlertEditor },
     { path: '/alerts/new/guided', meta: { title: 'New Alert — Wizard' },
-        tasks: [['view', 'doShowAlerts'], ['alert', 'doNewAlert']],
+        editor: 'alert', wizard: true,
+        tasks: ({ params, query }) => isNewAlertRoute(params.alertId, store.getState('editingAlert'), true, query.fresh === '1') ? NEW_ALERT_TASKS : EDIT_ALERT_TASKS,
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
     { path: '/alerts/:alertId/guided', meta: { title: 'Alert — Wizard' },
-        tasks: [['view', 'doShowAlerts'], ['alert', 'doEditAlert']],
+        editor: 'alert', wizard: true,
+        tasks: ({ params, query }) => isNewAlertRoute(params.alertId, store.getState('editingAlert'), true, query.fresh === '1') ? NEW_ALERT_TASKS : EDIT_ALERT_TASKS,
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
     { path: '/users', meta: { title: 'Users' },
         nav: { id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Manage', order: 0, task: 'doShowUsers' },
@@ -132,7 +146,7 @@ const VIEW_ROUTES: ViewRoute[] = [
         nav: { id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Manage', order: 1, task: 'doShowSettings' },
         load: () => import('./views/settings.jsx'), pick: (m: any) => m.SettingsView },
     { path: '/code-templates', meta: { title: 'Code Templates' },
-        nav: { id: 'code-templates', label: 'Code Templates', icon: 'code', path: '/code-templates', section: 'Design', order: 1, task: 'doEditCodeTemplates', rbac: 'channel' },
+        nav: { id: 'code-templates', label: 'Code Templates', icon: 'code', path: '/code-templates', section: 'Design', order: 1, task: CODE_TEMPLATE_TASKS[0][1], rbac: CODE_TEMPLATE_TASKS[0][0] },
         load: () => import('./views/code-templates.jsx'), pick: (m: any) => m.CodeTemplatesView },
     { path: '/global-scripts', meta: { title: 'Global Scripts' },
         nav: { id: 'global-scripts', label: 'Global Scripts', icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2, task: 'doEditGlobalScripts', rbac: 'channel' },
@@ -157,19 +171,110 @@ function canEnterView(route: ViewRoute, ctx: any) {
     return tasks.every(([group, task]) => platform.checkTask(group, task));
 }
 
+let pendingEditorRoute: { path: string } | null = null;
+
 function lazyView(route: ViewRoute) {
     return async (ctx: any) => {
         const token = router.navigationToken();
+        pendingEditorRoute = null;
         // A hidden menu item can still be reached by a bookmark, history entry,
         // or another view. Gate before importing so denied views never mount or
         // issue their protected requests. The router still owns leave guards.
         if (!canEnterView(route, ctx)) return reactView(AccessDeniedView)(ctx);
-        const mod = await route.load();
-        if (router.navigationToken() !== token) return null;
-        // Permission state can change while a cold view module is downloading.
-        if (!canEnterView(route, ctx)) return reactView(AccessDeniedView)(ctx);
-        return reactView(route.pick(mod))(ctx);
+        const pending = route.editor ? { path: router.currentPath() } : null;
+        pendingEditorRoute = pending;
+        try {
+            const mod = await route.load();
+            if (router.navigationToken() !== token) return null;
+            // Permission state can change while a cold view module is downloading.
+            if (!canEnterView(route, ctx)) return reactView(AccessDeniedView)(ctx);
+            return reactView(route.pick(mod))(ctx);
+        } finally {
+            if (pendingEditorRoute === pending) pendingEditorRoute = null;
+        }
     };
+}
+
+function editorDrafts() {
+    return (['channel', 'alert'] as const).map(kind => {
+        const key = kind === 'channel' ? 'editingChannel' : 'editingAlert';
+        const model = store.getState(key);
+        const unsaved = !!model && (store.getState(key + 'Dirty') === true
+            || (kind === 'channel' ? isNewChannelDraft(model) : isNewAlertDraft(model)));
+        return { kind, key, model, unsaved };
+    });
+}
+
+type EditorDraft = ReturnType<typeof editorDrafts>[number];
+let draftPrompt: { models: any[]; displaced: EditorDraft[]; promise: Promise<boolean>; close: () => void } | null = null;
+
+function confirmDiscardDrafts(drafts: EditorDraft[], displaced: EditorDraft[]) {
+    if (draftPrompt && drafts.every((draft, i) => draft.model === draftPrompt!.models[i])
+        && displaced.length === draftPrompt.displaced.length
+        && displaced.every((draft, i) => draft.key === draftPrompt!.displaced[i].key)) return draftPrompt.promise;
+    draftPrompt?.close();
+    let resolve!: (discard: boolean) => void;
+    const promise = new Promise<boolean>(done => { resolve = done; });
+    const dialog = modal({
+        title: 'Unsaved changes',
+        body: h('div', `You have unsaved ${displaced.map(draft => draft.kind).join(' and ')} changes. Discard them before continuing?`),
+        onClose: () => resolve(false),
+        buttons: [
+            { label: 'Cancel', onClick: () => resolve(false) },
+            { label: 'Discard Changes', danger: true, onClick: () => resolve(true) },
+        ],
+    });
+    const pending = { models: drafts.map(draft => draft.model), displaced, promise, close: () => dialog.close() };
+    draftPrompt = pending;
+    void promise.then(() => { if (draftPrompt === pending) draftPrompt = null; });
+    return promise;
+}
+
+// In-flow handoffs retain the model while unmounting the source guard. A denied
+// or still-loading destination must not leave that draft free to be overwritten.
+async function guardRetainedDrafts(ctx: any): Promise<boolean | string | void> {
+    const route = VIEW_ROUTES.find(candidate => candidate.meta === ctx.meta);
+    const drafts = editorDrafts();
+    const displaced = drafts.filter(draft => {
+        if (!draft.unsaved) return false;
+        if (route?.editor !== draft.kind || !draft.model?.id) return true;
+        const id = ctx.params[draft.kind + 'Id'];
+        const valid = draft.kind === 'channel' ? draft.model.sourceConnector : draft.model.trigger;
+        if (!valid) return true;
+        // Denial still retains this model; lazyView remains the permission gate.
+        if (route.wizard && (!id || id === 'new')) return ctx.query.fresh === '1';
+        return String(draft.model.id) !== id;
+    });
+    if (!displaced.length) { draftPrompt?.close(); return; }
+    const token = router.navigationToken();
+    const pending = pendingEditorRoute;
+    let assertSession: () => void;
+    try { assertSession = captureEngineSession(); } catch { return false; }
+    const discard = await confirmDiscardDrafts(drafts, displaced);
+    const expected = new Map(drafts.map(draft => [draft.key, draft.model]));
+    const expectedUnsaved = new Map(drafts.map(draft => [draft.key, draft.unsaved]));
+    const current = () => {
+        try { assertSession(); } catch { return false; }
+        return router.navigationToken() === token && !store.getState('editorSave')
+            && editorDrafts().every(draft => draft.model === expected.get(draft.key)
+                && draft.unsaved === expectedUnsaved.get(draft.key));
+    };
+    if (!current()) return false;
+    // Cancel supersedes the previous lazy navigation too. Restart that accepted
+    // handoff so its eventual import can mount the retained model, not a blank outlet.
+    if (!discard) return pending?.path || false;
+    for (const draft of displaced) {
+        expected.set(draft.key, null);
+        expectedUnsaved.set(draft.key, false);
+        store.setState(draft.key, null);
+        // Store subscribers run synchronously and may install another model or
+        // end the session. Consent never applies to that replacement's flags.
+        if (!current()) return false;
+        store.setState(draft.key + 'New', false);
+        if (!current()) return false;
+        store.setState(draft.key + 'Dirty', false);
+        if (!current()) return false;
+    }
 }
 
 /*
@@ -212,10 +317,12 @@ function registerCommands(plat: any) {
        palette offers the route it can honestly navigate to and says which it is. */
     plat.registerCommand({ id: 'new-channel', label: 'New Channel (Wizard)', icon: 'plus',
         section: 'Create', order: 0, task: 'doNewChannel', rbac: 'channel',
-        keywords: 'create add channel', path: '/channels/new/guided' });
+        permissions: NEW_CHANNEL_TASKS,
+        keywords: 'create add channel', path: '/channels/new/guided?fresh=1' });
     plat.registerCommand({ id: 'new-alert', label: 'New Alert (Wizard)', icon: 'plus',
         section: 'Create', order: 1, task: 'doNewAlert', rbac: 'alert',
-        keywords: 'create add alert', path: '/alerts/new/guided' });
+        permissions: NEW_ALERT_TASKS,
+        keywords: 'create add alert', path: '/alerts/new/guided?fresh=1' });
 
     SETTINGS_TABS.forEach(([label, tab], i) => plat.registerCommand({
         id: 'settings-' + tab, label: 'Settings: ' + label, icon: 'settings', section: 'Settings',
@@ -272,7 +379,11 @@ function startEngine() {
         router.setGuard(async (ctx: any) => {
             if (store.getState('editorSave')) return false;
             const guard = store.getState('navGuard');
-            if (typeof guard === 'function') return await guard(ctx);
+            if (typeof guard === 'function') {
+                draftPrompt?.close();
+                return await guard(ctx);
+            }
+            return await guardRetainedDrafts(ctx);
         });
 
         await loadPlugins();
@@ -1024,7 +1135,8 @@ export function App() {
     useEffect(() => {
         const onBeforeUnload = (e: any) => {
             if (!store.getState('user')) return;
-            if (store.getState('editorSave') || store.getState('editingChannelDirty') || store.getState('editingAlertDirty') || hasUnsavedWork()) {
+            if (store.getState('editorSave') || store.getState('editingChannelDirty') || store.getState('editingAlertDirty')
+                || editorDrafts().some(draft => draft.unsaved) || hasUnsavedWork()) {
                 e.preventDefault();
                 e.returnValue = '';
             }

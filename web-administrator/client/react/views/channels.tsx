@@ -27,7 +27,7 @@ import { h, icon, toast, confirmDialog, promptDialog, contextMenu, modal, errorM
 import api, { newChannel, uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
-import { restoreChannelTagNames, updateChannelWithConflict } from '../../core/channel-save.js';
+import { channelEditState, restoreChannelTagNames, updateChannelWithConflict } from '../../core/channel-save.js';
 import { normalizeChannelDataTypeArrays } from '../../core/datatype-arrays.js';
 import { confirmChannelOverwrite } from '../channel-persistence.js';
 import * as router from '../../core/router.js';
@@ -996,11 +996,12 @@ export function ChannelsView() {
     // tab with the Name field focused (the editor focuses it when isNew).
     function startClassicChannel() {
         const channel = newChannel('', store.getState('serverVersion') || '4.5.2');
+        channelEditState(channel, true);
         store.setState('editingChannel', channel);
         router.navigate(`/channels/${channel.id}/edit?new=1`);
     }
 
-    const startGuidedChannel = () => router.navigate('/channels/new/guided');
+    const startGuidedChannel = () => router.navigate('/channels/new/guided?fresh=1');
 
     // New Channel: honor the saved default builder (Settings → Administrator), or
     // show a chooser when the default is "Ask each time". The chooser's "Remember

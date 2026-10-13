@@ -1,4 +1,4 @@
-import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
+import { channelEditState, isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelModel, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
 import { channelDependencyState, persistLibraryAssociations, persistChannelDependencies } from '../../core/channel-dependencies.js';
@@ -175,7 +175,7 @@ function EmbeddedElementEditor({ channel, metaDataId, kind, onChange, viewportOf
         const host = hostRef.current;
         if (!host) return undefined;
         store.setState('editingChannel', channel);
-        store.setState('editingChannelNew', true);
+        store.setState('editingChannelNew', isNewChannelDraft(channel));
         // createEmbeddedEditor (buildBody) installs its OWN nav guard for the classic
         // editor's benefit — that would clobber the wizard's prompt-on-leave guard and
         // leave it gone for the rest of the session. Capture the wizard's guard first
@@ -622,17 +622,20 @@ function ReviewStep({ channel, inbound, outbound }: any) {
 
 // Loader: resolve the channel to edit (see wizard-frame's useWizardModel), then
 // render the wizard. /channels/new/guided creates; /channels/:channelId/guided edits.
-function ChannelWizardView({ params }: any) {
+function ChannelWizardView({ params, query = {} }: any) {
     const version = store.getState('serverVersion') || '4.5.2';
     const { model, isNew, ready } = useWizardModel({
         routeId: params && params.channelId,
+        fresh: query.fresh === '1',
         storeKey: 'editingChannel',
-        isValid: (c: any) => !!c.sourceConnector,
+        isValid: (c: any) => !!c.id && !!c.sourceConnector,
+        isNewModel: isNewChannelDraft,
         makeNew: () => {
             const c = oie.newChannel('', version);
             c.name = '';   // newChannel defaults to "New Channel"; start blank so Basics requires a name
             const dt = defaultDataType(dataTypeList());
             applyDataTypes(c, dt, dt, version);
+            channelEditState(c, true);
             return c;
         },
         fetch: (id: any) => loadChannelForEdit(id),
@@ -643,7 +646,7 @@ function ChannelWizardView({ params }: any) {
 }
 
 function ChannelWizardInner({ channel, isNew, version }: any) {
-    const editState = channelEditState(channel, isNew);
+    const editState = channelEditState(channel);
     isNew = editState.isNew;
     const [, forceRender] = useReducer((x: any) => x + 1, 0);
     const switchingRef = useRef(false);   // true when switching to the classic editor (keep editingChannel)
