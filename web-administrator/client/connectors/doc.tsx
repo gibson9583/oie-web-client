@@ -100,8 +100,9 @@ const convertTo = (value: any, from: any, to: any) => (CONVERSION[from]?.[to] ??
 // updatePageSizeComboBox(): the preset reflecting the current width/height/unit, or
 // 'CUSTOM' when none matches (CUSTOM only appears in this case).
 const matchingPreset = (p: any) => {
-    const width = Number.parseFloat(p.pageWidth);
-    const height = Number.parseFloat(p.pageHeight);
+    // A numeric prefix followed by a Velocity expression is still Custom.
+    const width = Number(p.pageWidth);
+    const height = Number(p.pageHeight);
     const unit = String(p.pageUnit ?? 'INCHES');
     if (!Number.isFinite(width) || !Number.isFinite(height)) return 'CUSTOM';
     for (const ps of PAGE_SIZES) {
@@ -119,18 +120,21 @@ const scale2Down = (value: any) => (Math.trunc(value * 100) / 100).toFixed(2);
  * 'Page Size:' label (DocumentWriter.initLayout add(..., "split 5")). The preset
  * combo is a non-persisted convenience that two-way-binds to pageWidth/pageHeight/
  * pageUnit (pageSizeComboBoxActionPerformed). */
-function pageSizeRow(p: any, { onChange }: any) {
+function pageSizeRow(p: any, onChange: () => void) {
+    // Notify the channel directly; ConnectorForm's notification would replace
+    // this custom DOM row on every keystroke and discard focus/the selection.
+    const notify = () => { syncPreset(); onChange(); };
     const widthField = h('input', {
         type: 'text', value: p.pageWidth ?? '', class: 'w-[49px]', 'data-fkey': 'pageWidth',
-        onInput: (e: any) => { p.pageWidth = e.target.value; onChange(); }
-    });
+        onInput: (e: any) => { p.pageWidth = e.target.value; notify(); }
+    }) as HTMLInputElement;
     const heightField = h('input', {
         type: 'text', value: p.pageHeight ?? '', class: 'w-[49px]', 'data-fkey': 'pageHeight',
-        onInput: (e: any) => { p.pageHeight = e.target.value; onChange(); }
-    });
+        onInput: (e: any) => { p.pageHeight = e.target.value; notify(); }
+    }) as HTMLInputElement;
     const unitField = select(PAGE_UNITS, p.pageUnit ?? 'INCHES', {
         class: 'w-[81px]',
-        onChange: (e: any) => { p.pageUnit = e.target.value; onChange(); }
+        onChange: (e: any) => { p.pageUnit = e.target.value; notify(); }
     });
 
     const current = matchingPreset(p);
@@ -143,10 +147,21 @@ function pageSizeRow(p: any, { onChange }: any) {
                 p.pageWidth = scale2Down(ps.width);
                 p.pageHeight = scale2Down(ps.height);
                 p.pageUnit = ps.unit;
-                onChange();
+                widthField.value = p.pageWidth;
+                heightField.value = p.pageHeight;
+                unitField.value = p.pageUnit;
+                notify();
             }
         }
     });
+
+    function syncPreset() {
+        const current = matchingPreset(p);
+        const custom = Array.from(presetField.options).find(option => option.value === 'CUSTOM');
+        if (current === 'CUSTOM' && !custom) presetField.appendChild(h('option', { value: 'CUSTOM' }, 'Custom'));
+        else if (current !== 'CUSTOM') custom?.remove();
+        presetField.value = current;
+    }
 
     return h('div', { class: 'flex items-center gap-1.5' },
         widthField, h('span', '×'), heightField, unitField, presetField);
@@ -199,7 +214,7 @@ const documentWriter = {
                 // Password is greyed when Encrypted=No, including under RTF (which calls
                 // encryptedNoActionPerformed and disables the Encrypted radio).
                 { key: 'password', label: 'Password', type: 'password', width: '124px', disabled: (p: any) => isRtf(p) || !asBool(p.encrypt) },
-                { label: 'Page Size', type: 'custom', render: pageSizeRow },
+                { label: 'Page Size', type: 'custom', render: (p: any) => pageSizeRow(p, onChange) },
                 { key: 'template', label: 'HTML Template', type: 'code', language: 'html', minHeight: '260px' }
             ]} />
         );

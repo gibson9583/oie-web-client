@@ -259,7 +259,7 @@ const httpSender = {
                 },
                 { key: 'useProxyServer', label: 'Use Proxy Server', type: 'radio', refresh: true, options: YES_NO },
                 { key: 'proxyAddress', label: 'Proxy Address', type: 'text', width: '320px', disabled: (p: any) => !asBool(p.useProxyServer) },
-                { key: 'proxyPort', label: 'Proxy Port', type: 'number', width: '90px', disabled: (p: any) => !asBool(p.useProxyServer) },
+                { key: 'proxyPort', label: 'Proxy Port', type: 'text', width: '200px', disabled: (p: any) => !asBool(p.useProxyServer) },
                 {
                     // Method=POST is the only one that allows Multipart; switching
                     // away forces it off, matching the Swing checkMultipartEnabled.
@@ -274,7 +274,7 @@ const httpSender = {
                     ]
                 },
                 { key: 'multipart', label: 'Multipart', type: 'radio', options: YES_NO, disabled: (p: any) => String(p.method) !== 'post' || httpFormUrlEncoded(p) },
-                { key: 'socketTimeout', label: 'Send Timeout (ms)', type: 'number', width: '120px' },
+                { key: 'socketTimeout', label: 'Send Timeout (ms)', type: 'text', width: '200px' },
                 {
                     key: 'responseXmlBody', label: 'Response Content', type: 'radio', refresh: true,
                     options: [
