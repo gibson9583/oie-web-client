@@ -1,5 +1,6 @@
 import api from './api.js';
 import { captureEngineSession } from './engine-fetch.js';
+import { emit } from './store.js';
 
 type Edge = { dependentId: string; dependencyId: string };
 const ids = (value: any): string[] => api.asList(value, 'string').map(String);
@@ -136,6 +137,8 @@ export async function persistLibraryAssociations(channel: any, ref: any, version
         // only after the server confirms this stage, independently of later stages.
         state.libraries = payload;
         for (const id of intents) state.initial.set(id, state.checked.get(id));
+        // Refresh readers without reloading another editor's working draft.
+        emit('codeTemplateLibraries:associationsSaved');
         return true;
     }
     return attempt(false);

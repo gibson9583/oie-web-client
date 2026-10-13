@@ -9,9 +9,9 @@
  *                                        plugin's view appears here for free
  *   Commands  allCommands()            — core/commands.js (see its header for
  *                                        why this is not "every task button")
- *   Channels  the TanStack cache       — whatever the dashboard has already
- *                                        polled; fetched once on first open only
- *                                        if nothing is cached yet
+ *   Channels  the TanStack cache       — dashboard status plus optional names;
+ *                                        reverse library links refresh names
+ *                                        on each opening
  *   Suggested mounted view context    — selected channels, related libraries
  *                                        and templates; separate from recents
  *
@@ -144,11 +144,10 @@ export function CommandPalette() {
         };
     }, []);
 
-    // Only if the dashboard has never been visited: one cheap id/name fetch, once.
+    // Ordinary search reuses known channels. Reverse library links need a fresh
+    // inventory on each opening, including channels created since the last one.
     useEffect(() => {
-        // Library associations can include undeployed channels absent from the
-        // dashboard. Resolve the full name map for reverse suggestions too.
-        if (!open || (!templateContext && cachedChannels().length) || fallbackChannels.length) return;
+        if (!open || (!templateContext && (cachedChannels().length || fallbackChannels.length))) return;
         if (!checkTask('view', 'doShowChannel') && !checkTask('view', 'doShowMessages')) return;
         let cancelled = false;
         api.channels.idsAndNames()
@@ -168,7 +167,7 @@ export function CommandPalette() {
             })
             .catch(() => { /* the palette is still useful without channels */ });
         return () => { cancelled = true; };
-    }, [open, fallbackChannels.length, templateContext]);
+    }, [open, templateContext]); // eslint-disable-line react-hooks/exhaustive-deps -- read once per opening/context, not when the response changes fallbackChannels
 
     useEffect(() => { if (open) { setQuery(''); setActiveKey(null); } }, [open]);
 
@@ -180,11 +179,19 @@ export function CommandPalette() {
         const recent = getPref('paletteRecent') || [];
         if (!open || templateContext || !checkTask('codeTemplate', 'doRefreshCodeTemplates')
             || (!channelContext && !recent.some((id: string) => /^(template|library):/.test(id)))) return;
-        let cancelled = false;
-        api.codeTemplates.libraries(true).then(libraries => {
-            if (!cancelled) setFetchedLibraries(libraries);
-        }).catch(() => { /* direct channel links and recents remain available */ });
-        return () => { cancelled = true; };
+        let request = 0;
+        const refresh = () => {
+            const current = ++request;
+            if (!checkTask('codeTemplate', 'doRefreshCodeTemplates')) return;
+            api.codeTemplates.libraries(true).then(libraries => {
+                if (current === request) setFetchedLibraries(libraries);
+            }).catch(() => { /* retain usable results when a refresh fails */ });
+        };
+        // A dependency save may finish after navigation to Messages. Refresh
+        // committed data without replacing any editor's working selections.
+        const off = platform.events.on('codeTemplateLibraries:associationsSaved', refresh);
+        refresh();
+        return () => { request++; off(); };
     }, [open, channelContext, templateContext]);
 
     const libraries = templateContext ? context.libraries : fetchedLibraries;

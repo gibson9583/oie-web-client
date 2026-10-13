@@ -226,6 +226,80 @@ test('reverse suggestions include an undeployed channel absent from the visited 
     await expect(page.locator('.view-body input[type="text"]').first()).toHaveValue('Undeployed Channel');
 });
 
+test('reverse suggestions find an undeployed channel created after the palette first opened', async ({ page }) => {
+    let channel: any = null;
+    let associated = false;
+    await mockEngine(page, {
+        'GET /channels/idsAndNames': () => ({ map: { entry: [
+            { string: ['existing', 'Existing Channel'] },
+            ...(channel ? [{ string: [channel.id, channel.name] }] : []),
+        ] } }),
+        'GET /channels/*': () => ({ channel }),
+        'POST /channels': (request: any) => {
+            channel = request.postDataJSON().channel;
+            channel.revision = 1;
+            return true;
+        },
+        'GET /codeTemplateLibraries': () => catalog(library('shared', 'Shared Library', {
+            enabledChannelIds: associated ? { string: channel.id } : '',
+        })),
+        'POST /codeTemplateLibraries/_bulkUpdate': () => {
+            associated = true;
+            return { result: { librariesSuccess: true, overrideNeeded: false } };
+        },
+    });
+    await page.goto('/events');
+    await (await open(page)).fill('#Existing Channel');
+    await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(['Existing Channel', 'Existing Channel']);
+    await close(page);
+
+    await page.getByRole('button', { name: 'Channels', exact: true }).click();
+    await page.getByRole('button', { name: 'New Channel', exact: true }).click();
+    await page.getByRole('dialog', { name: 'New Channel', exact: true }).getByRole('button', { name: /^Wizard/ }).click();
+    await page.locator('.view-body input').first().fill('Created After Palette');
+    await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.getByRole('checkbox').first().check();
+    for (let step = 0; step < 5; step++) await page.getByRole('button', { name: 'Next', exact: true }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Create Channel', exact: true }).click();
+    await expect(page).toHaveURL(/\/channels$/);
+    expect(associated).toBe(true);
+    expect(channel.name).toBe('Created After Palette');
+
+    await page.getByRole('button', { name: 'Code Templates', exact: true }).click();
+    for (const target of ['Shared Library', 'Shared Library Helper']) {
+        await page.getByRole('treegrid').getByText(target, { exact: true }).click();
+        await open(page);
+        await expect(suggested(page).locator('.cmdk-label')).toHaveText(['Created After Palette', 'Created After Palette']);
+        await close(page);
+    }
+});
+
+test('reverse channel discovery refreshes once per opening and retries failures without dropping prior results', async ({ page }) => {
+    let reads = 0;
+    await mockEngine(page, {
+        ...fixtures,
+        'GET /channels/idsAndNames': () => {
+            reads++;
+            if (reads === 2) return { __status: 503 };
+            return reads === 1 ? channelNames : { map: { entry: [{ string: ['c-new', 'New Undeployed Channel'] }] } };
+        },
+        'GET /codeTemplateLibraries': catalog(defaultLibrary),
+    });
+    // A template selection has no independent channel-picker request.
+    await page.goto('/code-templates?libraryId=default&templateId=default-template');
+    await expect(page.getByRole('button', { name: 'Export Code Template', exact: true })).toBeVisible();
+    for (let opening = 1; opening <= 3; opening++) {
+        const response = page.waitForResponse(res => new URL(res.url()).pathname === '/api/channels/idsAndNames');
+        await open(page);
+        await settle(page, await response);
+        await expect(suggested(page).locator('.cmdk-label')).toHaveText(opening < 3
+            ? ['Demo Started', 'Demo Started', 'Demo Stopped', 'Demo Stopped']
+            : ['New Undeployed Channel', 'New Undeployed Channel']);
+        expect(reads).toBe(opening);
+        await close(page);
+    }
+});
+
 test('a failed library read keeps the direct channel action and retries on reopening', async ({ page }) => {
     let calls = 0;
     await mockEngine(page, { ...fixtures, 'GET /codeTemplateLibraries': () => ++calls === 1

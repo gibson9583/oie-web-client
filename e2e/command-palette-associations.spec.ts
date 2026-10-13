@@ -213,3 +213,91 @@ for (const action of ['revert', 'save', 'pending-save', 'remount-save', 'remount
         }
     });
 }
+
+for (const initial of [false, true]) {
+    for (const pendingRead of [false, true]) {
+        test(`messages palette follows a late association ${initial ? 'removal' : 'addition'} with a ${pendingRead ? 'pending' : 'completed'} catalog read`, async ({ page }) => {
+            const channel = { ...makeChannel('association'), name: 'Association Channel' };
+            let enabled = initial, writes = 0, holdNextRead = false, readHeld = false;
+            let releaseWrite!: () => void, releaseRead!: () => void;
+            const writeGate = new Promise<void>(resolve => { releaseWrite = resolve; });
+            const readGate = new Promise<void>(resolve => { releaseRead = resolve; });
+            await mockEngine(page, {
+                'GET /channels/association': { channel },
+                'GET /channels/idsAndNames': { map: { entry: [{ string: [channel.id, channel.name] }] } },
+                'GET /codeTemplateLibraries': async () => {
+                    // Capture the response before waiting: this read must stay
+                    // stale even when it completes after the committed refresh.
+                    const catalog = { list: { codeTemplateLibrary: [{
+                        '@version': '4.6.0', id: 'shared', name: 'Shared Library', revision: 1,
+                        includeNewChannels: false, enabledChannelIds: enabled ? { string: channel.id } : '',
+                        disabledChannelIds: '', codeTemplates: null,
+                    }] } };
+                    if (holdNextRead) {
+                        holdNextRead = false;
+                        readHeld = true;
+                        await readGate;
+                    }
+                    return catalog;
+                },
+                'POST /codeTemplateLibraries/_bulkUpdate': async () => {
+                    writes++;
+                    await writeGate;
+                    enabled = !initial;
+                    return { result: { overrideNeeded: false, librariesSuccess: true } };
+                },
+            });
+            try {
+                await page.goto('/channels/association/edit');
+                await page.getByRole('button', { name: 'Set Dependencies', exact: true }).click();
+                const dialog = page.getByRole('dialog', { name: 'Channel Dependencies', exact: true });
+                await expect(dialog.getByRole('checkbox').first()).toBeChecked({ checked: initial });
+                await dialog.getByRole('checkbox').first().setChecked(!initial);
+                await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+                await page.getByRole('dialog', { name: 'Save Code Template Libraries', exact: true })
+                    .getByRole('button', { name: 'OK', exact: true }).click();
+                await expect.poll(() => writes).toBe(1);
+
+                await page.keyboard.press('Control+k');
+                const query = page.locator('.cmdk-field input');
+                await query.fill('Shared Library');
+                await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(['Shared Library']);
+                await query.fill('#Association Channel');
+                await page.locator('.cmdk-opt').filter({ has: page.locator('.cmdk-hint', { hasText: /^messages$/ }) }).click();
+                await expect(page.locator('select[aria-label="Channel"]')).toHaveValue(channel.id);
+                holdNextRead = pendingRead;
+                await page.keyboard.press('Control+k');
+                const suggestions = page.locator('.cmdk-opt[data-group="Suggested"] .cmdk-label');
+                if (pendingRead) {
+                    await expect.poll(() => readHeld).toBe(true);
+                    await expect(suggestions).toHaveText(['Association Channel']);
+                } else {
+                    await query.fill('Shared Library');
+                    await expect(page.locator('.cmdk-opt .cmdk-label')).toHaveText(['Shared Library']);
+                    await query.fill('');
+                    await expect(suggestions).toHaveText(['Association Channel', ...(initial ? ['Shared Library'] : [])]);
+                }
+
+                const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/codeTemplateLibraries'
+                    && enabled !== initial, { timeout: 5000 });
+                releaseWrite();
+                await expect(dialog).toHaveCount(0);
+                await (await refreshed).finished();
+                await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+                const expected = ['Association Channel', ...(!initial ? ['Shared Library'] : [])];
+                await expect(suggestions).toHaveText(expected);
+                if (pendingRead) {
+                    const stale = page.waitForResponse(response => new URL(response.url()).pathname === '/api/codeTemplateLibraries');
+                    releaseRead();
+                    await (await stale).finished();
+                    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+                    await expect(suggestions).toHaveText(expected);
+                }
+                expect(writes).toBe(1);
+            } finally {
+                releaseWrite();
+                releaseRead();
+            }
+        });
+    }
+}
