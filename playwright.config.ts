@@ -16,6 +16,8 @@ const RUN_ID = process.env.E2E_RUN_ID ||= randomUUID();
 // downloads, Monaco/fallback, authentication and plugin recovery across engines.
 const CRITICAL = /(?:command-palette(?:-fallback|-suggestions|-associations)?|login|sso|rbac|dashboard|server-log|global-scripts|send-message|message-import|message-content|message-source-navigation|metadata-search|message-result-lifecycle|keyboard|editor-handoff|alert-save-lifecycle|save-lifecycle|code-template-library-import|code-template-links|channel-import-parity|datatype-channel-actions|database-driver-validation|editor-import-parity|settings-import-parity|alert-import-parity|datapruner-save|settings-save|wizard-recovery|channel-tags|nav-customize|monaco-fonts|monaco-context-views|message-templates|connector-type-switch|channel-dependencies|dependency-handoff|dialog-actions|export|monaco-intellisense|completion-scope|reference-list|connector-code-field|connector-velocity|sanitizer|resilience|viewer-lifecycle|dicom-viewer|engine-plugins)\.spec\.ts$/;
 
+const ACCOUNT_SETUP = /(?:users|welcome(?:-retry)?)\.spec\.ts$/;
+
 export default defineConfig({
     metadata: { runId: RUN_ID },
     testDir: './e2e',
@@ -53,8 +55,8 @@ export default defineConfig({
             testIgnore: /live\.spec\.ts/,
             use: { ...devices['Desktop Chrome'] },
         },
-        { name: 'firefox', testMatch: CRITICAL, use: { ...devices['Desktop Firefox'] } },
-        { name: 'webkit', testMatch: CRITICAL, use: { ...devices['Desktop Safari'] } },
+        { name: 'firefox', testMatch: [CRITICAL, ACCOUNT_SETUP], use: { ...devices['Desktop Firefox'] } },
+        { name: 'webkit', testMatch: [CRITICAL, ACCOUNT_SETUP], use: { ...devices['Desktop Safari'] } },
         // Only registered when E2E_LIVE=1, so the default run never needs an engine.
         ...(LIVE ? [{
             name: 'live',

@@ -876,9 +876,10 @@ function loginNotificationDialog(message: any) {
    engine's server id AND the signed-in user, so a different engine — or a different
    user on the same browser — keeps them separate. Runs before the authed shell
    (and its views) render. */
-async function establishPrefScope(user: any) {
+async function establishPrefScope(user: any, assertSession: () => void) {
     let id: any = null;
     try { id = await api.server.id(); } catch { /* fall back to the un-scoped key */ }
+    assertSession();
     store.setPrefScope(id, user && user.id);
     store.reapplyScopedSettings();
     // Density and the typeface pair live in the prefs store, so they can only be
@@ -1081,50 +1082,65 @@ export function App() {
     };
 
     const onLoginSuccess = async (u: any, { graceMessage = null, notify = true }: { graceMessage?: string | null; notify?: boolean } = {}) => {
-        // Login notification + consent (Swing LoginPanel.handleSuccess): when the
-        // server requires it, the user must accept the message before entering;
-        // declining logs them back out.
-        if (notify) try {
-            const pub = await api.server.publicSettings();
-            const enabled = pub && (pub.loginNotificationEnabled === true || pub.loginNotificationEnabled === 'true');
-            if (enabled && String(pub.loginNotificationMessage ?? '').trim()) {
-                const accepted = await loginNotificationDialog(pub.loginNotificationMessage);
-                if (!accepted) {
-                    await api.auth.logout().catch(() => {});
-                    // Inline on the login screen, like the other reasons we send someone back.
-                    store.setState('loginNotice', 'Sign-in canceled — the notification must be accepted to continue.');
-                    return;
-                }
-                if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
-            }
-        } catch { /* public settings unavailable — don't block login */ }
-        store.setState('navGuard', null);
-        // First-login wizard (Swing FirstLoginDialog): prompt for a password +
-        // profile when the engine's "firstlogin" user preference is set. Fails
-        // open internally, but guard here too so it can never block sign-in.
-        let welcomed = true;
-        try { welcomed = await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
-        if (!welcomed && !isSsoSession()) {
-            await api.auth.logout().catch(() => {});
-            store.setState('loginNotice', 'Sign-in canceled — set a new password to continue.');
-            return;
-        }
-        await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
-        // AFTER the awaits above, not before: they make engine calls, and a 401
-        // among them fires the expiry listeners while `user` is still null — so
-        // dropToLogin early-returns and nothing clears the latch it just set.
-        // Resetting first would leave that latch armed forever, and it is shared
-        // with ENGINE_UNKNOWN, so every later expiry AND every later 421 would be
-        // silently discarded: a fully rendered shell whose every request fails and
-        // which never returns the user to the login screen.
+        // A successful credential check is only the start of this operation.
+        // Welcome can outlive its session while store.user is still null, when
+        // the ordinary shell expiry handler deliberately does nothing.
+        const assertEngine = captureEngineSession();
+        // A previous session may already have fired the one-shot expiry event.
+        // This authenticated attempt needs its own notification before setup.
         resetSessionExpired();
-        setIdleLocked(false);
-        store.setState('user', u);
-        // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
-        // accepted but the password is expiring — the engine's message says when.
-        if (graceMessage != null) {
-            openChangePasswordModal(u, { message: graceMessage || 'Your password is expiring soon.' });
-        }
+        let sessionEnded = false;
+        const offExpired = onSessionExpired(() => { sessionEnded = true; });
+        const offEngine = onEngineUnknown(() => { sessionEnded = true; });
+        const assertSession = () => {
+            assertEngine();
+            if (sessionEnded) throw new Error('Your session ended — please sign in again.');
+        };
+        try {
+            // Login notification + consent (Swing LoginPanel.handleSuccess): when the
+            // server requires it, the user must accept the message before entering;
+            // declining logs them back out.
+            if (notify) try {
+                const pub = await api.server.publicSettings();
+                assertSession();
+                const enabled = pub && (pub.loginNotificationEnabled === true || pub.loginNotificationEnabled === 'true');
+                if (enabled && String(pub.loginNotificationMessage ?? '').trim()) {
+                    const accepted = await loginNotificationDialog(pub.loginNotificationMessage);
+                    assertSession();
+                    if (!accepted) {
+                        await api.auth.logout().catch(() => {});
+                        assertSession();
+                        // Inline on the login screen, like the other reasons we send someone back.
+                        store.setState('loginNotice', 'Sign-in canceled — the notification must be accepted to continue.');
+                        return;
+                    }
+                    if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
+                }
+            } catch { assertSession(); /* public settings unavailable — don't block login */ }
+            store.setState('navGuard', null);
+            // First-login wizard (Swing FirstLoginDialog): prompt for a password +
+            // profile when the engine's "firstlogin" user preference is set. Fails
+            // open internally, but guard here too so it can never block sign-in.
+            let welcomed = true;
+            try { welcomed = await maybeShowWelcome(u, assertSession); } catch { /* never block login on the welcome wizard */ }
+            assertSession();
+            if (!welcomed && !isSsoSession()) {
+                await api.auth.logout().catch(() => {});
+                assertSession();
+                store.setState('loginNotice', 'Sign-in canceled — set a new password to continue.');
+                return;
+            }
+            // Scope prefs/theme only while this login still owns the session.
+            await establishPrefScope(u, assertSession);
+            assertSession();
+            setIdleLocked(false);
+            store.setState('user', u);
+            // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
+            // accepted but the password is expiring — the engine's message says when.
+            if (graceMessage != null) {
+                openChangePasswordModal(u, { message: graceMessage || 'Your password is expiring soon.' });
+            }
+        } finally { offExpired(); offEngine(); }
 
     };
 
