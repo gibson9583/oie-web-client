@@ -38,7 +38,7 @@ import { registerLoginAuthenticator } from './login-auth.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
-import { setAuthorizationController, checkTask, blockAuthorization, authorizationRegistration } from './authorization.js';
+import { setAuthorizationController, checkTask, blockAuthorization, beginAuthorizationDiscovery, beginAuthorizationRegistration, authorizationRegistration } from './authorization.js';
 import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
 import { apiUrl, appUrl } from './deployment.js';
@@ -57,7 +57,7 @@ import { addReferences, registeredReferences } from './script-completions.js';
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.8.0'; // 4.8: registerReferences
+export const OIE_API_VERSION = '4.9.0'; // 4.9: command availability and required authorization providers
 function parseApiVersion(v) {
     const [major, minor] = String(v == null ? '' : v).split('.');
     return { major: parseInt(major, 10) || 0, minor: parseInt(minor, 10) || 0 };
@@ -264,7 +264,9 @@ async function fetchEngineManifests() {
             assertEngineResponse(res);
             if (!m || typeof m.id !== 'string' || !m.id.trim())
                 throw new Error('Invalid plugin manifest');
-            if (m.client?.entry != null && (typeof m.client.entry !== 'string' || !m.client.entry.trim()))
+            if (m.client?.entry != null && typeof m.client.entry !== 'string')
+                throw new Error('Invalid plugin entry');
+            if (m.client?.entry && !m.client.entry.trim())
                 throw new Error('Invalid plugin entry');
             const entry = m.client && m.client.entry ? `${base}/${m.client.entry}` : null;
             return {
@@ -292,32 +294,44 @@ async function fetchEngineManifests() {
 let pluginsLoading = null;
 export function loadPlugins() {
     if (!pluginsLoading) {
-        blockAuthorization(true);
-        const assertEngineSession = captureEngineSession();
+        beginAuthorizationDiscovery();
+        let assertEngineSession;
+        try {
+            assertEngineSession = captureEngineSession();
+        }
+        catch (error) {
+            // Keep the public Promise contract even when setup detects a stale
+            // session synchronously. Failed attempts remain cached until reload.
+            blockAuthorization(true);
+            pluginsLoading = Promise.reject(error);
+            return pluginsLoading;
+        }
         const identity = () => {
             const user = store.getState('user');
             return user ? String(user.id ?? user.username) : null;
         };
         const user = identity();
+        let invalidated = false;
         const assertSession = () => {
             assertEngineSession();
-            if (identity() !== user)
+            if (invalidated || identity() !== user)
                 throw new Error('Discarded plugin loading from the previous session');
         };
-        store.subscribe('user', () => { if (identity() !== user)
-            blockAuthorization(true); });
+        store.subscribe('user', () => {
+            if (identity() !== user) {
+                invalidated = true;
+                blockAuthorization(true);
+            }
+        });
         pluginsLoading = loadPluginsOnce(assertSession).then(loaded => {
             assertSession();
             blockAuthorization(false);
             store.setState('webPlugins', [...(store.getState('webPlugins') || [])]);
-            try {
-                assertSession();
-            }
-            catch (error) {
-                blockAuthorization(true);
-                throw error;
-            }
+            assertSession();
             return loaded;
+        }).catch(error => {
+            blockAuthorization(true);
+            throw error;
         });
     }
     return pluginsLoading;
@@ -415,10 +429,19 @@ async function loadPluginsOnce(assertSession) {
             return { manifest, failed: true, error: e };
         }
     }));
-    // Register in manifest order so ordering (nav items, tabs) stays stable.
+    // Establish required controllers before ordinary plugins consult checkTask.
+    // Keep manifest order within each phase; views/commands remain unavailable
+    // until the entire loader resolves. Permission queries during register() must
+    // reflect the controller, including helpers imported from @oie/web-ui.
     assertSession();
+    beginAuthorizationRegistration(manifests.some(isAuthorization));
+    const registrationOrder = [
+        ...imported.filter(({ manifest }) => isAuthorization(manifest)),
+        ...imported.filter(({ manifest }) => !isAuthorization(manifest))
+    ];
     const loaded = [];
-    for (const { manifest, module, failed, error } of imported) {
+    for (const { manifest, module, failed, error } of registrationOrder) {
+        assertSession();
         if (!manifest.entry) {
             if (isAuthorization(manifest))
                 throw new Error(`Authorization plugin ${manifest.id} has no entry module`);

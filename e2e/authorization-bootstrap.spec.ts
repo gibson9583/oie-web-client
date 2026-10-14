@@ -48,6 +48,49 @@ async function expectBlocked(page: Page) {
     expect(await permitted(page)).toBe(false);
 }
 
+test('loadPlugins returns a cached rejected promise when its initial session is already stale', async ({ page }) => {
+    // Use the served shell's real import map without starting React/login. The
+    // loader must make its first call after invalidation, and no shell reload
+    // listener should replace the document before we can observe its contract.
+    await page.route('**/loader-contract-probe', async route => {
+        const response = await route.fetch();
+        const html = await response.text();
+        await route.fulfill({ response, body: html.replace(/<script\b[^>]*type="module"[^>]*>[\s\S]*?<\/script>/g, '') });
+    });
+    let discoveryRequests = 0;
+    await page.route('**/webadmin/plugins.json', route => {
+        discoveryRequests++;
+        return route.fulfill({ json: [] });
+    });
+    await page.goto('/loader-contract-probe');
+    const result = await page.evaluate(async () => {
+        const { platform, loadPlugins } = await import(String('@oie/web-shell'));
+        const { adoptEngineContext } = await import(String('/core/engine-fetch.js'));
+        platform.setAuthorizationController({ checkTask: () => true });
+        let sessionChanges = 0;
+        window.addEventListener('oie-session-changed', () => { sessionChanges++; });
+        document.cookie = 'oie-login=replaced-before-plugin-bootstrap; path=/';
+        let first;
+        try { first = loadPlugins(); }
+        catch { return { synchronouslyThrew: true }; }
+        const second = loadPlugins();
+        const rejection = await first.then(() => '', (error: Error) => error.message);
+        // Correcting the context cannot reuse this document's failed bootstrap.
+        adoptEngineContext();
+        platform.setAuthorizationController({ checkTask: () => true });
+        return {
+            synchronouslyThrew: false, promise: first instanceof Promise,
+            samePending: first === second, sameSettled: first === loadPlugins(),
+            rejection, sessionChanges, allowed: platform.checkTask('view', 'doShowDashboard')
+        };
+    });
+    expect(result).toEqual({
+        synchronouslyThrew: false, promise: true, samePending: true, sameSettled: true,
+        rejection: 'The browser session changed. Reload to continue.', sessionChanges: 1, allowed: false
+    });
+    expect(discoveryRequests).toBe(0);
+});
+
 for (const mode of ['empty', 'missing'] as const) {
     test(`successful ${mode} discovery preserves engines without RBAC`, async ({ page }) => {
         await fixture(page, mode === 'missing' ? {
@@ -96,6 +139,7 @@ for (const failure of ['manifest-404', 'manifest-json', 'manifest-id', 'discover
 const criticalFailures = [
     { name: 'incompatible', apiMin: '999.0' },
     { name: 'no entry', entry: null },
+    { name: 'empty entry', entry: '' },
     { name: 'module request failure', importStatus: 503 },
     { name: 'no register export', source: 'export const unrelated = true;' },
     { name: 'no controller', source: 'export function register() {}' },
@@ -127,12 +171,13 @@ test('a successfully installed controller still denies a throwing checkTask', as
     expect(await permitted(page)).toBe(false);
 });
 
-for (const failure of ['incompatible', 'no-entry', 'import', 'register', 'null-import', 'null-register'] as const) {
+for (const failure of ['incompatible', 'no-entry', 'empty-entry', 'import', 'register', 'null-import', 'null-register'] as const) {
     test(`an ordinary plugin ${failure} failure does not disable access`, async ({ page }) => {
         await provider(page, {
             id: 'ordinary', path: 'ordinary',
             ...(failure === 'incompatible' ? { apiMin: '999.0' } : {}),
             ...(failure === 'no-entry' ? { entry: null } : {}),
+            ...(failure === 'empty-entry' ? { entry: '' } : {}),
             ...(failure === 'import' ? { importStatus: 503 } : {}),
             source: failure === 'null-import' ? 'throw null; export function register() {}'
                 : failure === 'null-register' ? 'export function register() { throw null; }'
@@ -293,4 +338,115 @@ test('same-user profile rename preserves permissions while a different user inva
         platform.store.setState('user', { id: 99, username: 'another-user' });
         return platform.checkTask('view', 'doShowDashboard');
     })).toBe(false);
+});
+
+async function bundledProviders(page: Page, plugins: Array<{ id: string; authorization?: boolean; source: string }>) {
+    await fixture(page);
+    await page.route('**/webadmin/plugins.json', route => route.fulfill({ json: plugins.map(plugin => ({
+        id: plugin.id, authorization: plugin.authorization, entry: `/plugins/${plugin.id}/entry.js`
+    })) }));
+    for (const plugin of plugins) {
+        await page.route(`**/plugins/${plugin.id}/entry.js*`, route => route.fulfill({
+            contentType: 'text/javascript', body: plugin.source
+        }));
+    }
+}
+
+for (const access of ['no-provider', 'allowed', 'denied'] as const) {
+    test(`registration-time permission checks preserve plugin contributions: ${access}`, async ({ page }) => {
+        const ordinary = (id: string) => ({ id, source: `
+            import { platform } from '@oie/web-shell';
+            import { taskButton } from '@oie/web-ui';
+            export function register(p) {
+                (window.registrationOrder ||= []).push('${id}');
+                const allowed = p.checkTask('settings_Ordinary', 'doRefresh');
+                const singletonAllowed = platform.checkTask('settings_Ordinary', 'doRefresh');
+                const button = taskButton('Ordinary task', null, () => {}, {group:'settings_Ordinary',task:'doRefresh'});
+                (window.registrationChecks ||= []).push({allowed, singletonAllowed, buttonCreated: !!button});
+                if (allowed) p.registerSettingsPanel({label:'${id}', component: () => null});
+            }
+        ` });
+        await bundledProviders(page, [ordinary('ordinary-one'), ordinary('ordinary-two'), ...(access === 'no-provider' ? [] : [{
+            // Legacy RBAC identity deliberately omits the new manifest property,
+            // and appears after both ordinary consumers in discovery order.
+            id: 'rbac', source: `export function register(p) {
+                (window.registrationOrder ||= []).push('rbac');
+                p.setAuthorizationController({checkTask: group => group !== 'settings_Ordinary' || ${access === 'allowed'}});
+            }`
+        }])]);
+        await page.goto('/dashboard');
+        await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
+        const result = await page.evaluate(async () => {
+            const { platform } = await import(String('@oie/web-shell'));
+            return {
+                order: (window as any).registrationOrder, checks: (window as any).registrationChecks,
+                panels: platform.settingsPanels().map((panel: any) => panel.label),
+                statuses: platform.store.getState('webPlugins').map((plugin: any) => plugin.status)
+            };
+        });
+        const allowed = access !== 'denied';
+        expect(result.order).toEqual([...(access === 'no-provider' ? [] : ['rbac']), 'ordinary-one', 'ordinary-two']);
+        expect(result.checks).toEqual(Array(2).fill({ allowed, singletonAllowed: allowed, buttonCreated: allowed }));
+        expect(result.panels).toEqual(allowed ? ['ordinary-one', 'ordinary-two'] : []);
+        expect(result.statuses.every((status: string) => status === 'loaded')).toBe(true);
+    });
+}
+
+for (const fails of [false, true]) {
+    test(`provider permission queries do not release startup before registration ${fails ? 'fails' : 'succeeds'}`, async ({ page }) => {
+        let channelRequests = 0;
+        await bundledProviders(page, [{ id: 'ordinary', source: `export function register() { window.ordinaryRegistered = true; }` }, {
+            id: 'custom-access', authorization: true, source: `export async function register(p) {
+                window.beforeController = p.checkTask('view', 'doShowDashboard');
+                p.setAuthorizationController({checkTask: () => true});
+                window.afterController = p.checkTask('view', 'doShowDashboard');
+                await new Promise(resolve => { window.finishProvider = resolve; });
+                ${fails ? 'throw new Error("provider failed after installing");' : ''}
+            }`
+        }]);
+        await page.route('**/api/channels/idsAndNames', route => {
+            channelRequests++;
+            return route.fulfill({ json: [] });
+        });
+        await page.goto('/dashboard');
+        await expect.poll(() => page.evaluate(() => typeof (window as any).finishProvider)).toBe('function');
+        try {
+            expect(await page.evaluate(() => ({ before: (window as any).beforeController,
+                after: (window as any).afterController, ordinary: !!(window as any).ordinaryRegistered })))
+                .toEqual({ before: false, after: true, ordinary: false });
+            await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toHaveCount(0);
+            await expect(page.getByText('Demo Started', { exact: true })).toHaveCount(0);
+            await page.locator('button.user-chip').click();
+            await expect(page.getByRole('menuitem', { name: 'Settings', exact: true })).toHaveCount(0);
+            await expect(page.getByRole('menuitem', { name: 'Sign out', exact: true })).toBeVisible();
+            await page.keyboard.press('Escape');
+            await page.keyboard.press('Control+k');
+            await expect(page.locator('.cmdk')).toHaveCount(0);
+            expect(channelRequests).toBe(0);
+            await page.evaluate(() => (window as any).finishProvider());
+            if (fails) {
+                await expectBlocked(page);
+                expect(await page.evaluate(() => !!(window as any).ordinaryRegistered)).toBe(false);
+                expect(channelRequests).toBe(0);
+            } else {
+                await expect(page.locator('.cmdk')).toBeVisible();
+                expect(await page.evaluate(() => !!(window as any).ordinaryRegistered)).toBe(true);
+                await page.keyboard.press('Escape');
+                await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
+                await page.locator('button.user-chip').click();
+                await expect(page.getByRole('menuitem', { name: 'Settings', exact: true })).toBeVisible();
+            }
+        } finally { await page.evaluate(() => (window as any).finishProvider?.()).catch(() => {}); }
+    });
+}
+
+test('a transient user change during registration cannot restore the old authorization session', async ({ page }) => {
+    await provider(page, { source: `export function register(p) {
+        p.setAuthorizationController({checkTask: () => true});
+        const user = p.store.getState('user');
+        p.store.setState('user', {id:99, username:'another-user'});
+        p.store.setState('user', user);
+    }` });
+    await page.goto('/dashboard');
+    await expectBlocked(page);
 });

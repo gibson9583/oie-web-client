@@ -4,8 +4,13 @@ export interface AuthorizationController {
     initialize?(): void;
     checkTask(taskGroup: string, taskName: string): boolean;
 }
-/** Plugin discovery must settle before an authorization provider can allow tasks. */
+/** A failed bootstrap or invalidated session cannot be released by a controller. */
 export declare function blockAuthorization(value: boolean): void;
+/** Keep unknown discovery from exposing the default unrestricted controller. */
+export declare function beginAuthorizationDiscovery(): void;
+/** Internal loader boundary. Views remain gated by shell readiness while plugins
+ * query the installed controller and construct their permission-dependent UI. */
+export declare function beginAuthorizationRegistration(required: boolean): void;
 /** Receipt used to verify that an authorization plugin installed its controller. */
 export declare function authorizationRegistration(): {
     revision: number;
@@ -16,8 +21,10 @@ export declare function setAuthorizationController(ctrl: AuthorizationController
 /**
  * True if the user may see/use the task. Untagged items (no task name) are
  * allowed after discovery, while a throwing controller denies tagged tasks.
- * A failed or pending authorization bootstrap denies all task checks, even
- * if a plugin installed a permissive controller before failing registration.
+ * Unknown discovery, failed bootstrap and invalidated sessions deny all checks.
+ * During registration the installed controller answers normally; a required
+ * provider must install one before any task can be allowed. The shell separately
+ * withholds views and commands until every required provider has succeeded.
  *
  * A task WITHOUT a group is still checked (group passed as ''): tagging a task
  * signals gating intent, and RBAC controllers resolve bare Swing task names

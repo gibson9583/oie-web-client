@@ -35,12 +35,27 @@ export interface AuthorizationController {
 const ALLOW_ALL: AuthorizationController = { checkTask: () => true };
 const DENY_ALL: AuthorizationController = { checkTask: () => false };
 let controller: AuthorizationController = ALLOW_ALL;
-let blocked = false;
+let phase: 'ready' | 'discovering' | 'registering' | 'blocked' = 'ready';
+let registrationRequiresController = false;
 let revision = 0;
 let registered = false;
 
-/** Plugin discovery must settle before an authorization provider can allow tasks. */
-export function blockAuthorization(value: boolean): void { blocked = value; }
+/** A failed bootstrap or invalidated session cannot be released by a controller. */
+export function blockAuthorization(value: boolean): void {
+    phase = value ? 'blocked' : 'ready';
+    registrationRequiresController = false;
+}
+
+/** Keep unknown discovery from exposing the default unrestricted controller. */
+export function beginAuthorizationDiscovery(): void { phase = 'discovering'; }
+
+/** Internal loader boundary. Views remain gated by shell readiness while plugins
+ * query the installed controller and construct their permission-dependent UI. */
+export function beginAuthorizationRegistration(required: boolean): void {
+    if (phase !== 'discovering') throw new Error('Authorization discovery was invalidated');
+    registrationRequiresController = required;
+    phase = 'registering';
+}
 
 /** Receipt used to verify that an authorization plugin installed its controller. */
 export function authorizationRegistration(): { revision: number; registered: boolean } {
@@ -64,15 +79,18 @@ export function setAuthorizationController(ctrl: AuthorizationController | null 
 /**
  * True if the user may see/use the task. Untagged items (no task name) are
  * allowed after discovery, while a throwing controller denies tagged tasks.
- * A failed or pending authorization bootstrap denies all task checks, even
- * if a plugin installed a permissive controller before failing registration.
+ * Unknown discovery, failed bootstrap and invalidated sessions deny all checks.
+ * During registration the installed controller answers normally; a required
+ * provider must install one before any task can be allowed. The shell separately
+ * withholds views and commands until every required provider has succeeded.
  *
  * A task WITHOUT a group is still checked (group passed as ''): tagging a task
  * signals gating intent, and RBAC controllers resolve bare Swing task names
  * without the group — so a missing group tag must not silently fail open.
  */
 export function checkTask(taskGroup: string | null | undefined, taskName: string | null | undefined): boolean {
-    if (blocked) return false;
+    if (phase === 'blocked' || phase === 'discovering') return false;
+    if (phase === 'registering' && registrationRequiresController && !registered) return false;
     if (!taskName) return true;
     try { return controller.checkTask(taskGroup || '', taskName) !== false; }
     catch { return false; }

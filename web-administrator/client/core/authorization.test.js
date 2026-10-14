@@ -1,5 +1,5 @@
 /* Unit tests for the RBAC authorization hook (Swing AuthorizationController port). */
-import { setAuthorizationController, checkTask, blockAuthorization, authorizationRegistration } from './authorization.js';
+import { setAuthorizationController, checkTask, blockAuthorization, beginAuthorizationDiscovery, beginAuthorizationRegistration, authorizationRegistration } from './authorization.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, label) => { if (cond) pass++; else { fail++; console.error('  FAIL -', label); } };
@@ -57,6 +57,28 @@ try { setAuthorizationController({ initialize() { throw new Error('cannot load')
 catch { threw = true; }
 ok(threw && !authorizationRegistration().registered, 'failed initialization cannot earn valid receipt');
 ok(!checkTask('view', 'doShowDashboard'), 'failed initialization remains denied');
+setAuthorizationController(null);
+
+beginAuthorizationDiscovery();
+ok(!checkTask('view', 'doShowDashboard') && !checkTask(null, null), 'unknown discovery denies tagged and untagged checks');
+beginAuthorizationRegistration(false);
+ok(checkTask('view', 'doShowDashboard'), 'ordinary plugins without a provider retain default registration permissions');
+blockAuthorization(false);
+
+beginAuthorizationDiscovery();
+beginAuthorizationRegistration(true);
+ok(!checkTask('view', 'doShowDashboard'), 'required provider has no permissive default before installation');
+setAuthorizationController({ checkTask: (_group, task) => task !== 'denied' });
+ok(checkTask('view', 'doShowDashboard') && !checkTask('view', 'denied'), 'registration checks use the installed controller');
+setAuthorizationController(null);
+ok(!checkTask('view', 'doShowDashboard'), 'clearing a required provider during registration still denies');
+blockAuthorization(true);
+setAuthorizationController({ checkTask: () => true });
+ok(!checkTask('view', 'doShowDashboard'), 'late controller cannot release failed bootstrap or invalidated session');
+let invalidated = false;
+try { beginAuthorizationRegistration(false); } catch { invalidated = true; }
+ok(invalidated && !checkTask('view', 'doShowDashboard'), 'registration cannot reopen invalidated discovery');
+blockAuthorization(false);
 setAuthorizationController(null);
 
 console.log(`authorization.test: ${pass} passed, ${fail} failed`);

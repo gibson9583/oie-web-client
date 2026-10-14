@@ -358,11 +358,12 @@ shell internals:
 | [`@oie/web-shell`](packages/web-shell) | `platform` extension points (nav, views, settings, connectors) |
 | [`@oie/eslint-config`](packages/eslint-config) | Shared lint config enforcing the public-API boundary |
 
-The framework implements API **4.8.0**, with plugin Reference registration
-and lookup, scoped editor completions and connector-form callbacks/validation.
-See the [API 4.8 contracts](web-administrator/PLUGINS.md#api-48-plugin-contracts)
-for signatures and compatibility, including Web Support's datatype vocabulary
-manifest declaration.
+The framework implements API **4.9.0**, adding command availability predicates
+and required authorization-provider metadata. See the
+[API 4.9 contracts](web-administrator/PLUGINS.md#api-49-plugin-contracts) for
+compatibility and bootstrap behavior. Reference registration, scoped editor
+completions and connector-form additions remain available from
+[API 4.8](web-administrator/PLUGINS.md#api-48-plugin-contracts).
 
 At runtime the host page's import map resolves `@oie/*` to the shell's loaded
 copy, so a plugin shares one framework instance whether it's bundled or served

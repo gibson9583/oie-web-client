@@ -1931,11 +1931,12 @@ function promptSaveSettings(canSave?: any) {
 // Mounts the active tab's legacy builder once and tracks its declared task pane.
 // The builder's setTasks(title, items) writes into tasksRef; notify() forces a
 // re-render so the portaled <RailPane> reflects the new title + buttons.
-function SettingsTab({ def, ctx }: any) {
+function SettingsTab({ def, activate }: any) {
     const ref = useRef<any>(null);
     useEffect(() => {
         const host = ref.current;
         if (!host) return;
+        const { ctx, dispose } = activate();
         host.replaceChildren();
         ctx.setSave(null);               // reset; the builder re-registers its own save
         const node = def.render(ctx);
@@ -1947,6 +1948,9 @@ function SettingsTab({ def, ctx }: any) {
         host.addEventListener('input', onEdit);
         host.addEventListener('change', onEdit);
         return () => {
+            // Invalidate first: a plugin's teardown or late async completion can
+            // still call the ctx it received, but it no longer owns this view.
+            dispose();
             host.removeEventListener('input', onEdit);
             host.removeEventListener('change', onEdit);
             if (node && node.__teardown) node.__teardown();
@@ -2010,6 +2014,9 @@ export function SettingsView({ query }: any) {
     useEffect(() => registerUnsavedCheck(() => dirtyRef.current), []);
     const saveRef = useRef<any>(null);   // the active tab's save(), if it supports saving
     const activeLabelRef = useRef<any>(null);   // active tab label, for its settings_<Tab> RBAC group
+    // A label can disappear and return while a prompt/save is pending. Only the
+    // exact mounted activation owns its callbacks and may approve navigation.
+    const activationRef = useRef<object | null>(null);
 
     // setTasks is what each legacy builder calls; it captures the task spec and
     // forces a re-render of the portaled pane. ctx mirrors the vanilla shell ctx,
@@ -2019,13 +2026,16 @@ export function SettingsView({ query }: any) {
         function refreshGuard() {
             if (dirtyRef.current) {
                 setState('navGuard', async () => {
-                    const source = activeLabelRef.current;
+                    const source = activationRef.current;
+                    if (!source) return false;
+                    const label = activeLabelRef.current;
                     const choice = await promptSaveSettings(
-                        platform.checkTask(`settings_${activeLabelRef.current}`, 'doSave'));
+                        platform.checkTask(`settings_${label}`, 'doSave'));
                     if (choice === 'cancel') return false;
-                    if (activeLabelRef.current !== source) return false;
-                    if (choice === 'save' && (!platform.checkTask(`settings_${source}`, 'doSave')
+                    if (activationRef.current !== source) return false;
+                    if (choice === 'save' && (!platform.checkTask(`settings_${label}`, 'doSave')
                         || !saveRef.current || (await saveRef.current()) === false)) return false;
+                    if (activationRef.current !== source) return false;
                     setClean();
                 });
             } else {
@@ -2040,12 +2050,30 @@ export function SettingsView({ query }: any) {
         function setClean() {
             dirtyRef.current = false; setDirtyState(false); setState('navGuard', null);
         }
-        return {
+        const context = {
             platform,
             setTasks(title: any, items: any) { tasksRef.current = { title, items }; force(); },
             markDirty: setDirty,
             markClean: setClean,
             setSave(fn: any) { saveRef.current = fn || null; }
+        };
+        return {
+            ...context,
+            activate() {
+                const token = {};
+                activationRef.current = token;
+                const current = () => activationRef.current === token;
+                return {
+                    ctx: {
+                        platform,
+                        setTasks(title: any, items: any) { if (current()) context.setTasks(title, items); },
+                        markDirty() { if (current()) context.markDirty(); },
+                        markClean() { if (current()) context.markClean(); },
+                        setSave(fn: any) { if (current()) context.setSave(fn); }
+                    },
+                    dispose() { if (current()) activationRef.current = null; }
+                };
+            }
         };
     });
 
@@ -2057,28 +2085,31 @@ export function SettingsView({ query }: any) {
        moved — so the second event proposes the same switch and would open a second
        dialog. (A fast double-click could have done the same before Radix.) One
        pending prompt at a time. */
-    const switchingRef = useRef(false);
+    const switchingRef = useRef<object | null>(null);
     async function requestTab(label: string) {
-        if (label === active || switchingRef.current) return;
-        switchingRef.current = true;
+        const source = activationRef.current;
+        if (label === active || !source || switchingRef.current === source) return;
+        switchingRef.current = source;
         try {
             await performTabSwitch(label);
         } finally {
-            switchingRef.current = false;
+            if (switchingRef.current === source) switchingRef.current = null;
         }
     }
 
     async function performTabSwitch(label: string) {
-        const source = activeLabelRef.current;
+        const source = activationRef.current;
+        if (!source) return;
+        const sourceLabel = activeLabelRef.current;
         if (dirtyRef.current) {
             const choice = await promptSaveSettings(
-                platform.checkTask(`settings_${activeLabelRef.current}`, 'doSave'));
+                platform.checkTask(`settings_${sourceLabel}`, 'doSave'));
             if (choice === 'cancel') return;
-            if (activeLabelRef.current !== source) return;
-            if (choice === 'save' && (!platform.checkTask(`settings_${source}`, 'doSave')
+            if (activationRef.current !== source) return;
+            if (choice === 'save' && (!platform.checkTask(`settings_${sourceLabel}`, 'doSave')
                 || !saveRef.current || (await saveRef.current()) === false)) return;
         }
-        if (activeLabelRef.current !== source || !buildTabDefs(platform).some((d: any) => d.label === label)) return;
+        if (activationRef.current !== source || !buildTabDefs(platform).some((d: any) => d.label === label)) return;
         ctx.markClean();
         setSelectedLabel(label);
     }
@@ -2093,6 +2124,7 @@ export function SettingsView({ query }: any) {
     const shownRef = useRef(active);
     if (shownRef.current !== active) {
         shownRef.current = active;
+        activationRef.current = null;
         tasksRef.current = { title: def ? `${def.label} Tasks` : 'Settings Tasks', items: [] };
         saveRef.current = null;
     }
@@ -2105,7 +2137,10 @@ export function SettingsView({ query }: any) {
     }, [active, selectedLabel, ctx]);
 
     // Drop the leave-guard when the settings view itself unmounts.
-    useEffect(() => () => { setState('navGuard', null); }, []);
+    useEffect(() => () => {
+        activationRef.current = null;
+        setState('navGuard', null);
+    }, []);
 
     const { title, items } = tasksRef.current;
 
@@ -2129,7 +2164,7 @@ export function SettingsView({ query }: any) {
                     <TabsPrimitive.Content value={String(active)} className="tab-body flex flex-col flex-1 min-h-0">
                         {/* Only the active tab is mounted; keyed by label so switching
                             tabs remounts (and reloads) it, matching vanilla tabs(). */}
-                        {def ? <SettingsTab key={def.label} def={def} ctx={ctx} />
+                        {def ? <SettingsTab key={def.label} def={def} activate={ctx.activate} />
                             : <div className="dt-empty">No settings are available with your current permissions.</div>}
                     </TabsPrimitive.Content>
                 </TabsPrimitive.Root>

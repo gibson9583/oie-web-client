@@ -1003,7 +1003,8 @@ export function taskButton(label: string, iconName?: string | null, onClick?: (e
     if (opts.task && !checkTask(opts.group, opts.task)) return null;
     return h(`button.btn${opts.primary ? '.btn-primary' : ''}${opts.danger ? '.btn-danger' : ''}`,
         { onClick: (event: MouseEvent) => {
-            if (!opts.disabled && (!opts.task || checkTask(opts.group, opts.task))) onClick?.(event);
+            // Plugins and built-in helpers toggle the returned button directly.
+            if (!(event.currentTarget as HTMLButtonElement).disabled && (!opts.task || checkTask(opts.group, opts.task))) onClick?.call(event.currentTarget, event);
         }, disabled: opts.disabled, title: opts.title || null },
         iconName ? icon(iconName) : null, label);
 }

@@ -280,11 +280,11 @@ export interface PluginManifest {
     apiMin?: string | null;
     [key: string]: any;
 }
-export declare const OIE_API_VERSION = "4.8.0";
+export declare const OIE_API_VERSION = "4.9.0";
 export declare function apiCompatible(provided: string, requiredMin?: string | null): boolean;
 /** The platform handed to every plugin's `register(platform)`. */
 export interface Platform {
-    /** The @oie/* API contract version this web administrator implements — tracks the OIE engine release line (e.g. "4.6.0"). */
+    /** The @oie/* API contract version this web administrator implements, independently of the engine version. */
     apiVersion: string;
     api: Api;
     ui: DomToolkit;

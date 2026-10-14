@@ -178,7 +178,7 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
         'GET /webplugins': ['newplug'],
         'GET /webplugins/newplug/plugin.json': {
             id: 'new-plug', name: 'Too New Plugin', version: '1.0.0',
-            oie: { apiMin: '4.9' }, client: { entry: 'web/plugin.js' }
+            oie: { apiMin: '4.10' }, client: { entry: 'web/plugin.js' }
         }
     });
     // If the gate works, this module is never imported (its code never runs).
@@ -195,6 +195,50 @@ test('skips (before import) an engine plugin that needs a newer @oie apiMin', as
     // it BEFORE importing, so its code never runs.
     expect(await page.evaluate(() => (window as any).__newLoaded === true)).toBe(false);
     await expect(page.getByRole('button', { name: 'Too New Plugin' })).toHaveCount(0);
+});
+
+test('API 4.9 plugins can require command visibility and action-time rechecks', async ({ page }) => {
+    await mockEngine(page, {
+        'GET /webplugins': ['command-capability'],
+        'GET /webplugins/command-capability/plugin.json': {
+            id: 'command-capability', oie: { apiMin: '4.9' }, client: { entry: 'web/plugin.js' }
+        }
+    });
+    await page.route('**/api/webplugins/command-capability/web/plugin.js*', route => route.fulfill({
+        contentType: 'text/javascript',
+        body: `export function register(platform) {
+            window.__commandApiVersion = platform.apiVersion;
+            window.__commandAvailable = true;
+            window.__commandCalls = 0;
+            platform.registerCommand({ id: 'always-hidden', label: 'Always Hidden Capability',
+                visible: () => false, run: () => window.__commandCalls++ });
+            platform.registerCommand({ id: 'revocable', label: 'Revocable Capability',
+                visible: () => window.__commandAvailable, run: () => window.__commandCalls++ });
+        }`
+    }));
+    await page.goto('/dashboard');
+    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__commandApiVersion)).toBe('4.9.0');
+
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('.cmdk')).toBeVisible();
+    await page.locator('.cmdk-field input').fill('>Always Hidden Capability');
+    await expect(page.locator('.cmdk-opt')).toHaveCount(0);
+    await page.locator('.cmdk-field input').fill('>Revocable Capability');
+    const command = page.locator('.cmdk-opt', { hasText: 'Revocable Capability' });
+    await expect(command).toBeVisible();
+    // Change the predicate without a render: the existing result must still
+    // be denied when invoked, not just when the palette builds its entries.
+    await page.evaluate(() => { (window as any).__commandAvailable = false; });
+    await command.click();
+    // Invocation is deferred until after focus restoration; drain that timer
+    // before checking the denied action did not execute.
+    expect(await page.evaluate(() => new Promise(resolve => {
+        setTimeout(() => resolve((window as any).__commandCalls), 0);
+    }))).toBe(0);
+    await page.evaluate(() => { (window as any).__commandAvailable = true; });
+    await command.click();
+    await expect.poll(() => page.evaluate(() => (window as any).__commandCalls)).toBe(1);
 });
 
 test('warns when the engine has neither web-support endpoint (plugin not installed)', async ({ page }) => {

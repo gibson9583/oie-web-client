@@ -27,7 +27,7 @@ export interface Command {
     keywords?: string | string[];
     task?: string;
     rbac?: any;
-    /** Additional availability predicate, rechecked when the command runs. */
+    /** API 4.9: additional availability predicate, rechecked when the command runs. */
     visible?: () => boolean;
     /** Navigation target; `run` is called instead when present. */
     path?: string;

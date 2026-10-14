@@ -919,8 +919,9 @@ export function taskButton(label, iconName, onClick, opts = {}) {
     if (opts.task && !checkTask(opts.group, opts.task))
         return null;
     return h(`button.btn${opts.primary ? '.btn-primary' : ''}${opts.danger ? '.btn-danger' : ''}`, { onClick: (event) => {
-            if (!opts.disabled && (!opts.task || checkTask(opts.group, opts.task)))
-                onClick?.(event);
+            // Plugins and built-in helpers toggle the returned button directly.
+            if (!event.currentTarget.disabled && (!opts.task || checkTask(opts.group, opts.task)))
+                onClick?.call(event.currentTarget, event);
         }, disabled: opts.disabled, title: opts.title || null }, iconName ? icon(iconName) : null, label);
 }
 export function downloadFile(filename, content, type = 'application/octet-stream') {

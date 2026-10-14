@@ -90,6 +90,21 @@ framework instance instead of bundling its own). See
 }
 ```
 
+Authorization providers can declare `"authorization": true` at the top level of
+their manifest (API **4.9**). This identifies a required provider **before its
+module runs**, so a failed download or import cannot silently leave the default
+unrestricted controller active. Providers with another ID must add the marker
+to receive this protection. The existing `rbac` ID is recognized without it;
+existing RBAC manifests do not need migration. Ordinary plugins need no marker.
+
+Node, WAR and engine delivery preserve this metadata. An identified provider
+that is incompatible, cannot load, or fails to install a valid controller blocks
+startup. Ordinary module failures, and registration failures that do not modify
+authorization, remain isolated. A failed discovery request or unreadable/invalid
+manifest blocks startup because the host cannot establish which providers are
+required. Reload retries discovery. This browser bootstrap policy changes no
+engine endpoint or server authorization API; see [RBAC.md](https://github.com/gibson9583/oie-web-client/blob/main/web-administrator/RBAC.md).
+
 `oie.apiMin` (optional) is the **minimum `@oie/*` API version your plugin needs** —
 see [API version compatibility](#api-version-compatibility). Omit it and your
 plugin always loads (no gate); set it when you rely on a framework capability
@@ -217,10 +232,10 @@ export function register() {
 
 The framework surface — the `platform` registries plus the `@oie/web-*` exports —
 is versioned by an **API contract version**, `platform.apiVersion`. Web Administrator
-implements **4.8.0** against OIE **4.6.0**. The API minor can advance independently
+implements **4.9.0** against OIE **4.6.0**. The API minor can advance independently
 when exports are added; it is not the application or engine version. It follows
 major.minor (the patch is ignored for compatibility): the **minor** bumps when the
-surface *grows* (new registry, new export), the **major** bumps on any *breaking*
+surface *grows* (new registry, export or supported descriptor field), the **major** bumps on any *breaking*
 change (a removed/renamed export or a changed signature).
 
 Your plugin declares the minimum it was built against in `plugin.json`:
@@ -237,6 +252,8 @@ only when the web administrator is **older** than your `apiMin` (it lacks an API
 use) or a **major** bump dropped something you relied on. A skipped plugin is never
 imported — its code never runs — and it shows as **Incompatible** under
 **Extensions → Web Administrator Plugins** with the reason, rather than crashing.
+Required authorization providers are an exception: incompatibility blocks startup
+instead of skipping the provider and exposing an unrestricted shell.
 
 Guidance:
 - Omit `oie.apiMin` and your plugin always loads (no gate) — fine for plugins built
@@ -245,6 +262,8 @@ Guidance:
   host degrades gracefully instead of throwing on a missing API. `registerMessageAction`,
   for example, arrived in API `4.7`, so a plugin that calls it declares `"apiMin": "4.7"`.
 - `registerReferences` arrived in API `4.8`. A plugin that calls it declares `"apiMin": "4.8"`.
+- Command `visible` predicates arrived in API `4.9`. A plugin that relies on them
+  declares `"apiMin": "4.9"`; older hosts silently ignore this field.
 - Settings panel save declarations accept `Promise<boolean>` as well as `boolean`,
   matching the host's existing await behavior. This is a type correction, not an
   API change.
@@ -252,10 +271,37 @@ Guidance:
   `OIE_API_VERSION` / `apiCompatible` from `@oie/web-shell` if you need the raw value
   or the comparison helper).
 
+### API 4.9 plugin contracts
+
+API **4.9.0** adds command availability predicates and recognizes required
+authorization providers. Ordinary API 4.6–4.8 plugins need no manifest changes
+for these optional additions.
+
+- `platform.registerCommand({ ..., visible: () => boolean })` adds an availability
+  condition to the existing `task`/`rbac` permission check. The palette evaluates
+  it while building results and again before invoking the action. Declare
+  `"oie": { "apiMin": "4.9" }` when using it. Keep predicates synchronous and
+  recheck after any asynchronous work inside your own action handler.
+- Manifest `authorization: true` marks a required provider; legacy `id: "rbac"`
+  remains recognized. Required providers register first, in their manifest order,
+  followed by ordinary plugins in their original relative order. During
+  `register(platform)`, `checkTask` reflects the installed controller; ordinary
+  plugins can use it to decide what to register. The shell's views, navigation
+  and command palette stay unavailable until bootstrap succeeds. With no required
+  provider, successful discovery preserves the default allow-all behavior.
+- Failed discovery, required-provider registration, or a throwing controller
+  fails closed. This intentionally replaces the previous permissive failure
+  behavior without changing `register(platform)` or controller method signatures.
+  Engine endpoints continue to enforce permissions independently.
+
+Older hosts do not understand the authorization marker and may skip an
+incompatible provider. Setting `apiMin` alone cannot make those hosts fail closed;
+upgrade the host to API 4.9 before relying on required-provider enforcement.
+
 ### API 4.8 plugin contracts
 
-The framework implements API **4.8.0**. Plugins using the capabilities
-below should declare `"oie": { "apiMin": "4.8" }`.
+These capabilities were introduced in API **4.8.0**. Plugins using them
+should declare `"oie": { "apiMin": "4.8" }`.
 
 | Surface | Addition |
 |---|---|
@@ -450,6 +496,7 @@ platform.registerView('/my-path/:param?',
 
 // Command-palette entry. Supply either `path` or `run`; task/rbac use the same
 // RBAC pair as nav and menu items. Returns an unregister function.
+// API 4.9 adds optional visible: () => boolean, rechecked before invocation.
 const unregisterCommand = platform.registerCommand({
     id: 'my-plugin:open', label: 'Open My Plugin', icon: 'plug',
     section: 'Plugins', path: '/my-path', task: 'doShowMyPlugin', rbac: 'view'
@@ -609,7 +656,7 @@ platform.setAuthorizationController({
 
 | API | Purpose |
 |---|---|
-| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.8.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
+| `platform.apiVersion` | The `@oie/*` API contract version this web administrator implements — is `"4.9.0"`, independently of the engine version. Read it for runtime feature-detection; declare your minimum via `oie.apiMin` in `plugin.json`. See [API version compatibility](#api-version-compatibility). |
 | `platform.React` | The host's React instance — `const React = platform.React` at module scope, then write JSX. Sharing it is mandatory (one instance app-wide); never `import 'react'`. |
 | `platform.reactView(Component)` | Wraps a React component as a routed-view handler for `registerView(path, platform.reactView(Component), { title })`. The component gets `{ params, query }` props. |
 | `platform.api` | Full engine REST client (`api.channels`, `api.messages`, `api.status`, … plus raw `api.get/post/put/del`). All calls share the user's session. |

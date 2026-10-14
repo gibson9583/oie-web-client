@@ -11,6 +11,8 @@ export function register(p: Platform) {
     p.registerIcon('demo-glyph', 'M5 20v-7a7 7 0 0 1 14 0v7');
     p.registerNavItem({ id: 'demo', label: 'Demo', icon: 'demo-glyph', path: '/demo', section: 'Engine', order: 9 });
     p.registerView('/demo', () => ({ el: h('div', 'hi') }), { title: 'Demo' });
+    // API 4.9 availability predicates are synchronous and return a boolean.
+    p.registerCommand({ id: 'demo-command', label: 'Demo', path: '/demo', visible: () => true });
     // Plugin UI is a React `component` (rendered as <Component {...ctx}/>), not an
     // imperative render(host, ctx). Authored against platform.React.
     p.registerConnectorPanel('My Reader', 'SOURCE', {
@@ -63,6 +65,8 @@ function badUsage() {
     platform.registerChannelTab({ id: 'x', label: 'X' });
     // @ts-expect-error a reference type must be a CodeTemplateType name
     platform.registerReferences('X', [{ name: 'x', code: 'x', type: 'CODE' }]);
+    // @ts-expect-error command visibility cannot be an async predicate
+    platform.registerCommand({ id: 'bad-command', label: 'Bad', visible: async () => true });
 }
 
 void libraries;

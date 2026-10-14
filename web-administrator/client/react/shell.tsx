@@ -357,7 +357,7 @@ function ServerChip({ info }: any) {
     return <div className="server-chip"><span>{identity}</span></div>;
 }
 
-function TopBar({ user, onLogout, serverInfo }: any) {
+function TopBar({ user, onLogout, serverInfo, ready }: any) {
     const title = useViewTitle();
     const { theme, toggle } = useTheme();
     const tz = useTimezone();
@@ -383,7 +383,7 @@ function TopBar({ user, onLogout, serverInfo }: any) {
             <button className="icon-btn" title="Toggle light/dark mode" onClick={toggle}>
                 <Icon name={theme === 'light' ? 'moon' : 'sun'} />
             </button>
-            <UserMenu user={user} onLogout={onLogout} />
+            <UserMenu user={user} onLogout={onLogout} ready={ready} />
         </header>
     );
 }
@@ -457,7 +457,8 @@ async function switchEngine(onLogout: any) {
    management, typeahead and Escape; we keep the RBAC gating (a task the user is not
    authorized for renders nothing, exactly as the popup did) and the .ctx-menu skin
    so it still looks like every other menu in the app. */
-function UserMenu({ user, onLogout }: any) {
+function UserMenu({ user, onLogout, ready }: any) {
+    useStoreKey('webPlugins');
     const me = store.getState('user') || user;
     const config = store.getState('webadminConfig') || {};
     const fullName = [me?.firstName, me?.lastName].filter(Boolean).join(' ');
@@ -466,7 +467,7 @@ function UserMenu({ user, onLogout }: any) {
         try { const u = await api.auth.current(); if (u && u.username) store.setState('user', u); }
         catch { /* keep current */ }
     };
-    const can = (group: any, task: any) => !task || platform.checkTask(group, task);
+    const can = (group: any, task: any) => ready && (!task || platform.checkTask(group, task));
     const item = (label: any, icon: any, onSelect: any) => (
         <DropdownMenu.Item className="ctx-item" onSelect={onSelect}>
             <Icon name={icon} />{label}
@@ -491,7 +492,9 @@ function UserMenu({ user, onLogout }: any) {
                         would set a local credential that SSO never consults. Omitted
                         rather than greyed: a disabled row in a short menu is noise. */}
                     {!isSsoSession() && item('Change Password', 'key', () => openChangePasswordModal(store.getState('user') || me))}
-                    {can('view', 'doShowSettings') && item('Settings', 'settings', () => router.navigate('/settings?tab=administrator'))}
+                    {can('view', 'doShowSettings') && item('Settings', 'settings', () => {
+                        if (can('view', 'doShowSettings')) router.navigate('/settings?tab=administrator');
+                    })}
                     <DropdownMenu.Separator className="ctx-sep" />
                     {engineChoiceAvailable(config) && item('Switch Engine', 'link', () => switchEngine(onLogout))}
                     {item('Sign out', 'logout', () => onLogout())}
@@ -693,7 +696,7 @@ function AppShell({ user, onLogout }: any) {
             {/* Off-canvas drawer backdrop (phone/tablet only via CSS) — tap to close. */}
             {railCollapsed && <RailFlyout target={peek} />}
             <div className="rail-backdrop" onClick={() => store.setState('railCollapsed', true)} />
-            <TopBar user={user} onLogout={onLogout} serverInfo={serverInfo} />
+            <TopBar user={user} onLogout={onLogout} serverInfo={serverInfo} ready={bootReady} />
             <div className="content">
                 <RestartBanner />
                 {/* Every view's task pane lands here through <ViewTasks> — its own

@@ -38,16 +38,32 @@ Semantics (`client/core/authorization.ts`):
   default unrestricted UI. Untagged items remain visible. A controller that throws
   denies the tagged task; an initialization failure also denies access.
 - Discovery must finish before views mount. Discovery or manifest failures block
-  startup with a reload action. Authorization plugins should declare
-  `"authorization": true` in their manifest (legacy `id: "rbac"` is recognized).
-  Missing/incompatible modules, failed registration, or registration without a
-  valid controller block startup. Unrelated plugin failures stay isolated.
+  startup with a reload action. API 4.9 recognizes `"authorization": true` in a
+  manifest so it knows a provider is required even when its module cannot load.
+  Providers with another ID must declare it; legacy `id: "rbac"` is recognized
+  without a manifest change. Ordinary plugins need no marker.
+- Required providers register first, retaining their relative manifest order;
+  ordinary plugins then register in their relative order. During registration,
+  `platform.checkTask` reflects the installed controller, so plugins can still
+  conditionally register their panels or actions. With a required provider,
+  checks deny until a controller is installed. Views, navigation and the command
+  palette remain unavailable until the whole bootstrap succeeds.
+- Missing/incompatible provider modules, failed registration, or registration
+  without a valid controller block startup. Ordinary module failures, and
+  registration failures that do not modify authorization, stay isolated. An unreadable or
+  invalid manifest blocks startup because its provider status is unknown.
 - A task without a group is still checked with `''` as its group. Task buttons
   check again on invocation; multi-step handlers must also check after their own
   asynchronous prompts before performing a restricted action.
 - There is one current controller; a later registration replaces it. Register
   yours in `register(platform)` (which runs during plugin load, before views
   mount).
+
+Failing closed on discovery/controller errors intentionally replaces the old
+permissive error behavior. The controller and `register(platform)` signatures
+are unchanged, and this changes no engine endpoint or server authorization API.
+Older hosts ignore the new marker; an `apiMin` requirement alone cannot give
+them required-provider enforcement. Upgrade the host before relying on it.
 
 ### Implementing an RBAC plugin
 

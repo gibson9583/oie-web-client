@@ -233,6 +233,8 @@ accessor at the drop point.
 
 ## Plugins
 
+The framework implements [API 4.9](PLUGINS.md#api-49-plugin-contracts), adding
+command availability predicates and required authorization-provider metadata.
 The [API 4.8 contracts](PLUGINS.md#api-48-plugin-contracts) cover Reference
 registrations and lookup, scoped completions, connector forms and Web
 Support's datatype vocabulary declarations.
