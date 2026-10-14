@@ -275,27 +275,28 @@ test('Document Writer keeps typing focus, presets and units synchronized through
     await expect(preset).toHaveValue('CUSTOM');
 });
 
-test('Document Writer recognizes Java decimal dimensions without changing saved text', async ({ page }) => {
-    const spec = fields.find(field => field.name === 'Document Writer' && field.key === 'pageWidth')!;
-    const { state, input: width, savedProperties } = await openField(page, spec);
-    const height = page.locator('[data-fkey="pageHeight"]');
-    const unit = width.locator('..').locator('select').nth(0);
-    const preset = width.locator('..').locator('select').nth(1);
-    const samples = [
-        ['8.5D', '11D', 'INCHES', 'Letter'],
-        ['8.5d', '11f', 'INCHES', 'Letter'],
-        ['+85e-1F', '1.1e+1d', 'INCHES', 'Letter'],
-        ['.85e1', '11.', 'INCHES', 'Letter'],
-        [' 8.5D ', ' 11D ', 'INCHES', 'Letter'],
-        ['0210.0F', '0297D', 'MM', 'A4'],
-    ];
-    for (const [index, [w, h, u, name]] of samples.entries()) {
+// Keep each save/reload sample independent so all six round trips do not share
+// a single test deadline on slower CI runners.
+for (const [w, h, u, name] of [
+    ['8.5D', '11D', 'INCHES', 'Letter'],
+    ['8.5d', '11f', 'INCHES', 'Letter'],
+    ['+85e-1F', '1.1e+1d', 'INCHES', 'Letter'],
+    ['.85e1', '11.', 'INCHES', 'Letter'],
+    [' 8.5D ', ' 11D ', 'INCHES', 'Letter'],
+    ['0210.0F', '0297D', 'MM', 'A4'],
+]) {
+    test(`Document Writer recognizes Java decimal dimensions without changing saved text: ${JSON.stringify(w)}`, async ({ page }) => {
+        const spec = fields.find(field => field.name === 'Document Writer' && field.key === 'pageWidth')!;
+        const { state, input: width, savedProperties } = await openField(page, spec);
+        const height = page.locator('[data-fkey="pageHeight"]');
+        const unit = width.locator('..').locator('select').nth(0);
+        const preset = width.locator('..').locator('select').nth(1);
         await width.fill(w);
         await height.fill(h);
         await unit.selectOption(u);
         await expect(preset).toHaveValue(name);
         await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
-        await expect.poll(() => state.writes.length).toBe(index + 1);
+        await expect.poll(() => state.writes.length).toBe(1);
         await expect(page.locator('.content-row')).not.toHaveAttribute('inert');
         expect(savedProperties()).toMatchObject({ pageWidth: w, pageHeight: h, pageUnit: u });
         await page.reload();
@@ -303,8 +304,8 @@ test('Document Writer recognizes Java decimal dimensions without changing saved 
         await expect(width).toHaveValue(w);
         await expect(height).toHaveValue(h);
         await expect(preset).toHaveValue(name);
-    }
-});
+    });
+}
 
 test('Document Writer keeps JavaScript-only numbers and partial expressions Custom', async ({ page }) => {
     const spec = fields.find(field => field.name === 'Document Writer' && field.key === 'pageWidth')!;

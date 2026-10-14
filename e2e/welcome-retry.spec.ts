@@ -492,3 +492,296 @@ test('Welcome expiry closes an in-flight password dialog and discards its late c
         await expect(page.getByText('Welcome — your account is ready')).toHaveCount(0);
     } finally { release(); }
 });
+
+
+test.describe('login prerequisite session fencing', () => {
+    const welcome = (page: Page) => page.getByRole('dialog', { name: 'Welcome to Open Integration Engine', exact: true });
+    const notification = (page: Page) => page.getByRole('dialog', { name: 'Login Notification', exact: true });
+
+    async function expectUnpublished(page: Page) {
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+        await expect(welcome(page)).toHaveCount(0);
+        await expect(page.locator('.shell')).toHaveCount(0);
+        expect(await page.evaluate(async () => (await import(String('/core/store.js'))).getState('user'))).toBeFalsy();
+    }
+
+    for (const status of [401, 421]) {
+        test(`login public settings ${status} prevents setup and shell publication`, async ({ page }) => {
+            let authed = false;
+            const calls: string[] = [];
+            await mockEngine(page, {
+                'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+                'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+                'GET /server/publicSettings': { __status: status },
+                'GET /users/*/preferences/firstlogin': () => { calls.push('firstlogin'); return 'true'; },
+                'GET /server/id': () => { calls.push('scope'); return 'engine'; },
+                'POST /users/_logout': () => { calls.push('logout'); return ''; },
+            });
+            await page.goto('/');
+            await login(page);
+            await expectUnpublished(page);
+            expect(calls).toEqual([]);
+        });
+
+        for (const failure of [false, true]) {
+            test(`login notification acknowledgement ${status} fences a pending firstlogin ${failure ? 'failure' : 'success'}`, async ({ page }) => {
+                let authed = false;
+                let waiting = false;
+                let release!: () => void;
+                const held = new Promise<void>(resolve => { release = resolve; });
+                const calls: string[] = [];
+                await mockEngine(page, {
+                    'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+                    'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+                    'GET /server/publicSettings': { publicServerSettings: { loginNotificationEnabled: true, loginNotificationMessage: 'Read this before proceeding.' } },
+                    'POST /users/1/notificationAcknowledged': async () => {
+                        await expect.poll(() => waiting).toBe(true);
+                        return { __status: status };
+                    },
+                    'GET /users/*/preferences/firstlogin': async () => {
+                        waiting = true;
+                        await held;
+                        return failure ? { __status: 500 } : 'true';
+                    },
+                    'GET /server/id': () => { calls.push('scope'); return 'engine'; },
+                    'POST /users/_logout': () => { calls.push('logout'); return ''; },
+                });
+                try {
+                    await page.goto('/');
+                    await login(page);
+                    await page.evaluate(async () => {
+                        const api = await import('@oie/web-api');
+                        (window as any).reviewExpiryObserved = false;
+                        const observe = () => { (window as any).reviewExpiryObserved = true; };
+                        api.onSessionExpired(observe);
+                        api.onEngineUnknown(observe);
+                    });
+                    await notification(page).getByRole('button', { name: 'I Accept', exact: true }).click();
+                    await expect.poll(() => page.evaluate(() => (window as any).reviewExpiryObserved)).toBe(true);
+                    release();
+                    await expectUnpublished(page);
+                    expect(calls).toEqual([]);
+                } finally { release(); }
+            });
+        }
+
+        test(`Welcome password requirements ${status} closes the dialog and fences a late password write`, async ({ page }) => {
+            let authed = false;
+            let waiting = false;
+            let releasePassword!: () => void;
+            let releaseRequirements!: () => void;
+            const heldPassword = new Promise<void>(resolve => { releasePassword = resolve; });
+            const heldRequirements = new Promise<void>(resolve => { releaseRequirements = resolve; });
+            const calls: string[] = [];
+            await mockEngine(page, {
+                'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+                'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+                'GET /users/*/preferences/firstlogin': 'true',
+                'GET /server/passwordRequirements': async () => { await heldRequirements; return { __status: status }; },
+                'PUT /users/1/password': async () => { waiting = true; await heldPassword; return ''; },
+                'PUT /users/1': () => { calls.push('profile'); return ''; },
+                'PUT /users/1/preferences/firstlogin': () => { calls.push('preference'); return ''; },
+                'GET /server/id': () => { calls.push('scope'); return 'engine'; },
+                'POST /users/_logout': () => { calls.push('logout'); return ''; },
+            });
+            try {
+                await page.goto('/');
+                await login(page);
+                const fields = welcome(page).locator('input[type=password]');
+                await fields.nth(0).fill('FirstPassword1!');
+                await fields.nth(1).fill('FirstPassword1!');
+                await welcome(page).getByRole('button', { name: 'Finish', exact: true }).click();
+                await expect.poll(() => waiting).toBe(true);
+                releaseRequirements();
+                await expectUnpublished(page);
+                const response = page.waitForResponse(response => response.url().endsWith('/users/1/password'));
+                releasePassword();
+                await response;
+                await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+                expect(calls).toEqual([]);
+            } finally { releaseRequirements(); releasePassword(); }
+        });
+
+        for (const failure of [false, true]) {
+            test(`login ${status} during a pending preference scope ${failure ? 'failure' : 'success'} cannot publish a stale user`, async ({ page }) => {
+                let authed = false;
+                let waiting = false;
+                let release!: () => void;
+                const held = new Promise<void>(resolve => { release = resolve; });
+                await mockEngine(page, {
+                    'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+                    'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+                    'GET /users/*/preferences/firstlogin': 'false',
+                    'GET /server/id': async () => { waiting = true; await held; return failure ? { __status: 500 } : 'stale-engine'; },
+                    'GET /server/review-expiry': { __status: status },
+                });
+                try {
+                    await page.goto('/');
+                    await login(page);
+                    await expect.poll(() => waiting).toBe(true);
+                    await page.evaluate(async () => {
+                        const api = await import('@oie/web-api');
+                        await api.default.get('/server/review-expiry').catch(() => {});
+                    });
+                    release();
+                    await expectUnpublished(page);
+                    expect(await page.evaluate(async () => (await import(String('/core/store.js'))).scopedKey('probe'))).not.toContain('stale-engine');
+                } finally { release(); }
+            });
+        }
+    }
+
+    for (const stage of ['publicSettings', 'firstlogin', 'scope'] as const) {
+        test(`login tolerates a non-authentication failure at ${stage}`, async ({ page }) => {
+            let authed = false;
+            const result = (name: string, value: unknown) => stage === name ? { __status: 500 } : value;
+            await mockEngine(page, {
+                'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+                'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+                'GET /server/publicSettings': () => result('publicSettings', { publicServerSettings: { loginNotificationEnabled: false } }),
+                'GET /users/*/preferences/firstlogin': () => result('firstlogin', 'false'),
+                'GET /server/id': () => result('scope', 'engine'),
+            });
+            await page.goto('/');
+            await login(page);
+            await expect(page.locator('.statusbar')).toContainText('as admin');
+        });
+    }
+});
+
+
+test.describe('Welcome retry and dialog parity', () => {
+    const PASSWORD = 'WelcomeReviewPassword1!';
+    const welcome = (page: Page) => page.getByRole('dialog', { name: 'Welcome to Open Integration Engine', exact: true });
+    const error = (page: Page) => page.getByRole('dialog', { name: 'Error', exact: true });
+    async function fillPassword(page: Page) {
+        const inputs = welcome(page).locator('input[type=password]');
+        await inputs.nth(0).fill(PASSWORD);
+        await inputs.nth(1).fill(PASSWORD);
+    }
+
+    test('Welcome retries a committed firstlogin preference after its response is lost without resaving password or profile', async ({ page }) => {
+        let authed = false;
+        let firstlogin = 'true';
+        const passwords: string[] = [];
+        const preferences: string[] = [];
+        let profileWrites = 0;
+        await mockEngine(page, {
+            'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+            'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+            'GET /users/*/preferences/firstlogin': () => firstlogin,
+            'PUT /users/1/password': (request: any) => {
+                passwords.push(request.postData() || '');
+                return passwords.length === 1 ? '' : { list: { string: ['Password was recently used'] } };
+            },
+            'PUT /users/1': () => { profileWrites++; return ''; },
+        });
+        await page.route('**/api/users/1/preferences/firstlogin', async route => {
+            if (route.request().method() !== 'PUT') return route.fallback();
+            firstlogin = route.request().postData() || '';
+            preferences.push(firstlogin);
+            if (preferences.length === 1) return route.abort('connectionreset');
+            await route.fulfill({ status: 200, body: '' });
+        });
+        await page.goto('/');
+        await login(page);
+        await fillPassword(page);
+        await welcome(page).getByRole('button', { name: 'Finish', exact: true }).click();
+        await expect(error(page)).toBeVisible();
+        expect(firstlogin).toBe('false');
+        await error(page).getByRole('button', { name: 'Close', exact: true }).last().click();
+        await expect(welcome(page).getByRole('status')).toHaveText('Your password and profile were saved. Select Finish to retry the remaining changes.');
+        await welcome(page).getByRole('button', { name: 'Finish', exact: true }).click();
+        await expect(page.locator('.shell')).toBeVisible();
+        expect(passwords).toEqual([PASSWORD]);
+        expect(profileWrites).toBe(1);
+        expect(preferences).toEqual(['false', 'false']);
+        await page.reload();
+        await expect(page.locator('.shell')).toBeVisible();
+        await expect(welcome(page)).toHaveCount(0);
+        expect(passwords).toEqual([PASSWORD]);
+        expect(profileWrites).toBe(1);
+        expect(preferences).toEqual(['false', 'false']);
+    });
+
+    for (const stage of ['profile', 'preference'] as const) {
+        test(`Welcome DOM fallback serializes Finish and retries only unfinished writes after ${stage} failure`, async ({ page }) => {
+            let authed = false;
+            let release!: () => void;
+            const held = new Promise<void>(resolve => { release = resolve; });
+            const passwords: string[] = [];
+            let profileWrites = 0;
+            let preferenceWrites = 0;
+            await mockEngine(page, {
+                'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+                'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+                'GET /users/*/preferences/firstlogin': 'true',
+                'PUT /users/1/password': async (request: any) => {
+                    passwords.push(request.postData() || '');
+                    await held;
+                    return passwords.length === 1 ? '' : { list: { string: ['Password was recently used'] } };
+                },
+                'PUT /users/1': () => ++profileWrites === 1 && stage === 'profile'
+                    ? { __status: 500, body: { message: 'Profile write failed' } } : '',
+                'PUT /users/1/preferences/firstlogin': () => ++preferenceWrites === 1 && stage === 'preference'
+                    ? { __status: 500, body: { message: 'Preference write failed' } } : '',
+            });
+            try {
+                await page.goto('/');
+                await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+                await page.evaluate(async () => { (await import(String('/core/ui.js'))).setDialogRenderer(null); });
+                await login(page);
+                await fillPassword(page);
+                const finish = welcome(page).getByRole('button', { name: 'Finish', exact: true });
+                await finish.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+                await expect.poll(() => passwords.length).toBe(1);
+                await expect(welcome(page)).toHaveAttribute('aria-busy', 'true');
+                await page.keyboard.press('Escape');
+                await welcome(page).getByRole('button', { name: 'Close', exact: true }).click();
+                await expect(welcome(page)).toBeVisible();
+                expect(profileWrites).toBe(0);
+                expect(preferenceWrites).toBe(0);
+                release();
+                await expect(error(page)).toContainText(stage === 'profile' ? 'Profile write failed' : 'Preference write failed');
+                await error(page).getByRole('button', { name: 'Close', exact: true }).last().click();
+                await expect(welcome(page)).not.toHaveAttribute('aria-busy');
+                await finish.click();
+                await expect(page.locator('.shell')).toBeVisible();
+                expect(passwords).toEqual([PASSWORD]);
+                expect(profileWrites).toBe(stage === 'profile' ? 2 : 1);
+                expect(preferenceWrites).toBe(stage === 'preference' ? 2 : 1);
+            } finally { release(); }
+        });
+    }
+
+    for (const status of [401, 421]) {
+        test(`Welcome password requirements ${status} closes an idle dialog without saving or logging out`, async ({ page }) => {
+            let authed = false;
+            let release!: () => void;
+            const held = new Promise<void>(resolve => { release = resolve; });
+            const writes: string[] = [];
+            await mockEngine(page, {
+                'GET /users/current': () => authed ? { user: { id: 1, username: 'admin' } } : { __status: 401 },
+                'POST /users/_login': () => { authed = true; return { status: 'SUCCESS' }; },
+                'GET /users/*/preferences/firstlogin': 'true',
+                'GET /server/passwordRequirements': async () => { await held; return { __status: status }; },
+                'PUT /users/1/password': () => { writes.push('password'); return ''; },
+                'PUT /users/1': () => { writes.push('profile'); return ''; },
+                'PUT /users/1/preferences/firstlogin': () => { writes.push('preference'); return ''; },
+                'POST /users/_logout': () => { writes.push('logout'); return ''; },
+            });
+            try {
+                await page.goto('/');
+                await login(page);
+                await fillPassword(page);
+                await welcome(page).locator('input[type=password]').evaluateAll(inputs => { (window as any).reviewClosedPasswordFields = inputs; });
+                release();
+                await expect(welcome(page)).toHaveCount(0);
+                await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeEnabled();
+                await expect(page.locator('.shell')).toHaveCount(0);
+                expect(await page.evaluate(() => (window as any).reviewClosedPasswordFields.map((input: HTMLInputElement) => input.value))).toEqual(['', '']);
+                expect(writes).toEqual([]);
+            } finally { release(); }
+        });
+    }
+});
