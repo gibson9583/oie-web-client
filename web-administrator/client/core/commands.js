@@ -11,14 +11,21 @@
  *
  * A command is the same shape as a nav item, so the palette can treat both alike:
  *
- *   { id, label, icon?, section?, order?, keywords?, task?, rbac?, path?, run? }
+ *   { id, label, icon?, section?, order?, keywords?, task?, rbac?, permissions?, visible?, path?, run? }
  *
  * `path` navigates; `run` is called instead when present. `task` + `rbac` are the
  * authorization pair the task panes and popup menus already use — the palette
- * filters through the SAME checkTask(), so it can never surface an action the
- * rail would have hidden.
+ * filters through the SAME checkTask(). `permissions` adds prerequisites such
+ * as the parent view's task; every requirement must pass, including `task`.
  */
 const commands = [];
+/** Keep the legacy task gate when a command also declares route prerequisites. */
+export function commandPermissions(command) {
+    return [
+        ...(command.task ? [[command.rbac || 'view', command.task]] : []),
+        ...(command.permissions || []),
+    ];
+}
 /** Register a palette command. Returns an unregister function. */
 export function registerCommand(command) {
     commands.push(command);

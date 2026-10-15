@@ -439,7 +439,7 @@ const wsSender = {
                         return h('div', { class: 'flex gap-1.5' }, combo, testBtn);
                     }
                 },
-                { key: 'socketTimeout', label: 'Socket Timeout (ms)', type: 'number', width: '120px', tooltip: '0 = no timeout' },
+                { key: 'socketTimeout', label: 'Socket Timeout (ms)', type: 'text', width: '200px', tooltip: '0 = no timeout' },
                 {
                     key: 'useAuthentication', label: 'Authentication', type: 'radio', options: YES_NO, refresh: true,
                     onSet: (p, v) => { if (!v) {

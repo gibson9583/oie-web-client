@@ -34,6 +34,7 @@ import { ViewTasks, mountReact } from '../mount.jsx';
 import { canViewSettingsTab, settingsTabId } from '../../core/settings-navigation.js';
 import { useStoreKey, applyEnvironmentColor, environmentColorVars, darkSurfaceTint, parseColorPref, serializeColorPref } from '../bridges.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
+import { AccessDeniedView } from '../access-denied.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, DataTableHost } from '../ui.jsx';
 import { apiUrl } from '../../core/deployment.js';
@@ -1995,7 +1996,16 @@ export function SettingsView({ query }: any) {
     // Permissions and plugin panels can recover while Settings remains mounted.
     useStoreKey('webPlugins');
     const defs = buildTabDefs(platform);
+    // A direct URL can reach Settings even when every tab is denied (including
+    // when the permission service fails closed). Do not mount tab/task/dirty
+    // state until there is a tab: none of its builders should run in this case.
+    if (defs.length === 0) {
+        return <AccessDeniedView message="No settings sections are available with your current permissions. Contact your administrator if you need access." />;
+    }
+    return <SettingsContent query={query} defs={defs} />;
+}
 
+function SettingsContent({ query, defs }: any) {
     // Deep-link: /settings?tab=<label> opens that tab (e.g. the account menu's
     // "Settings" → Administrator preferences). Unknown/absent → the first tab
     // this role can see (Server for an administrator).

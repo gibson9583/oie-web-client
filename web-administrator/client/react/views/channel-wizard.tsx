@@ -1,4 +1,4 @@
-import { channelEditState, loadChannelForEdit } from '../../core/channel-save.js';
+import { channelEditState, isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
 import { persistChannelModel, confirmLibraryOverwrite, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
 import { channelDependencyState, persistLibraryAssociations, persistChannelDependencies } from '../../core/channel-dependencies.js';
@@ -42,6 +42,7 @@ import {
 // import is what would otherwise chain the two into one bundle chunk.
 import { destinationMappingsFor } from '../../core/mappings.js';
 import { useConnectorTypeSwitch } from '../connector-type-switch.js';
+import { usePaletteContext } from '../palette-context.js';
 
 const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinations', 'Scripts', 'Review'];
 
@@ -174,7 +175,7 @@ function EmbeddedElementEditor({ channel, metaDataId, kind, onChange, viewportOf
         const host = hostRef.current;
         if (!host) return undefined;
         store.setState('editingChannel', channel);
-        store.setState('editingChannelNew', true);
+        store.setState('editingChannelNew', isNewChannelDraft(channel));
         // createEmbeddedEditor (buildBody) installs its OWN nav guard for the classic
         // editor's benefit — that would clobber the wizard's prompt-on-leave guard and
         // leave it gone for the rest of the session. Capture the wizard's guard first
@@ -621,17 +622,20 @@ function ReviewStep({ channel, inbound, outbound }: any) {
 
 // Loader: resolve the channel to edit (see wizard-frame's useWizardModel), then
 // render the wizard. /channels/new/guided creates; /channels/:channelId/guided edits.
-function ChannelWizardView({ params }: any) {
+function ChannelWizardView({ params, query = {} }: any) {
     const version = store.getState('serverVersion') || '4.5.2';
     const { model, isNew, ready } = useWizardModel({
         routeId: params && params.channelId,
+        fresh: query.fresh === '1',
         storeKey: 'editingChannel',
-        isValid: (c: any) => !!c.sourceConnector,
+        isValid: (c: any) => !!c.id && !!c.sourceConnector,
+        isNewModel: isNewChannelDraft,
         makeNew: () => {
             const c = oie.newChannel('', version);
             c.name = '';   // newChannel defaults to "New Channel"; start blank so Basics requires a name
             const dt = defaultDataType(dataTypeList());
             applyDataTypes(c, dt, dt, version);
+            channelEditState(c, true);
             return c;
         },
         fetch: (id: any) => loadChannelForEdit(id),
@@ -642,7 +646,7 @@ function ChannelWizardView({ params }: any) {
 }
 
 function ChannelWizardInner({ channel, isNew, version }: any) {
-    const editState = channelEditState(channel, isNew);
+    const editState = channelEditState(channel);
     isNew = editState.isNew;
     const [, forceRender] = useReducer((x: any) => x + 1, 0);
     const switchingRef = useRef(false);   // true when switching to the classic editor (keep editingChannel)
@@ -670,6 +674,12 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
     const pendingDependencies = channelDependencyState(channel);
     const libStateRef = pendingDependencies.libraries;
     const depStateRef = pendingDependencies.dependencies;
+    usePaletteContext({
+        kind: 'channel', surface: 'editor',
+        channelIds: isNew ? [] : [channel.id],
+        channels: isNew ? [] : [channel],
+        librarySelection: libStateRef.current?.checked
+    });
 
     // Keep the model in the store (the embedded editors read it) + prompt-on-leave.
     // The channel also mirrors a `editingChannelDirty` flag the classic editor reads.
@@ -937,7 +947,8 @@ function ChannelWizardInner({ channel, isNew, version }: any) {
                             onChange={bump} onNameChange={() => { setNameTouched(true); bump(); }}
                             onInbound={changeInbound} onOutbound={changeOutbound} nameError={nErr} />
                     )}
-                    {stepName === 'Dependencies' && <DependenciesStep channel={channel} libState={libStateRef} depState={depStateRef} onChange={bump} />}
+                    {stepName === 'Dependencies' && <DependenciesStep channel={channel} libState={libStateRef} depState={depStateRef}
+                        onChange={bump} onLoaded={forceRender} />}
                     {stepName === 'Channel Options' && <ChannelSettings channel={channel} version={version} onChange={bump} />}
                     {stepName === 'Source' && (
                         <ConnectorTabs channel={channel} connector={channel.sourceConnector} mode="SOURCE" version={version} onChange={bump} />

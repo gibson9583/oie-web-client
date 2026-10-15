@@ -66,6 +66,7 @@ import { openRemoveAllMessagesDialog } from '../remove-all-messages.js';
 import { withEditorSave } from '../save-lock.js';
 import { messageImportDialog } from './message-import-dialog.js';
 import { readMessageFiles } from '../../core/message-import-files.js';
+import { usePaletteContext } from '../palette-context.js';
 
 /* Criteria-panel width below which the criteria fold into the Filters popover. */
 const CRITERIA_INLINE_MIN = 760;
@@ -2127,6 +2128,11 @@ export function MessagesView({ params, query }: any) {
     /* ---- results + table state ---- */
     const [connectors, setConnectors] = useState([] as any[]);
     const [channelName, setChannelName] = useState(channelId);
+    usePaletteContext({
+        kind: 'channel', surface: 'messages',
+        channelIds: channelId ? [channelId] : [],
+        channels: channelId ? [{ id: channelId, name: channelName }] : []
+    });
     /* Every channel, for the picker. The browser is reachable without one — the
        bare /messages route — and the picker is how you choose. */
     const [channelList, setChannelList] = useState([] as any[]);

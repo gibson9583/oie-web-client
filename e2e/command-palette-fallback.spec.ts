@@ -16,7 +16,7 @@ async function open(page: Page) {
     await expect(page.locator('.shell')).toBeVisible();
     await page.keyboard.press('Control+k');
     await expect(page.locator('.cmdk')).toBeVisible();
-    return page.getByRole('combobox', { name: 'Search views, channels and commands' });
+    return page.getByRole('combobox', { name: 'Search views, channels, templates and commands' });
 }
 
 function recordErrors(page: Page) {

@@ -760,53 +760,55 @@ test.describe('Channel editor', () => {
         expect(savedKeys).toEqual(['reply', 'line\nbreak', 'trail\\']);
     });
 
-    test('Source Response restores exact engine-coerced keys before unrelated saves', async ({ page }) => {
-        let channel = structuredClone(FULL_CHANNEL);
-        // Actual ObjectJSONSerializer outputs observed for these Java String keys.
-        const keys = ['1.0', 'null', '', '-0', '1e3', '9007199254740993'];
-        const wireValues = [1, null, null, 0, 1000, 9007199254740992];
-        channel.postprocessingScript = keys.map(key => `$r(${JSON.stringify(key)}, 'ACK');`).join('\n');
-        const saved: string[] = [];
-        let xmlReads = 0;
-        await mockEngine(page, {
-            ...CHANNEL_FIXTURES,
-            [`GET /channels/${CHANNEL_ID}`]: (request: any) => {
-                const key = channel.sourceConnector.properties.sourceConnectorProperties.responseVariable;
-                if (request.headers().accept === 'application/xml') {
-                    xmlReads++;
-                    return `<channel><id>${CHANNEL_ID}</id><revision>${channel.revision}</revision>
-                        <sourceConnector><properties><sourceConnectorProperties><responseVariable>${key}</responseVariable></sourceConnectorProperties></properties></sourceConnector>
-                        <exportData><metadata><lastModified><time>${channel.exportData.metadata.lastModified.time}</time></lastModified></metadata></exportData></channel>`;
-                }
-                const wire = structuredClone(channel);
-                const index = keys.indexOf(key);
-                if (index >= 0) wire.sourceConnector.properties.sourceConnectorProperties.responseVariable = wireValues[index];
-                return { channel: wire };
-            },
-            [`PUT /channels/${CHANNEL_ID}`]: (request: any) => {
-                channel = request.postDataJSON().channel;
-                saved.push(channel.sourceConnector.properties.sourceConnectorProperties.responseVariable);
-                return true;
-            },
-        });
-        await page.goto(`/channels/${CHANNEL_ID}/edit`);
-        await page.getByRole('tab', { name: 'Source', exact: true }).click();
-        for (const [index, key] of keys.entries()) {
+    // Actual ObjectJSONSerializer outputs observed for these Java String keys.
+    // Each round trip gets its own deadline: six reloads can exhaust one test's
+    // timeout on CI even when every individual save and restoration succeeds.
+    const coercedResponseKeys = [
+        ['1.0', 1], ['null', null], ['', null], ['-0', 0], ['1e3', 1000], ['9007199254740993', 9007199254740992],
+    ] as const;
+    for (const [key, wireValue] of coercedResponseKeys) {
+        test(`Source Response restores exact engine-coerced keys before unrelated saves: ${JSON.stringify(key)}`, async ({ page }) => {
+            let channel = structuredClone(FULL_CHANNEL);
+            channel.postprocessingScript = coercedResponseKeys.map(([name]) => `$r(${JSON.stringify(name)}, 'ACK');`).join('\n');
+            const saved: string[] = [];
+            let xmlReads = 0;
+            await mockEngine(page, {
+                ...CHANNEL_FIXTURES,
+                [`GET /channels/${CHANNEL_ID}`]: (request: any) => {
+                    const savedKey = channel.sourceConnector.properties.sourceConnectorProperties.responseVariable;
+                    if (request.headers().accept === 'application/xml') {
+                        xmlReads++;
+                        return `<channel><id>${CHANNEL_ID}</id><revision>${channel.revision}</revision>
+                            <sourceConnector><properties><sourceConnectorProperties><responseVariable>${savedKey}</responseVariable></sourceConnectorProperties></properties></sourceConnector>
+                            <exportData><metadata><lastModified><time>${channel.exportData.metadata.lastModified.time}</time></lastModified></metadata></exportData></channel>`;
+                    }
+                    const wire = structuredClone(channel);
+                    if (savedKey === key) wire.sourceConnector.properties.sourceConnectorProperties.responseVariable = wireValue;
+                    return { channel: wire };
+                },
+                [`PUT /channels/${CHANNEL_ID}`]: (request: any) => {
+                    channel = request.postDataJSON().channel;
+                    saved.push(channel.sourceConnector.properties.sourceConnectorProperties.responseVariable);
+                    return true;
+                },
+            });
+            await page.goto(`/channels/${CHANNEL_ID}/edit`);
+            await page.getByRole('tab', { name: 'Source', exact: true }).click();
             await responseSelect(page).selectOption(key);
             await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
-            await expect.poll(() => saved.length).toBe(index * 2 + 1);
+            await expect.poll(() => saved.length).toBe(1);
             await expect(page.locator('.toast-msg', { hasText: 'Saved Round Trip Channel' }).last()).toBeVisible();
             await page.reload();
             await page.getByRole('tab', { name: 'Source', exact: true }).click();
             await expect(responseSelect(page)).toHaveValue(key);
-            await page.locator('.field:has(> label:text-is("Max Processing Threads")) input').fill(String(index + 2));
+            await page.locator('.field:has(> label:text-is("Max Processing Threads")) input').fill('2');
             await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
-            await expect.poll(() => saved.length).toBe(index * 2 + 2);
-            expect(saved.slice(-2)).toEqual([key, key]);
+            await expect.poll(() => saved.length).toBe(2);
+            expect(saved).toEqual([key, key]);
             await expect(page.locator('.toast-msg', { hasText: 'Saved Round Trip Channel' }).last()).toBeVisible();
-        }
-        expect(xmlReads).toBeGreaterThanOrEqual(keys.length);
-    });
+            expect(xmlReads).toBeGreaterThanOrEqual(1);
+        });
+    }
 
     test('Source Response exact-name reads preserve list clones and reject stale or failed XML', async ({ page }) => {
         const channel = structuredClone(FULL_CHANNEL);

@@ -20,6 +20,7 @@ import * as router from '../../core/router.js';
 import { getPref, setPrefs } from '../../core/prefs.js';
 import { statsOf } from './dashboard.jsx';
 import { runLifecycle } from './channel-lifecycle.js';
+import { usePaletteContext } from '../palette-context.js';
 
 const CARD_MIN = 280;   // min card width (px) for the responsive grid
 const EMPTY_LIST: any[] = [];  // stable fallback while queries load (memo-dep friendly)
@@ -288,6 +289,11 @@ function CardsView({ onToggleView }: any) {
 
     // Selection-gated tasks, mirroring the classic Dashboard Tasks pane.
     const sel = all.filter((s: any) => selected.has(s.channelId));
+    usePaletteContext({
+        kind: 'channel', surface: 'dashboard',
+        channelIds: sel.flatMap(channel => channel.channelId ? [channel.channelId] : []),
+        channels: sel.map(channel => ({ id: channel.channelId, name: channel.name, state: channel.state }))
+    });
     const hasSel = sel.length > 0;
     const anySel = (pred: any) => sel.some((s: any) => pred(s.state));
     const showStart = anySel((st: any) => st === 'STOPPED' || st === 'PAUSED');

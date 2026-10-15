@@ -10,8 +10,9 @@
  * the single-key api.users.setPreference('firstlogin', 'false').
  */
 import { h, modal, field, textInput, select, toast } from '@oie/web-ui';
-import api from '@oie/web-api';
+import api, { onSessionExpired, onEngineUnknown } from '@oie/web-api';
 import { passwordRequirementHints, passwordRejectedMessage } from '../core/passwords.js';
+import { captureEngineSession } from '../core/engine-fetch.js';
 
 export const DEFAULT_OPTION = '--Select an option--';
 
@@ -298,13 +299,25 @@ export function placeholderOpts(list: any) {
 
 function showWelcomeDialog(user: any): Promise<boolean> {
     return new Promise((resolve: any) => {
+        const assertSession = captureEngineSession();
+        const userId = user.id;
         let completed = false;
+        let closed = false;
+        let busy = false;
+        // Receipts belong only to this dialog. Never persist a password or a
+        // client-side flag that could bypass setup after another sign-in.
+        let acceptedPassword: string | null = null;
+        let acceptedProfile: string | null = null;
+        const current = () => {
+            if (closed) return false;
+            try { assertSession(); return true; } catch { return false; }
+        };
         const usernameInput = textInput(user.username || '', { disabled: true });
         const pwInput = h('input', { type: 'password', autocomplete: 'new-password' });
         const confirmInput = h('input', { type: 'password', autocomplete: 'new-password' });
         const pwHint = h('div.hint.span-2');
         api.server.passwordRequirements()
-            .then((req: any) => { const hs = passwordRequirementHints(req); if (hs.length) pwHint.textContent = `Password must include ${hs.join(', ')}.`; })
+            .then((req: any) => { const hs = passwordRequirementHints(req); if (current() && hs.length) pwHint.textContent = `Password must include ${hs.join(', ')}.`; })
             .catch(() => { /* requirements unavailable */ });
         const firstName = textInput(user.firstName || '');
         const lastName = textInput(user.lastName || '');
@@ -327,6 +340,7 @@ function showWelcomeDialog(user: any): Promise<boolean> {
         country.addEventListener('change', syncState);
         syncState();
 
+        const progress = h('div.hint', { role: 'status' });
         const body = h('div',
             h('div.hint', { style: { marginBottom: '12px' } },
                 'You may now customize your account information. You also have the option of changing your account password.'),
@@ -344,50 +358,91 @@ function showWelcomeDialog(user: any): Promise<boolean> {
                 field('Organization', organization),
                 field('Role', role),
                 field('Business', industry),
-                field('Description', description)));
+                field('Description', description)), progress);
 
+        let offExpired = () => {};
+        let offEngine = () => {};
+        const endSession = () => dialog.close();
         const dialog = modal({
             title: 'Welcome to Open Integration Engine',
             size: 'wide',
             body,
-            onClose: () => resolve(completed),
+            onClose: () => {
+                closed = true;
+                acceptedPassword = null;
+                acceptedProfile = null;
+                (pwInput as any).value = '';
+                (confirmInput as any).value = '';
+                offExpired(); offEngine();
+                window.removeEventListener('oie-session-changed', endSession);
+                resolve(completed);
+            },
             buttons: [
                 {
                     label: 'Finish', primary: true,
                     onClick: async () => {
+                        if (busy || !current()) return false;
                         const pw = (pwInput as any).value;
                         if (!pw) { toast('New Password is required', 'warn'); return false; }
                         if (pw !== (confirmInput as any).value) { toast('Passwords do not match', 'warn'); return false; }
+                        // Freeze the whole attempt before its first await. Do not
+                        // alter the caller's account until the profile is accepted.
+                        const submitted = { ...user, id: userId,
+                            firstName: firstName.value.trim(), lastName: lastName.value.trim(),
+                            email: email.value.trim(), country: country.value, stateTerritory: state.value,
+                            phoneNumber: phone.value.trim(), organization: organization.value.trim(),
+                            role: role.value, industry: industry.value, description: (description as any).value
+                        };
+                        const signature = JSON.stringify(submitted);
+                        progress.textContent = '';
+                        busy = true;
                         try {
                             // Set the password first (Swing order); the engine answers
                             // with a list of policy violations if it's rejected.
-                            const violations = passwordViolations(await api.users.updatePassword(user.id, pw));
-                            if (violations.length) { toast(passwordRejectedMessage(violations), 'error'); return false; }
-                            // Round-trip the user object: mutate the editable fields,
-                            // preserve everything else the engine sent.
-                            user.firstName = firstName.value.trim();
-                            user.lastName = lastName.value.trim();
-                            user.email = email.value.trim();
-                            user.country = country.value;
-                            user.stateTerritory = state.value;
-                            user.phoneNumber = phone.value.trim();
-                            user.organization = organization.value.trim();
-                            user.role = role.value;
-                            user.industry = industry.value;
-                            user.description = (description as any).value;
-                            await api.users.update(user.id, user);
-                            await api.users.setPreference(user.id, 'firstlogin', 'false');
+                            if (acceptedPassword !== pw) {
+                                const previousPassword = acceptedPassword;
+                                // A failed response can follow a committed write.
+                                // The old receipt is valid only if the engine
+                                // explicitly rejects this replacement password.
+                                acceptedPassword = null;
+                                const violations = passwordViolations(await api.users.updatePassword(userId, pw));
+                                if (!current()) return false;
+                                if (violations.length) {
+                                    acceptedPassword = previousPassword;
+                                    toast(passwordRejectedMessage(violations), 'error');
+                                    return false;
+                                }
+                                acceptedPassword = pw;
+                            }
+                            if (acceptedProfile !== signature) {
+                                // If this write loses its response, reverting to
+                                // the previous fields must still restore them.
+                                acceptedProfile = null;
+                                await api.users.update(userId, submitted);
+                                if (!current()) return false;
+                                acceptedProfile = signature;
+                                Object.assign(user, submitted);
+                            }
+                            await api.users.setPreference(userId, 'firstlogin', 'false');
+                            if (!current()) return false;
                             toast('Welcome — your account is ready');
                             completed = true;
                             return true;   // closes the modal → onClose resolves
                         } catch (e: any) {
+                            if (!current()) return false;
+                            if (acceptedPassword === pw) progress.textContent = acceptedProfile === signature
+                                ? 'Your password and profile were saved. Select Finish to retry the remaining changes.'
+                                : 'Your password was saved. Select Finish to retry the remaining changes.';
                             toast(e.message || 'Could not complete setup', 'error');
                             return false;
-                        }
+                        } finally { busy = false; }
                     }
                 }
             ]
         });
+        offExpired = onSessionExpired(endSession);
+        offEngine = onEngineUnknown(endSession);
+        window.addEventListener('oie-session-changed', endSession);
         // Focus the password field once the modal has settled — but only if the
         // user hasn't already tabbed/clicked into the form. A blind focus here
         // steals it back mid-input (e.g. a fast typist, or a test filling the
@@ -397,7 +452,7 @@ function showWelcomeDialog(user: any): Promise<boolean> {
         const syncFinish = () => { if (finish) finish.disabled = !((pwInput as any).value && (confirmInput as any).value); };
         body.addEventListener('input', syncFinish);
         syncFinish();
-        setTimeout(() => { if (!body.contains(document.activeElement)) pwInput.focus(); }, 30);
+        setTimeout(() => { if (current() && !body.contains(document.activeElement)) pwInput.focus(); }, 30);
     });
 }
 
@@ -410,11 +465,14 @@ function showWelcomeDialog(user: any): Promise<boolean> {
  * "firstlogin" would lose the key. The single-key read returns the raw value
  * (empty when unset). Fail-closed on error: a transient read failure skips the
  * wizard rather than forcing it on every login. */
-export async function maybeShowWelcome(user: any): Promise<boolean> {
+export async function maybeShowWelcome(user: any, assertSession: () => void): Promise<boolean> {
     if (!user || user.id == null) return true;
     let fl: any;
     try { fl = await api.users.getPreference(user.id, 'firstlogin'); }
-    catch { return true; }
+    catch { assertSession(); return true; }
+    // Expiry can arrive from another request before this dialog has subscribed.
+    // Consult the enclosing login operation before opening any setup controls.
+    assertSession();
     const show = !fl || /^(true|yes|on|1)$/i.test(String(fl).trim());
     return show ? showWelcomeDialog(user) : true;
 }

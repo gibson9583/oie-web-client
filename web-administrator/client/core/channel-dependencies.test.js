@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { on } from './store.js';
 import { librarySelection, dependencySelection, hasLibraryChanges, hasDependencyChanges,
     persistLibraryAssociations, persistChannelDependencies, channelDependencyState,
     copyLibrarySelection, copyDependencySelection, refreshLibraryChoices, refreshDependencyChoices } from './channel-dependencies.js';
@@ -43,6 +44,8 @@ globalThis.fetch = async (url, init) => {
     assert.fail(`Unexpected endpoint: ${init.method} ${url}`);
 };
 const libs = { current: librarySelection(original, channel.id) };
+const savedLibraryStates = [];
+const offSaved = on('codeTemplateLibraries:associationsSaved', () => savedLibraryStates.push(hasLibraryChanges(libs.current)));
 libs.current.checked.set('shared', true);
 readFails = true;
 await assert.rejects(persistLibraryAssociations(channel, libs, '4.6.0'), /offline/);
@@ -52,8 +55,10 @@ accepted = false;
 await assert.rejects(persistLibraryAssociations(channel, libs, '4.6.0'), /changed while saving/);
 assert.equal(hasLibraryChanges(libs.current), true);
 assert.deepEqual(original, [library('shared')], 'failed save must not mutate the opening snapshot');
+assert.deepEqual(savedLibraryStates, [], 'failed reads and writes must not announce a committed association');
 accepted = true;
 await persistLibraryAssociations(channel, libs, '4.6.0');
+assert.deepEqual(savedLibraryStates, [false], 'readers refresh only after the accepted association is checkpointed');
 assert.equal(hasLibraryChanges(libs.current), false);
 assert.equal(writes.length, 2);
 const saved = writes[1];
@@ -65,6 +70,8 @@ assert.deepEqual(saved.payload[0].enabledChannelIds.string, ['other-channel', 'e
 assert.deepEqual(saved.payload[0].codeTemplates.codeTemplate, [{ '@version': '4.6.0', id: 'shared-template' }]);
 await persistLibraryAssociations(channel, libs, '4.6.0');
 assert.equal(writes.length, 2, 'checkpointed stage does not write twice');
+assert.deepEqual(savedLibraryStates, [false], 'an unchanged retry does not announce another save');
+offSaved();
 
 libs.current.checked.set('shared', false);
 latest = [library('concurrent-add')];

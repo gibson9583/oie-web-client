@@ -43,7 +43,8 @@ import { ViewTasks } from '../mount.jsx';
 import { RailPane, TaskButton } from '../ui.jsx';
 import { getPref } from '../../core/prefs.js';
 import { platform } from '@oie/web-shell';
-import { alertBaseline, loadAlertForEdit, confirmIfAlertChanged } from '../alert-conflict.js';
+import { alertBaseline, loadAlertForEdit, confirmIfAlertChanged, rememberAlertSave } from '../alert-conflict.js';
+import { isNewAlertDraft, isNewAlertRoute, markNewAlertDraft } from '../../core/editor-route-state.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { useInvalidate } from '../queries.js';
 import { TreeTable } from '../tree-table.jsx';
@@ -74,7 +75,7 @@ export function eventTypeLabel(type: any) {
 /* ---- model helpers (copied verbatim from views/alerts.js) -------------------- */
 
 export function newAlert(name: any, version: any) {
-    return {
+    return markNewAlertDraft({
         // '@version' is required — the engine's migrator 500s without it.
         '@version': version || '4.5.2',
         id: uuid(),
@@ -94,7 +95,7 @@ export function newAlert(name: any, version: any) {
         },
         actionGroups: { alertActionGroup: [{ actions: null, subject: '', template: '' }] },
         properties: null
-    };
+    });
 }
 
 function groupsOf(model: any) {
@@ -235,7 +236,7 @@ function RecipientControl({ row, index, tree, patchAction }: any) {
 
 export function AlertEditor({ params, query = {} }: any) {
     const alertId = params.alertId;
-    const isNew = query.new === '1';
+    const isNew = isNewAlertRoute(alertId, store.getState('editingAlert'));
     // The list's ['alerts'] cache outlives this view (30s staleTime), so a save has
     // to mark it stale or the list we redirect back to repaints the pre-edit rows
     // until its 5s poll happens to tick.
@@ -274,7 +275,7 @@ export function AlertEditor({ params, query = {} }: any) {
         return JSON.stringify(modelRef.current);
     }
     function isDirty() {
-        if (isNew || store.getState('editingAlertDirty') === true) return true;
+        if ((modelRef.current ? isNewAlertDraft(modelRef.current) : isNew) || store.getState('editingAlertDirty') === true) return true;
         if (!modelRef.current || cleanSnapshotRef.current === null) return false;
         return syncedModelJson() !== cleanSnapshotRef.current;
     }
@@ -286,20 +287,23 @@ export function AlertEditor({ params, query = {} }: any) {
     async function saveUnlocked() {
         const model = modelRef.current;
         if (!model) return;
+        const wasNew = isNewAlertDraft(model);
         try {
             saveModelRef.current();
             if (!String(model.name || '').trim()) { toast('Alert name is required', 'warn'); return; }
-            if (isNew) {
+            if (wasNew) {
                 await api.alerts.create(model);
             } else {
                 if (!await confirmIfAlertChanged(model.id, baselineRef.current)) return;
                 await api.alerts.update(model.id, model);
             }
+            rememberAlertSave(model);
+            baselineRef.current = alertBaseline(model);
             store.setState('editingAlert', null);
             store.setState('editingAlertDirty', false);
             store.setState('navGuard', null);   // saved — don't prompt on the redirect
             await invalidate('alerts');
-            toast(isNew ? `Alert "${model.name}" created` : `Alert "${model.name}" saved`);
+            toast(wasNew ? `Alert "${model.name}" created` : `Alert "${model.name}" saved`);
             return true;
         } catch (e: any) {
             toast(e.message, 'error');
@@ -313,7 +317,7 @@ export function AlertEditor({ params, query = {} }: any) {
         try { assertSession = captureEngineSession(); } catch { return; }
         const model = modelRef.current;
         if (!model) return;
-        if (isNew) { toast('Save the alert first, then export it', 'warn'); return; }
+        if (isNewAlertDraft(model)) { toast('Save the alert first, then export it', 'warn'); return; }
         try {
             await saveFile(`${model.name || model.id}.xml`, 'application/xml', async () => {
                 const xml = await api.getXml(`/alerts/${model.id}`);
@@ -333,7 +337,7 @@ export function AlertEditor({ params, query = {} }: any) {
             let model: any;
             if (stored && stored.id === alertId) {
                 model = stored;
-            } else if (isNew) {
+            } else if (query.new === '1') {
                 model = await loadAlertForEdit(alertId).catch(() => null);
                 if (!model) {
                     toast('The unsaved new alert was discarded.');
@@ -753,12 +757,13 @@ export function AlertEditor({ params, query = {} }: any) {
                             // receives the model object, not this editor's state.
                             saveModelRef.current();
                             const model = modelRef.current;
+                            const draft = model && isNewAlertDraft(model);
                             switchingRef.current = true;
                             store.setState('editingAlertDirty', isDirty());
                             store.setState('editingAlert', model);
-                            store.setState('editingAlertNew', isNew);
+                            store.setState('editingAlertNew', !!draft);
                             store.setState('navGuard', null);
-                            router.navigate(isNew || !model ? '/alerts/new/guided' : `/alerts/${model.id}/guided`);
+                            router.navigate(draft || !model ? '/alerts/new/guided' : `/alerts/${model.id}/guided`);
                         }} />}
                     </div>
                 </RailPane>

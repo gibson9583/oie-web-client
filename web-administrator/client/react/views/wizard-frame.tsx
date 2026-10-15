@@ -21,21 +21,23 @@ import { Icon } from '../bridges.jsx';
  * ready, then mount the inner wizard keyed on model.id.
  *
  *   routeId   - the route param value ('new' | an id | undefined)
+ *   fresh     - explicit New action; ignore a stored model on the new route
  *   storeKey  - store key holding the handed-over model (e.g. 'editingChannel')
  *   isValid   - (stored) => bool: is the stored object a usable model of this type
  *   makeNew   - () => model: build a blank model for the new-channel/alert case
+ *   isNewModel - optional trusted draft-state lookup, overriding URL mode on handoff
  *   fetch     - (id) => Promise<model>: load an existing model from the engine
  *   normalize - (model) => model: optional in-place fix-ups before use
  *   backPath  - where to navigate if the fetch fails
  */
-export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, normalize, backPath }: any) {
+export function useWizardModel({ routeId, fresh = false, storeKey, isValid, isNewModel, makeNew, fetch, normalize, backPath }: any) {
     const wantExisting = !!routeId && routeId !== 'new';
     const isNew = !wantExisting;
     const norm = normalize || ((x: any) => x);
     const ref = useRef<any>(null);
     if (!ref.current) {
         const stored = store.getState(storeKey);
-        if (stored && (!isValid || isValid(stored)) && (!wantExisting || String(stored.id) === String(routeId))) {
+        if (!(isNew && fresh) && stored && (!isValid || isValid(stored)) && (!wantExisting || String(stored.id) === String(routeId))) {
             ref.current = norm(stored);
         } else if (isNew) {
             ref.current = norm(makeNew());
@@ -58,7 +60,7 @@ export function useWizardModel({ routeId, storeKey, isValid, makeNew, fetch, nor
         return () => { alive = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-    return { model: ref.current, isNew, ready };
+    return { model: ref.current, isNew: ref.current && isNewModel ? isNewModel(ref.current) : isNew, ready };
 }
 
 /*

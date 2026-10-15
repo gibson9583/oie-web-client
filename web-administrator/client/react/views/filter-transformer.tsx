@@ -1,4 +1,5 @@
-import { loadChannelForEdit } from '../../core/channel-save.js';
+import { isNewChannelDraft, loadChannelForEdit } from '../../core/channel-save.js';
+import { channelDependencyState } from '../../core/channel-dependencies.js';
 import { persistChannelEdits, channelSessionActive } from '../channel-persistence.js';
 import { withEditorSave } from '../save-lock.js';
 import { parseFilterTransformerImport, normalizeImportTypes, alignDestinationTypes, updateImportedAttachmentHandler, normalizeImportedElementTypes } from './editor-import.js';
@@ -62,6 +63,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { usePaletteContext } from '../palette-context.js';
 
 const KINDS = {
     filter: { title: 'Filter', noun: 'Rule', targetKey: 'filter' },
@@ -1269,10 +1271,11 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
             const saved = await persistChannelEdits(channel);
             if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
-            onTasksChange();
             toast(`Saved ${channel.name}`);
         } catch (e: any) {
             if (isCurrent()) toast(e.message, 'error');
+        } finally {
+            if (isCurrent() && mountedRef.current) onTasksChange();
         }
     }
 
@@ -1958,6 +1961,17 @@ function FilterTransformerView({ params, kindName }: any) {
         return c && c.id === params.channelId ? true : null;
     });
     const apiRef = useRef<any>(null);
+
+    // The wizard publishes its own context; only routed sub-editors publish here.
+    const channel = ready ? store.getState('editingChannel') : null;
+    const persistedChannel = channel && channel.id === params.channelId
+        && !isNewChannelDraft(channel);
+    usePaletteContext({
+        kind: 'channel', surface: 'connector',
+        channelIds: persistedChannel ? [channel.id] : [],
+        channels: persistedChannel ? [channel] : [],
+        librarySelection: channel ? channelDependencyState(channel).libraries.current?.checked : undefined
+    });
 
     // Deep-link entry (no in-store channel): fetch it, then build.
     useEffect(() => {

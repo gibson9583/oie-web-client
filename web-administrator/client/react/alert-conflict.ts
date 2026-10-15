@@ -9,6 +9,7 @@
 
 import api from '@oie/web-api';
 import { confirmDialog } from '@oie/web-ui';
+import { markAlertPersisted } from '../core/editor-route-state.js';
 
 // The baseline follows the working object's identity across classic/wizard
 // handoffs. Never fetch a second copy after editing has already begun.
@@ -22,6 +23,12 @@ export async function loadAlertForEdit(alertId: string) {
 
 export function alertBaseline(model: object): string | null {
     return baselines.get(model) ?? null;
+}
+
+/** Creation is complete even if a later UI refresh or handoff fails. */
+export function rememberAlertSave(model: object): void {
+    markAlertPersisted(model);
+    baselines.set(model, JSON.stringify(model));
 }
 
 /**

@@ -9,9 +9,11 @@
  *                                        plugin's view appears here for free
  *   Commands  allCommands()            — core/commands.js (see its header for
  *                                        why this is not "every task button")
- *   Channels  the TanStack cache       — whatever the dashboard has already
- *                                        polled; fetched once on first open only
- *                                        if nothing is cached yet
+ *   Channels  the TanStack cache       — dashboard status plus optional names;
+ *                                        reverse library links refresh names
+ *                                        on each opening
+ *   Suggested mounted view context    — selected channels, related libraries
+ *                                        and templates; separate from recents
  *
  * Authorization is not re-implemented: every entry carrying a `task` is filtered
  * through the SAME checkTask() the task panes and popup menus use, so the palette
@@ -24,18 +26,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import api, * as oie from '@oie/web-api';
 import { platform } from '../core/platform.js';
-import { allCommands, fuzzyMatch } from '../core/commands.js';
+import { allCommands, commandPermissions, fuzzyMatch } from '../core/commands.js';
 import { checkTask } from '../core/authorization.js';
 import { BUILTIN_SETTINGS_LABELS, canViewSettingsTab, settingsTabId } from '../core/settings-navigation.js';
 import { getPref, setPrefs } from '../core/prefs.js';
 import * as router from '../core/router.js';
 import { queryClient } from './queries.js';
 import { Icon, useStoreKey } from './bridges.jsx';
+import { canBrowseTemplates, channelPaletteEntries, contextSuggestions, entryAllowed, templatePaletteEntries } from '../core/command-suggestions.js';
+import { useCurrentPaletteContext } from './palette-context.js';
 
 /* Enough that scoping to a kind (`/` for views) lists all of them rather than
    truncating, while still keeping an unscoped search scannable. */
 const MAX_RESULTS = 20;
 const MAX_RECENT = 5;
+const MAX_SUGGESTED = 6;
 
 const SCOPES = {
     '>': { kind: 'command', label: 'Commands' },
@@ -68,17 +73,19 @@ function Highlight({ text, hits }: any) {
 
 /* ---- the entries ------------------------------------------------------------ */
 
-function permitted(item: any) {
-    return (!item.task || checkTask(item.rbac || 'view', item.task)) && (!item.visible || item.visible());
+function permitted(entry: any) {
+    return entryAllowed(entry, checkTask) && (!entry.allowed || entry.allowed());
 }
 
 function viewEntries() {
     return platform.navItems()
-        .filter(permitted)
         .map((item: any) => ({
             kind: 'view', id: 'view:' + item.id, label: item.label, icon: item.icon || 'chevR',
-            group: 'Views', hint: item.path || '', path: item.path, run: item.action, allowed: () => permitted(item)
-        }));
+            group: 'Views', hint: item.path || '', path: item.path, run: item.action,
+            permissions: item.task ? [[item.rbac || 'view', item.task]] : [],
+            allowed: () => !item.visible || item.visible()
+        }))
+        .filter(permitted);
 }
 
 function commandEntries() {
@@ -101,18 +108,19 @@ function commandEntries() {
     }
     return commands
         .sort((a, b) => String(a.section || '').localeCompare(String(b.section || ''))
-            || (a.order ?? 100) - (b.order ?? 100) || a.label.localeCompare(b.label))
-        .filter(permitted)
+            || (a.order ?? 100) - (b.order ?? 100) || String(a.label).localeCompare(String(b.label)))
         .map((c: any) => ({
             kind: 'command', id: 'cmd:' + c.id, label: c.label, icon: c.icon || 'chevR',
             group: c.section || 'Commands', hint: c.hint || '', path: c.path, run: c.run,
-            keywords: c.keywords || '', allowed: () => permitted(c)
-        }));
+            keywords: c.keywords || '', permissions: commandPermissions(c),
+            allowed: () => !c.visible || c.visible()
+        }))
+        .filter(permitted);
 }
 
 /* Channels come from whatever the dashboard has already polled — the
    ['statuses','dashboard'] query react/queries.ts maintains; reading the cache
-   directly (rather than subscribing) keeps opening the palette free of requests. */
+   directly (rather than subscribing) avoids a separate status request. */
 function cachedChannels() {
     const rows: any[] = [];
     const cached = queryClient.getQueryData(['statuses', 'dashboard']);
@@ -124,34 +132,6 @@ function cachedChannels() {
     };
     walk(Array.isArray(cached) ? cached : []);
     return rows;
-}
-
-function channelEntries(fallback: any) {
-    const seen = new Set();
-    const rows = cachedChannels();
-    const source = rows.length ? rows : fallback;
-    /* Two verbs per channel. A channel is a thing you either edit or watch, and
-       the message browser is the more frequent of the two — but the editor is what
-       "a channel" means in the Channels view, so it leads and the browser follows
-       one arrow-key away. The hint says which is which. */
-    return source.filter((c: any) => {
-        if (!c || typeof c.id !== 'string' || !c.id.trim() || seen.has(c.id)) return false;
-        seen.add(c.id);
-        return true;
-    }).flatMap((c: any) => {
-        // Keep both cached and fetched channel labels safe for React and for
-        // Highlight's string operations, even if a response has a bad name.
-        const label = c.name != null && ['string', 'number', 'boolean'].includes(typeof c.name)
-            ? String(c.name) || c.id : c.id;
-        const base = { kind: 'channel', label, group: 'Channels', state: c.state };
-        // Gated through the same (group, task) pairs as the nav/menu twins, per
-        // this file's own header contract — the palette must never surface an
-        // entry RBAC hides elsewhere.
-        return [
-            checkTask('view', 'doShowChannel') ? { ...base, id: 'chan:' + c.id, hint: 'edit', path: '/channels/' + c.id + '/edit', allowed: () => checkTask('view', 'doShowChannel') } : null,
-            checkTask('view', 'doShowMessages') ? { ...base, id: 'chanmsg:' + c.id, hint: 'messages', path: '/messages/' + c.id, allowed: () => checkTask('view', 'doShowMessages') } : null
-        ].filter(Boolean);
-    });
 }
 
 /* ---- the component ---------------------------------------------------------- */
@@ -166,9 +146,18 @@ export function CommandPalette({ ready }: { ready: boolean }) {
     readyRef.current = ready;
     const mountedRef = useRef(true);
     const [query, setQuery] = useState('');
-    const [cursor, setCursor] = useState(0);
+    const [activeKey, setActiveKey] = useState<string | null>(null);
     const [fallbackChannels, setFallbackChannels] = useState([] as any[]);
+    // An old ordinary search must not hide newer Dashboard rows if the first
+    // reverse lookup fails. After one succeeds, keep its snapshot current with
+    // every successful full name read; null is unread and [] is confirmed empty.
+    const [reverseChannels, setReverseChannels] = useState<any[] | null>(null);
+    const [fetchedLibraries, setFetchedLibraries] = useState([] as any[]);
+    const context = useCurrentPaletteContext();
+    const channelContext = context?.kind === 'channel' && context.channelIds.length > 0;
+    const templateContext = context?.kind === 'templates';
     const listRef = useRef<any>(null);
+    const pointerRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
     // ⌘K / Ctrl+K anywhere. Capture phase so a focused editor can't swallow it.
     useEffect(() => {
@@ -181,16 +170,25 @@ export function CommandPalette({ ready }: { ready: boolean }) {
                 setOpen(false);
             }
         };
+        // WebKit emits stationary mousemoves when results move under the pointer.
+        const onMouseMove = (e: MouseEvent) => {
+            const previous = pointerRef.current;
+            pointerRef.current = { x: e.clientX, y: e.clientY,
+                moved: !!previous && (previous.x !== e.clientX || previous.y !== e.clientY) };
+        };
         document.addEventListener('keydown', onKey, true);
+        document.addEventListener('mousemove', onMouseMove, true);
         return () => {
             mountedRef.current = false;
             document.removeEventListener('keydown', onKey, true);
+            document.removeEventListener('mousemove', onMouseMove, true);
         };
     }, []);
 
-    // Only if the dashboard has never been visited: one cheap id/name fetch, once.
+    // Ordinary search reuses known channels. Reverse library links need a fresh
+    // inventory on each opening, including channels created since the last one.
     useEffect(() => {
-        if (!open || cachedChannels().length || fallbackChannels.length) return;
+        if (!open || (!templateContext && (cachedChannels().length || fallbackChannels.length))) return;
         if (!checkTask('view', 'doShowChannel') && !checkTask('view', 'doShowMessages')) return;
         let cancelled = false;
         api.channels.idsAndNames()
@@ -207,18 +205,71 @@ export function CommandPalette({ ready }: { ready: boolean }) {
                     return [{ id, name: name == null ? id : String(name) || id }];
                 });
                 setFallbackChannels(rows);
+                setReverseChannels(previous => templateContext || previous !== null ? rows : null);
             })
             .catch(() => { /* the palette is still useful without channels */ });
         return () => { cancelled = true; };
-    }, [open, fallbackChannels.length, permissions]);
+    }, [open, templateContext, permissions]); // eslint-disable-line react-hooks/exhaustive-deps -- recheck access on permission changes; do not refetch when the response changes fallbackChannels
 
-    useEffect(() => { if (open) { setQuery(''); setCursor(0); } }, [open]);
+    useEffect(() => { if (open) { setQuery(''); setActiveKey(null); } }, [open]);
+
+    // Fetch related content only when useful. Reopening retries failed reads;
+    // closing or changing context discards late responses. The template editor
+    // publishes its working libraries, including unsaved association changes.
+    useEffect(() => {
+        setFetchedLibraries([]);
+        const recent = getPref('paletteRecent') || [];
+        if (!open || templateContext || !canBrowseTemplates(checkTask)
+            || (!channelContext && !recent.some((id: string) => /^(template|library):/.test(id)))) return;
+        let request = 0;
+        const refresh = () => {
+            const current = ++request;
+            if (!canBrowseTemplates(checkTask)) { setFetchedLibraries([]); return; }
+            api.codeTemplates.libraries(true).then(libraries => {
+                if (current === request) setFetchedLibraries(canBrowseTemplates(checkTask) ? libraries : []);
+            }).catch(() => { /* retain usable results when a refresh fails */ });
+        };
+        // A dependency save may finish after navigation to Messages. Refresh
+        // committed data without replacing any editor's working selections.
+        const off = platform.events.on('codeTemplateLibraries:associationsSaved', refresh);
+        refresh();
+        return () => { request++; off(); };
+    }, [open, channelContext, templateContext, permissions]);
+
+    const libraries = templateContext ? context.libraries : fetchedLibraries;
+    const channels = useMemo(() => {
+        const cached = cachedChannels();
+        const cachedById = new Map<string, any>();
+        // Parent statuses precede connector children; retain the parent's state.
+        for (const channel of cached) if (!cachedById.has(channel.id)) cachedById.set(channel.id, channel);
+        // Reverse links use the last successful inventory, including an empty
+        // one. Dashboard contributes runtime state, never obsolete IDs/names.
+        // Other views still follow their newer Dashboard cache and selection.
+        const source = templateContext && reverseChannels !== null
+            ? reverseChannels.map(channel => ({ ...channel, state: cachedById.get(channel.id)?.state }))
+            : [...cached, ...fallbackChannels.filter(channel => !cachedById.has(channel.id))];
+        if (context?.kind !== 'channel') return source;
+        // Current view fields win, while cached metadata (such as runtime
+        // status) remains available when the view only supplies ID and name.
+        const current = context.channelIds.map(id => ({
+            id, name: id,
+            ...source.find(c => c.id === id),
+            ...context.channels?.find(c => c.id === id)
+        }));
+        const ids = new Set(current.map(c => c.id));
+        return [...current, ...source.filter(c => !ids.has(c.id))];
+    }, [open, fallbackChannels, reverseChannels, context]); // eslint-disable-line react-hooks/exhaustive-deps -- read cache on each open
+
+    const suggested = useMemo(() => open
+        ? contextSuggestions(context, channels, libraries, checkTask).slice(0, MAX_SUGGESTED) : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the controller reads its permission snapshot outside React
+    [open, context, channels, libraries, permissions]);
 
     const entries = useMemo(
-        () => (open ? [...viewEntries(), ...commandEntries(), ...channelEntries(fallbackChannels)] : []),
-        // The controller reads its permission snapshot outside React.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [open, fallbackChannels, permissions]
+        () => (open ? [...viewEntries(), ...commandEntries(), ...channelPaletteEntries(channels, checkTask),
+            ...templatePaletteEntries(libraries, checkTask)] : []),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the controller reads its permission snapshot outside React
+        [open, channels, libraries, permissions]
     );
 
     const results = useMemo(() => {
@@ -233,7 +284,9 @@ export function CommandPalette({ ready }: { ready: boolean }) {
                 .map((id: any) => pool.find((e: any) => e.id === id))
                 .filter(Boolean)
                 .map((e: any) => ({ ...e, group: 'Recent' }));
-            return found.length ? found : pool.filter((e: any) => e.kind === 'view').slice(0, MAX_RESULTS);
+            // Recents keep their own section even when a destination is also
+            // suggested. Suggestions never overwrite the user's history.
+            return [...suggested, ...(found.length ? found : pool.filter((e: any) => e.kind === 'view').slice(0, MAX_RESULTS - suggested.length))];
         }
         return pool
             .map((e: any) => {
@@ -247,26 +300,33 @@ export function CommandPalette({ ready }: { ready: boolean }) {
             .sort((a: any, b: any) => a.score - b.score)
             .slice(0, MAX_RESULTS)
             .map((r: any) => ({ ...r.entry, hits: r.hits }));
-    }, [entries, query]);
+    }, [entries, query, suggested]);
 
-    useEffect(() => { setCursor(0); }, [query]);
+    const resultKey = (entry: any) => entry.group + ':' + entry.id;
+    // Async suggestions may arrive above a recent entry. Track identity so an
+    // ArrowDown followed by Enter cannot silently execute a different action.
+    // If that entry disappears, require a new selection instead of substituting
+    // the first result. Only an untouched selection defaults to the first row.
+    const cursor = activeKey === null ? 0 : results.findIndex((entry: any) => resultKey(entry) === activeKey);
+    const setCursor = (index: number) => setActiveKey(results[index] ? resultKey(results[index]) : null);
+    useEffect(() => { setActiveKey(null); }, [query]);
 
     const run = useCallback((entry: any) => {
-        if (!mountedRef.current || !readyRef.current || !entry || (entry.allowed && !entry.allowed())) return;
+        if (!mountedRef.current || !readyRef.current || !entry || !permitted(entry)) return;
         setOpen(false);
         const recent = [entry.id, ...(getPref('paletteRecent') || []).filter((id: any) => id !== entry.id)];
         setPrefs({ paletteRecent: recent.slice(0, MAX_RECENT) });
         // After the dialog has closed, so focus restore doesn't fight the view swap.
         setTimeout(() => {
-            if (!mountedRef.current || !readyRef.current || (entry.allowed && !entry.allowed())) return;
+            if (!mountedRef.current || !readyRef.current || !permitted(entry)) return;
             if (entry.run) entry.run();
             else if (entry.path) router.navigate(entry.path);
         }, 0);
     }, []);
 
     const onKeyDown = (e: any) => {
-        if (e.key === 'ArrowDown') { e.preventDefault(); setCursor((c: any) => Math.min(c + 1, results.length - 1)); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor((c: any) => Math.max(c - 1, 0)); }
+        if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(Math.min(cursor + 1, results.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor(Math.max(cursor - 1, 0)); }
         else if (e.key === 'Home') { e.preventDefault(); setCursor(0); }
         else if (e.key === 'End') { e.preventDefault(); setCursor(results.length - 1); }
         else if (e.key === 'Enter') { e.preventDefault(); run(results[cursor]); }
@@ -294,14 +354,14 @@ export function CommandPalette({ ready }: { ready: boolean }) {
                         <div className="cmdk-field">
                             <Icon name="search" size={15} />
                             <input type="text" autoComplete="off" spellCheck="false"
-                                placeholder="Search views, channels and commands…"
+                                placeholder="Search views, channels, templates and commands…"
                                 value={query}
                                 role="combobox"
                                 aria-expanded="true"
                                 aria-controls="cmdk-results"
                                 aria-autocomplete="list"
                                 aria-activedescendant={results[cursor] ? 'cmdk-opt-' + cursor : undefined}
-                                aria-label="Search views, channels and commands"
+                                aria-label="Search views, channels, templates and commands"
                                 onChange={(e: any) => setQuery(e.target.value)}
                                 onKeyDown={onKeyDown} />
                             {scope && <span className="cmdk-scope">{scope.label}</span>}
@@ -315,11 +375,11 @@ export function CommandPalette({ ready }: { ready: boolean }) {
                             {results.map((entry: any, i: any) => {
                                 const head = entry.group !== lastGroup ? (lastGroup = entry.group) : null;
                                 return (
-                                    <div key={entry.id}>
+                                    <div key={resultKey(entry)}>
                                         {head && <div className="cmdk-group">{head}</div>}
                                         <div id={'cmdk-opt-' + i} role="option" aria-selected={i === cursor}
-                                            className="cmdk-opt"
-                                            onMouseMove={() => setCursor(i)}
+                                            className="cmdk-opt" data-group={entry.group}
+                                            onMouseMove={() => { if (pointerRef.current?.moved) setCursor(i); }}
                                             onClick={() => run(entry)}>
                                             {entry.kind === 'channel'
                                                 ? <span className={'cmdk-pip ' + stateClass(entry.state)} />
@@ -327,7 +387,7 @@ export function CommandPalette({ ready }: { ready: boolean }) {
                                             <span className="cmdk-label">
                                                 <Highlight text={entry.label} hits={entry.hits} />
                                             </span>
-                                            {entry.hint && <span className="cmdk-hint">{entry.hint}</span>}
+                                            {entry.hint && <span className="cmdk-hint" title={entry.hint}>{entry.hint}</span>}
                                         </div>
                                     </div>
                                 );

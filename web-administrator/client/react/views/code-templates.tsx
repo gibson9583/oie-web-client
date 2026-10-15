@@ -19,7 +19,7 @@
  */
 
 import { withEditorSave } from '../save-lock.js';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast, confirmDialog, saveFile, pickFile, contextMenu, fmtDate } from '@oie/web-ui';
 import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
@@ -34,6 +34,7 @@ import { Icon } from '../bridges.jsx';
 import { platform } from '@oie/web-shell';
 import { parseLibraryImport, prepareLibraryImport, parseTemplateImport, prepareTemplateImport } from './code-template-import.js';
 import { libraryImportCallbacks } from './code-template-import-dialogs.js';
+import { usePaletteContext } from '../palette-context.js';
 
 
 const CT_COLUMNS = [
@@ -150,7 +151,7 @@ function bulkSaveError(result: any): string {
     return failure;
 }
 
-export function CodeTemplatesView() {
+export function CodeTemplatesView({ query = {} }: { query?: Record<string, string> } = {}) {
     // Maximize: grow the Code editor over the library list (top) and the
     // Name/Library/Type form, keeping the right-hand Context panel. Esc restores.
     const [editorMax, setEditorMax] = useState(false);
@@ -170,6 +171,10 @@ export function CodeTemplatesView() {
     const entriesNowRef = useRef(entries);
     entriesNowRef.current = entries;
     const [selected, setSelected] = useState<any>(null);   // { kind: 'library'|'template', id }
+    // Route targets are consumed only after a successful load. Refresh and
+    // plugin reloads must preserve the user's subsequent selection rather than
+    // repeatedly snapping back to the link that opened this view.
+    const initialTargetRef = useRef<Record<string, string> | null>(query);
     const [dirty, setDirty] = useState(false);
     const dirtyRef = useRef(false);
     const persistedLibraryIdsRef = useRef(new Set<string>());
@@ -182,6 +187,12 @@ export function CodeTemplatesView() {
     const [filterText, setFilterText] = useState('');
     const [focusName, setFocusName] = useState(false);   // focus the Name field after creating
     const [collapsed, setCollapsed] = useState(() => new Set());   // collapsed library keys ('library:<id>')
+    const paletteContext = useMemo(() => ({
+        kind: 'templates' as const,
+        libraries: entries.map(entry => ({ ...entry.library, codeTemplates: { codeTemplate: entry.templates } })),
+        selected
+    }), [entries, selected]);
+    usePaletteContext(paletteContext);
 
     function markDirty() {
         dirtyRef.current = true;
@@ -231,7 +242,21 @@ export function CodeTemplatesView() {
                 .map((template: any) => [String(template.id), JSON.stringify(template)]));
             setEntries(next);
             markClean();
-            setSelected((prev: any) => (prev && resolve(prev, next) ? prev : null));
+            const target = initialTargetRef.current;
+            initialTargetRef.current = null;
+            if (target && ('templateId' in target || 'libraryId' in target)) {
+                // A specific missing template never falls back to its library,
+                // and a mismatched library/template pair never selects a
+                // similarly named item from a different library.
+                const entry = next.find(item =>
+                    (!('libraryId' in target) || item.library.id === target.libraryId)
+                    && (!('templateId' in target) || item.templates.some((template: any) => template.id === target.templateId)));
+                setSelected(entry ? ('templateId' in target
+                    ? { kind: 'template', id: target.templateId }
+                    : { kind: 'library', id: target.libraryId }) : null);
+            } else {
+                setSelected((prev: any) => (prev && resolve(prev, next) ? prev : null));
+            }
         } catch (e: any) {
             toast(`Load failed: ${e.message}`, 'error');
         }

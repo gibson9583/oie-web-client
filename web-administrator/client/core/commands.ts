@@ -10,13 +10,15 @@
  *
  * A command is the same shape as a nav item, so the palette can treat both alike:
  *
- *   { id, label, icon?, section?, order?, keywords?, task?, rbac?, path?, run? }
+ *   { id, label, icon?, section?, order?, keywords?, task?, rbac?, permissions?, visible?, path?, run? }
  *
  * `path` navigates; `run` is called instead when present. `task` + `rbac` are the
  * authorization pair the task panes and popup menus already use — the palette
- * filters through the SAME checkTask(), so it can never surface an action the
- * rail would have hidden.
+ * filters through the SAME checkTask(). `permissions` adds prerequisites such
+ * as the parent view's task; every requirement must pass, including `task`.
  */
+
+import type { RouteTasks } from './route-tasks.js';
 
 export interface Command {
     id: string;
@@ -29,6 +31,8 @@ export interface Command {
     rbac?: any;
     /** API 4.9: additional availability predicate, rechecked when the command runs. */
     visible?: () => boolean;
+    /** Additional all-of prerequisites, checked alongside `task`/`rbac`. */
+    permissions?: RouteTasks;
     /** Navigation target; `run` is called instead when present. */
     path?: string;
     run?: () => void;
@@ -37,6 +41,14 @@ export interface Command {
 }
 
 const commands: Command[] = [];
+
+/** Keep the legacy task gate when a command also declares route prerequisites. */
+export function commandPermissions(command: Pick<Command, 'task' | 'rbac' | 'permissions'>): RouteTasks {
+    return [
+        ...(command.task ? [[command.rbac || 'view', command.task] as const] : []),
+        ...(command.permissions || []),
+    ];
+}
 
 /** Register a palette command. Returns an unregister function. */
 export function registerCommand(command: Command): () => void {

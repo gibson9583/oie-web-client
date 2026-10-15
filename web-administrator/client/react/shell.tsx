@@ -25,7 +25,7 @@ import { getPref } from '../core/prefs.js';
 import api, { onEngineUnknown, onSessionExpired, resetSessionExpired } from '@oie/web-api';
 import { startIdleLogout, stopIdleLogout, isIdleLocked, setIdleLocked } from '../core/idle-logout.js';
 import { closeSessionDialogs } from './dialog-host.js';
-import { discardEngineResponses, captureEngineSession } from '../core/engine-fetch.js';
+import { captureEngineSession, discardEngineResponses } from '../core/engine-fetch.js';
 import { migrateLegacyCache } from '../core/cache-migration.js';
 import { getAnchor, describeRef } from '../core/compare.js';
 import { registerLoginAuthenticators } from './login-authenticators.js';
@@ -42,6 +42,11 @@ import { LoginForm, isOidcCallback, isExpectedOidcCallback, takeOidcCallback, ta
 import { openEditUserModal, openChangePasswordModal } from './views/user-modals.js';
 import { maybeShowWelcome } from './welcome.js';
 import { clearSsoSession, holdAutoRedirect, isSsoSession, takeSsoPending } from './sso-session.js';
+import { AccessDeniedView } from './access-denied.jsx';
+import { isNewChannelRoute, isNewAlertRoute, isNewAlertDraft } from '../core/editor-route-state.js';
+import { isNewChannelDraft } from '../core/channel-save.js';
+import { NEW_CHANNEL_TASKS, EDIT_CHANNEL_TASKS, NEW_ALERT_TASKS, EDIT_ALERT_TASKS, CODE_TEMPLATE_TASKS } from '../core/route-tasks.js';
+import type { RouteTasks } from '../core/route-tasks.js';
 
 import { register as registerConnectors } from '../connectors/index.js';
 
@@ -65,7 +70,18 @@ const ISSUES_URL = 'https://github.com/OpenIntegrationEngine/engine/issues';
  * plugin rewrites core/ imports per-module, and it cannot see a computed one —
  * a template literal here would silently produce a second framework instance.
  */
-const VIEW_ROUTES = [
+interface ViewRoute {
+    path: string;
+    meta: { title: string };
+    nav?: any;
+    editor?: 'channel' | 'alert';
+    wizard?: boolean;
+    tasks?: RouteTasks | ((ctx: any) => RouteTasks);
+    load: () => Promise<any>;
+    pick: (module: any) => any;
+}
+
+const VIEW_ROUTES: ViewRoute[] = [
     { path: '/dashboard', meta: { title: 'Dashboard' },
         nav: { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: '/dashboard', section: 'Monitor', order: 0, task: 'doShowDashboard' },
         load: () => import('./views/dashboard.jsx'), pick: (m: any) => m.DashboardHost },
@@ -73,16 +89,28 @@ const VIEW_ROUTES = [
         nav: { id: 'channels', label: 'Channels', icon: 'channels', path: '/channels', section: 'Design', order: 0, task: 'doShowChannel' },
         load: () => import('./views/channels.jsx'), pick: (m: any) => m.ChannelsView },
     { path: '/channels/:channelId/edit', meta: { title: 'Edit Channel' },
+        editor: 'channel',
+        tasks: ({ params }) => isNewChannelRoute(params.channelId, store.getState('editingChannel')) ? NEW_CHANNEL_TASKS : EDIT_CHANNEL_TASKS,
         load: () => import('./views/channel-editor.jsx'), pick: (m: any) => m.ChannelEditorView },
     { path: '/channels/:channelId/filter/:metaDataId', meta: { title: 'Filter' },
+        editor: 'channel',
+        tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditFilter']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.FilterView },
     { path: '/channels/:channelId/transformer/:metaDataId', meta: { title: 'Transformer' },
+        editor: 'channel',
+        tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditTransformer']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.TransformerView },
     { path: '/channels/:channelId/response/:metaDataId', meta: { title: 'Response Transformer' },
+        editor: 'channel',
+        tasks: [['view', 'doShowChannel'], ['channelEdit', 'doEditResponseTransformer']],
         load: () => import('./views/filter-transformer.jsx'), pick: (m: any) => m.ResponseTransformerView },
     { path: '/channels/new/guided', meta: { title: 'New Channel — Wizard' },
+        editor: 'channel', wizard: true,
+        tasks: ({ params, query }) => isNewChannelRoute(params.channelId, store.getState('editingChannel'), true, query.fresh === '1') ? NEW_CHANNEL_TASKS : EDIT_CHANNEL_TASKS,
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
     { path: '/channels/:channelId/guided', meta: { title: 'Channel — Wizard' },
+        editor: 'channel', wizard: true,
+        tasks: ({ params, query }) => isNewChannelRoute(params.channelId, store.getState('editingChannel'), true, query.fresh === '1') ? NEW_CHANNEL_TASKS : EDIT_CHANNEL_TASKS,
         load: () => import('./views/channel-wizard.jsx'), pick: (m: any) => m.ChannelWizardView },
     /* Channel-less entry to the message browser: the same view, with its channel
        picker as the way in. Registered BEFORE the parameterised route so
@@ -92,6 +120,7 @@ const VIEW_ROUTES = [
             section: 'Monitor', order: 1, task: 'doShowMessages' },
         load: () => import('./views/messages.jsx'), pick: (m: any) => m.MessagesView },
     { path: '/messages/:channelId', meta: { title: 'Messages' },
+        tasks: [['view', 'doShowMessages']],
         load: () => import('./views/messages.jsx'), pick: (m: any) => m.MessagesView },
     { path: '/events', meta: { title: 'Events' },
         nav: { id: 'events', label: 'Events', icon: 'events', path: '/events', section: 'Monitor', order: 3, task: 'doShowEvents' },
@@ -100,10 +129,16 @@ const VIEW_ROUTES = [
         nav: { id: 'alerts', label: 'Alerts', icon: 'alerts', path: '/alerts', section: 'Monitor', order: 2, task: 'doShowAlerts' },
         load: () => import('./views/alerts.jsx'), pick: (m: any) => m.AlertsList },
     { path: '/alerts/:alertId/edit', meta: { title: 'Edit Alert' },
+        editor: 'alert',
+        tasks: ({ params }) => isNewAlertRoute(params.alertId, store.getState('editingAlert')) ? NEW_ALERT_TASKS : EDIT_ALERT_TASKS,
         load: () => import('./views/alert-editor.jsx'), pick: (m: any) => m.AlertEditor },
     { path: '/alerts/new/guided', meta: { title: 'New Alert — Wizard' },
+        editor: 'alert', wizard: true,
+        tasks: ({ params, query }) => isNewAlertRoute(params.alertId, store.getState('editingAlert'), true, query.fresh === '1') ? NEW_ALERT_TASKS : EDIT_ALERT_TASKS,
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
     { path: '/alerts/:alertId/guided', meta: { title: 'Alert — Wizard' },
+        editor: 'alert', wizard: true,
+        tasks: ({ params, query }) => isNewAlertRoute(params.alertId, store.getState('editingAlert'), true, query.fresh === '1') ? NEW_ALERT_TASKS : EDIT_ALERT_TASKS,
         load: () => import('./views/alert-wizard.jsx'), pick: (m: any) => m.AlertWizardView },
     { path: '/users', meta: { title: 'Users' },
         nav: { id: 'users', label: 'Users', icon: 'users', path: '/users', section: 'Manage', order: 0, task: 'doShowUsers' },
@@ -112,10 +147,10 @@ const VIEW_ROUTES = [
         nav: { id: 'settings', label: 'Settings', icon: 'settings', path: '/settings', section: 'Manage', order: 1, task: 'doShowSettings' },
         load: () => import('./views/settings.jsx'), pick: (m: any) => m.SettingsView },
     { path: '/code-templates', meta: { title: 'Code Templates' },
-        nav: { id: 'code-templates', label: 'Code Templates', icon: 'code', path: '/code-templates', section: 'Design', order: 1, rbac: 'channel', task: 'doEditCodeTemplates' },
+        nav: { id: 'code-templates', label: 'Code Templates', icon: 'code', path: '/code-templates', section: 'Design', order: 1, task: CODE_TEMPLATE_TASKS[0][1], rbac: CODE_TEMPLATE_TASKS[0][0] },
         load: () => import('./views/code-templates.jsx'), pick: (m: any) => m.CodeTemplatesView },
     { path: '/global-scripts', meta: { title: 'Global Scripts' },
-        nav: { id: 'global-scripts', label: 'Global Scripts', icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2, rbac: 'channel', task: 'doEditGlobalScripts' },
+        nav: { id: 'global-scripts', label: 'Global Scripts', icon: 'scripts', path: '/global-scripts', section: 'Design', order: 2, task: 'doEditGlobalScripts', rbac: 'channel' },
         load: () => import('./views/global-scripts.jsx'), pick: (m: any) => m.GlobalScriptsView },
     { path: '/extensions', meta: { title: 'Extensions' },
         nav: { id: 'extensions', label: 'Extensions', icon: 'extensions', path: '/extensions', section: 'Manage', order: 2, task: 'doShowExtensions' },
@@ -131,13 +166,116 @@ const VIEW_ROUTES = [
 // still downloading. Mounting the superseded view anyway would install ITS nav
 // guard over the surviving view's, and then null the slot entirely when the
 // discarded instance unmounts — leaving the visible view unguarded.
-function lazyView(load: any, pick: any) {
+function canEnterView(route: ViewRoute, ctx: any) {
+    if (route.nav?.task && !platform.checkTask(route.nav.rbac || 'view', route.nav.task)) return false;
+    const tasks = typeof route.tasks === 'function' ? route.tasks(ctx) : route.tasks || [];
+    return tasks.every(([group, task]) => platform.checkTask(group, task));
+}
+
+let pendingEditorRoute: { path: string } | null = null;
+
+function lazyView(route: ViewRoute) {
     return async (ctx: any) => {
         const token = router.navigationToken();
-        const mod = await load();
-        if (router.navigationToken() !== token) return null;
-        return reactView(pick(mod))(ctx);
+        pendingEditorRoute = null;
+        // A hidden menu item can still be reached by a bookmark, history entry,
+        // or another view. Gate before importing so denied views never mount or
+        // issue their protected requests. The router still owns leave guards.
+        if (!canEnterView(route, ctx)) return reactView(AccessDeniedView)(ctx);
+        const pending = route.editor ? { path: router.currentPath() } : null;
+        pendingEditorRoute = pending;
+        try {
+            const mod = await route.load();
+            if (router.navigationToken() !== token) return null;
+            // Permission state can change while a cold view module is downloading.
+            if (!canEnterView(route, ctx)) return reactView(AccessDeniedView)(ctx);
+            return reactView(route.pick(mod))(ctx);
+        } finally {
+            if (pendingEditorRoute === pending) pendingEditorRoute = null;
+        }
     };
+}
+
+function editorDrafts() {
+    return (['channel', 'alert'] as const).map(kind => {
+        const key = kind === 'channel' ? 'editingChannel' : 'editingAlert';
+        const model = store.getState(key);
+        const unsaved = !!model && (store.getState(key + 'Dirty') === true
+            || (kind === 'channel' ? isNewChannelDraft(model) : isNewAlertDraft(model)));
+        return { kind, key, model, unsaved };
+    });
+}
+
+type EditorDraft = ReturnType<typeof editorDrafts>[number];
+let draftPrompt: { models: any[]; displaced: EditorDraft[]; promise: Promise<boolean>; close: () => void } | null = null;
+
+function confirmDiscardDrafts(drafts: EditorDraft[], displaced: EditorDraft[]) {
+    if (draftPrompt && drafts.every((draft, i) => draft.model === draftPrompt!.models[i])
+        && displaced.length === draftPrompt.displaced.length
+        && displaced.every((draft, i) => draft.key === draftPrompt!.displaced[i].key)) return draftPrompt.promise;
+    draftPrompt?.close();
+    let resolve!: (discard: boolean) => void;
+    const promise = new Promise<boolean>(done => { resolve = done; });
+    const dialog = modal({
+        title: 'Unsaved changes',
+        body: h('div', `You have unsaved ${displaced.map(draft => draft.kind).join(' and ')} changes. Discard them before continuing?`),
+        onClose: () => resolve(false),
+        buttons: [
+            { label: 'Cancel', onClick: () => resolve(false) },
+            { label: 'Discard Changes', danger: true, onClick: () => resolve(true) },
+        ],
+    });
+    const pending = { models: drafts.map(draft => draft.model), displaced, promise, close: () => dialog.close() };
+    draftPrompt = pending;
+    void promise.then(() => { if (draftPrompt === pending) draftPrompt = null; });
+    return promise;
+}
+
+// In-flow handoffs retain the model while unmounting the source guard. A denied
+// or still-loading destination must not leave that draft free to be overwritten.
+async function guardRetainedDrafts(ctx: any): Promise<boolean | string | void> {
+    const route = VIEW_ROUTES.find(candidate => candidate.meta === ctx.meta);
+    const drafts = editorDrafts();
+    const displaced = drafts.filter(draft => {
+        if (!draft.unsaved) return false;
+        if (route?.editor !== draft.kind || !draft.model?.id) return true;
+        const id = ctx.params[draft.kind + 'Id'];
+        const valid = draft.kind === 'channel' ? draft.model.sourceConnector : draft.model.trigger;
+        if (!valid) return true;
+        // Denial still retains this model; lazyView remains the permission gate.
+        if (route.wizard && (!id || id === 'new')) return ctx.query.fresh === '1';
+        return String(draft.model.id) !== id;
+    });
+    if (!displaced.length) { draftPrompt?.close(); return; }
+    const token = router.navigationToken();
+    const pending = pendingEditorRoute;
+    let assertSession: () => void;
+    try { assertSession = captureEngineSession(); } catch { return false; }
+    const discard = await confirmDiscardDrafts(drafts, displaced);
+    const expected = new Map(drafts.map(draft => [draft.key, draft.model]));
+    const expectedUnsaved = new Map(drafts.map(draft => [draft.key, draft.unsaved]));
+    const current = () => {
+        try { assertSession(); } catch { return false; }
+        return router.navigationToken() === token && !store.getState('editorSave')
+            && editorDrafts().every(draft => draft.model === expected.get(draft.key)
+                && draft.unsaved === expectedUnsaved.get(draft.key));
+    };
+    if (!current()) return false;
+    // Cancel supersedes the previous lazy navigation too. Restart that accepted
+    // handoff so its eventual import can mount the retained model, not a blank outlet.
+    if (!discard) return pending?.path || false;
+    for (const draft of displaced) {
+        expected.set(draft.key, null);
+        expectedUnsaved.set(draft.key, false);
+        store.setState(draft.key, null);
+        // Store subscribers run synchronously and may install another model or
+        // end the session. Consent never applies to that replacement's flags.
+        if (!current()) return false;
+        store.setState(draft.key + 'New', false);
+        if (!current()) return false;
+        store.setState(draft.key + 'Dirty', false);
+        if (!current()) return false;
+    }
 }
 
 /*
@@ -175,10 +313,12 @@ function registerCommands(plat: any) {
        palette offers the route it can honestly navigate to and says which it is. */
     plat.registerCommand({ id: 'new-channel', label: 'New Channel (Wizard)', icon: 'plus',
         section: 'Create', order: 0, task: 'doNewChannel', rbac: 'channel',
-        keywords: 'create add channel', path: '/channels/new/guided' });
+        permissions: NEW_CHANNEL_TASKS,
+        keywords: 'create add channel', path: '/channels/new/guided?fresh=1' });
     plat.registerCommand({ id: 'new-alert', label: 'New Alert (Wizard)', icon: 'plus',
         section: 'Create', order: 1, task: 'doNewAlert', rbac: 'alert',
-        keywords: 'create add alert', path: '/alerts/new/guided' });
+        permissions: NEW_ALERT_TASKS,
+        keywords: 'create add alert', path: '/alerts/new/guided?fresh=1' });
 
     BUILTIN_SETTINGS_LABELS.forEach((label, i) => plat.registerCommand({
         id: 'settings-' + settingsTabId(label), label: 'Settings: ' + label, icon: 'settings', section: 'Settings',
@@ -198,7 +338,7 @@ function registerCommands(plat: any) {
 function registerViewRoutes(plat: any) {
     for (const route of VIEW_ROUTES) {
         if (route.nav) plat.registerNavItem(route.nav);
-        plat.registerView(route.path, lazyView(route.load, route.pick), route.meta);
+        plat.registerView(route.path, lazyView(route), route.meta);
     }
     for (const action of OTHER_ACTIONS) plat.registerNavItem(action);
     registerCommands(plat);
@@ -255,7 +395,11 @@ function startEngine() {
         router.setGuard(async (ctx: any) => {
             if (store.getState('editorSave')) return false;
             const guard = store.getState('navGuard');
-            if (typeof guard === 'function') return await guard(ctx);
+            if (typeof guard === 'function') {
+                draftPrompt?.close();
+                return await guard(ctx);
+            }
+            return await guardRetainedDrafts(ctx);
         });
 
         await loadPlugins();
@@ -753,9 +897,10 @@ function loginNotificationDialog(message: any) {
    engine's server id AND the signed-in user, so a different engine — or a different
    user on the same browser — keeps them separate. Runs before the authed shell
    (and its views) render. */
-async function establishPrefScope(user: any) {
+async function establishPrefScope(user: any, assertSession: () => void) {
     let id: any = null;
     try { id = await api.server.id(); } catch { /* fall back to the un-scoped key */ }
+    assertSession();
     store.setPrefScope(id, user && user.id);
     store.reapplyScopedSettings();
     // Density and the typeface pair live in the prefs store, so they can only be
@@ -958,50 +1103,65 @@ export function App() {
     };
 
     const onLoginSuccess = async (u: any, { graceMessage = null, notify = true }: { graceMessage?: string | null; notify?: boolean } = {}) => {
-        // Login notification + consent (Swing LoginPanel.handleSuccess): when the
-        // server requires it, the user must accept the message before entering;
-        // declining logs them back out.
-        if (notify) try {
-            const pub = await api.server.publicSettings();
-            const enabled = pub && (pub.loginNotificationEnabled === true || pub.loginNotificationEnabled === 'true');
-            if (enabled && String(pub.loginNotificationMessage ?? '').trim()) {
-                const accepted = await loginNotificationDialog(pub.loginNotificationMessage);
-                if (!accepted) {
-                    await api.auth.logout().catch(() => {});
-                    // Inline on the login screen, like the other reasons we send someone back.
-                    store.setState('loginNotice', 'Sign-in canceled — the notification must be accepted to continue.');
-                    return;
-                }
-                if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
-            }
-        } catch { /* public settings unavailable — don't block login */ }
-        store.setState('navGuard', null);
-        // First-login wizard (Swing FirstLoginDialog): prompt for a password +
-        // profile when the engine's "firstlogin" user preference is set. Fails
-        // open internally, but guard here too so it can never block sign-in.
-        let welcomed = true;
-        try { welcomed = await maybeShowWelcome(u); } catch { /* never block login on the welcome wizard */ }
-        if (!welcomed && !isSsoSession()) {
-            await api.auth.logout().catch(() => {});
-            store.setState('loginNotice', 'Sign-in canceled — set a new password to continue.');
-            return;
-        }
-        await establishPrefScope(u);   // scope prefs/theme to server+user before the shell renders
-        // AFTER the awaits above, not before: they make engine calls, and a 401
-        // among them fires the expiry listeners while `user` is still null — so
-        // dropToLogin early-returns and nothing clears the latch it just set.
-        // Resetting first would leave that latch armed forever, and it is shared
-        // with ENGINE_UNKNOWN, so every later expiry AND every later 421 would be
-        // silently discarded: a fully rendered shell whose every request fails and
-        // which never returns the user to the login screen.
+        // A successful credential check is only the start of this operation.
+        // Welcome can outlive its session while store.user is still null, when
+        // the ordinary shell expiry handler deliberately does nothing.
+        const assertEngine = captureEngineSession();
+        // A previous session may already have fired the one-shot expiry event.
+        // This authenticated attempt needs its own notification before setup.
         resetSessionExpired();
-        setIdleLocked(false);
-        store.setState('user', u);
-        // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
-        // accepted but the password is expiring — the engine's message says when.
-        if (graceMessage != null) {
-            openChangePasswordModal(u, { message: graceMessage || 'Your password is expiring soon.' });
-        }
+        let sessionEnded = false;
+        const offExpired = onSessionExpired(() => { sessionEnded = true; });
+        const offEngine = onEngineUnknown(() => { sessionEnded = true; });
+        const assertSession = () => {
+            assertEngine();
+            if (sessionEnded) throw new Error('Your session ended — please sign in again.');
+        };
+        try {
+            // Login notification + consent (Swing LoginPanel.handleSuccess): when the
+            // server requires it, the user must accept the message before entering;
+            // declining logs them back out.
+            if (notify) try {
+                const pub = await api.server.publicSettings();
+                assertSession();
+                const enabled = pub && (pub.loginNotificationEnabled === true || pub.loginNotificationEnabled === 'true');
+                if (enabled && String(pub.loginNotificationMessage ?? '').trim()) {
+                    const accepted = await loginNotificationDialog(pub.loginNotificationMessage);
+                    assertSession();
+                    if (!accepted) {
+                        await api.auth.logout().catch(() => {});
+                        assertSession();
+                        // Inline on the login screen, like the other reasons we send someone back.
+                        store.setState('loginNotice', 'Sign-in canceled — the notification must be accepted to continue.');
+                        return;
+                    }
+                    if (u && u.id != null) api.users.acknowledgeNotification(u.id).catch(() => {});
+                }
+            } catch { assertSession(); /* public settings unavailable — don't block login */ }
+            store.setState('navGuard', null);
+            // First-login wizard (Swing FirstLoginDialog): prompt for a password +
+            // profile when the engine's "firstlogin" user preference is set. Fails
+            // open internally, but guard here too so it can never block sign-in.
+            let welcomed = true;
+            try { welcomed = await maybeShowWelcome(u, assertSession); } catch { /* never block login on the welcome wizard */ }
+            assertSession();
+            if (!welcomed && !isSsoSession()) {
+                await api.auth.logout().catch(() => {});
+                assertSession();
+                store.setState('loginNotice', 'Sign-in canceled — set a new password to continue.');
+                return;
+            }
+            // Scope prefs/theme only while this login still owns the session.
+            await establishPrefScope(u, assertSession);
+            assertSession();
+            setIdleLocked(false);
+            store.setState('user', u);
+            // Password grace period (Swing LoginPanel → ChangePasswordDialog): login was
+            // accepted but the password is expiring — the engine's message says when.
+            if (graceMessage != null) {
+                openChangePasswordModal(u, { message: graceMessage || 'Your password is expiring soon.' });
+            }
+        } finally { offExpired(); offEngine(); }
 
     };
 
@@ -1012,7 +1172,8 @@ export function App() {
     useEffect(() => {
         const onBeforeUnload = (e: any) => {
             if (!store.getState('user')) return;
-            if (store.getState('editorSave') || store.getState('editingChannelDirty') || store.getState('editingAlertDirty') || hasUnsavedWork()) {
+            if (store.getState('editorSave') || store.getState('editingChannelDirty') || store.getState('editingAlertDirty')
+                || editorDrafts().some(draft => draft.unsaved) || hasUnsavedWork()) {
                 e.preventDefault();
                 e.returnValue = '';
             }

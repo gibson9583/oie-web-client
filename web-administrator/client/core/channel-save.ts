@@ -96,6 +96,11 @@ export function channelEditState(channel: any, isNew = false): EditState {
     return state;
 }
 
+/** Read draft provenance without letting a route/query initialize a session. */
+export function isNewChannelDraft(channel: object): boolean {
+    return sessions.get(channel)?.isNew === true;
+}
+
 function modifiedTime(channel: any): number {
     const modified = channel?.exportData?.metadata?.lastModified;
     return modified == null ? NaN : Number(modified.time ?? modified);

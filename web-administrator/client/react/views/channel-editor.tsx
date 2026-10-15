@@ -58,6 +58,7 @@ import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { publishChannelLibrarySelection, usePaletteContext } from '../palette-context.js';
 
 const INITIAL_STATES = ['STARTED', 'PAUSED', 'STOPPED'];
 
@@ -960,6 +961,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                             const saved = await persistLibraryAssociations(channel, libState, version, confirmLibraryOverwrite);
                             if (!isCurrent() || !saved) return false;
                             pending.libraries.current = copyLibrarySelection(libState.current);
+                            publishChannelLibrarySelection(channel, pending.libraries.current.checked);
                             toast('Code template libraries saved');
                         }
 
@@ -985,6 +987,7 @@ async function openDependenciesModal(channel: any, version: any, markDirty: any)
                         // even when a later confirmation or request fails.
                         pending.dependencies.current = copyDependencySelection(depState.current);
                         pending.libraries.current = copyLibrarySelection(libState.current);
+                        publishChannelLibrarySelection(channel, pending.libraries.current.checked);
                         if (resChanged) markDirty();
                     } catch (e: any) {
                         if (isCurrent()) toast(e.message, 'error');
@@ -2562,7 +2565,7 @@ function ScriptsTab({ channel, markDirty }: any) {
 
 /* ---- the editor body ---------------------------------------------------------- */
 
-function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
+function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     /* ---- one-time setup: working model + save baseline ---- */
     const setupRef = useRef<any>(null);
     if (!setupRef.current) {
@@ -2570,7 +2573,7 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
         setupRef.current = {
             channel,
             version: channel['@version'] || store.getState('serverVersion') || '4.5.2',
-            get isNew() { return channelEditState(channel, query.new === '1' || store.getState('editingChannelNew') === true).isNew; },
+            get isNew() { return channelEditState(channel).isNew; },
             // Tags cache shared by the Summary field and save().
             tagState: { loaded: false, available: false, all: [], assigned: new Set(), initial: new Set() }
         };
@@ -2584,6 +2587,12 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     const setup = setupRef.current;
     const { channel, version, tagState } = setup;
     const isNewRef = { get current() { return setup.isNew; } };
+    usePaletteContext({
+        kind: 'channel', surface: 'editor',
+        channelIds: setup.isNew ? [] : [channel.id],
+        channels: setup.isNew ? [] : [channel],
+        librarySelection: channelDependencyState(channel).libraries.current?.checked
+    });
 
     const [, bumpRev] = useReducer((x: any) => x + 1, 0);
     const [activeTab, setActiveTabState] = useState('Summary');
@@ -2770,13 +2779,14 @@ function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
             const saved = await persistChannelEdits(channel);
             if (!isCurrent() || !saved) return false;
             store.setState('editingChannelDirty', false);
-            onTasksChange();
-            bumpRev();
             toast(`Saved ${channel.name}`);
             return true;
         } catch (e: any) {
             if (isCurrent()) toast(e.message, 'error');
             return false;
+        } finally {
+            // Creation may succeed before a related dependency write fails.
+            if (isCurrent() && mountedRef.current) { onTasksChange(); bumpRev(); }
         }
     }
 

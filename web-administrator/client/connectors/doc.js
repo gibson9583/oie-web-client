@@ -96,11 +96,20 @@ const CONVERSION = {
     TWIPS: { INCHES: 1 / 1440, MM: 25.4 / 1440, TWIPS: 1 }
 };
 const convertTo = (value, from, to) => (CONVERSION[from]?.[to] ?? 1) * value;
+// Recognize complete Java decimal literals, including Double.parseDouble's
+// optional f/d suffix and surrounding ASCII whitespace. Partial expressions and
+// JavaScript-only hex, binary and octal integers must not match a page preset.
+const decimalDimension = (value) => {
+    const text = String(value ?? '');
+    const match = /^[\x00-\x20]*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)[fFdD]?[\x00-\x20]*$/.exec(text);
+    // JS's $ can match before a final non-ASCII line separator, which Java rejects.
+    return match && match[0] === text ? Number(match[1]) : NaN;
+};
 // updatePageSizeComboBox(): the preset reflecting the current width/height/unit, or
 // 'CUSTOM' when none matches (CUSTOM only appears in this case).
 const matchingPreset = (p) => {
-    const width = Number.parseFloat(p.pageWidth);
-    const height = Number.parseFloat(p.pageHeight);
+    const width = decimalDimension(p.pageWidth);
+    const height = decimalDimension(p.pageHeight);
     const unit = String(p.pageUnit ?? 'INCHES');
     if (!Number.isFinite(width) || !Number.isFinite(height))
         return 'CUSTOM';
@@ -117,18 +126,21 @@ const scale2Down = (value) => (Math.trunc(value * 100) / 100).toFixed(2);
  * 'Page Size:' label (DocumentWriter.initLayout add(..., "split 5")). The preset
  * combo is a non-persisted convenience that two-way-binds to pageWidth/pageHeight/
  * pageUnit (pageSizeComboBoxActionPerformed). */
-function pageSizeRow(p, { onChange }) {
+function pageSizeRow(p, onChange) {
+    // Notify the channel directly; ConnectorForm's notification would replace
+    // this custom DOM row on every keystroke and discard focus/the selection.
+    const notify = () => { syncPreset(); onChange(); };
     const widthField = h('input', {
         type: 'text', value: p.pageWidth ?? '', class: 'w-[49px]', 'data-fkey': 'pageWidth',
-        onInput: (e) => { p.pageWidth = e.target.value; onChange(); }
+        onInput: (e) => { p.pageWidth = e.target.value; notify(); }
     });
     const heightField = h('input', {
         type: 'text', value: p.pageHeight ?? '', class: 'w-[49px]', 'data-fkey': 'pageHeight',
-        onInput: (e) => { p.pageHeight = e.target.value; onChange(); }
+        onInput: (e) => { p.pageHeight = e.target.value; notify(); }
     });
     const unitField = select(PAGE_UNITS, p.pageUnit ?? 'INCHES', {
         class: 'w-[81px]',
-        onChange: (e) => { p.pageUnit = e.target.value; onChange(); }
+        onChange: (e) => { p.pageUnit = e.target.value; notify(); }
     });
     const current = matchingPreset(p);
     const presetOptions = PAGE_SIZES.map((ps) => ({ value: ps.name, label: ps.name }));
@@ -141,10 +153,22 @@ function pageSizeRow(p, { onChange }) {
                 p.pageWidth = scale2Down(ps.width);
                 p.pageHeight = scale2Down(ps.height);
                 p.pageUnit = ps.unit;
-                onChange();
+                widthField.value = p.pageWidth;
+                heightField.value = p.pageHeight;
+                unitField.value = p.pageUnit;
+                notify();
             }
         }
     });
+    function syncPreset() {
+        const current = matchingPreset(p);
+        const custom = Array.from(presetField.options).find(option => option.value === 'CUSTOM');
+        if (current === 'CUSTOM' && !custom)
+            presetField.appendChild(h('option', { value: 'CUSTOM' }, 'Custom'));
+        else if (current !== 'CUSTOM')
+            custom?.remove();
+        presetField.value = current;
+    }
     return h('div', { class: 'flex items-center gap-1.5' }, widthField, h('span', '×'), heightField, unitField, presetField);
 }
 const documentWriter = {
@@ -194,7 +218,7 @@ const documentWriter = {
                 // Password is greyed when Encrypted=No, including under RTF (which calls
                 // encryptedNoActionPerformed and disables the Encrypted radio).
                 { key: 'password', label: 'Password', type: 'password', width: '124px', disabled: (p) => isRtf(p) || !asBool(p.encrypt) },
-                { label: 'Page Size', type: 'custom', render: pageSizeRow },
+                { label: 'Page Size', type: 'custom', render: (p) => pageSizeRow(p, onChange) },
                 { key: 'template', label: 'HTML Template', type: 'code', language: 'html', minHeight: '260px' }
             ] }));
     },

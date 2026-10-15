@@ -20,7 +20,9 @@ reporting a problem.
 
 ## Command palette
 
-Press **Ctrl+K** or **⌘K** to search registered views, channels, and commands.
+Press **Ctrl+K** or **⌘K** to search registered views, channels, templates, and commands.
+
+With an empty search, **Suggested** offers destinations related to your current content, above the separate **Recent** section. From a channel's messages, jump to its editor or linked code template libraries and templates. From an editor, jump to that channel's messages. Selections in Dashboard (including Cards), Channels, and Code Templates provide related destinations too. Template links select the exact library or template, and navigation keeps the usual unsaved-change prompts.
 
 ![Command palette](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/command-palette.png)
 

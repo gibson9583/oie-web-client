@@ -1,6 +1,10 @@
 /*
  * TCP Listener (TcpReceiverProperties) / TCP Sender (TcpDispatcherProperties).
  *
+ * Ports are strings resolved by the engine's ValueReplacer. Keep them as text
+ * inputs so Velocity expressions can be displayed, edited and saved intact.
+ * Timeouts, buffer sizes and connection counts remain numeric inputs.
+ *
  * React port: def.render(host, ctx) -> def.component(ctx) => JSX. Field schemas
  * and defaults reused VERBATIM. The transmission-mode block (a plugin point:
  * Basic built-in + MLLP plugin) is the React <TransmissionModePanel>; the
@@ -71,7 +75,7 @@ const tcpListener = {
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
                     { section: 'Listener Settings' },
                     listenerAddressField('listenerConnectorProperties.host', 'Local Address'),
-                    { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', width: '90px', append: () => portsInUseButton() }
+                    { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'text', width: '200px', append: () => portsInUseButton() }
                 ]} />
                 <TransmissionModePanel properties={properties} onChange={onChange} />
                 <ConnectorForm properties={properties} onChange={onChange} fields={[
@@ -81,7 +85,7 @@ const tcpListener = {
                         { value: false, label: 'Client' }
                     ] },
                     { key: 'remoteAddress', label: 'Remote Address', type: 'text', width: '200px', disabled: serverMode },
-                    { key: 'remotePort', label: 'Remote Port', type: 'number', width: '90px', disabled: serverMode },
+                    { key: 'remotePort', label: 'Remote Port', type: 'text', width: '200px', disabled: serverMode },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, disabled: serverMode },
                     { key: 'reconnectInterval', label: 'Reconnect Interval (ms)', type: 'number', width: '90px', disabled: serverMode },
                     { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
@@ -107,7 +111,7 @@ const tcpListener = {
                         ]
                     },
                     { key: 'responseAddress', label: 'Response Address', type: 'text', width: '200px', disabled: (p: any) => Number(p.respondOnNewConnection) === 0 },
-                    { key: 'responsePort', label: 'Response Port', type: 'number', width: '90px', disabled: (p: any) => Number(p.respondOnNewConnection) === 0 }
+                    { key: 'responsePort', label: 'Response Port', type: 'text', width: '200px', disabled: (p: any) => Number(p.respondOnNewConnection) === 0 }
                 ]} />
             </div>
         );
@@ -184,11 +188,11 @@ const tcpSender = {
                         // Test Connection greys in Server mode (TcpSender.modeServerRadioActionPerformed).
                         append: (p: any) => connectorTestButton({ path: '/connectors/tcp/_testConnection', channel, properties, disabled: serverMode(p) })
                     },
-                    { key: 'remotePort', label: 'Remote Port', type: 'number', width: '90px', disabled: serverMode },
+                    { key: 'remotePort', label: 'Remote Port', type: 'text', width: '200px', disabled: serverMode },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
                     { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: localBindingDisabled },
                     // Ports in Use follows the Local Port field: on in Server mode or Client+Override.
-                    { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', append: (p: any) => portsInUseButton({ disabled: localBindingDisabled(p) }), disabled: localBindingDisabled },
+                    { key: 'localPort', label: 'Local Port', type: 'text', width: '200px', append: (p: any) => portsInUseButton({ disabled: localBindingDisabled(p) }), disabled: localBindingDisabled },
                     { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p: any) => !asBool(p.serverMode) },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
                     { key: 'checkRemoteHost', label: 'Check Remote Host', type: 'radio', options: YES_NO, disabled: sendDisabled },

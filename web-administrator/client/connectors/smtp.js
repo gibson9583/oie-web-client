@@ -110,11 +110,11 @@ const smtpSender = {
             React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
                     { section: 'Connection Settings' },
                     { key: 'smtpHost', label: 'SMTP Host', type: 'text', width: '200px', append: () => connectorTestButton({ label: 'Send Test Email', icon: 'mail', path: '/connectors/smtp/_sendTestEmail', channel, properties }) },
-                    { key: 'smtpPort', label: 'SMTP Port', type: 'number', width: '90px' },
+                    { key: 'smtpPort', label: 'SMTP Port', type: 'text', width: '200px' },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, refresh: true },
                     { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: (p) => !usingLocalBinding(p) },
-                    { key: 'localPort', label: 'Local Port', type: 'number', width: '90px', disabled: (p) => !usingLocalBinding(p) },
-                    { key: 'timeout', label: 'Send Timeout (ms)', type: 'number', width: '120px' },
+                    { key: 'localPort', label: 'Local Port', type: 'text', width: '200px', disabled: (p) => !usingLocalBinding(p) },
+                    { key: 'timeout', label: 'Send Timeout (ms)', type: 'text', width: '200px' },
                     { key: 'encryption', label: 'Encryption', type: 'radio', options: [
                             { value: 'none', label: 'None' },
                             { value: 'TLS', label: 'STARTTLS' },

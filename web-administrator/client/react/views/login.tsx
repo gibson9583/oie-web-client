@@ -11,7 +11,7 @@
  */
 import { getLoginAuthenticator } from '../../core/login-auth.js';
 import { appUrl } from '../../core/deployment.js';
-import { markSsoSession, markSsoPending, hasSsoPending, takeSsoPending, takeAutoRedirectHold } from '../sso-session.js';
+import { markSsoSession, clearSsoSession, markSsoPending, hasSsoPending, takeSsoPending, takeAutoRedirectHold } from '../sso-session.js';
 import { currentRoutePath, routeUrl } from '../../core/deployment.js';
 
 import { useState, useRef, useEffect } from 'react';
@@ -367,6 +367,11 @@ export function LoginForm({ onSuccess }: any) {
             // A successful explicit login may reload to refresh plugin permissions
             // before App.onLoginSuccess runs. Permit that authenticated boot.
             setIdleLocked(false);
+            // Each authenticated attempt replaces the previous session's mode,
+            // including an SSO attempt that ended before the shell could open.
+            // Record it before either reload path so a local account cannot
+            // inherit SSO's Welcome exemption or hidden password controls.
+            if (opts.sso) markSsoSession(); else clearSsoSession();
             const status = result?.status || result;
             const graceMessage = status === 'SUCCESS_GRACE_PERIOD' ? String(result?.message || '') : null;
             // Plugins are discovered once per page load, from the connected engine,
@@ -382,13 +387,8 @@ export function LoginForm({ onSuccess }: any) {
             if (opts.returnPath && opts.returnPath !== '/') {
                 try { history.replaceState(null, '', routeUrl(opts.returnPath)); } catch { /* ignore */ }
             }
-            // Remember HOW this session began: without the mark the account menu
-            // offers an SSO user a Change Password that SSO never consults. Marked
-            // only once the session is proven, and before any reload — the mark
-            // lives in sessionStorage and survives one.
-            if (loaded != null && loaded !== newKey) { if (opts.sso) markSsoSession(); reloadToFinishLogin(graceMessage); return; }
+            if (loaded != null && loaded !== newKey) { reloadToFinishLogin(graceMessage); return; }
             const user = await api.auth.current();
-            if (opts.sso) markSsoSession();
             if (reloadForFreshPermissions(graceMessage)) return;
             await onSuccess(user, { graceMessage });
         };

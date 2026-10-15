@@ -11,7 +11,7 @@
  * '@version' and unknown keys are always preserved.
  */
 
-import { useReducer } from 'react';
+import { useReducer, useState } from 'react';
 import { toast, modal, pickFile, createCodeEditor } from '@oie/web-ui';
 import { validateScript } from '../core/serialize.js';
 import { dataTypeDef } from './index.js';
@@ -84,35 +84,50 @@ function Field({ label, hint, children }: any) {
     );
 }
 
+function ListControl({ groupObj, f, notify }: any) {
+    const [draft, setDraft] = useState<{
+        group: any; field: any; value: any; modelText: string; text: string;
+    } | null>(null);
+    const value = groupObj[f.key];
+    const item = f.item === 'int' ? 'int' : 'string';
+    const modelText = dataTypeListText(value, item);
+    // Keep incomplete typing (e.g. "10,") separate from the normalized wire
+    // value. A replacement model/schema or an in-place list edit wins over it.
+    const text = draft && draft.group === groupObj && draft.field === f
+        && draft.value === value && draft.modelText === modelText ? draft.text : modelText;
+    const error = normalizeDataTypeList(value, item, f.xmlNames).error;
+    return (
+        <Field label={f.label} hint={f.hint}>
+            <input type="text" aria-label={f.label} data-datatype-key={f.key}
+                value={text} aria-invalid={!!error}
+                className={error ? 'cform-invalid' : undefined}
+                onChange={(e: any) => {
+                    const text = e.target.value;
+                    const result = normalizeDataTypeList(text, item, f.xmlNames);
+                    if (!result.error && result.value === undefined) delete groupObj[f.key];
+                    else {
+                        // Read at action time; preserve wire attributes/unknown children.
+                        const current = groupObj[f.key];
+                        const previous = current && typeof current === 'object' && !Array.isArray(current) ? current : {};
+                        groupObj[f.key] = { ...previous, [item]: result.error ? text : result.value![item] };
+                    }
+                    const next = groupObj[f.key];
+                    setDraft({ group: groupObj, field: f, value: next, modelText: dataTypeListText(next, item), text });
+                    notify();
+                }} />
+            {error && <div className="hint" role="alert">{error}</div>}
+        </Field>
+    );
+}
+
 // One grouped field; mutates groupObj[f.key] in place, then notifies (which
 // re-renders so the controlled input reflects + fires the host onChange). The
 // null/number/boolean coercions match the imperative editor verbatim.
 function FieldControl({ groupObj, f, notify, channelId }: any) {
     const value = groupObj[f.key];
     switch (f.type) {
-        case 'list': {
-            const item = f.item === 'int' ? 'int' : 'string';
-            const error = normalizeDataTypeList(value, item, f.xmlNames).error;
-            return (
-                <Field label={f.label} hint={f.hint}>
-                    <input type="text" aria-label={f.label} data-datatype-key={f.key}
-                        value={dataTypeListText(value, item)} aria-invalid={!!error}
-                        className={error ? 'cform-invalid' : undefined}
-                        onChange={(e: any) => {
-                            const text = e.target.value;
-                            const result = normalizeDataTypeList(text, item, f.xmlNames);
-                            if (!result.error && result.value === undefined) delete groupObj[f.key];
-                            else {
-                                // Keep wire attributes/unknown children when editing a loaded array.
-                                const previous = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-                                groupObj[f.key] = { ...previous, [item]: result.error ? text : result.value![item] };
-                            }
-                            notify();
-                        }} />
-                    {error && <div className="hint" role="alert">{error}</div>}
-                </Field>
-            );
-        }
+        case 'list':
+            return <ListControl groupObj={groupObj} f={f} notify={notify} />;
         case 'checkbox':
             return (
                 <label className="check" title={f.hint || undefined}>

@@ -165,9 +165,16 @@ for (const kind of ['known', 'declared'] as const) {
 
 test('a successfully installed controller still denies a throwing checkTask', async ({ page }) => {
     await provider(page, { source: 'export function register(p) { p.setAuthorizationController({ checkTask() { throw new Error("check failed"); } }); }' });
+    let dashboardRequests = 0;
+    await page.route('**/api/channels/statuses*', route => {
+        dashboardRequests++;
+        return route.fulfill({ json: [] });
+    });
     await page.goto('/dashboard');
-    await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Access denied', exact: true })).toBeVisible();
+    await expect(page.getByText('Demo Started', { exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toHaveCount(0);
+    expect(dashboardRequests).toBe(0);
     expect(await permitted(page)).toBe(false);
 });
 
