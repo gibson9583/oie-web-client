@@ -30,6 +30,7 @@ export function register() {
 - `platform.registerChannelTab(...)`, `platform.registerAttachmentViewer(...)`, `platform.registerStepType(...)` / `registerRuleType(...)`, `platform.registerResourceType(...)`
 - `platform.registerReferences(category, items)` / `platform.references()` — add Reference/autocomplete entries and inspect plugin registrations (API 4.8)
 - `platform.registerCodeTemplateType(id, definition)` / `platform.codeTemplateTypes()` — custom code-template properties, editors, supported contexts, and optional language validation (API 4.10). Stored classes select the editor; missing plugins preserve templates read-only. See the [API 4.10 contract](../../web-administrator/PLUGINS.md#api-410-plugin-contracts).
+- `platform.registerEditorLanguage(id, provider)` — load a plugin-owned editor language only when requested (API 4.10). The optional second `register(platform, context)` argument supplies `context.getAssetText(path)` for plugin-owned text assets, including authenticated engine assets in Node and WAR deployments.
 - `platform.store` / `platform.router` / `platform.events` — shared app state, routing, and the event bus
 
 ## Script references (API 4.8)
@@ -45,7 +46,7 @@ for plugin registrations across all contexts. Built-in catalog entries and
 channel code templates are not included. The array is a copy; treat its entries
 as read-only. Use an editor's `completionScope` to select its completion context.
 
-The framework implements API **4.9.0**, independently of the engine
+The framework implements API **4.10.0**, independently of the engine
 version. Script references remain available from API 4.8; declare
 `"oie": { "apiMin": "4.8" }` when using these additions. See
 [Script references](../../web-administrator/PLUGINS.md#script-references) and the

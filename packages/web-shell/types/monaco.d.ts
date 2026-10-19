@@ -16,7 +16,7 @@ export interface MonacoMountOptions {
     [extra: string]: any;
 }
 export declare function monacoFontFamily(): string;
-/** Python's grammar/configuration are fetched only when explicitly requested. */
+/** Plugin grammars load only when an editor explicitly requests their language. */
 export declare function ensureMonaco(language?: string): Promise<Monaco | null>;
 /** Dispose every Monaco editor whose host element has left the document.
     Runs on route changes automatically; the shell also calls it on sign-out,

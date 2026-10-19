@@ -1,6 +1,9 @@
 import { registerLoginAuthenticator } from './login-auth.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
+import { registerEditorLanguage } from './editor-languages.js';
+export type { EditorLanguageProvider, EditorLanguageDefinition } from './editor-languages.js';
+export type { PluginContext } from './plugin-assets.js';
 import { setAuthorizationController, checkTask } from './authorization.js';
 import type { Command } from './commands.js';
 import type { OieObject } from './wire-types.js';
@@ -349,6 +352,9 @@ export interface Platform {
     registerLoginAuthenticator: typeof registerLoginAuthenticator;
     createCodeEditor: typeof createCodeEditor;
     setCodeEditorFactory: typeof setCodeEditorFactory;
+    /** Register a plugin-owned language definition, loaded only when requested
+     * by createCodeEditor({ language: id }). Added in API 4.10. */
+    registerEditorLanguage: typeof registerEditorLanguage;
     /** Read-only side-by-side diff viewer backed by the host's single Monaco (degrades to plain panes). */
     createDiffEditor: typeof createDiffEditor;
     /** The shell's own React instance — author plugin components against this so every plugin shares one React (hooks/context work). */
@@ -409,4 +415,3 @@ export interface Platform {
 }
 export declare const platform: Platform;
 export declare function loadPlugins(): Promise<PluginManifest[]>;
-export {};

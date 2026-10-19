@@ -1,6 +1,76 @@
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 
+for (const deployment of ['node', 'war']) test(`${deployment} plugin context reads lazy text assets from the manifest root`, async ({ page }) => {
+    if (deployment === 'war') {
+        await page.route('**/dashboard', async route => {
+            const response = await route.fetch();
+            await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': "frame-ancestors 'none'" } });
+        });
+        await page.route('**/webadmin/config.json', route => route.fulfill({
+            json: { engines: [{ name: 'This OIE server' }], deployment: 'war' }
+        }));
+    }
+    const discovery = deployment === 'war' ? '/extensions/websupport/webplugins' : '/webplugins';
+    await mockEngine(page, {
+        ...(deployment === 'war' ? { 'GET /webplugins': { __status: 404 } } : {}),
+        [`GET ${discovery}`]: ['asset-folder'],
+        [`GET ${discovery}/asset-folder/plugin.json`]: {
+            id: 'different-manifest-id', version: '1.0.0', oie: { apiMin: '4.10' },
+            client: { entry: 'web/nested/plugin.js' }
+        }
+    });
+    await page.route(`**/api${discovery}/asset-folder/web/nested/plugin.js*`, route => route.fulfill({
+        contentType: 'text/javascript',
+        body: 'export function register(platform, context) { window.__assetContext = context; }'
+    }));
+    let requests = 0;
+    let headers: Record<string, string> = {};
+    await page.route(`**/api${discovery}/asset-folder/web/language.json`, route => {
+        requests++;
+        headers = route.request().headers();
+        return route.fulfill({ contentType: 'application/json', body: ' {"grammar":"plugin-owned"}\n' });
+    });
+    await page.goto('/dashboard');
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__assetContext?.getAssetText)).toBe('function');
+    expect(requests).toBe(0);
+    expect(await page.evaluate(() => (window as any).__assetContext.getAssetText('web/language.json'))).toBe(' {"grammar":"plugin-owned"}\n');
+    expect(requests).toBe(1);
+    expect(headers['x-requested-with']).toBe('OpenIntegrationEngine-WebAdmin');
+    expect(headers['x-oie-context']).toBeTruthy();
+    const escaping = await page.evaluate(() => (window as any).__assetContext.getAssetText('../other/language.json').catch((error: Error) => error.message));
+    expect(escaping).toMatch(/relative path/);
+    expect(requests).toBe(1);
+    const stale = await page.evaluate(async () => {
+        (await import(String('/core/engine-fetch.js'))).discardEngineResponses();
+        return (window as any).__assetContext.getAssetText('web/language.json').catch((error: Error) => error.message);
+    });
+    expect(stale).toMatch(/previous session/);
+    expect(requests).toBe(1);
+});
+
+test('bundled plugin context resolves text assets relative to plugin.json rather than the nested entry', async ({ page }) => {
+    await mockEngine(page);
+    await page.route('**/webadmin/plugins.json', route => route.fulfill({ json: [{
+        id: 'asset-local', version: '1.0.0', entry: '/plugins/asset-local/web/nested/plugin.js'
+    }] }));
+    await page.route('**/plugins/asset-local/web/nested/plugin.js*', route => route.fulfill({
+        contentType: 'text/javascript',
+        body: 'export function register(platform, context) { window.__assetContext = context; }'
+    }));
+    let requests = 0;
+    await page.route('**/plugins/asset-local/web/language.json', route => {
+        requests++;
+        expect(route.request().headers()['x-requested-with']).toBeUndefined();
+        return route.fulfill({ contentType: 'application/json', body: '{"local":true}' });
+    });
+    await page.goto('/dashboard');
+    await expect.poll(() => page.evaluate(() => typeof (window as any).__assetContext?.getAssetText)).toBe('function');
+    expect(requests).toBe(0);
+    expect(await page.evaluate(() => (window as any).__assetContext.getAssetText('web/language.json'))).toBe('{"local":true}');
+    expect(requests).toBe(1);
+});
+
 for (const extension of [false, true]) {
     test(`Web Support discovery retries a temporary ${extension ? 'extension' : 'native'} failure`, async ({ page }) => {
         let unavailable = true;

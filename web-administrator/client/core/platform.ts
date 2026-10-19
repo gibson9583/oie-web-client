@@ -5,7 +5,9 @@
  * plugins use, so a plugin can do anything a built-in view can. The plugin
  * entry module (declared in plugin.json → client.entry) must export:
  *
- *   export function register(platform) { ... }
+ *   export function register(platform, context) { ... }
+ *
+ * The optional context reads plugin-owned text assets from their manifest root.
  *
  * Extension points (mirroring com.mirth.connect.plugins.* on the Swing side):
  *   registerNavItem        — left rail entry             (ClientPlugin task panes)
@@ -39,6 +41,10 @@ import { registerLoginAuthenticator } from './login-auth.js';
 import * as columns from './columns.js';
 import { createCodeEditor, setCodeEditorFactory } from './codeeditor.js';
 import { createDiffEditor } from './diffeditor.js';
+import { registerEditorLanguage } from './editor-languages.js';
+import { createPluginContext } from './plugin-assets.js';
+export type { EditorLanguageProvider, EditorLanguageDefinition } from './editor-languages.js';
+export type { PluginContext } from './plugin-assets.js';
 import { setAuthorizationController, checkTask, blockAuthorization, beginAuthorizationDiscovery, beginAuthorizationRegistration, authorizationRegistration } from './authorization.js';
 import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
@@ -438,6 +444,9 @@ export interface Platform {
     registerLoginAuthenticator: typeof registerLoginAuthenticator;
     createCodeEditor: typeof createCodeEditor;
     setCodeEditorFactory: typeof setCodeEditorFactory;
+    /** Register a plugin-owned language definition, loaded only when requested
+     * by createCodeEditor({ language: id }). Added in API 4.10. */
+    registerEditorLanguage: typeof registerEditorLanguage;
     /** Read-only side-by-side diff viewer backed by the host's single Monaco (degrades to plain panes). */
     createDiffEditor: typeof createDiffEditor;
     /** The shell's own React instance — author plugin components against this so every plugin shares one React (hooks/context work). */
@@ -524,6 +533,7 @@ export const platform: Platform = {
     events: { on: store.on, emit: store.emit },
     createCodeEditor,
     setCodeEditorFactory,
+    registerEditorLanguage,
     // Read-only side-by-side diff viewer backed by the host's single Monaco
     // instance (core/diffeditor.ts). Plugins showing diffs use this so they
     // never bundle their own Monaco. Degrades to a plain two-pane view.
@@ -705,6 +715,7 @@ async function fetchEngineManifests(): Promise<PluginManifest[]> {
                 apiMin: m.oie && m.oie.apiMin ? String(m.oie.apiMin) : null,
                 entry,
                 source: 'engine',
+                assetBase: base,
                 authorization: m.authorization === true || m.id === 'rbac' || path === 'rbac'
             };
         } catch (e) {
@@ -782,6 +793,7 @@ async function loadPluginsOnce(assertSession: () => void): Promise<PluginManifes
     // and in a WAR context. Turn those into physical app URLs before import().
     manifests = manifests.map((manifest) => ({
         ...manifest,
+        assetBase: appUrl(`/plugins/${encodeURIComponent(manifest.id)}`),
         entry: manifest.entry && manifest.entry.startsWith('/plugins/')
             ? appUrl(manifest.entry)
             : manifest.entry
@@ -874,7 +886,7 @@ async function loadPluginsOnce(assertSession: () => void): Promise<PluginManifes
         if (typeof module.register === 'function') {
             const before = authorizationRegistration();
             try {
-                await module.register(platform);
+                await module.register(platform, createPluginContext(manifest.assetBase, manifest.source === 'engine', assertSession));
                 assertSession();
                 const after = authorizationRegistration();
                 if (isAuthorization(manifest) && (!after.registered || after.revision === before.revision)) {

@@ -36,7 +36,7 @@ const editorBody = source.slice(source.indexOf('export class CodeEditor'), sourc
 const Editor = new Function('h', `${editorBody}\nreturn CodeEditor;`)(() => new Element());
 
 test('the factory requests only the editor language and carries it through the delayed upgrade', async () => {
-    for (const language of [undefined, 'javascript', 'python']) {
+    for (const language of [undefined, 'javascript', 'sample-plugin']) {
         const loaded = Promise.resolve({});
         let requested, mounted;
         const factory = new Function('CodeEditor', 'ensureMonaco', 'mountMonaco',
@@ -49,13 +49,15 @@ test('the factory requests only the editor language and carries it through the d
     }
 });
 
-test('Python fallback uses four-space indentation in standard and literal input modes', () => {
+test('fallback honors plugin indentation in standard and literal input modes', () => {
     for (const literalInput of [false, true]) {
-        const editor = new Editor({ language: 'python', value: '', literalInput });
-        editor.handleKey({ key: 'Tab', preventDefault() {} });
-        assert.equal(editor.getValue(), '    ');
-        editor.handleKey({ key: 'Tab', shiftKey: true, preventDefault() {} });
-        assert.equal(editor.getValue(), '');
+        for (const tabSize of [2, 4, 8]) {
+            const editor = new Editor({ language: 'sample-plugin', value: '', literalInput, tabSize, insertSpaces: true });
+            editor.handleKey({ key: 'Tab', preventDefault() {} });
+            assert.equal(editor.getValue(), ' '.repeat(tabSize));
+            editor.handleKey({ key: 'Tab', shiftKey: true, preventDefault() {} });
+            assert.equal(editor.getValue(), '');
+        }
     }
 });
 

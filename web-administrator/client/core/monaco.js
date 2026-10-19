@@ -22,13 +22,12 @@ import { formatScript, serializeTemplate } from './serialize.js';
 import { hl7Encoding, tokenizeHl7Line, hl7Tooltip, hl7FieldName } from './content-highlight.js';
 import { getActiveCompletions, getActiveLibs, onActiveLibsChange, getActiveReferences, referenceSignature, dropTextFor, cleanDesc, setActiveScope, clearActiveScope, currentScope, activeScope } from './script-completions.js';
 import { appUrl } from './deployment.js';
+import { ensureEditorLanguage } from './editor-languages.js';
 // Where the server serves the vendored Monaco worker bundles. The editor bundle
 // itself is imported via the 'monaco-editor' specifier (import map / Vite).
 const MONACO_VENDOR = appUrl('/vendor/monaco');
 const LOAD_TIMEOUT_MS = 10000;
 let loadPromise = null;
-let pythonPromise = null;
-let pythonAttempt = 0;
 /* The data-font preference rides --font-mono (core/store.ts setFontMono).
    Monaco measures glyphs from a concrete family list and cannot consume the
    CSS variable itself, so every Monaco factory (the code editor here, the diff
@@ -37,47 +36,13 @@ export function monacoFontFamily() {
     return getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim()
         || "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace";
 }
-/** Python's grammar/configuration are fetched only when explicitly requested. */
+/** Plugin grammars load only when an editor explicitly requests their language. */
 export function ensureMonaco(language) {
     if (!loadPromise)
         loadPromise = loadMonaco();
-    if (language !== 'python')
+    if (!language)
         return loadPromise;
-    return loadPromise.then(async (monaco) => monaco && await ensurePython(monaco) ? monaco : null);
-}
-function ensurePython(monaco) {
-    if (pythonPromise)
-        return pythonPromise;
-    pythonPromise = (async () => {
-        let timer;
-        // Browsers can cache failed module loads; use a new URL on a retry.
-        const retry = pythonAttempt++;
-        const url = `${MONACO_VENDOR}/python.js${retry ? `?retry=${retry}` : ''}`;
-        try {
-            const module = await Promise.race([
-                import(/* @vite-ignore */ url),
-                new Promise(resolve => { timer = setTimeout(() => resolve(null), LOAD_TIMEOUT_MS); })
-            ]);
-            if (!module?.language || !module?.conf)
-                return false;
-            monaco.languages.register({ id: 'python', aliases: ['Python'], extensions: ['.py'] });
-            monaco.languages.setLanguageConfiguration('python', module.conf);
-            monaco.languages.setMonarchTokensProvider('python', module.language);
-            return true;
-        }
-        catch {
-            return false; // Keep the textarea usable when an optional bundle cannot load.
-        }
-        finally {
-            if (timer !== undefined)
-                clearTimeout(timer);
-        }
-    })().then(loaded => {
-        if (!loaded)
-            pythonPromise = null; // A later editor can retry after a transient failure.
-        return loaded;
-    });
-    return pythonPromise;
+    return loadPromise.then(async (monaco) => monaco && await ensureEditorLanguage(monaco, language) ? monaco : null);
 }
 // Inject the editor stylesheet emitted alongside the esbuild ESM bundle (which,
 // unlike Vite/webpack, doesn't auto-inject its CSS). Idempotent.
@@ -569,7 +534,7 @@ function setup(monaco) {
 }
 const LANGUAGES = {
     javascript: 'javascript', js: 'javascript', rhino: 'javascript',
-    python: 'python', xml: 'xml', html: 'html', json: 'json', sql: 'sql', hl7v2: 'hl7v2', text: 'plaintext'
+    xml: 'xml', html: 'html', json: 'json', sql: 'sql', hl7v2: 'hl7v2', text: 'plaintext'
 };
 /* Monaco editors hold a model, listeners, layout observer and a debounce timer
    that DOM removal alone doesn't free. We track live instances and, on each
@@ -638,7 +603,10 @@ export function mountMonaco(monaco, editor, opts = {}) {
     editor.el.appendChild(host);
     for (const b of zoomBtns)
         editor.el.appendChild(b);
-    const lang = LANGUAGES[opts.language || 'javascript'] || 'plaintext';
+    const requestedLanguage = opts.language || 'javascript';
+    const lang = LANGUAGES[requestedLanguage]
+        || (monaco.languages.getLanguages().some(language => language.id === requestedLanguage) ? requestedLanguage : 'plaintext');
+    const tabSize = Number.isInteger(opts.tabSize) && opts.tabSize > 0 ? opts.tabSize : 4;
     if (lang === 'hl7v2')
         host.classList.add('hl7-editor');
     const instance = monaco.editor.create(host, {
@@ -654,9 +622,9 @@ export function mountMonaco(monaco, editor, opts = {}) {
         // JetBrains Mono has coding ligatures; keep them off so scripts show the
         // literal ->, !=, === (matches app.css's font-variant-ligatures: none).
         fontLigatures: false,
-        tabSize: 4,
-        insertSpaces: lang === 'python',
-        ...(lang === 'python' ? { detectIndentation: false } : {}),
+        tabSize,
+        insertSpaces: opts.insertSpaces ?? false,
+        ...(opts.detectIndentation === undefined ? {} : { detectIndentation: opts.detectIndentation }),
         folding: true,
         renderLineHighlight: 'line',
         fixedOverflowWidgets: true,
@@ -669,7 +637,7 @@ export function mountMonaco(monaco, editor, opts = {}) {
         wordBasedSuggestions: lang === 'javascript' ? 'off' : 'currentDocument',
         ...(opts.literalInput ? {
             lineNumbersMinChars: 2, lineDecorationsWidth: 4, folding: lang !== 'plaintext' && lang !== 'hl7v2',
-            insertSpaces: lang === 'python', useTabStops: false, detectIndentation: false, autoIndent: 'none',
+            useTabStops: false, detectIndentation: false, autoIndent: 'none',
             trimAutoWhitespace: false,
             // Native EditContext can bypass the cancellable beforeinput below.
             editContext: false,
@@ -690,7 +658,7 @@ export function mountMonaco(monaco, editor, opts = {}) {
     const literalTab = opts.literalInput ? instance.addAction({
         id: 'oie.literalTab', label: 'Insert Tab', keybindings: [monaco.KeyCode.Tab],
         precondition: 'editorTextFocus && !editorReadonly && !editorTabMovesFocus',
-        run: editor => editor.trigger('literal-input', 'type', { text: lang === 'python' ? '    ' : '\t' })
+        run: editor => editor.trigger('literal-input', 'type', { text: opts.insertSpaces ? ' '.repeat(tabSize) : '\t' })
     }) : null;
     const literalBracket = (event) => {
         if (!event.cancelable || event.isComposing || event.inputType !== 'insertText'

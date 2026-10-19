@@ -10,13 +10,19 @@ import type * as MonacoNs from 'monaco-editor';
 
 export interface CodeEditorOptions {
     value?: string;
-    /** Defaults to Rhino JavaScript. 'python' loads its local grammar on demand. */
+    /** Defaults to Rhino JavaScript. Registered plugin languages load on demand. */
     language?: string;
     readOnly?: boolean;
     minHeight?: string;
     placeholder?: string;
     ariaLabel?: string;
-    /** Disable automatic typing assistance. Python's Tab still inserts four spaces. */
+    /** Indentation width; defaults to four. */
+    tabSize?: number;
+    /** Insert spaces for Tab; defaults to literal tabs. */
+    insertSpaces?: boolean;
+    /** Let Monaco infer indentation from the initial text (standard editors only). */
+    detectIndentation?: boolean;
+    /** Disable automatic typing assistance while retaining the chosen indentation. */
     literalInput?: boolean;
     onChange?(value: string): void;
     /** Corner toggle opening the full-screen code view. */
@@ -48,7 +54,10 @@ export class CodeEditor {
             spellcheck: 'false',
             readOnly: !!opts.readOnly,
             'aria-label': opts.ariaLabel,
-            placeholder: opts.placeholder || ''
+            placeholder: opts.placeholder || '',
+            style: opts.tabSize === undefined ? null : {
+                tabSize: String(Number.isInteger(opts.tabSize) && opts.tabSize > 0 ? opts.tabSize : 4)
+            }
         }) as HTMLTextAreaElement;
         this.area.value = opts.value ?? '';
         this.el = h('div.ce', { style: opts.minHeight ? { minHeight: opts.minHeight } : null },
@@ -72,12 +81,14 @@ export class CodeEditor {
         } else if (e.key === 'Tab' && !this.opts.readOnly && !this._tabFocus) {
             e.preventDefault();
             const { selectionStart: start, selectionEnd: end, selectionDirection: direction, value } = this.area;
-            const indentText = this.opts.language === 'python' ? '    ' : '\t';
+            const tabSize = Number.isInteger(this.opts.tabSize) && this.opts.tabSize! > 0 ? this.opts.tabSize! : 4;
+            const spaces = ' '.repeat(tabSize);
+            const indentText = this.opts.insertSpaces ? spaces : '\t';
             let from = start, to = end, text = indentText, caret = start + indentText.length;
             if (e.shiftKey) {
                 // Outdent the current line.
                 const lineStart = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1;
-                const indent = value.startsWith('\t', lineStart) ? 1 : value.startsWith('    ', lineStart) ? 4 : 0;
+                const indent = value.startsWith('\t', lineStart) ? 1 : value.startsWith(spaces, lineStart) ? tabSize : 0;
                 if (!indent) return;
                 from = lineStart; to = lineStart + indent; text = ''; caret = Math.max(lineStart, start - indent);
             }

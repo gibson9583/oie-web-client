@@ -274,8 +274,8 @@ Guidance:
 
 ### API 4.10 plugin contracts
 
-API **4.10.0** adds custom code-template types. Declare
-`"oie": { "apiMin": "4.10" }` when using `registerCodeTemplateType`.
+API **4.10.0** adds custom code-template types, lazy editor languages, and plugin
+text assets. Declare `"oie": { "apiMin": "4.10" }` when using these contracts.
 The engine plugin supplies a `CodeTemplateProperties` subclass; its `getCode()`
 still returns JavaScript for the engine's existing compile/deploy pipeline. The
 web contract supplies editing and optional language validation, not an engine
@@ -342,9 +342,42 @@ Python source or runtime implementation. Custom classes without this hook do
 not contribute JavaScript completions; their raw source fields are never used
 as a fallback.
 
-The shared code editor loads Python tokenization only when an editor requests
-`language: 'python'`; ordinary JavaScript/Rhino editors do not load it. Plugins use
-`platform.createCodeEditor` and dispose their editor on unmount.
+Plugins own their optional language assets. Register a lazy definition with
+`platform.registerEditorLanguage(id, { aliases?, extensions?, load })`; `load`
+returns an `EditorLanguageDefinition` (or a Promise) containing `tokensProvider`
+(Monaco Monarch grammar) and optional `configuration` (Monaco language settings).
+The shared editor loads it only when `platform.createCodeEditor` requests that
+language. Use the host editor and dispose it on unmount. Ordinary JavaScript/Rhino
+editors do not fetch optional plugin grammars; the host ships no Python grammar
+asset. Language IDs must be unique and cannot replace the host's existing
+languages. A failed load leaves the text editor usable and a later editor can retry.
+
+The loader calls `register(platform, context)`; existing single-argument plugins
+remain compatible. Import `PluginContext`, `EditorLanguageProvider`, and
+`EditorLanguageDefinition` types from `@oie/web-shell`. `context.getAssetText(path)`
+reads a text asset relative to the directory containing `plugin.json`, including
+any `web/` prefix. It uses the discovered engine extension path, which may differ
+from the manifest ID, or the bundled `/plugins/<id>` root. This works in Node and
+WAR deployments even when the entry module is imported from a temporary URL.
+
+```ts
+export function register(platform, context) {
+    platform.registerEditorLanguage('example', {
+        aliases: ['Example'], extensions: ['.example'],
+        load: async () => decodeLanguageDefinition(
+            JSON.parse(await context.getAssetText('web/language.json'))
+        )
+    });
+}
+```
+
+`decodeLanguageDefinition` is plugin code: JSON grammars must restore any RegExp
+values required by Monarch. Assets are read as data without evaluating code.
+The host sends authenticated engine requests with `X-Requested-With`, disables
+HTTP caching, and rejects reads after an engine or user-session change, including
+changes while the response body is loading. Reads reject unsuccessful HTTP
+responses. Pass literal relative path segments; absolute URLs, traversal,
+percent-encoded paths, query strings, fragments, and backslashes are rejected.
 
 ### API 4.9 plugin contracts
 

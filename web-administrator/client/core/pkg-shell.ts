@@ -4,7 +4,7 @@
    gen:types), so what compiles here IS the plugin-author contract. */
 export { platform, loadPlugins, OIE_API_VERSION, apiCompatible } from './platform.js';
 export type {
-    Platform, PluginComponent, PluginManifest,
+    Platform, PluginComponent, PluginManifest, PluginContext, EditorLanguageProvider, EditorLanguageDefinition,
     RouterApi, StoreApi, EventsApi,
     NavItem, ViewContext, ViewResult, ViewHandler, ViewMeta, ConnectorMode,
     DashboardTab, DashboardColumn, ChannelTab, SettingsPanel, AttachmentViewer,
