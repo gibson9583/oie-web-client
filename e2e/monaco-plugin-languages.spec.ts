@@ -42,7 +42,7 @@ test.beforeEach(async ({ page }) => {
 
 test('Rhino stays the default; the plugin language is fetched once on demand and shares Monaco', async ({ page, request }) => {
     expect(await page.evaluate(() => (window as any).monaco.languages.getLanguages().map((language: any) => language.id).sort()))
-        .toEqual(['css', 'hl7v2', 'html', 'javascript', 'json', 'plaintext', 'sql', 'xml']);
+        .toEqual(['css', 'hl7v2', 'html', 'javascript', 'json', 'plaintext', 'sql', 'typescript', 'xml']);
     const formats = [
         { language: 'xml', source: '<message id="1"/>', token: 'tag.xml' },
         { language: 'sql', source: 'SELECT value FROM records WHERE id = 1;', token: 'keyword.sql' },
@@ -95,9 +95,8 @@ test('Rhino stays the default; the plugin language is fetched once on demand and
     expect(snapshot.javascript).toBe(true);
     const provenance = await (await request.get('/vendor/monaco/provenance.json')).json();
     expect(provenance.builtInLanguages).toEqual({
-        definitions: ['css', 'html', 'javascript', 'sql', 'xml'],
-        services: ['css', 'html', 'json', 'typescript'],
-        definitionDependencies: ['typescript']
+        definitions: ['css', 'html', 'javascript', 'sql', 'typescript', 'xml'],
+        services: ['css', 'html', 'json', 'typescript']
     });
     expect(provenance.optionalLanguages).toBeUndefined();
     const assets = readdirSync(new URL('../web-administrator/client/vendor/monaco/', import.meta.url));
@@ -110,6 +109,23 @@ test('Rhino stays the default; the plugin language is fetched once on demand and
     const optionalAsset = await request.get('/vendor/monaco/sample-language.js');
     // Missing static paths follow the existing SPA fallback (HTML, not a grammar).
     expect(optionalAsset.headers()['content-type']).not.toContain('javascript');
+});
+
+test('JavaScript hover signatures keep their TypeScript syntax colors', async ({ page }) => {
+    await page.evaluate(() => {
+        const editor = (window as any).monaco.editor.getEditors().find((item: any) => item.getDomNode()?.isConnected);
+        editor.setValue('logger.info("x");');
+        editor.setPosition({ lineNumber: 1, column: 3 });
+        editor.focus();
+    });
+    // The TypeScript service renders hover signatures as typescript code blocks.
+    await expect.poll(() => page.evaluate(() => {
+        const editor = (window as any).monaco.editor.getEditors().find((item: any) => item.getDomNode()?.isConnected);
+        editor.trigger('test', 'editor.action.showHover', {});
+        const hover = [...document.querySelectorAll('.monaco-hover')].find(element => /Log4jLogger/.test(element.textContent || ''));
+        const spans = [...(hover?.querySelectorAll('.monaco-tokenized-source span') || [])];
+        return new Set(spans.flatMap(span => [...span.classList].filter(name => /^mtk\d+$/.test(name)))).size;
+    }), { message: 'the logger hover signature uses syntax colors, not only plain text', timeout: 20_000 }).toBeGreaterThan(1);
 });
 
 for (const literalInput of [false, true]) {

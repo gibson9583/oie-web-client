@@ -2,11 +2,8 @@ import { dirname, relative, resolve, sep } from 'node:path';
 
 // Rhino scripts plus the stock document/message/connector editors. HTML embeds
 // CSS, and Monaco implements JavaScript IntelliSense with its TypeScript service.
-export const HOST_DEFINITIONS = Object.freeze(['css', 'html', 'javascript', 'sql', 'xml']);
+export const HOST_DEFINITIONS = Object.freeze(['css', 'html', 'javascript', 'sql', 'typescript', 'xml']);
 export const HOST_SERVICES = Object.freeze(['css', 'html', 'json', 'typescript']);
-// Monaco's JavaScript grammar shares tokens/configuration with this module;
-// that implementation dependency does not register another editor language.
-const DEFINITION_DEPENDENCIES = ['typescript'];
 
 function languagePath(monacoMain, file) {
     return relative(resolve(dirname(monacoMain), '../languages'), file).split(sep).join('/');
@@ -34,7 +31,7 @@ export function hostMonacoLanguages(monacoMain) {
 
 /** Fail closed if a dependency upgrade introduces an unselected language. */
 export function assertHostMonacoLanguages(metafile, monacoMain) {
-    const definitions = new Set(), services = new Set(), dependencies = new Set();
+    const definitions = new Set(), services = new Set();
     for (const input of Object.keys(metafile.inputs)) {
         const path = languagePath(monacoMain, resolve(input));
         if (path.startsWith('../')) continue;
@@ -42,13 +39,8 @@ export function assertHostMonacoLanguages(metafile, monacoMain) {
         if (path === 'features/common/lspLanguageFeatures.js') continue; // Shared data-editor adapters.
         const [kind, id, file] = path.split('/');
         if (kind === 'definitions') {
-            if (!HOST_DEFINITIONS.includes(id) && !DEFINITION_DEPENDENCIES.includes(id)) {
-                throw new Error(`Unselected Monaco language definition: ${path}`);
-            }
-            if (file === 'register.js') {
-                if (!HOST_DEFINITIONS.includes(id)) throw new Error(`Unselected Monaco language registration: ${path}`);
-                definitions.add(id);
-            } else if (DEFINITION_DEPENDENCIES.includes(id)) dependencies.add(id);
+            if (!HOST_DEFINITIONS.includes(id)) throw new Error(`Unselected Monaco language definition: ${path}`);
+            if (file === 'register.js') definitions.add(id);
         } else if (kind === 'features' && HOST_SERVICES.includes(id)) {
             if (file === 'register.js') services.add(id);
         } else {
@@ -58,5 +50,5 @@ export function assertHostMonacoLanguages(metafile, monacoMain) {
     if (HOST_DEFINITIONS.some(id => !definitions.has(id)) || HOST_SERVICES.some(id => !services.has(id))) {
         throw new Error('A required host Monaco language registration is missing.');
     }
-    return { definitions: [...definitions].sort(), services: [...services].sort(), definitionDependencies: [...dependencies].sort() };
+    return { definitions: [...definitions].sort(), services: [...services].sort() };
 }

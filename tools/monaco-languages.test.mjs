@@ -22,9 +22,9 @@ const result = await build({
     }]
 });
 
-test('the installed Monaco bundles only stock editor languages and intrinsic JavaScript dependencies', () => {
+test('the installed Monaco bundles only the selected stock editor languages', () => {
     assert.deepEqual(assertHostMonacoLanguages(result.metafile, monacoMain), {
-        definitions: [...HOST_DEFINITIONS], services: [...HOST_SERVICES], definitionDependencies: ['typescript']
+        definitions: [...HOST_DEFINITIONS], services: [...HOST_SERVICES]
     });
 });
 
@@ -40,10 +40,6 @@ test('language selection preserves generic editing features and the patched sani
 function withExtraInput(path) {
     return { inputs: { ...result.metafile.inputs, [resolve(dirname(monacoMain), '../languages', path)]: {} } };
 }
-
-test('an intrinsic grammar dependency cannot silently become a registered scripting language', () => {
-    assert.throws(() => assertHostMonacoLanguages(withExtraInput('definitions/typescript/register.js'), monacoMain), /Unselected.*registration/);
-});
 
 test('a future unselected grammar or service fails the build graph guard', () => {
     for (const path of ['definitions/plugin-only/grammar.js', 'definitions/plugin-only/register.js', 'features/plugin-only/service.js']) {
