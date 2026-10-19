@@ -28,8 +28,7 @@ import {
 import { appUrl } from './deployment.js';
 import { ensureEditorLanguage } from './editor-languages.js';
 
-// Where the server serves the vendored Monaco worker bundles. The editor bundle
-// itself is imported via the 'monaco-editor' specifier (import map / Vite).
+// Shared vendor location for the editor bundle and workers in every deployment.
 const MONACO_VENDOR = appUrl('/vendor/monaco');
 const LOAD_TIMEOUT_MS = 10000;
 

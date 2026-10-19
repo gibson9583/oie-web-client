@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
@@ -41,7 +41,29 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('Rhino stays the default; the plugin language is fetched once on demand and shares Monaco', async ({ page, request }) => {
-    expect(await page.evaluate(() => (window as any).monaco.languages.getLanguages().some((language: any) => ['sample-plugin', 'python'].includes(language.id)))).toBe(false);
+    expect(await page.evaluate(() => (window as any).monaco.languages.getLanguages().map((language: any) => language.id).sort()))
+        .toEqual(['css', 'hl7v2', 'html', 'javascript', 'json', 'plaintext', 'sql', 'xml']);
+    const formats = [
+        { language: 'xml', source: '<message id="1"/>', token: 'tag.xml' },
+        { language: 'sql', source: 'SELECT value FROM records WHERE id = 1;', token: 'keyword.sql' },
+        { language: 'html', source: '<div class="message">Hello</div>', token: 'tag.html' },
+        { language: 'css', source: 'div { color: red; }', token: 'attribute.name.css' },
+        { language: 'json', source: '{"answer": 1}', token: 'string.key.json' }
+    ];
+    // Model creation activates each built-in lazy tokenizer. Require real token
+    // categories, since registered IDs alone do not prove the grammar survived.
+    const models = await page.evaluateHandle(samples => samples.map(sample =>
+        (window as any).monaco.editor.createModel(sample.source, sample.language)), formats);
+    try {
+        for (const sample of formats) {
+            await expect.poll(() => page.evaluate(({ language, source }) =>
+                (window as any).monaco.editor.tokenize(source, language).flat().map((token: any) => token.type), sample),
+            { message: `${sample.language} retains its built-in tokenizer` }).toContain(sample.token);
+        }
+    } finally {
+        await models.evaluate(values => values.forEach((model: any) => model.dispose()));
+        await models.dispose();
+    }
     expect(await page.evaluate(() => performance.getEntriesByType('resource').filter(entry => /\/sample-language\.js/.test(entry.name)).length)).toBe(0);
     const requests: string[] = [];
     page.on('request', request => { if (/\/sample-language\.js/.test(request.url())) requests.push(request.url()); });
@@ -72,12 +94,22 @@ test('Rhino stays the default; the plugin language is fetched once on demand and
     expect(snapshot.scope).toEqual(previousScope);
     expect(snapshot.javascript).toBe(true);
     const provenance = await (await request.get('/vendor/monaco/provenance.json')).json();
-    expect(provenance.excludedLanguages).toContain('python');
+    expect(provenance.builtInLanguages).toEqual({
+        definitions: ['css', 'html', 'javascript', 'sql', 'xml'],
+        services: ['css', 'html', 'json', 'typescript'],
+        definitionDependencies: ['typescript']
+    });
     expect(provenance.optionalLanguages).toBeUndefined();
-    const removedAsset = await request.get('/vendor/monaco/python.js');
-    expect(existsSync(new URL('../web-administrator/client/vendor/monaco/python.js', import.meta.url))).toBe(false);
+    const assets = readdirSync(new URL('../web-administrator/client/vendor/monaco/', import.meta.url));
+    const fonts = assets.filter(name => /^codicon-[\w-]+\.ttf$/.test(name));
+    expect(fonts).toHaveLength(1);
+    expect(assets.filter(name => !fonts.includes(name)).sort()).toEqual([
+        'DOMPurify-LICENSE.txt', 'css.worker.js', 'editor.main.css', 'editor.main.js', 'editor.worker.js',
+        'html.worker.js', 'json.worker.js', 'provenance.json', 'ts.worker.js'
+    ]);
+    const optionalAsset = await request.get('/vendor/monaco/sample-language.js');
     // Missing static paths follow the existing SPA fallback (HTML, not a grammar).
-    expect(removedAsset.headers()['content-type']).not.toContain('javascript');
+    expect(optionalAsset.headers()['content-type']).not.toContain('javascript');
 });
 
 for (const literalInput of [false, true]) {

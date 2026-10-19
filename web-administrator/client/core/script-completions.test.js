@@ -3,35 +3,35 @@ import api from './api.js';
 import { invalidate, registerTemplateCompletionSource, templateCompletionCode, templatesInScope, templateSourcesInScope } from './script-completions.js';
 
 const context = 'SOURCE_FILTER_TRANSFORMER';
-const pythonClass = 'com.mirth.connect.plugins.python.PythonCodeTemplateProperties';
+const sampleClass = 'com.example.templates.SampleCodeTemplateProperties';
 const template = (id, properties, contexts = [context]) => ({ id, name: id,
     contextSet: { delegate: { contextType: contexts } }, properties });
-const python = name => ({ '@class': pythonClass, type: 'FUNCTION', functionName: name, pythonScript: 'def call(ctx):\n    return "python-only-sentinel"\n' });
+const sample = name => ({ '@class': sampleClass, type: 'FUNCTION', functionName: name, customSource: 'command invoke(value)\n    emit "sample-only-sentinel"\n' });
 const library = (id, templates, channels = ['channel']) => ({ id, name: id, includeNewChannels: false,
     enabledChannelIds: { string: channels }, codeTemplates: { codeTemplate: templates } });
 const inScope = [
-    template('python', python('python_function')),
+    template('sample', sample('sample_function')),
     template('js', { '@class': 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties', type: 'FUNCTION', code: 'function javascript_function(value) {}' }),
     template('legacy', { type: 'FUNCTION', code: 'function legacy_function() {}' }),
-    template('other-context', python('wrong_context'), ['GLOBAL_DEPLOY']),
-    template('compiled', { ...python('compiled_python'), type: 'COMPILED_CODE' }),
-    template('drag', { ...python('drag_python'), type: 'DRAG_AND_DROP_CODE' }),
-    template('unknown', { '@class': 'com.example.Missing', type: 'FUNCTION', code: 'function forbidden_fallback() {}', pythonScript: 'def call(ctx): pass' }),
+    template('other-context', sample('wrong_context'), ['GLOBAL_DEPLOY']),
+    template('compiled', { ...sample('compiled_sample'), type: 'COMPILED_CODE' }),
+    template('drag', { ...sample('drag_sample'), type: 'DRAG_AND_DROP_CODE' }),
+    template('unknown', { '@class': 'com.example.Missing', type: 'FUNCTION', code: 'function forbidden_fallback() {}', customSource: 'command invoke(value): emit value' }),
     template('failure', { '@class': 'com.example.Throwing', type: 'FUNCTION' }),
     template('null', { '@class': 'com.example.Empty', type: 'FUNCTION' }),
     template('wrong-type', { '@class': 'com.example.Invalid', type: 'FUNCTION' }),
     template('oversized', { '@class': 'com.example.Huge', type: 'FUNCTION' })
 ];
-const libraries = [library('Linked', inScope), library('Elsewhere', [template('outside', python('wrong_channel'))], ['other-channel'])];
+const libraries = [library('Linked', inScope), library('Elsewhere', [template('outside', sample('wrong_channel'))], ['other-channel'])];
 const before = structuredClone(libraries);
 const originalLoad = api.codeTemplates.libraries;
 let loads = 0, calls = 0;
 api.codeTemplates.libraries = async () => { loads++; return libraries; };
-registerTemplateCompletionSource(pythonClass, snapshot => {
+registerTemplateCompletionSource(sampleClass, snapshot => {
     calls++;
     const name = snapshot.properties.functionName;
-    snapshot.properties.pythonScript = 'mutated snapshot';
-    return `/** Callable Python function. */\nfunction ${name}(value) {}`;
+    snapshot.properties.customSource = 'mutated snapshot';
+    return `/** Callable Sample function. */\nfunction ${name}(value) {}`;
 });
 registerTemplateCompletionSource('com.example.Throwing', () => { throw new Error('Provider failure'); });
 registerTemplateCompletionSource('com.example.Empty', () => null);
@@ -45,12 +45,12 @@ try {
         'built-in References drag source keeps its existing behavior independently of the worker size limit');
     invalidate();
     const functions = await templatesInScope('channel', [context]);
-    assert.deepEqual(functions.map(fn => fn.name), ['python_function', 'javascript_function', 'legacy_function']);
-    assert.deepEqual(functions[0], { name: 'python_function', params: ['value'], doc: 'Callable Python function.', library: 'Linked' });
+    assert.deepEqual(functions.map(fn => fn.name), ['sample_function', 'javascript_function', 'legacy_function']);
+    assert.deepEqual(functions[0], { name: 'sample_function', params: ['value'], doc: 'Callable Sample function.', library: 'Linked' });
     const sources = await templateSourcesInScope('channel', [context]);
-    assert.deepEqual(sources.map(source => source.id), ['python', 'js', 'legacy', 'compiled']);
-    assert.ok(sources[0].code.includes('function python_function(value) {}'));
-    assert.ok(sources.every(source => !source.code.includes('python-only-sentinel') && !source.code.includes('def call(')));
+    assert.deepEqual(sources.map(source => source.id), ['sample', 'js', 'legacy', 'compiled']);
+    assert.ok(sources[0].code.includes('function sample_function(value) {}'));
+    assert.ok(sources.every(source => !source.code.includes('sample-only-sentinel') && !source.code.includes('command invoke(')));
     assert.deepEqual(libraries, before, 'resolver mutation must not touch cached engine models');
     assert.equal(loads, 1, 'both completion consumers share the library read');
     assert.equal(calls, 3, 'out-of-scope and drag-and-drop templates never call the resolver');

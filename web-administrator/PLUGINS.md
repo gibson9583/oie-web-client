@@ -160,7 +160,7 @@ ones are built.
 | `ClientPlugin` adding a task to the Code Templates panel | `simple-channel-history` ("View History") | `registerCodeTemplateAction` — adds a right-click item for a selected code template |
 | *(none — Swing's `MessageBrowser` takes no plugin tasks)* | | `registerMessageAction` — adds a right-click item on a message row + a Message Tasks button for the selected row, with the row's connector in context. Web-only; API `4.7`+ |
 | `CodeTemplatePlugin` (`getReferenceItems`) | `http` (HTTP Listener/Sender Functions), `file` (File Reader Functions) | `registerReferences(category, items)`: adds entries to the filter/transformer Reference list, in a new category or in an existing one such as `Conversion Functions`, and to script autocomplete. Each entry shows only in its `contexts`. API `4.8`+ |
-| `CodeTemplateTypePlugin` | Python Toolkit (Python Function) | `registerCodeTemplateType(id, definition)`: custom properties class, editor, supported contexts, and optional validation. API `4.10`+; see [code-template contracts](#api-410-plugin-contracts). |
+| `CodeTemplateTypePlugin` | Custom function template | `registerCodeTemplateType(id, definition)`: custom properties class, editor, supported contexts, and optional validation. API `4.10`+; see [code-template contracts](#api-410-plugin-contracts). |
 | `TransformerStepPlugin` / `FilterRulePlugin` | mapper, messagebuilder, javascriptstep, xsltstep, destinationsetfilter, scriptfilestep, iterator; rulebuilder, javascriptrule, scriptfilerule | bundled as the `transformer-steps` web plugin calling `registerStepType` / `registerRuleType` |
 | `AttachmentViewer` | `imageviewer`, `pdfviewer`, `dicomviewer`, `textviewer` | each ships as a web plugin (`plugins/attachment-*`) calling `registerAttachmentViewer`; the message browser picks the first whose `canHandle(attachment)` matches |
 | `ConnectorSettingsPanel` | every connector (tcp, http, file, …) | each ships as a web plugin (`plugins/connector-*`) calling `registerConnectorPanel`; panels live in the shared connector library (`client/connectors/*.js` + `forms.js`). See `plugins/sqs-connector` in the SQS repo for a third-party one |
@@ -338,7 +338,7 @@ for function suggestions, the References list's callable drag text, and Monaco's
 preserving library/channel/context scope. It receives a snapshot; returning
 `null`, an invalid result, or throwing excludes only that template's completion.
 Validate exported names before interpolating them. Never return the plugin's
-Python source or runtime implementation. Custom classes without this hook do
+custom source or runtime implementation. Custom classes without this hook do
 not contribute JavaScript completions; their raw source fields are never used
 as a fallback.
 
@@ -348,9 +348,11 @@ returns an `EditorLanguageDefinition` (or a Promise) containing `tokensProvider`
 (Monaco Monarch grammar) and optional `configuration` (Monaco language settings).
 The shared editor loads it only when `platform.createCodeEditor` requests that
 language. Use the host editor and dispose it on unmount. Ordinary JavaScript/Rhino
-editors do not fetch optional plugin grammars; the host ships no Python grammar
-asset. Language IDs must be unique and cannot replace the host's existing
-languages. A failed load leaves the text editor usable and a later editor can retry.
+editors do not fetch optional plugin grammars. The host owns Rhino/JavaScript
+editing and the existing message/connector formats; optional scripting-language
+grammars belong to their plugins. Language IDs must be unique and cannot replace
+the host's existing languages. A failed load leaves the text editor usable and a
+later editor can retry.
 
 The loader calls `register(platform, context)`; existing single-argument plugins
 remain compatible. Import `PluginContext`, `EditorLanguageProvider`, and

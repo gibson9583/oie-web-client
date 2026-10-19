@@ -26,8 +26,8 @@ export function codeTemplateType(template: OieObject, providers: Providers) {
         label: 'Unavailable template type', provider: undefined, missing: true };
 }
 
-/** Switching classes creates complete properties, never re-labels Python as
- * JavaScript. Per-editor drafts make switching back lossless until selection
+/** Switching classes creates complete properties without translating source.
+ * Per-editor drafts make switching back lossless until selection
  * changes. Built-in switches preserve code because they share one model class. */
 export function switchCodeTemplateType(template: OieObject, id: string, providers: Providers,
     version: string, drafts: Map<string, OieObject>): boolean {

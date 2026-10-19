@@ -33,6 +33,10 @@ export function register() {
 - `platform.registerEditorLanguage(id, provider)` — load a plugin-owned editor language only when requested (API 4.10). The optional second `register(platform, context)` argument supplies `context.getAssetText(path)` for plugin-owned text assets, including authenticated engine assets in Node and WAR deployments.
 - `platform.store` / `platform.router` / `platform.events` — shared app state, routing, and the event bus
 
+The host owns Rhino/JavaScript editing and the existing message/connector formats.
+Optional scripting languages supply their grammar through their own plugin;
+registering a provider does not load its assets.
+
 ## Script references (API 4.8)
 
 Import `ReferenceItem` from `@oie/web-shell` to type registrations. Each item

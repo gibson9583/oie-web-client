@@ -227,7 +227,7 @@ export interface CodeTemplateType {
     validateSave?(ctx: { template: OieObject; properties: OieObject; platform: Platform }): string | null;
     /** Synchronous declaration-only JavaScript for script autocomplete and the
      * Monaco language service. Return a function stub (with optional JSDoc),
-     * never Python or executable runtime code. Receives a template snapshot;
+     * never plugin-language source or executable runtime code. Receives a template snapshot;
      * missing/invalid results and provider failures contribute no completions. */
     getCompletionCode?(ctx: { template: OieObject; properties: OieObject; platform: Platform }): string | null;
 }

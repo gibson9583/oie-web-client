@@ -17,6 +17,7 @@ import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'no
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { sanitizerEntry, embeddedSanitizer, monacoMain } from './sanitizer.mjs';
+import { hostMonacoLanguages, assertHostMonacoLanguages } from './monaco-languages.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const clientDir = resolve(here, '..', 'client');
@@ -133,17 +134,17 @@ for (const pkg of ['seek-bzip', 'buffer', 'base64-js', 'ieee754']) {
 
 /*
  * Monaco is special: a large multi-module ESM package with its own CSS + webfont
- * that also spawns web workers. core/monaco.js imports it via the 'monaco-editor'
- * specifier (mapped to /vendor/monaco/editor.main.js in the page import map) and
- * constructs the workers from /vendor/monaco/*.worker.js. Everything is bundled
+ * that also spawns web workers. core/monaco.js loads /vendor/monaco/editor.main.js
+ * by absolute URL in both development and production, and constructs workers
+ * from /vendor/monaco/*.worker.js. Everything is bundled
  * here into client/vendor/monaco/ so it loads self-hosted (no CDN, air-gapped) as
  * modern ESM — replacing the deprecated AMD min/vs loader.
  */
 const monacoOut = resolve(clientDir, 'vendor', 'monaco');
-const pythonRegistration = dependencyPath.resolve('monaco-editor/languages/definitions/python/register.js');
-const pythonGrammar = dependencyPath.resolve('monaco-editor/languages/definitions/python/python.js');
-// Remove the obsolete host asset from incremental builds. Plugins own their grammars.
-rmSync(resolve(monacoOut, 'python.js'), { force: true });
+// This directory contains generated output only. Recreate it so incremental
+// builds cannot retain assets from an earlier language selection or version.
+rmSync(monacoOut, { recursive: true, force: true });
+mkdirSync(monacoOut, { recursive: true });
 // Editor namespace (ESM). esbuild emits editor.main.css alongside (Monaco's CSS
 // isn't auto-injected the way Vite/webpack do it); core/monaco.js links it. The
 // codicon webfont is emitted beside it as a file, because the server's CSP
@@ -162,20 +163,7 @@ const editorBuild = await build({
     legalComments: 'none',
     loader: { '.ttf': 'file' },
     metafile: true,
-    plugins: [{
-        name: 'plugin-owned-languages',
-        setup(builder) {
-            // Monaco's full entry otherwise bundles every language, including
-            // Python's dynamic import. Python belongs to its plugin; keep it
-            // entirely out of the host while preserving existing host languages.
-            builder.onResolve({ filter: /python[/\\]register\.js$/ }, args => {
-                if (resolve(args.resolveDir, args.path) === pythonRegistration) {
-                    return { path: 'python', namespace: 'optional-language' };
-                }
-            });
-            builder.onLoad({ filter: /.*/, namespace: 'optional-language' }, () => ({ contents: '', loader: 'js' }));
-        }
-    }, {
+    plugins: [hostMonacoLanguages(monacoMain), {
         name: 'patched-monaco-sanitizer',
         setup(builder) {
             builder.onResolve({ filter: /dompurify[/\\]dompurify\.js$/ }, args => {
@@ -185,9 +173,7 @@ const editorBuild = await build({
     }]
 });
 const inputs = Object.keys(editorBuild.metafile.inputs).map(input => resolve(input));
-if (inputs.includes(pythonGrammar) || inputs.includes(pythonRegistration)) {
-    throw new Error('Python must remain outside the default Monaco bundle.');
-}
+const builtInLanguages = assertHostMonacoLanguages(editorBuild.metafile, monacoMain);
 if (!inputs.includes(sanitizerEntry) || inputs.includes(embeddedSanitizer)) {
     throw new Error('Monaco must bundle the patched npm sanitizer; review its import graph before releasing.');
 }
@@ -200,7 +186,7 @@ writeFileSync(resolve(monacoOut, 'provenance.json'), JSON.stringify({
         source: 'dompurify/dist/purify.es.mjs', sha256: sha256(sanitizerEntry) },
     embeddedSanitizerExcluded: true,
     editorSha256: sha256(resolve(monacoOut, 'editor.main.js')),
-    excludedLanguages: ['python']
+    builtInLanguages
 }, null, 2) + '\n');
 copyFileSync(resolve(dirname(sanitizerEntry), '../LICENSE'), resolve(monacoOut, 'DOMPurify-LICENSE.txt'));
 // Language-service workers — self-contained classic (IIFE) scripts loaded via
