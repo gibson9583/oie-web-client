@@ -116,7 +116,10 @@ test.describe('engine picker', () => {
         await mockEngine(page);   // signed in, boots into the shell
 
         await page.goto('/');
-        await expect(page.locator('.shell')).toBeVisible({ timeout: 15_000 });
+        // The shell appears before authorization discovery completes. Wait for
+        // dashboard data so this refusal exercises an established session.
+        await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
 
         // From now on the server refuses to route ANY /api call for this tab
         // (registered after mockEngine, so it takes precedence). The shell's
@@ -129,6 +132,49 @@ test.describe('engine picker', () => {
 
         await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('.login-notice')).toHaveText('The engine you were signed in to is no longer available — choose an engine and sign in again.');
+    });
+
+    test('an ENGINE_UNKNOWN refusal during authorization bootstrap fails closed and Reload restores engine selection', async ({ page, baseURL }) => {
+        await page.context().addCookies([{ name: 'oie-engine', value: 'k%3Aproduction', url: baseURL }]);
+        let config = TWO_ENGINES;
+        await page.route('**/webadmin/config.json', route => route.fulfill({ json: config }));
+        await mockEngine(page);
+        const refusal = {
+            status: 421,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'ENGINE_UNKNOWN', message: 'The selected engine is no longer available on this server. Choose an engine and sign in again.' }),
+        };
+        await page.route('**/api/webplugins', route => route.fulfill(refusal));
+
+        await page.goto('/');
+        await expect(page.getByRole('alert').filter({ hasText: 'Unable to load access controls' })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toHaveCount(0);
+        await expect(page.getByText('Demo Started', { exact: true })).toHaveCount(0);
+
+        // A removed engine remains refused after reload; an explicitly chosen
+        // available engine can authenticate and finish loading the dashboard.
+        config = { ...TWO_ENGINES, engines: [
+            { key: 'k:staging', name: 'Staging' },
+            { key: 'k:test', name: 'Test' },
+        ] };
+        await page.unroute('**/api/webplugins');
+        await page.route('**/api/**', async route => {
+            const cookie = (await route.request().allHeaders())['cookie'] || '';
+            return /(?:^|;\s*)oie-engine=k%3Astaging(?:;|$)/.test(cookie)
+                ? route.fallback()
+                : route.fulfill(refusal);
+        });
+        await page.getByRole('button', { name: 'Reload', exact: true }).click();
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible({ timeout: 15_000 });
+        const select = page.locator('.login-card select');
+        await expect(select).toHaveValue('');
+        await expect(select.locator('option')).toHaveText(['Select an engine…', 'Staging', 'Test']);
+        await select.selectOption('k:staging');
+        await login(page, 'admin', 'admin');
+        await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText('Demo Started', { exact: true })).toBeVisible();
+        const cookies = await page.context().cookies();
+        expect(decodeURIComponent(cookies.find(cookie => cookie.name === 'oie-engine')?.value ?? '')).toBe('k:staging');
     });
 
     test('account menu offers Switch Engine when more than one engine', async ({ page }) => {

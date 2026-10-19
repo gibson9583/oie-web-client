@@ -27,6 +27,8 @@ export interface ModalOptions {
     /** Extra size class, e.g. `'wide'`. */
     size?: string;
     onClose?: () => void;
+    /** Resolve the focus target when dismissed; null intentionally skips restoration. */
+    returnFocus?: () => HTMLElement | null;
     /** Accessible name when `title` is a Node (aria-label). */
     label?: string;
 }

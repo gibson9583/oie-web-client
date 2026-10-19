@@ -1905,11 +1905,12 @@ function buildTabDefs(plat: any) {
 /* Save/Discard/Cancel prompt for unsaved settings changes (Swing parity).
    Users whose role can't save the tab (settings_<Tab>/doSave denied) must not
    be offered a Save the server would reject — OK-only notice instead. */
-function promptSaveSettings(canSave?: any) {
+function promptSaveSettings(canSave?: any, returnFocus?: () => HTMLElement | null) {
     return new Promise((resolve: any) => {
         if (canSave === false) {
             modal({
                 title: 'Unsaved Changes',
+                returnFocus,
                 body: h('div', "You don't have permission to save this settings tab. Your changes will be discarded."),
                 onClose: () => resolve('cancel'),
                 buttons: [{ label: 'OK', primary: true, onClick: () => resolve('discard') }]
@@ -1918,6 +1919,7 @@ function promptSaveSettings(canSave?: any) {
         }
         modal({
             title: 'Unsaved Changes',
+            returnFocus,
             body: h('div', 'You have unsaved changes on this settings tab. Would you like to save them?'),
             onClose: () => resolve('cancel'),
             buttons: [
@@ -2096,6 +2098,7 @@ function SettingsContent({ query, defs }: any) {
        dialog. (A fast double-click could have done the same before Radix.) One
        pending prompt at a time. */
     const switchingRef = useRef<object | null>(null);
+    const tabsRef = useRef<HTMLDivElement | null>(null);
     async function requestTab(label: string) {
         const source = activationRef.current;
         if (label === active || !source || switchingRef.current === source) return;
@@ -2113,7 +2116,12 @@ function SettingsContent({ query, defs }: any) {
         const sourceLabel = activeLabelRef.current;
         if (dirtyRef.current) {
             const choice = await promptSaveSettings(
-                platform.checkTask(`settings_${sourceLabel}`, 'doSave'));
+                platform.checkTask(`settings_${sourceLabel}`, 'doSave'),
+                // Radix focuses the proposed tab before opening this prompt.
+                // Restoring that inactive trigger after Cancel would activate it
+                // again. Resolve the selected trigger at restoration time so
+                // Save/Discard also preserve whichever tab actually committed.
+                () => tabsRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') ?? null);
             if (choice === 'cancel') return;
             if (activationRef.current !== source) return;
             if (choice === 'save' && (!platform.checkTask(`settings_${sourceLabel}`, 'doSave')
@@ -2163,7 +2171,7 @@ function SettingsContent({ query, defs }: any) {
                 <TabsPrimitive.Root value={String(active)}
                     onValueChange={requestTab}
                     className="tabs-wrap flex flex-col flex-1 min-h-0 overflow-hidden">
-                    <TabsPrimitive.List className="tabs" aria-label="Settings sections">
+                    <TabsPrimitive.List ref={tabsRef} className="tabs" aria-label="Settings sections">
                         {defs.map((d: any) => (
                             <TabsPrimitive.Trigger key={d.label} value={d.label}
                                 className={'tab' + (d.label === active ? ' active' : '')}>

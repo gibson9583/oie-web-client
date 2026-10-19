@@ -36,3 +36,55 @@ for (const fallback of [false, true]) {
         await expect(dialog).toHaveCount(0);
     });
 }
+
+for (const renderer of ['radix', 'dom']) {
+    test(`${renderer} modal resolves current return focus and preserves default or null behavior`, async ({ page }) => {
+        await mockEngine(page);
+        await page.goto('/settings');
+        await expect(page.getByRole('tab', { name: /^Server(?: ●)?$/ })).toBeVisible();
+        await page.evaluate(async renderer => {
+            const name = '@oie/web-ui';
+            const ui = await import(name);
+            if (renderer === 'dom') ui.setDialogRenderer(null);
+            const opener = ui.h('button', { id: 'focus-opener' }, 'Opener');
+            const replacement = ui.h('button', { id: 'focus-replacement' }, 'Replacement');
+            document.body.append(opener, replacement);
+            (window as any).__focusProbe = { ui, opener, replacement, closed: 0, returnCalls: 0 };
+            opener.focus();
+            let target = opener;
+            const handle = ui.modal({ title: 'Focus probe', body: 'Body', returnFocus: () => {
+                (window as any).__focusProbe.returnCalls++;
+                return target;
+            },
+                onClose: () => (window as any).__focusProbe.closed++ });
+            target = replacement;
+            (window as any).__focusProbe.handle = handle;
+        }, renderer);
+        await expect(page.getByRole('dialog', { name: 'Focus probe' })).toBeVisible();
+        await page.evaluate(() => { const { handle } = (window as any).__focusProbe; handle.close(); handle.close(); });
+        await expect(page.locator('#focus-replacement')).toBeFocused();
+        expect(await page.evaluate(() => (window as any).__focusProbe.closed)).toBe(1);
+        expect(await page.evaluate(() => (window as any).__focusProbe.returnCalls)).toBe(1);
+        for (const mode of ['default', 'null', 'removed']) {
+            await page.evaluate(mode => {
+                const state = (window as any).__focusProbe;
+                state.opener.focus();
+                state.returnCalls = 0;
+                const options = mode === 'default' ? {} : { returnFocus: () => {
+                    state.returnCalls++;
+                    return mode === 'null' ? null : state.replacement;
+                } };
+                state.handle = state.ui.modal({ title: 'Focus probe', body: 'Body', ...options });
+                if (mode === 'removed') state.replacement.remove();
+            }, mode);
+            await expect(page.getByRole('dialog', { name: 'Focus probe' })).toBeVisible();
+            await page.evaluate(() => (window as any).__focusProbe.handle.close());
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            if (mode === 'default') await expect(page.locator('#focus-opener')).toBeFocused();
+            else {
+                await expect.poll(() => page.evaluate(() => (window as any).__focusProbe.returnCalls)).toBe(1);
+                await expect(page.locator('#focus-opener')).not.toBeFocused();
+            }
+        }
+    });
+}

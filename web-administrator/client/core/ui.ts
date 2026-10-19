@@ -45,6 +45,8 @@ export interface ModalOptions {
     /** Extra size class, e.g. `'wide'`. */
     size?: string;
     onClose?: () => void;
+    /** Resolve the focus target when dismissed; null intentionally skips restoration. */
+    returnFocus?: () => HTMLElement | null;
     /** Accessible name when `title` is a Node (aria-label). */
     label?: string;
 }
@@ -285,7 +287,7 @@ export function modal(opts: ModalOptions): ModalHandle {
     return dialogRenderer ? dialogRenderer(opts) : domModal(opts);
 }
 
-function domModal({ title, body, buttons = [], size = '', onClose, label }: ModalOptions): ModalHandle {
+function domModal({ title, body, buttons = [], size = '', onClose, label, returnFocus }: ModalOptions): ModalHandle {
     const overlay = h('div.modal-overlay');
     // The element to hand focus back to. Captured before the dialog mounts, so
     // dismissing returns the caret to whatever opened it (Swing does the same).
@@ -301,8 +303,10 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }: Moda
         document.removeEventListener('keydown', onKeyDown);
         overlay.remove();
         syncAppHidden();          // a nested confirm closing must not un-hide the app
-        if (opener && opener.isConnected && opener.focus) opener.focus();
-        onClose && onClose();
+        try {
+            const target = returnFocus ? returnFocus() : opener;
+            if (target && target.isConnected && target.focus) target.focus();
+        } finally { onClose && onClose(); }
     };
     const requestClose = () => { if (!pending) close(); };
 

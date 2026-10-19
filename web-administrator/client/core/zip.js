@@ -33,7 +33,11 @@ function lib() {
 export async function* readZip(data, recursive = true, assertActive = () => { }) {
     const zipjs = await lib();
     assertActive();
-    const reader = new zipjs.ZipReader(new zipjs.Uint8ArrayReader(data));
+    // Message import reads bytes in memory and never uses entry names as file
+    // or request paths. Historical custom File Patterns can contain absolute
+    // or parent-relative names; keep those backups readable without relaxing
+    // the separate ZIP structure and local-header consistency checks.
+    const reader = new zipjs.ZipReader(new zipjs.Uint8ArrayReader(data), { filenameValidation: 'tolerant' });
     try {
         for (const entry of await reader.getEntries()) {
             assertActive();
