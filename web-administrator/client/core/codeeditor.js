@@ -45,7 +45,8 @@ export class CodeEditor {
         else if (e.key === 'Tab' && !this.opts.readOnly && !this._tabFocus) {
             e.preventDefault();
             const { selectionStart: start, selectionEnd: end, selectionDirection: direction, value } = this.area;
-            let from = start, to = end, text = '\t', caret = start + 1;
+            const indentText = this.opts.language === 'python' ? '    ' : '\t';
+            let from = start, to = end, text = indentText, caret = start + indentText.length;
             if (e.shiftKey) {
                 // Outdent the current line.
                 const lineStart = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1;
@@ -319,7 +320,7 @@ let factory = (opts = {}) => {
         editor.area.addEventListener('input', () => { edited = true; }, { once: true });
     const dispose = editor.dispose.bind(editor);
     editor.dispose = () => { disposed = true; dispose(); };
-    ensureMonaco().then((monaco) => {
+    ensureMonaco(opts.language).then((monaco) => {
         if (!monaco || disposed || edited || (opts.literalInput && editor._tabFocus !== undefined))
             return;
         try {

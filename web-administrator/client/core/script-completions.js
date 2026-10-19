@@ -37,6 +37,36 @@ function loadLibraries() {
 const idSet = (v) => asList(v, 'string').map(String);
 const templatesOf = (lib) => asList(lib.codeTemplates, 'codeTemplate').filter((t) => t && typeof t === 'object');
 const contextsOf = (t) => asList(t.contextSet && t.contextSet.delegate, 'contextType').map(String);
+const templateCompletionSources = new Map();
+/** Platform registration bridge. Keeping the resolver here avoids a runtime
+ * cycle from completions back into platform/Monaco. Plugins use the public
+ * CodeTemplateType.getCompletionCode contract instead of this internal hook. */
+export function registerTemplateCompletionSource(propertiesClass, resolve) {
+    templateCompletionSources.set(propertiesClass, resolve);
+}
+/** Shared JavaScript surface for completions and the References drag/copy UI. */
+export function templateCompletionCode(template) {
+    const propertiesClass = template.properties?.['@class'];
+    let code;
+    if (!propertiesClass || propertiesClass === 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties') {
+        // Preserve existing built-in source/drag behavior. The worker's own
+        // size guard below still limits large JavaScript libraries.
+        return String(template.properties?.code || '');
+    }
+    const resolve = templateCompletionSources.get(propertiesClass);
+    if (!resolve)
+        return '';
+    try {
+        code = resolve(structuredClone(template));
+    }
+    catch (error) {
+        console.warn(`[script-completions] template completion provider failed for ${propertiesClass}:`, error);
+        return '';
+    }
+    // Custom source languages are never inspected or forwarded implicitly.
+    // A provider supplies only JavaScript declarations for its callable API.
+    return typeof code === 'string' && code.length <= 500_000 ? code : '';
+}
 function libraryInScope(lib, channelId) {
     if (idSet(lib.enabledChannelIds).includes(channelId))
         return true;
@@ -45,7 +75,7 @@ function libraryInScope(lib, channelId) {
 /* A FUNCTION template's code → { name, params, doc } (its signature + leading
    JSDoc), or null when there's no parseable `function name(...)`. */
 function parseFunction(template) {
-    return parseFunctionCode(String((template.properties && template.properties.code) || ''));
+    return parseFunctionCode(templateCompletionCode(template));
 }
 function parseFunctionCode(code) {
     const fn = code.match(/function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/);
@@ -137,7 +167,7 @@ export async function templateSourcesInScope(channelId, contexts) {
                 continue;
             if (!contextsOf(t).some((c) => ctx.has(c)))
                 continue;
-            const raw = String((t.properties && t.properties.code) || '');
+            const raw = templateCompletionCode(t);
             // A code template is human-authored library code, KBs in practice; a
             // pathological megabyte-scale one is not worth main-thread transform
             // time or worker churn — skip it, losing only its own completions.

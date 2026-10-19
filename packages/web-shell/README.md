@@ -29,6 +29,7 @@ export function register() {
 - `platform.registerDashboardTab(...)` / `platform.registerDashboardColumn(...)` — dashboard tabs and columns
 - `platform.registerChannelTab(...)`, `platform.registerAttachmentViewer(...)`, `platform.registerStepType(...)` / `registerRuleType(...)`, `platform.registerResourceType(...)`
 - `platform.registerReferences(category, items)` / `platform.references()` — add Reference/autocomplete entries and inspect plugin registrations (API 4.8)
+- `platform.registerCodeTemplateType(id, definition)` / `platform.codeTemplateTypes()` — custom code-template properties, editors, supported contexts, and optional language validation (API 4.10). Stored classes select the editor; missing plugins preserve templates read-only. See the [API 4.10 contract](../../web-administrator/PLUGINS.md#api-410-plugin-contracts).
 - `platform.store` / `platform.router` / `platform.events` — shared app state, routing, and the event bus
 
 ## Script references (API 4.8)

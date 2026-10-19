@@ -16,7 +16,8 @@ export interface MonacoMountOptions {
     [extra: string]: any;
 }
 export declare function monacoFontFamily(): string;
-export declare function ensureMonaco(): Promise<Monaco | null>;
+/** Python's grammar/configuration are fetched only when explicitly requested. */
+export declare function ensureMonaco(language?: string): Promise<Monaco | null>;
 /** Dispose every Monaco editor whose host element has left the document.
     Runs on route changes automatically; the shell also calls it on sign-out,
     which swaps the DOM without a route change (script content must not stay

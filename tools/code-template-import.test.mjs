@@ -62,6 +62,22 @@ function freeze(value) {
     return value;
 }
 
+test('custom code-template imports preserve the plugin class, source, settings and unsupported contexts', async () => {
+    const custom = template('python-1', 'Python Function');
+    custom.properties = {
+        '@class': 'com.mirth.connect.plugins.python.PythonCodeTemplateProperties',
+        '@version': '4.6.0', type: 'FUNCTION', functionName: 'python_function', environmentId: '001',
+        source: 'def call(ctx):\n    return "001"\n', nestedPluginSettings: { enabled: false, value: '002' }
+    };
+    custom.contextSet = { delegate: { contextType: ['GLOBAL_DEPLOY', 'SOURCE_FILTER_TRANSFORMER'] } };
+    const expected = structuredClone(custom);
+    const result = await prepareTemplateImport([library('target', 'Target')], [freeze(custom)], 'target', version, callbacks());
+    assert.deepEqual(result.templates[0].properties, expected.properties);
+    assert.deepEqual(result.templates[0].contextSet, expected.contextSet,
+        'an imported context is never silently dropped based on available UI providers');
+    assert.equal(result.templates[0].id, 'python-1');
+});
+
 test('second library is added alongside every current library; full templates only become updates', async () => {
     const current = freeze([
         library('a', 'Library A', [template('a1', 'A1')], { pluginMetadata: { untouched: true } }),

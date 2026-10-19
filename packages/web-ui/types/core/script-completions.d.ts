@@ -1,3 +1,4 @@
+import type { OieObject } from './wire-types.js';
 /** A code-template function offered to the editor: signature + leading JSDoc. */
 export interface TemplateCompletion {
     name: string;
@@ -7,6 +8,12 @@ export interface TemplateCompletion {
 }
 /** Force a refetch (call after the user edits Code Templates). */
 export declare function invalidate(): void;
+/** Platform registration bridge. Keeping the resolver here avoids a runtime
+ * cycle from completions back into platform/Monaco. Plugins use the public
+ * CodeTemplateType.getCompletionCode contract instead of this internal hook. */
+export declare function registerTemplateCompletionSource(propertiesClass: string, resolve: (template: OieObject) => string | null): void;
+/** Shared JavaScript surface for completions and the References drag/copy UI. */
+export declare function templateCompletionCode(template: OieObject): string;
 /** The in-scope code-template functions for a channel + editor contexts. */
 export declare function templatesInScope(channelId: string | number, contexts: string[]): Promise<TemplateCompletion[]>;
 /** A code template's source, fed to the language service as one extra lib. */

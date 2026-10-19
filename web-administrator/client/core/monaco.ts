@@ -53,6 +53,8 @@ export interface MonacoMountOptions {
 }
 
 let loadPromise: Promise<Monaco | null> | null = null;
+let pythonPromise: Promise<boolean> | null = null;
+let pythonAttempt = 0;
 
 /* The data-font preference rides --font-mono (core/store.ts setFontMono).
    Monaco measures glyphs from a concrete family list and cannot consume the
@@ -63,10 +65,40 @@ export function monacoFontFamily(): string {
         || "'JetBrains Mono', ui-monospace, 'SF Mono', 'Consolas', monospace";
 }
 
-export function ensureMonaco(): Promise<Monaco | null> {
-    if (loadPromise) return loadPromise;
-    loadPromise = loadMonaco();
-    return loadPromise;
+/** Python's grammar/configuration are fetched only when explicitly requested. */
+export function ensureMonaco(language?: string): Promise<Monaco | null> {
+    if (!loadPromise) loadPromise = loadMonaco();
+    if (language !== 'python') return loadPromise;
+    return loadPromise.then(async monaco => monaco && await ensurePython(monaco) ? monaco : null);
+}
+
+function ensurePython(monaco: Monaco): Promise<boolean> {
+    if (pythonPromise) return pythonPromise;
+    pythonPromise = (async () => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        // Browsers can cache failed module loads; use a new URL on a retry.
+        const retry = pythonAttempt++;
+        const url = `${MONACO_VENDOR}/python.js${retry ? `?retry=${retry}` : ''}`;
+        try {
+            const module = await Promise.race([
+                import(/* @vite-ignore */ url),
+                new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), LOAD_TIMEOUT_MS); })
+            ]);
+            if (!module?.language || !module?.conf) return false;
+            monaco.languages.register({ id: 'python', aliases: ['Python'], extensions: ['.py'] });
+            monaco.languages.setLanguageConfiguration('python', module.conf);
+            monaco.languages.setMonarchTokensProvider('python', module.language);
+            return true;
+        } catch {
+            return false; // Keep the textarea usable when an optional bundle cannot load.
+        } finally {
+            if (timer !== undefined) clearTimeout(timer);
+        }
+    })().then(loaded => {
+        if (!loaded) pythonPromise = null; // A later editor can retry after a transient failure.
+        return loaded;
+    });
+    return pythonPromise;
 }
 
 // Inject the editor stylesheet emitted alongside the esbuild ESM bundle (which,
@@ -555,7 +587,7 @@ function setup(monaco: Monaco): void {
 
 const LANGUAGES: Record<string, string> = {
     javascript: 'javascript', js: 'javascript', rhino: 'javascript',
-    xml: 'xml', html: 'html', json: 'json', sql: 'sql', hl7v2: 'hl7v2', text: 'plaintext'
+    python: 'python', xml: 'xml', html: 'html', json: 'json', sql: 'sql', hl7v2: 'hl7v2', text: 'plaintext'
 };
 
 /* Monaco editors hold a model, listeners, layout observer and a debounce timer
@@ -647,7 +679,8 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
         // literal ->, !=, === (matches app.css's font-variant-ligatures: none).
         fontLigatures: false,
         tabSize: 4,
-        insertSpaces: false,
+        insertSpaces: lang === 'python',
+        ...(lang === 'python' ? { detectIndentation: false } : {}),
         folding: true,
         renderLineHighlight: 'line',
         fixedOverflowWidgets: true,
@@ -660,7 +693,7 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
         wordBasedSuggestions: lang === 'javascript' ? 'off' : 'currentDocument',
         ...(opts.literalInput ? {
             lineNumbersMinChars: 2, lineDecorationsWidth: 4, folding: lang !== 'plaintext' && lang !== 'hl7v2',
-            insertSpaces: false, useTabStops: false, detectIndentation: false, autoIndent: 'none' as const,
+            insertSpaces: lang === 'python', useTabStops: false, detectIndentation: false, autoIndent: 'none' as const,
             trimAutoWhitespace: false,
             // Native EditContext can bypass the cancellable beforeinput below.
             editContext: false,
@@ -682,7 +715,7 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
     const literalTab = opts.literalInput ? instance.addAction({
         id: 'oie.literalTab', label: 'Insert Tab', keybindings: [monaco.KeyCode.Tab],
         precondition: 'editorTextFocus && !editorReadonly && !editorTabMovesFocus',
-        run: editor => editor.trigger('literal-input', 'type', { text: '\t' })
+        run: editor => editor.trigger('literal-input', 'type', { text: lang === 'python' ? '    ' : '\t' })
     }) : null;
     const literalBracket = (event: InputEvent) => {
         if (!event.cancelable || event.isComposing || event.inputType !== 'insertText'
@@ -711,7 +744,7 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
 
     const changeSub = instance.onDidChangeModelContent((e) => {
         opts.onChange && opts.onChange(instance.getValue());
-        scheduleHighlight(e.changes);
+        if (lang === 'javascript') scheduleHighlight(e.changes);
     });
     highlightReservedVars(monaco, instance);   // initial paint (whole document)
 
@@ -719,7 +752,7 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
     // dispose it gives back the scope it displaced, unless another editor or
     // view has taken it since — so a modal script editor returns the scope to
     // the editor or view beneath it.
-    const scope = opts.completionScope;
+    const scope = lang === 'javascript' ? opts.completionScope : undefined;
     const holder: ScopeHolder = { token: -1, previous: null, disposed: false };
     const focusSub = scope ? instance.onDidFocusEditorText(() => {
         // Refocus retries a failed template load, but must not replace the
@@ -747,7 +780,7 @@ export function mountMonaco(monaco: Monaco, editor: UpgradeableEditor, opts: Mon
     // decorations don't change tokens, so this cannot loop.
     // onDidChangeTokens is real at runtime but absent from recent public typings.
     const hlModel = instance.getModel() as any;
-    const tokenSub = hlModel ? hlModel.onDidChangeTokens((e: any) => {
+    const tokenSub = lang === 'javascript' && hlModel ? hlModel.onDidChangeTokens((e: any) => {
         for (const r of (e.ranges || [])) {
             highlightReservedVars(monaco, instance, r.fromLineNumber, r.toLineNumber);
         }

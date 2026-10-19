@@ -1,13 +1,13 @@
 import type * as MonacoNs from 'monaco-editor';
 export interface CodeEditorOptions {
     value?: string;
-    /** 'javascript' | 'xml' | 'sql' | 'text' | ... */
+    /** Defaults to Rhino JavaScript. 'python' loads its local grammar on demand. */
     language?: string;
     readOnly?: boolean;
     minHeight?: string;
     placeholder?: string;
     ariaLabel?: string;
-    /** Sample data: literal tabs and newlines, without typing assistance. */
+    /** Disable automatic typing assistance. Python's Tab still inserts four spaces. */
     literalInput?: boolean;
     onChange?(value: string): void;
     /** Corner toggle opening the full-screen code view. */

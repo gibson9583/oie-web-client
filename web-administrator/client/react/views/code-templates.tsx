@@ -25,16 +25,20 @@ import { TreeTable, TreeLabel } from '../tree-table.jsx';
 import api, { uuid } from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
+import { navigationToken } from '../../core/router.js';
 import { validateScript } from '../../core/serialize.js';
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { ViewTasks } from '../mount.jsx';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { RailPane, TaskButton, CodeEditor } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { ErrorBoundary } from '../error-boundary.jsx';
 import { platform } from '@oie/web-shell';
 import { parseLibraryImport, prepareLibraryImport, parseTemplateImport, prepareTemplateImport } from './code-template-import.js';
 import { libraryImportCallbacks } from './code-template-import-dialogs.js';
 import { usePaletteContext } from '../palette-context.js';
+import { BASIC_PROPERTIES_CLASS as PROPERTIES_CLASS, BUILTIN_TEMPLATE_TYPES as TEMPLATE_TYPES,
+    codeTemplateType, switchCodeTemplateType, codeTemplateTypeError, codeTemplateSaveError } from './code-template-types.js';
 
 
 const CT_COLUMNS = [
@@ -45,15 +49,6 @@ const CT_COLUMNS = [
     { key: 'lastModified', label: 'Last Modified' }
 ];
 const CT_COL_WIDTHS = { name: 300, id: 280, description: 260, revision: 80, lastModified: 150 };
-
-const PROPERTIES_CLASS = 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties';
-
-/* CodeTemplateProperties.CodeTemplateType (XStream serializes enum names) */
-const TEMPLATE_TYPES = [
-    { value: 'FUNCTION', label: 'Function' },
-    { value: 'DRAG_AND_DROP_CODE', label: 'Drag-and-Drop Code Block' },
-    { value: 'COMPILED_CODE', label: 'Compiled Code Block' }
-];
 
 /* ContextType enum, grouped the way the Swing context tree presents it */
 const CONTEXT_GROUPS = [
@@ -152,6 +147,15 @@ function bulkSaveError(result: any): string {
 }
 
 export function CodeTemplatesView({ query = {} }: { query?: Record<string, string> } = {}) {
+    const mountedRef = useRef(false);
+    useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+    const [, updateProviders] = useState(0);
+    useEffect(() => {
+        const refresh = () => updateProviders(value => value + 1);
+        const offTypes = platform.events.on('codeTemplateTypes:changed', refresh);
+        const offAuthorization = store.subscribe('webPlugins', refresh);
+        return () => { offTypes(); offAuthorization(); };
+    }, []);
     // Maximize: grow the Code editor over the library list (top) and the
     // Name/Library/Type form, keeping the right-hand Context panel. Esc restores.
     const [editorMax, setEditorMax] = useState(false);
@@ -445,6 +449,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     function saveAll() { return withEditorSave(() => saveAllUnlocked()); }
 
     async function saveAllUnlocked(overrideConflicts = false, session?: () => void): Promise<any> {
+        if (!platform.checkTask('codeTemplate', 'doSaveCodeTemplates')) return;
         let assertSession: () => void;
         try { assertSession = session || captureEngineSession(); assertSession(); } catch { return; }
         // Swing-parity conflict handling: save with override=false and the revisions AS
@@ -469,7 +474,12 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                     if (!template['@version']) template['@version'] = v;
                     if (template.properties && !template.properties['@version']) template.properties['@version'] = v;
                     const persisted = persistedTemplatesRef.current.get(String(template.id));
-                    if (persisted === undefined || persisted !== JSON.stringify(template)) templates.push(template);
+                    if (persisted === undefined || persisted !== JSON.stringify(template)) {
+                        const providers = platform.codeTemplateTypes();
+                        const error = codeTemplateSaveError(template, providers, platform);
+                        if (error) throw new Error(`${template.name || 'Code template'}: ${error}`);
+                        templates.push(template);
+                    }
                 }
             }
             const payload = libraries.map(entry => ({
@@ -613,6 +623,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     }
 
     async function importLibrariesUnlocked() {
+        if (!platform.checkTask('codeTemplate', 'doImportLibraries')) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         let writeAttempted = false;
@@ -650,6 +661,8 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 libraryImportCallbacks(assertSession, pending.ids));
             assertSession();
             if (!payload) return;
+            if (!platform.checkTask('codeTemplate', 'doImportLibraries')) return;
+            assertTemplateWrites(payload.templates);
             writeAttempted = true;
             const result = await api.codeTemplates.bulkUpdate(payload.libraries, payload.templates, [], [], false);
             assertSession();
@@ -683,6 +696,7 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
     }
 
     async function importCodeTemplatesUnlocked(entryArg: any) {
+        if (!platform.checkTask('codeTemplate', 'doImportCodeTemplates')) return;
         let assertSession: () => void;
         try { assertSession = captureEngineSession(); } catch { return; }
         let writeAttempted = false;
@@ -719,6 +733,8 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
                 libraryImportCallbacks(assertSession, pending.ids));
             assertSession();
             if (!payload || !payload.templates.length) return;
+            if (!platform.checkTask('codeTemplate', 'doImportCodeTemplates')) return;
+            assertTemplateWrites(payload.templates);
             writeAttempted = true;
             const result = await api.codeTemplates.bulkUpdate(payload.libraries, payload.templates, [], [], false);
             assertSession();
@@ -743,16 +759,55 @@ export function CodeTemplatesView({ query = {} }: { query?: Record<string, strin
         }
     }
 
+    function assertTemplateWrites(templates: any[]) {
+        const providers = platform.codeTemplateTypes();
+        for (const template of templates) {
+            const error = codeTemplateSaveError(template, providers, platform);
+            if (error) throw new Error(`${template.name || 'Code template'}: ${error}`);
+        }
+    }
+
     /* Validate Script (Swing) — real Rhino compile check of the selected
        template's code via the engine bridge. */
     async function validateScriptTask(found: any) {
+        if (!platform.checkTask('codeTemplate', 'doValidateCodeTemplate')) return;
         if (!found || !found.template) { toast('Select a code template first', 'warn'); return; }
-        const code = found.template.properties && found.template.properties.code;
-        if (typeof code !== 'string' || !code.trim()) { toast('Template has no code to validate', 'warn'); return; }
-        const result = await validateScript(code);
-        if (result.ok === null) { toast(result.message, 'warn'); return; }
-        if (result.ok === false) { toast(`Validation error — ${result.message}`, 'error'); return; }
-        toast('Code template validated successfully');
+        const current = resolve({ kind: 'template', id: found.template.id }, entriesNowRef.current)?.template;
+        if (!current) return;
+        const snapshot = structuredClone(current);
+        const before = JSON.stringify(snapshot);
+        const navigation = navigationToken();
+        let assertSession: () => void;
+        try { assertSession = captureEngineSession(); } catch { return; }
+        const stillCurrent = () => {
+            assertSession();
+            const latest = resolve({ kind: 'template', id: current.id }, entriesNowRef.current)?.template;
+            return mountedRef.current && navigationToken() === navigation
+                && latest === current && JSON.stringify(latest) === before
+                && platform.checkTask('codeTemplate', 'doValidateCodeTemplate');
+        };
+        try {
+            const providers = platform.codeTemplateTypes();
+            const error = codeTemplateTypeError(snapshot, providers) || codeTemplateSaveError(snapshot, providers, platform);
+            if (error) { toast(error, 'warn'); return; }
+            const type = codeTemplateType(snapshot, providers);
+            if (type.provider) {
+                if (!type.provider.validate) { toast('This plugin validates templates during deployment; independent validation is unavailable.', 'warn'); return; }
+                const problem = await type.provider.validate({ template: snapshot, properties: snapshot.properties, platform });
+                if (!stillCurrent() || platform.codeTemplateTypes().get(type.id) !== type.provider) return;
+                if (problem !== null) { toast(`Validation error — ${problem || 'The plugin did not return a validation result.'}`, 'error'); return; }
+            } else {
+                const code = snapshot.properties?.code;
+                if (typeof code !== 'string' || !code.trim()) { toast('Template has no code to validate', 'warn'); return; }
+                const result = await validateScript(code);
+                if (!stillCurrent()) return;
+                if (result.ok === null) { toast(result.message, 'warn'); return; }
+                if (result.ok === false) { toast(`Validation error — ${result.message}`, 'error'); return; }
+            }
+            toast('Code template validated successfully');
+        } catch (error: any) {
+            try { if (stillCurrent()) toast(`Validation failed: ${error.message}`, 'error'); } catch { /* engine/session changed */ }
+        }
     }
 
     async function refreshTask() {
@@ -978,15 +1033,14 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
     }, []);
 
     // Summary line (Swing shows template-type counts for the library).
-    const counts = { FUNCTION: 0, DRAG_AND_DROP_CODE: 0, COMPILED_CODE: 0 };
+    const providers = platform.codeTemplateTypes();
+    const counts = new Map(TEMPLATE_TYPES.map(type => [type.value, { label: type.label, count: 0 }]));
     for (const t of entry.templates) {
-        const type = (t.properties && t.properties.type) || 'FUNCTION';
-        if ((counts as any)[type] === undefined) (counts as any)[type] = 0;
-        (counts as any)[type]++;
+        const type = codeTemplateType(t, providers);
+        if (!counts.has(type.id)) counts.set(type.id, { label: type.label, count: 0 });
+        counts.get(type.id)!.count++;
     }
-    const summaryText = `${counts.FUNCTION} Function${counts.FUNCTION === 1 ? '' : 's'}, `
-        + `${counts.DRAG_AND_DROP_CODE} Drag-and-Drop Code Block${counts.DRAG_AND_DROP_CODE === 1 ? '' : 's'}, `
-        + `${counts.COMPILED_CODE} Compiled Code Block${counts.COMPILED_CODE === 1 ? '' : 's'}`;
+    const summaryText = [...counts.values()].map(({ label, count }) => `${count} ${label}${count === 1 ? '' : 's'}`).join(', ');
 
     const enabled = new Set(idSetOf(library.enabledChannelIds));
     function setChannel(id: any, on: any) {
@@ -1065,8 +1119,19 @@ function LibraryEditor({ entry, markDirty, focusName, onFocusConsumed }: any) {
 
 function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocusConsumed, onMoveTemplate, maximized, onToggleMax }: any) {
     const nameRef = useFocusName(focusName, onFocusConsumed);
-    if (!template.properties || typeof template.properties !== 'object') {
-        template.properties = { '@class': PROPERTIES_CLASS, type: 'FUNCTION', code: '' };
+    const drafts = useRef(new Map());
+    const providers = platform.codeTemplateTypes();
+    const type = codeTemplateType(template, providers);
+    const readOnly = type.missing || !platform.checkTask('codeTemplate', 'doSaveCodeTemplates');
+    const canEdit = () => !type.missing && platform.checkTask('codeTemplate', 'doSaveCodeTemplates');
+    const PluginEditor = type.provider?.component as any;
+    const typeError = type.provider && codeTemplateTypeError(template, providers);
+    function changeType(id: string) {
+        if (!canEdit()) return;
+        try {
+            if (switchCodeTemplateType(template, id, platform.codeTemplateTypes(),
+                store.getState('serverVersion') || '4.5.2', drafts.current)) markDirty();
+        } catch (error: any) { toast(`Template type could not be changed: ${error.message}`, 'error'); }
     }
     // Maximize (state lifted to the view so it can also hide the library list above)
     // grows the Code editor over the Name/Library/Type form, which is tagged
@@ -1077,14 +1142,14 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
                 <div className="form-grid mb-3">
                     <div className="field">
                         <label>Name</label>
-                        <input ref={nameRef} type="text" value={template.name || ''}
-                            onChange={(e: any) => { template.name = e.target.value; markDirty(); }} />
+                        <input ref={nameRef} type="text" value={template.name || ''} readOnly={readOnly}
+                            onChange={(e: any) => { if (canEdit()) { template.name = e.target.value; markDirty(); } }} />
                     </div>
                     <div className="field">
                         <label>Library</label>
                         {/* Swing lets you move a template between libraries here. */}
-                        <select value={entry.library.id}
-                            onChange={(e: any) => onMoveTemplate(entry, template, e.target.value)}>
+                        <select value={entry.library.id} disabled={readOnly}
+                            onChange={(e: any) => { if (canEdit()) onMoveTemplate(entry, template, e.target.value); }}>
                             {entries.map((en: any) => (
                                 <option key={en.library.id} value={en.library.id}>{en.library.name || '(unnamed library)'}</option>
                             ))}
@@ -1092,9 +1157,10 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
                     </div>
                     <div className="field">
                         <label>Type</label>
-                        <select value={template.properties.type || 'FUNCTION'}
-                            onChange={(e: any) => { template.properties.type = e.target.value; markDirty(); }}>
+                        <select value={type.id} disabled={readOnly} onChange={(e: any) => changeType(e.target.value)}>
                             {TEMPLATE_TYPES.map((t: any) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            {[...providers].map(([id, provider]) => <option key={id} value={id}>{provider.label}</option>)}
+                            {type.missing && <option value={type.id}>{type.label}</option>}
                         </select>
                     </div>
                 </div>
@@ -1109,12 +1175,22 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
                             <Icon name={maximized ? 'minimize' : 'maximize'} size={15} />
                         </button>
                     </div>
-                    <CodeEditor language="javascript"
+                    {type.missing ? <div role="status" className="p-3 text-text-dim">
+                        The editor for this template type is unavailable. Enable its web plugin to edit it.
+                        <p className="mt-2 break-all">{template.properties?.['@class'] || 'Template properties are missing.'}</p>
+                        <p className="mt-2">The template source and properties are preserved.</p>
+                    </div> : PluginEditor ? <>
+                        {typeError && <div role="alert" className="mb-2 text-text-dim">{typeError}</div>}
+                        <ErrorBoundary key={`${type.id}:${readOnly}`} label={`${type.label} editor failed`} compact>
+                            <PluginEditor template={template} properties={template.properties} platform={platform}
+                                readOnly={readOnly} onChange={() => { if (canEdit()) markDirty(); }} />
+                        </ErrorBoundary>
+                    </> : <CodeEditor key={`${type.id}:${readOnly}`} language="javascript" readOnly={readOnly}
                         defaultValue={template.properties.code || ''}
-                        onChange={(v: any) => { template.properties.code = v; markDirty(); }}
-                        style={{ flex: 1, minHeight: '200px' }} />
+                        onChange={(v: any) => { if (canEdit()) { template.properties.code = v; markDirty(); } }}
+                        style={{ flex: 1, minHeight: '200px' }} />}
                 </div>
-                <ContextPanel template={template} markDirty={markDirty} />
+                <ContextPanel template={template} markDirty={markDirty} readOnly={readOnly} contexts={type.provider?.contexts} />
             </div>
         </div>
     );
@@ -1122,12 +1198,12 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
 
 /* Group checkbox with the tri-state (indeterminate) look — `indeterminate` is a
    DOM property, not an attribute, so it is applied through a ref. */
-function GroupCheck({ label, checked, indeterminate, onChange }: any) {
+function GroupCheck({ label, checked, indeterminate, onChange, disabled }: any) {
     const ref = useRef<any>(null);
     useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate; }, [indeterminate]);
     return (
         <label className="check">
-            <input ref={ref} type="checkbox" checked={checked} onChange={onChange} />
+            <input ref={ref} type="checkbox" checked={checked} onChange={onChange} disabled={disabled} />
             {label}
         </label>
     );
@@ -1135,49 +1211,55 @@ function GroupCheck({ label, checked, indeterminate, onChange }: any) {
 
 /* The template's Context checkbox tree (Swing's right-hand panel). All state
    derives from the template's contextSet; toggles rewrite it via setContexts. */
-function ContextPanel({ template, markDirty }: any) {
+function ContextPanel({ template, markDirty, readOnly = false, contexts }: any) {
     const active = new Set(contextsOf(template));
+    const supported = (type: string) => !contexts || contexts.includes(type);
     const apply = (next: any) => {
+        if (readOnly || !platform.checkTask('codeTemplate', 'doSaveCodeTemplates')) return;
         setContexts(template, ALL_CONTEXTS.filter((t: any) => next.has(t)));
         markDirty();
     };
     const toggleType = (type: any, on: any) => {
+        if (on && !supported(type)) return;
         const next = new Set(active);
         on ? next.add(type) : next.delete(type);
         apply(next);
     };
     const toggleGroup = (group: any, on: any) => {
         const next = new Set(active);
-        for (const [type] of group.types) { on ? next.add(type) : next.delete(type); }
+        for (const [type] of group.types) { if (on) { if (supported(type)) next.add(type); } else next.delete(type); }
         apply(next);
     };
-    const setAll = (on: any) => apply(on ? new Set(ALL_CONTEXTS) : new Set());
+    const setAll = (on: any) => apply(on ? new Set(ALL_CONTEXTS.filter(supported)) : new Set());
 
     return (
         <div className="w-[234px] flex-none flex flex-col min-h-0 border-l border-line pl-3.5">
             <div className="flex items-baseline justify-between mb-2">
                 <label className="text-[10px] font-[650] tracking-[0.08em] uppercase text-text-dim">Context</label>
                 <span className="text-[10px]">
-                    <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAll(true); }}>Select All</a>
+                    <a href="#" className="text-accent" aria-disabled={readOnly} onClick={(e: any) => { e.preventDefault(); setAll(true); }}>Select All</a>
                     <span className="text-text-faint my-0 mx-1.5">|</span>
-                    <a href="#" className="text-accent" onClick={(e: any) => { e.preventDefault(); setAll(false); }}>Deselect All</a>
+                    <a href="#" className="text-accent" aria-disabled={readOnly} onClick={(e: any) => { e.preventDefault(); setAll(false); }}>Deselect All</a>
                 </span>
             </div>
             <div className="overflow-auto flex-1">
                 {CONTEXT_GROUPS.map((group: any) => {
                     const on = group.types.filter(([type]: any) => active.has(type)).length;
+                    const allowedCount = group.types.filter(([type]: any) => supported(type)).length;
+                    const supportedOn = group.types.filter(([type]: any) => supported(type) && active.has(type)).length;
                     return (
                         <div key={group.label} className="mb-1.5">
                             <div>
                                 <GroupCheck label={group.label}
-                                    checked={on === group.types.length && on > 0}
-                                    indeterminate={on > 0 && on < group.types.length}
+                                    disabled={readOnly || (allowedCount === 0 && on === 0)}
+                                    checked={supportedOn === allowedCount && supportedOn > 0}
+                                    indeterminate={on > 0 && (supportedOn < allowedCount || on > supportedOn)}
                                     onChange={(e: any) => toggleGroup(group, e.target.checked)} />
                             </div>
                             {group.types.map(([type, label]: any) => (
                                 <div key={type} className="pl-5">
                                     <label className="check">
-                                        <input type="checkbox" checked={active.has(type)}
+                                        <input type="checkbox" checked={active.has(type)} disabled={readOnly || (!supported(type) && !active.has(type))}
                                             onChange={(e: any) => toggleType(type, e.target.checked)} />
                                         {label}
                                     </label>

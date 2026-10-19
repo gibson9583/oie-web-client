@@ -10,6 +10,7 @@
  */
 import api from './api.js';
 import { getState } from './store.js';
+import type { OieObject } from './wire-types.js';
 
 const asList = api.asList;
 
@@ -51,6 +52,36 @@ const idSet = (v: any): string[] => asList(v, 'string').map(String);
 const templatesOf = (lib: any): any[] => asList(lib.codeTemplates, 'codeTemplate').filter((t: any) => t && typeof t === 'object');
 const contextsOf = (t: any): string[] => asList(t.contextSet && t.contextSet.delegate, 'contextType').map(String);
 
+const templateCompletionSources = new Map<string, (template: OieObject) => string | null>();
+
+/** Platform registration bridge. Keeping the resolver here avoids a runtime
+ * cycle from completions back into platform/Monaco. Plugins use the public
+ * CodeTemplateType.getCompletionCode contract instead of this internal hook. */
+export function registerTemplateCompletionSource(propertiesClass: string, resolve: (template: OieObject) => string | null): void {
+    templateCompletionSources.set(propertiesClass, resolve);
+}
+
+/** Shared JavaScript surface for completions and the References drag/copy UI. */
+export function templateCompletionCode(template: OieObject): string {
+    const propertiesClass = template.properties?.['@class'];
+    let code: unknown;
+    if (!propertiesClass || propertiesClass === 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties') {
+        // Preserve existing built-in source/drag behavior. The worker's own
+        // size guard below still limits large JavaScript libraries.
+        return String(template.properties?.code || '');
+    }
+    const resolve = templateCompletionSources.get(propertiesClass);
+    if (!resolve) return '';
+    try { code = resolve(structuredClone(template)); }
+    catch (error) {
+        console.warn(`[script-completions] template completion provider failed for ${propertiesClass}:`, error);
+        return '';
+    }
+    // Custom source languages are never inspected or forwarded implicitly.
+    // A provider supplies only JavaScript declarations for its callable API.
+    return typeof code === 'string' && code.length <= 500_000 ? code : '';
+}
+
 function libraryInScope(lib: any, channelId: string): boolean {
     if (idSet(lib.enabledChannelIds).includes(channelId)) return true;
     return !!lib.includeNewChannels && !idSet(lib.disabledChannelIds).includes(channelId);
@@ -59,7 +90,7 @@ function libraryInScope(lib: any, channelId: string): boolean {
 /* A FUNCTION template's code → { name, params, doc } (its signature + leading
    JSDoc), or null when there's no parseable `function name(...)`. */
 function parseFunction(template: any): TemplateCompletion | null {
-    return parseFunctionCode(String((template.properties && template.properties.code) || ''));
+    return parseFunctionCode(templateCompletionCode(template));
 }
 
 function parseFunctionCode(code: string): TemplateCompletion | null {
@@ -155,7 +186,7 @@ export async function templateSourcesInScope(channelId: string | number, context
             const type = t.properties && t.properties.type;
             if (type === 'DRAG_AND_DROP_CODE') continue;
             if (!contextsOf(t).some((c) => ctx.has(c))) continue;
-            const raw = String((t.properties && t.properties.code) || '');
+            const raw = templateCompletionCode(t);
             // A code template is human-authored library code, KBs in practice; a
             // pathological megabyte-scale one is not worth main-thread transform
             // time or worker churn — skip it, losing only its own completions.

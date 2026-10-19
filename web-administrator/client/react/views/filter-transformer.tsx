@@ -52,7 +52,7 @@ import { normalizeLineEndings } from '../../core/content-highlight.js';
 import * as router from '../../core/router.js';
 import { routeUrl } from '../../core/deployment.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
-import { setActiveScope, clearActiveScope, referencesFor, dropTextFor, cleanDesc } from '../../core/script-completions.js';
+import { setActiveScope, clearActiveScope, referencesFor, dropTextFor, cleanDesc, templateCompletionCode } from '../../core/script-completions.js';
 import { serializeTemplate, validateScript } from '../../core/serialize.js';
 import { dataTypeDef, dataTypeList, normalizeDataTypeProperties } from '../../datatypes/index.js';
 import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
@@ -698,7 +698,7 @@ function ReferenceTab({ dragRef, channelId, context, getElements }: any) {
                             entries.push({
                                 name: t.name, category: name,
                                 description: t.description,
-                                code: (t.properties && t.properties.code) || '',
+                                code: templateCompletionCode(t),
                                 // Drag behavior is driven by the template type
                                 // (FUNCTION / DRAG_AND_DROP_CODE / COMPILED_CODE).
                                 type: (t.properties && t.properties.type) || 'DRAG_AND_DROP_CODE'

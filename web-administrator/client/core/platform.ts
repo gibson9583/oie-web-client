@@ -17,6 +17,7 @@
  *   registerAttachmentViewer — message attachment viewer (AttachmentViewer)
  *   registerChannelAction  — Channels view row action    (ChannelPanelPlugin task)
  *   registerCodeTemplateAction — Code Templates row action
+ *   registerCodeTemplateType — code-template properties and editor
  *   registerMessageAction  — message browser row action  (web-only; Swing has no hook)
  *   registerReferences     — Reference list + autocomplete entries (CodeTemplatePlugin)
  *   registerStepType / registerRuleType — transformer/filter editors
@@ -42,7 +43,7 @@ import { setAuthorizationController, checkTask, blockAuthorization, beginAuthori
 import { registerIcon } from './icons.js';
 import { registerCommand } from './commands.js';
 import { apiUrl, appUrl } from './deployment.js';
-import { addReferences, registeredReferences } from './script-completions.js';
+import { addReferences, registeredReferences, registerTemplateCompletionSource } from './script-completions.js';
 import type { Command } from './commands.js';
 import type { OieObject } from './wire-types.js';
 import type { Api } from './api.js';
@@ -186,6 +187,43 @@ export interface StepRuleType {
     create(): OieObject;
     component: PluginComponent<{ element: OieObject; onChange(): void; platform: Platform }>;
     [key: string]: any;
+}
+/** A custom properties class backed by an installed engine plugin. The engine
+ * still executes the JavaScript returned by that class's getCode(); this hook
+ * does not add a language compiler to the engine. Added in API 4.10. */
+export interface CodeTemplateType {
+    label: string;
+    propertiesClass: string;
+    order?: number;
+    /** Allowed ContextType names. Omit for all contexts. Existing unsupported
+     * selections are preserved and reported by validation, never silently lost. */
+    contexts?: string[];
+    /** Return fresh properties with one of the engine's existing type values:
+     * FUNCTION, COMPILED_CODE, or DRAG_AND_DROP_CODE. The host sets @class and
+     * supplies @version when absent. Source fields belong to the plugin. */
+    create(ctx: { version: string; template: OieObject }): OieObject;
+    /** Mutate properties, then call onChange(). Honor readOnly, including in
+     * asynchronous callbacks. Use platform.React and the host code editor. */
+    component: PluginComponent<{
+        template: OieObject;
+        properties: OieObject;
+        onChange(): void;
+        readOnly: boolean;
+        platform: Platform;
+    }>;
+    /** Explicit Validate action: null means valid, a string describes a failure.
+     * Receives a snapshot; custom source is never sent to the JavaScript validator.
+     * Omit when this plugin cannot validate independently of deployment. */
+    validate?(ctx: { template: OieObject; properties: OieObject; platform: Platform }): string | null | Promise<string | null>;
+    /** Synchronous schema checks before save/import and explicit validation.
+     * Return null or an error string. Do not require runtime availability or
+     * reject incomplete source drafts; execution validation belongs in validate. */
+    validateSave?(ctx: { template: OieObject; properties: OieObject; platform: Platform }): string | null;
+    /** Synchronous declaration-only JavaScript for script autocomplete and the
+     * Monaco language service. Return a function stub (with optional JSDoc),
+     * never Python or executable runtime code. Receives a template snapshot;
+     * missing/invalid results and provider failures contribute no completions. */
+    getCompletionCode?(ctx: { template: OieObject; properties: OieObject; platform: Platform }): string | null;
 }
 export interface ConnectorPanel {
     defaults(version: string): OieObject;
@@ -343,7 +381,7 @@ export interface PluginManifest {
  * plugin built for 4.6 keeps working on 4.7, 4.9, … (older APIs never removed
  * within a major); it's rejected only when THIS web admin is too old (its apiMin
  * is newer than us) or a major bump dropped what it relies on. */
-export const OIE_API_VERSION = '4.9.0';   // 4.9: command availability and required authorization providers
+export const OIE_API_VERSION = '4.10.0';   // 4.10: plugin code-template types and on-demand editor languages
 
 function parseApiVersion(v: unknown): { major: number; minor: number } {
     const [major, minor] = String(v == null ? '' : v).split('.');
@@ -367,6 +405,7 @@ const registries = {
     channelTabs: [] as ChannelTab[],
     channelActions: [] as ChannelAction[],
     codeTemplateActions: [] as CodeTemplateAction[],
+    codeTemplateTypes: new Map<string, CodeTemplateType>(),
     messageActions: [] as MessageAction[],
     settingsPanels: [] as SettingsPanel[],
     attachmentViewers: [] as AttachmentViewer[],
@@ -422,6 +461,7 @@ export interface Platform {
     registerChannelTab(tab: ChannelTab): void;
     registerChannelAction(action: ChannelAction): void;
     registerCodeTemplateAction(action: CodeTemplateAction): void;
+    registerCodeTemplateType(id: string, def: CodeTemplateType): void;
     registerMessageAction(action: MessageAction): void;
     /** Add Reference list and autocomplete entries under `category` — a new category or an existing one such as 'Conversion Functions'. */
     registerReferences(category: string, items: ReferenceItem[]): void;
@@ -442,6 +482,7 @@ export interface Platform {
     channelTabs(): ChannelTab[];
     channelActions(): ChannelAction[];
     codeTemplateActions(): CodeTemplateAction[];
+    codeTemplateTypes(): Map<string, CodeTemplateType>;
     messageActions(): MessageAction[];
     references(): Array<ReferenceItem & { category: string }>;
     settingsPanels(): SettingsPanel[];
@@ -526,6 +567,22 @@ export const platform: Platform = {
        isEnabled?(ctx) → bool, onInvoke(template, ctx) }.
        ctx = { platform, template, library }. */
     registerCodeTemplateAction(action) { registries.codeTemplateActions.push(action); },
+    registerCodeTemplateType(id, def) {
+        if (!id || ['FUNCTION', 'COMPILED_CODE', 'DRAG_AND_DROP_CODE'].includes(id)
+            || !def.label || !def.propertiesClass
+            || def.propertiesClass === 'com.mirth.connect.model.codetemplates.BasicCodeTemplateProperties'
+            || typeof def.create !== 'function' || typeof def.component !== 'function') {
+            throw new Error('Code template types require a unique id, properties class, label, create function, and component');
+        }
+        if (registries.codeTemplateTypes.has(id)
+            || [...registries.codeTemplateTypes.values()].some(type => type.propertiesClass === def.propertiesClass)) {
+            throw new Error(`Code template type is already registered: ${id}`);
+        }
+        registries.codeTemplateTypes.set(id, def);
+        if (def.getCompletionCode) registerTemplateCompletionSource(def.propertiesClass,
+            template => def.getCompletionCode!({ template, properties: template.properties, platform }));
+        store.emit('codeTemplateTypes:changed');
+    },
     /* A per-message action, shown in the message browser's row right-click menu
        and, for the selected row, in the Message Tasks pane. Web-only: Swing's
        MessageBrowser has no plugin hook. def = { id, label, icon?, order?,
@@ -572,6 +629,7 @@ export const platform: Platform = {
     channelTabs: () => sorted(registries.channelTabs),
     channelActions: () => sorted(registries.channelActions),
     codeTemplateActions: () => sorted(registries.codeTemplateActions),
+    codeTemplateTypes: () => new Map([...registries.codeTemplateTypes].sort(([, a], [, b]) => (a.order ?? 100) - (b.order ?? 100))),
     messageActions: () => sorted(registries.messageActions),
     references: () => registeredReferences() as Array<ReferenceItem & { category: string }>,
     settingsPanels: () => sorted(registries.settingsPanels),

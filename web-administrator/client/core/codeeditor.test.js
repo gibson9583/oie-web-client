@@ -35,6 +35,30 @@ class Element extends EventTarget {
 const editorBody = source.slice(source.indexOf('export class CodeEditor'), source.indexOf('/* Insert text')).replace('export class', 'class');
 const Editor = new Function('h', `${editorBody}\nreturn CodeEditor;`)(() => new Element());
 
+test('the factory requests only the editor language and carries it through the delayed upgrade', async () => {
+    for (const language of [undefined, 'javascript', 'python']) {
+        const loaded = Promise.resolve({});
+        let requested, mounted;
+        const factory = new Function('CodeEditor', 'ensureMonaco', 'mountMonaco',
+            `${factoryBody}\nreturn factory;`)(Editor, value => { requested = value; return loaded; },
+            (_monaco, _editor, options) => { mounted = options.language; });
+        factory({ language });
+        await loaded;
+        assert.equal(requested, language);
+        assert.equal(mounted, language);
+    }
+});
+
+test('Python fallback uses four-space indentation in standard and literal input modes', () => {
+    for (const literalInput of [false, true]) {
+        const editor = new Editor({ language: 'python', value: '', literalInput });
+        editor.handleKey({ key: 'Tab', preventDefault() {} });
+        assert.equal(editor.getValue(), '    ');
+        editor.handleKey({ key: 'Tab', shiftKey: true, preventDefault() {} });
+        assert.equal(editor.getValue(), '');
+    }
+});
+
 for (const [name, literalInput, events, disposed, available, expected] of [
     ['untouched template upgrades', true, [], false, true, 1],
     ['edited template keeps its textarea', true, ['insertText'], false, true, 0],
