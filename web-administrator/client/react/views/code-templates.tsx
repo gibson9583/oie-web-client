@@ -1185,7 +1185,7 @@ function TemplateEditor({ entry, template, entries, markDirty, focusName, onFocu
                             <PluginEditor template={template} properties={template.properties} platform={platform}
                                 readOnly={readOnly} onChange={() => { if (canEdit()) markDirty(); }} />
                         </ErrorBoundary>
-                    </> : <CodeEditor key={`${type.id}:${readOnly}`} language="javascript" readOnly={readOnly}
+                    </> : <CodeEditor key={`${PROPERTIES_CLASS}:${readOnly}`} language="javascript" readOnly={readOnly}
                         defaultValue={template.properties.code || ''}
                         onChange={(v: any) => { if (canEdit()) { template.properties.code = v; markDirty(); } }}
                         style={{ flex: 1, minHeight: '200px' }} />}

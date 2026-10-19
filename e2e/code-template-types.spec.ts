@@ -159,6 +159,22 @@ test('switching between JavaScript and custom types restores separate unsaved so
     expect(state.writes[0].updatedCodeTemplates.list.codeTemplate[0].properties).toEqual({ ...sampleProperties(), customSource: EDITED });
 });
 
+test('built-in type changes keep the JavaScript editor and its undo history', async ({ page }) => {
+    await install(page);
+    await open(page, 'js-1');
+    await expect(page.locator('.ce-monaco .view-lines')).toContainText('function js_helper()');
+    await page.evaluate(() => {
+        const editor = (window as any).monaco.editor.getEditors().find((item: any) => item.getDomNode()?.isConnected);
+        editor.setPosition({ lineNumber: 1, column: editor.getModel().getLineMaxColumn(1) });
+        editor.trigger('keyboard', 'type', { text: ' // edited' });
+    });
+    await typeSelect(page).selectOption('COMPILED_CODE');
+    await expect.poll(() => page.evaluate(() => {
+        const editor = (window as any).monaco.editor.getEditors().find((item: any) => item.getDomNode()?.isConnected);
+        return editor ? { value: editor.getValue(), canUndo: editor.getModel().canUndo() } : null;
+    })).toEqual({ value: 'function js_helper() { return "original"; } // edited', canUndo: true });
+});
+
 test('an unavailable provider is read-only and an unrelated library save keeps its complete template', async ({ page }) => {
     const state = await install(page, false), original = clone(state.libraries[0].codeTemplates.codeTemplate[0]);
     await open(page);
