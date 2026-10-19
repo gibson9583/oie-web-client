@@ -314,3 +314,131 @@ for (const action of actions) {
         });
     }
 }
+
+test.describe('settings tab focus restoration', () => {
+    test.beforeEach(async ({ page }) => {
+        await mockEngine(page, { 'GET /server/settings': { serverSettings: { environmentName: 'prod-env', serverName: 'Primary Engine' } } });
+    });
+
+    async function dirty(page: any) {
+        await page.goto('/settings');
+        const field = page.locator('.field', { hasText: 'Environment name' }).locator('input');
+        await expect(field).toHaveValue('prod-env');
+        await field.fill('Prod-Edited');
+        return field;
+    }
+
+    for (const dismissal of ['Cancel', 'Escape', 'Close', 'outside']) {
+        test(`mouse tab switch ${dismissal} retains draft and permits route guard`, async ({ page }) => {
+            const field = await dirty(page);
+            await page.getByRole('tab', { name: 'Tags', exact: true }).click();
+            await expect(page.getByRole('dialog', { name: 'Unsaved Changes' })).toBeVisible();
+            if (dismissal === 'Escape') await page.keyboard.press('Escape');
+            else if (dismissal === 'outside') await page.locator('.modal-overlay').click({ position: { x: 2, y: 2 } });
+            else await page.getByRole('button', { name: dismissal, exact: true }).click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            await expect(field).toHaveValue('Prod-Edited');
+            await expect(page.getByRole('tab', { name: /^Server(?: ●)?$/ })).toHaveAttribute('aria-selected', 'true');
+            await expect(page.getByRole('tab', { name: /^Server(?: ●)?$/ })).toBeFocused();
+            await page.getByRole('button', { name: 'Channels', exact: true }).click();
+            await expect(page.getByRole('dialog', { name: 'Unsaved Changes' })).toHaveCount(1);
+            await page.getByRole('button', { name: "Don't Save", exact: true }).click();
+            await expect(page).toHaveURL(/\/channels/);
+        });
+    }
+
+    test('keyboard automatic activation cancellation keeps the selected tab', async ({ page }) => {
+        const field = await dirty(page);
+        await page.getByRole('tab', { name: /^Server(?: ●)?$/ }).focus();
+        await page.keyboard.press('ArrowRight');
+        await expect(page.getByRole('dialog', { name: 'Unsaved Changes' })).toHaveCount(1);
+        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect(field).toHaveValue('Prod-Edited');
+        await expect(page.getByRole('tab', { name: /^Server(?: ●)?$/ })).toBeFocused();
+    });
+
+    for (const choice of ["Don't Save", 'Save Changes']) {
+        test(`mouse tab switch ${choice} reaches target without reverse activation`, async ({ page }) => {
+            let saves = 0;
+            await page.route('**/api/server/settings', async route => {
+                if (route.request().method() !== 'PUT') return route.fallback();
+                saves++;
+                return route.fulfill({ json: {} });
+            });
+            await dirty(page);
+            await page.getByRole('tab', { name: 'Tags', exact: true }).click();
+            await page.getByRole('button', { name: choice, exact: true }).click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            await expect(page.getByRole('tab', { name: 'Tags', exact: true })).toHaveAttribute('aria-selected', 'true');
+            await page.getByRole('button', { name: 'Add Tag', exact: true }).click();
+            const addTag = page.getByRole('dialog', { name: 'New Tag', exact: true });
+            await expect(addTag).toBeVisible();
+            await addTag.getByRole('button', { name: 'Cancel', exact: true }).click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            await expect(page.getByRole('tab', { name: 'Tags', exact: true })).toHaveAttribute('aria-selected', 'true');
+            await expect(page.getByRole('button', { name: 'Add Tag', exact: true })).toBeEnabled();
+            expect(saves).toBe(choice === 'Save Changes' ? 1 : 0);
+        });
+    }
+
+    test('clean keyboard arrow navigation retains automatic activation', async ({ page }) => {
+        await page.goto('/settings');
+        await page.getByRole('tab', { name: /^Server(?: ●)?$/ }).focus();
+        await page.keyboard.press('ArrowRight');
+        await expect(page.getByRole('tab', { name: 'Administrator', exact: true })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+    });
+
+    for (const delayed of [false, true]) test(`${delayed ? 'delayed' : 'immediate'} failed save keeps source draft and permits one successful retry`, async ({ page }) => {
+        const writes: string[] = [];
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        await page.route('**/api/server/settings', async route => {
+            if (route.request().method() !== 'PUT') return route.fallback();
+            writes.push(route.request().postData() || '');
+            if (delayed && writes.length === 1) await gate;
+            await route.fulfill({ status: writes.length === 1 ? 503 : 200, body: writes.length === 1 ? 'Temporary settings failure' : '' });
+        });
+        try {
+            const field = await dirty(page);
+            await page.getByRole('tab', { name: 'Tags', exact: true }).click();
+            await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+            if (delayed) {
+                // The save lock intentionally prevents focus/editing while pending.
+                await expect(page.locator('.content-row')).toHaveAttribute('inert', '');
+                release();
+            }
+            const error = page.getByRole('dialog', { name: 'Error', exact: true });
+            await expect(error).toContainText('Save failed:');
+            await error.getByRole('button', { name: 'Close', exact: true }).last().click();
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            await expect(field).toHaveValue('Prod-Edited');
+            await expect(field).toBeEditable();
+            await expect(page.getByRole('tab', { name: /^Server(?: ●)?$/ })).toHaveAttribute('aria-selected', 'true');
+            expect(writes).toHaveLength(1);
+            await page.getByRole('tab', { name: 'Tags', exact: true }).click();
+            await page.getByRole('button', { name: 'Save Changes', exact: true }).click();
+            await expect(page.getByRole('tab', { name: 'Tags', exact: true })).toHaveAttribute('aria-selected', 'true');
+            await expect(page.getByRole('dialog')).toHaveCount(0);
+            expect(writes).toHaveLength(2);
+            expect(writes[1]).toBe(writes[0]);
+        } finally { release(); }
+    });
+
+    test('session expiry closes a pending tab prompt without restoring a detached trigger', async ({ page }) => {
+        await dirty(page);
+        await page.getByRole('tab', { name: 'Tags', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Unsaved Changes' })).toHaveCount(1);
+        await page.route('**/api/server/version', route => route.fulfill({ status: 401, body: 'expired' }));
+        await page.evaluate(async () => {
+            const name = '@oie/web-api';
+            await (await import(name)).default.get('/server/version').catch(() => {});
+        });
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect(page.locator('.shell')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
+        await expect(page.getByRole('tab')).toHaveCount(0);
+    });
+
+});

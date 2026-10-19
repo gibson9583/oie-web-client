@@ -152,6 +152,7 @@ test('unsaved settings edits prompt on tab switch and on leaving the view', asyn
     await page.getByRole('tab', { name: 'Tags', exact: true }).click();
     await expect(page.locator('.modal', { hasText: 'Unsaved Changes' })).toBeVisible();
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Unsaved Changes', exact: true })).toHaveCount(0);
     await expect(env).toHaveValue('Prod-Edited');
 
     // Leaving the settings view prompts too; Don't Save proceeds.

@@ -96,6 +96,10 @@ catch {
     process.exit(0);
 }
 
+// ZIP is also committed for source consumers. Refresh it with every normal
+// build/test so a package upgrade cannot silently ship the previous version.
+await import('./build-zip.mjs');
+
 // Bare specifier -> entry that re-exports it. Add future core-imported deps here.
 const VENDOR = {
     // js-beautify is CJS; import the module object and re-export its members as

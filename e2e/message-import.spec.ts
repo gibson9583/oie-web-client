@@ -190,3 +190,45 @@ for (const recursive of [false, true]) {
         } finally { await rm(folder, { recursive: true, force: true }); }
     });
 }
+
+test('local ZIP import preserves custom path-shaped entry names as metadata only', async ({ page }) => {
+    const { createZip } = await import('../web-administrator/client/core/zip.js');
+    // Editable export File Patterns historically preserve these names. Windows
+    // engine exports can also contain relative backslash separators.
+    const names = [
+        '/exports/message.xml', '../exports/message.xml', 'exports/../message.xml',
+        'nested\\message.xml', '\\exports\\message.xml', 'C:\\exports\\message.xml'
+    ];
+    const messages = names.map((_, index) =>
+        `<message>\n  <messageId>${101 + index}</messageId>\n  <importId>${701 + index}</importId>\n</message>`);
+    const zip = createZip();
+    names.forEach((name, index) => zip.add(name, `<list>${messages[index]}</list>`));
+    const bytes = Buffer.from(await (await zip.blob()).arrayBuffer());
+    const bodies: string[] = [];
+    await mockEngine(page, { 'POST /channels/c-started/messages/_import': (request: any) => {
+        expect(request.headers()['content-type']).toContain('application/xml');
+        bodies.push(request.postData());
+        return '';
+    } });
+    await page.goto('/messages/c-started');
+    await page.getByRole('button', { name: 'Import Messages', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Import Messages', exact: true });
+    await expect(dialog.getByLabel('Import From', { exact: true })).toHaveValue('files');
+    await dialog.getByLabel('Include Sub-folders').check();
+    const writes: { method: string; url: string }[] = [];
+    page.on('request', request => {
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
+            writes.push({ method: request.method(), url: request.url() });
+        }
+    });
+    const chooser = page.waitForEvent('filechooser');
+    await dialog.getByRole('button', { name: 'Import', exact: true }).click();
+    await (await chooser).setFiles({ name: 'historical-messages.zip', mimeType: 'application/zip', buffer: bytes });
+    await expect(page.getByText(`Imported ${messages.length} message(s)`, { exact: true })).toBeVisible();
+    expect(bodies).toEqual(messages);
+    // Every mutation uses the same channel endpoint, including its origin and
+    // empty query; entry names never select server paths or _importFromPath.
+    expect(writes).toEqual(messages.map(() => ({
+        method: 'POST', url: new URL('/api/channels/c-started/messages/_import', page.url()).href
+    })));
+});

@@ -121,7 +121,8 @@ function OneDialog({ entry }: any) {
                         onCloseAutoFocus={(e: any) => {
                             // preventDefault also suppresses Radix's own restore-to-trigger.
                             e.preventDefault();
-                            if (opener && opener.isConnected && opener.focus) opener.focus();
+                            const target = opts.returnFocus ? opts.returnFocus() : opener;
+                            if (target && target.isConnected && target.focus) target.focus();
                         }}
                         onOpenAutoFocus={(e: any) => {
                             /* Radix would focus the first tabbable, which is the

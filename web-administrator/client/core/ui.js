@@ -184,7 +184,7 @@ export function setDialogRenderer(fn) { dialogRenderer = fn; }
 export function modal(opts) {
     return dialogRenderer ? dialogRenderer(opts) : domModal(opts);
 }
-function domModal({ title, body, buttons = [], size = '', onClose, label }) {
+function domModal({ title, body, buttons = [], size = '', onClose, label, returnFocus }) {
     const overlay = h('div.modal-overlay');
     // The element to hand focus back to. Captured before the dialog mounts, so
     // dismissing returns the caret to whatever opened it (Swing does the same).
@@ -200,9 +200,14 @@ function domModal({ title, body, buttons = [], size = '', onClose, label }) {
         document.removeEventListener('keydown', onKeyDown);
         overlay.remove();
         syncAppHidden(); // a nested confirm closing must not un-hide the app
-        if (opener && opener.isConnected && opener.focus)
-            opener.focus();
-        onClose && onClose();
+        try {
+            const target = returnFocus ? returnFocus() : opener;
+            if (target && target.isConnected && target.focus)
+                target.focus();
+        }
+        finally {
+            onClose && onClose();
+        }
     };
     const requestClose = () => { if (!pending)
         close(); };
