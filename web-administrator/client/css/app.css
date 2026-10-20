@@ -1941,6 +1941,15 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .split.vertical { flex-direction: column; }
 .split.vertical > .split-handle { width: auto; height: 4px; cursor: row-resize; }
 
+/* Size the step/rule list to its content, leaving most of the column for the
+   editor. Overflow scrolls once the list reaches 40%. The splitter's inline
+   height/max-height override this for the current mount only. */
+.element-list-pane {
+    height: auto;
+    min-height: min(128px, 40%);
+    max-height: 40%;
+}
+
 /* ---- Trees (code template libraries, channel groups) ---------------------------------------------------------------- */
 
 .tree { font-size: 11px; }
@@ -3059,10 +3068,6 @@ table.dt td .twisty.twisty-lg { padding: 4px 7px; margin: -4px -7px; }
         border-left: 0;
         border-top: 1px solid var(--line);
     }
-    /* Inside the stacked editor column, cap the step grid so the step form keeps
-       room (its desktop 40% share would waste height on a single-row grid). */
-    .split-reflow > .split-a > .split-a[data-editor-overtake] { height: auto !important; flex: 0 0 auto !important; max-height: 126px; }
-
     /* A collapsed reference panel stays a slim bar once stacked, not a 270px
        pane of nothing (the strip itself lies flat via the unlayered rules
        near the .side-strip definition). */
