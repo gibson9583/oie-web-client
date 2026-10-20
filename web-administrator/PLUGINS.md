@@ -311,9 +311,12 @@ Matching uses the stored `properties.@class`, so a custom `FUNCTION` never opens
 in the default JavaScript editor. `create` receives a template snapshot and must
 return fresh properties with `FUNCTION`, `COMPILED_CODE`, or `DRAG_AND_DROP_CODE`.
 The host supplies `@class` and missing `@version`, preserves plugin fields through
-save/import/export, and retains drafts when switching types within the selected
-template. Switching between classes starts with that type's defaults; it does
-not translate source between languages.
+save/import/export, and retains source and context-selection drafts when switching
+types within the selected template. The first switch to a class uses its defaults
+and filters the current contexts to those it supports. Returning to a class
+restores its draft and context selections; source is never translated between
+languages. The built-in types share one draft and retain the current selections
+when switching between them.
 
 `contexts` is optional. When present it limits new context selections; imported
 unsupported selections remain visible and must be cleared before saving.

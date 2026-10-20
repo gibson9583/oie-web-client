@@ -49,9 +49,39 @@ test('built-in and plugin type switching preserve separate source drafts and cla
     assert.equal(template.properties['@class'], BASIC_PROPERTIES_CLASS);
     assert.equal(template.properties.code, original.properties.code);
     assert.equal(template.properties.source, undefined);
+    assert.deepEqual(template.contextSet, original.contextSet);
     switchCodeTemplateType(template, 'sample-function', providers, '4.6.0', drafts);
     assert.deepEqual(template.properties, sampleProperties);
     assert.equal(template.revision, 7);
+});
+
+test('type drafts restore independent contexts across built-in and multiple plugin types', () => {
+    const second = { ...sample, propertiesClass: 'com.example.templates.OtherProperties',
+        contexts: ['CHANNEL_DEPLOY'], create: () => ({ type: 'FUNCTION', source: 'other' }) };
+    const registry = new Map([...providers, ['other-function', second]]);
+    const template = jsTemplate(), original = structuredClone(template.contextSet), drafts = new Map();
+    const change = id => switchCodeTemplateType(template, id, registry, '4.6.0', drafts);
+    change('sample-function');
+    assert.deepEqual(template.contextSet.delegate.contextType, ['SOURCE_FILTER_TRANSFORMER']);
+    template.contextSet.delegate.contextType = 'DESTINATION_RESPONSE_TRANSFORMER';
+    const pluginContexts = structuredClone(template.contextSet);
+    change('other-function');
+    assert.deepEqual(template.contextSet.delegate.contextType, []);
+    template.contextSet.delegate.contextType.push('CHANNEL_DEPLOY');
+    change('FUNCTION');
+    assert.deepEqual(template.contextSet, original);
+    template.contextSet.delegate.contextType.push('SOURCE_RECEIVER');
+    const editedBuiltinContexts = structuredClone(template.contextSet);
+    change('COMPILED_CODE');
+    assert.deepEqual(template.contextSet, editedBuiltinContexts, 'built-in switches retain current selections');
+    change('sample-function');
+    assert.deepEqual(template.contextSet, pluginContexts, 'singleton wire shapes survive draft restoration');
+    change('other-function');
+    assert.deepEqual(template.contextSet.delegate.contextType, ['CHANNEL_DEPLOY']);
+    change('DRAG_AND_DROP_CODE');
+    assert.deepEqual(template.contextSet, editedBuiltinContexts);
+    change('sample-function');
+    assert.deepEqual(template.contextSet, pluginContexts, 'repeated switches are lossless');
 });
 
 test('bad defaults cannot partially replace or mutate the current template', () => {

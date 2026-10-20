@@ -65,7 +65,7 @@ export function register(platform) {
     window.__templateProviderReady = true;
 }`;
 
-async function install(page: Page, enabled = true) {
+async function install(page: Page, enabled = true, libraries = fixtures()) {
     // Capture the outgoing browser FormData before fetch: WebKit's postData()
     // omits Blob bodies, whereas this observes the exact JSON in all browsers.
     await page.addInitScript(() => {
@@ -82,7 +82,7 @@ async function install(page: Page, enabled = true) {
             return fetchOriginal(...args);
         };
     });
-    const state = { libraries: fixtures(), writes: [] as Model[], jsValidations: 0 };
+    const state = { libraries, writes: [] as Model[], jsValidations: 0 };
     const stored = new Map(state.libraries.flatMap(lib => lib.codeTemplates.codeTemplate).map((tpl: Model) => [tpl.id, clone(tpl)]));
     await mockEngine(page, {
         'GET /webplugins': enabled ? ['template-test'] : [],
@@ -157,6 +157,24 @@ test('switching between JavaScript and custom types restores separate unsaved so
     await expect(page.getByLabel('Sample source', { exact: true })).toHaveValue(EDITED);
     await save(page);
     expect(state.writes[0].updatedCodeTemplates.list.codeTemplate[0].properties).toEqual({ ...sampleProperties(), customSource: EDITED });
+});
+
+test('switching back to JavaScript saves all original context selections', async ({ page }) => {
+    const libraries = fixtures();
+    const original = ['SOURCE_RECEIVER', 'SOURCE_FILTER_TRANSFORMER', 'DESTINATION_FILTER_TRANSFORMER',
+        'DESTINATION_DISPATCHER', 'DESTINATION_RESPONSE_TRANSFORMER'];
+    libraries[0].codeTemplates.codeTemplate[1].contextSet.delegate.contextType = original;
+    const state = await install(page, true, libraries);
+    await open(page, 'js-1');
+    await typeSelect(page).selectOption('sample-function-test');
+    await typeSelect(page).selectOption('FUNCTION');
+    await save(page);
+    expect(state.writes[0].updatedCodeTemplates.list.codeTemplate).toEqual([]);
+    await nameInput(page).fill('Renamed JavaScript Helper');
+    await save(page);
+    const saved = state.writes[1].updatedCodeTemplates.list.codeTemplate[0];
+    expect(saved.contextSet.delegate.contextType).toEqual(original);
+    expect(saved.properties.code).toBe('function js_helper() { return "original"; }');
 });
 
 test('built-in type changes keep the JavaScript editor and its undo history', async ({ page }) => {

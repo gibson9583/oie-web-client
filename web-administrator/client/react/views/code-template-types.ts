@@ -9,6 +9,10 @@ export const BUILTIN_TEMPLATE_TYPES = [
 ];
 
 type Providers = Map<string, CodeTemplateType>;
+interface TemplateTypeDraft {
+    properties: OieObject;
+    contextSet: OieObject | undefined;
+}
 const builtin = (id: string) => BUILTIN_TEMPLATE_TYPES.find(type => type.value === id);
 
 /** Resolve by serialized class first: a plugin's FUNCTION is not a JS editor. */
@@ -30,7 +34,7 @@ export function codeTemplateType(template: OieObject, providers: Providers) {
  * Per-editor drafts make switching back lossless until selection
  * changes. Built-in switches preserve code because they share one model class. */
 export function switchCodeTemplateType(template: OieObject, id: string, providers: Providers,
-    version: string, drafts: Map<string, OieObject>): boolean {
+    version: string, drafts: Map<string, TemplateTypeDraft>): boolean {
     const current = codeTemplateType(template, providers);
     if (current.missing || current.id === id) return false;
     const selectedBuiltin = builtin(id);
@@ -38,8 +42,13 @@ export function switchCodeTemplateType(template: OieObject, id: string, provider
     if (!selectedBuiltin && !provider) return false;
     const currentKey = current.provider ? current.id : BASIC_PROPERTIES_CLASS;
     const nextKey = provider ? id : BASIC_PROPERTIES_CLASS;
-    let properties = drafts.get(nextKey);
-    if (currentKey === nextKey) properties = template.properties;
+    if (currentKey === nextKey) {
+        template.properties.type = id;
+        return true;
+    }
+    const draft = drafts.get(nextKey);
+    let properties = draft?.properties;
+    let contextSet = structuredClone(draft ? draft.contextSet : template.contextSet);
     if (!properties) {
         properties = provider ? provider.create({ version, template: structuredClone(template) }) : { code: '', type: id };
         if (!properties || typeof properties !== 'object' || Array.isArray(properties) || !builtin(properties.type)) {
@@ -48,16 +57,17 @@ export function switchCodeTemplateType(template: OieObject, id: string, provider
         properties = { ...properties, '@class': provider?.propertiesClass || BASIC_PROPERTIES_CLASS,
             '@version': properties['@version'] || version };
     }
-    drafts.set(currentKey, template.properties);
+    // Filter only a new type's initial contexts. Returning to a type restores
+    // its own selections, including edits made before switching away.
+    if (!draft && provider?.contexts) {
+        const delegate = contextSet?.delegate?.contextType;
+        const contexts = (Array.isArray(delegate) ? delegate : delegate ? [delegate] : []).map(String);
+        contextSet = { delegate: { contextType: contexts.filter(context => provider.contexts!.includes(context)) } };
+    }
+    drafts.set(currentKey, { properties: template.properties, contextSet: structuredClone(template.contextSet) });
     if (selectedBuiltin) properties.type = id;
     template.properties = properties;
-    // Only an explicit type change selects new supported contexts. Loading and
-    // importing never rewrite an existing template's contextSet.
-    if (provider?.contexts) {
-        const delegate = template.contextSet?.delegate?.contextType;
-        const contexts = (Array.isArray(delegate) ? delegate : delegate ? [delegate] : []).map(String);
-        template.contextSet = { delegate: { contextType: contexts.filter(context => provider.contexts!.includes(context)) } };
-    }
+    template.contextSet = contextSet;
     return true;
 }
 
