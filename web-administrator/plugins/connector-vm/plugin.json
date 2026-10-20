@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Channel Reader (source) and Channel Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["Channel Reader", "Channel Writer"],
     "client": { "entry": "web/plugin.js" }
 }

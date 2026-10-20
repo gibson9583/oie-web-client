@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Renders image attachments (PNG/JPEG/GIF/BMP/WebP/SVG) inline — AttachmentViewer equivalent.",
+    "engineExtensions": ["Image Viewer"],
     "client": { "entry": "web/plugin.js" }
 }

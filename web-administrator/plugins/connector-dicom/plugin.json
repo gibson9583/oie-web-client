@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "DICOM Listener (source) and DICOM Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["DICOM Listener", "DICOM Sender"],
     "client": { "entry": "web/plugin.js" }
 }

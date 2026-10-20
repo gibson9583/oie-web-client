@@ -76,6 +76,7 @@ function bundledPluginManifests() {
             description: manifest.description || '',
             authorization: manifest.authorization === true,
             apiMin: manifest.oie?.apiMin ? String(manifest.oie.apiMin) : null,
+            engineExtensions: Array.isArray(manifest.engineExtensions) ? manifest.engineExtensions.map(String) : [],
             entry: manifest.client?.entry ? `/plugins/${manifest.id}/${manifest.client.entry}` : null
         });
     }

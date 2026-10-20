@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Connection column on the dashboard and the Connection Log tab (web equivalent of the Dashboard Connector Status plugin).",
+    "engineExtensions": ["Dashboard Connector Status Monitor"],
     "client": { "entry": "web/plugin.js" }
 }

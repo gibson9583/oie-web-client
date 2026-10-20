@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Document Writer (destination) connector panel — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["Document Writer"],
     "client": { "entry": "web/plugin.js" }
 }

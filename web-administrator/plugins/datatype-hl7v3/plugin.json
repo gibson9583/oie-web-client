@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "HL7 v3.x data type properties — web equivalent of the HL7v3 DataTypeClientPlugin.",
+    "engineExtensions": ["HL7v3 Data Type"],
     "client": { "entry": "web/plugin.js" }
 }

@@ -42,6 +42,7 @@ export interface ServerPluginManifest {
     client?: { entry?: string };
     server?: { entry?: string };
     oie?: { apiMin?: string };
+    engineExtensions?: string[];
     /** plugin.json is third-party-authored and may carry extra keys; `unknown`
         keeps that openness while forcing readers to narrow. */
     [key: string]: unknown;
@@ -114,6 +115,7 @@ export function install(app: Express, config: WebAdminConfig) {
             authorization: manifest.authorization === true,
             // Minimum @oie API version the plugin declares (client-side compat gate).
             apiMin: manifest.oie && manifest.oie.apiMin ? String(manifest.oie.apiMin) : null,
+            engineExtensions: Array.isArray(manifest.engineExtensions) ? manifest.engineExtensions.map(String) : [],
             entry: manifest.client && manifest.client.entry
                 ? `/plugins/${manifest.id}/${manifest.client.entry}`
                 : null

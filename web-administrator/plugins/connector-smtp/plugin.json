@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "SMTP Sender (destination) connector panel — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["SMTP Sender"],
     "client": { "entry": "web/plugin.js" }
 }
