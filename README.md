@@ -55,9 +55,14 @@ oie-web-client/
 | **Node.js** | **22.18+; tested on 22.22.3** | Use the pinned `.nvmrc` for source builds, tests and the packaged Node runtime. |
 | **npm** | Bundled with Node 22 | Run `npm ci` at the repository root; this is an npm-**workspaces** monorepo. Yarn/pnpm are not used. |
 | **JDK** | **17+** (WAR builds only) | Supplies the standard `jar` tool used by `npm run build:war`; it is not needed to run the Node/Docker deployment. |
-| **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://127.0.0.1:8443`. This release line targets OIE 4.6.0. |
+| **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://127.0.0.1:8443`. The release baseline is OIE 4.6.0; the HTTP Listener request header size setting is available on OIE 4.7.0 and later. |
 | **OIE Web Support plugin** | available separately | **Optional for the base administrator; required only for** byte-exact message-tree serialization, engine-side JavaScript validation, engine-served plugin UIs, and the plugin-managed embedded WAR. Download it and read its installation notes at **[gibson9583/oie-web-support-plugin](https://github.com/gibson9583/oie-web-support-plugin)**. |
 | **Modern browser** | current Chrome / Edge / Firefox / Safari | ES-module SPA; the Monaco script editor is bundled and served locally (works air-gapped), with a plain-editor fallback. |
+
+On OIE 4.7.0 and later, HTTP Listener exposes **Request Header Size (bytes)**.
+It accepts a positive integer or a template expression resolved when the channel
+starts. Existing channels keep the engine default of 8192 bytes until explicitly
+changed.
 
 Contributors running the end-to-end tests also install Playwright's browsers:
 `npx playwright install chromium firefox webkit`.
@@ -413,8 +418,8 @@ tagging Web Support. Its release pipeline consumes the client version declared
 by `webclient.version`, verifies the WAR checksum and receipt against the client
 tag, signs the plugin JAR, and checks the bundled WAR remains byte-identical.
 The signed `websupport-X.Y.Z.zip` and `SHA256SUMS` are then published, followed
-by the automated community-catalog PR. Pair Web Client 1.1.0 with Web Support
-1.1.0 for the coordinated release.
+by the automated community-catalog PR. Pair Web Client 1.2.0 with Web Support
+1.2.0 for the coordinated release.
 
 Git supplies only the build *metadata* beside it (commit, build date, and a
 `dirty` flag when the tree had uncommitted changes), stamped into a gitignored

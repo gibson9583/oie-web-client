@@ -6,6 +6,10 @@ import { CASES } from './step-rule-fixtures.js';
 for (const width of [1440, 760]) {
     for (const kind of ['transformer', 'filter', 'response']) {
         test(`${kind} list sizes dynamically and resets a manual resize at ${width}px`, async ({ page }) => {
+            // This exercises 22 additions, six deletions, resizing and remounting.
+            // Shared CI runners need more than the default whole-test budget;
+            // individual action and assertion deadlines remain unchanged.
+            test.setTimeout(60_000);
             await page.setViewportSize({ width, height: 1000 });
             const id = `layout-${kind}`;
             const channel = makeChannel(id);

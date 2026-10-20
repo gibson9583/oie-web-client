@@ -163,10 +163,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: gibson9583/oie-web-support-plugin
-          # Coordinated Web Support 1.1.0, including extension vocabularies and
+          # Coordinated Web Support 1.2.0, including extension vocabularies and
           # custom response variables. Keep this immutable pin aligned with the
           # companion release candidate before tagging the client.
-          ref: 69bde6c57bb77308fb040a557fa3bd9d57b24566
+          ref: ddca7440b708c65686777c5236e5e7058aa59e8c
           path: release-artifacts/websupport
       - name: Test and package the pinned companion API with this WAR
         run: |
@@ -177,7 +177,7 @@ jobs:
           mvn -B -ntp -f release-artifacts/websupport/pom.xml package \
             -Doie.home="$GITHUB_WORKSPACE/release-artifacts/compile-inputs/oie" \
             -Dwebclient.war="$GITHUB_WORKSPACE/release-artifacts/oie-webadmin.war"
-          cp release-artifacts/websupport/target/websupport-1.1.0.zip release-artifacts/contracts/websupport.zip
+          cp release-artifacts/websupport/target/websupport-1.2.0.zip release-artifacts/contracts/websupport.zip
           sha256sum release-artifacts/contracts/websupport.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

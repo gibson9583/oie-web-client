@@ -2,12 +2,13 @@
  * HTTP Listener (HttpReceiverProperties) / HTTP Sender (HttpDispatcherProperties).
  *
  * React port: def.render(host, ctx) -> def.component(ctx) => JSX. Field schemas,
- * the httpUrl display computation, and defaults are reused VERBATIM. The
+ * the httpUrl display computation, and defaults follow the engine connector. The
  * portsInUseButton / connectorTestButton / 'Regular Expression' checkbox keep
  * their imperative DOM nodes, mounted through the form's `append`.
  */
 
 import { React } from './react-platform.js';
+import { getState } from '../core/store.js';
 import { checkbox, h, clear, textInput, select, icon } from '@oie/web-ui';
 import {
     ConnectorForm, connectorTestButton, portsInUseButton, listenerAddressField, asBool, YES_NO,
@@ -18,6 +19,17 @@ import {
 // the binary-data reset paths select index 0, so the option must be reachable.
 const HTTP_CHARSETS = CHARSETS;
 const DEFAULT_CHARSET = 'DEFAULT_ENCODING';
+
+// Added by OIE 4.7.0. Older engines must not receive this property in defaults.
+function supportsRequestHeaderSize(version: unknown): boolean {
+    const match = /^(\d+)\.(\d+)(?:\.|$)/.exec(String(version ?? ''));
+    return !!match && (Number(match[1]) > 4 || (Number(match[1]) === 4 && Number(match[2]) >= 7));
+}
+
+function hasRequestHeaderSize(properties: any): boolean {
+    // Imported channels can retain an older version; use the connected engine.
+    return supportsRequestHeaderSize(getState('serverVersion') || properties['@version']);
+}
 
 // XStream serializes a List<HttpStaticResource> with no @XStreamAlias under the
 // element's fully-qualified class name; a single element renders as a bare
@@ -147,6 +159,7 @@ const httpListener = {
             charset: 'UTF-8',
             contextPath: '',
             timeout: '30000',
+            ...(supportsRequestHeaderSize(version) ? { requestHeaderSize: '8192' } : {}),
             staticResources: { '@class': 'java.util.ArrayList' }
         };
     },
@@ -161,6 +174,11 @@ const httpListener = {
                 { section: 'HTTP Listener Settings' },
                 { key: 'contextPath', label: 'Base Context Path', type: 'text', width: '320px', placeholder: '/' },
                 { key: 'timeout', label: 'Receive Timeout (ms)', type: 'number', width: '120px' },
+                {
+                    key: 'requestHeaderSize', label: 'Request Header Size (bytes)', type: 'text', width: '160px',
+                    visible: hasRequestHeaderSize, placeholder: '8192',
+                    tooltip: 'Maximum combined request header size in bytes. Defaults to 8192 when unset. Accepts template substitutions and must resolve to a positive integer. Larger requests are rejected with HTTP 431 before reaching the channel.'
+                },
                 { key: 'xmlBody', label: 'Message Content', type: 'radio', refresh: true, options: [
                     { value: false, label: 'Plain Body' },
                     { value: true, label: 'XML Body' }
@@ -202,13 +220,22 @@ const httpListener = {
     // required unless the source Response variable is "None"; the response-headers Map
     // Variable required when Use Map is selected (isUseHeadersVariable + blank variable).
     validate(properties: any) {
-        return requireFields(properties, [
+        const errors = requireFields(properties, [
             { key: 'listenerConnectorProperties.host', label: 'Local Address' },
             { key: 'listenerConnectorProperties.port', label: 'Local Port' },
             { key: 'timeout', label: 'Receive Timeout' },
             { key: 'responseContentType', label: 'Response Content Type', when: (p: any) => String((p.sourceConnectorProperties || {}).responseVariable || '').toLowerCase() !== 'none' },
             { key: 'responseHeadersVariable', label: 'Response Headers Map Variable', when: (p: any) => asBool(p.useResponseHeadersVariable) }
         ]);
+        if (hasRequestHeaderSize(properties)) {
+            // Match the engine's null fallback and positive Java int constraint.
+            // Like Swing, defer template expressions to channel-start resolution.
+            const value = String(properties.requestHeaderSize ?? '8192');
+            if (!value.includes('$') && (!/^\+?\d+$/.test(value) || Number(value) <= 0 || Number(value) > 2147483647)) {
+                errors.push({ key: 'requestHeaderSize', label: 'Request Header Size must be a positive integer or template expression' });
+            }
+        }
+        return errors;
     }
 };
 
