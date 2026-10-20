@@ -130,7 +130,10 @@ function connectorEntries(map: any) {
 }
 
 /* Message.connectorMessages is a Map<Integer,ConnectorMessage>:
-   {entry:[{int:0, connectorMessage:{...}}, ...]} — singleton as bare object. */
+   {entry:[{int:0, connectorMessage:{...}}, ...]} — singleton as bare object.
+   Preserve the engine's entry order, as Swing's MessageBrowserTableModel does.
+   Search results follow the stored chain/order IDs; metadata IDs identify
+   connectors but do not follow their order after destinations are rearranged. */
 function connectorMessagesOf(message: any) {
     const entries = message?.connectorMessages?.entry ?? message?.connectorMessages;
     const out: any[] = [];
@@ -139,7 +142,6 @@ function connectorMessagesOf(message: any) {
         const cm = entry.connectorMessage ?? (entry.metaDataId !== undefined ? entry : null);
         if (cm && typeof cm === 'object') out.push(cm);
     }
-    out.sort((a: any, b: any) => Number(a.metaDataId ?? 0) - Number(b.metaDataId ?? 0));
     return out;
 }
 
