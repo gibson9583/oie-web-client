@@ -576,7 +576,7 @@ export const channels = {
     idsAndNames: () => get('/channels/idsAndNames'),
     connectorNames: (channelId) => get(`/channels/${enc(channelId)}/connectorNames`),
     metaDataColumns: (channelId) => get(`/channels/${enc(channelId)}/metaDataColumns`).then(v => asList(v, 'metaDataColumn')),
-    portsInUse: () => get('/channels/portsInUse').then(v => asList(v, 'channelPortData')),
+    portsInUse: () => get('/channels/portsInUse').then(v => asList(v, 'ports')),
     setEnabled: (channelId, enabled) => post(`/channels/${enc(channelId)}/enabled/${enabled}`),
     setInitialState: (channelId, state) => post(`/channels/${enc(channelId)}/initialState/${state}`)
 };

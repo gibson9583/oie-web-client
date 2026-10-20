@@ -179,5 +179,15 @@ ok(/engine cannot reload/.test(invalidSurrogate?.message) && lastInit === writes
 await api.channels.create(responseChannel('😀\r'));
 ok(lastInit.body.includes('<responseVariable>😀&#13;</responseVariable>'), 'valid supplementary characters remain supported');
 
+// The engine returns a bare Ports object for one listener and an array for many.
+const listenerPort = { id: 'listener', name: 'LISTENER', port: 6661 };
+for (const ports of [[], [listenerPort], [listenerPort, { id: 'second', name: 'SECOND', port: 8081 }]]) {
+    const list = ports.length ? { 'com.mirth.connect.donkey.model.channel.Ports': ports.length === 1 ? ports[0] : ports } : null;
+    globalThis.fetch = async () => new Response(JSON.stringify({ list }), {
+        status: 200, headers: { 'Content-Type': 'application/json' }
+    });
+    ok(JSON.stringify(await api.channels.portsInUse()) === JSON.stringify(ports), `portsInUse unwraps ${ports.length} listener ports`);
+}
+
 console.log(`api.test: ${pass} passed, ${fail} failed`);
 if (fail) process.exit(1);
