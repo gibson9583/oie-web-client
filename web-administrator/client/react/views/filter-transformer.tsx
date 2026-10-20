@@ -1926,7 +1926,7 @@ function EditorBody({ params, kindName, onTasksChange, apiRef, embedded }: any) 
                             },
                             {
                                 label: 'Generated Script',
-                                className: 'py-3 px-3.5',
+                                className: 'h-full flex-col min-h-0 py-3 px-3.5',
                                 node: <GeneratedScriptPane kind={kind} element={selectedElement} rev={rev} />
                             }
                         ]} />
