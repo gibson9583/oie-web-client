@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "JMS Listener (source) and JMS Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["JMS Listener", "JMS Sender"],
     "client": { "entry": "web/plugin.js" }
 }

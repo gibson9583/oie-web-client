@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "DICOM data type — web equivalent of the DICOM DataTypeClientPlugin (no configurable property groups).",
+    "engineExtensions": ["DICOM Data Type"],
     "client": { "entry": "web/plugin.js" }
 }

@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "File Reader (source) and File Writer (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["File Reader", "File Writer"],
     "client": { "entry": "web/plugin.js" }
 }

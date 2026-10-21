@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Live server log tab on the dashboard (web equivalent of the Server Log plugin).",
+    "engineExtensions": ["Server Log"],
     "client": { "entry": "web/plugin.js" }
 }

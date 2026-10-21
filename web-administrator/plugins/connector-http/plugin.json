@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "HTTP Listener (source) and HTTP Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["HTTP Listener", "HTTP Sender"],
     "client": { "entry": "web/plugin.js" }
 }

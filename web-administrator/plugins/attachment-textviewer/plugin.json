@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Renders text attachments (plain/XML/JSON/HL7/CSV/HTML) inline — AttachmentViewer equivalent.",
+    "engineExtensions": ["Text Viewer"],
     "client": { "entry": "web/plugin.js" }
 }

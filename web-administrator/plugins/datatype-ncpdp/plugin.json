@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "NCPDP data type properties — web equivalent of the NCPDP DataTypeClientPlugin.",
+    "engineExtensions": ["NCPDP Data Type"],
     "client": { "entry": "web/plugin.js" }
 }

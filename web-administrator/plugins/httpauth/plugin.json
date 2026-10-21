@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Authentication properties panel for HTTP-based source connectors (None/Basic/Digest/JavaScript/Custom/OAuth2) — web equivalent of the httpauth ConnectorPropertiesPlugin.",
+    "engineExtensions": ["HTTP Authentication Settings"],
     "client": { "entry": "web/plugin.js" }
 }

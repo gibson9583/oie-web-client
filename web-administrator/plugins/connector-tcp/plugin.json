@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "TCP Listener (source) and TCP Sender (destination) connector panels — ConnectorSettingsPanel equivalent.",
+    "engineExtensions": ["TCP Listener", "TCP Sender"],
     "client": { "entry": "web/plugin.js" }
 }

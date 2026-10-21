@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "JSON data type properties — web equivalent of the JSON DataTypeClientPlugin.",
+    "engineExtensions": ["JSON Data Type"],
     "client": { "entry": "web/plugin.js" }
 }

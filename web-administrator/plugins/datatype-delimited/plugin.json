@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Delimited Text data type properties — web equivalent of the Delimited DataTypeClientPlugin.",
+    "engineExtensions": ["Delimited Data Type"],
     "client": { "entry": "web/plugin.js" }
 }

@@ -111,6 +111,14 @@ plugin always loads (no gate); set it when you rely on a framework capability
 added in a specific version, so an older web administrator that lacks it skips
 your plugin with a clear message instead of crashing on a missing API.
 
+`engineExtensions` (optional) lists the engine extension names that a plugin in
+`plugins/` or a `pluginDirs` folder gives a web UI for. Example:
+`"engineExtensions": ["File Reader", "File Writer"]`. When the engine reports
+all of these extensions as disabled, the web administrator does not load the
+plugin and shows it as Disabled on the Extensions page. Engine-served plugins do
+not need this key. The Web Support plugin does not serve the UI of a disabled
+extension.
+
 Engine datatype extensions can also declare `vocabularies` in their
 `webadmin/plugin.json` to provide message-tree field names. See
 [Datatype vocabulary descriptions](#datatype-vocabulary-descriptions).

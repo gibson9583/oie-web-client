@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "HL7 v2.x data type properties (serialization, deserialization, batch, response generation/validation) — web equivalent of the HL7v2 DataTypeClientPlugin.",
+    "engineExtensions": ["HL7v2 Data Type"],
     "client": { "entry": "web/plugin.js" }
 }

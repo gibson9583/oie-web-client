@@ -4,5 +4,6 @@
     "version": "1.0.0",
     "author": "Open Integration Engine",
     "description": "Renders PDF attachments inline — AttachmentViewer equivalent.",
+    "engineExtensions": ["PDF Viewer"],
     "client": { "entry": "web/plugin.js" }
 }
