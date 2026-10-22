@@ -2475,7 +2475,7 @@ function DestinationsTab({ channel, version, engineTypes, markDirty, actionsRef,
                     the property needs) so the grid's right edge lines up with the
                     settings panels. */}
                 <div className="flex-none overflow-y-hidden [scrollbar-gutter:stable]">
-                    <div className="panel"><div className="panel-body flush" ref={tableHostRef} /></div>
+                    <div className="panel"><div className="panel-body flush dest-grid" ref={tableHostRef} /></div>
                 </div>
                 <div className="mt-[13px] flex-1 min-h-0 overflow-auto [scrollbar-gutter:stable]">
                     <DestEditor dest={selectedDest()} channel={channel} version={version}

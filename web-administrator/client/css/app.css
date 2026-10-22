@@ -701,6 +701,7 @@ code, pre, .mono { font-family: var(--font-mono); }
 /* ---- Data tables -------------------------------------------------------------------------- */
 
 .dt-wrap { overflow: auto; }
+.dest-grid > .dt-wrap { max-height: 40vh; }
 
 table.dt {
     width: 100%;
