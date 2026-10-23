@@ -63,7 +63,7 @@ const tcpListener = {
             React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
                     { section: 'Listener Settings' },
                     listenerAddressField('listenerConnectorProperties.host', 'Local Address'),
-                    { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'text', width: '200px', append: () => portsInUseButton() }
+                    { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', width: '200px', append: () => portsInUseButton() }
                 ] }),
             React.createElement(TransmissionModePanel, { properties: properties, onChange: onChange }),
             React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
@@ -75,10 +75,10 @@ const tcpListener = {
                     { key: 'remoteAddress', label: 'Remote Address', type: 'text', width: '200px', disabled: serverMode },
                     { key: 'remotePort', label: 'Remote Port', type: 'text', width: '200px', disabled: serverMode },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, disabled: serverMode },
-                    { key: 'reconnectInterval', label: 'Reconnect Interval (ms)', type: 'number', width: '90px', disabled: serverMode },
-                    { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p) => !asBool(p.serverMode) },
-                    { key: 'receiveTimeout', label: 'Receive Timeout (ms)', type: 'number', width: '90px', tooltip: '0 = never time out' },
-                    { key: 'bufferSize', label: 'Buffer Size (bytes)', type: 'number', width: '90px' },
+                    { key: 'reconnectInterval', label: 'Reconnect Interval (ms)', type: 'number', templatable: false, width: '90px', disabled: serverMode },
+                    { key: 'maxConnections', label: 'Max Connections', type: 'number', templatable: false, width: '90px', disabled: (p) => !asBool(p.serverMode) },
+                    { key: 'receiveTimeout', label: 'Receive Timeout (ms)', type: 'number', templatable: false, width: '90px', tooltip: '0 = never time out' },
+                    { key: 'bufferSize', label: 'Buffer Size (bytes)', type: 'number', templatable: false, width: '90px' },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO },
                     {
                         key: 'dataTypeBinary', label: 'Data Type', type: 'radio', refresh: true,
@@ -181,10 +181,10 @@ const tcpSender = {
                     { key: 'maxConnections', label: 'Max Connections', type: 'number', width: '90px', disabled: (p) => !asBool(p.serverMode) },
                     { key: 'keepConnectionOpen', label: 'Keep Connection Open', type: 'radio', options: YES_NO, refresh: true, disabled: serverMode },
                     { key: 'checkRemoteHost', label: 'Check Remote Host', type: 'radio', options: YES_NO, disabled: sendDisabled },
-                    { key: 'sendTimeout', label: 'Send Timeout (ms)', type: 'number', width: '90px', disabled: sendDisabled },
-                    { key: 'bufferSize', label: 'Buffer Size (bytes)', type: 'number', width: '90px' },
+                    { key: 'sendTimeout', label: 'Send Timeout (ms)', type: 'number', templatable: false, width: '90px', disabled: sendDisabled },
+                    { key: 'bufferSize', label: 'Buffer Size (bytes)', type: 'number', templatable: false, width: '90px' },
                     {
-                        key: 'responseTimeout', label: 'Response Timeout (ms)', type: 'number', width: '90px',
+                        key: 'responseTimeout', label: 'Response Timeout (ms)', type: 'number', templatable: false, width: '90px',
                         // Swing pairs the Ignore Response checkbox inline with Response Timeout;
                         // it gates Queue on Response Timeout below.
                         append: (p, ctx) => checkbox('Ignore Response', asBool(p.ignoreResponse), {

@@ -300,8 +300,8 @@ const databaseReader = {
                     { key: 'cacheResults', label: 'Cache Results', type: 'radio', options: YES_NO, refresh: true, disabled: (p: any) => asBool(p.useScript) || asBool(p.aggregateResults) },
                     // Swing: Fetch Size enabled only when Use JavaScript=No AND Cache Results=No (aggregate forces cache=Yes).
                     { key: 'fetchSize', label: 'Fetch Size', type: 'number', width: '110px', disabled: (p: any) => asBool(p.useScript) || asBool(p.cacheResults) || asBool(p.aggregateResults) },
-                    { key: 'retryCount', label: '# of Retries on Error', type: 'number', width: '110px' },
-                    { key: 'retryInterval', label: 'Retry Interval (ms)', type: 'number', width: '120px' },
+                    { key: 'retryCount', label: '# of Retries on Error', type: 'number', templatable: false,  width: '110px' },
+                    { key: 'retryInterval', label: 'Retry Interval (ms)', type: 'number', templatable: false,  width: '120px' },
                     { key: 'encoding', label: 'Encoding', type: 'select', options: CHARSETS, width: '160px' },
                     { section: 'Query' },
                     {

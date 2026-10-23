@@ -154,7 +154,7 @@ const httpListener = {
         return (React.createElement(ConnectorForm, { properties: properties, onChange: onChange, fields: [
                 { section: 'Listener Settings' },
                 listenerAddressField('listenerConnectorProperties.host', 'Local Address'),
-                { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', width: '90px', append: () => portsInUseButton() },
+                { key: 'listenerConnectorProperties.port', label: 'Local Port', type: 'number', templatable: false, width: '90px', append: () => portsInUseButton() },
                 // HTTP authentication is provided by the httpauth connector-properties
                 // plugin (renders as a separate "Authentication" panel).
                 { section: 'HTTP Listener Settings' },

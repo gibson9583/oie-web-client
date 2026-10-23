@@ -205,7 +205,7 @@ const jmsListener = {
                 },
                 { key: 'destinationName', label: 'Destination Name', type: 'text', width: '320px' },
                 { key: 'clientId', label: 'Client ID', type: 'text', width: '220px' },
-                { key: 'reconnectIntervalMillis', label: 'Reconnect Interval (ms)', type: 'number', width: '120px' },
+                { key: 'reconnectIntervalMillis', label: 'Reconnect Interval (ms)', type: 'number', templatable: false, width: '120px' },
                 { key: 'selector', label: 'Selector', type: 'text', width: '320px' }
             ]} />
         );

@@ -423,7 +423,7 @@ function schemeSettingsFields(): any[] {
             tooltip: 'When No, the Username/Password above are used as the AWS access key ID / secret access key'
         },
         { key: 'schemeProperties.useTemporaryCredentials', label: 'Use Temporary Credentials', type: 'radio', options: YES_NO, refresh: true, visible: s3, disabled: (p: any) => asBool(p.anonymous) },
-        { key: 'schemeProperties.duration', label: 'Duration (seconds)', type: 'number', numeric: true, width: '110px', visible: (p: any) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p: any) => asBool(p.anonymous) },
+        { key: 'schemeProperties.duration', label: 'Duration (seconds)', type: 'number', numeric: true, templatable: false,  width: '110px', visible: (p: any) => s3(p) && asBool(p.schemeProperties && p.schemeProperties.useTemporaryCredentials), disabled: (p: any) => asBool(p.anonymous) },
         {
             key: 'schemeProperties.region', label: 'Region', type: 'text', width: '160px', visible: s3, placeholder: 'us-east-1', refresh: true,
             // Region helper combo (AdvancedS3SettingsDialog.regionComboBox): picking
@@ -652,15 +652,15 @@ const fileReader = {
                     { section: 'After Processing' },
                     afterProcessingBlock(properties, onChange),
                     { key: 'checkFileAge', label: 'Check File Age', type: 'radio', options: YES_NO, refresh: true },
-                    { key: 'fileAge', label: 'File Age (ms)', type: 'number', width: '120px', disabled: (p: any) => !asBool(p.checkFileAge) },
+                    { key: 'fileAge', label: 'File Age (ms)', type: 'number', templatable: false, width: '120px', disabled: (p: any) => !asBool(p.checkFileAge) },
                     // Swing renders File Size as one row: [min] - [max] [Ignore Maximum].
                     // Min/Max stay as separate typed fields (a typed input cannot live
                     // in `append`, which is rebuilt on every repaint); the Ignore Maximum
                     // checkbox is appended to the Maximum field and greys it out when set
                     // (ignoreFileSizeMaximumCheckBox.setEnabled), matching Swing.
-                    { key: 'fileSizeMinimum', label: 'File Size (bytes)', type: 'number', width: '120px' },
+                    { key: 'fileSizeMinimum', label: 'File Size (bytes)', type: 'number', templatable: false, width: '120px' },
                     {
-                        key: 'fileSizeMaximum', label: 'to', type: 'number', width: '120px', refresh: true,
+                        key: 'fileSizeMaximum', label: 'to', type: 'number', templatable: false, width: '120px', refresh: true,
                         disabled: (p: any) => asBool(p.ignoreFileSizeMaximum),
                         append: (p: any, ctx: any) => checkbox('Ignore Maximum', asBool(p.ignoreFileSizeMaximum), {
                             onChange: (e: any) => { p.ignoreFileSizeMaximum = e.target.checked; ctx.onChange(); ctx.repaint && ctx.repaint(); }

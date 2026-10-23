@@ -113,7 +113,7 @@ const smtpSender = {
                     { key: 'smtpPort', label: 'SMTP Port', type: 'text', width: '200px' },
                     { key: 'overrideLocalBinding', label: 'Override Local Binding', type: 'radio', options: YES_NO, refresh: true },
                     { key: 'localAddress', label: 'Local Address', type: 'text', width: '200px', disabled: (p) => !usingLocalBinding(p) },
-                    { key: 'localPort', label: 'Local Port', type: 'text', width: '200px', disabled: (p) => !usingLocalBinding(p) },
+                    { key: 'localPort', label: 'Local Port', type: 'number', width: '200px', disabled: (p) => !usingLocalBinding(p) },
                     { key: 'timeout', label: 'Send Timeout (ms)', type: 'text', width: '200px' },
                     { key: 'encryption', label: 'Encryption', type: 'radio', options: [
                             { value: 'none', label: 'None' },

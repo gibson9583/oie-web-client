@@ -47,6 +47,96 @@ const DEFAULT_WIDTHS = {
     select: '220px'
 };
 let cformUid = 0;
+function NumericTemplatableInput({ value, disabled, placeholder, style, dataFkey, templatable = true, step = 1, min, max, width = DEFAULT_WIDTHS.number, textWidth = DEFAULT_WIDTHS.text, onChange, }) {
+    const rawStr = value === null || value === undefined ? '' : String(value);
+    const isEmpty = rawStr.trim() === '';
+    const isNumeric = !isEmpty && !isNaN(Number(rawStr));
+    const isText = templatable && !isEmpty && !isNumeric;
+    const currentWidth = isText ? textWidth : width;
+    const showCustomArrows = !disabled && (!templatable || isNumeric);
+    const handleStep = (direction) => {
+        if (disabled)
+            return;
+        const current = isNumeric ? Number(rawStr) : (min !== undefined ? min : 0);
+        let next = current + direction * step;
+        if (min !== undefined && next < min)
+            next = min;
+        if (max !== undefined && next > max)
+            next = max;
+        onChange(String(next));
+    };
+    const handleKeyDown = (e) => {
+        if (disabled)
+            return;
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            handleStep(1);
+        }
+        else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            handleStep(-1);
+        }
+    };
+    const handleChange = (e) => {
+        const val = e.target.value;
+        if (!templatable && val !== '' && !/^-?\d*\.?\d*$/.test(val)) {
+            return;
+        }
+        onChange(val);
+    };
+    return (React.createElement("div", { style: {
+            position: 'relative',
+            display: 'inline-flex',
+            alignItems: 'center',
+            width: currentWidth,
+            transition: 'width 0.15s ease-out',
+            ...style,
+        } },
+        React.createElement("input", { type: "text", "data-fkey": dataFkey, value: rawStr, placeholder: placeholder, disabled: disabled, onChange: handleChange, onKeyDown: handleKeyDown, style: {
+                width: '100%',
+                boxSizing: 'border-box',
+                paddingRight: showCustomArrows ? '20px' : undefined,
+            } }),
+        showCustomArrows && (React.createElement("div", { style: {
+                position: 'absolute',
+                right: 1,
+                top: 1,
+                bottom: 1,
+                width: '18px',
+                display: 'flex',
+                flexDirection: 'column',
+                borderLeft: '1px solid #ccc',
+                backgroundColor: '#f8f8f8',
+                userSelect: 'none',
+            } },
+            React.createElement("button", { type: "button", tabIndex: -1, onClick: () => handleStep(1), style: {
+                    flex: 1,
+                    padding: 0,
+                    margin: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '7px',
+                    lineHeight: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                } }, "\u25B2"),
+            React.createElement("button", { type: "button", tabIndex: -1, onClick: () => handleStep(-1), style: {
+                    flex: 1,
+                    padding: 0,
+                    margin: 0,
+                    border: 'none',
+                    borderTop: '1px solid #ddd',
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    fontSize: '7px',
+                    lineHeight: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                } }, "\u25BC")))));
+}
 /* Monaco/textarea editor created ONCE; value flows in via initial value, edits
    flow out through onChange (which mutates properties + bumps the form). When the
    value is reassigned PROGRAMMATICALLY (e.g. WS "Generate Envelope" rewrites the
@@ -210,7 +300,7 @@ function FieldRow({ properties, field, onChange, repaint }) {
             break;
         }
         case 'number':
-            control = React.createElement("input", { type: "number", "data-fkey": f.key, value: value ?? '', placeholder: f.placeholder, style: inputStyle, disabled: disabled, onChange: (e) => set(f.numeric ? (parseInt(e.target.value, 10) || 0) : e.target.value) });
+            control = (React.createElement(NumericTemplatableInput, { value: value, dataFkey: f.key, placeholder: f.placeholder, width: f.width || DEFAULT_WIDTHS.number, textWidth: f.textWidth || DEFAULT_WIDTHS.text, disabled: disabled, templatable: f.templatable ?? true, step: f.step, min: f.min, max: f.max, onChange: (v) => set(v) }));
             break;
         case 'select':
             control = (React.createElement("select", { value: value ?? '', "data-fkey": f.key, style: inputStyle, disabled: disabled, onChange: (e) => set(f.numeric ? parseInt(e.target.value, 10) : e.target.value) }, (typeof f.options === 'function' ? f.options(properties) : f.options || []).map((opt, i) => {
