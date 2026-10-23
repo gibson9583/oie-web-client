@@ -1,6 +1,6 @@
 # CI supplies only the verified release runtime as the build context. The
 # application is already built and browser-tested; this image adds runtime deps.
-FROM node:22-alpine
+FROM node:22.23.4-alpine
 ENV NODE_ENV=production WEBADMIN_HOST=0.0.0.0
 WORKDIR /app
 COPY . .

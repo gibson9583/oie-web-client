@@ -14,11 +14,14 @@ import * as crypto from 'crypto';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 
+import { assertSupportedNodeVersion } from './runtime-version';
 import { load } from './config';
 import type { TlsConfig } from './config';
 import { createApiProxy } from './proxy';
 import { installPluginRoutes } from './plugin-install';
 import * as plugins from './plugins';
+
+assertSupportedNodeVersion();
 
 const config = load();
 const app = express();

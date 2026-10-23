@@ -119,15 +119,18 @@ function engineGate(config: WebAdminConfig) {
     };
 }
 
+// CVE-2026-111497: never decompress attacker-supplied bodies in these local
+// routes. The browser sends plain bodies; reject all compressed encodings before
+// invoking a native decoder, independently of engine authentication.
 // Mount BEFORE the /api proxy in server/index.js.
 export function installPluginRoutes(app: Express, config: WebAdminConfig): void {
     app.post('/api/_webadmin/plugins/_install',
         engineGate(config),
         preUploadGate,
-        express.raw({ type: () => true, limit: MAX_UPLOAD }),
+        express.raw({ type: () => true, limit: MAX_UPLOAD, inflate: false }),
         (req, res) => handleInstall(req, res, config));
     app.post('/api/_webadmin/plugins/_uninstall',
         engineGate(config),
-        express.json({ limit: '64kb' }),
+        express.json({ limit: '64kb', inflate: false }),
         (req, res) => handleUninstall(req, res, config));
 }

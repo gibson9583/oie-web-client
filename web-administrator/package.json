@@ -18,7 +18,7 @@
     "test": "for f in client/core/*.test.js server/*.test.js; do node \"$f\" || exit 1; done"
   },
   "engines": {
-    "node": ">=22.18.0"
+    "node": "^22.23.4 || ^24.22.1 || ^26.12.1"
   },
   "dependencies": {
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",

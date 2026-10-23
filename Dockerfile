@@ -10,7 +10,7 @@
 # inside web-administrator/ breaks the @oie/* links) and produce the built
 # client (client/dist, vendor bundles, plugin bundles).
 # ---------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM node:22-alpine AS build
+FROM --platform=$BUILDPLATFORM node:22.23.4-alpine AS build
 WORKDIR /app
 
 # Manifests first so the npm ci layer caches across source-only changes.
@@ -36,7 +36,7 @@ RUN npm run build -w web-administrator
 # every production dependency is pure JS — if a native prod dep is ever added,
 # this stage must go back to running per-architecture.
 # ---------------------------------------------------------------------------
-FROM --platform=$BUILDPLATFORM node:22-alpine AS proddeps
+FROM --platform=$BUILDPLATFORM node:22.23.4-alpine AS proddeps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/eslint-config/package.json packages/eslint-config/
@@ -55,7 +55,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 #   the document inline    WEBADMIN_CONFIG_JSON='{"allowedUrls":[...],"tls":{...}}'
 # Use absolute paths for mounted PEM/plugin paths inside the document.
 # ---------------------------------------------------------------------------
-FROM node:22-alpine
+FROM node:22.23.4-alpine
 ENV NODE_ENV=production
 # Bind inside the container; publish the port on host loopback behind TLS.
 ENV WEBADMIN_HOST=0.0.0.0

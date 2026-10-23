@@ -52,7 +52,7 @@ oie-web-client/
 
 | Tool | Version | Notes |
 |---|---|---|
-| **Node.js** | **22.18+; tested on 22.22.3** | Use the pinned `.nvmrc` for source builds, tests and the packaged Node runtime. |
+| **Node.js** | **22.23.4+; tested on 22.23.4** | Use the pinned `.nvmrc` for source builds, tests and the packaged Node runtime. |
 | **npm** | Bundled with Node 22 | Run `npm ci` at the repository root; this is an npm-**workspaces** monorepo. Yarn/pnpm are not used. |
 | **JDK** | **17+** (WAR builds only) | Supplies the standard `jar` tool used by `npm run build:war`; it is not needed to run the Node/Docker deployment. |
 | **OIE / Mirth Connect engine** | **4.6.0** | The app is a *client* to a **running** engine — it neither bundles nor starts one. Default `https://127.0.0.1:8443`. The release baseline is OIE 4.6.0; the HTTP Listener request header size setting is available on OIE 4.7.0 and later. |
@@ -193,6 +193,20 @@ root.
 
 ## Node/Docker configuration
 
+Node/Docker deployments require a patched Node.js runtime: **22.23.4+ on 22.x,
+24.22.1+ on 24.x, or 26.12.1+ on 26.x**. The server refuses to start on other
+versions. These minimums address [CVE-2026-111497](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases),
+a native Brotli decoder vulnerability. Updating npm dependencies alone does not
+patch Node.js. Upgrade the runtime and restart standalone deployments; rebuild
+Docker deployments with `docker build --pull` (or pull a newly released application
+image), recreate containers, and verify `node --version` inside the running container.
+Both Dockerfiles pin the patched Node 22 base, including build stages.
+
+Local plugin install/uninstall routes reject compressed request bodies with HTTP
+415; clients must send uncompressed ZIP/JSON bodies. This also rejects gzip and
+deflate. Engine authorization still applies to accepted requests. The embedded WAR
+runs in Java/Jetty without Node.js and does not need this runtime update.
+
 Settings load from a single JSON **config document**, then per-setting
 environment-variable overrides on top. The document comes from the first of
 (highest wins): `WEBADMIN_CONFIG_JSON` (the JSON itself, inline), the file named
@@ -329,7 +343,7 @@ plugin UIs are disabled with a notice. Format Document runs entirely client-side
 | Login fails, "engine unreachable", or a `502` | The engine isn't running or `engine.url` is wrong. Confirm `<engine.url>/api/server/version` responds. |
 | TLS / certificate errors reaching the engine | Trust the engine CA with `NODE_EXTRA_CA_CERTS` at startup and check the URL matches its certificate hostname. |
 | `EADDRINUSE` / port `3030` already in use | Set `WEBADMIN_PORT` (or `port` in `config.json`). |
-| Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22.22.3 from `.nvmrc` (`node -v`); the minimum is 22.18. |
+| Vite or syntax errors on `npm run dev` / `npm start` | Use Node 22.23.4 from `.nvmrc` (`node -v`); the minimum is 22.23.4 on Node 22. |
 | WAR URL returns 404 after copying | OIE discovers WARs only at startup. Put the file directly in `<OIE_HOME>/webapps/`, restart OIE, and use the context matching the WAR filename. |
 | Message trees, Validate Script, or engine-served plugin UIs don't work | The connected engine has neither native web-support endpoints nor the [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin). Install the plugin and restart the engine. Format Document remains available because it is client-side. |
 
