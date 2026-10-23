@@ -1202,7 +1202,7 @@ tooling from the copied resources:
   <executions>
     <execution><id>install-node-and-npm</id><phase>generate-resources</phase>
       <goals><goal>install-node-and-npm</goal></goals>
-      <configuration><nodeVersion>v22.18.0</nodeVersion></configuration></execution>
+      <configuration><nodeVersion>v22.23.4</nodeVersion></configuration></execution>
     <execution><id>npm-install</id><phase>generate-resources</phase>
       <goals><goal>npm</goal></goals><configuration><arguments>install</arguments></configuration></execution>
     <execution><id>npm-build-webadmin</id><phase>generate-resources</phase>
