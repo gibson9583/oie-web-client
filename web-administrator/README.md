@@ -222,8 +222,8 @@ runtime `msg`/`tmp`. JavaScript validation works the same way
 (`/javascript/_validate`, the engine's own Rhino compiler); Format Document
 runs entirely client-side (js-beautify, E4X-safe). There is no local JVM or
 engine install to configure — serialization follows whichever engine the
-session is connected to. Drag a tree node into a script editor to insert its
-accessor at the drop point.
+session is connected to. Drag a row from the Message Trees table into a script
+editor or a text field to insert its accessor at the drop point.
 
 > These endpoints are probed per session: engine-native first, then the
 > [Web Support plugin](https://github.com/gibson9583/oie-web-support-plugin)
