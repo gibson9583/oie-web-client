@@ -196,7 +196,7 @@ export function TreeTable({
         e.preventDefault();
         e.stopPropagation();
         const toggleable = columns.filter((c: any) => !pinnedKeys.includes(c.key));
-        const visibleCount = toggleable.filter((c: any) => !mgr.isHidden(c.key)).length;
+        const visibleCount = columns.filter((c: any) => !mgr.isHidden(c.key)).length;
         const items = toggleable.map((c: any) => {
             const shown = !mgr.isHidden(c.key);
             return {

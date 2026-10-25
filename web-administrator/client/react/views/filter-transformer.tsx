@@ -937,7 +937,7 @@ function TemplatesTab({ target, version, connectorType, channel, commit }: any) 
 const NO_KEYS = new Set<string>();
 
 function isEmptyNode(node: any): boolean {
-    return node.children.length ? node.children.every(isEmptyNode) : (node.value == null || node.value === '');
+    return (node.value == null || node.value === '') && node.children.every(isEmptyNode);
 }
 
 // The component and subcomponent separators from MSH.2 (HL7 v2).
@@ -966,11 +966,13 @@ function treeRow(node: any, key: string, seps: any, top: boolean): any {
     const only = node.children.length === 1 ? node.children[0] : null;
     const source = only && !only.children.length && only.name === `${node.name}.1` ? only : node;
     const children = source === node ? node.children.map((c: any, i: number) => treeRow(c, `${key}/${i}`, seps, false)) : [];
+    const joined = source.value == null && source.children.length ? joinedValue(source, seps) : null;
     const row: any = {
-        key, source, children,
+        key, node, source, children,
         field: node.index == null ? node.name : `${node.name}[${node.index}]`,
         desc: node.desc || source.desc || '',
-        value: source.children.length ? joinedValue(source, seps) : source.value,
+        value: joined ?? source.value,
+        joined: joined != null,
         empty: isEmptyNode(node),
         group: top && children.length > 0
     };
@@ -1061,13 +1063,13 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
         for (const key of branchKeys(rows)) { if (open) keys.delete(key); else keys.add(key); }
     });
 
-    const menuItems = (source: any, rows: any[]) => {
+    const menuItems = (node: any, source: any, rows: any[]) => {
         const items: any[] = [];
         if (branchKeys(rows).size) {
             items.push({ label: 'Expand All', onClick: () => setBranches(rows, true) },
                 { label: 'Collapse All', onClick: () => setBranches(rows, false) }, '-');
         }
-        const name = String(source.label || 'value');
+        const name = String(node.label || 'value');
         const lval = source.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
         if (side === 'inbound') {
             items.push({
@@ -1083,7 +1085,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     };
     const rowMenu = (row: any, x: number, y: number) => {
         setSelected(row);
-        contextMenu(x, y, menuItems(row.source, [row]));
+        contextMenu(x, y, menuItems(row.node, row.source, [row]));
     };
 
     if (parse.status !== 'ready') {
@@ -1121,7 +1123,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
             key: 'value', label: 'Sample value',
             render: (row: any) => (
                 <span className="mt-value">
-                    <span className={'mt-text' + (row.count ? ' mt-count' : row.children.length ? ' mt-joined' : '')}
+                    <span className={'mt-text' + (row.count ? ' mt-count' : row.joined ? ' mt-joined' : '')}
                         title={row.count ? undefined : (row.value || undefined)}>{valueText(row)}</span>
                     <button type="button" className="mt-more" aria-label={`Actions for ${row.field}`} title="Actions"
                         // Enter/Space press the button; the treegrid would take them as row keys.
@@ -1137,7 +1139,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     ];
     const rootMenu = (e: any) => {
         e.preventDefault();
-        contextMenu(e.clientX, e.clientY, menuItems(root, rows));
+        contextMenu(e.clientX, e.clientY, menuItems(root, root, rows));
     };
 
     return (

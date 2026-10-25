@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { test, expect } from './base.js';
 import { mockEngine } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
@@ -18,7 +19,7 @@ const OUTBOUND = 'MSH|^~\\&|OUT|FAC\rPID|1||||';
 
 const DESCRIPTIONS = {
     PID: 'Patient Identification', 'PID.1': 'Set ID - PID', 'PID.2': 'Patient ID', 'PID.3': 'Patient Identifier List',
-    'PID.5': 'Patient Name', 'PID.5.1': 'Family Name', 'PID.5.2': 'Given Name', 'PID.8': 'Administrative Sex'
+    'PID.5': 'Patient Name', 'PID.5.1': 'Family Name', 'PID.5.2': 'Given Name', 'PID.8': 'Administrative Sex', 'PID.8.1': 'Value'
 };
 
 // The engine's ER7Reader shape: an empty element per blank field, and every
@@ -39,9 +40,9 @@ function hl7Xml(er7: string) {
     return `<HL7Message>${segments.join('')}</HL7Message>`;
 }
 
-async function openTrees(page: Page, serialize = hl7Xml) {
+async function openTrees(page: Page, { serialize = hl7Xml, dataType = 'HL7V2', template = INBOUND } = {}) {
     let channel = makeChannel('mtree');
-    Object.assign(channel.sourceConnector.transformer, { inboundTemplate: INBOUND, outboundTemplate: OUTBOUND });
+    Object.assign(channel.sourceConnector.transformer, { inboundDataType: dataType, inboundTemplate: template, outboundTemplate: OUTBOUND });
     const writes: any[] = [];
     await mockEngine(page, {
         'GET /channels/mtree': () => ({ channel }),
@@ -51,7 +52,8 @@ async function openTrees(page: Page, serialize = hl7Xml) {
     await page.route('**/api/datatypes/_serialize*', route => {
         const text = route.request().postData() || '';
         const root = text.startsWith('MSH|^~\\&|EPIC') ? 'ADT-A01 (2.5.1) (Admit/Visit Notification)' : '';
-        return route.fulfill({ json: { format: 'xml', data: serialize(text), meta: { root, descriptions: DESCRIPTIONS } } });
+        const descriptions = text.startsWith('MSH|') ? DESCRIPTIONS : {};
+        return route.fulfill({ json: { format: 'xml', data: serialize(text), meta: { root, descriptions } } });
     });
     await page.goto('/channels/mtree/transformer/0');
     await page.getByRole('tab', { name: 'Message Trees', exact: true }).click();
@@ -162,7 +164,7 @@ test('message tree rows drop their accessor into a script editor', async ({ page
 
 test('strict HL7 component names get no joined value', async ({ page }) => {
     // The strict (HAPI) parser names fields PID.n but components by data type.
-    await openTrees(page, () => '<ADT_A01><PID><PID.1>1</PID.1><PID.5><XPN.1><FN.1>DOE</FN.1></XPN.1><XPN.2>JANE</XPN.2></PID.5></PID></ADT_A01>');
+    await openTrees(page, { serialize: () => '<ADT_A01><PID><PID.1>1</PID.1><PID.5><XPN.1><FN.1>DOE</FN.1></XPN.1><XPN.2>JANE</XPN.2></PID.5></PID></ADT_A01>' });
     await expect(row(page, 'PID')).toContainText('2 fields');
     await row(page, 'PID').locator('.twisty').click();
     await expect(row(page, 'PID.5')).toContainText('Patient Name');
@@ -171,3 +173,67 @@ test('strict HL7 component names get no joined value', async ({ page }) => {
     await row(page, 'XPN.1').locator('.twisty').click();
     await expect(row(page, 'FN.1')).toContainText('DOE');
 });
+
+test('a folded field keeps its own name for Map to Variable', async ({ page }) => {
+    await openTrees(page);
+    await row(page, 'PID').locator('.twisty').click();
+    await row(page, 'PID.8').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    // The row's name, not its folded component's ("PID.8.1 (Value)"): the variable is the channel-map key.
+    await expect(stepField(page, 'Variable')).toHaveValue('PID.8 (Administrative Sex)');
+    await expect(stepField(page, 'Mapping')).toHaveValue("msg['PID']['PID.8']['PID.8.1'].toString()");
+});
+
+test('XML text stays visible beside attributes and through Hide empty fields', async ({ page }) => {
+    // The XML serializer returns this document unchanged.
+    const xml = '<record><name kind="legal">DOE^JANE</name><value code="">nonempty text</value><plain>visible plain</plain></record>';
+    await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml });
+    await expect(row(page, 'name')).toContainText('DOE^JANE');
+    await expect(row(page, 'name').locator('.mt-joined')).toHaveCount(0);
+    await expect(row(page, 'value')).toContainText('nonempty text');
+    await row(page, 'name').locator('.twisty').click();
+    await expect(row(page, '@kind')).toContainText('legal');
+    await row(page, 'value').locator('.twisty').click();
+    await expect(row(page, '@code')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Hide empty fields' }).click();
+    await expect(row(page, 'value')).toContainText('nonempty text');
+    await expect(row(page, '@code')).toHaveCount(0);
+    await expect(row(page, '@kind')).toBeVisible();
+
+    await page.getByRole('textbox', { name: 'Filter fields' }).fill('doe^jane');
+    await expect(row(page, 'name')).toBeVisible();
+    await expect(row(page, 'plain')).toHaveCount(0);
+});
+
+test('DICOM tags keep their values beside their metadata attributes', async ({ page }) => {
+    // The DICOM serializer's output for a generated file; the template holds this XML.
+    const dicom = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<dicom>\n'
+        + '    <tag00100010 len="8" tag="00100010" vr="PN">DOE^JANE</tag00100010>\n'
+        + '    <tag00100020 len="6" tag="00100020" vr="LO">PR135</tag00100020>\n</dicom>\n';
+    await openTrees(page, { dataType: 'DICOM', template: dicom });
+    await expect(row(page, 'tag00100010')).toContainText('DOE^JANE');
+    await expect(row(page, 'tag00100020')).toContainText('PR135');
+    await row(page, 'tag00100010').locator('.twisty').click();
+    await expect(row(page, '@vr')).toContainText('PN');
+});
+
+test('the Name column can be hidden from the header menu', async ({ page }) => {
+    await openTrees(page);
+    await tree(page).getByRole('columnheader', { name: 'Name', exact: true }).click({ button: 'right' });
+    // Field and Sample value (it holds the row actions) are pinned.
+    await expect(page.getByRole('menuitem', { name: /Field|Sample value/ })).toHaveCount(0);
+    await page.getByRole('menuitem', { name: /Name/ }).click();
+    await expect(tree(page).getByRole('columnheader', { name: 'Name', exact: true })).toHaveCount(0);
+    await expect(row(page, 'PID')).toContainText('7 of 13 fields');
+});
+
+for (const theme of ['light', 'dark']) {
+    test(`message tree passes an accessibility scan in the ${theme} theme`, async ({ page }) => {
+        await openTrees(page);
+        await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+        await tree(page).getByRole('button', { name: 'Expand all' }).click();
+        await expect(row(page, 'PID.5.1')).toBeVisible();
+        expect((await new AxeBuilder({ page }).include('.mtree').analyze()).violations).toEqual([]);
+    });
+}

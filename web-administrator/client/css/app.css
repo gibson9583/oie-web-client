@@ -1997,7 +1997,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .mtree .mt-more:hover, .mtree .mt-more:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
 .mtree .mt-foot {
     display: flex; align-items: center; gap: 8px; flex: none; min-height: 38px; padding: 6px 12px;
-    border-top: 1px solid var(--line); background: var(--bg1); font-size: 10.5px; color: var(--text-faint);
+    border-top: 1px solid var(--line); background: var(--bg1); font-size: 10.5px; color: var(--text-dim);
 }
 .mtree .mt-foot code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--text); }
 .mtree .mt-note { padding: 4px 12px; font-size: 11px; color: var(--text-faint); }
