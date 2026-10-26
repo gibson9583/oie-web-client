@@ -1974,7 +1974,6 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font-size: 11px; color: var(--text-dim); cursor: grab;
 }
-.mtree .mt-root-label code { color: var(--accent); margin-right: 7px; }
 .mtree .mt-table { flex: 1; min-height: 0; border-top: 1px solid var(--line); }
 .mtree .mt-table > .dt-wrap { height: 100%; }
 .mtree table.dt th, .mtree table.dt td { padding-left: 8px; padding-right: 8px; }

@@ -1151,7 +1151,7 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
             <div className="mt-root">
                 <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
                     {...accessorDragProps(dragRef, root.accessor)} onContextMenu={rootMenu}>
-                    <code>{varName}</code>{root.label !== varName ? root.label : null}
+                    {root.label !== varName ? root.label : dtLabel}
                 </span>
                 <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
                     onClick={() => setBranches(rows, true)}><Icon name="plus" size={14} /></button>

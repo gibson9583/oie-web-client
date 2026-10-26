@@ -73,7 +73,7 @@ const stepField = (page: Page, label: string) => page.locator(`.step-editor-fill
 
 test('message tree table shows segments, joined values, folded fields and filters', async ({ page }) => {
     await openTrees(page);
-    await expect(tree(page)).toContainText('ADT-A01 (2.5.1) (Admit/Visit Notification)');
+    await expect(tree(page).locator('.mt-root-label')).toHaveText('ADT-A01 (2.5.1) (Admit/Visit Notification)');
     await expect(row(page, 'PID')).toContainText('7 of 13 fields');
     await expect(row(page, 'OBX[1]')).toBeVisible();
     // Segments start collapsed, like the Swing tree.
