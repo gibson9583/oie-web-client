@@ -273,3 +273,45 @@ test('text on an attributed XML root stays visible and searchable', async ({ pag
     await row(page, 'value').click();
     await expect(tree(page).locator('.mt-foot')).toContainText('msg.toString()');
 });
+
+// axe reports these as incomplete (the page background is a dot gradient), so
+// measure the text against its composited background directly (WCAG 2.2 1.4.3).
+for (const theme of ['light', 'dark']) {
+    test(`message tree text meets AA contrast in the ${theme} theme`, async ({ page }) => {
+        await openTrees(page);
+        await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+        await tree(page).getByRole('button', { name: 'Expand all' }).click();
+        await page.mouse.move(0, 0);
+        await expect(row(page, 'PID.2')).toHaveClass(/mt-empty/);
+        const checks = await tree(page).evaluate(root => {
+            const parse = (value: string) => {
+                const n = (value.match(/-?[\d.]+/g) || []).map(Number);
+                const srgb = value.startsWith('color(');
+                const rgb = n.slice(0, 3).map(x => (srgb ? x * 255 : x));
+                return { rgb, a: n.length > 3 ? n[3] : 1 };
+            };
+            const background = (el: Element) => {
+                const layers: { rgb: number[]; a: number }[] = [];
+                for (let node: Element | null = el; node; node = node.parentElement) {
+                    const layer = parse(getComputedStyle(node).backgroundColor);
+                    if (layer.a > 0) layers.push(layer);
+                    if (layer.a >= 1) break;
+                }
+                let rgb = [255, 255, 255];
+                for (const layer of layers.reverse()) rgb = rgb.map((c, i) => layer.rgb[i] * layer.a + c * (1 - layer.a));
+                return rgb;
+            };
+            const luminance = (rgb: number[]) => rgb.reduce((sum, c, i) => {
+                const v = c / 255;
+                return sum + [0.2126, 0.7152, 0.0722][i] * (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+            }, 0);
+            const selectors = ['tr.mt-empty td', '.mt-joined', '.mt-count', '.mt-root-label', '.mt-foot'];
+            return selectors.flatMap(selector => [...root.querySelectorAll(selector)].slice(0, 3).map(el => {
+                const [hi, lo] = [luminance(parse(getComputedStyle(el).color).rgb), luminance(background(el))].sort((a, b) => b - a);
+                return { selector, text: (el.textContent || '').trim().slice(0, 24), ratio: Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100 };
+            }));
+        });
+        expect(new Set(checks.map(c => c.selector))).toEqual(new Set(['tr.mt-empty td', '.mt-joined', '.mt-count', '.mt-root-label', '.mt-foot']));
+        expect(checks.filter(c => c.ratio < 4.5)).toEqual([]);
+    });
+}

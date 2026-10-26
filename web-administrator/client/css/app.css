@@ -1983,11 +1983,11 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .mtree table.dt tbody td { line-height: 16px; }
 .mtree table.dt tbody td > span { vertical-align: top; }
 .mtree table.dt tbody tr { cursor: grab; }
-.mtree table.dt tbody tr.mt-empty td { color: var(--text-faint); }
+.mtree table.dt tbody tr.mt-empty td { color: var(--text-dim); }
 .mtree .mt-value { display: flex; align-items: center; gap: 6px; min-width: 0; height: 16px; }
 .mtree .mt-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
-.mtree .mt-joined { color: var(--text-faint); }
-.mtree .mt-count { font-family: var(--font-ui); color: var(--text-faint); font-weight: 400; }
+.mtree .mt-joined { color: var(--text-dim); }
+.mtree .mt-count { font-family: var(--font-ui); color: var(--text-dim); font-weight: 400; }
 .mtree .mt-more {
     flex: none; visibility: hidden; width: 22px; height: 16px; padding: 0;
     border: 1px solid var(--line); border-radius: 5px; background: var(--bg2);
@@ -2000,7 +2000,7 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
     border-top: 1px solid var(--line); background: var(--bg1); font-size: 10.5px; color: var(--text-dim);
 }
 .mtree .mt-foot code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--text); }
-.mtree .mt-note { padding: 4px 12px; font-size: 11px; color: var(--text-faint); }
+.mtree .mt-note { padding: 4px 12px; font-size: 11px; color: var(--text-dim); }
 
 /* ---- Login stage -------------------------------------------------------------------------------------------------------- */
 
