@@ -1223,7 +1223,7 @@ function DashboardView({ onToggleView }: any) {
                         onToggleCollapse={onToggleCollapse}
                         columnsKey="dashboard"
                         scrollKey="dashboard"
-                        scrollReady={loaded}
+                        scrollReady={loaded && (viewMode === 'channel' || !groupsQ.isPending)}
                         columnWidths={DASH_COL_WIDTHS}
                         defaultHidden={DASH_DEFAULT_HIDDEN}
                         pinnedKeys={['state', 'name']}
