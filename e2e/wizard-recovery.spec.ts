@@ -49,6 +49,7 @@ for (const surface of ['classic', 'wizard', 'transformer']) for (const leave of 
             await page.locator('.modal').getByRole('button', { name: /^Add/ }).click();
             if (surface !== 'wizard') {
                 await page.getByRole('button', { name: 'Classic editor', exact: true }).click();
+                await expect(page.getByRole('banner')).toContainText('Edit Channel - Readback session boundary');
                 if (surface === 'transformer') {
                     await page.getByRole('tab', { name: 'Source', exact: true }).click();
                     await page.getByRole('button', { name: /^Edit Transformer/ }).click();
