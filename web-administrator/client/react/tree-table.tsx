@@ -16,6 +16,9 @@
  *   rowClassName (node, depth) => extra <tr> classes (optional).
  *   selectedKey  currently-selected rowKey (or null).
  *   onSelect / onActivate / onRowContextMenu(node, e) / onEmptyContextMenu(e)
+ *   rowDraggable (node) => bool; onRowDrop(draggedKey, node) — row reorder.
+ *   onRowDragStart(node, e) / onRowDragEnd(node) — replace the reorder payload
+ *                for rows dragged elsewhere (e.g. message-tree accessors).
  *   columnsKey   localStorage key (createColumnManager storageKey).
  *   columnWidths { key: px } default widths.
  *   defaultHidden [key] hidden by default.
@@ -38,7 +41,7 @@ const savedScroll = new Map<string, { top: number; left: number }>();
 export function TreeTable({
     columns, data, getChildren, rowKey, rowClassName,
     selectedKey, selectedKeys, onSelect, onActivate, onRowContextMenu, onEmptyContextMenu,
-    rowDraggable, onRowDrop,
+    rowDraggable, onRowDrop, onRowDragStart, onRowDragEnd,
     columnsKey, columnWidths = {}, defaultHidden = [], pinnedKeys = [],
     emptyText = 'No items', matches, collapsedKeys, onToggleCollapse,
     // Controlled sort (opt-in): pass `sort={{key,dir}}` + `onSort(key)` to let the
@@ -200,7 +203,7 @@ export function TreeTable({
         e.preventDefault();
         e.stopPropagation();
         const toggleable = columns.filter((c: any) => !pinnedKeys.includes(c.key));
-        const visibleCount = toggleable.filter((c: any) => !mgr.isHidden(c.key)).length;
+        const visibleCount = columns.filter((c: any) => !mgr.isHidden(c.key)).length;
         const items = toggleable.map((c: any) => {
             const shown = !mgr.isHidden(c.key);
             return {
@@ -344,7 +347,11 @@ export function TreeTable({
                                 tabIndex={key === tabKey ? 0 : -1}
                                 onFocus={() => { if (key !== focusKey) setFocusKey(key); }}
                                 draggable={drag || undefined}
-                                onDragStart={drag ? (e: any) => { e.dataTransfer.setData('text/plain', key); e.dataTransfer.effectAllowed = 'move'; } : undefined}
+                                onDragStart={drag ? (e: any) => {
+                                    if (onRowDragStart) { onRowDragStart(node, e); return; }
+                                    e.dataTransfer.setData('text/plain', key); e.dataTransfer.effectAllowed = 'move';
+                                } : undefined}
+                                onDragEnd={drag && onRowDragEnd ? () => onRowDragEnd(node) : undefined}
                                 onDragOver={onRowDrop ? (e: any) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } : undefined}
                                 onDrop={onRowDrop ? (e: any) => { e.preventDefault(); onRowDrop(e.dataTransfer.getData('text/plain'), node); } : undefined}
                                 onClick={(e: any) => {

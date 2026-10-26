@@ -55,6 +55,22 @@ Typical transformer workflow:
 5. Validate before returning to the channel.
 6. Save the parent channel.
 
+### Message Trees
+
+The **Message Trees** tab shows a transformer template as a table. Each row
+shows a field, its name, and its sample value. Rows that have children start
+collapsed.
+
+1. Select **Inbound** (`msg`) or **Outbound** (`tmp`) to choose the template.
+2. Type in **Filter fields** to find a field by its ID, name, or value.
+3. Select the eye button to hide or show empty fields.
+4. Drag a row into a script editor or a text field to insert its accessor.
+5. Right-click a row, or select its **⋯** button, for **Map to Variable**,
+   **Map to Message**, and **Copy Accessor**. **Map to Variable** is available
+   on the inbound template only.
+
+Select a row to show its accessor below the table.
+
 Message trees and engine-side validation require native support or the optional
 Web Support plugin. Format Document is performed locally in the browser.
 

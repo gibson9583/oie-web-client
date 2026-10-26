@@ -1961,6 +1961,46 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 .tree .tree-node .twisty.open { transform: rotate(90deg); }
 .tree .tree-children { margin-left: 16px; }
 
+/* Message Trees tab (transformer side panel): toolbar, root caption, tree-table,
+   accessor footer. The table's .dt-wrap is the scroller, so its header stays put. */
+.mtree { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.mtree .mt-bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px 8px; flex: none; }
+.mtree .mt-bar input { flex: 1; min-width: 0; width: auto; }
+.mtree .icon-btn { flex: none; }
+.mtree .icon-btn[aria-pressed="true"] { background: var(--accent-glow); color: var(--accent); }
+.mtree .mt-section { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.mtree .mt-root { display: flex; align-items: center; gap: 2px; padding: 0 8px 4px 12px; flex: none; min-width: 0; }
+.mtree .mt-root-label {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 11px; color: var(--text-dim); cursor: grab;
+}
+.mtree .mt-table { flex: 1; min-height: 0; border-top: 1px solid var(--line); }
+.mtree .mt-table > .dt-wrap { height: 100%; }
+.mtree table.dt th, .mtree table.dt td { padding-left: 8px; padding-right: 8px; }
+.mtree table.dt th:first-child, .mtree table.dt td:first-child { padding-left: 12px; }
+/* One line height for the sans and mono cells, so every row is the same height. */
+.mtree table.dt tbody td { line-height: 16px; }
+.mtree table.dt tbody td > span { vertical-align: top; }
+.mtree table.dt tbody tr { cursor: grab; }
+.mtree table.dt tbody tr.mt-empty td { color: var(--text-dim); }
+.mtree .mt-value { display: flex; align-items: center; gap: 6px; min-width: 0; height: 16px; }
+.mtree .mt-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
+.mtree .mt-joined { color: var(--text-dim); }
+.mtree .mt-count { font-family: var(--font-ui); color: var(--text-dim); font-weight: 400; }
+.mtree .mt-more {
+    flex: none; visibility: hidden; width: 22px; height: 16px; padding: 0;
+    border: 1px solid var(--line); border-radius: 5px; background: var(--bg2);
+    color: var(--text-dim); font: inherit; line-height: 1; cursor: pointer;
+}
+.mtree tr:hover .mt-more, .mtree tr.selected .mt-more, .mtree tr:focus-within .mt-more { visibility: visible; }
+.mtree .mt-more:hover, .mtree .mt-more:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+.mtree .mt-foot {
+    display: flex; align-items: center; gap: 8px; flex: none; min-height: 38px; padding: 6px 12px;
+    border-top: 1px solid var(--line); background: var(--bg1); font-size: 10.5px; color: var(--text-dim);
+}
+.mtree .mt-foot code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; color: var(--text); }
+.mtree .mt-note { padding: 4px 12px; font-size: 11px; color: var(--text-dim); }
+
 /* ---- Login stage -------------------------------------------------------------------------------------------------------- */
 
 .login-stage {

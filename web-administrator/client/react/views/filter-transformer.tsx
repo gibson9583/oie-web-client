@@ -61,7 +61,8 @@ import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
-import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
+import { RailPane, TaskButton, SegPill, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
+import { TreeTable } from '../tree-table.jsx';
 import { Icon } from '../bridges.jsx';
 import { usePaletteContext } from '../palette-context.js';
 
@@ -318,7 +319,7 @@ function xmlElementNode(element: any, accessor: any, descriptions: any) {
     const children: any[] = [];
     for (const attr of element.attributes) {
         children.push({
-            label: `@${attr.name}`, value: attr.value,
+            label: `@${attr.name}`, name: `@${attr.name}`, desc: '', value: attr.value,
             accessor: `${accessor}['@${escapeKey(attr.name)}'].toString()`, children: []
         });
     }
@@ -331,14 +332,16 @@ function xmlElementNode(element: any, accessor: any, descriptions: any) {
         seen[child.tagName] = index + 1;
         let childAcc = `${accessor}['${escapeKey(child.tagName)}']`;
         if (counts[child.tagName] > 1) childAcc += `[${index}]`;
-        children.push(xmlElementNode(child, childAcc, descriptions));
+        const node = xmlElementNode(child, childAcc, descriptions);
+        if (counts[child.tagName] > 1) node.index = index;
+        children.push(node);
     }
     const text = childElements.length ? null : (element.textContent ?? '');
     // Overlay the engine vocabulary description on the display label only;
     // the accessor stays the raw node name (matches the Swing tree).
-    const desc = descriptions && descriptions[element.tagName];
+    const desc = (descriptions && descriptions[element.tagName]) || '';
     const label = desc ? `${element.tagName} (${desc})` : element.tagName;
-    return { label, value: text, accessor: `${accessor}.toString()`, children };
+    return { label, name: element.tagName, desc, value: text, accessor: `${accessor}.toString()`, children } as any;
 }
 
 function xmlTree(text: any, varName: any, meta?: any) {
@@ -356,18 +359,18 @@ function xmlTree(text: any, varName: any, meta?: any) {
 function jsonValueNode(label: any, value: any, accessor: any): any {
     if (Array.isArray(value)) {
         return {
-            label, value: null, accessor,
+            label, name: label, desc: '', value: null, accessor,
             children: value.map((item: any, i: any) => jsonValueNode(`[${i}]`, item, `${accessor}[${i}]`))
         };
     }
     if (value && typeof value === 'object') {
         return {
-            label, value: null, accessor,
+            label, name: label, desc: '', value: null, accessor,
             children: Object.entries(value).map(([key, val]) =>
                 jsonValueNode(key, val, `${accessor}['${escapeKey(key)}']`))
         };
     }
-    return { label, value: value === null ? 'null' : String(value), accessor, children: [] };
+    return { label, name: label, desc: '', value: value === null ? 'null' : String(value), accessor, children: [] };
 }
 
 function jsonTree(text: any, varName: any) {
@@ -925,93 +928,92 @@ function TemplatesTab({ target, version, connectorType, channel, commit }: any) 
 }
 
 /* ---- right panel: Message Trees (transformer routes only) ---------------------
-   Renders the inbound/outbound templates as expandable parse trees. Every node
-   is draggable (accessor flavors) and right-clickable (Expand/Collapse All,
-   Map to Variable / Map to Message). Expand/Collapse All cascades through a
-   {version, open} force signal each node syncs to. */
+   Renders the inbound or outbound template as a tree-table: Field (indented),
+   Name (the engine vocabulary description) and Sample value. Every row is
+   draggable (accessor flavors) and has the tree actions (Expand/Collapse All,
+   Map to Variable / Map to Message, Copy Accessor) on right-click and on its
+   ⋯ button. The message root is the caption above the table. */
 
-// Monotonic sequence for expand/collapse-all cascades, so a descendant can
-// tell which of two force signals (an ancestor's vs its own) is newest.
-let treeForceSeq = 0;
+const NO_KEYS = new Set<string>();
 
-function TreeNode({ node, depth, side, isFilter, dragRef, force, onAddStep }: any) {
-    const hasKids = node.children.length > 0;
-    // Match the Swing client: only the message root is expanded by default;
-    // segments and deeper nodes start collapsed.
-    const [open, setOpen] = useState(depth === 0);
-    const [localForce, setLocalForce] = useState<any>(null);   // cascades to descendants
-    useEffect(() => {
-        if (force && force.version) setOpen(force.open);
-    }, [force]);
-
-    const menu = (e: any) => {
-        const items: any[] = [];
-        if (hasKids) {
-            items.push({ label: 'Expand All', onClick: () => { setOpen(true); setLocalForce({ version: ++treeForceSeq, open: true }); } });
-            items.push({ label: 'Collapse All', onClick: () => { setOpen(false); setLocalForce({ version: ++treeForceSeq, open: false }); } });
-        }
-        // Map actions are transformer-only (filter editors have no message tree).
-        if (!isFilter) {
-            const name = String(node.label || 'value');
-            if (side === 'inbound') {
-                if (items.length) items.push('-');
-                items.push({
-                    label: 'Map to Variable', icon: 'transform',
-                    onClick: () => onAddStep(MAPPER_TYPE, 'Mapper', name, (el: any) => { el.mapping = node.accessor; el.variable = name; })
-                });
-            } else if (side === 'outbound') {
-                if (items.length) items.push('-');
-                const lval = node.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
-                items.push({
-                    label: 'Map to Message', icon: 'transform',
-                    onClick: () => onAddStep(MSGBUILDER_TYPE, 'Message Builder', name, (el: any) => { el.messageSegment = lval; })
-                });
-            }
-        }
-        if (!items.length) return;
-        e.preventDefault();
-        contextMenu(e.clientX, e.clientY, items);
-    };
-
-    // Descendant force: parent cascade wins over this node's own cascade.
-    const childForce = force && localForce
-        ? (force.version >= localForce.version ? force : localForce)
-        : (force || localForce);
-
-    return (
-        <div>
-            <div className="tree-node cursor-grab" title={`Drag into a script editor: ${node.accessor}`}
-                {...accessorDragProps(dragRef, node.accessor)}
-                onContextMenu={menu}>
-                <span className={'twisty' + (hasKids && open ? ' open' : '')}
-                    onClick={hasKids ? (e: any) => { e.stopPropagation(); setOpen(o => !o); } : undefined}>
-                    {hasKids ? '▸' : ''}
-                </span>
-                <span className="mono text-[10.5px] text-accent">{node.label}</span>
-                {node.value !== null && node.value !== ''
-                    ? <span className="text-text-faint truncate text-[10.5px] min-w-0">{node.value}</span>
-                    : null}
-            </div>
-            {hasKids && (
-                <div className="tree-children" style={{ display: open ? undefined : 'none' }}>
-                    {node.children.map((child: any, i: any) => (
-                        <TreeNode key={i} node={child} depth={depth + 1} side={side} isFilter={isFilter}
-                            dragRef={dragRef} force={childForce} onAddStep={onAddStep} />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+function isEmptyNode(node: any): boolean {
+    return (node.value == null || node.value === '') && node.children.every(isEmptyNode);
 }
 
-function TreeSection({ title, side, varName, openByDefault, target, isFilter, dragRef, onAddStep }: any) {
-    const [open, setOpen] = useState(openByDefault);
+// The component and subcomponent separators from MSH.2 (HL7 v2).
+function hl7Separators(root: any) {
+    const msh = root.children.find((c: any) => c.name === 'MSH');
+    const enc = String(msh?.children.find((c: any) => c.name === 'MSH.2')?.value || '^~\\&');
+    return { component: enc[0] || '^', subcomponent: enc[3] || '&' };
+}
+
+// Children named after their parent (PID.5 → PID.5.1) — the non-strict HL7 v2
+// layout. The strict parser names components by data type (XPN.1) instead.
+function numberedChildren(node: any) {
+    return node.children.length > 0 && node.children.every((c: any) => c.name.startsWith(`${node.name}.`));
+}
+
+// A field or component value joined with the message's own separators.
+function joinedValue(node: any, seps: any): string | null {
+    const sep = seps && numberedChildren(node) && [null, seps.component, seps.subcomponent][node.name.split('.').length - 1];
+    if (!sep) return null;
+    return node.children.map((c: any) => (c.value ?? (c.children.length ? joinedValue(c, seps) : null)) ?? '').join(sep);
+}
+
+// The non-strict HL7 v2 serializer stores every simple field as a lone `.1`
+// component. Such a field is one row that reads, drags and maps that component.
+// Segments (no dot) and strict-parser components (HD.1) keep their own rows.
+function treeRow(node: any, key: string, seps: any, top: boolean): any {
+    const only = seps && node.name.includes('.') && node.children.length === 1 ? node.children[0] : null;
+    const source = only && !only.children.length && only.name === `${node.name}.1` ? only : node;
+    const children = source === node ? node.children.map((c: any, i: number) => treeRow(c, `${key}/${i}`, seps, false)) : [];
+    const joined = source.value == null && source.children.length ? joinedValue(source, seps) : null;
+    const row: any = {
+        key, node, source, children,
+        field: node.index == null ? node.name : `${node.name}[${node.index}]`,
+        desc: node.desc || source.desc || '',
+        value: joined ?? source.value,
+        joined: joined != null,
+        empty: isEmptyNode(node),
+        group: top && children.length > 0
+    };
+    if (row.group && seps && numberedChildren(node)) row.count = { filled: children.filter((c: any) => !c.empty).length, total: children.length };
+    return row;
+}
+
+function messageRows(root: any, side: string, hl7: boolean) {
+    const seps = hl7 ? hl7Separators(root) : null;
+    const nodes = root.children.length && root.value == null ? root.children : [root];
+    return nodes.map((n: any, i: number) => treeRow(n, `${side}/${i}`, seps, true));
+}
+
+function branchKeys(rows: any[], out = new Set<string>()) {
+    for (const r of rows) {
+        if (r.children.length) { out.add(r.key); branchKeys(r.children, out); }
+    }
+    return out;
+}
+
+function rowText(row: any) {
+    return `${row.field} ${row.desc} ${row.value ?? ''}`.toLowerCase();
+}
+
+function copyAccessor(text: string) {
+    if (!navigator.clipboard?.writeText) { toast('Clipboard unavailable', 'warn'); return; }
+    navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'), () => toast('Clipboard unavailable', 'warn'));
+}
+
+function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef, onAddStep }: any) {
     const [parse, setParse] = useState<any>({ status: 'idle' });   // idle | parsing | ready | failed | empty
+    const [collapsed, setCollapsed] = useState<Set<string>>(NO_KEYS);
+    const [filterCollapsed, setFilterCollapsed] = useState<any>({ q: '', keys: NO_KEYS });
+    const [selected, setSelected] = useState<any>(null);
 
     const template = target[`${side}Template`];
     const dataType = target[`${side}DataType`] || 'RAW';
     const props = target[`${side}Properties`] || {};
     const dtLabel = (dataTypeDef(dataType) || { label: dataType }).label;
+    const regionLabel = `${side === 'inbound' ? 'Inbound' : 'Outbound'} message tree (${varName})`;
 
     useEffect(() => {
         if (template == null || String(template).trim() === '') { setParse({ status: 'empty' }); return undefined; }
@@ -1038,7 +1040,13 @@ function TreeSection({ title, side, varName, openByDefault, target, isFilter, dr
                 }
             }
             if (stale) return;
-            setParse(nodes ? { status: 'ready', nodes } : { status: 'failed' });
+            if (!nodes) { setParse({ status: 'failed' }); return; }
+            // Like the Swing tree, only the message root starts expanded.
+            const rows = messageRows(nodes[0], side, dataType === 'HL7V2');
+            const keys = branchKeys(rows);
+            if (rows[0]?.node === nodes[0]) keys.delete(rows[0].key);
+            setCollapsed(keys);
+            setParse({ status: 'ready', root: nodes[0], rows });
         })();
         return () => { stale = true; };
         // The template/type/props live on the mutable target; the section mounts
@@ -1046,43 +1054,165 @@ function TreeSection({ title, side, varName, openByDefault, target, isFilter, dr
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // A filter expands every match; twisties then fold that filtered view only.
+    const q = query.trim().toLowerCase();
+    const openKeys = q ? (filterCollapsed.q === q ? filterCollapsed.keys : NO_KEYS) : collapsed;
+    const updateKeys = (change: (keys: Set<string>) => void) => {
+        const next = (prev: Set<string>) => { const keys = new Set(prev); change(keys); return keys; };
+        if (q) setFilterCollapsed((prev: any) => ({ q, keys: next(prev.q === q ? prev.keys : NO_KEYS) }));
+        else setCollapsed(next);
+    };
+    const setBranches = (rows: any[], open: boolean) => updateKeys(keys => {
+        for (const key of branchKeys(rows)) { if (open) keys.delete(key); else keys.add(key); }
+    });
+
+    const menuItems = (node: any, source: any, rows: any[]) => {
+        const items: any[] = [];
+        if (branchKeys(rows).size) {
+            items.push({ label: 'Expand All', onClick: () => setBranches(rows, true) },
+                { label: 'Collapse All', onClick: () => setBranches(rows, false) }, '-');
+        }
+        const name = String(node.label || 'value');
+        const lval = source.accessor.replace(/\.toString\(\)\s*$/, '');   // assignment target, not a read
+        if (side === 'inbound') {
+            items.push({
+                label: 'Map to Variable', icon: 'transform',
+                onClick: () => onAddStep(MAPPER_TYPE, 'Mapper', name, (el: any) => { el.mapping = source.accessor; el.variable = name; })
+            });
+        }
+        items.push({
+            label: 'Map to Message', icon: 'transform',
+            onClick: () => onAddStep(MSGBUILDER_TYPE, 'Message Builder', name, (el: any) => { el.messageSegment = lval; })
+        }, '-', { label: 'Copy Accessor', icon: 'copy', onClick: () => copyAccessor(source.accessor) });
+        return items;
+    };
+    const rowMenu = (row: any, x: number, y: number) => {
+        setSelected(row);
+        contextMenu(x, y, menuItems(row.node, row.source, [row]));
+    };
+
+    if (parse.status !== 'ready') {
+        return (
+            <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
+                <div className="mt-note">
+                    {parse.status === 'empty' && '(no template — set one on the Message Templates tab)'}
+                    {(parse.status === 'parsing' || parse.status === 'idle') && 'Parsing…'}
+                    {parse.status === 'failed' && `Could not build the message tree — the engine could not serialize this ${dtLabel} template.`}
+                </div>
+            </section>
+        );
+    }
+
+    const { root, rows } = parse;
+    const matches = (hideEmpty || q)
+        ? (row: any) => (!hideEmpty || !row.empty) && (!q || rowText(row).includes(q))
+        : undefined;
+    const hasNames = (function anyDesc(list: any[]): boolean {
+        return list.some((r: any) => r.desc || anyDesc(r.children));
+    })(rows);
+    const valueText = (row: any) => {
+        if (row.count) {
+            const noun = row.count.total === 1 ? 'field' : 'fields';
+            return row.count.filled === row.count.total ? `${row.count.total} ${noun}` : `${row.count.filled} of ${row.count.total} ${noun}`;
+        }
+        return row.value ?? '';
+    };
+    const columns = [
+        {
+            key: 'field', label: 'Field', tree: true,
+            render: (row: any) => <span className="mono" title={row.source.accessor}>{row.field}</span>
+        },
+        ...(hasNames ? [{ key: 'name', label: 'Name', render: (row: any) => <span title={row.desc || undefined}>{row.desc}</span> }] : []),
+        {
+            key: 'value', label: 'Sample value',
+            render: (row: any) => (
+                <span className="mt-value">
+                    <span className={'mt-text' + (row.count ? ' mt-count' : row.joined ? ' mt-joined' : '')}
+                        title={row.count ? undefined : (row.value || undefined)}>{valueText(row)}</span>
+                    <button type="button" className="mt-more" aria-label={`Actions for ${row.field}`} title="Actions"
+                        // Enter/Space press the button; the treegrid would take them as row keys.
+                        onKeyDown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+                        onClick={(e: any) => {
+                            e.stopPropagation();
+                            const r = e.currentTarget.getBoundingClientRect();
+                            rowMenu(row, r.left, r.bottom + 2);
+                        }}>⋯</button>
+                </span>
+            )
+        }
+    ];
+    const rootMenu = (e: any) => {
+        e.preventDefault();
+        contextMenu(e.clientX, e.clientY, menuItems(root, root, rows));
+    };
+
     return (
-        <div>
-            <div className="tree-node font-semibold" onClick={() => setOpen((o: any) => !o)}>
-                <span className={'twisty' + (open ? ' open' : '')}>▸</span>
-                {`${title} (${varName})`}
+        <section className="mt-section" style={{ display: hidden ? 'none' : undefined }} aria-label={regionLabel}>
+            <div className="mt-root">
+                <span className="mt-root-label" title={`Drag into a script editor: ${root.accessor}`}
+                    {...accessorDragProps(dragRef, root.accessor)} onContextMenu={rootMenu}>
+                    {root.label !== varName ? root.label : dtLabel}
+                </span>
+                <button type="button" className="icon-btn" title="Expand All" aria-label="Expand all"
+                    onClick={() => setBranches(rows, true)}><Icon name="plus" size={14} /></button>
+                <button type="button" className="icon-btn" title="Collapse All" aria-label="Collapse all"
+                    onClick={() => setBranches(rows, false)}><Icon name="minus" size={14} /></button>
             </div>
-            <div className="tree py-1 px-0" style={{ display: open ? undefined : 'none' }}>
-                {parse.status === 'empty' && (
-                    <div className="text-text-faint py-1 px-3 text-[11px]">(no template — set one on the Message Templates tab)</div>
-                )}
-                {parse.status === 'parsing' && (
-                    <div className="text-text-faint py-1 px-3 text-[11px]">Parsing…</div>
-                )}
-                {parse.status === 'failed' && (
-                    <div className="text-text-faint py-1 px-3 text-[11px]">
-                        {`Could not build the message tree — the engine could not serialize this ${dtLabel} template.`}
-                    </div>
-                )}
-                {parse.status === 'ready' && (parse as any).nodes.map((node: any, i: any) => (
-                    <TreeNode key={i} node={node} depth={0} side={side} isFilter={isFilter}
-                        dragRef={dragRef} force={null} onAddStep={onAddStep} />
-                ))}
+            <div className="mt-table">
+                <TreeTable
+                    data={rows}
+                    columns={columns}
+                    getChildren={(row: any) => row.children}
+                    rowKey={(row: any) => row.key}
+                    rowClassName={(row: any) => [row.group ? 'group-row' : '', row.empty ? 'mt-empty' : ''].filter(Boolean).join(' ')}
+                    autoGroupRow={false}
+                    selectedKey={selected ? selected.key : null}
+                    onSelect={(row: any) => setSelected(row)}
+                    onRowContextMenu={(row: any, e: any) => { e.preventDefault(); rowMenu(row, e.clientX, e.clientY); }}
+                    rowDraggable={() => true}
+                    onRowDragStart={(row: any, e: any) => accessorDragProps(dragRef, row.source.accessor).onDragStart(e)}
+                    onRowDragEnd={() => { dragRef.current = null; }}
+                    matches={matches}
+                    collapsedKeys={openKeys}
+                    onToggleCollapse={(key: any) => updateKeys(keys => { if (keys.has(key)) keys.delete(key); else keys.add(key); })}
+                    columnsKey="ft-message-tree"
+                    columnWidths={{ field: 124, name: 150 }}
+                    pinnedKeys={['field', 'value']}
+                    emptyText={q ? 'No matching fields' : 'No fields'} />
             </div>
-        </div>
+            <div className="mt-foot">
+                {selected
+                    ? <>
+                        <code title={selected.source.accessor}>{selected.source.accessor}</code>
+                        <button type="button" className="btn btn-sm" onClick={() => copyAccessor(selected.source.accessor)}>Copy</button>
+                    </>
+                    : 'Drag a row into a script editor or field. Right-click a row for actions.'}
+            </div>
+        </section>
     );
 }
 
-function TreesTab({ target, isFilter, dragRef, onAddStep }: any) {
+function TreesTab({ target, dragRef, onAddStep }: any) {
+    const [side, setSide] = useState('inbound');
+    const [query, setQuery] = useState('');
+    const [hideEmpty, setHideEmpty] = useState(false);
     return (
-        <div className="py-2 px-1 overflow-auto">
-            <TreeSection title="Inbound Message Template" side="inbound" varName="msg" openByDefault
-                target={target} isFilter={isFilter} dragRef={dragRef} onAddStep={onAddStep} />
-            <TreeSection title="Outbound Message Template" side="outbound" varName="tmp" openByDefault={false}
-                target={target} isFilter={isFilter} dragRef={dragRef} onAddStep={onAddStep} />
-            <div className="text-text-faint py-2 px-3 text-[10px]">
-                Drag a node into a script editor or template field to insert its accessor at the drop point.
+        <div className="mtree">
+            <div className="mt-bar">
+                <SegPill label="Message template" value={side} onChange={setSide} options={[
+                    { value: 'inbound', label: 'Inbound', title: 'Inbound message template (msg)' },
+                    { value: 'outbound', label: 'Outbound', title: 'Outbound message template (tmp)' }
+                ]} />
+                <input type="text" placeholder="Filter fields…" aria-label="Filter fields" value={query}
+                    onChange={(e: any) => setQuery(e.target.value)} />
+                <button type="button" className="icon-btn" aria-pressed={hideEmpty}
+                    title={hideEmpty ? 'Show empty fields' : 'Hide empty fields'} aria-label="Hide empty fields"
+                    onClick={() => setHideEmpty(v => !v)}><Icon name={hideEmpty ? 'eyeOff' : 'eye'} size={14} /></button>
             </div>
+            <TreeSection side="inbound" varName="msg" hidden={side !== 'inbound'} query={query} hideEmpty={hideEmpty}
+                target={target} dragRef={dragRef} onAddStep={onAddStep} />
+            <TreeSection side="outbound" varName="tmp" hidden={side !== 'outbound'} query={query} hideEmpty={hideEmpty}
+                target={target} dragRef={dragRef} onAddStep={onAddStep} />
         </div>
     );
 }
@@ -1118,7 +1248,7 @@ function SidePanel({ ctx }: any) {
         body = <ReferenceTab key="ref" dragRef={ctx.dragRef} channelId={ctx.channelId}
             context={scriptContext(ctx.connectorType)} getElements={ctx.getElements} />;
     } else if (label === 'Message Trees') {
-        body = <TreesTab key="trees" target={ctx.target} isFilter={isFilter} dragRef={ctx.dragRef} onAddStep={ctx.onAddStep} />;
+        body = <TreesTab key="trees" target={ctx.target} dragRef={ctx.dragRef} onAddStep={ctx.onAddStep} />;
     } else if (label === 'Message Templates') {
         body = <TemplatesTab key="templates" target={ctx.target} version={ctx.version}
             connectorType={ctx.connectorType} channel={ctx.channel} commit={ctx.commit} />;
