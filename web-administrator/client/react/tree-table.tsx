@@ -23,6 +23,7 @@
  *   emptyText    shown when data is empty.
  *   scrollKey    optional; remembers the scroll position under this key for the
  *                browser session and restores it when the table mounts again.
+ *   scrollReady  defaults true; set false while rows are loading placeholders.
  *   matches      optional (node) => bool filter; non-matching leaves are dropped,
  *                parents kept if they or a descendant match.
  */
@@ -49,7 +50,7 @@ export function TreeTable({
     // channels are also expandable) set this false and class only true group
     // rows via rowClassName.
     autoGroupRow = true,
-    scrollKey
+    scrollKey, scrollReady = true
 }: any) {
     const [, force] = useReducer((x: any) => x + 1, 0);
     const mgrRef = useRef<any>(null);
@@ -241,15 +242,15 @@ export function TreeTable({
     };
 
     /* ---- remembered scroll position (scrollKey) ----
-       Restore once, on the first render that has rows (the views load their data
-       after mounting) and once the wrapper has a height (the dashboard mounts
-       before its layout settles). Saving waits for that restore so the initial
-       0 offset never overwrites the remembered one. */
+       Restore once data is ready, there are rows, and the wrapper has a height.
+       Views that render placeholder rows while loading must pass scrollReady.
+       Saving waits for that restore so the initial 0 offset never overwrites
+       the remembered one. */
     const wrapRef = useRef<HTMLDivElement>(null);
     const scrollRestored = useRef(!scrollKey);
     useLayoutEffect(() => {
         const el = wrapRef.current;
-        if (scrollRestored.current || !rows.length || !el) return undefined;
+        if (scrollRestored.current || !scrollReady || !rows.length || !el) return undefined;
         const restore = () => {
             const pos = savedScroll.get(scrollKey);
             if (pos && !el.clientHeight) return false;

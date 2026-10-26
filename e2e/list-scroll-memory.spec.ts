@@ -44,3 +44,50 @@ test('Dashboard and Channels restore their scroll position on return', async ({ 
     await expect(page.locator(channelsWrap)).toBeVisible();
     await expect.poll(() => scrollTop(channelsWrap)).toBe(400);
 });
+
+test('Dashboard restores its position after cached statuses expire', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.clock.install();
+    let holdStatuses = false;
+    let statusCalls = 0;
+    let releaseStatuses!: () => void;
+    const statusesReady = new Promise<void>((resolve) => { releaseStatuses = resolve; });
+    await mockEngine(page, {
+        'GET /channels/statuses': async () => {
+            statusCalls++;
+            if (holdStatuses) await statusesReady;
+            return { list: { dashboardStatus: STATUSES } };
+        },
+        'GET /channels': { list: { channel: CHANNELS } },
+    });
+    const scrollTop = () => page.locator(dashWrap).evaluate((el) => el.scrollTop);
+
+    await page.goto('/dashboard');
+    await expect(page.getByText('Channel c-00', { exact: true })).toBeVisible();
+    await page.locator(dashWrap).evaluate((el) => {
+        el.scrollTop = 600;
+        // Let the scroll event save the offset before leaving the view.
+        return new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
+    await expect.poll(scrollTop).toBe(600);
+    await page.getByRole('button', { name: 'Channels', exact: true }).click();
+    await expect(page.locator(channelsWrap).getByText('Channel c-00', { exact: true })).toBeAttached();
+
+    // Inactive TanStack queries expire after five minutes. Delay the next
+    // response so the Dashboard's placeholder group gets a layout first.
+    await page.clock.fastForward(301_000);
+    holdStatuses = true;
+    const before = statusCalls;
+    try {
+        await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+        await expect.poll(() => statusCalls).toBeGreaterThan(before);
+        await expect(page.locator(dashWrap)).toBeVisible();
+        await expect(page.locator(dashWrap).locator('tbody tr')).toHaveCount(1);
+        await expect(page.locator(dashWrap).getByText('Channel c-00', { exact: true })).toHaveCount(0);
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    } finally {
+        releaseStatuses();
+    }
+    await expect(page.locator(dashWrap).getByText('Channel c-00', { exact: true })).toBeAttached();
+    await expect.poll(scrollTop).toBe(600);
+});
