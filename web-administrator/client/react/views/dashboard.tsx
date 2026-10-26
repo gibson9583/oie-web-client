@@ -1222,6 +1222,7 @@ function DashboardView({ onToggleView }: any) {
                         collapsedKeys={collapsedKeys}
                         onToggleCollapse={onToggleCollapse}
                         columnsKey="dashboard"
+                        scrollKey="dashboard"
                         columnWidths={DASH_COL_WIDTHS}
                         defaultHidden={DASH_DEFAULT_HIDDEN}
                         pinnedKeys={['state', 'name']}

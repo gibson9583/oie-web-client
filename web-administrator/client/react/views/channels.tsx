@@ -1851,6 +1851,7 @@ export function ChannelsView() {
                         rowDraggable={(n: any) => groupView && n.kind === 'channel'}
                         onRowDrop={onRowDrop}
                         columnsKey="channels"
+                        scrollKey="channels"
                         columnWidths={CHANNEL_COL_WIDTHS}
                         pinnedKeys={['status', 'name']}
                         emptyText={(

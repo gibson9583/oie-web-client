@@ -21,13 +21,18 @@
  *   defaultHidden [key] hidden by default.
  *   pinnedKeys   [key] that can never be hidden/reordered (the tree column).
  *   emptyText    shown when data is empty.
+ *   scrollKey    optional; remembers the scroll position under this key for the
+ *                browser session and restores it when the table mounts again.
  *   matches      optional (node) => bool filter; non-matching leaves are dropped,
  *                parents kept if they or a descendant match.
  */
 
-import { useReducer, useRef, useState } from 'react';
+import { useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { createColumnManager, contextMenu } from '@oie/web-ui';
 import { Icon } from './bridges.jsx';
+
+// scrollKey -> last scroll offset. In memory only, like Swing's cached panels.
+const savedScroll = new Map<string, { top: number; left: number }>();
 
 export function TreeTable({
     columns, data, getChildren, rowKey, rowClassName,
@@ -43,7 +48,8 @@ export function TreeTable({
     // style. Trees with multiple expandable levels (e.g. the dashboard, where
     // channels are also expandable) set this false and class only true group
     // rows via rowClassName.
-    autoGroupRow = true
+    autoGroupRow = true,
+    scrollKey
 }: any) {
     const [, force] = useReducer((x: any) => x + 1, 0);
     const mgrRef = useRef<any>(null);
@@ -234,16 +240,44 @@ export function TreeTable({
         force();
     };
 
+    /* ---- remembered scroll position (scrollKey) ----
+       Restore once, on the first render that has rows (the views load their data
+       after mounting) and once the wrapper has a height (the dashboard mounts
+       before its layout settles). Saving waits for that restore so the initial
+       0 offset never overwrites the remembered one. */
+    const wrapRef = useRef<HTMLDivElement>(null);
+    const scrollRestored = useRef(!scrollKey);
+    useLayoutEffect(() => {
+        const el = wrapRef.current;
+        if (scrollRestored.current || !rows.length || !el) return undefined;
+        const restore = () => {
+            const pos = savedScroll.get(scrollKey);
+            if (pos && !el.clientHeight) return false;
+            scrollRestored.current = true;
+            if (pos) { el.scrollTop = pos.top; el.scrollLeft = pos.left; }
+            return true;
+        };
+        if (restore()) return undefined;
+        const ro = new ResizeObserver(() => { if (restore()) ro.disconnect(); });
+        ro.observe(el);
+        return () => ro.disconnect();
+    });
+    const onWrapScroll = scrollKey
+        ? (e: any) => {
+            if (scrollRestored.current) savedScroll.set(scrollKey, { top: e.currentTarget.scrollTop, left: e.currentTarget.scrollLeft });
+        }
+        : undefined;
+
     if (!rows.length) {
         return (
-            <div className="dt-wrap" onContextMenu={onEmptyContextMenu}>
+            <div ref={wrapRef} className="dt-wrap" onContextMenu={onEmptyContextMenu}>
                 <div className="dt-empty">{emptyText}</div>
             </div>
         );
     }
 
     return (
-        <div className="dt-wrap" onContextMenu={(e: any) => { if (!e.target.closest('tr') && onEmptyContextMenu) onEmptyContextMenu(e); }}>
+        <div ref={wrapRef} className="dt-wrap" onScroll={onWrapScroll} onContextMenu={(e: any) => { if (!e.target.closest('tr') && onEmptyContextMenu) onEmptyContextMenu(e); }}>
             {/* treegrid, not table: the rows are a selectable, expandable hierarchy,
                 and each <td> is a gridcell rather than a static cell. */}
             <table className="dt dt-resizable" role="treegrid"
