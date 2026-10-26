@@ -22,6 +22,11 @@ const DESCRIPTIONS = {
     'PID.5': 'Patient Name', 'PID.5.1': 'Family Name', 'PID.5.2': 'Given Name', 'PID.8': 'Administrative Sex', 'PID.8.1': 'Value'
 };
 
+// The 4.6.0 ER7 serializer's output with useStrictParser for a PDQ query ending
+// in RCP|I: fields keep their segment names, components take data-type names.
+const STRICT_QUERY_ER7 = "MSH|^~\\&|PDQ|HOSP|MPI|HOSP|202610251200||QBP^Q22^QBP_Q21|QRY001|P|2.5.1\nQPD|IHE PDQ Query|QRY001|@PID.5.1^DOE\nRCP|I";
+const STRICT_QUERY_XML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><QBP_Q21 xmlns=\"urn:hl7-org:v2xml\">\n    <MSH>\n        <MSH.1>|</MSH.1>\n        <MSH.2>^~\\&amp;</MSH.2>\n        <MSH.3>\n            <HD.1>PDQ</HD.1>\n        </MSH.3>\n        <MSH.4>\n            <HD.1>HOSP</HD.1>\n        </MSH.4>\n        <MSH.5>\n            <HD.1>MPI</HD.1>\n        </MSH.5>\n        <MSH.6>\n            <HD.1>HOSP</HD.1>\n        </MSH.6>\n        <MSH.7>\n            <TS.1>202610251200</TS.1>\n        </MSH.7>\n        <MSH.9>\n            <MSG.1>QBP</MSG.1>\n            <MSG.2>Q22</MSG.2>\n            <MSG.3>QBP_Q21</MSG.3>\n        </MSH.9>\n        <MSH.10>QRY001</MSH.10>\n        <MSH.11>\n            <PT.1>P</PT.1>\n        </MSH.11>\n        <MSH.12>\n            <VID.1>2.5.1</VID.1>\n        </MSH.12>\n    </MSH>\n    <QPD>\n        <QPD.1>\n            <CE.1>IHE PDQ Query</CE.1>\n        </QPD.1>\n        <QPD.2>QRY001</QPD.2>\n        <QPD.3>\n            <UNKNOWN.1>@PID.5.1</UNKNOWN.1>\n            <UNKNOWN.2>DOE</UNKNOWN.2>\n        </QPD.3>\n    </QPD>\n    <RCP>\n        <RCP.1>I</RCP.1>\n    </RCP>\n</QBP_Q21>\n";
+
 // The engine's ER7Reader shape: an empty element per blank field, and every
 // populated field wrapped in components (MSH.1/MSH.2 stay plain text).
 function hl7Xml(er7: string) {
@@ -237,3 +242,34 @@ for (const theme of ['light', 'dark']) {
         expect((await new AxeBuilder({ page }).include('.mtree').analyze()).violations).toEqual([]);
     });
 }
+
+test('a strict-parser segment with one field keeps its own row and accessor', async ({ page }) => {
+    const writes = await openTrees(page, { template: STRICT_QUERY_ER7, serialize: () => STRICT_QUERY_XML });
+    await expect(row(page, 'RCP').locator('.mt-text')).toHaveText('1 field');
+    await row(page, 'RCP').locator('.twisty').click();
+    await expect(row(page, 'RCP.1')).toContainText('I');
+    // A data-type component (HD.1) stays under its field.
+    await row(page, 'MSH').locator('.twisty').click();
+    await row(page, 'MSH.3').locator('.twisty').click();
+    await expect(row(page, 'HD.1')).toContainText('PDQ');
+
+    await row(page, 'RCP').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Map to Variable' }).click();
+    await expect(stepField(page, 'Mapping')).toHaveValue("msg['RCP'].toString()");
+    await page.getByRole('button', { name: 'Save Channel', exact: true }).click();
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0].sourceConnector.transformer.elements[MAPPER][0].mapping).toBe("msg['RCP'].toString()");
+});
+
+test('text on an attributed XML root stays visible and searchable', async ({ page }) => {
+    // The XML serializer returns this document unchanged.
+    const xml = '<value code="patient-name">DOE^JANE</value>';
+    await openTrees(page, { dataType: 'XML', template: xml, serialize: () => xml });
+    // The root is a row, and starts expanded like the Swing tree's root.
+    await expect(row(page, 'value')).toContainText('DOE^JANE');
+    await expect(row(page, '@code')).toContainText('patient-name');
+    await page.getByRole('textbox', { name: 'Filter fields' }).fill('doe^jane');
+    await expect(row(page, 'value')).toBeVisible();
+    await row(page, 'value').click();
+    await expect(tree(page).locator('.mt-foot')).toContainText('msg.toString()');
+});

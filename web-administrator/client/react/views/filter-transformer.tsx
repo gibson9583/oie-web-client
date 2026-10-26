@@ -957,13 +957,14 @@ function numberedChildren(node: any) {
 function joinedValue(node: any, seps: any): string | null {
     const sep = seps && numberedChildren(node) && [null, seps.component, seps.subcomponent][node.name.split('.').length - 1];
     if (!sep) return null;
-    return node.children.map((c: any) => (c.children.length ? joinedValue(c, seps) : c.value) ?? '').join(sep);
+    return node.children.map((c: any) => (c.value ?? (c.children.length ? joinedValue(c, seps) : null)) ?? '').join(sep);
 }
 
-// The HL7 v2 serializer stores every simple field as a lone `.1` component.
-// Such a field is one row that reads, drags and maps that component.
+// The non-strict HL7 v2 serializer stores every simple field as a lone `.1`
+// component. Such a field is one row that reads, drags and maps that component.
+// Segments (no dot) and strict-parser components (HD.1) keep their own rows.
 function treeRow(node: any, key: string, seps: any, top: boolean): any {
-    const only = node.children.length === 1 ? node.children[0] : null;
+    const only = seps && node.name.includes('.') && node.children.length === 1 ? node.children[0] : null;
     const source = only && !only.children.length && only.name === `${node.name}.1` ? only : node;
     const children = source === node ? node.children.map((c: any, i: number) => treeRow(c, `${key}/${i}`, seps, false)) : [];
     const joined = source.value == null && source.children.length ? joinedValue(source, seps) : null;
@@ -982,7 +983,7 @@ function treeRow(node: any, key: string, seps: any, top: boolean): any {
 
 function messageRows(root: any, side: string, hl7: boolean) {
     const seps = hl7 ? hl7Separators(root) : null;
-    const nodes = root.children.length ? root.children : [root];
+    const nodes = root.children.length && root.value == null ? root.children : [root];
     return nodes.map((n: any, i: number) => treeRow(n, `${side}/${i}`, seps, true));
 }
 
@@ -1042,7 +1043,9 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
             if (!nodes) { setParse({ status: 'failed' }); return; }
             // Like the Swing tree, only the message root starts expanded.
             const rows = messageRows(nodes[0], side, dataType === 'HL7V2');
-            setCollapsed(branchKeys(rows));
+            const keys = branchKeys(rows);
+            if (rows[0]?.node === nodes[0]) keys.delete(rows[0].key);
+            setCollapsed(keys);
             setParse({ status: 'ready', root: nodes[0], rows });
         })();
         return () => { stale = true; };
@@ -1109,7 +1112,8 @@ function TreeSection({ side, varName, hidden, query, hideEmpty, target, dragRef,
     })(rows);
     const valueText = (row: any) => {
         if (row.count) {
-            return row.count.filled === row.count.total ? `${row.count.total} fields` : `${row.count.filled} of ${row.count.total} fields`;
+            const noun = row.count.total === 1 ? 'field' : 'fields';
+            return row.count.filled === row.count.total ? `${row.count.total} ${noun}` : `${row.count.filled} of ${row.count.total} ${noun}`;
         }
         return row.value ?? '';
     };
