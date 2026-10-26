@@ -5,6 +5,7 @@ on:
     branches: [main]
     tags: ['v*']
   pull_request:
+    paths-ignore: ['**/*.md', 'wiki/**']
 
 # Least privilege by default; individual jobs opt into more if ever needed.
 permissions:
@@ -88,21 +89,26 @@ jobs:
           compression-level: 0
 
   e2e:
-    name: Playwright · ${{ matrix.browser }}
+    name: Playwright · ${{ matrix.browser }} ${{ matrix.shard }}/4
     needs: artifacts
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --user 1001 --ipc=host
     strategy:
       fail-fast: false
       matrix:
+        browser: [chromium, firefox, webkit]
+        shard: [1, 2, 3, 4]
         include:
-          - project: ui
-            browser: chromium
+          - browser: chromium
+            project: ui
             workers: 4
-          - project: firefox
-            browser: firefox
+          - browser: firefox
+            project: firefox
             workers: 2
-          - project: webkit
-            browser: webkit
+          - browser: webkit
+            project: webkit
             workers: 2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -120,21 +126,18 @@ jobs:
         run: |
           node tools/release-artifacts.mjs verify
           tar -xzf release-artifacts/oie-webadmin-node.tar.gz
-      - name: Install Playwright browsers
-        env:
-          BROWSER: ${{ matrix.browser }}
-        run: npx playwright install --with-deps "$BROWSER"
       - name: Run browser regressions against the release runtime
         env:
           PROJECT: ${{ matrix.project }}
           WORKERS: ${{ matrix.workers }}
+          SHARD: ${{ matrix.shard }}
           PLAYWRIGHT_JSON_OUTPUT_FILE: release-artifacts/browser-results.json
-        run: npx playwright test --project="$PROJECT" --workers="$WORKERS" --reporter=github,json
+        run: npx playwright test --project="$PROJECT" --workers="$WORKERS" --shard="$SHARD/4" --reporter=github,json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         # A passing retry still needs its original trace for review.
         if: always()
         with:
-          name: browser-evidence-${{ matrix.browser }}
+          name: browser-evidence-${{ matrix.browser }}-${{ matrix.shard }}
           path: |
             test-results/
             release-artifacts/browser-results.json
@@ -206,7 +209,13 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+      - name: Install Playwright browsers
+        timeout-minutes: 10
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+          fi
+          npx playwright install --with-deps chromium webkit
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-inputs
@@ -236,13 +245,17 @@ jobs:
           path: release-artifacts/evidence/
 
   docker:
-    needs: [checks, artifacts, e2e, runtime]
+    needs: [artifacts, runtime-inputs]
     uses: ./.github/workflows/docker.yml
+
+  docker-publish:
+    needs: [checks, e2e, runtime, docker]
+    uses: ./.github/workflows/docker-publish.yml
     secrets: inherit
 
   release:
     if: github.ref_type == 'tag'
-    needs: [checks, artifacts, e2e, runtime, docker]
+    needs: [checks, artifacts, e2e, runtime, docker, docker-publish]
     permissions:
       contents: write
     uses: ./.github/workflows/war-release.yml

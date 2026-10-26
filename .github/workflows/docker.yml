@@ -3,8 +3,6 @@ on:
   workflow_call:
 permissions:
   contents: read
-env:
-  IMAGE_NAME: ${{ vars.DOCKERHUB_IMAGE || 'gibson9583/oie-web-client' }}
 jobs:
   build:
     name: Build and test ${{ matrix.arch }}
@@ -27,7 +25,13 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
+      - name: Install Playwright browsers
+        timeout-minutes: 10
+        run: |
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+          fi
+          npx playwright install --with-deps chromium webkit
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: release-inputs
@@ -84,53 +88,3 @@ jobs:
           path: image/
           if-no-files-found: error
           compression-level: 0
-
-  publish:
-    name: Promote tested image manifests
-    needs: build
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          pattern: docker-*
-          path: images
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME || 'gibson9583' }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=ref,event=pr
-          flavor: latest=auto
-      - name: Load and push the exact tested images, then publish their manifest
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-          TAGS: ${{ steps.meta.outputs.tags }}
-          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
-        run: |
-          digests=()
-          for arch in amd64 arm64; do
-            (cd "images/docker-$arch" && sha256sum -c image.tar.gz.sha256)
-            docker load --input "images/docker-$arch/image.tar.gz"
-            test "$(docker inspect webadmin:validated --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = "$SOURCE_SHA"
-            test "$(docker inspect webadmin:validated --format '{{ .Architecture }}')" = "$arch"
-            image="$IMAGE_NAME:validated-$RUN_ID-$arch"
-            docker tag webadmin:validated "$image"
-            docker push "$image"
-            digest=$(docker inspect "$image" --format '{{index .RepoDigests 0}}')
-            digests+=("$digest")
-          done
-          tags=()
-          while IFS= read -r tag; do
-            test -z "$tag" || tags+=(--tag "$tag")
-          done <<< "$TAGS"
-          test "${#tags[@]}" -gt 0
-          docker buildx imagetools create "${tags[@]}" "${digests[@]}"
