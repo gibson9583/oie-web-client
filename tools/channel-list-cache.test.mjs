@@ -2,17 +2,20 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { transform } from 'esbuild';
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import api from '../web-administrator/client/core/api.js';
 
 const { code } = await transform(await readFile(new URL('../web-administrator/client/react/channel-list-cache.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'cjs' });
 
 function setup() {
-    const queryClient = new QueryClient();
+    // Match the browser's finite lifetime; Node otherwise defaults to Infinity.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { gcTime: 300_000 } } });
     const module = { exports: {} };
     // Real API list normalization and TanStack storage, isolated from the UI.
     new Function('require', 'module', 'exports', code)(name => name === '@oie/web-api'
-        ? { __esModule: true, default: api } : { queryClient }, module, module.exports);
+        ? { __esModule: true, default: api }
+        : name === '@tanstack/react-query' ? { QueryObserver }
+            : { queryClient }, module, module.exports);
     return { ...module.exports, queryClient };
 }
 
@@ -45,12 +48,70 @@ test('navigation snapshot preserves display fields without retaining channel pay
     } finally { cache.queryClient.clear(); }
 });
 
-test('session cache clearing discards even a confirmed empty snapshot', () => {
+test('session cache clearing discards even a confirmed empty snapshot', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
     const cache = setup();
+    const release = cache.retainChannelListDisplay();
     try {
         cache.cacheChannelListDisplay({ ...cache.emptyChannelList(), hasChannels: true });
         assert.equal(cache.readChannelListDisplay().hasChannels, true);
         cache.queryClient.clear();
         assert.deepEqual(cache.readChannelListDisplay(), cache.emptyChannelList());
-    } finally { cache.queryClient.clear(); }
+        release();
+        t.mock.timers.tick(300_000);
+        assert.deepEqual(cache.readChannelListDisplay(), cache.emptyChannelList());
+    } finally { release(); cache.queryClient.clear(); }
+});
+
+test('mounted snapshots survive their original deadline and expire only after departure', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const cache = setup();
+    const release = cache.retainChannelListDisplay();
+    const snapshot = { ...cache.emptyChannelList(), hasChannels: true };
+    try {
+        cache.cacheChannelListDisplay(snapshot);
+        t.mock.timers.tick(290_000);
+        cache.cacheChannelListDisplay(snapshot);
+        t.mock.timers.tick(11_000);
+        assert.equal(cache.readChannelListDisplay().hasChannels, true);
+        release();
+        t.mock.timers.tick(299_999);
+        assert.equal(cache.readChannelListDisplay().hasChannels, true);
+        t.mock.timers.tick(1);
+        assert.deepEqual(cache.readChannelListDisplay(), cache.emptyChannelList());
+    } finally { release(); cache.queryClient.clear(); }
+});
+
+test('returning cancels pending expiry and starts a new period on the next departure', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const cache = setup();
+    let release = cache.retainChannelListDisplay();
+    try {
+        cache.cacheChannelListDisplay({ ...cache.emptyChannelList(), hasChannels: true });
+        release();
+        t.mock.timers.tick(290_000);
+        release = cache.retainChannelListDisplay();
+        t.mock.timers.tick(600_000);
+        assert.equal(cache.readChannelListDisplay().hasChannels, true);
+        release();
+        t.mock.timers.tick(299_999);
+        assert.equal(cache.readChannelListDisplay().hasChannels, true);
+        t.mock.timers.tick(1);
+        assert.deepEqual(cache.readChannelListDisplay(), cache.emptyChannelList());
+    } finally { release(); cache.queryClient.clear(); }
+});
+
+test('retaining the display never fetches even when queries are invalidated', async () => {
+    const cache = setup();
+    let reads = 0;
+    cache.queryClient.setDefaultOptions({ queries: { gcTime: 300_000, queryFn: () => {
+        reads++;
+        return cache.emptyChannelList();
+    } } });
+    const release = cache.retainChannelListDisplay();
+    try {
+        await cache.queryClient.invalidateQueries();
+        await cache.queryClient.refetchQueries();
+        assert.equal(reads, 0);
+    } finally { release(); cache.queryClient.clear(); }
 });

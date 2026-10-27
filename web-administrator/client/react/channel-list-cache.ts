@@ -1,4 +1,5 @@
 import api from '@oie/web-api';
+import { QueryObserver } from '@tanstack/react-query';
 import { queryClient } from './queries.js';
 
 export interface ChannelListData {
@@ -18,6 +19,14 @@ export function emptyChannelList(): ChannelListData {
 export function readChannelListDisplay(): ChannelListData {
     const cached = queryClient.getQueryData<ChannelListData>(key);
     return cached ? structuredClone(cached) : emptyChannelList();
+}
+
+/** Keep displayed rows alive while Channels is mounted. A disabled observer
+ * retains the query without fetching; releasing it starts the shared client's
+ * inactive expiry period. Session teardown still clears the cache immediately. */
+export function retainChannelListDisplay(): () => void {
+    const observer = new QueryObserver<ChannelListData>(queryClient, { queryKey: key, enabled: false });
+    return observer.subscribe(() => {});
 }
 
 /** Display fields only: never retain connector credentials, scripts or message

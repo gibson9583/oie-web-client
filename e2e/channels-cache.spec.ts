@@ -6,7 +6,8 @@ import { makeChannel } from './connector-fixtures.js';
 
 // These exercise a client lifecycle bug: an engine request can take arbitrarily
 // long, while route changes destroy and recreate the Channels component. Gates
-// hold ordinary engine-shaped responses; no wall-clock sleeps or fake timers.
+// hold ordinary engine-shaped responses without wall-clock sleeps. Cache-lifetime
+// cases advance the browser clock explicitly to exercise real Query GC timers.
 const channelList = (channels = SAMPLE_CHANNELS) => ({ list: { channel: channels } });
 const GROUPS = { list: { channelGroup: [{
     '@version': '4.6.0', id: 'g-cache', name: 'Cached group', revision: 1,
@@ -78,6 +79,14 @@ async function finishChannels(page: Page, held: ReturnType<typeof gate>) {
 async function dismissError(page: Page) {
     const dialog = page.getByRole('dialog', { name: 'Error', exact: true });
     if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
+}
+
+async function selectRow(page: Page, text: string) {
+    // A second pointer click can activate the row. Space deliberately selects
+    // after revalidation without depending on the browser's double-click clock.
+    const row = page.getByRole('row').filter({ has: page.getByText(text, { exact: true }) });
+    await row.focus();
+    await row.press('Space');
 }
 
 test('first visit shows loading until the channel request completes', async ({ page }) => {
@@ -153,9 +162,115 @@ test('returning from Dashboard immediately displays the complete snapshot but bl
         await expect(page.getByRole('button', { name: 'Clone Channel', exact: true })).toHaveCount(0);
         heldTags.release();
         await loaded(page);
-        await name(page, 'Demo Started').click();
+        await selectRow(page, 'Demo Started');
+        await expect(page).toHaveURL(/\/channels$/);
         await expect(page.getByRole('button', { name: 'Clone Channel', exact: true })).toBeVisible();
     } finally { heldChannels.release(); heldTags.release(); }
+});
+
+test('an active Channels snapshot survives five minutes and a recent refresh', async ({ page }) => {
+    const returning = gate();
+    let reads = 0;
+    await page.clock.install();
+    await mockEngine(page, { ...fixtures, 'GET /channels': async (request: Request) => {
+        if (fromChannels(request)) {
+            const read = ++reads;
+            if (read >= 3) await returning.promise;
+        }
+        return channelList();
+    } });
+    try {
+        await page.goto('/channels');
+        await loaded(page);
+        expect(reads).toBe(1);
+        await page.clock.fastForward(290_000);
+        // Retaining the snapshot must not turn the explicit refresh into a
+        // polling query or introduce an extra automatic request.
+        expect(reads).toBe(1);
+        await refresh(page).click();
+        await expect.poll(() => reads).toBe(2);
+        await loaded(page);
+        await page.clock.fastForward(11_000);
+        expect(reads).toBe(2);
+        await dashboard(page);
+        await channels(page);
+        await expect.poll(() => reads).toBe(3);
+        // This returning read is held. The continuously active snapshot was
+        // refreshed eleven seconds ago and must not have expired at 300s.
+        await expect(name(page, 'Demo Started')).toBeVisible();
+        await expect(name(page, 'Demo Stopped')).toBeVisible();
+        await expect(status(page)).toHaveCount(0);
+        await finishChannels(page, returning);
+        await loaded(page);
+        expect(reads).toBe(3);
+    } finally { returning.release(); }
+});
+
+test('a departed Channels snapshot expires after five inactive minutes', async ({ page }) => {
+    const returning = gate();
+    let reads = 0;
+    await page.clock.install();
+    await mockEngine(page, { ...fixtures, 'GET /channels': async (request: Request) => {
+        if (fromChannels(request)) {
+            const read = ++reads;
+            if (read >= 2) await returning.promise;
+        }
+        return channelList();
+    } });
+    try {
+        await page.goto('/channels');
+        await loaded(page);
+        await dashboard(page);
+        await page.clock.fastForward(301_000);
+        expect(reads).toBe(1);
+        await channels(page);
+        await expect.poll(() => reads).toBe(2);
+        await expect(status(page)).toContainText('Loading channels');
+        await expect(name(page, 'Demo Started')).toHaveCount(0);
+        await expect(name(page, 'Demo Stopped')).toHaveCount(0);
+        await finishChannels(page, returning);
+        await loaded(page);
+        expect(reads).toBe(2);
+    } finally { returning.release(); }
+});
+
+test('revisiting Channels starts a new inactive cache lifetime on the next departure', async ({ page }) => {
+    const firstReturn = gate(), secondReturn = gate();
+    let reads = 0;
+    await page.clock.install();
+    await mockEngine(page, { ...fixtures, 'GET /channels': async (request: Request) => {
+        if (fromChannels(request)) {
+            const read = ++reads;
+            if (read === 2) await firstReturn.promise;
+            if (read >= 3) await secondReturn.promise;
+        }
+        return channelList();
+    } });
+    try {
+        await page.goto('/channels');
+        await loaded(page);
+        await dashboard(page);
+        await page.clock.fastForward(240_000);
+        await channels(page);
+        await expect.poll(() => reads).toBe(2);
+        await expect(name(page, 'Demo Started')).toBeVisible();
+        await expect(status(page)).toHaveCount(0);
+        await finishChannels(page, firstReturn);
+        await loaded(page);
+        await dashboard(page);
+        // Six total minutes have elapsed, but only two since the latest
+        // departure. The first departure's GC deadline must be canceled.
+        await page.clock.fastForward(120_000);
+        expect(reads).toBe(2);
+        await channels(page);
+        await expect.poll(() => reads).toBe(3);
+        await expect(name(page, 'Demo Started')).toBeVisible();
+        await expect(name(page, 'Demo Stopped')).toBeVisible();
+        await expect(status(page)).toHaveCount(0);
+        await finishChannels(page, secondReturn);
+        await loaded(page);
+        expect(reads).toBe(3);
+    } finally { firstReturn.release(); secondReturn.release(); }
 });
 
 for (const empty of [false, true]) {
@@ -225,7 +340,8 @@ for (const endpoint of ['GET /channels', 'GET /channelgroups', 'GET /server/chan
             held.release();
             await loaded(page);
             await expect(page.locator('.view-body [role="alert"]')).toHaveCount(0);
-            await name(page, 'Demo Started').click();
+            await selectRow(page, 'Demo Started');
+            await expect(page).toHaveURL(/\/channels$/);
             await expect(page.getByRole('button', { name: 'Clone Channel', exact: true })).toBeVisible();
         } finally { held.release(); }
     });

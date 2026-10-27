@@ -47,7 +47,7 @@ import { applyGroupImports, bundledLibrarySaveError, consolidateBundledLibraries
 import { invalidate as invalidateCompletions } from '../../core/script-completions.js';
 import { runLifecycle } from './channel-lifecycle.js';
 import { usePaletteContext } from '../palette-context.js';
-import { cacheChannelListDisplay, readChannelListDisplay } from '../channel-list-cache.js';
+import { cacheChannelListDisplay, readChannelListDisplay, retainChannelListDisplay } from '../channel-list-cache.js';
 import {
     loadViewMode, saveViewMode, loadTagMode, saveTagMode,
     VIEW_MODE_OPTIONS, TAG_MODE_OPTIONS, tagRgb, tagIcon
@@ -1775,6 +1775,7 @@ export function ChannelsView() {
     /* ---- mount: load ---- */
 
     useEffect(() => {
+        const releaseDisplay = retainChannelListDisplay();
         mountedRef.current = true;
         refresh();
         // A plugin that mutates a channel out-of-band (e.g. history revert) emits
@@ -1785,6 +1786,7 @@ export function ChannelsView() {
             actionsReadyRef.current = false;
             groupsReadyRef.current = false;
             off();
+            releaseDisplay();
         };
     }, []);
 
