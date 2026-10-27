@@ -1918,7 +1918,10 @@ export function ChannelsView() {
                         scrollReady={hasChannels}
                         columnWidths={CHANNEL_COL_WIDTHS}
                         pinnedKeys={['status', 'name']}
-                        emptyText={refreshing ? <div role="status">Loading channels…</div>
+                        emptyText={refreshing ? <>
+                            <div className="empty-icon"><Icon name="channels" size={30} /></div>
+                            <div role="status">Loading channels…</div>
+                        </>
                             : loadError && !hasChannels ? <div>Unable to load channels. Refresh to retry.</div> : (
                             <>
                                 <div className="empty-icon"><Icon name="channels" size={30} /></div>
