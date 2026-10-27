@@ -147,6 +147,15 @@ class Elements {
         const { reads, writes } = mapKeysIn(script);
         return [this.add({ name, type: 'script', typeLabel: 'JavaScript', enabled: true, skippedByParent: false, operator: '', depth: 0, detail: text(script), isScript: true, reads, writes, routing: /\bdestinationSet\s*\./.test(text(script)) }, owner)];
     }
+    fromText(name, value, owner, type) {
+        const detail = text(value);
+        if (!detail.trim())
+            return [];
+        // Template bodies and SQL are not JavaScript. Calls appearing in their
+        // literal text must not create map readers, writers or routing claims.
+        return [this.add({ name, type, typeLabel: type === 'template' ? 'Template' : 'SQL', enabled: true, skippedByParent: false,
+                operator: '', depth: 0, detail, isScript: false, reads: [], writes: [], routing: false }, owner)];
+    }
     fromElements(elements, owner, rules) {
         const out = [];
         const walk = (items, depth, parentEnabled = true) => {
@@ -245,6 +254,10 @@ function settingsOf(transport, p) {
             add('Use JavaScript', truthy(p.useScript) ? 'Yes' : 'No');
             if (!truthy(p.useScript))
                 add(transport === 'Database Reader' ? 'Select' : 'Query', transport === 'Database Reader' ? p.select : p.query);
+            if (transport === 'Database Reader') {
+                add('Aggregate results', truthy(p.aggregateResults) ? 'Yes' : 'No');
+                add('Post-process', Number(p.updateMode) === 2 ? 'Once after all results' : Number(p.updateMode) === 3 ? 'Once per row' : 'Never');
+            }
             break;
         case 'Channel Writer':
             add('Template', p.channelTemplate);
@@ -293,6 +306,7 @@ export function inspectChannel(channel, globals = {}) {
     const sp = source.properties || {};
     const scp = sp.sourceConnectorProperties || {};
     const sourceTransport = text(source.transportName);
+    const postprocessMode = sourceTransport === 'Database Reader' ? Number(sp.updateMode ?? 1) : 1;
     const destinations = destinationsOf(channel).map((d) => {
         const p = d.properties || {};
         const metaDataId = Number(d.metaDataId);
@@ -316,6 +330,8 @@ export function inspectChannel(channel, globals = {}) {
             transformer: els.fromElements(d.transformer?.elements, `${owner} transformer`, false),
             response: els.fromElements(d.responseTransformer?.elements, `${owner} response`, false),
             send,
+            outboundTemplate: els.fromText('Outbound template', d.transformer?.outboundTemplate, owner + ' output template', 'template'),
+            responseTemplate: els.fromText('Response outbound template', d.responseTransformer?.outboundTemplate, owner + ' response template', 'template'),
             inboundType: text(d.transformer?.inboundDataType),
             outboundType: text(d.transformer?.outboundDataType),
             validateResponse: truthy(p.destinationConnectorProperties?.validateResponse)
@@ -364,6 +380,15 @@ export function inspectChannel(channel, globals = {}) {
             settings: sourceSettings,
             inboundProperties: source.transformer?.inboundProperties ?? null,
             outboundProperties: source.transformer?.outboundProperties ?? null,
+            outboundTemplate: els.fromText('Outbound template', source.transformer?.outboundTemplate, 'Source output template', 'template'),
+            postprocessMode,
+            aggregateResults: truthy(sp.aggregateResults),
+            processBatch: truthy(scp.processBatch),
+            firstResponse: truthy(scp.firstResponse),
+            postprocess: postprocessMode === 2 || postprocessMode === 3
+                ? truthy(sp.useScript) ? els.fromScript('Database post-process script', sp.update, 'Source post-process')
+                    : els.fromText('Database post-process SQL', sp.update, 'Source post-process', 'sql')
+                : [],
             poll: sourceTransport === 'JavaScript Reader' ? els.fromScript('Reader script', sp.script, 'Source')
                 : sourceTransport === 'Database Reader' && truthy(sp.useScript) ? els.fromScript('Database select script', sp.select, 'Source') : [],
             respondAfterProcessing: scp.respondAfterProcessing !== false && scp.respondAfterProcessing !== 'false'

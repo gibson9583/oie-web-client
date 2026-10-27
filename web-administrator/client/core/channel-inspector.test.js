@@ -191,6 +191,50 @@ const database = inspectChannel({ sourceConnector: { transportName: 'Database Re
 assert.equal(database.source.poll[0].detail, 'return [];');
 assert.equal(database.source.respondAfterProcessing, false);
 
+// Outbound templates drive output even with zero steps. Their literal contents
+// are not executed as JavaScript or counted as map access.
+for (const value of ['SOURCE_TEMPLATE', '0', 'false', "literal $c('notACall')", ' \n<root>π</root>\n ']) {
+    const draft = structuredClone(channel);
+    draft.sourceConnector.transformer = { elements: '', outboundTemplate: value };
+    draft.destinationConnectors.connector[0].transformer = { elements: '', outboundTemplate: value };
+    draft.destinationConnectors.connector[0].responseTransformer = { elements: '', outboundTemplate: value };
+    const beforeTemplates = JSON.stringify(draft);
+    const inspected = inspectChannel(draft);
+    assert.equal(JSON.stringify(draft), beforeTemplates);
+    for (const list of [inspected.source.outboundTemplate, inspected.destinations[0].outboundTemplate, inspected.destinations[0].responseTemplate]) {
+        assert.equal(list[0].detail, value);
+        assert.equal(list[0].typeLabel, 'Template');
+        assert.deepEqual([list[0].reads, list[0].writes], [[], []]);
+    }
+    assert.equal(inspected.maps.some(m => m.key === 'notACall'), false);
+}
+assert.deepEqual(inspectChannel({ sourceConnector: { transformer: { outboundTemplate: ' \r\n\t' } } }).source.outboundTemplate, []);
+
+// Database post-processing follows updateMode, including imported string enums.
+for (const mode of [1, 2, 3, '2', '3']) {
+    for (const aggregateResults of [true, false]) {
+        const draft = { sourceConnector: { transportName: 'Database Reader', properties: {
+            useScript: true, updateMode: mode, aggregateResults,
+            select: 'return new java.util.ArrayList();',
+            update: "globalChannelMap.put('processedRows', 1);"
+        } } };
+        const beforeDatabase = JSON.stringify(draft);
+        const inspected = inspectChannel(draft);
+        assert.equal(JSON.stringify(draft), beforeDatabase);
+        assert.equal(inspected.source.postprocessMode, Number(mode));
+        assert.equal(inspected.source.aggregateResults, aggregateResults);
+        assert.equal(inspected.source.postprocess.length, Number(mode) === 1 ? 0 : 1);
+        assert.equal(inspected.maps.some(m => m.key === 'processedRows'), Number(mode) !== 1);
+    }
+}
+const sql = inspectChannel({ sourceConnector: { transportName: 'Database Reader', properties: {
+    useScript: false, updateMode: 3, update: "UPDATE work SET state = 'processed' WHERE id = 42"
+} } });
+assert.equal(sql.source.postprocess[0].typeLabel, 'SQL');
+assert.equal(sql.source.postprocess[0].isScript, false);
+assert.equal(sql.source.postprocess[0].detail, "UPDATE work SET state = 'processed' WHERE id = 42");
+assert.deepEqual(sql.maps, []);
+
 // A minimal channel never throws.
 const empty = inspectChannel({ name: 'x', sourceConnector: {}, destinationConnectors: '' });
 assert.deepEqual([empty.destinations, empty.chains, empty.maps, empty.response.label], [[], [], [], 'No response']);
