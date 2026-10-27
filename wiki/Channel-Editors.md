@@ -74,6 +74,9 @@ queued work finishes. Disabled destinations remain available in a separate discl
 The response section explains when a source queue answers before processing.
 
 Open a rule, step, or script row to read its configuration or numbered code.
+Configured script bodies are included, even empty bodies, default hooks,
+comments, and bare returns. Line breaks can change what JavaScript returns;
+empty or missing channel preprocessors can also change the message.
 Iterator children retain their nesting; disabled rows show that they are skipped.
 Iterator rules also show whether any or all iterations must accept, and whether
 processing stops as soon as that result is determined.

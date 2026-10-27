@@ -19,13 +19,9 @@ const list = (v) => {
     }
     return [v];
 };
-/** True when a script does more than the engine's default comments and bare return. */
+/** Keep configured source, even blank bodies; execution depends on script context. */
 export function hasCode(script) {
-    const body = text(script)
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/\/\/[^\n\r]*/g, '')
-        .replace(/\s+/g, '');
-    return body !== '' && body !== 'return;' && body !== 'returnmessage;';
+    return script != null;
 }
 /* ---- map keys ---------------------------------------------------------------- */
 const SHORTHAND = {
