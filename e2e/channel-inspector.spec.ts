@@ -86,11 +86,56 @@ test.describe('Channel Inspector', () => {
         // Chains follow waitForPrevious; disabled destinations are separate.
         const map = page.getByLabel('Chain map');
         await expect(map.locator('.ci-chain-row')).toHaveText([/Chain 1\s*D1\s*Clinical store\s*D2\s*EHR delivery/, /Chain 2\s*D3\s*Analytics API/, /Disabled\s*D4\s*Legacy archive/]);
-        await expect(page.getByText('D2 waits for D1 to finish.', { exact: false })).toBeVisible();
+        const wait = page.locator('.ci-wait').first();
+        await expect(wait).toContainText(/D2 waits for D1 to finish initial processing/);
+        await expect(page.locator('#ci-destinations-content > .ci-lead')).toContainText(/send error.*continue/);
+        await expect(page.locator('#ci-destinations-content > .ci-lead')).toContainText(/initial filter\/transformer.*stops the rest of that chain/);
         await expect(page.locator('#ci-respond')).toContainText('The sender gets the response from D2 EHR delivery.');
         await expect(page.locator('#ci-queue')).toContainText('D3 · Analytics API');
         await expect(page.locator('#ci-receive')).toContainText('0.0.0.0:6663');
         await expect(page.getByText('can remove destinations for each message', { exact: false })).toBeVisible();
+    });
+
+    test('distinguishes queued filter and transformer work from send-only queues', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        const cases = [
+            { name: 'Always with transforms', queueEnabled: true, sendFirst: false, regenerate: true, include: true, effective: true },
+            { name: 'On failure with transforms', queueEnabled: true, sendFirst: true, regenerate: true, include: true, effective: true },
+            { name: 'Always send only', queueEnabled: true, sendFirst: false, regenerate: true, include: false, effective: false },
+            { name: 'No regeneration', queueEnabled: true, sendFirst: false, regenerate: false, include: true, effective: false },
+            { name: 'Queue disabled', queueEnabled: false, sendFirst: false, regenerate: true, include: true, effective: false }
+        ];
+        channel.destinationConnectors.connector = cases.map((value, i) => {
+            const destination = tcpSender(i + 1, value.name, { waitForPrevious: i > 0 });
+            destination.properties.destinationConnectorProperties = queue({
+                queueEnabled: value.queueEnabled, sendFirst: value.sendFirst,
+                regenerateTemplate: value.regenerate, includeFilterTransformer: value.include
+            });
+            return destination;
+        });
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+        for (const [i, value] of cases.entries()) {
+            const destination = page.locator('#ci-dest-' + (i + 1));
+            const include = destination.locator('.ci-fact').filter({ has: page.locator('dt', { hasText: 'Include filter/transformer' }) });
+            if (value.queueEnabled) await expect(include.locator('dd')).toHaveText(value.effective ? 'Yes' : 'No');
+            else await expect(include).toHaveCount(0);
+        }
+        const always = page.locator('#ci-dest-1');
+        await expect(always).toContainText(/Filter, transformer and send run in the queue/);
+        await expect(always).toContainText(/next destination.*before this work finishes/);
+        const onFailure = page.locator('#ci-dest-2');
+        await expect(onFailure).toContainText(/immediate send.*filter and transformer run first/);
+        await expect(onFailure).toContainText(/Otherwise this work starts in the queue/);
+        await expect(onFailure).toContainText(/queued attempt repeats the filter and transformer/);
+        for (const id of [3, 4, 5]) {
+            await expect(page.locator('#ci-dest-' + id)).not.toContainText(/this work starts in the queue|Filter, transformer and send run in the queue/);
+        }
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        await expect(preview.locator('#print-ci-dest-1')).toContainText(/next destination.*before this work finishes/);
+        await expect(preview.locator('#print-ci-dest-2')).toContainText(/queued attempt repeats the filter and transformer/);
+        await expect(preview.locator('section[aria-labelledby="print-ci-destinations"] > .ci-lead')).toContainText(/initial filter\/transformer.*stops the rest of that chain/);
     });
 
     test('keeps numbered stages independent of code and detail disclosures', async ({ page }) => {
@@ -308,6 +353,73 @@ test.describe('Channel Inspector', () => {
         await expect(page.locator('#ci-transform .ci-expr')).toHaveText('For each null · index variable i');
     });
 
+    test('explains iterator rule acceptance and early exit independently of editable names', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        const ITERATOR_RULE = 'com.mirth.connect.model.IteratorRule';
+        const JS_RULE = 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule';
+        const children = { [JS_RULE]: { '@version': V, name: 'Iteration result', enabled: true, operator: 'NONE', script: 'return [true, false][i];' } };
+        const iterator = (name: string, all: boolean | string, early: boolean | string, rules: any, enabled = true) => ({
+            '@version': V, name, enabled, operator: 'NONE',
+            properties: { target: '[true, false]', indexVariable: 'i', intersectIterations: all, breakEarly: early, children: rules }
+        });
+        const source = iterator('Custom acceptance', false, false, {
+            [ITERATOR_RULE]: iterator('Nested acceptance', true, true, children)
+        });
+        const disabled = iterator('Disabled outer acceptance', false, true, {
+            [ITERATOR_RULE]: iterator('Skipped nested acceptance', true, false, {
+                [JS_RULE]: { '@version': V, name: 'Skipped side effect', enabled: true, operator: 'NONE', script: 'channelMap.put("disabledIteratorChild", true); return true;' }
+            })
+        }, false);
+        channel.sourceConnector.filter.elements = { [ITERATOR_RULE]: [source, disabled] };
+        // The same custom name must not hide different source/destination behavior.
+        channel.destinationConnectors.connector[0].filter.elements = {
+            [ITERATOR_RULE]: iterator('Custom acceptance', 'true', 'true', children)
+        };
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+        await page.getByRole('button', { name: 'Expand all', exact: true }).click();
+        const namedRow = (scope: string, name: string) => page.locator(scope + ' .ci-item')
+            .filter({ has: page.locator('.ci-name', { hasText: new RegExp('^' + name + '$') }) });
+        const sourceRow = namedRow('#ci-filter', 'Custom acceptance');
+        const destinationRow = namedRow('#ci-dest-1', 'Custom acceptance');
+        await expect(sourceRow.locator('.ci-expr')).toContainText('Accept if: Any iteration passes');
+        await expect(sourceRow.locator('.ci-expr')).toContainText('Stop early: No · evaluate every iteration');
+        await expect(destinationRow.locator('.ci-expr')).toContainText('Accept if: All iterations pass');
+        await expect(destinationRow.locator('.ci-expr')).toContainText('Stop early: On first failing iteration');
+        await expect(namedRow('#ci-filter', 'Nested acceptance').locator('.ci-expr')).toContainText('Accept if: All iterations pass');
+        const skipped = namedRow('#ci-filter', 'Skipped nested acceptance');
+        await expect(skipped).toHaveClass(/off/);
+        await expect(skipped).toContainText('Iterator disabled · skipped');
+        await expect(skipped.locator('.ci-expr')).toContainText('Stop early: No · evaluate every iteration');
+        await expect(namedRow('#ci-filter', 'Disabled outer acceptance').locator('.ci-expr')).toContainText('Stop early: On first passing iteration');
+        await expect(page.locator('#ci-key-channelMap\\.disabledIteratorChild')).toHaveCount(0);
+
+        await page.getByRole('button', { name: 'Collapse all', exact: true }).click();
+        await page.getByPlaceholder('Find in channel').fill('All iterations pass');
+        await expect(destinationRow).toHaveAttribute('open', '');
+        await expect(namedRow('#ci-filter', 'Nested acceptance')).toHaveAttribute('open', '');
+        await expect(skipped).toHaveAttribute('open', '');
+        await expect(sourceRow).not.toHaveAttribute('open', '');
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        await expect(namedRow('section[aria-labelledby="print-ci-filter"]', 'Custom acceptance').locator('.ci-expr')).toContainText('Any iteration passes');
+        await expect(namedRow('#print-ci-dest-1', 'Custom acceptance').locator('.ci-expr')).toContainText('On first failing iteration');
+        await expect(namedRow('section[aria-labelledby="print-ci-filter"]', 'Skipped nested acceptance')).toContainText('Iterator disabled · skipped');
+        await expect(preview.locator('.ci-print-map', { hasText: 'disabledIteratorChild' })).toHaveCount(0);
+        await page.keyboard.press('Escape');
+
+        source.properties.intersectIterations = true;
+        source.properties.breakEarly = true;
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        await page.reload();
+        await page.getByPlaceholder('Find in channel').fill('Custom acceptance');
+        await expect(sourceRow.locator('.ci-expr')).toContainText('Accept if: All iterations pass');
+        await expect(sourceRow.locator('.ci-expr')).toContainText('Stop early: On first failing iteration');
+        await expect(sourceRow.locator('.ci-expr')).not.toContainText('Any iteration passes');
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        await expect(namedRow('section[aria-labelledby="print-ci-filter"]', 'Custom acceptance').locator('.ci-expr')).toContainText('All iterations pass');
+    });
+
     for (const failure of ['revision', 'timestamp', 'unavailable']) {
         test(`rejects ${failure} code XML instead of combining channel snapshots`, async ({ page }) => {
             const channel = structuredClone(CHANNEL);
@@ -408,6 +520,117 @@ test.describe('Channel Inspector', () => {
         await expect(preview.locator('details')).toHaveCount(0);
     });
 
+    test('inspects replacement expressions and XSLT inputs through search, map links and print', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        const BUILDER = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';
+        const XSLT = 'com.mirth.connect.plugins.xsltstep.XsltStep';
+        const pair = (left: string, right: string) => ({ left: { '@class': 'string', $: left }, right: { '@class': 'string', $: right } });
+        const mapperPattern = "$c('mapperPattern')", mapperReplacement = "$g('mapperReplacement')";
+        const builderPattern = "$c('builderPattern')", builderReplacement = "$co('builderReplacement')";
+        const sourceXml = "$c('xsltInput')";
+        const template = '<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">' +
+            '<!-- <img src="x" onerror="window.__inspectorExecuted=true"> -->' +
+            '<xsl:template match="/"><result /></xsl:template></xsl:stylesheet>';
+        channel.sourceConnector.transformer.elements = {
+            [MAPPER]: {
+                '@version': V, name: 'Normalize mapped value', sequenceNumber: 0, enabled: true,
+                variable: 'normalized', mapping: "'initial'", scope: 'CHANNEL',
+                replacements: { 'org.apache.commons.lang3.tuple.ImmutablePair': [pair(mapperPattern, mapperReplacement), pair("'second pattern'", "'second replacement'")] }
+            },
+            [BUILDER]: {
+                '@version': V, name: 'Build normalized field', sequenceNumber: 1, enabled: true,
+                messageSegment: "msg['PID']['PID.5']", mapping: "'input'",
+                replacements: { 'org.apache.commons.lang3.tuple.ImmutablePair': pair(builderPattern, builderReplacement) }
+            },
+            [XSLT]: { '@version': V, name: 'Transform selected XML', sequenceNumber: 2, enabled: true, sourceXml, resultVariable: 'transformedXml', template }
+        };
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+        const find = page.getByPlaceholder('Find in channel');
+        await find.fill('mapperReplacement');
+        const mapper = page.locator('#ci-transform .ci-item', { hasText: 'Normalize mapped value' });
+        await expect(mapper).toHaveAttribute('open', '');
+        await expect(mapper.locator('.ci-expr')).toContainText(mapperPattern);
+        await expect(mapper.locator('.ci-expr')).toContainText(mapperReplacement);
+        const mapperText = await mapper.locator('.ci-expr').innerText();
+        expect(mapperText.indexOf(mapperPattern)).toBeLessThan(mapperText.indexOf("'second pattern'"));
+        await mapper.getByRole('button', { name: 'reads mapperReplacement', exact: true }).click();
+        const mapRow = page.locator('#ci-key-globalMap\\.mapperReplacement');
+        await expect(mapRow).toHaveClass(/target/);
+        await mapRow.getByRole('button', { name: /Normalize mapped value/ }).click();
+        await expect(mapper.locator('.ci-expr')).toBeVisible();
+
+        await find.fill('builderPattern');
+        const builder = page.locator('#ci-transform .ci-item', { hasText: 'Build normalized field' });
+        await expect(builder).toHaveAttribute('open', '');
+        await expect(builder.locator('.ci-expr')).toContainText(builderReplacement);
+        await expect(page.locator('#ci-key-connectorMap\\.builderReplacement')).toContainText('Build normalized field');
+        await find.fill('xsltInput');
+        const xslt = page.locator('#ci-transform .ci-item', { hasText: 'Transform selected XML' });
+        await expect(xslt).toHaveAttribute('open', '');
+        await expect(xslt.locator('.ci-expr')).toContainText(sourceXml);
+        await expect(xslt.locator('.ci-expr')).toContainText(template);
+        await expect(page.locator('#ci-key-channelMap\\.xsltInput')).toContainText('Transform selected XML');
+        await expect(page.locator('.ci-root img')).toHaveCount(0);
+
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        for (const expression of [mapperPattern, mapperReplacement, builderPattern, builderReplacement, sourceXml, template]) {
+            await expect(preview).toContainText(expression);
+        }
+        await expect(preview.locator('.ci-print-map', { hasText: 'xsltInput' })).toContainText('Transform selected XML');
+        await expect(preview.locator('img')).toHaveCount(0);
+        expect(await page.evaluate(() => (window as any).__inspectorExecuted)).toBeUndefined();
+    });
+
+    test('inspects an attachment script before preprocessing without executing it', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        const script = 'this.__inspectorExecuted = true;\n' +
+            'var markup = \'<img src="x" onerror="window.__inspectorExecuted=true">\';\n' +
+            'globalMap.put("attachmentRun", "ATTACHMENT_SCRIPT_MARKER");\nreturn message;';
+        channel.properties.attachmentProperties = {
+            '@version': V, type: 'JavaScript',
+            className: 'com.mirth.connect.server.attachments.javascript.JavaScriptAttachmentHandlerProvider',
+            properties: { entry: { string: ['javascript.script', script] } }
+        };
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        const writes: string[] = [];
+        page.on('request', request => { if (request.url().includes('/api/') && !['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(request.url()); });
+        await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+        await expect(page.locator('#ci-attachments')).toBeVisible();
+        const stages = await page.locator('.ci-section').evaluateAll(nodes => nodes.map(node => node.id));
+        expect(stages.indexOf('ci-attachments')).toBe(stages.indexOf('ci-receive') + 1);
+        expect(stages.indexOf('ci-preprocess')).toBe(stages.indexOf('ci-attachments') + 1);
+        await page.getByPlaceholder('Find in channel').fill('attachmentRun');
+        const handler = page.locator('#ci-attachments .ci-item');
+        await expect(handler).toHaveAttribute('open', '');
+        await expect(handler.locator('.ci-code .lc')).toHaveText(script.split('\n'));
+        await handler.getByRole('button', { name: 'writes attachmentRun', exact: true }).click();
+        const mapRow = page.locator('#ci-key-globalMap\\.attachmentRun');
+        await expect(mapRow).toHaveClass(/target/);
+        await mapRow.getByRole('button', { name: /Attachment handler script/ }).click();
+        await expect(handler.locator('.ci-code')).toBeVisible();
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        await expect(preview.locator('section[aria-labelledby="print-ci-attachments"] .ci-code .lc')).toHaveText(script.split('\n'));
+        await expect(preview.locator('.ci-print-map', { hasText: 'attachmentRun' })).toContainText('Attachment handler script');
+        await expect(preview.locator('img')).toHaveCount(0);
+        expect(await page.evaluate(() => (window as any).__inspectorExecuted)).toBeUndefined();
+        await page.keyboard.press('Escape');
+
+        // A stored script on an inactive handler must not be described as running.
+        channel.properties.attachmentProperties.type = 'None';
+        await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+        await page.reload();
+        await expect(page.locator('#ci-receive')).toBeVisible();
+        await expect(page.locator('#ci-attachments')).toHaveCount(0);
+        await expect(page.locator('#ci-key-globalMap\\.attachmentRun')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        await expect(preview).not.toContainText('ATTACHMENT_SCRIPT_MARKER');
+        expect(await page.evaluate(() => (window as any).__inspectorExecuted)).toBeUndefined();
+        expect(writes).toEqual([]);
+    });
+
     for (const mode of [1, 2, 3]) {
         test('describes Database Reader post-process mode ' + mode, async ({ page }) => {
             const channel = structuredClone(CHANNEL);
@@ -429,6 +652,11 @@ test.describe('Channel Inspector', () => {
                 await expect(page.locator('#ci-source-postprocess .ci-item')).toHaveAttribute('open', '');
                 await expect(page.locator('#ci-source-postprocess')).toContainText(mode === 2 ? 'Runs once after dispatching' : 'Runs once per row after dispatching');
                 await expect(page.locator('#ci-source-postprocess')).toContainText('combined results');
+                await expect(page.locator('#ci-source-postprocess')).toContainText('If the script returns a nonempty ResultSet:');
+                await expect(page.locator('#ci-source-postprocess')).toContainText('If it returns a Java List, rows are dispatched individually.');
+                await expect(page.locator('#ci-source-postprocess')).toContainText(mode === 2
+                    ? 'The post-process is skipped for a Java List while Aggregate Results is enabled.'
+                    : 'Runs once per row after dispatching its message.');
                 await expect(page.locator('#ci-key-globalChannelMap\\.dbProcessed')).toContainText('Source post-process');
             }
             await page.getByRole('button', { name: 'Print', exact: true }).click();
@@ -437,6 +665,9 @@ test.describe('Channel Inspector', () => {
             else {
                 await expect(preview).toContainText('DB_POSTPROCESS_MARKER');
                 await expect(preview.locator('.ci-print-map', { hasText: 'dbProcessed' })).toContainText('Source post-process');
+                await expect(preview.locator('section[aria-labelledby="print-ci-source-postprocess"]')).toContainText(mode === 2
+                    ? 'The post-process is skipped for a Java List while Aggregate Results is enabled.'
+                    : 'If it returns a Java List, rows are dispatched individually. Runs once per row after dispatching its message.');
             }
         });
     }
@@ -453,14 +684,57 @@ test.describe('Channel Inspector', () => {
         await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
         await page.goto('/channels/' + ID + '/edit?tab=Inspector');
         await expect(page.locator('#ci-source-postprocess')).toContainText('first batch message for the combined results');
+        await expect(page.locator('#ci-source-postprocess')).toContainText('If the script returns a nonempty ResultSet:');
+        await expect(page.locator('#ci-source-postprocess')).toContainText('The post-process is skipped for a Java List while Aggregate Results is enabled.');
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        const printedPostprocess = preview.locator('section[aria-labelledby="print-ci-source-postprocess"]');
+        await expect(printedPostprocess).toContainText('first batch message for the combined results');
+        await expect(printedPostprocess).toContainText('The post-process is skipped for a Java List while Aggregate Results is enabled.');
+        await page.keyboard.press('Escape');
         channel.sourceConnector.properties.sourceConnectorProperties.firstResponse = false;
         await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
         await page.reload();
         await expect(page.locator('#ci-source-postprocess')).toContainText('last batch message for the combined results');
+
+        channel.sourceConnector.properties.updateMode = 3;
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.reload();
+        await expect(page.locator('#ci-source-postprocess')).toContainText('If it returns a Java List, rows are dispatched individually.');
+        await expect(page.locator('#ci-source-postprocess')).toContainText('Runs once for each dispatched batch message from a row.');
+        await expect(page.locator('#ci-source-postprocess')).not.toContainText('post-process is skipped');
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        await expect(printedPostprocess).toContainText('last batch message for the combined results');
+        await expect(printedPostprocess).toContainText('If it returns a Java List, rows are dispatched individually. Runs once for each dispatched batch message from a row.');
+        await page.keyboard.press('Escape');
+
+        // SQL "once after all results" runs after the poll even with aggregation;
+        // JavaScript aggregate mode instead depends on the returned ResultSet/List.
+        channel.sourceConnector.properties.updateMode = 2;
+        channel.sourceConnector.properties.useScript = false;
+        channel.sourceConnector.properties.select = 'SELECT id FROM pending_messages';
+        channel.sourceConnector.properties.update = 'UPDATE poll_state SET completed = 1';
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.reload();
+        const sqlPostprocess = page.locator('#ci-source-postprocess');
+        await expect(sqlPostprocess).toContainText(/end of each poll.*polling fails or returns no rows/);
+        await expect(sqlPostprocess).not.toContainText('combined results');
+        await expect(sqlPostprocess).not.toContainText('Java List');
+        await expect(sqlPostprocess.locator('.ci-section-toggle')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        await expect(preview.locator('section[aria-labelledby="print-ci-source-postprocess"]')).toContainText(/end of each poll.*polling fails or returns no rows/);
+        await expect(printedPostprocess).not.toContainText('Java List');
+        await expect(preview).toContainText('UPDATE poll_state SET completed = 1');
+        await page.keyboard.press('Escape');
+
+        channel.sourceConnector.properties.useScript = true;
+        channel.sourceConnector.properties.select = 'return new java.util.ArrayList();';
+        channel.sourceConnector.properties.update = 'logger.info("batch post-process");';
         channel.sourceConnector.properties.aggregateResults = false;
         await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
         await page.reload();
         await expect(page.locator('#ci-source-postprocess')).toContainText('including when polling fails');
+        await expect(page.locator('#ci-source-postprocess')).not.toContainText('Java List');
         channel.sourceConnector.properties.updateMode = 3;
         await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
         await page.reload();

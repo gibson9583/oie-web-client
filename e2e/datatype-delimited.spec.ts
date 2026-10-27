@@ -1,5 +1,5 @@
 import { test, expect } from './base.js';
-import { mockEngine } from './mock.js';
+import { mockEngine, fixtureXml as xml } from './mock.js';
 import { makeChannel } from './connector-fixtures.js';
 import type { Page } from '@playwright/test';
 
@@ -21,17 +21,21 @@ function fixture() {
     }
     return channel;
 }
-async function setup(page: Page, channel = fixture(), surface = 'edit') {
+async function setup(page: Page, channel = fixture(), surface = 'edit', xmlChannel = channel) {
     let server = structuredClone(channel);
+    let serverXml = structuredClone(xmlChannel);
     const writes: any[] = [];
     await mockEngine(page, { [`GET /channels/${channel.id}`]: { channel: server } });
     await page.route(url => url.pathname === `/api/channels/${channel.id}`, async route => {
         if (route.request().method() === 'PUT') {
             server = JSON.parse(route.request().postData()!).channel;
+            serverXml = structuredClone(server);
             writes.push(structuredClone(server));
             return route.fulfill({ status: 200, contentType: 'text/plain', body: 'true' });
         }
-        if (route.request().method() === 'GET') return route.fulfill({ status: 200, json: { channel: server } });
+        if (route.request().method() === 'GET') return route.request().headers().accept?.includes('application/xml')
+            ? route.fulfill({ status: 200, contentType: 'application/xml', body: xml('channel', serverXml) })
+            : route.fulfill({ status: 200, json: { channel: server } });
         return route.fallback();
     });
     await page.goto(`/channels/${channel.id}/${surface}`);
@@ -103,9 +107,12 @@ test('Delimited lists preserve singleton/array wire shapes, cancel edits, and om
 
 test('engine JSON literals for true/false/null column names stay valid and save as strings', async ({ page }) => {
     const channel = fixture();
-    channel.sourceConnector.transformer.inboundProperties = properties(null, { string: [true, false, null, 'normal'] });
-    channel.sourceConnector.transformer.outboundProperties = properties(null, { string: true });
-    const writes = await setup(page, channel);
+    channel.sourceConnector.transformer.inboundProperties = properties(null, { string: ['true', 'false', 'null', 'normal'] });
+    channel.sourceConnector.transformer.outboundProperties = properties(null, { string: 'true' });
+    const wire = structuredClone(channel);
+    wire.sourceConnector.transformer.inboundProperties.serializationProperties.columnNames = { string: [true, false, null, 'normal'] };
+    wire.sourceConnector.transformer.outboundProperties.serializationProperties.columnNames = { string: true };
+    const writes = await setup(page, wire, 'edit', channel);
     const modal = await dialog(page);
     const names = modal.getByLabel('Column Names', { exact: true });
     await expect(names.first()).toHaveValue('true,false,null,normal');

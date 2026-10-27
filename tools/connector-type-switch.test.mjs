@@ -60,6 +60,15 @@ for (const mode of ['SOURCE', 'DESTINATION']) {
             sourceConnector: defaultSourceConnector('4.6.0'),
             destinationConnectors: { connector: [defaultDestinationConnector('4.6.0', 1)] },
             exportData: { metadata: { lastModified: { time: 1 }, userId: 4 } } };
+        const transformersOf = channel => [channel.sourceConnector, ...channel.destinationConnectors.connector]
+            .flatMap(connector => [connector.transformer, connector.responseTransformer].filter(Boolean));
+        // Wire text recovery is covered in browser tests. This controlled API
+        // boundary supplies exact text for both sides of every transformer.
+        for (const transformer of transformersOf(server)) {
+            transformer.inboundProperties.batchProperties.batchScript = '';
+            transformer.outboundProperties.batchProperties.batchScript = '';
+        }
+        const originalTransformers = structuredClone(transformersOf(server));
         const connectorOf = channel => mode === 'SOURCE' ? channel.sourceConnector : channel.destinationConnectors.connector[0];
         const settings = deferred(), write = deferred(), writing = deferred();
         let writes = 0;
@@ -105,6 +114,7 @@ for (const mode of ['SOURCE', 'DESTINATION']) {
             write.resolve();
             assert.equal(await save(), true);
             assert.equal(connectorOf(server).transportName, 'New');
+            assert.deepEqual(transformersOf(server), originalTransformers, 'switching connector type preserves transformer values');
             assert.equal(h.state.editingChannelDirty, false);
             assert.equal(writes, switchFirst ? 1 : 2);
             await save();

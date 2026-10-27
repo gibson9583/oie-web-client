@@ -165,7 +165,7 @@ function DataTypeFacts({ name, props, query }: { name: string; props: any; query
         for (const field of group.fields || []) {
             let v = values[field.key];
             if (v == null || v === '') continue;
-            if (typeof v === 'boolean' || v === 'true' || v === 'false') v = String(v) === 'true' ? 'Yes' : 'No';
+            if (field.type === 'checkbox') v = String(v) === 'true' ? 'Yes' : 'No';
             else if (typeof v === 'object') v = api.asList(v.string ?? v.int ?? v).join(', ');
             facts.push([`${group.label} · ${field.label}`, String(v)]);
         }
@@ -289,7 +289,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
     const matches = useMemo(() => {
         if (!q) return [] as string[];
         const ids: string[] = [];
-        const all = [r.source.poll, r.source.postprocess, r.source.outboundTemplate, r.deploy, r.preprocessor, r.sourceFilter, r.sourceTransformer, r.postprocessor,
+        const all = [r.source.poll, r.source.attachment, r.source.postprocess, r.source.outboundTemplate, r.deploy, r.preprocessor, r.sourceFilter, r.sourceTransformer, r.postprocessor,
             ...r.destinations.flatMap(d => [d.filter, d.transformer, d.outboundTemplate, d.send, d.response, d.responseTemplate])].flat();
         for (const el of all) if (searchText(el).includes(q)) ids.push(el.id);
         return ids;
@@ -521,6 +521,11 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
             </More>
         </> });
 
+    if (r.source.attachment.length) {
+        msg({ id: 'ci-attachments', title: 'Run the attachment handler', scope: 'Attachments', tab: 'Summary',
+            body: <>{lead('Runs before preprocessing. It can extract attachments and replace the raw message passed to the preprocessor.')}<Elements list={r.source.attachment} kind="script" ctx={ctx} /></> });
+    }
+
     msg({ id: 'ci-preprocess', title: 'Preprocess the raw message', scope: 'Scripts', tab: 'Scripts', empty: !r.preprocessor.length,
         body: r.preprocessor.length
             ? <>{lead('Runs on the raw text before it is parsed, global first and then channel. The returned string becomes the message.')}<Elements list={r.preprocessor} kind="script" ctx={ctx} /></>
@@ -549,7 +554,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
     msg({ id: 'ci-destinations', title: 'Send to destinations', scope: 'Destinations', tab: 'Destinations', empty: !r.destinations.length,
         children: r.destinations.map(d => ({ id: 'ci-dest-' + d.metaDataId, label: d.label, name: d.name, off: !d.enabled })),
         body: !r.destinations.length ? lead('No destinations.') : <>
-            {lead(`${plural(r.chains.flat().length, 'enabled destination')} in ${plural(r.chains.length, 'chain')}. Chains process independently from the source output. Inside a chain, each destination waits for the one before it to finish initial processing; a queued send may complete later.`)}
+            {lead(`${plural(r.chains.flat().length, 'enabled destination')} in ${plural(r.chains.length, 'chain')}. Chains process independently from the source output. Inside a chain, each destination waits for the one before it to finish initial processing; queued work may complete later. Filtering or a send error allows the chain to continue; an error in the initial filter/transformer stops the rest of that chain.`)}
             <div className="ci-chain-map" aria-label="Chain map">
                 {r.chains.map((chain, i) => (
                     <div className="ci-chain-row" key={i}>
@@ -565,7 +570,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
                         : chain.length > 1 ? chain.map(d => d.label).join(' then ') + ', in order' : 'One destination'}{i > 0 ? ' · independent of Chain 1' : ''}</span></div>
                     {chain.map((d, j) => (
                         <div key={d.metaDataId}>
-                            {j > 0 && <div className="ci-wait"><Icon name="arrowDown" size={14} />{d.label} waits for {chain[j - 1].label} to finish. It runs even if {chain[j - 1].label} errors or is filtered.</div>}
+                            {j > 0 && <div className="ci-wait"><Icon name="arrowDown" size={14} />{d.label} waits for {chain[j - 1].label} to finish initial processing.</div>}
                             <DestinationCard d={d} r={r} ctx={ctx} channelNames={channelNames} openTab={openTab} />
                         </div>
                     ))}
@@ -580,7 +585,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
 
     msg({ id: 'ci-postprocess', title: 'Postprocess', scope: 'Scripts', tab: 'Scripts', empty: !r.postprocessor.length,
         body: r.postprocessor.length
-            ? <>{lead('Runs after the destinations finish initial processing, channel first and then global. Queued sends can still be pending.')}<Elements list={r.postprocessor} kind="script" ctx={ctx} /></>
+            ? <>{lead('Runs after the destinations finish initial processing, channel first and then global. Queued work can still be pending.')}<Elements list={r.postprocessor} kind="script" ctx={ctx} /></>
             : lead('No postprocessor code. A global postprocessor can still run.') });
 
     const rd = r.response.destination;
@@ -595,15 +600,20 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
 
     if (r.source.postprocessMode === 2 || r.source.postprocessMode === 3) {
         const eachRow = r.source.postprocessMode === 3;
-        const afterPoll = !eachRow && !r.source.aggregateResults;
+        const afterPoll = !eachRow && (!r.source.useScript || !r.source.aggregateResults);
         const message = r.source.processBatch
             ? (r.source.firstResponse ? 'first' : 'last') + ' batch message for the combined results' : 'combined results message';
-        const timing = afterPoll ? 'Runs once at the end of each poll, including when polling fails.'
+        const rowTiming = r.source.processBatch ? 'Runs once for each dispatched batch message from a row.' : 'Runs once per row after dispatching its message.';
+        let timing = afterPoll ? 'Runs once at the end of each poll, including when polling fails or returns no rows.'
             : r.source.aggregateResults ? (eachRow ? 'Runs once per row' : 'Runs once') + ' after dispatching the ' + message + '.'
-                : r.source.processBatch ? 'Runs once for each dispatched batch message from a row.' : 'Runs once per row after dispatching its message.';
+                : rowTiming;
+        if (r.source.useScript && r.source.aggregateResults) {
+            timing = 'If the script returns a nonempty ResultSet: ' + timing + ' If it returns a Java List, rows are dispatched individually. '
+                + (eachRow ? rowTiming : 'The post-process is skipped for a Java List while Aggregate Results is enabled.');
+        }
         s.push({ id: 'ci-source-postprocess', phase: afterPoll ? 'after' : 'message', num: afterPoll ? undefined : ++n, icon: 'db',
             title: 'Postprocess Database Reader results', scope: 'Source post-process', tab: 'Source',
-            body: <>{lead(timing + (!r.source.respondAfterProcessing ? ' With the source queue enabled, message processing may still be pending.' : ' Queued destination sends may still be pending.'))}
+            body: <>{lead(timing + (!r.source.respondAfterProcessing ? ' With the source queue enabled, message processing may still be pending.' : ' Queued destination work may still be pending.'))}
                 {r.source.postprocess.length ? <Elements list={r.source.postprocess} kind="script" ctx={ctx} /> : lead('No post-process code configured.')}</>
         });
     }
@@ -612,6 +622,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
     s.push({ id: 'ci-queue', phase: 'after', icon: 'clock', title: 'Retry queued sends', scope: 'Destinations', tab: 'Destinations', empty: !queued.length,
         body: queued.length
             ? <>{lead('These destinations queue sends always or on failure, as configured, and retry in the background. Queue processing is independent of the response to the sender.')}
+                {queued.some(d => d.filterTransformerInQueue) && lead('When Include filter/transformer is enabled, queued attempts also repeat the filter and transformer.')}
                 {queued.map(d => <div key={d.metaDataId}><div className="ci-sub-head">{d.label} · {d.name}</div><Facts facts={d.queue} query={q} /></div>)}</>
             : lead('No destination queues. A failed send is final once its retries end.') });
 
@@ -671,6 +682,9 @@ function DestinationCard({ d, r, ctx, channelNames, openTab }: { d: InspectedDes
                 {!d.enabled && <span className="tag">Disabled</span>}
                 {!ctx.print && <button type="button" className="ci-link ci-open" onClick={() => openTab('Destinations')}>Open in Destinations</button>}
             </header>
+            {d.filterTransformerInQueue && <p className="ci-lead">{d.sendFirst
+                ? 'When an immediate send is attempted, the filter and transformer run first. Otherwise this work starts in the queue. Each queued attempt repeats the filter and transformer.'
+                : 'Filter, transformer and send run in the queue. The next destination and the response to the sender can proceed before this work finishes. Queued retries repeat the filter and transformer.'}</p>}
             <ol className="ci-substeps">
                 {sub('Filter', 'filter', d.filter.length
                     ? <><p className="ci-lead">If false, only {d.label} is skipped. Other destinations still run.</p><Elements list={d.filter} kind="rule" ctx={ctx} /></>

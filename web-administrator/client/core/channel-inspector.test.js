@@ -5,8 +5,12 @@ const JS_STEP = 'com.mirth.connect.plugins.javascriptstep.JavaScriptStep';
 const MAPPER = 'com.mirth.connect.plugins.mapper.MapperStep';
 const BUILDER = 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep';
 const RULE = 'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule';
+const JS_RULE = 'com.mirth.connect.plugins.javascriptrule.JavaScriptRule';
 const ITERATOR = 'com.mirth.connect.model.IteratorStep';
+const ITERATOR_RULE = 'com.mirth.connect.model.IteratorRule';
 const DSF = 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep';
+const XSLT = 'com.mirth.connect.plugins.xsltstep.XsltStep';
+const PAIR = 'org.apache.commons.lang3.tuple.ImmutablePair';
 
 const destination = (metaDataId, name, extra = {}) => ({
     metaDataId, name, transportName: 'TCP Sender', enabled: true, waitForPrevious: true,
@@ -175,6 +179,73 @@ const disabledDestination = structuredClone(channel);
 disabledDestination.destinationConnectors.connector[1].enabled = false;
 assert.equal(inspectChannel(disabledDestination).maps.find(m => m.key === 'ackCode').writers.length, 0);
 
+// Iterator rules expose the two settings that change acceptance and child-rule
+// execution. New rules explicitly serialize any + early termination; omitted
+// imported boolean fields become false in the shipped serializer.
+for (const [intersectIterations, acceptance, earlyStop] of [
+    [false, 'Any iteration passes', 'On first passing iteration'],
+    ['false', 'Any iteration passes', 'On first passing iteration'],
+    [true, 'All iterations pass', 'On first failing iteration'],
+    ['true', 'All iterations pass', 'On first failing iteration'],
+    [undefined, 'Any iteration passes', 'On first passing iteration'],
+    [null, 'Any iteration passes', 'On first passing iteration']
+]) {
+    for (const [breakEarly, stop] of [
+        [true, earlyStop], ['true', earlyStop],
+        [false, 'No · evaluate every iteration'], ['false', 'No · evaluate every iteration'],
+        [undefined, 'No · evaluate every iteration'], [null, 'No · evaluate every iteration']
+    ]) {
+        const filter = { elements: { [ITERATOR_RULE]: { name: 'Same custom name', properties: {
+            target: 'values', indexVariable: 'i', intersectIterations, breakEarly
+        } } } };
+        const draft = {
+            sourceConnector: { filter: structuredClone(filter) },
+            destinationConnectors: { connector: destination(1, 'Filter', { filter: structuredClone(filter) }) }
+        };
+        const original = structuredClone(draft);
+        const inspected = inspectChannel(draft);
+        for (const rows of [inspected.sourceFilter, inspected.destinations[0].filter]) {
+            assert.equal(rows[0].detail, `For each values · index variable i\nAccept if: ${acceptance}\nStop early: ${stop}`);
+        }
+        assert.deepEqual(draft, original, 'describing default settings must not populate the draft');
+        assert.deepEqual(inspectChannel(draft), inspected);
+    }
+}
+
+// Nested and disabled rules retain their settings, without making skipped map
+// access appear active. Destination disablement also excludes the whole tree.
+for (const enabled of [true, false, 'false']) {
+    const filter = { elements: { [ITERATOR_RULE]: { name: 'Outer', enabled, properties: {
+        target: "$c('outerRows')", indexVariable: 'i', intersectIterations: false, breakEarly: false,
+        children: { [ITERATOR_RULE]: { name: 'Inner', enabled: true, properties: {
+            target: "$c('innerRows')", indexVariable: 'j', intersectIterations: 'true', breakEarly: 'true',
+            children: { [JS_RULE]: { name: 'Leaf', enabled: true, script: "return $c('leafRead');" } }
+        } } }
+    } } } };
+    const draft = {
+        sourceConnector: { filter: structuredClone(filter) },
+        destinationConnectors: { connector: [
+            destination(1, 'Enabled', { filter: structuredClone(filter) }),
+            destination(2, 'Disabled', { enabled: false, filter: structuredClone(filter) })
+        ] }
+    };
+    const original = structuredClone(draft);
+    const inspected = inspectChannel(draft);
+    for (const rows of [inspected.sourceFilter, ...inspected.destinations.map(d => d.filter)]) {
+        assert.deepEqual(rows.map(el => el.depth), [0, 1, 2]);
+        assert.deepEqual(rows.map(el => el.enabled), Array(3).fill(enabled === true));
+        assert.deepEqual(rows.map(el => el.skippedByParent), [false, enabled !== true, enabled !== true]);
+        assert.ok(rows[0].detail.endsWith('Accept if: Any iteration passes\nStop early: No · evaluate every iteration'));
+        assert.ok(rows[1].detail.endsWith('Accept if: All iterations pass\nStop early: On first failing iteration'));
+    }
+    assert.deepEqual(inspected.maps.map(m => [m.key, m.readers.length]), enabled === true ? [['innerRows', 2], ['leafRead', 2], ['outerRows', 2]] : []);
+    assert.deepEqual(draft, original);
+}
+const stepWithRuleFields = inspectChannel({ sourceConnector: { transformer: { elements: { [ITERATOR]: {
+    properties: { target: 'values', indexVariable: 'i', intersectIterations: true, breakEarly: false }
+} } } } });
+assert.equal(stepWithRuleFields.sourceTransformer[0].detail, 'For each values · index variable i', 'rule-only settings must not describe IteratorStep');
+
 // Global hooks surround the channel hooks in execution order.
 const withGlobals = inspectChannel(channel, {
     Deploy: "$g('deploy', true);", Undeploy: "$g('undeploy', true);",
@@ -234,6 +305,119 @@ assert.equal(sql.source.postprocess[0].typeLabel, 'SQL');
 assert.equal(sql.source.postprocess[0].isScript, false);
 assert.equal(sql.source.postprocess[0].detail, "UPDATE work SET state = 'processed' WHERE id = 42");
 assert.deepEqual(sql.maps, []);
+
+// Every transform surface reads the same complete built-in configuration.
+// Native replacement pairs are typed scalar wrappers, not a map: order matters.
+function stepEverywhere(type, element) {
+    const transformer = { elements: { [type]: { enabled: true, ...element } } };
+    return {
+        sourceConnector: { transformer: structuredClone(transformer) },
+        destinationConnectors: { connector: [
+            destination(1, 'Enabled', { transformer: structuredClone(transformer), responseTransformer: structuredClone(transformer) }),
+            destination(2, 'Disabled', { enabled: false, transformer: structuredClone(transformer), responseTransformer: structuredClone(transformer) })
+        ] }
+    };
+}
+const nativePair = (left, right) => ({ left: { '@class': 'string', $: left }, right: { '@class': 'string', $: right } });
+for (const type of [MAPPER, BUILDER]) {
+    const draft = stepEverywhere(type, {
+        variable: 'normalized', messageSegment: "msg['account']", mapping: "'123-45'", scope: 'CHANNEL',
+        replacements: { [PAIR]: [nativePair("'-'", "''"), nativePair("$c('pattern')", "$gc('replacement')")] }
+    });
+    const original = JSON.stringify(draft);
+    const inspected = inspectChannel(draft);
+    for (const list of [inspected.sourceTransformer, inspected.destinations[0].transformer, inspected.destinations[0].response, inspected.destinations[1].transformer]) {
+        assert.ok(list[0].detail.endsWith("Replacements (in order):\n1. '-' → ''\n2. $c('pattern') → $gc('replacement')"));
+        assert.deepEqual(list[0].reads, [{ map: 'channelMap', key: 'pattern' }, { map: 'globalChannelMap', key: 'replacement' }]);
+    }
+    assert.equal(inspected.maps.find(m => m.key === 'pattern').readers.length, 3, 'disabled destinations do not contribute replacement readers');
+    if (type === MAPPER) assert.equal(inspected.maps.find(m => m.key === 'normalized').writers.length, 3);
+    assert.equal(JSON.stringify(draft), original);
+}
+for (const replacements of [
+    { [PAIR]: nativePair('false', 'null') },
+    { entry: { left: 'false', right: 'null' } },
+    [{ string: ['false', 'null'] }]
+]) {
+    assert.ok(inspectChannel(stepEverywhere(MAPPER, { replacements })).sourceTransformer[0].detail.endsWith('1. false → null'));
+}
+for (const [left, right] of [['0', 'false'], ['null', ''], [0, false], [null, null]]) {
+    const draft = stepEverywhere(MAPPER, { replacements: { [PAIR]: nativePair(left, right) } });
+    const original = JSON.stringify(draft);
+    const inspected = inspectChannel(draft);
+    assert.ok(inspected.sourceTransformer[0].detail.endsWith(`1. ${left ?? ''} → ${right ?? ''}`));
+    assert.equal(JSON.stringify(draft), original);
+}
+const expressionWrite = inspectChannel(stepEverywhere(BUILDER, { replacements: { [PAIR]: nativePair("'-'", "($c('replacementUsed', true), '')") } }));
+assert.equal(expressionWrite.maps.find(m => m.key === 'replacementUsed').writers.length, 3);
+const nestedReplacement = inspectChannel({ sourceConnector: { transformer: { elements: {
+    [ITERATOR]: { enabled: false, properties: { children: { [MAPPER]: { enabled: true, replacements: { [PAIR]: nativePair("$c('hiddenPattern')", "''") } } } } }
+} } } });
+assert.deepEqual(nestedReplacement.maps, []);
+
+for (const useCustomFactory of [true, 'true', false, 'false']) {
+    const draft = stepEverywhere(XSLT, { sourceXml: "$c('payload')", resultVariable: 'converted', template: "$gc('stylesheet')", useCustomFactory, customFactory: 'example.TransformerFactory' });
+    const original = JSON.stringify(draft);
+    const inspected = inspectChannel(draft);
+    for (const list of [inspected.sourceTransformer, inspected.destinations[0].transformer, inspected.destinations[0].response]) {
+        assert.ok(list[0].detail.startsWith("Source XML: $c('payload')\nResult variable: converted"));
+        assert.ok(list[0].detail.endsWith("Template:\n$gc('stylesheet')"));
+        assert.equal(list[0].detail.includes('Custom factory: example.TransformerFactory'), useCustomFactory === true || useCustomFactory === 'true');
+    }
+    assert.equal(inspected.maps.find(m => m.key === 'payload').readers.length, 3);
+    assert.equal(inspected.maps.find(m => m.key === 'stylesheet').readers.length, 3);
+    assert.equal(inspected.maps.find(m => m.key === 'converted').writers.length, 3);
+    assert.equal(JSON.stringify(draft), original);
+}
+
+// Effective queue behavior follows the engine guard, including retained inactive
+// settings and imported string booleans. Queue labels must agree with the flags.
+for (const queueEnabled of [false, true]) for (const regenerateTemplate of [false, true]) {
+    for (const includeFilterTransformer of [false, true]) for (const sendFirst of [false, true]) {
+        for (const encode of [v => v, v => String(v)]) {
+            const q = Object.fromEntries(Object.entries({ queueEnabled, regenerateTemplate, includeFilterTransformer, sendFirst }).map(([k, v]) => [k, encode(v)]));
+            const draft = { destinationConnectors: { connector: destination(1, 'Queue', { properties: { destinationConnectorProperties: q } }) } };
+            const original = JSON.stringify(draft);
+            const inspected = inspectChannel(draft);
+            const d = inspected.destinations[0];
+            const effective = queueEnabled && regenerateTemplate && includeFilterTransformer;
+            assert.equal(d.filterTransformerInQueue, effective);
+            assert.equal(d.sendFirst, sendFirst);
+            assert.deepEqual(d.queue.find(f => f[0] === 'Include filter/transformer'), queueEnabled ? ['Include filter/transformer', effective ? 'Yes' : 'No'] : undefined);
+            assert.equal(JSON.stringify(draft), original);
+            assert.deepEqual(inspectChannel(draft), inspected);
+        }
+    }
+}
+
+// A JavaScript attachment handler precedes preprocessing and participates in
+// references; stale properties on another handler type must not be treated as code.
+const attachmentScript = "globalChannelMap.put('attachmentSeen', true); return 'sanitized';";
+const withAttachment = structuredClone(channel);
+withAttachment.properties.attachmentProperties = { type: 'JavaScript', properties: { entry: { string: ['javascript.script', attachmentScript] } } };
+assert.deepEqual(inspectChannel(withAttachment).sourceTransformer.map(el => el.id), r.sourceTransformer.map(el => el.id), 'attachment source cannot move existing channel rows');
+for (const entry of [{ string: ['javascript.script', attachmentScript] }, [{ string: ['other', 'ignored'] }, { string: ['javascript.script', attachmentScript] }]]) {
+    const draft = { properties: { attachmentProperties: { type: 'JavaScript', properties: { entry } } } };
+    const original = JSON.stringify(draft);
+    const inspected = inspectChannel(draft);
+    assert.equal(inspected.source.attachment[0].detail, attachmentScript);
+    assert.equal(inspected.source.attachment[0].name, 'Attachment handler script');
+    assert.deepEqual(inspected.maps.find(m => m.key === 'attachmentSeen').writers, [inspected.source.attachment[0].id]);
+    assert.equal(JSON.stringify(draft), original);
+    draft.properties.attachmentProperties.type = 'None';
+    assert.deepEqual(inspectChannel(draft).source.attachment, []);
+    assert.deepEqual(inspectChannel(draft).maps, []);
+}
+for (const script of ['false', 'null', '123', 'return message;', '']) {
+    const inspected = inspectChannel({ properties: { attachmentProperties: { type: 'JavaScript', properties: { entry: { string: ['javascript.script', script] } } } } });
+    assert.deepEqual(inspected.source.attachment.map(el => el.detail), script === 'return message;' || script === '' ? [] : [script]);
+}
+for (const useScript of [false, true, 'false', 'true']) {
+    const inspected = inspectChannel({ sourceConnector: { transportName: 'Database Reader', properties: { useScript, aggregateResults: true, updateMode: 2, update: 'UPDATE work SET polled = 1' } } });
+    assert.equal(inspected.source.useScript, useScript === true || useScript === 'true');
+    assert.equal(inspected.source.aggregateResults, true);
+    assert.equal(inspected.source.postprocessMode, 2);
+}
 
 // A minimal channel never throws.
 const empty = inspectChannel({ name: 'x', sourceConnector: {}, destinationConnectors: '' });

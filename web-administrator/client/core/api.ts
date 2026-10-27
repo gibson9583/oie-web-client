@@ -754,31 +754,64 @@ const CHANNEL_CODE_FIELDS: Record<string, readonly string[]> = {
     'com.mirth.connect.plugins.javascriptrule.JavaScriptRule': ['script'],
     'com.mirth.connect.plugins.mapper.MapperStep': ['mapping', 'defaultValue'],
     'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep': ['messageSegment', 'mapping', 'defaultValue'],
-    'com.mirth.connect.plugins.xsltstep.XsltStep': ['sourceXml', 'resultVariable', 'template'],
+    'com.mirth.connect.plugins.xsltstep.XsltStep': ['sourceXml', 'resultVariable', 'template', 'customFactory'],
     'com.mirth.connect.plugins.rulebuilder.RuleBuilderRule': ['field'],
     'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep': ['field'],
     'com.mirth.connect.plugins.scriptfilestep.ExternalScriptStep': ['scriptPath'],
     'com.mirth.connect.plugins.scriptfilerule.ExternalScriptRule': ['scriptPath'],
     '#iterator-properties': ['target', 'indexVariable'],
     '#rule-values': ['string'],
+    '#replacement-pair': ['left', 'right'],
+    '#attachment-entry': ['string'],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2BatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.hl7v3.HL7V3BatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.xml.XMLBatchProperties': ['elementName', 'query', 'batchScript'],
+    'com.mirth.connect.plugins.datatypes.json.JSONBatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.edi.EDIBatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.ncpdp.NCPDPBatchProperties': ['batchScript'],
+    'com.mirth.connect.plugins.datatypes.delimited.DelimitedBatchProperties': ['batchMessageDelimiter', 'batchGroupingColumn', 'batchScript'],
+    'com.mirth.connect.plugins.datatypes.raw.RawBatchProperties': ['batchScript'],
+    // These are Java String fields in the shipped datatype property classes;
+    // checkbox/number properties and unknown plugin fields retain their types.
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2SerializationProperties': ['segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2DeserializationProperties': ['segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2ResponseGenerationProperties': [
+        'segmentDelimiter', 'successfulACKCode', 'successfulACKMessage', 'errorACKCode', 'errorACKMessage',
+        'rejectedACKCode', 'rejectedACKMessage', 'dateFormat'
+    ],
+    'com.mirth.connect.plugins.datatypes.hl7v2.HL7v2ResponseValidationProperties': ['successfulACKCode', 'errorACKCode', 'rejectedACKCode', 'originalIdMapVariable'],
+    'com.mirth.connect.plugins.datatypes.edi.EDISerializationProperties': ['segmentDelimiter', 'elementDelimiter', 'subelementDelimiter'],
+    'com.mirth.connect.plugins.datatypes.ncpdp.NCPDPSerializationProperties': ['fieldDelimiter', 'groupDelimiter', 'segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.ncpdp.NCPDPDeserializationProperties': ['fieldDelimiter', 'groupDelimiter', 'segmentDelimiter'],
+    'com.mirth.connect.plugins.datatypes.delimited.DelimitedSerializationProperties': ['columnDelimiter', 'recordDelimiter', 'quoteToken', 'quoteEscapeToken'],
+    'com.mirth.connect.plugins.datatypes.delimited.DelimitedDeserializationProperties': ['columnDelimiter', 'recordDelimiter', 'quoteToken', 'quoteEscapeToken'],
     'com.mirth.connect.connectors.js.JavaScriptReceiverProperties': ['script'],
     'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties': ['script'],
     'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties': ['select', 'update'],
     'com.mirth.connect.connectors.jdbc.DatabaseDispatcherProperties': ['query']
 };
 const channelTextField = (name: string, parent: string, owner: Json, includeCode: boolean) => {
-    const type = parent === 'properties' ? owner['@class'] : parent;
+    const type = ['properties', 'serializationProperties', 'deserializationProperties', 'batchProperties', 'responseGenerationProperties', 'responseValidationProperties'].includes(parent) ? owner['@class'] : parent;
+    if (parent === '#replacement-pair' && owner[name]?.['@class'] !== 'string') return false;
+    if (parent === '#attachment-entry' && (!Array.isArray(owner.string) || owner.string[0] !== 'javascript.script')) return false;
     return responseName(name, parent) || includeCode && Object.hasOwn(CHANNEL_CODE_FIELDS, type) && CHANNEL_CODE_FIELDS[type].includes(name);
 };
-const channelTextParent = (name: string, parent: string) =>
+const channelTextParent = (name: string, parent: string, owner: Json) =>
     name === 'properties' && ['com.mirth.connect.model.IteratorStep', 'com.mirth.connect.model.IteratorRule'].includes(parent) ? '#iterator-properties'
-        : name === 'values' && ['com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep'].includes(parent) ? '#rule-values' : name;
+        : name === 'values' && ['com.mirth.connect.plugins.rulebuilder.RuleBuilderRule', 'com.mirth.connect.plugins.destinationsetfilter.DestinationSetFilterStep'].includes(parent) ? '#rule-values'
+        : name === 'columnNames' && parent === 'serializationProperties' && owner['@class'] === 'com.mirth.connect.plugins.datatypes.delimited.DelimitedSerializationProperties' ? '#rule-values'
+        : name === 'replacements' && ['com.mirth.connect.plugins.mapper.MapperStep', 'com.mirth.connect.plugins.messagebuilder.MessageBuilderStep'].includes(parent) ? '#replacements'
+        : name === 'org.apache.commons.lang3.tuple.ImmutablePair' && parent === '#replacements' ? '#replacement-pair'
+        : name === 'properties' && parent === 'attachmentProperties' && owner.type === 'JavaScript' ? '#attachment-properties'
+        : name === 'entry' && parent === '#attachment-properties' ? '#attachment-entry' : name;
+const channelTextValue = (value: Json, parent: string) => parent === '#replacement-pair' ? value?.$ : value;
+const channelTextArray = (parent: string) => parent === '#rule-values' || parent === '#attachment-entry';
 
 const hasResponseName = (value: Json, test: (key: Json) => boolean, parent = '', includeCode = false): boolean => Array.isArray(value)
     ? value.some(item => hasResponseName(item, test, parent, includeCode))
     : !!value && typeof value === 'object' && Object.entries(value).some(([key, child]) =>
-        channelTextField(key, parent, value, includeCode) && (parent === '#rule-values' && Array.isArray(child) ? child.some(test) : test(child))
-        || hasResponseName(child, test, channelTextParent(key, parent), includeCode));
+        channelTextField(key, parent, value, includeCode) && (channelTextArray(parent) && Array.isArray(child) ? child.some(test) : test(channelTextValue(child, parent)))
+        || hasResponseName(child, test, channelTextParent(key, parent, value), includeCode));
 
 // Recover ambiguous text only, rejecting changed snapshots. Code recovery is
 // for a single channel read; listing channels must not issue one XML GET per row.
@@ -798,15 +831,16 @@ async function restoreResponseNames(channel: Json, includeCode = false): Promise
         for (const [key, child] of Object.entries(value)) {
             const nodes = Array.from(node.children).filter(item => item.tagName === key);
             if (channelTextField(key, parent, value, includeCode)) {
-                const many = parent === '#rule-values' && Array.isArray(child);
+                const many = channelTextArray(parent) && Array.isArray(child);
                 // JSON strings are already exact; recover ambiguous code only.
-                if (!responseName(key, parent) && (many ? child.every((item: Json) => typeof item === 'string') : typeof child === 'string')) continue;
+                if (!responseName(key, parent) && (many ? child.every((item: Json) => typeof item === 'string') : typeof channelTextValue(child, parent) === 'string')) continue;
                 if (nodes.length !== (many ? child.length : 1) || nodes.some(item => item.children.length || item.hasAttribute('reference'))) {
                     throw new Error(`Engine returned invalid ${responseName(key, parent) ? 'response name' : 'channel code'} XML.`);
                 }
-                value[key] = many ? nodes.map(item => item.textContent ?? '') : nodes[0].textContent ?? '';
+                const text = many ? nodes.map(item => item.textContent ?? '') : nodes[0].textContent ?? '';
+                value[key] = parent === '#replacement-pair' && child && typeof child === 'object' ? { ...child, $: text } : text;
             } else (Array.isArray(child) ? child : [child]).forEach((item, index) => {
-                if (nodes[index]) patch(item, nodes[index], channelTextParent(key, parent));
+                if (nodes[index]) patch(item, nodes[index], channelTextParent(key, parent, value));
             });
         }
     };

@@ -64,11 +64,23 @@ postprocessing, and the response to the sender. Queues, storage, pruning, and
 custom metadata follow. A destination chain map shows enabled destinations in
 their configured order. Chains process independently; destinations within a
 chain wait for the previous destination's initial processing. Queued sends can
-finish later. Disabled destinations remain available in a separate disclosure.
+finish later. Filtering and send errors allow the chain to continue; an error in
+the initial filter/transformer stops the remaining destinations in that chain.
+When **Include Filter/Transformer** is enabled, queued attempts repeat those
+steps. With an Always queue, the filter and transformer also start in the queue;
+with an On Failure queue, they run immediately only when an immediate send is
+attempted. Later destinations and the sender's response can proceed before
+queued work finishes. Disabled destinations remain available in a separate disclosure.
 The response section explains when a source queue answers before processing.
 
 Open a rule, step, or script row to read its configuration or numbered code.
 Iterator children retain their nesting; disabled rows show that they are skipped.
+Iterator rules also show whether any or all iterations must accept, and whether
+processing stops as soon as that result is determined.
+Mapper and Message Builder replacements are shown in order. XSLT steps include
+the source and stylesheet expressions, their literal map reads, and an enabled
+custom transformer factory. JavaScript attachment handlers appear before
+preprocessing, including their source and literal map references.
 Each destination has Filter, Transform, Send, and Handle the response substeps.
 Source, destination, and response outbound templates are included even when no
 transformer steps are configured. They initialize `tmp`, whose final value
@@ -77,6 +89,12 @@ supplies that transformer's output.
 Database Reader post-process scripts and SQL appear with their configured
 per-row or after-poll timing, including aggregated results. Enabled scripts
 also contribute to the map-key reference.
+SQL mode's **Once After All Results** update runs after each poll, including
+empty or failed polls. JavaScript aggregation applies to a returned `ResultSet`;
+a Java `List` dispatches rows individually and skips **Once After All Results**
+post-processing while **Aggregate Results** is enabled. Data-type JavaScript
+properties retain their source text, including primitive-looking values such as
+`false` and `null`.
 
 **Open in Summary**, **Open in Source**, **Open in Destinations**, and
 **Open in Scripts** return to the corresponding editable tab. The table of
