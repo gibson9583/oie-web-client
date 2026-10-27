@@ -1,0 +1,41 @@
+/* Preserve exact Java String script bodies by reading the engine XML map. */
+export const GLOBAL_SCRIPT_KEYS = ['Deploy', 'Undeploy', 'Preprocessor', 'Postprocessor'];
+
+export function parseGlobalScripts(xml: string, importing = false): Record<string, string> {
+    // XStream's JSON writer coerces script text such as "123", "false" and
+    // "null" into primitives. Read the same XML string map Swing receives.
+    const doc = new DOMParser().parseFromString(xml, 'text/xml');
+    const map = doc.documentElement;
+    const hasText = (element: Element) => Array.from(element.childNodes)
+        .some(node => (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) && !!node.textContent?.trim());
+    if (doc.querySelector('parsererror') || doc.doctype || map.tagName !== 'map' || hasText(map)) {
+        throw new Error('Expected a global scripts XML <map> export.');
+    }
+    const out: Record<string, string> = Object.create(null);
+    for (const entry of map.children) {
+        const pair = Array.from(entry.children);
+        if (entry.tagName !== 'entry' || entry.attributes.length > 0 || hasText(entry) || pair.length !== 2
+            || pair.some(node => node.tagName !== 'string' || node.attributes.length > 0 || node.children.length > 0)) {
+            throw new Error('Invalid global script entry.');
+        }
+        const key = pair[0].textContent ?? '';
+        if (Object.hasOwn(out, key)) throw new Error('Duplicate global script entry.');
+        out[key] = pair[1].textContent ?? '';
+    }
+    if (importing) {
+        // Frame.doImportGlobalScripts migrates legacy Swing exports before
+        // applying the supplied scripts to the existing editor draft.
+        for (const key of Object.keys(out)) out[key] = out[key].replaceAll('com.webreach.mirth', 'com.mirth.connect');
+        if (Object.hasOwn(out, 'Shutdown') && !Object.hasOwn(out, 'Undeploy')) {
+            out.Undeploy = out.Shutdown;
+            delete out.Shutdown;
+        }
+    }
+    if (Object.keys(out).some(key => !GLOBAL_SCRIPT_KEYS.some(scriptKey => scriptKey === key))) {
+        throw new Error('Unknown global script entry.');
+    }
+    if (!importing && GLOBAL_SCRIPT_KEYS.some(key => !Object.hasOwn(out, key))) {
+        throw new Error('The engine returned an incomplete global scripts map.');
+    }
+    return out;
+}

@@ -25,8 +25,9 @@ channel.
 
 ![Classic channel editor](https://raw.githubusercontent.com/wiki/gibson9583/oie-web-client/images/channel-editor.png)
 
-The classic editor exposes four tabs:
+The classic editor exposes five tabs:
 
+- **Inspector** — a read-only view of the working channel in execution order.
 - **Summary** — identity, enabled state, tags, data types, dependencies, storage,
   pruning, attachments, metadata, and description.
 - **Source** — source transport and its listener/polling/reader settings.
@@ -36,6 +37,68 @@ The classic editor exposes four tabs:
 
 Use **Validate Connector** before saving when the connector provides validation.
 Use **Set Data Types** and **Set Dependencies** to update their shared models.
+
+### Channel Inspector
+
+**Inspector** is the first tab. Opening a channel with **Edit Channel** still
+starts on **Summary**. Select **Inspect Channel** in Channels or the Dashboard
+channel context menu to open Inspector directly. Channels also provides an
+**Inspect Channel** task. These actions use the same channel-edit permission as
+**Edit Channel**.
+
+Inspector reads the current editor model, including unsaved changes, without
+saving or deploying it. Its context line identifies the editor revision and
+unsaved changes. Deployment status separately reports whether the channel is
+deployed and, when available, how many saved revisions it is ahead of deployment.
+Use **Refresh status** to read the status again. A failed or unavailable status
+read leaves the local inspection usable.
+
+The engine and shipped Web Support APIs do not expose the deployed channel
+configuration. Inspector therefore has no deployed-configuration selector or
+configuration diff; a matching saved revision does not mean unsaved editor
+changes are deployed.
+
+The story groups deploy and undeploy hooks, then follows receiving,
+preprocessing, source filtering, source transformation, destination processing,
+postprocessing, and the response to the sender. Queues, storage, pruning, and
+custom metadata follow. A destination chain map shows enabled destinations in
+their configured order. Chains process independently; destinations within a
+chain wait for the previous destination's initial processing. Queued sends can
+finish later. Disabled destinations remain available in a separate disclosure.
+The response section explains when a source queue answers before processing.
+
+Open a rule, step, or script row to read its configuration or numbered code.
+Iterator children retain their nesting; disabled rows show that they are skipped.
+Each destination has Filter, Transform, Send, and Handle the response substeps.
+**Open in Summary**, **Open in Source**, **Open in Destinations**, and
+**Open in Scripts** return to the corresponding editable tab. The table of
+contents follows the reading position on wider screens.
+
+- **Find in channel** highlights matching settings, rows, and map keys and opens
+  matching code rows. Press **Enter** to move through matches and **Escape** to
+  clear the search.
+- **Show all code**, **Expand all**, and **Collapse all** control disclosures.
+  Long scripts also provide **Show full script**.
+- Map-key buttons link to **Maps and variables**; its writer and reader links
+  return to the associated rows. The reference uses enabled steps and scripts.
+  Separate destination connector maps still hold separate values even when the
+  same key appears in both.
+- **Include global scripts** reads the latest saved global scripts when the
+  current user has permission. The context line distinguishes loading,
+  inclusion, exclusion, missing permission, and read failure. A failed read offers
+  **Retry global scripts**. Unsaved edits in the Global Scripts editor are not
+  included.
+- **Print** opens a document preview with all details and full scripts, including
+  disabled destinations. Use **Print / Save PDF** to print the document or save it
+  as a PDF. **Back to Inspector** returns without changing the editor disclosures
+  or channel configuration.
+
+This is a static explanation of configuration, not a runtime execution trace.
+Map references approximate literal keys, including Mapper variables and calls
+such as `$c('key')` and `channelMap.put('key', value)`. Dynamic keys and code
+template internals are not resolved. A missing writer does not prove a value is
+absent, and routing code can change which destinations an individual message
+reaches.
 
 ## Filters and transformers
 

@@ -3,7 +3,7 @@ import { DEFAULT_FIXTURES } from './fixtures.js';
 // These engine reads negotiate XML to preserve Java String fields that the
 // engine's JSON bridge treats as primitives. Keep JSON fixtures available for
 // their other consumers; individual wire-contract tests can provide raw XML.
-function fixtureXml(tag: string, value: any): string {
+export function fixtureXml(tag: string, value: any): string {
     if (Array.isArray(value)) return value.map(item => fixtureXml(tag, item)).join('');
     const escape = (text: any) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\r]/g, c => `&#x${c.charCodeAt(0).toString(16)};`);

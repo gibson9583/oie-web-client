@@ -12,6 +12,7 @@ import { toast, confirmDialog, saveFile, pickFile, modal, h } from '@oie/web-ui'
 import api from '@oie/web-api';
 import * as store from '../../core/store.js';
 import { validateScript } from '../../core/serialize.js';
+import { parseGlobalScripts as parseScripts } from '../../core/global-scripts.js';
 import { captureEngineSession } from '../../core/engine-fetch.js';
 import { registerUnsavedCheck } from '../../core/unsaved.js';
 import { ViewTasks } from '../mount.jsx';
@@ -27,44 +28,6 @@ const SCRIPTS = [
     { key: 'Postprocessor', label: 'Postprocessor', defaultValue: '// This script executes once after a message has been processed\n// This script applies across all channels\n// Responses returned from here will be stored as "Postprocessor" in the response map\n// You have access to "response", if returned from the channel postprocessor\nreturn;' }
 ];
 
-function parseScripts(xml: string, importing = false): Record<string, string> {
-    // XStream's JSON writer coerces script text such as "123", "false" and
-    // "null" into primitives. Read the same XML string map Swing receives.
-    const doc = new DOMParser().parseFromString(xml, 'text/xml');
-    const map = doc.documentElement;
-    const hasText = (element: Element) => Array.from(element.childNodes)
-        .some(node => (node.nodeType === Node.TEXT_NODE || node.nodeType === Node.CDATA_SECTION_NODE) && !!node.textContent?.trim());
-    if (doc.querySelector('parsererror') || doc.doctype || map.tagName !== 'map' || hasText(map)) {
-        throw new Error('Expected a global scripts XML <map> export.');
-    }
-    const out: Record<string, string> = Object.create(null);
-    for (const entry of map.children) {
-        const pair = Array.from(entry.children);
-        if (entry.tagName !== 'entry' || entry.attributes.length > 0 || hasText(entry) || pair.length !== 2
-            || pair.some(node => node.tagName !== 'string' || node.attributes.length > 0 || node.children.length > 0)) {
-            throw new Error('Invalid global script entry.');
-        }
-        const key = pair[0].textContent ?? '';
-        if (Object.hasOwn(out, key)) throw new Error('Duplicate global script entry.');
-        out[key] = pair[1].textContent ?? '';
-    }
-    if (importing) {
-        // Frame.doImportGlobalScripts migrates legacy Swing exports before
-        // applying the supplied scripts to the existing editor draft.
-        for (const key of Object.keys(out)) out[key] = out[key].replaceAll('com.webreach.mirth', 'com.mirth.connect');
-        if (Object.hasOwn(out, 'Shutdown') && !Object.hasOwn(out, 'Undeploy')) {
-            out.Undeploy = out.Shutdown;
-            delete out.Shutdown;
-        }
-    }
-    if (Object.keys(out).some(key => !SCRIPTS.some(def => def.key === key))) {
-        throw new Error('Unknown global script entry.');
-    }
-    if (!importing && SCRIPTS.some(def => !Object.hasOwn(out, def.key))) {
-        throw new Error('The engine returned an incomplete global scripts map.');
-    }
-    return out;
-}
 
 export function GlobalScriptsView() {
     const [active, setActive] = useState(0);
