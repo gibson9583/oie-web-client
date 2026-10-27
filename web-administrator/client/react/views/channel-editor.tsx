@@ -54,6 +54,7 @@ import { DataTypePropertiesEditor } from '../../datatypes/props-editor.jsx';
 import { platform } from '@oie/web-shell';
 import { ViewTasks, mountReact } from '../mount.jsx';
 import { DomTabs } from '../dom-tabs.jsx';
+import { ChannelInspectorTab } from './channel-inspector.jsx';
 import { PluginSlot } from '../plugin-slot.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
@@ -2565,7 +2566,7 @@ function ScriptsTab({ channel, markDirty }: any) {
 
 /* ---- the editor body ---------------------------------------------------------- */
 
-function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
+function EditorBody({ params, query, onTasksChange, apiRef, returning }: any) {
     /* ---- one-time setup: working model + save baseline ---- */
     const setupRef = useRef<any>(null);
     if (!setupRef.current) {
@@ -2594,9 +2595,10 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
         librarySelection: channelDependencyState(channel).libraries.current?.checked
     });
 
-    const [, bumpRev] = useReducer((x: any) => x + 1, 0);
-    const [activeTab, setActiveTabState] = useState('Summary');
-    const activeTabRef = useRef('Summary');
+    const [editorRevision, bumpRev] = useReducer((x: any) => x + 1, 0);
+    const initialTab = query && query.tab === 'Inspector' ? 'Inspector' : 'Summary';
+    const [activeTab, setActiveTabState] = useState(initialTab);
+    const activeTabRef = useRef(initialTab);
     const mountedRef = useRef(true);
     const sourceImportingRef = useRef(false);
     useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
@@ -2945,12 +2947,14 @@ function EditorBody({ params, onTasksChange, apiRef, returning }: any) {
     /* ---- tabs ---- */
 
     const pluginTabs = platform.channelTabs();
-    const tabLabels = ['Summary', 'Source', 'Destinations', 'Scripts', ...pluginTabs.map(d => d.label)];
-    const fill = activeTab === 'Destinations' || activeTab === 'Scripts';
+    const tabLabels = ['Inspector', 'Summary', 'Source', 'Destinations', 'Scripts', ...pluginTabs.map(d => d.label)];
+    const fill = activeTab === 'Destinations' || activeTab === 'Scripts' || activeTab === 'Inspector';
 
 
     let body: any = null;
-    if (activeTab === 'Summary') {
+    if (activeTab === 'Inspector') {
+        body = <ChannelInspectorTab key="Inspector" channel={channel} revision={editorRevision} dirty={isDirty()} isNew={setup.isNew} openTab={setActiveTab} />;
+    } else if (activeTab === 'Summary') {
         body = <SummaryTab key="Summary" channel={channel} version={version} isNewRef={isNewRef}
             tagState={tagState} markDirty={markDirty} />;
     } else if (activeTab === 'Source') {

@@ -31,6 +31,7 @@ import { mountReact, ViewTasks } from '../mount.jsx';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
 import { RailPane, TaskButton, useSideCollapse, CollapsedSideStrip, SideCollapseButton } from '../ui.jsx';
 import { Icon } from '../bridges.jsx';
+import { connectorIcon } from '../../core/icons.js';
 import { useWizardModel, useWizardSteps, useLeaveGuard, WizardStepper, WizardHeader } from './wizard-frame.jsx';
 import { createEmbeddedEditor } from './filter-transformer.jsx';
 import {
@@ -48,18 +49,6 @@ const STEPS = ['Basics', 'Dependencies', 'Channel Options', 'Source', 'Destinati
 
 /* ---- small model helpers ------------------------------------------------------ */
 
-function connectorIcon(name: any) {
-    const n = String(name || '').toLowerCase();
-    if (n.includes('channel')) return 'channels';
-    if (n.includes('http') || n.includes('web service')) return 'globe';
-    if (n.includes('tcp') || n.includes('mllp')) return 'server';
-    if (n.includes('database')) return 'db';
-    if (n.includes('file') || n.includes('document')) return 'folder';
-    if (n.includes('javascript')) return 'code';
-    if (n.includes('smtp') || n.includes('jms') || n.includes('mail')) return 'mail';
-    if (n.includes('dicom')) return 'file';
-    return 'puzzle';
-}
 
 /** Steps/rules configured on a connector sub-editor (classic editor parity:
     the task rail's "Edit Filter (2)" labels use the same count). */
