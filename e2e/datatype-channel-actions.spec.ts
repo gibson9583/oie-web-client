@@ -67,6 +67,11 @@ async function setup(page: Page, channels: any[] = [], overrides: Record<string,
     const events: string[] = [];
     await mockEngine(page, {
         'GET /channels': () => ({ list: { channel: channels } }),
+        'GET /channels/*': (request: any) => {
+            const id = decodeURIComponent(new URL(request.url()).pathname.split('/').at(-1)!);
+            const channel = channels.find(channel => channel.id === id);
+            return channel ? { channel } : { __status: 404, body: { error: 'Channel not found' } };
+        },
         'GET /codeTemplateLibraries': { list: { codeTemplateLibrary: [] } },
         'POST /codeTemplateLibraries/_bulkUpdate': () => {
             events.push('library');
