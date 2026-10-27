@@ -4,6 +4,7 @@
  */
 
 import { elementsToArray, elementTypeLabel, destinationsOf } from './oie.js';
+import { mappingEntries, toDisplayString } from './xstream.js';
 import type { Element } from './oie.js';
 import type { OieObject } from './wire-types.js';
 
@@ -42,6 +43,8 @@ export interface InspectedDestination {
     settings: Fact[];
     queue: Fact[];
     queued: boolean;
+    sendFirst: boolean;
+    filterTransformerInQueue: boolean;
     filter: InspectedElement[];
     transformer: InspectedElement[];
     outboundTemplate: InspectedElement[];
@@ -68,10 +71,12 @@ export interface ChannelInspection {
         inboundProperties: OieObject | null;
         outboundProperties: OieObject | null;
         poll: InspectedElement[];
+        attachment: InspectedElement[];
         outboundTemplate: InspectedElement[];
         postprocess: InspectedElement[];
         /** Database Reader: 1 = never, 2 = once after all results, 3 = each row. */
         postprocessMode: number;
+        useScript: boolean;
         aggregateResults: boolean;
         processBatch: boolean;
         firstResponse: boolean;
@@ -172,6 +177,21 @@ function condition(el: any): string {
     return `${text(el.field)} ${CONDITIONS[text(el.condition)] ?? text(el.condition).toLowerCase()}${values.length ? ' ' + values.join(' or ') : ''}`.trim();
 }
 
+function replacementPairs(el: Element): Array<[string, string]> {
+    const replacements = el.replacements;
+    if (!replacements || typeof replacements !== 'object') return [];
+    // Native XStream uses an ImmutablePair class wrapper; imported/editor
+    // models can carry the pair fields directly.
+    const rows = replacements['org.apache.commons.lang3.tuple.ImmutablePair'] ?? replacements.entry ?? replacements;
+    return (Array.isArray(rows) ? rows : [rows]).flatMap(p => {
+        if (!p || typeof p !== 'object') return [];
+        const pair = Array.isArray(p) ? p : 'left' in p ? [p.left, p.right]
+            : 'key' in p ? [p.key, p.value] : 'first' in p ? [p.first, p.second]
+                : Array.isArray(p.string) ? p.string : null;
+        return pair ? [[toDisplayString(pair[0]), toDisplayString(pair[1])] as [string, string]] : [];
+    });
+}
+
 function describe(el: Element): { detail: string; isScript: boolean; reads: MapKey[]; writes: MapKey[]; routing: boolean } {
     const type = el.__type;
     const label = elementTypeLabel(type);
@@ -190,18 +210,29 @@ function describe(el: Element): { detail: string; isScript: boolean; reads: MapK
     } else if (label === 'Mapper') {
         const map = SCOPE_MAP[text(el.scope)] ?? 'channelMap';
         const variable = text(el.variable);
+        const replacements = replacementPairs(el);
         detail = `${variable} ← ${text(el.mapping)}` + (text(el.defaultValue) ? `\nDefault: ${text(el.defaultValue)}` : '') + `\nMap: ${map}`;
-        if (variable) writes = [{ map, key: variable }];
-        reads = mapKeysIn([el.mapping, el.defaultValue].join('\n')).reads;
+        if (replacements.length) detail += '\nReplacements (in order):\n' + replacements.map(([pattern, replacement], i) => `${i + 1}. ${pattern} → ${replacement}`).join('\n');
+        ({ reads, writes } = mapKeysIn([el.mapping, el.defaultValue, ...replacements.flat()].join('\n')));
+        if (variable) writes = unique([{ map, key: variable }, ...writes]);
     } else if (label === 'Message Builder') {
+        const replacements = replacementPairs(el);
         detail = `${text(el.messageSegment)} ← ${text(el.mapping)}` + (text(el.defaultValue) ? `\nDefault: ${text(el.defaultValue)}` : '');
-        reads = mapKeysIn([el.mapping, el.defaultValue].join('\n')).reads;
+        if (replacements.length) detail += '\nReplacements (in order):\n' + replacements.map(([pattern, replacement], i) => `${i + 1}. ${pattern} → ${replacement}`).join('\n');
+        ({ reads, writes } = mapKeysIn([el.messageSegment, el.mapping, el.defaultValue, ...replacements.flat()].join('\n')));
     } else if (label === 'Rule Builder') {
         detail = condition(el);
         reads = mapKeysIn([el.field, ...list(el.values)].join('\n')).reads;
     } else if (label === 'Iterator') {
         const p = el.properties || {};
         detail = `For each ${text(p.target)} · index variable ${text(p.indexVariable)}`;
+        if (type === 'com.mirth.connect.model.IteratorRule') {
+            const all = truthy(p.intersectIterations);
+            // New rules serialize breakEarly=true; omitted imported flags are false.
+            const early = truthy(p.breakEarly);
+            detail += `\nAccept if: ${all ? 'All iterations pass' : 'Any iteration passes'}`;
+            detail += `\nStop early: ${early ? `On first ${all ? 'failing' : 'passing'} iteration` : 'No · evaluate every iteration'}`;
+        }
         reads = mapKeysIn(p.target).reads;
     } else if (label === 'Destination Set Filter') {
         const ids = list(el.metaDataIds).map(text);
@@ -210,8 +241,11 @@ function describe(el: Element): { detail: string; isScript: boolean; reads: MapK
         reads = mapKeysIn([el.field, ...list(el.values)].join('\n')).reads;
     } else if (label === 'XSLT Step') {
         const variable = text(el.resultVariable);
-        detail = `Result variable: ${variable}\n\n${text(el.template)}`;
-        if (variable) writes = [{ map: 'channelMap', key: variable }];
+        detail = `Source XML: ${text(el.sourceXml)}\nResult variable: ${variable}`;
+        if (truthy(el.useCustomFactory) && text(el.customFactory)) detail += `\nCustom factory: ${text(el.customFactory)}`;
+        detail += `\n\nTemplate:\n${text(el.template)}`;
+        ({ reads, writes } = mapKeysIn([el.sourceXml, el.template].join('\n')));
+        if (variable) writes = unique([{ map: 'channelMap', key: variable }, ...writes]);
     } else if (label === 'External Script') {
         detail = `Script file: ${text(el.scriptPath)}`;
     } else {
@@ -359,18 +393,21 @@ function seconds(ms: unknown): string {
     return Number.isFinite(n) ? (n % 1000 === 0 ? `${n / 1000} s` : `${n} ms`) : text(ms);
 }
 
-function queueOf(d: any): { facts: Fact[]; queued: boolean } {
+function queueOf(d: any): { facts: Fact[]; queued: boolean; sendFirst: boolean; filterTransformerInQueue: boolean } {
     const q = d.properties?.destinationConnectorProperties || {};
     const queued = truthy(q.queueEnabled);
-    const facts: Fact[] = [['Queue', queued ? (truthy(q.sendFirst) ? 'On failure' : 'Always') : 'Never']];
+    const sendFirst = truthy(q.sendFirst);
+    const filterTransformerInQueue = queued && truthy(q.regenerateTemplate) && truthy(q.includeFilterTransformer);
+    const facts: Fact[] = [['Queue', queued ? (sendFirst ? 'On failure' : 'Always') : 'Never']];
     facts.push(['Retry count', text(q.retryCount ?? 0)]);
     if (queued || Number(q.retryCount) > 0) facts.push(['Retry interval', seconds(q.retryIntervalMillis)]);
     if (queued) {
         facts.push(['Queue threads', text(q.threadCount ?? 1)]);
         facts.push(['Rotate', truthy(q.rotate) ? 'Yes' : 'No']);
         facts.push(['Regenerate template', truthy(q.regenerateTemplate) ? 'Yes' : 'No']);
+        facts.push(['Include filter/transformer', filterTransformerInQueue ? 'Yes' : 'No']);
     }
-    return { facts, queued };
+    return { facts, queued, sendFirst, filterTransformerInQueue };
 }
 
 /* ---- channel -------------------------------------------------------------------- */
@@ -396,7 +433,7 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
         const metaDataId = Number(d.metaDataId);
         const label = `D${metaDataId}`;
         const owner = `${label} ${text(d.name)}`;
-        const { facts, queued } = queueOf(d);
+        const { facts, queued, sendFirst, filterTransformerInQueue } = queueOf(d);
         const send = [
             ...(d.transportName === 'JavaScript Writer' ? els.fromScript('Writer script', p.script, owner) : []),
             ...(d.transportName === 'Database Writer' && truthy(p.useScript) ? els.fromScript('Database script', p.query, owner) : [])
@@ -409,7 +446,7 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
             waitForPrevious: truthy(d.waitForPrevious),
             endpoint: endpointOf(text(d.transportName), p),
             settings: settingsOf(text(d.transportName), p),
-            queue: facts, queued,
+            queue: facts, queued, sendFirst, filterTransformerInQueue,
             filter: els.fromElements(d.filter?.elements, `${owner} filter`, true),
             transformer: els.fromElements(d.transformer?.elements, `${owner} transformer`, false),
             response: els.fromElements(d.responseTransformer?.elements, `${owner} response`, false),
@@ -469,7 +506,10 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
             inboundProperties: source.transformer?.inboundProperties ?? null,
             outboundProperties: source.transformer?.outboundProperties ?? null,
             outboundTemplate: els.fromText('Outbound template', source.transformer?.outboundTemplate, 'Source output template', 'template'),
+            attachment: props.attachmentProperties?.type === 'JavaScript'
+                ? els.fromScript('Attachment handler script', mappingEntries(props.attachmentProperties.properties).find(([key]) => key === 'javascript.script')?.[1], 'Attachments') : [],
             postprocessMode,
+            useScript: truthy(sp.useScript),
             aggregateResults: truthy(sp.aggregateResults),
             processBatch: truthy(scp.processBatch),
             firstResponse: truthy(scp.firstResponse),
