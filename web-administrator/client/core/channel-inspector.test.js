@@ -76,9 +76,10 @@ assert.equal(r.source.endpoint, '0.0.0.0:6663');
 assert.deepEqual(r.source.settings.find(f => f[0] === 'Source queue'), ['Source queue', 'Off · respond after processing']);
 assert.deepEqual(r.source.settings.find(f => f[0] === 'Transmission mode'), ['Transmission mode', 'MLLP']);
 
-// Default scripts are not reported; real code is.
-assert.deepEqual(r.deploy.map(e => e.name), ['Undeploy script']);
-assert.deepEqual(r.preprocessor, []);
+// Configured source remains inspectable, including default script bodies.
+assert.deepEqual(r.deploy.map(e => e.name), ['Deploy script', 'Undeploy script']);
+assert.equal(r.deploy[0].detail, channel.deployScript);
+assert.deepEqual(r.preprocessor.map(e => e.detail), [channel.preprocessingScript]);
 assert.equal(r.postprocessor.length, 1);
 
 // Rules: operators and Rule Builder text.
@@ -128,9 +129,60 @@ assert.deepEqual(mapKeysIn("$c('a'); $c(\"b\", 1); channelMap.put('c', 2); $gc('
     reads: [{ map: 'globalMap', key: 'e' }, { map: 'channelMap', key: 'a' }, { map: 'globalChannelMap', key: 'd' }],
     writes: [{ map: 'channelMap', key: 'c' }, { map: 'channelMap', key: 'b' }, { map: 'connectorMap', key: 'f' }]
 });
-assert.equal(hasCode('// c\n/* d */\n  return;  '), false);
-assert.equal(hasCode('return message;'), false);
+assert.equal(hasCode('// c\n/* d */\n  return;  '), true);
+assert.equal(hasCode('return message;'), true);
 assert.equal(hasCode("logger.info('x');\nreturn;"), true);
+for (const script of [undefined, null]) assert.equal(hasCode(script), false);
+for (const script of ['', ' \t\r\n']) assert.equal(hasCode(script), true);
+
+// A bare return and a line break after return change the message in the shipped
+// preprocessor/attachment engine paths, as do empty and whitespace-only bodies.
+// Preserve configured source in every context without inferring a no-op.
+function allScriptContexts(script) {
+    return {
+        globals: { Deploy: script, Undeploy: script, Preprocessor: script, Postprocessor: script },
+        draft: {
+            deployScript: script, undeployScript: script, preprocessingScript: script, postprocessingScript: script,
+            properties: { attachmentProperties: { type: 'JavaScript', properties: script == null ? null : { entry: { string: ['javascript.script', script] } } } },
+            sourceConnector: { transportName: 'Database Reader', properties: { useScript: true, select: script, updateMode: 2, update: script } },
+            destinationConnectors: { connector: [
+                destination(1, 'JavaScript', { transportName: 'JavaScript Writer', properties: { script } }),
+                destination(2, 'Database', { transportName: 'Database Writer', properties: { useScript: true, query: script } }),
+                destination(3, 'Disabled JavaScript', { enabled: false, transportName: 'JavaScript Writer', properties: { script } }),
+                destination(4, 'Disabled database', { enabled: 'false', transportName: 'Database Writer', properties: { useScript: true, query: script } })
+            ] }
+        }
+    };
+}
+for (const script of [
+    'return;', 'return\nmessage;', 'return\r\nmessage;', 'return\u2028message;', 'return\u2029message;',
+    'return/*\n*/message;', 'return// comment\nmessage;', ' \nreturn message;\r\n ',
+    '// default comment\nreturn;', "/* $g('commentOnly') */", '// comment only',
+    false, 0, 'null', undefined, null, '', ' \t\r\n'
+]) {
+    const { draft, globals } = allScriptContexts(script);
+    const original = structuredClone({ draft, globals });
+    const inspected = inspectChannel(draft, globals);
+    const rows = [...inspected.deploy, ...inspected.preprocessor, ...inspected.postprocessor,
+        ...inspected.source.attachment, ...inspected.source.poll, ...inspected.source.postprocess,
+        ...inspected.destinations.flatMap(d => d.send)];
+    const present = script != null;
+    assert.equal(rows.length, present ? 15 : 0);
+    for (const row of rows) {
+        assert.equal(row.detail, String(script));
+        assert.equal(row.isScript, true);
+    }
+    const reader = inspectChannel({ sourceConnector: { transportName: 'JavaScript Reader', properties: { script } } });
+    assert.deepEqual(reader.source.poll.map(el => el.detail), present ? [String(script)] : []);
+    assert.deepEqual(inspected.maps, [], 'comment text must not create active map references');
+    assert.deepEqual({ draft, globals }, original);
+    assert.deepEqual(inspectChannel(draft, globals), inspected);
+}
+const withScriptReferences = allScriptContexts("/* $g('commentOnly') */\n$g('read'); $g('write', 1); return;");
+const referencedScripts = inspectChannel(withScriptReferences.draft, withScriptReferences.globals);
+assert.deepEqual(referencedScripts.maps.map(m => [m.key, m.readers.length, m.writers.length]), [['read', 13, 0], ['write', 0, 13]]);
+const disabledScriptIds = referencedScripts.destinations.filter(d => !d.enabled).flatMap(d => d.send.map(el => el.id));
+assert.equal(referencedScripts.maps.some(m => [...m.readers, ...m.writers].some(id => disabledScriptIds.includes(id))), false);
 
 // The API restores these Java String bodies from XML before inspection.
 // Empty source remains distinct from the literal "null".
@@ -145,7 +197,7 @@ for (const type of [JS_STEP, 'com.mirth.connect.plugins.javascriptrule.JavaScrip
     }
 }
 assert.equal(inspectChannel({ deployScript: 'null' }).deploy[0].detail, 'null');
-assert.equal(inspectChannel({ deployScript: '' }).deploy.length, 0);
+assert.equal(inspectChannel({ deployScript: '' }).deploy[0].detail, '');
 
 // JSON imports follow the engine's primitive-to-String conversion, without
 // inventing "null" source for an empty imported script.
@@ -251,8 +303,8 @@ const withGlobals = inspectChannel(channel, {
     Deploy: "$g('deploy', true);", Undeploy: "$g('undeploy', true);",
     Preprocessor: "$g('incoming', message); return message;", Postprocessor: "$g('outgoing', 1);"
 });
-assert.deepEqual(withGlobals.deploy.map(e => e.name), ['Global deploy script', 'Undeploy script', 'Global undeploy script']);
-assert.deepEqual(withGlobals.preprocessor.map(e => e.name), ['Global preprocessor']);
+assert.deepEqual(withGlobals.deploy.map(e => e.name), ['Global deploy script', 'Deploy script', 'Undeploy script', 'Global undeploy script']);
+assert.deepEqual(withGlobals.preprocessor.map(e => e.name), ['Global preprocessor', 'Preprocessor']);
 assert.deepEqual(withGlobals.postprocessor.map(e => e.name), ['Postprocessor', 'Global postprocessor']);
 assert.ok(withGlobals.maps.find(m => m.map === 'globalMap' && m.key === 'incoming'));
 assert.deepEqual(withGlobals.sourceTransformer.map(e => e.id), r.sourceTransformer.map(e => e.id), 'global loading cannot move the open channel rows');
@@ -410,7 +462,7 @@ for (const entry of [{ string: ['javascript.script', attachmentScript] }, [{ str
 }
 for (const script of ['false', 'null', '123', 'return message;', '']) {
     const inspected = inspectChannel({ properties: { attachmentProperties: { type: 'JavaScript', properties: { entry: { string: ['javascript.script', script] } } } } });
-    assert.deepEqual(inspected.source.attachment.map(el => el.detail), script === 'return message;' || script === '' ? [] : [script]);
+    assert.deepEqual(inspected.source.attachment.map(el => el.detail), [script]);
 }
 for (const useScript of [false, true, 'false', 'true']) {
     const inspected = inspectChannel({ sourceConnector: { transportName: 'Database Reader', properties: { useScript, aggregateResults: true, updateMode: 2, update: 'UPDATE work SET polled = 1' } } });

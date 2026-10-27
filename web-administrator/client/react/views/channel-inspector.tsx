@@ -529,7 +529,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
     msg({ id: 'ci-preprocess', title: 'Preprocess the raw message', scope: 'Scripts', tab: 'Scripts', empty: !r.preprocessor.length,
         body: r.preprocessor.length
             ? <>{lead('Runs on the raw text before it is parsed, global first and then channel. The returned string becomes the message.')}<Elements list={r.preprocessor} kind="script" ctx={ctx} /></>
-            : lead('No preprocessor code. The raw message is not changed. A global preprocessor can still run.') });
+            : lead('No preprocessor source is included here. A global preprocessor can still run.') });
 
     msg({ id: 'ci-filter', title: 'Accept or filter the message', scope: 'Source filter', tab: 'Source', empty: !r.sourceFilter.length,
         body: r.sourceFilter.length

@@ -30,10 +30,15 @@ async function open(page: any, prepare?: (channel: any) => void) {
         splitType: 'JavaScript', batchScript: null,
     };
     prepare?.(channel);
-    const initial = structuredClone(channel);
     const writes: any[] = [];
     await mockEngine(page, {
-        'GET /channels/response-types': () => ({ channel }),
+        'GET /channels/response-types': (req: any) => {
+            if (req.headers().accept?.includes('application/xml')) return { channel };
+            const wire = structuredClone(channel);
+            const batch = wire.sourceConnector.transformer.inboundProperties.batchProperties;
+            if (batch?.batchScript === 'null') batch.batchScript = null;
+            return { channel: wire };
+        },
         'PUT /channels/response-types': (req: any) => {
             channel = JSON.parse(req.postData()).channel;
             writes.push(structuredClone(channel));
@@ -41,7 +46,16 @@ async function open(page: any, prepare?: (channel: any) => void) {
         },
     });
     await page.goto('/channels/response-types/edit');
-    await page.getByRole('button', { name: 'Set Data Types', exact: true }).click();
+    const dataTypesButton = page.getByRole('button', { name: 'Set Data Types', exact: true });
+    await expect(dataTypesButton).toBeVisible();
+    // Compare bulk edits with the canonical model the editor reads, including
+    // exact XML text, rather than the JSON bridge's ambiguous null values.
+    const initial = await page.evaluate(async () => {
+        const pkg = '@oie/web-api';
+        const { default: api } = await import(pkg);
+        return api.channels.get('response-types');
+    });
+    await dataTypesButton.click();
     const dialog = page.getByRole('dialog', { name: 'Set Data Types', exact: true });
     const row = (name: string) => dialog.locator('tbody tr').filter({ has: page.getByRole('cell', { name, exact: true }) });
     const save = async () => {
@@ -91,8 +105,11 @@ test('destination outbound aligns only its own response types', async ({ page })
     expect(saved.destinationConnectors.connector[1].responseTransformer).toEqual(initial.destinationConnectors.connector[1].responseTransformer);
 });
 
-test('bulk response selection exposes validation and leaves unselected transformers intact', async ({ page }) => {
-    const { initial, dialog, row, save } = await open(page);
+for (const batchScript of [null, 'null']) test(`bulk response selection preserves unselected transformers with ${batchScript === null ? 'empty' : 'literal null'} batch source`, async ({ page }) => {
+    const { initial, dialog, row, save } = await open(page, channel => {
+        channel.sourceConnector.transformer.inboundProperties.batchProperties.batchScript = batchScript;
+    });
+    expect(initial.sourceConnector.transformer.inboundProperties.batchProperties.batchScript).toBe(batchScript ?? '');
     await dialog.getByRole('radio', { name: 'Bulk Edit', exact: true }).check();
     await expect(dialog.locator('tbody input[type=checkbox]:checked')).toHaveCount(0);
     for (const name of ['Primary — Response', 'Secondary — Response']) await row(name).getByRole('checkbox').check();

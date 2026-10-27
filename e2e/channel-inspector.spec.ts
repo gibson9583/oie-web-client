@@ -74,14 +74,20 @@ test.describe('Channel Inspector', () => {
         await expect(page.getByRole('tab', { name: 'Inspector', exact: true })).toHaveAttribute('aria-selected', 'true');
 
         await expect(page.getByText('Normalizes lab results for clinical storage and EHR delivery.')).toBeVisible();
+        await expect(page.getByText('Includes the latest saved global scripts.')).toBeVisible();
         const sections = page.locator('.ci-section-head .ci-section-title');
         await expect(sections).toHaveText([
-            'Receive HL7 v2.x over TCP Listener', 'Preprocess the raw message', 'Accept or filter the message',
+            'Prepare the channel', 'Receive HL7 v2.x over TCP Listener', 'Preprocess the raw message', 'Accept or filter the message',
             'Transform the HL7 v2.x message', 'Send to destinations', 'Postprocess', 'Respond to the sender',
             'Retry queued sends', 'Store and prune messages', 'Maps and variables'
         ]);
-        // Default scripts count as no code.
-        await expect(page.locator('#ci-preprocess')).toHaveClass(/empty/);
+        // Default hooks are still configured source, including their comments.
+        await expect(page.locator('#ci-preprocess')).not.toHaveClass(/empty/);
+        await expect(page.locator('#ci-deploy .ci-name')).toHaveText(['Global deploy script', 'Deploy script', 'Undeploy script', 'Global undeploy script']);
+        await page.getByRole('button', { name: 'Expand all', exact: true }).click();
+        await expect(page.locator('#ci-preprocess .ci-code .lc')).toHaveText(['return message;', ...CHANNEL.preprocessingScript.split('\n')]);
+        await expect(page.locator('#ci-deploy .ci-code .lc')).toHaveText(['return;', ...CHANNEL.deployScript.split('\n'), ...CHANNEL.undeployScript.split('\n'), 'return;']);
+        await expect(page.locator('#ci-postprocess .ci-code .lc')).toHaveText([...CHANNEL.postprocessingScript.split('\n'), 'return;']);
 
         // Chains follow waitForPrevious; disabled destinations are separate.
         const map = page.getByLabel('Chain map');
@@ -304,11 +310,12 @@ test.describe('Channel Inspector', () => {
         wire.deployScript = wire.undeployScript = null;
         await mockEngine(page, { [`GET /channels/${ID}`]: (request: any) => request.headers().accept?.includes('application/xml') ? xml('channel', channel) : { channel: wire } });
         await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+        await page.getByLabel('Include global scripts').uncheck();
         await page.getByRole('button', { name: 'Expand all' }).click();
         await expect(page.locator('#ci-filter .ci-code .lc')).toHaveText(values);
         await expect(page.locator('#ci-transform .ci-code .lc')).toHaveText(values);
-        await expect(page.locator('#ci-deploy .ci-name')).toHaveText(['Deploy script']);
-        await expect(page.locator('#ci-deploy .ci-code .lc')).toHaveText(['null']);
+        await expect(page.locator('#ci-deploy .ci-name')).toHaveText(['Deploy script', 'Undeploy script']);
+        await expect(page.locator('#ci-deploy .ci-code .lc')).toHaveText(['null', '']);
         await page.getByRole('button', { name: 'Print', exact: true }).click();
         const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
         await expect(preview.locator('section[aria-labelledby="print-ci-filter"] .ci-code .lc')).toHaveText(values);
@@ -334,7 +341,10 @@ test.describe('Channel Inspector', () => {
         await page.goto(`/channels/${ID}/edit?tab=Inspector`);
         await expect(page.locator('#ci-key-channelMap\\.0')).toContainText('Zero key');
         await expect(page.locator('#ci-key-channelMap\\.0')).not.toContainText('No writer');
-        await expect(page.locator('#ci-postprocess')).toHaveClass(/empty/);
+        await expect(page.locator('#ci-postprocess')).not.toHaveClass(/empty/);
+        const globalPostprocess = page.locator('#ci-postprocess .ci-item')
+            .filter({ has: page.locator('.ci-name', { hasText: /^Global postprocessor$/ }) });
+        await expect(globalPostprocess.locator('.ci-code .lc')).toHaveText('return;');
         expect(xmlReads).toBe(1);
     });
 
@@ -631,6 +641,92 @@ test.describe('Channel Inspector', () => {
         expect(writes).toEqual([]);
     });
 
+    // Exact source strings and attachment property shape from saved OIE 4.6.0
+    // channels in PR 140's live-defaults captures (d4b78e4 re-review) and its
+    // blank-runtime follow-up. Live evidence establishes execution semantics;
+    // these tests verify inspection, including JSON null recovered from XML.
+    for (const sample of [
+        { name: 'preprocessor control', script: 'return message;', section: 'ci-preprocess', row: 'Preprocessor' },
+        { name: 'preprocessor bare return', script: 'return;', section: 'ci-preprocess', row: 'Preprocessor' },
+        { name: 'preprocessor return followed by a newline', script: 'return\nmessage;', section: 'ci-preprocess', row: 'Preprocessor' },
+        { name: 'preprocessor empty body', script: '', section: 'ci-preprocess', row: 'Preprocessor' },
+        { name: 'preprocessor whitespace body', script: ' \t\n ', section: 'ci-preprocess', row: 'Preprocessor' },
+        { name: 'attachment bare return', script: 'return;', section: 'ci-attachments', row: 'Attachment handler script' },
+        { name: 'attachment empty body', script: '', section: 'ci-attachments', row: 'Attachment handler script' },
+        { name: 'attachment whitespace body', script: ' \t\n ', section: 'ci-attachments', row: 'Attachment handler script' }
+    ]) {
+        test('preserves saved ' + sample.name + ' source in search and Print', async ({ page }) => {
+            const channel = structuredClone(CHANNEL);
+            if (sample.section === 'ci-attachments') {
+                channel.preprocessingScript = 'return message;';
+                channel.properties.attachmentProperties = {
+                    '@version': V,
+                    className: 'com.mirth.connect.server.attachments.javascript.JavaScriptAttachmentHandlerProvider',
+                    type: 'JavaScript',
+                    properties: { entry: { string: ['javascript.script', sample.script] } }
+                };
+            } else channel.preprocessingScript = sample.script;
+            const wire = structuredClone(channel);
+            if (sample.script === '') {
+                if (sample.section === 'ci-attachments') wire.properties.attachmentProperties.properties.entry.string[1] = null;
+                else wire.preprocessingScript = null;
+            }
+            await mockEngine(page, { [`GET /channels/${ID}`]: (request: any) => request.headers().accept?.includes('application/xml')
+                ? xml('channel', channel) : { channel: wire } });
+            await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+            await page.getByPlaceholder('Find in channel').fill(sample.script.trim() ? 'return' : sample.row);
+            const section = page.locator('#' + sample.section);
+            const name = page.locator('.ci-name', { hasText: new RegExp('^' + sample.row + '$') });
+            const row = section.locator('.ci-item').filter({ has: name });
+            await expect(row).toHaveAttribute('open', '');
+            await expect(row.locator('.ci-code')).toBeVisible();
+            // Empty code still has one blank display line; whitespace is retained.
+            const displayedLines = sample.script.split('\n').map(line => line || ' ');
+            expect(await row.locator('.ci-code .lc').allTextContents()).toEqual(displayedLines);
+            await expect(section).not.toContainText('The raw message is not changed.');
+
+            await page.getByRole('button', { name: 'Print', exact: true }).click();
+            const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+            const printedSection = preview.locator(`section[aria-labelledby="print-${sample.section}"]`);
+            const printedRow = printedSection.locator('.ci-item').filter({ has: name });
+            await expect(printedRow.locator('.ci-code')).toBeVisible();
+            expect(await printedRow.locator('.ci-code .lc').allTextContents()).toEqual(displayedLines);
+            await expect(printedSection).not.toContainText('The raw message is not changed.');
+        });
+    }
+
+    for (const source of ['absent', 'local null']) {
+        test('does not infer unchanged messages from ' + source + ' preprocessor source', async ({ page }) => {
+            const channel = structuredClone(CHANNEL);
+            if (source === 'absent') delete channel.preprocessingScript;
+            await mockEngine(page, { [`GET /channels/${ID}`]: { channel } });
+            await page.goto(`/channels/${ID}/edit?tab=Inspector`);
+            await expect(page.locator('#ci-preprocess')).toBeVisible();
+            if (source === 'local null') {
+                // Saved empty source is recovered as ''. Exercise an explicit
+                // null in the working draft separately from that API contract.
+                await page.evaluate(async () => {
+                    const store = await import(String('/core/store.js'));
+                    store.getState('editingChannel').preprocessingScript = null;
+                });
+                await page.getByRole('tab', { name: 'Summary', exact: true }).click();
+                await page.getByRole('tab', { name: 'Inspector', exact: true }).click();
+            }
+            await page.getByLabel('Include global scripts').uncheck();
+            const section = page.locator('#ci-preprocess');
+            await expect(section.locator('.ci-item')).toHaveCount(0);
+            await expect(section).toContainText('No preprocessor source is included here.');
+            await expect(section).toContainText('A global preprocessor can still run.');
+            await expect(section).not.toContainText('The raw message is not changed.');
+            await page.getByRole('button', { name: 'Print', exact: true }).click();
+            const printed = page.getByRole('dialog', { name: 'Print preview', exact: true })
+                .locator('section[aria-labelledby="print-ci-preprocess"]');
+            await expect(printed.locator('.ci-item')).toHaveCount(0);
+            await expect(printed).toContainText('No preprocessor source is included here.');
+            await expect(printed).not.toContainText('The raw message is not changed.');
+        });
+    }
+
     for (const mode of [1, 2, 3]) {
         test('describes Database Reader post-process mode ' + mode, async ({ page }) => {
             const channel = structuredClone(CHANNEL);
@@ -870,7 +966,7 @@ test.describe('Channel Inspector', () => {
         await page.getByRole('navigation', { name: 'Steps in this channel' }).getByRole('link', { name: '3 Accept or filter the message', exact: true }).click();
         await expect(page.locator('.ci-toc a.on')).toHaveAttribute('href', '#ci-filter');
         await page.locator('.ci-scroll').evaluate(el => { el.scrollTop = 0; });
-        await expect(page.locator('.ci-toc a.on')).toHaveAttribute('href', '#ci-receive');
+        await expect(page.locator('.ci-toc a.on')).toHaveAttribute('href', '#ci-deploy');
     });
 
     test('keeps inspection readable in both themes and at narrow widths', async ({ page }, info) => {
