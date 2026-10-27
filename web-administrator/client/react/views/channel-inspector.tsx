@@ -42,11 +42,23 @@ function stepGlyph(el: InspectedElement): [string, string] {
         case 'Message Builder': return ['edit', 'builder'];
         case 'Iterator': return ['refresh', 'iterator'];
         case 'Rule Builder': return ['filter', 'mapping'];
+        case 'Template': return ['file', ''];
+        case 'SQL': return ['db', ''];
         default: return ['puzzle', ''];
     }
 }
 
 /* ---- small pieces ---------------------------------------------------------------- */
+
+function Description({ text, print = false }: { text: string; print?: boolean }) {
+    const Heading = print ? 'h2' : 'h3';
+    return (
+        <section className={'ci-description' + (print ? ' ci-print-description' : '')} aria-label="Description">
+            <Heading className="ci-description-title"><Icon name="file" size={14} />Description</Heading>
+            <p className={'ci-desc' + (text ? '' : ' dim')}>{text || 'No description. Add one on the Summary tab.'}</p>
+        </section>
+    );
+}
 
 function Facts({ facts, query }: { facts: Fact[]; query: string }) {
     if (!facts.length) return null;
@@ -109,7 +121,7 @@ function ElementRow({ el, index, ctx }: { el: InspectedElement; index: number; c
                 </>;
     const body = <div className="ci-item-body">
         {!ctx.print && (el.reads.length > 0 || el.writes.length > 0) && <div className="ci-key-links" aria-label="Map references">{el.reads.map(k => chip(k, false))}{el.writes.map(k => chip(k, true))}</div>}
-        {el.isScript ? <Code text={el.detail} print={ctx.print} /> : <pre className="ci-expr">{el.detail}</pre>}
+        {el.isScript ? <Code text={el.detail} print={ctx.print} /> : <pre className="ci-expr" tabIndex={!ctx.print && el.type === 'template' ? 0 : undefined}>{el.detail}</pre>}
     </div>;
     const classes = 'ci-item' + (el.enabled ? '' : ' off') + (hit ? ' hit' : '');
     return (
@@ -161,6 +173,30 @@ function DataTypeFacts({ name, props, query }: { name: string; props: any; query
     return facts.length ? <Facts facts={facts} query={query} /> : <p className="ci-none">No properties.</p>;
 }
 
+function OutboundTemplate({ list, ctx }: { list: InspectedElement[]; ctx: ListCtx }) {
+    if (!list.length) return null;
+    return <div className="ci-template">
+        <p className="ci-lead">The outbound template initializes <code>tmp</code>. Transformer steps can change it; its final value supplies the output.</p>
+        <Elements list={list} kind="step" ctx={ctx} />
+    </div>;
+}
+
+function PrintMapReferences({ inspection: r }: { inspection: ChannelInspection }) {
+    return <div className="ci-print-maps">{r.maps.map(m => (
+        <table key={keyText(m)} id={'print-ci-key-' + keyText(m)} className="ci-print-map" aria-label={keyText(m)}>
+            <colgroup><col className="ci-print-map-direction" /><col /></colgroup>
+            <thead><tr><th colSpan={2} scope="colgroup"><code>{m.key}</code><span className="dim">{m.map}</span></th></tr></thead>
+            <tbody>
+                {[{ label: 'Written by', ids: m.writers }, { label: 'Read by', ids: m.readers }].flatMap(({ label, ids }) =>
+                    ids.length ? ids.map(id => <tr key={label + id}><th scope="row">{label}</th><td>{r.owners[id]}</td></tr>)
+                        : [<tr key={label}><th scope="row">{label}</th><td>None{label === 'Written by' && m.readers.length > 0 && m.map !== 'configurationMap' && m.map !== 'sourceMap'
+                            && <span className="ci-warn">No writer in this channel. It can come from a global script, a code template or another channel.</span>}</td></tr>]
+                )}
+            </tbody>
+        </table>
+    ))}</div>;
+}
+
 /* ---- the tab ---------------------------------------------------------------- */
 
 export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }: { channel: any; openTab: OpenTab; revision: number; dirty: boolean; isNew: boolean }) {
@@ -177,6 +213,8 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
     const r: ChannelInspection = useMemo(() => inspectChannel(channel, includeGlobals && canGlobals ? globals : {}), [channel, revision, includeGlobals, canGlobals, globals]);
     const allIds = useMemo(() => Object.keys(r.owners), [r]);
     const [open, setOpenState] = useState<Set<string>>(() => new Set());
+    // Stage folding is independent of the toolbar's code/detail disclosures.
+    const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set());
     const [query, setQuery] = useState('');
     const [hitIndex, setHitIndex] = useState(-1);
     const [channelNames, setChannelNames] = useState<Map<string, string>>(() => new Map());
@@ -241,12 +279,18 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
         return next;
     });
 
+    const setSectionOpen = (id: string, value: boolean) => setCollapsedSections(prev => {
+        const next = new Set(prev);
+        if (value) next.delete(id); else next.add(id);
+        return next;
+    });
+
     // Find: open matching rows so the match is visible.
     const matches = useMemo(() => {
         if (!q) return [] as string[];
         const ids: string[] = [];
-        const all = [r.source.poll, r.deploy, r.preprocessor, r.sourceFilter, r.sourceTransformer, r.postprocessor,
-            ...r.destinations.flatMap(d => [d.filter, d.transformer, d.send, d.response])].flat();
+        const all = [r.source.poll, r.source.postprocess, r.source.outboundTemplate, r.deploy, r.preprocessor, r.sourceFilter, r.sourceTransformer, r.postprocessor,
+            ...r.destinations.flatMap(d => [d.filter, d.transformer, d.outboundTemplate, d.send, d.response, d.responseTemplate])].flat();
         for (const el of all) if (searchText(el).includes(q)) ids.push(el.id);
         return ids;
     }, [q, r]);
@@ -255,22 +299,36 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
         if (ids.length) setOpenState(prev => new Set([...prev, ...ids]));
     }, [matches, allIds, showCode]);
 
-    const scrollTo = (id: string) => {
-        const el = document.getElementById(id);
-        if (!el) return;
+    // A new search reveals matching stages, including connector-setting facts.
+    // Changing code disclosures alone must never unfold a stage.
+    useEffect(() => {
+        if (!q) return;
+        const sections = new Set([...storyRef.current?.querySelectorAll<HTMLElement>('[data-hit]') ?? []]
+            .map(el => el.closest('.ci-section')?.id).filter((id): id is string => !!id));
+        setCollapsedSections(prev => new Set([...prev].filter(id => !sections.has(id))));
+    }, [q, r]);
+
+    const revealAndScroll = (el: HTMLElement) => {
+        const section = el.closest('.ci-section');
+        if (section) setSectionOpen(section.id, true);
         let p = el.parentElement;
         while (p) { if (p.tagName === 'DETAILS') (p as HTMLDetailsElement).open = true; p = p.parentElement; }
-        if (el.tagName === 'DETAILS' && !open.has(id)) setOpen(id, true);
-        el.scrollIntoView({ block: el.matches('.ci-section, .ci-dest') ? 'start' : 'center' });
+        if (el.tagName === 'DETAILS' && !open.has(el.id)) setOpen(el.id, true);
+        // Wait for React to expose the stage before measuring its scroll target.
+        window.requestAnimationFrame(() => {
+            if (el.isConnected) el.scrollIntoView({ block: el.matches('.ci-section, .ci-dest') ? 'start' : 'center' });
+        });
+    };
+    const scrollTo = (id: string) => {
+        const el = document.getElementById(id);
+        if (el) revealAndScroll(el);
     };
     const nextHit = () => {
         const hits = [...(storyRef.current?.querySelectorAll<HTMLElement>('[data-hit]') ?? [])];
         if (!hits.length) return;
         const i = (hitIndex + 1) % hits.length;
         setHitIndex(i);
-        let parent = hits[i].parentElement;
-        while (parent) { if (parent.tagName === 'DETAILS') (parent as HTMLDetailsElement).open = true; parent = parent.parentElement; }
-        hits[i].scrollIntoView({ block: 'center' });
+        revealAndScroll(hits[i]);
     };
     const [hitCount, setHitCount] = useState(0);
     useEffect(() => { setHitCount(q && storyRef.current ? storyRef.current.querySelectorAll('[data-hit]').length : 0); }, [q, r, open]);
@@ -350,9 +408,7 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
                     </nav>
                     <div className="ci-story" ref={storyRef}>
                         <section className="ci-purpose">
-                            {r.description
-                                ? <><p className="ci-desc">{r.description}</p><p className="ci-from">From the channel description</p></>
-                                : <p className="ci-desc dim">No description. Add one on the Summary tab.</p>}
+                            <Description text={r.description} />
                             <div className="ci-glance">
                                 <span><Icon name={connectorIcon(r.source.transport)} size={14} /><b>{typeLabel(r.inboundType)}</b> over {r.source.transport || 'an unknown connector'}</span>
                                 <span><Icon name="filter" size={14} />{plural(r.sourceFilter.length, 'source rule')}</span>
@@ -368,14 +424,20 @@ export function ChannelInspectorTab({ channel, openTab, revision, dirty, isNew }
                             <div key={s.id}>
                                 {(i === 0 || sections[i - 1].phase !== s.phase) && <h3 className="ci-phase"><Icon name={PHASES[s.phase][0]} size={14} />{PHASES[s.phase][1]}</h3>}
                                 <section id={s.id} className={'ci-section' + (s.empty ? ' empty' : '') + (i === sections.length - 1 || sections[i + 1].phase !== s.phase ? ' last' : '')} aria-labelledby={s.id + '-h'}>
-                                    <span className="ci-index">{s.num ?? <Icon name={s.icon || 'info'} size={14} />}</span>
+                                    {s.num == null && <span className="ci-index"><Icon name={s.icon || 'info'} size={14} /></span>}
                                     <div className="ci-section-body">
                                         <div className="ci-section-head">
-                                            <h4 id={s.id + '-h'}>{s.title}</h4>
+                                            <h4 id={s.id + '-h'}>{s.num != null
+                                                ? <button type="button" className="ci-section-toggle" aria-expanded={!collapsedSections.has(s.id)} aria-controls={s.id + '-content'}
+                                                    onClick={() => setSectionOpen(s.id, collapsedSections.has(s.id))}>
+                                                    <span className="ci-index" aria-hidden="true">{s.num}</span>
+                                                    <span className="ci-section-title">{s.title}</span><Icon name="chevR" size={14} />
+                                                </button>
+                                                : <span className="ci-section-title">{s.title}</span>}</h4>
                                             <span className="ci-scope">{s.scope}</span>
                                             {s.tab && <button type="button" className="ci-link ci-open" onClick={() => openTab(s.tab!)}>Open in {s.tab}</button>}
                                         </div>
-                                        {s.body}
+                                        <div id={s.id + '-content'} className="ci-section-content" hidden={s.num != null && collapsedSections.has(s.id)}>{s.body}</div>
                                     </div>
                                 </section>
                             </div>
@@ -408,7 +470,7 @@ function PrintView({ inspection: r, context, globalsText, channelNames }: { insp
                         <h1>{r.name}</h1>
                         <p className="ci-print-subtitle">Channel Inspector · {context}</p>
                         <p className="ci-print-context">{globalsText} Prepared {prepared}.</p>
-                        {r.description && <p className="ci-print-description">{r.description}</p>}
+                        {r.description && <Description text={r.description} print />}
                         <Facts facts={[
                             ['Source', `${typeLabel(r.inboundType)} · ${r.source.transport}`],
                             ['Destinations', `${plural(r.chains.flat().length, 'enabled destination')} · ${plural(r.chains.length, 'chain')}`],
@@ -470,10 +532,11 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
             : lead('No source filter rules. Every message continues.') });
 
     const skipped = r.sourceTransformer.filter(e => !e.enabled).length;
-    msg({ id: 'ci-transform', title: r.inboundType === r.outboundType ? `Transform the ${inbound} message` : `Transform ${inbound} to ${outbound}`, scope: 'Source transformer', tab: 'Source', empty: !r.sourceTransformer.length,
-        body: r.sourceTransformer.length
+    msg({ id: 'ci-transform', title: r.inboundType === r.outboundType ? `Transform the ${inbound} message` : `Transform ${inbound} to ${outbound}`, scope: 'Source transformer', tab: 'Source', empty: !r.sourceTransformer.length && !r.source.outboundTemplate.length,
+        body: <><OutboundTemplate list={r.source.outboundTemplate} ctx={ctx} />{r.sourceTransformer.length
             ? <>{lead(`${plural(r.sourceTransformer.length - skipped, 'enabled step')} run in order${skipped ? `; ${plural(skipped, 'disabled step')} skipped` : ''}. The result is the source output that every destination starts from.`)}<Elements list={r.sourceTransformer} kind="step" ctx={ctx} /></>
-            : lead(`No transformer steps. The message is serialized from ${inbound} to ${outbound}.`) });
+            : lead(r.source.outboundTemplate.length ? 'No transformer steps. The outbound template supplies the source output.'
+                : `No transformer steps. The message is serialized from ${inbound} to ${outbound}.`)}</> });
 
     const off = r.destinations.filter(d => !d.enabled);
     const chip = (d: InspectedDestination) => {
@@ -498,7 +561,8 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
             </div>
             {r.chains.map((chain, i) => (
                 <section className="ci-chain" key={i} aria-label={`Chain ${i + 1}`}>
-                    <div className="ci-chain-label"><strong>Chain {i + 1}</strong><span className="dim">{chain.length > 1 ? chain.map(d => d.label).join(' then ') + ', in order' : 'One destination'}{i > 0 ? ' · independent of Chain 1' : ''}</span></div>
+                    <div className="ci-chain-label"><strong>Chain {i + 1}</strong><span className="dim">{chain.length > 6 ? plural(chain.length, 'destination') + ', in configured order'
+                        : chain.length > 1 ? chain.map(d => d.label).join(' then ') + ', in order' : 'One destination'}{i > 0 ? ' · independent of Chain 1' : ''}</span></div>
                     {chain.map((d, j) => (
                         <div key={d.metaDataId}>
                             {j > 0 && <div className="ci-wait"><Icon name="arrowDown" size={14} />{d.label} waits for {chain[j - 1].label} to finish. It runs even if {chain[j - 1].label} errors or is filtered.</div>}
@@ -508,7 +572,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
                 </section>
             ))}
             {off.length > 0 && (
-                <More print={ctx.print} className="ci-disabled" title={<>Disabled · {off.map(d => d.name).join(', ')} · configured but never runs</>}>
+                <More print={ctx.print} className="ci-disabled" title={<>Disabled · {off.length > 6 ? plural(off.length, 'destination') : off.map(d => d.name).join(', ')} · configured but never runs</>}>
                     {off.map(d => <DestinationCard key={d.metaDataId} d={d} r={r} ctx={ctx} channelNames={channelNames} openTab={openTab} />)}
                 </More>
             )}
@@ -529,6 +593,21 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
             <Facts facts={[['Response', rd ? `${rd.label} · ${rd.name}` : r.response.label], ...(rd ? [['Validate response', rd.validateResponse ? 'Yes' : 'No'] as Fact] : [])]} query={q} />
         </> });
 
+    if (r.source.postprocessMode === 2 || r.source.postprocessMode === 3) {
+        const eachRow = r.source.postprocessMode === 3;
+        const afterPoll = !eachRow && !r.source.aggregateResults;
+        const message = r.source.processBatch
+            ? (r.source.firstResponse ? 'first' : 'last') + ' batch message for the combined results' : 'combined results message';
+        const timing = afterPoll ? 'Runs once at the end of each poll, including when polling fails.'
+            : r.source.aggregateResults ? (eachRow ? 'Runs once per row' : 'Runs once') + ' after dispatching the ' + message + '.'
+                : r.source.processBatch ? 'Runs once for each dispatched batch message from a row.' : 'Runs once per row after dispatching its message.';
+        s.push({ id: 'ci-source-postprocess', phase: afterPoll ? 'after' : 'message', num: afterPoll ? undefined : ++n, icon: 'db',
+            title: 'Postprocess Database Reader results', scope: 'Source post-process', tab: 'Source',
+            body: <>{lead(timing + (!r.source.respondAfterProcessing ? ' With the source queue enabled, message processing may still be pending.' : ' Queued destination sends may still be pending.'))}
+                {r.source.postprocess.length ? <Elements list={r.source.postprocess} kind="script" ctx={ctx} /> : lead('No post-process code configured.')}</>
+        });
+    }
+
     const queued = r.destinations.filter(d => d.enabled && d.queued);
     s.push({ id: 'ci-queue', phase: 'after', icon: 'clock', title: 'Retry queued sends', scope: 'Destinations', tab: 'Destinations', empty: !queued.length,
         body: queued.length
@@ -545,15 +624,17 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
     s.push({ id: 'ci-maps', phase: 'ref', icon: 'tag', title: 'Maps and variables', scope: 'Reference',
         body: !r.maps.length ? lead('No literal map keys found in the inspected steps and scripts. Dynamic keys and code template internals are not resolved.') : <>
             {lead(<>Literal keys found in enabled steps and scripts, including Mapper variables and calls such as <code>$c()</code> and <code>channelMap.put()</code>. Dynamic keys and code template internals are not resolved. The same key in separate destination connector maps is a separate value.</>)}
-            <div className="ci-map-wrap"><table className="ci-maps">
+            {ctx.print ? <PrintMapReferences inspection={r} /> : <div className="ci-map-wrap"><table className="ci-maps">
                 <thead><tr><th>Key</th><th>Map</th><th>Written by</th><th>Read by</th></tr></thead>
                 <tbody>
                     {r.maps.map(m => {
                         const id = keyText(m);
                         const flag = !m.writers.length && m.readers.length > 0 && m.map !== 'configurationMap' && m.map !== 'sourceMap';
-                        const loc = (ids: string[]) => ids.length
-                            ? ids.map(x => ctx.print ? <span key={x} className="ci-loc">{r.owners[x]}</span> : <button type="button" key={x} className="ci-link ci-loc" onClick={() => scrollTo(x)}>{r.owners[x]}</button>)
-                            : <span className="dim">None</span>;
+                        const loc = (ids: string[]) => {
+                            if (!ids.length) return <span className="dim">None</span>;
+                            const links = ids.map(x => <button type="button" key={x} className="ci-link ci-loc" onClick={() => scrollTo(x)}>{r.owners[x]}</button>);
+                            return ids.length > 6 ? <details className="ci-locations"><summary>{plural(ids.length, 'reference')}</summary>{links}</details> : links;
+                        };
                         const hit = !!q && id.toLowerCase().includes(q);
                         return (
                             <tr key={id} id={(ctx.print ? 'print-' : '') + 'ci-key-' + id} className={(flag ? 'flag ' : '') + (targetKey === id ? 'target ' : '') + (hit ? 'hit' : '')} data-hit={hit || undefined}>
@@ -565,7 +646,7 @@ function buildSections(r: ChannelInspection, ctx: ListCtx, channelNames: Map<str
                         );
                     })}
                 </tbody>
-            </table></div>
+            </table></div>}
         </> });
     return s;
 }
@@ -594,14 +675,17 @@ function DestinationCard({ d, r, ctx, channelNames, openTab }: { d: InspectedDes
                 {sub('Filter', 'filter', d.filter.length
                     ? <><p className="ci-lead">If false, only {d.label} is skipped. Other destinations still run.</p><Elements list={d.filter} kind="rule" ctx={ctx} /></>
                     : <p className="ci-lead">No rules. Accepts every message that reaches it.</p>)}
-                {sub(sourceOut === outbound ? 'Transform' : `Transform ${sourceOut} to ${outbound}`, 'transform', d.transformer.length
-                    ? <Elements list={d.transformer} kind="step" ctx={ctx} />
-                    : <p className="ci-lead">No steps. Sends the source output as {outbound}.</p>)}
+                {sub(sourceOut === outbound ? 'Transform' : `Transform ${sourceOut} to ${outbound}`, 'transform', <>
+                    <OutboundTemplate list={d.outboundTemplate} ctx={ctx} />
+                    {d.transformer.length ? <Elements list={d.transformer} kind="step" ctx={ctx} />
+                        : <p className="ci-lead">{d.outboundTemplate.length ? 'No steps. The outbound template supplies the destination output.' : <>No steps. Sends the source output as {outbound}.</>}</p>}
+                </>)}
                 {sub('Send', 'send', <><Facts facts={[...d.settings, ...d.queue]} query={ctx.query} />{d.send.length > 0 && <Elements list={d.send} kind="script" ctx={ctx} />}</>)}
                 {sub('Handle the response', 'undo', <>
                     <Facts facts={[['Validate response', d.validateResponse ? 'Yes' : 'No']]} query={ctx.query} />
+                    <OutboundTemplate list={d.responseTemplate} ctx={ctx} />
                     {d.response.length > 0 && <><div className="ci-sub-head">Response transformer</div><Elements list={d.response} kind="step" ctx={ctx} /></>}
-                    {!d.response.length && <p className="ci-lead">No response transformer steps.</p>}
+                    {!d.response.length && !d.responseTemplate.length && <p className="ci-lead">No response transformer steps.</p>}
                 </>)}
             </ol>
         </article>

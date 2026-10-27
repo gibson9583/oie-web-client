@@ -74,7 +74,7 @@ test.describe('Channel Inspector', () => {
         await expect(page.getByRole('tab', { name: 'Inspector', exact: true })).toHaveAttribute('aria-selected', 'true');
 
         await expect(page.getByText('Normalizes lab results for clinical storage and EHR delivery.')).toBeVisible();
-        const sections = page.locator('.ci-section h4');
+        const sections = page.locator('.ci-section-head .ci-section-title');
         await expect(sections).toHaveText([
             'Receive HL7 v2.x over TCP Listener', 'Preprocess the raw message', 'Accept or filter the message',
             'Transform the HL7 v2.x message', 'Send to destinations', 'Postprocess', 'Respond to the sender',
@@ -91,6 +91,83 @@ test.describe('Channel Inspector', () => {
         await expect(page.locator('#ci-queue')).toContainText('D3 · Analytics API');
         await expect(page.locator('#ci-receive')).toContainText('0.0.0.0:6663');
         await expect(page.getByText('can remove destinations for each message', { exact: false })).toBeVisible();
+    });
+
+    test('keeps numbered stages independent of code and detail disclosures', async ({ page }) => {
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        await expect(page.getByText('Includes the latest saved global scripts.')).toBeVisible();
+        const transform = page.locator('#ci-transform .ci-section-toggle');
+        const receive = page.locator('#ci-receive .ci-section-toggle');
+        const route = page.locator('details.ci-item', { hasText: 'Route training' });
+        await expect(transform).toHaveAttribute('aria-expanded', 'true');
+        await page.locator('#ci-transform .ci-index').click();
+        await expect(transform).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.locator('#ci-transform-content')).toBeHidden();
+        await expect(receive).toHaveAttribute('aria-expanded', 'true');
+
+        await page.getByRole('button', { name: 'Expand all', exact: true }).click();
+        await expect(transform).toHaveAttribute('aria-expanded', 'false');
+        await expect(receive).toHaveAttribute('aria-expanded', 'true');
+        await expect(route).toHaveAttribute('open', '');
+        await expect(route.locator('.ci-code')).toBeHidden();
+        await transform.focus();
+        await page.keyboard.press('Enter');
+        await expect(transform).toHaveAttribute('aria-expanded', 'true');
+        await expect(route.locator('.ci-code')).toBeVisible();
+        await page.keyboard.press('Space');
+        await expect(transform).toHaveAttribute('aria-expanded', 'false');
+
+        await page.getByRole('button', { name: 'Collapse all', exact: true }).click();
+        await expect(transform).toHaveAttribute('aria-expanded', 'false');
+        await expect(receive).toHaveAttribute('aria-expanded', 'true');
+        await expect(route).not.toHaveAttribute('open', '');
+        await page.getByLabel('Show all code').check();
+        await expect(transform).toHaveAttribute('aria-expanded', 'false');
+        await receive.click();
+        await page.getByLabel('Show all code').uncheck();
+        await expect(receive).toHaveAttribute('aria-expanded', 'false');
+        await expect(transform).toHaveAttribute('aria-expanded', 'false');
+        await page.getByLabel('Include global scripts').uncheck();
+        await expect(page.getByText('Global scripts excluded.')).toBeVisible();
+        await expect(transform).toHaveAttribute('aria-expanded', 'false');
+        await expect(receive).toHaveAttribute('aria-expanded', 'false');
+        await transform.click();
+        await expect(route).not.toHaveAttribute('open', '');
+        await expect(page.locator('#ci-preprocess .ci-section-toggle')).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    test('reveals folded stages for find, contents and map reference navigation', async ({ page }) => {
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        const transform = page.locator('#ci-transform .ci-section-toggle');
+        const receive = page.locator('#ci-receive .ci-section-toggle');
+        const destinations = page.locator('#ci-destinations .ci-section-toggle');
+        const find = page.getByPlaceholder('Find in channel');
+        const route = page.locator('details.ci-item', { hasText: 'Route training' });
+        await transform.click();
+        await find.fill('destinationSet');
+        await expect(transform).toHaveAttribute('aria-expanded', 'true');
+        await expect(route.locator('.ci-code')).toBeVisible();
+        await transform.click();
+        await find.press('Enter');
+        await expect(transform).toHaveAttribute('aria-expanded', 'true');
+        await expect(route.locator('.ci-code')).toBeVisible();
+
+        await find.fill('');
+        await receive.click();
+        await find.fill('Keep connection open');
+        await expect(receive).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('#ci-receive .ci-fact.hit')).toBeVisible();
+
+        await find.fill('');
+        await destinations.click();
+        await page.getByRole('navigation', { name: 'Steps in this channel' }).getByRole('link', { name: 'D4 Legacy archive', exact: true }).click();
+        await expect(destinations).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('#ci-dest-4')).toBeVisible();
+
+        await transform.click();
+        await page.locator('#ci-key-channelMap\\.facility').getByRole('button', { name: 'Source transformer · Read facility', exact: true }).click();
+        await expect(transform).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('#ci-transform details.ci-item').first()).toHaveAttribute('open', '');
     });
 
     test('finds text, follows map keys and opens editor tabs', async ({ page }) => {
@@ -258,6 +335,9 @@ test.describe('Channel Inspector', () => {
         if (await page.locator('html').getAttribute('data-theme') !== 'dark') await page.getByRole('button', { name: 'Toggle light/dark mode' }).click();
         await page.getByRole('button', { name: 'Collapse all' }).click();
         await expect(page.locator('details.ci-item[open]')).toHaveCount(0);
+        await page.locator('#ci-transform .ci-section-toggle').click();
+        await page.locator('#ci-destinations .ci-section-toggle').click();
+        const stageStates = await page.locator('.ci-section-toggle').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-expanded')));
         await page.getByRole('button', { name: 'Print', exact: true }).click();
         const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
         await expect(preview).toBeVisible();
@@ -286,6 +366,7 @@ test.describe('Channel Inspector', () => {
         await expect(preview).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Print', exact: true })).toBeFocused();
         await expect(page.locator('details.ci-item[open]')).toHaveCount(0);
+        expect(await page.locator('.ci-section-toggle').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-expanded')))).toEqual(stageStates);
         await page.setViewportSize({ width: 430, height: 900 });
         await page.locator('.rail-backdrop').click({ position: { x: 320, y: 300 } });
         await page.getByRole('button', { name: 'Print', exact: true }).click();
@@ -295,6 +376,148 @@ test.describe('Channel Inspector', () => {
         await page.keyboard.press('Escape');
         await expect(preview).toHaveCount(0);
         expect(writes).toEqual([]);
+    });
+
+    test('shows source, destination and response outbound templates with no steps', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        const values = ['SOURCE_TEMPLATE_MARKER\n' + Array.from({ length: 80 }, (_, i) => 'template line ' + i).join('\n') + '\nliteral $c("templateLiteral")',
+            'DESTINATION_TEMPLATE_MARKER', 'RESPONSE_TEMPLATE_MARKER'];
+        const transforms = [channel.sourceConnector.transformer, channel.destinationConnectors.connector[0].transformer,
+            channel.destinationConnectors.connector[0].responseTransformer];
+        transforms.forEach((t, i) => { t.elements = ''; t.outboundTemplate = { '@encoding': 'base64', $: Buffer.from(values[i]).toString('base64') }; });
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        await page.getByPlaceholder('Find in channel').fill('TEMPLATE_MARKER');
+        const templates = page.locator('.ci-template .ci-item');
+        await expect(templates).toHaveCount(3);
+        for (const row of await templates.all()) await expect(row).toHaveAttribute('open', '');
+        const longTemplate = page.locator('#ci-transform .ci-template .ci-expr');
+        await longTemplate.focus();
+        await expect(longTemplate).toBeFocused();
+        expect(await longTemplate.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+        await expect(page.locator('#ci-transform')).not.toHaveClass(/empty/);
+        await expect(page.locator('#ci-transform')).toContainText('The outbound template supplies the source output.');
+        await expect(page.locator('#ci-dest-1')).toContainText('The outbound template supplies the destination output.');
+        await expect(page.locator('#ci-dest-1')).not.toContainText('Sends the source output');
+        await expect(page.locator('#ci-dest-1')).not.toContainText('No response transformer steps.');
+        await expect(page.locator('#ci-key-channelMap\\.templateLiteral')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        for (const value of values) await expect(preview).toContainText(value);
+        expect(await preview.locator('.ci-template .ci-expr').first().evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
+        await expect(preview.locator('details')).toHaveCount(0);
+    });
+
+    for (const mode of [1, 2, 3]) {
+        test('describes Database Reader post-process mode ' + mode, async ({ page }) => {
+            const channel = structuredClone(CHANNEL);
+            channel.sourceConnector.transportName = 'Database Reader';
+            channel.sourceConnector.properties = {
+                '@class': 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties', '@version': V,
+                sourceConnectorProperties: channel.sourceConnector.properties.sourceConnectorProperties,
+                useScript: true, select: 'return new java.util.ArrayList();', updateMode: mode, aggregateResults: true,
+                update: 'globalChannelMap.put("dbProcessed", "DB_POSTPROCESS_MARKER");'
+            };
+            await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+            await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+            if (mode === 1) {
+                await expect(page.locator('#ci-source-postprocess')).toHaveCount(0);
+                await expect(page.locator('#ci-key-globalChannelMap\\.dbProcessed')).toHaveCount(0);
+                await expect(page.locator('#ci-receive')).toContainText('Never');
+            } else {
+                await page.getByPlaceholder('Find in channel').fill('dbProcessed');
+                await expect(page.locator('#ci-source-postprocess .ci-item')).toHaveAttribute('open', '');
+                await expect(page.locator('#ci-source-postprocess')).toContainText(mode === 2 ? 'Runs once after dispatching' : 'Runs once per row after dispatching');
+                await expect(page.locator('#ci-source-postprocess')).toContainText('combined results');
+                await expect(page.locator('#ci-key-globalChannelMap\\.dbProcessed')).toContainText('Source post-process');
+            }
+            await page.getByRole('button', { name: 'Print', exact: true }).click();
+            const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+            if (mode === 1) await expect(preview).not.toContainText('DB_POSTPROCESS_MARKER');
+            else {
+                await expect(preview).toContainText('DB_POSTPROCESS_MARKER');
+                await expect(preview.locator('.ci-print-map', { hasText: 'dbProcessed' })).toContainText('Source post-process');
+            }
+        });
+    }
+
+    test('describes Database Reader batch response timing and after-poll failures', async ({ page }) => {
+        const channel = structuredClone(CHANNEL);
+        channel.sourceConnector.transportName = 'Database Reader';
+        channel.sourceConnector.properties = {
+            '@class': 'com.mirth.connect.connectors.jdbc.DatabaseReceiverProperties', '@version': V,
+            sourceConnectorProperties: { ...channel.sourceConnector.properties.sourceConnectorProperties, processBatch: true, firstResponse: true },
+            useScript: true, select: 'return new java.util.ArrayList();', updateMode: 2, aggregateResults: true,
+            update: 'logger.info("batch post-process");'
+        };
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        await expect(page.locator('#ci-source-postprocess')).toContainText('first batch message for the combined results');
+        channel.sourceConnector.properties.sourceConnectorProperties.firstResponse = false;
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.reload();
+        await expect(page.locator('#ci-source-postprocess')).toContainText('last batch message for the combined results');
+        channel.sourceConnector.properties.aggregateResults = false;
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.reload();
+        await expect(page.locator('#ci-source-postprocess')).toContainText('including when polling fails');
+        channel.sourceConnector.properties.updateMode = 3;
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.reload();
+        await expect(page.locator('#ci-source-postprocess')).toContainText('each dispatched batch message from a row');
+    });
+
+    test('keeps long map reference lists readable with 196 destinations', async ({ page }, info) => {
+        test.setTimeout(120_000);
+        const channel = structuredClone(CHANNEL);
+        const key = 'LargeChannelSharedKey';
+        channel.name = 'Large channel regression';
+        channel.sourceConnector.filter.elements = '';
+        channel.sourceConnector.transformer.elements = '';
+        channel.destinationConnectors.connector = Array.from({ length: 196 }, (_, i) => tcpSender(i + 1,
+            'RoutingDestination_' + String(i + 1).padStart(3, '0') + '_WithALongDescriptiveNameForIntegrationOperations', {
+                transportName: 'JavaScript Writer', waitForPrevious: i > 0,
+                properties: { '@class': 'com.mirth.connect.connectors.js.JavaScriptDispatcherProperties', '@version': V,
+                    destinationConnectorProperties: queue(), script: 'channelMap.put("' + key + '", ' + i + ');\nreturn "sent";' }
+            }));
+        await mockEngine(page, { ['GET /channels/' + ID]: { channel } });
+        await page.goto('/channels/' + ID + '/edit?tab=Inspector');
+        await expect(page.locator('.ci-chain-label')).toHaveText('Chain 1196 destinations, in configured order');
+        const row = page.locator('#ci-key-channelMap\\.' + key);
+        await row.scrollIntoViewIfNeeded();
+        const disclosure = row.locator('details');
+        await expect(disclosure).not.toHaveAttribute('open', '');
+        await expect(disclosure.locator('summary')).toHaveText('196 references');
+        expect((await row.boundingBox())!.height).toBeLessThan(100);
+        await disclosure.locator('summary').click();
+        await disclosure.getByRole('button').last().click();
+        await expect(page.locator('#ci-dest-196 .ci-code')).toBeVisible();
+        await page.getByRole('button', { name: 'Print', exact: true }).click();
+        const preview = page.getByRole('dialog', { name: 'Print preview', exact: true });
+        await expect(preview.locator('.ci-dest')).toHaveCount(196);
+        await expect(preview.locator('.ci-print-map')).toHaveCount(1);
+        await expect(preview.locator('.ci-print-map tbody tr')).toHaveCount(197);
+        await expect(preview.locator('.ci-print-map')).toContainText('RoutingDestination_196');
+        await expect(preview.locator('details')).toHaveCount(0);
+        expect(await preview.locator('.ci-print-paper').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+        if (process.env.INSPECTOR_SCREENSHOTS === '1') {
+            await preview.locator('.ci-print-map thead').scrollIntoViewIfNeeded();
+            await page.screenshot({ path: info.outputPath('large-references-desktop.png'), animations: 'disabled' });
+        }
+        if (process.env.INSPECTOR_PDF === '1' && info.project.name === 'ui') {
+            await page.pdf({ path: info.outputPath('large-channel-letter.pdf'), format: 'Letter', printBackground: false });
+            await page.pdf({ path: info.outputPath('large-channel-a4.pdf'), format: 'A4', printBackground: false });
+        }
+        await page.setViewportSize({ width: 430, height: 900 });
+        expect(await preview.locator('.ci-print-paper').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+        // Resizing while preview is open must not put the mobile navigation rail
+        // above the document or its controls.
+        expect(await preview.locator('.ci-preview-title').evaluate(el => {
+            const box = el.getBoundingClientRect();
+            return el.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+        })).toBe(true);
+        await preview.locator('.ci-print-map thead').scrollIntoViewIfNeeded();
+        if (process.env.INSPECTOR_SCREENSHOTS === '1') await page.screenshot({ path: info.outputPath('large-references-mobile.png'), animations: 'disabled' });
     });
 
     test('keeps destination numbers beside wrapped long names', async ({ page }, info) => {

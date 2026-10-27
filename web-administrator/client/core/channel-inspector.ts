@@ -44,7 +44,9 @@ export interface InspectedDestination {
     queued: boolean;
     filter: InspectedElement[];
     transformer: InspectedElement[];
+    outboundTemplate: InspectedElement[];
     response: InspectedElement[];
+    responseTemplate: InspectedElement[];
     send: InspectedElement[];
     inboundType: string;
     outboundType: string;
@@ -66,6 +68,13 @@ export interface ChannelInspection {
         inboundProperties: OieObject | null;
         outboundProperties: OieObject | null;
         poll: InspectedElement[];
+        outboundTemplate: InspectedElement[];
+        postprocess: InspectedElement[];
+        /** Database Reader: 1 = never, 2 = once after all results, 3 = each row. */
+        postprocessMode: number;
+        aggregateResults: boolean;
+        processBatch: boolean;
+        firstResponse: boolean;
         respondAfterProcessing: boolean;
     };
     deploy: InspectedElement[];
@@ -222,6 +231,15 @@ class Elements {
         return [this.add({ name, type: 'script', typeLabel: 'JavaScript', enabled: true, skippedByParent: false, operator: '', depth: 0, detail: text(script), isScript: true, reads, writes, routing: /\bdestinationSet\s*\./.test(text(script)) }, owner)];
     }
 
+    fromText(name: string, value: unknown, owner: string, type: 'template' | 'sql'): InspectedElement[] {
+        const detail = text(value);
+        if (!detail.trim()) return [];
+        // Template bodies and SQL are not JavaScript. Calls appearing in their
+        // literal text must not create map readers, writers or routing claims.
+        return [this.add({ name, type, typeLabel: type === 'template' ? 'Template' : 'SQL', enabled: true, skippedByParent: false,
+            operator: '', depth: 0, detail, isScript: false, reads: [], writes: [], routing: false }, owner)];
+    }
+
     fromElements(elements: unknown, owner: string, rules: boolean): InspectedElement[] {
         const out: InspectedElement[] = [];
         const walk = (items: Element[], depth: number, parentEnabled = true) => {
@@ -315,6 +333,10 @@ function settingsOf(transport: string, p: any): Fact[] {
             add('Driver', p.driver);
             add('Use JavaScript', truthy(p.useScript) ? 'Yes' : 'No');
             if (!truthy(p.useScript)) add(transport === 'Database Reader' ? 'Select' : 'Query', transport === 'Database Reader' ? p.select : p.query);
+            if (transport === 'Database Reader') {
+                add('Aggregate results', truthy(p.aggregateResults) ? 'Yes' : 'No');
+                add('Post-process', Number(p.updateMode) === 2 ? 'Once after all results' : Number(p.updateMode) === 3 ? 'Once per row' : 'Never');
+            }
             break;
         case 'Channel Writer':
             add('Template', p.channelTemplate);
@@ -367,6 +389,7 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
     const sp: any = source.properties || {};
     const scp: any = sp.sourceConnectorProperties || {};
     const sourceTransport = text(source.transportName);
+    const postprocessMode = sourceTransport === 'Database Reader' ? Number(sp.updateMode ?? 1) : 1;
 
     const destinations: InspectedDestination[] = destinationsOf(channel).map((d: any) => {
         const p = d.properties || {};
@@ -391,6 +414,8 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
             transformer: els.fromElements(d.transformer?.elements, `${owner} transformer`, false),
             response: els.fromElements(d.responseTransformer?.elements, `${owner} response`, false),
             send,
+            outboundTemplate: els.fromText('Outbound template', d.transformer?.outboundTemplate, owner + ' output template', 'template'),
+            responseTemplate: els.fromText('Response outbound template', d.responseTransformer?.outboundTemplate, owner + ' response template', 'template'),
             inboundType: text(d.transformer?.inboundDataType),
             outboundType: text(d.transformer?.outboundDataType),
             validateResponse: truthy(p.destinationConnectorProperties?.validateResponse)
@@ -443,6 +468,15 @@ export function inspectChannel(channel: OieObject, globals: Record<string, strin
             settings: sourceSettings,
             inboundProperties: source.transformer?.inboundProperties ?? null,
             outboundProperties: source.transformer?.outboundProperties ?? null,
+            outboundTemplate: els.fromText('Outbound template', source.transformer?.outboundTemplate, 'Source output template', 'template'),
+            postprocessMode,
+            aggregateResults: truthy(sp.aggregateResults),
+            processBatch: truthy(scp.processBatch),
+            firstResponse: truthy(scp.firstResponse),
+            postprocess: postprocessMode === 2 || postprocessMode === 3
+                ? truthy(sp.useScript) ? els.fromScript('Database post-process script', sp.update, 'Source post-process')
+                    : els.fromText('Database post-process SQL', sp.update, 'Source post-process', 'sql')
+                : [],
             poll: sourceTransport === 'JavaScript Reader' ? els.fromScript('Reader script', sp.script, 'Source')
                 : sourceTransport === 'Database Reader' && truthy(sp.useScript) ? els.fromScript('Database select script', sp.select, 'Source') : [],
             respondAfterProcessing: scp.respondAfterProcessing !== false && scp.respondAfterProcessing !== 'false'

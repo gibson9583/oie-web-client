@@ -70,6 +70,14 @@ The response section explains when a source queue answers before processing.
 Open a rule, step, or script row to read its configuration or numbered code.
 Iterator children retain their nesting; disabled rows show that they are skipped.
 Each destination has Filter, Transform, Send, and Handle the response substeps.
+Source, destination, and response outbound templates are included even when no
+transformer steps are configured. They initialize `tmp`, whose final value
+supplies that transformer's output.
+
+Database Reader post-process scripts and SQL appear with their configured
+per-row or after-poll timing, including aggregated results. Enabled scripts
+also contribute to the map-key reference.
+
 **Open in Summary**, **Open in Source**, **Open in Destinations**, and
 **Open in Scripts** return to the corresponding editable tab. The table of
 contents follows the reading position on wider screens.
@@ -77,12 +85,18 @@ contents follows the reading position on wider screens.
 - **Find in channel** highlights matching settings, rows, and map keys and opens
   matching code rows. Press **Enter** to move through matches and **Escape** to
   clear the search.
-- **Show all code**, **Expand all**, and **Collapse all** control disclosures.
+- Click a numbered stage's number or heading to fold or unfold its contents.
+  These stage states are independent of **Show all code**, **Expand all**, and
+  **Collapse all**, which control the code and detail disclosures inside them.
+  Find and navigation reveal their target stage; printing always includes all stages.
   Long scripts also provide **Show full script**.
 - Map-key buttons link to **Maps and variables**; its writer and reader links
   return to the associated rows. The reference uses enabled steps and scripts.
   Separate destination connector maps still hold separate values even when the
   same key appears in both.
+  Long lists of references collapse behind a reference count; open the list to
+  follow any writer or reader. Printing includes every reference, with the key
+  and map repeated when its reference list continues onto another page.
 - **Include global scripts** reads the latest saved global scripts when the
   current user has permission. The context line distinguishes loading,
   inclusion, exclusion, missing permission, and read failure. A failed read offers
